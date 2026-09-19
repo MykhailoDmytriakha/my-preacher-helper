@@ -6,8 +6,9 @@ This document records the next implementation contract, not a completed migratio
 
 Implemented foundation: server/HTTP ACKs now expose and validate `relatedSnapshots`
 beside committed metadata. Six real emulator cases cover replay/current content,
-no-op relation proof and concurrent assignment. Atomic client capture, dependency
-ownership, participant projection and UI migration are still outstanding.
+no-op relation proof and concurrent assignment. IndexedDB participant create/CAS batches are now atomic and single saves use that
+same path. Queue coordination, dependency ownership, participant projection and
+UI migration are still outstanding.
 
 ## Observable contract
 

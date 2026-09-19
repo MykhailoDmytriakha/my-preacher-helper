@@ -31,6 +31,23 @@ export interface CommitStore {
   create(request: CommitRequest): Promise<CommitRequest>;
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
+  /** Atomic participant capture; custom document-only ports may omit this capability. */
+  createBatch?(requests: readonly CommitRequest[]): Promise<CommitRequest[]>;
+  /** All revisions win together, or no participant changes. */
+  compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]>;
+}
+
+export function assertCommitBatch(requests: readonly CommitRequest[]): void {
+  if (!requests.length) return;
+  const owner = requests[0].owner;
+  const identities = new Set(requests.map(request => request.id));
+  const generations = new Set(requests.map(request => JSON.stringify([request.editorId, request.editGeneration])));
+  if (requests.some(request => request.owner !== owner) || identities.size !== requests.length || generations.size !== requests.length) {
+    throw new Error('Atomic commit participants must have one owner and distinct identities');
+  }
+  if (requests.some(request => request.predecessor && identities.has(request.predecessor))) {
+    throw new Error('Atomic participants cannot depend on each other');
+  }
 }
 
 export interface CommitEvent { request: CommitRequest }

@@ -1290,3 +1290,16 @@ Group implementation checkpoint in progress:
   bounds, unchanged compact history and actual emulator behavior. No independent
   agent was used. Client multi-document ownership is still pending; this server
   foundation does not complete series migration or authorize production activation.
+
+2026-09-19 atomic local storage checkpoint:
+- Production IndexedDB supports participant create/CAS batches in one transaction.
+  Ordinary single-document saves delegate to the same implementation. A failed
+  participant rolls back every row; racing tabs have one winner; completion waits
+  for the transaction commit. Inputs and results are detached copies.
+- Gates: 710 suites / 7,064 tests pass; lint/types pass. Focused storage coverage:
+  100% lines, 83.78% branches. Logs: `/tmp/data-engine-atomic-storage-{full-tests,lint,coverage}.log`.
+  These transaction tests use the storage harness; they are not live IndexedDB
+  browser proof. Sequential review checked identity, immutable capture, reference
+  retention and transaction ordering.
+- Remaining: one-command coordination, participant-specific ACK projection and
+  cancellation/retention before wiring atomic series actions into the UI.

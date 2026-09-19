@@ -16,6 +16,59 @@ describe('IndexedDB commit storage', () => {
   let storage: ReturnType<typeof installStorageHarness>;
   beforeEach(() => { jest.clearAllMocks(); storage = installStorageHarness(); });
 
+  it('captures every participant in one durable transaction and deduplicates across tabs', async () => {
+    const a = createIndexedDbCommitStore(), b = createIndexedDbCommitStore();
+    const participants = [request('a'), { ...request('b'), editorId: 'other-editor', baseline: { ...snapshot, resource: { ...snapshot.resource, id: 'two' } } }];
+    const original = JSON.parse(JSON.stringify(participants)) as CommitRequest[];
+    storage.holdCommit = true;
+    let resolved = false;
+    const saving = a.createBatch!(participants).then(rows => { resolved = true; return rows; });
+    participants[0].value!.title = 'typed during persistence';
+    for (let i = 0; i < 25; i++) await Promise.resolve();
+    expect(resolved).toBe(false); expect(storage.rows.size).toBe(0);
+    storage.holdCommit = false; storage.finishCommit!();
+    const saved = await saving;
+    expect(saved[0].value?.title).toBe('mine');
+    expect(await b.createBatch!(original)).toEqual(saved);
+    expect(await a.list('owner')).toHaveLength(2);
+    saved[0].value!.title = 'caller mutation';
+    expect((await b.list('owner'))[0].value?.title).toBe('mine');
+  });
+
+  it('rolls back a captured first participant when the second has an invalid predecessor', async () => {
+    const store = createIndexedDbCommitStore();
+    await expect(store.createBatch!([request('a'), { ...request('b'), editorId: 'other', predecessor: 'missing' }])).rejects.toMatchObject({ code: 'commit-reference-changed' });
+    expect(await store.list('owner')).toEqual([]);
+    expect(storage.rows.size).toBe(0);
+  });
+
+  it('allows one batch CAS winner and rolls back all rows when any participant is stale', async () => {
+    const a = createIndexedDbCommitStore(), b = createIndexedDbCommitStore();
+    const captured = await a.createBatch!([request('a'), { ...request('b'), editorId: 'other' }]);
+    const changes = captured.map(previous => ({ previous, next: { ...previous, initialized: true } }));
+    const settled = await Promise.allSettled([a.compareAndSetBatch!(changes), b.compareAndSetBatch!(changes)]);
+    expect(settled.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const accepted = await a.list('owner');
+    expect(accepted.map(record => record.revision)).toEqual([1, 1]);
+    await expect(a.compareAndSetBatch!([
+      { previous: accepted[0], next: { ...accepted[0], state: 'prepared' } },
+      { previous: captured[1], next: { ...captured[1], state: 'prepared' } },
+    ])).rejects.toMatchObject({ code: 'commit-changed' });
+    expect(await a.list('owner')).toEqual(accepted);
+  });
+
+  it('rejects mixed owners, duplicate generations/ids and cyclic participant dependencies before writing', async () => {
+    const store = createIndexedDbCommitStore();
+    for (const second of [request('b'), { ...request('a'), editorId: 'other' }, { ...request('b'), editorId: 'other', owner: 'foreign' },
+      { ...request('b'), editorId: 'other', predecessor: 'a' }]) {
+      await expect(store.createBatch!([request('a'), second])).rejects.toThrow('Atomic');
+      expect(await store.list('owner')).toEqual([]);
+      expect(await store.list('foreign')).toEqual([]);
+    }
+    expect(await store.createBatch!([])).toEqual([]);
+    expect(await store.compareAndSetBatch!([])).toEqual([]);
+  });
+
   it('atomically deduplicates a saved editor generation across tabs and returns detached records', async () => {
     const a = createIndexedDbCommitStore(), b = createIndexedDbCommitStore();
     const [first, repeated] = await Promise.all([a.create(request()), b.create(request('another-operation'))]);
