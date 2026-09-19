@@ -7,8 +7,10 @@ This document records the next implementation contract, not a completed migratio
 Implemented foundation: server/HTTP ACKs now expose and validate `relatedSnapshots`
 beside committed metadata. Six real emulator cases cover replay/current content,
 no-op relation proof and concurrent assignment. IndexedDB participant create/CAS batches are now atomic and single saves use that
-same path. Queue coordination, dependency ownership, participant projection and
-UI migration are still outstanding.
+same path. Queue coordination now captures all participants in one transaction, prepares one
+immutable series command, projects participant-specific ACKs together, and retains
+all dependency/projection references. This is an internal engine capability;
+public membership editing and series UI migration remain outstanding.
 
 ## Observable contract
 
@@ -80,3 +82,50 @@ until their delete cascade can coexist with every series writer.
 11. Detector catches direct SDK/HTTP writes on every migrated membership surface.
 12. Real emulator concurrency plus browser/PWA restart proof, with physical-device
     gaps stated separately and measured read/write/response-size costs.
+
+## Implementation checkpoint: shared queue ownership
+
+`commits.ts` owns saved requests. Each atomic participant keeps its own captured
+baseline, value and predecessor, with one immutable `atomic` identity naming the
+whole group. `atomicCommits.ts` is its coordinator, not a second executor: it uses
+`DataEngineRuntime` and the existing journal. Initialization uses the same
+`initializeCommit` predecessor rebase as ordinary saves. The server command is stored once on the root request; its identity and every
+participant's prepared state commit in one batch before submission. Editor pending
+identities retain the shared operation alias, including after restart. The original identity survives
+unknown delivery and restart.
+
+The relation policy accepts membership-only intent. Ordinary fields must be saved
+through their document editor. The protocol bounds the group at the existing
+100-resource ceiling; referenced members and owner scans also consume that ceiling,
+so some groups below 100 participants can still be refused as too large. Existing
+multi-add screens may touch several source series, so the old two-series wire
+limit was insufficient. No large action is silently split into independent writes.
+
+Every explicit series participant receives committed evidence even if concurrent
+work already satisfied it. Compact replay advances no revision. ACK projection
+requires each participant's original proof and a matching current copy. Missing
+copies use a proof-aware read: a stale cache cannot satisfy it. Missing proof keeps
+the original journal, never turns optimistic values into confirmed content. The
+local participant results win one batch CAS before the journal can be retired.
+`DataSession` and collection presentation then use their existing acceptance rules.
+
+An explicit failed-action cancellation expands to the complete participant group
+and its dependent local requests. Unknown delivery remains uncancellable. Retention
+holds all participants while any delivery, projection, manual scope or predecessor
+reference needs them. Snapshot-cache writes are separate from the request database;
+this does not claim one transaction across two IndexedDB databases.
+
+Still required before activation: a public engine-owned membership scope that pins
+versions when the action opens, UI integration (including bulk add and reorder),
+legacy writer/cache migration, real browser/PWA restart acceptance and rollout/rules
+verification. Internal queue tests are not proof that these screens are migrated.
+
+### Mixed-version local storage
+
+Atomic participants use `atomic-request` rows in the existing state database.
+Older bundles scan only `request`; adding a field to that old range would allow
+an old tab to split an action into separate commands. New reads and retention use
+`readCommitRows` over both ranges. Identity/reference keys and ordinary generations
+stay compatible; one generation cannot change ownership format. The shared runtime
+journal contains one complete command and remains safe for old executors to replay.
+No atomic requests were deployed in the prior single-range prototype.

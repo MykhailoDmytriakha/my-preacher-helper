@@ -1,8 +1,8 @@
 'use client';
 
 import { assertCommitBatch, assertCommitCapture, type CommitRequest, type CommitStore } from './commits';
-import { collectCommitRows, commitGenerationKey, commitProjectionKey, commitRowKey } from './retention.client';
-import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
+import { collectCommitRows, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
+import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
@@ -10,16 +10,19 @@ const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit
 function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void): void {
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
-    read(store.get(commitGenerationKey(frozen)), (completed: { through: number } | undefined) => {
-      if (completed && completed.through >= frozen.editGeneration) throw Object.assign(new Error('This saved generation is already complete'), { code: 'commit-generation-complete' });
-      const identity = ['identity', frozen.owner, frozen.id];
-      read(store.get(identity), used => {
-        if (used) throw new Error('Commit identity is already used');
-        validateCommitReferences(store, read, frozen.owner, frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : [], () => {
-          store.put(commitRowKey(frozen), identity);
-          store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
-          store.put(frozen, commitRowKey(frozen));
-          done(frozen);
+    read(store.get(commitRowKey(frozen, frozen.atomic ? 'request' : 'atomic-request')), other => {
+      if (other) throw new Error('Saved generation cannot change its ownership format');
+      read(store.get(commitGenerationKey(frozen)), (completed: { through: number } | undefined) => {
+        if (completed && completed.through >= frozen.editGeneration) throw Object.assign(new Error('This saved generation is already complete'), { code: 'commit-generation-complete' });
+        const identity = ['identity', frozen.owner, frozen.id];
+        read(store.get(identity), used => {
+          if (used) throw new Error('Commit identity is already used');
+          validateCommitReferences(store, read, frozen.owner, frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : [], () => {
+            store.put(commitRowKey(frozen), identity);
+            store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
+            store.put(frozen, commitRowKey(frozen));
+            done(frozen);
+          });
         });
       });
     });
@@ -60,7 +63,7 @@ export function createIndexedDbCommitStore(): CommitStore {
   };
   return {
     list: owner => transaction('readonly', (store, read, done) => {
-      read(store.getAll(engineOwnerRange('request', owner)), values => done(values as CommitRequest[]));
+      readCommitRows(store, read, owner, done);
     }),
     create: request => createBatch([request]).then(records => records[0]),
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),

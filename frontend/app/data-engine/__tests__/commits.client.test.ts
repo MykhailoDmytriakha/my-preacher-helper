@@ -69,6 +69,17 @@ describe('IndexedDB commit storage', () => {
     expect(await store.compareAndSetBatch!([])).toEqual([]);
   });
 
+  it('does not allow the same editor generation to cross ordinary and atomic ownership formats', async () => {
+    const store = createIndexedDbCommitStore();
+    const ordinary = await store.create(request('ordinary'));
+    const atomic = { id: 'a', participants: ['a', 'b'] };
+    await expect(store.createBatch!([{ ...request('a'), atomic }, { ...request('b'), editorId: 'second', atomic }])).rejects.toThrow('ownership format');
+    expect(await store.list('owner')).toEqual([ordinary]);
+    const pair = await store.createBatch!([{ ...request('a'), editorId: 'first', atomic }, { ...request('b'), editorId: 'second', atomic }]);
+    await expect(store.create({ ...request('replacement'), editorId: pair[0].editorId })).rejects.toThrow('ownership format');
+    expect(await store.list('owner')).toHaveLength(3);
+  });
+
   it('atomically deduplicates a saved editor generation across tabs and returns detached records', async () => {
     const a = createIndexedDbCommitStore(), b = createIndexedDbCommitStore();
     const [first, repeated] = await Promise.all([a.create(request()), b.create(request('another-operation'))]);

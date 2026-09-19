@@ -34,9 +34,11 @@ export function submittedWorkCheckpoint(owner: string, resource: ResourceRef, re
   const draft = chain.length === 1 && last.initialized ? last.intended : last.value;
   return JSON.parse(JSON.stringify({ confirmed, draft, dirty: !equalValues(confirmed.value, draft),
     editGeneration: chain.length, remoteCandidate: null, conflicts: [],
-    pending: Object.fromEntries(chain.map((request, index) => [request.id, {
-      generation: index + 1, value: request.value,
-      ...(request.command && request.command.operationId !== request.id ? { operations: [request.command.operationId] } : {}),
-    }])),
+    pending: Object.fromEntries(chain.map((request, index) => {
+      const operationId = request.atomic?.id ?? request.command?.operationId;
+      return [request.id, { generation: index + 1, value: request.value,
+        ...(operationId && operationId !== request.id ? { operations: [operationId] } : {}),
+      }];
+    })),
   }));
 }

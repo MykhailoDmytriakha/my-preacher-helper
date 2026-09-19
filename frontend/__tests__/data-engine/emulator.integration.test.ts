@@ -118,6 +118,59 @@ run('DataEngine against real Firestore transactions', () => {
     expect(stored.reduce((count, snapshot) => count + (snapshot.value!.items as unknown[]).length, 0)).toBe(1);
   });
 
+  it('commits one competing series move and proves even a converged secondary participant on replay', async () => {
+    const member = await seed('atomic-move-member');
+    const item = { id: 'move-member', type: 'sermon', refId: member.resource.id, position: 1 };
+    const create = async (id: string, occupied = false) => {
+      const resource = { collection: 'series', id: `${owner}-atomic-${id}` };
+      const result = await processCommand(owner, { protocol: 1, operationId: operationId(), owner, resource, generation: null, dependsOn: [], kind: 'create',
+        value: { userId: owner, theme: id, bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items: occupied ? [item] : [] } });
+      if (result.kind !== 'acknowledged') throw new Error('Expected series creation'); return result.snapshot;
+    };
+    const source = await create('source', true), a = await create('a'), b = await create('b');
+    const move = (target: ResourceSnapshot): DataCommand => ({ protocol: 1, operationId: operationId(), owner, resource: source.resource,
+      generation: source.metadata!.generation, dependsOn: [], kind: 'relation', relation: 'series-membership', edits: [
+        { resource: source.resource, generation: source.metadata!.generation, beforeItems: [item], afterItems: [] },
+        { resource: target.resource, generation: target.metadata!.generation, beforeItems: [], afterItems: [item] },
+      ] });
+    const commands = [move(a), move(b)];
+    const outcomes = await Promise.all(commands.map(command => processCommand(owner, command)));
+    expect(outcomes.map(result => result.kind).sort()).toEqual(['acknowledged', 'refused']);
+    const winner = outcomes.findIndex(result => result.kind === 'acknowledged');
+    const target = [a, b][winner];
+    const satisfied = { ...commands[winner], operationId: operationId() };
+    const result = await processCommand(owner, satisfied);
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { revision: 3 } },
+      affected: [{ resource: target.resource, metadata: { revision: 3, operationId: satisfied.operationId } }],
+      relatedSnapshots: [{ resource: target.resource, value: { items: [item] }, metadata: { revision: 3 } }] });
+    expect(await processCommand(owner, satisfied)).toEqual(result);
+    expect((await readDocument(owner, source.resource)).value!.items).toEqual([]);
+    const targets = await Promise.all([a, b].map(snapshot => readDocument(owner, snapshot.resource)));
+    expect(targets.reduce((count, snapshot) => count + (snapshot.value!.items as unknown[]).length, 0)).toBe(1);
+  });
+
+  it('collects members from several source series in one proven multi-participant transaction', async () => {
+    const members = await Promise.all([seed('bulk-first'), seed('bulk-second')]);
+    const items = members.map((snapshot, index) => ({ id: `bulk-${index}`, type: 'sermon', refId: snapshot.resource.id, position: index + 1 }));
+    const initial = await Promise.all(['first', 'second', 'target'].map(async (name, index) => {
+      const resource = { collection: 'series', id: `${owner}-bulk-${name}` };
+      const result = await processCommand(owner, { protocol: 1, operationId: operationId(), owner, resource, generation: null, dependsOn: [], kind: 'create',
+        value: { userId: owner, theme: name, bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items: index < 2 ? [items[index]] : [] } });
+      if (result.kind !== 'acknowledged') throw new Error('Expected bulk fixture'); return result.snapshot;
+    }));
+    const command: DataCommand = { protocol: 1, operationId: operationId(), owner, resource: initial[0].resource,
+      generation: initial[0].metadata!.generation, dependsOn: [], kind: 'relation', relation: 'series-membership',
+      edits: initial.map((snapshot, index) => ({ resource: snapshot.resource, generation: snapshot.metadata!.generation,
+        beforeItems: snapshot.value!.items as never, afterItems: index === 2 ? items : [] })) };
+    const result = await processCommand(owner, command);
+    expect(result.kind).toBe('acknowledged');
+    if (result.kind !== 'acknowledged') return;
+    expect(result.affected).toHaveLength(2); expect(result.relatedSnapshots).toHaveLength(2);
+    const final = await Promise.all(initial.map(snapshot => readDocument(owner, snapshot.resource)));
+    expect(final.map(snapshot => snapshot.value!.items)).toEqual([[], [], items]);
+    expect(await processCommand(owner, command)).toEqual(result);
+  });
+
   it('delivers two explicit offline saves after restart without opening the editor and retains unsaved typing', async () => {
     const initial = await seed('closed-successor');
     const checkpointRows = new Map<string, EditorRecord>();

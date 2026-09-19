@@ -101,3 +101,28 @@ it('does not release protection when the checkpoint transaction aborts', async (
   expect(storage.rows.has(JSON.stringify(commitProjectionKey('owner', a.id)))).toBe(true);
   expect(await commits.list('owner')).toHaveLength(1);
 });
+
+it('retains both atomic participants until every projection and delivery reference is released', async () => {
+  const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+  const atomic = { id: 'a', participants: ['a', 'b'] };
+  const captured = await commits.createBatch!([{ ...request('a', 'first'), atomic }, { ...request('b', 'second'), atomic }]);
+  const accepted = await commits.compareAndSetBatch!(captured.map(previous => ({ previous, next: { ...acknowledge(previous), unfinalized: ['a'] } })));
+  await checkpoints.put(record(captured[0], true));
+  expect(await commits.list('owner')).toHaveLength(2);
+  await checkpoints.put(record(captured[1], true));
+  expect(await commits.list('owner')).toHaveLength(2);
+  await commits.compareAndSetBatch!(accepted.map(previous => ({ previous, next: { ...previous, unfinalized: [] } })));
+  expect(await commits.list('owner')).toEqual([]);
+});
+
+it('retains a whole atomic group while another editor still depends on one participant', async () => {
+  const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+  const atomic = { id: 'a', participants: ['a', 'b'] };
+  const captured = await commits.createBatch!([{ ...request('a', 'first'), atomic }, { ...request('b', 'second'), atomic }]);
+  await commits.compareAndSetBatch!(captured.map(previous => ({ previous, next: acknowledge(previous) })));
+  const later = await commits.create({ ...request('later', 'third'), predecessor: 'b', initialized: false });
+  await checkpoints.put(record(captured[0], true)); await checkpoints.put(record(captured[1], true));
+  expect(await commits.list('owner')).toHaveLength(3);
+  await commits.compareAndSet(later, { ...later, initialized: true });
+  expect((await commits.list('owner')).map(item => item.id)).toEqual(['later']);
+});

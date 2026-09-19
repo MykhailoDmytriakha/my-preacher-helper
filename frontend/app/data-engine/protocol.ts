@@ -14,6 +14,8 @@ import type {
  * editable document. Shipped bundles cannot be taught to skip it, so it must not match at all.
  */
 export const TOMBSTONE_OWNER_FIELD = '_dataEngineOwner';
+/** Related effects, command participants and client ownership share this bound. */
+export const MAX_RELATION_RESOURCES = 100;
 
 const BAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
@@ -160,7 +162,7 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
     return;
   }
   if (command.relation !== 'series-membership' || command.resource.collection !== 'series'
-    || !Array.isArray(command.edits) || command.edits.length < 1 || command.edits.length > 2) fail('Invalid series membership');
+    || !Array.isArray(command.edits) || command.edits.length < 1 || command.edits.length > MAX_RELATION_RESOURCES) fail('Invalid series membership');
   const seen = new Set<string>();
   for (const edit of command.edits) {
     if (!object(edit) || !object(edit.resource) || edit.resource.collection !== 'series'

@@ -5,7 +5,7 @@ import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
-import { canReplaceSnapshot } from './snapshotFreshness';
+import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CollectionReader, CollectionState } from './collections';
@@ -13,7 +13,7 @@ import type { ManualScopeStore, StoredManualScope } from './manualScopes.client'
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, EngineMetadata, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -117,7 +117,8 @@ export class DataEngine {
 
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
-      operationId: options.operationId, readConfirmed: resource => this.read(resource), canDeliver: () => this.canDeliver() });
+      operationId: options.operationId, readConfirmed: resource => this.read(resource),
+      readCommitted: (resource, proof) => this.readCommittedSnapshot(resource, proof), canDeliver: () => this.canDeliver() });
     this.stopCommits = this.commits.subscribe(({ request }) => {
       if (request.owner !== this.owner || this.disposed) return;
       this.commitRecords.set(request.id, request);
@@ -358,6 +359,17 @@ export class DataEngine {
     this.options.observer.dispose();
   }
 
+  /** A cache copy is sufficient only if it proves the accepted participant revision. */
+  private async readCommittedSnapshot(resource: ResourceRef, proof: EngineMetadata): Promise<ResourceSnapshot> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const cached = await this.options.snapshots.read(owner, resource); this.assertCurrent(owner, generation);
+    if (cached && coversCommittedEffect(cached, resource, proof)) return cached;
+    if (!this.canDeliver()) throw new Error('Participant acknowledgement needs a confirmed read');
+    const snapshot = await this.options.transport.read(owner, resource); this.assertCurrent(owner, generation);
+    if (!coversCommittedEffect(snapshot, resource, proof) || (snapshot.value && snapshot.value.userId !== owner)) throw new Error('Participant read does not prove the acknowledgement');
+    return this.persistSnapshot(owner, generation, snapshot);
+  }
+
   private async readSnapshot(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot> {
     const cached = await this.options.snapshots.read(owner, resource);
     this.assertCurrent(owner, generation);
@@ -412,6 +424,10 @@ export class DataEngine {
     try {
       const requests = creating ? [] : await this.commits.list();
       assertOpening();
+      for (const request of requests) {
+        const current = this.commitRecords.get(request.id);
+        if (!current || current.revision < request.revision) this.commitRecords.set(request.id, request);
+      }
       const submittedCheckpoint = submittedWorkCheckpoint(owner, frozen, requests);
       const resumingCreation = Boolean(submittedCheckpoint && submittedCheckpoint.confirmed.value === null && !submittedCheckpoint.confirmed.metadata);
       const snapshot: ResourceSnapshot = creating
@@ -710,12 +726,14 @@ export class DataEngine {
     if (entry.closed || !entry.controller) return [];
     const checkpoint = entry.controller.getState().checkpoint;
     const operations = new Set(Object.keys(checkpoint.pending));
+    const atomicOperations = new Set<string>();
     for (const id of Object.keys(checkpoint.pending)) {
-      const command = this.commitRecords.get(id)?.command;
-      if (command) operations.add(command.operationId);
+      const request = this.commitRecords.get(id);
+      if (request?.command) operations.add(request.command.operationId);
+      if (request?.atomic) { operations.add(request.atomic.id); atomicOperations.add(request.atomic.id); }
     }
     return entries.filter(item => operations.has(item.command.operationId)
-      && sameResource(checkpoint.confirmed.resource, item.command.resource));
+      && (sameResource(checkpoint.confirmed.resource, item.command.resource) || atomicOperations.has(item.command.operationId)));
   }
 
   private async refreshAcknowledged(operationId: string, snapshot: ResourceSnapshot, owner: string, generation: number): Promise<void> {

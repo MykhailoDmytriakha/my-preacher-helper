@@ -11,12 +11,13 @@ Opus/Fable hand-off. Production readiness is still open. The current local work
 prioritizes shared data safety before more domain adapters. Progress is also tracked
 by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
-Latest committed shared-queue checkpoint: **`d3a7bfb4`**. Its isolated production
-build with councils/groups enabled also passed (17.31 s including types;
-`/tmp/data-engine-production-build-handoff.log`). Current continuation adds the
-atomic ACK participant contract and repairs no-op relation receipts. Client
-multi-document capture/projection remains the next hard blocker; see
-`data-engine-atomic-edits.md`. No production deployment or switch changed.
+Current hard-path checkpoint: shared atomic client ownership now covers local
+capture/CAS, one immutable command, participant ACK proof, dependency retention and
+mixed-version request isolation. `b5060049` introduced ACK evidence and `384843ac`
+introduced atomic storage. The queue extension passed its local gates and sequential review;
+see `data-engine-atomic-edits.md` and the closing entries below. It is still internal:
+public membership scopes and every series reader/writer must migrate before group
+activation. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
   hid remote content already accepted by the engine; blur could also discard a
@@ -198,10 +199,13 @@ See "Whole-app remainder" below; the whole-app objective is not complete.
 Continue autonomously in this order and record evidence, rather than waiting for the
 owner's eventual device acceptance before doing independent implementation work:
 
-1. Preserve legacy persisted council drafts and review mixed-version rollout safety.
-2. Measure engine reads/writes and decide safe receipt/change-feed retention.
-3. Migrate remaining domains with per-domain behavior and boundary gates; groups
-   carries two audited data-loss paths and shares councils' embedded-array shape.
+1. Preserve the verified atomic queue and its mixed-version request isolation.
+2. Expose an engine-owned membership scope with pinned opening versions, including
+   bulk add, remove and reorder; integrate all series screens/readers/writers and
+   retire their separate outbox. Groups cannot activate before this boundary closes.
+3. Migrate the remaining domain rows with their behavior, recovery and bypass gates.
+   Group CRUD, conduct, creation, readers and legacy preservation are integrated;
+   group/series coupling and final acceptance remain open.
 4. Re-run production build, rules emulator and installed-PWA checks for the final tree.
 5. Physical iPad/phone acceptance, production switches/rules deployment and test-account
    password rotation remain separately tracked external/owner actions. They have not
@@ -386,9 +390,9 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 |---|---|---|---|
 | Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Live cloud cost verification, recovery lifecycle and rollout/device gates |
 | Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
-| Groups | 11 | Untouched. Carries two of the five audited losses (meeting array online and offline) | Full adapter and screens; the meeting array is the same ID-item class as council topics |
+| Groups | 11 | CRUD, conduct, creation, readers and legacy-copy preservation integrated; real engine regressions and dev-browser evidence recorded below | Series boundary must migrate before activation; final PWA/device and rollout acceptance |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
-| Series (+ membership) | 6 + 6 | Untouched; `series-membership` relation already exists in the core | Full adapter; its own outbox must be retired with it |
+| Series (+ membership) | 6 + 6 | Server relation plus atomic client ownership implemented internally, including multi-source actions; feature hooks/screens still legacy | Public pinned membership scope, full reader/editor migration, outbox retirement and browser acceptance |
 | Prayers | 9 | Untouched | Full adapter; the answer/update journal is another embedded array |
 | Service orders | 13 | Untouched; already has HTTP + CAS and its own freshness | Full adapter; placement is a bounded multi-document operation and may need its own command |
 | Plan templates | 5 | Untouched | Full adapter |
@@ -1303,3 +1307,46 @@ Group implementation checkpoint in progress:
   retention and transaction ordering.
 - Remaining: one-command coordination, participant-specific ACK projection and
   cancellation/retention before wiring atomic series actions into the UI.
+
+2026-09-19 atomic queue ownership (validation in progress):
+- Shared queue captures/advances a bounded participant group atomically; one runtime
+  command owns delivery. Per-resource predecessors, submitted handoff, collection
+  presentation and DataSession acceptance are reused. No feature-owned outbox.
+- Added scenarios: offline restart, lost ACK, two tabs, local storage refusal,
+  failed predecessor, repeated moves, queued target creation, deleted target,
+  later unsent text, cancellation, reference-aware compaction and multi-source add.
+  Existing bulk selection requires more than two participants; the protocol now
+  uses the same 100-resource bound as server relation planning.
+- DataEngine integration verifies opening both participants after restart and a
+  proof-aware read when the ACK omitted copies. The emulator verifies concurrent
+  moves and no-op secondary proof. These remain harness/emulator evidence, not
+  browser/PWA or physical-device acceptance of series UI.
+- Next: finish gates/review, then add the public membership scope and migrate
+  every series writer/reader together. Groups/series activation remains blocked.
+
+- Mixed-version review reproduced `BUG-20260919-engine-old-tab-splits-atomic-action`:
+  old bundles scan ordinary `request` rows and ignore new ownership fields. Atomic
+  participants now live under `atomic-request` in the same database. The new reader
+  and retention scanner share both ranges; the old reader sees none of the group.
+  One editor generation cannot cross formats. The runtime journal remains shared
+  because it already contains one complete immutable command. Red/green regression:
+  `/tmp/data-engine-atomic-old-tab-{before,after}.log`.
+
+- Atomic ownership final checkpoint: `test:fast` passes 711 suites / 7,092 tests
+  (9 explicit skips); lint/types pass with the same 15 inherited warnings. Eight
+  real Firestore emulator cases pass, including multi-source transfer, competing
+  moves and replay. Isolated production build passes in 36.04 s including types.
+  Logs: `/tmp/data-engine-atomic-commit-{tests,lint,build,focused}.log` and
+  `/tmp/data-engine-atomic-ready-emulator.log`.
+- Full coverage before the final payload-sharing adjustment: 711 suites / 7,091
+  tests, 91.94% lines (`/tmp/data-engine-atomic-ready-coverage.log`). After that
+  adjustment the full fast suite above and 41 focused tests pass; atomic coordinator
+  coverage is 98.70% lines / 89.74% branches and commit storage is 100% lines.
+- Review covered immutable identity, storage failure, old/new tab compatibility,
+  causal predecessors, group cancellation/compaction, owner fencing, secondary
+  conflict isolation, proof completeness and bounded payload duplication. The wire
+  command is stored once on the root request; every participant still sees shared
+  delivery status. No independent review agent was used.
+- Closed `BUG-20260919-engine-old-tab-splits-atomic-action` with an old-range
+  negative control. Public series membership scope and UI remain unimplemented;
+  the next work is listed at the top. No production switch, rules or deploy changed.

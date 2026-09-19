@@ -1,13 +1,13 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { isStructureTag } from '@/utils/structureTags';
 
-import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields } from './protocol';
+import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
 import type { SeriesItem } from '@/models/models';
 
-export const MAX_RELATION_RESOURCES = 100;
+export { MAX_RELATION_RESOURCES } from './protocol';
 export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId'; operator: '==' | 'array-contains'; value: string }
 export interface RelationReader {
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
@@ -217,6 +217,9 @@ class RelationPlanner {
       }
       await this.checkSeriesTargets(fields.items as DocumentData[]);
       this.stage(series, fields);
+      // Explicit participants must each have committed evidence, including a side
+      // already satisfied by another writer. Receipt replay never re-plans this.
+      if (!this.writes.has(key(series.resource))) this.writes.set(key(series.resource), advanceResourceSnapshot(series, value, command.operationId, []));
     }
     await this.exclusiveSeriesMembers(added);
   }

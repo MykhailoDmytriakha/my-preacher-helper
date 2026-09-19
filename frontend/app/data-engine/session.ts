@@ -52,7 +52,7 @@ export class DataSession {
       this.release(request.id);
       return true;
     }
-    this.registerCommit(request.id, request.editGeneration, request.value, request.command?.operationId);
+    this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result);
     return request.state === 'acknowledged';
   }

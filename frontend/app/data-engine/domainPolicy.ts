@@ -1,6 +1,6 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 
-import { diffFields, equalValues, validateCommand } from './protocol';
+import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { CommandBase, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
 
@@ -9,6 +9,8 @@ export interface DomainPreparation {
   /** Only local fields carried by this command; unsent sibling edits stay outside this value. */
   submittedValue: DocumentData | null;
 }
+const REFERENCED_DOCUMENT_DELETED = 'referenced-document-deleted';
+const PERMISSION_DENIED = 'permission-denied';
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const failure = (message: string, code = 'invalid-argument'): never => { throw Object.assign(new Error(message), { code }); };
 const ids = (value: unknown): string[] => {
@@ -100,8 +102,8 @@ function prepareCarry(base: CommandBase, confirmed: ResourceSnapshot & { value: 
   if (destination === confirmed.resource.id) return failure('A section cannot be carried to its own council', 'invalid-argument');
   const target = targets.find(candidate => candidate.resource.collection === 'councils' && candidate.resource.id === destination);
   if (!target) return failure('A confirmed destination snapshot is required', 'missing-target-generation');
-  if (!target.value || target.metadata?.deleted) return failure('The destination council was deleted', 'referenced-document-deleted');
-  if (target.value.userId !== base.owner) return failure('The destination council belongs to another owner', 'permission-denied');
+  if (!target.value || target.metadata?.deleted) return failure('The destination council was deleted', REFERENCED_DOCUMENT_DELETED);
+  if (target.value.userId !== base.owner) return failure('The destination council belongs to another owner', PERMISSION_DENIED);
 
   const before = carriedTo(confirmed.value);
   const moved = topics(draft).filter(topic => typeof topic.id === 'string'
@@ -122,8 +124,8 @@ function materialTargets(owner: string, required: ResourceRef[], targets: readon
   return required.map(resource => {
     const target = targets.find(candidate => candidate.resource.collection === resource.collection && candidate.resource.id === resource.id);
     if (!target) return failure('A confirmed target snapshot is required', 'missing-target-generation');
-    if (!target.value || target.metadata?.deleted) return failure('The referenced note was deleted', 'referenced-document-deleted');
-    if (target.value.userId !== owner) return failure('Referenced note belongs to another owner', 'permission-denied');
+    if (!target.value || target.metadata?.deleted) return failure('The referenced note was deleted', REFERENCED_DOCUMENT_DELETED);
+    if (target.value.userId !== owner) return failure('Referenced note belongs to another owner', PERMISSION_DENIED);
     return { id: resource.id, generation: target.metadata?.generation ?? null };
   });
 }
@@ -167,4 +169,18 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
     prepared = { command: { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
   } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets);
   return { ...prepared, command: copy(validateCommand(prepared.command)) };
+}
+
+/** A move owns all captured series versions and only their membership fields. */
+export function prepareAtomicSeriesCommand(owner: string, operationId: string, participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
+  if (participants.length < 2 || participants.length > MAX_RELATION_RESOURCES) return failure('A series move requires a bounded participant group');
+  const edits = participants.map(({ confirmed, draft }) => {
+    if (confirmed.resource.collection !== 'series' || !confirmed.value || confirmed.metadata?.deleted || !draft) return failure('Live series participants are required', REFERENCED_DOCUMENT_DELETED);
+    if (confirmed.value.userId !== owner || draft.userId !== owner) return failure('Series belongs to another owner', PERMISSION_DENIED);
+    if (diffFields(confirmed.value, draft).some(change => !['items', 'sermonIds', 'seriesKind'].includes(change.path[0]))) return failure('Save ordinary fields separately from a series move', 'atomic-membership-only');
+    return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null,
+      beforeItems: copy(items(confirmed.value)), afterItems: copy(items(draft, false)) };
+  });
+  return validateCommand({ protocol: 1, owner, operationId, resource: edits[0].resource, generation: edits[0].generation,
+    dependsOn: [], kind: 'relation', relation: 'series-membership', edits });
 }

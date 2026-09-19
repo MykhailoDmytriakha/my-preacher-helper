@@ -1,12 +1,14 @@
+import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelAtomicCommits, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
-import { equalValues, mergeDocumentFields } from './protocol';
+import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { DataEngineRuntime } from './runtime';
 import type { SessionCheckpoint } from './session';
-import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandResult, DataCommand, DocumentData, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
 export interface CommitRequest {
   id: string;
+  atomic?: AtomicCommitIdentity;
   owner: string;
   editorId: string;
   editGeneration: number;
@@ -50,12 +52,15 @@ export function assertCommitBatch(requests: readonly CommitRequest[]): void {
   }
 }
 
+export interface AtomicCapture { editorId: string; captured: SessionCheckpoint; predecessorId?: string | null }
+
 export interface CommitEvent { request: CommitRequest }
 export function assertCommitCapture(current: CommitRequest, incoming: CommitRequest): void {
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
-    || !equalValues(current.value, incoming.value)) throw new Error('Saved generation cannot change its captured intent');
+    || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)) throw new Error('Saved generation cannot change its captured intent');
 }
+const AUTHENTICATION_REQUIRED = 'Authentication required';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const resourceMatches = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -87,6 +92,7 @@ export class CommitQueue {
     runtime: DataEngineRuntime;
     operationId: () => string;
     readConfirmed: (resource: ResourceRef) => Promise<ResourceSnapshot>;
+    readCommitted?: (resource: ResourceRef, proof: EngineMetadata) => Promise<ResourceSnapshot>;
     canDeliver?: () => boolean;
   }) {}
 
@@ -107,7 +113,7 @@ export class CommitQueue {
 
   async save(editorId: string, captured: SessionCheckpoint, options?: { predecessorId?: string | null }): Promise<CommitRequest | null> {
     const owner = this.owner, generation = this.generation;
-    if (!owner) throw new Error('Authentication required');
+    if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     const intent = clone(captured);
     const records = await this.options.store.list(owner);
     this.assertCurrent(owner, generation);
@@ -136,6 +142,54 @@ export class CommitQueue {
     this.emit(saved);
     this.requested = true;
     return clone(saved);
+  }
+
+  /** Internal capture for a relation touching several resources; transport remains in this queue. */
+  async saveAtomic(captures: readonly AtomicCapture[]): Promise<CommitRequest[]> {
+    const owner = this.owner, generation = this.generation;
+    if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
+    if (!this.options.store.createBatch || !this.options.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
+    const frozen = clone(captures);
+    if (frozen.length < 2 || frozen.length > MAX_RELATION_RESOURCES
+      || new Set(frozen.map(item => JSON.stringify(item.captured.confirmed.resource))).size !== frozen.length
+      || frozen.some(item => item.captured.conflicts.length || item.captured.confirmed.resource.collection !== 'series')) throw new Error('Invalid atomic series capture');
+    if (frozen.some(item => (item.captured.confirmed.value && item.captured.confirmed.value.userId !== owner)
+      || (item.captured.draft && item.captured.draft.userId !== owner))) throw new Error('Atomic capture belongs to another owner');
+    const records = await this.options.store.list(owner); this.assertCurrent(owner, generation);
+    const repeated = (available: CommitRequest[]): CommitRequest[] | null => {
+      const existing = frozen.map(item => available.find(record => record.editorId === item.editorId && record.editGeneration === item.captured.editGeneration));
+      if (!existing.some(Boolean)) return null;
+      if (!existing.every(Boolean) || !existing[0]!.atomic || existing.some(record => !equalValues(existing[0]!.atomic, record!.atomic))
+        || !equalValues(existing[0]!.atomic.participants, existing.map(record => record!.id))
+        || existing.some((record, index) => !equalValues(record!.baseline, frozen[index].captured.confirmed) || !equalValues(record!.value, frozen[index].captured.draft)
+          || (frozen[index].predecessorId !== undefined && frozen[index].predecessorId !== record!.predecessor))) throw new Error('Saved atomic capture cannot change');
+      return clone(existing as CommitRequest[]);
+    };
+    const existing = repeated(records); if (existing) return existing;
+    const id = this.options.operationId();
+    const atomic = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`) };
+    const requests = frozen.map((item, index): CommitRequest => {
+      const predecessors = records.filter(record => record.editorId === item.editorId && record.state !== 'cancelled');
+      const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)
+        : predecessors.sort((a, b) => b.editGeneration - a.editGeneration)[0];
+      if ((item.predecessorId && !predecessor) || (predecessor && (predecessor.owner !== owner || predecessor.state === 'cancelled'
+        || !resourceMatches(predecessor.baseline.resource, item.captured.confirmed.resource)))) throw new Error('Invalid predecessor request');
+      const baseline = item.captured.confirmed;
+      return { id: atomic.participants[index], atomic, owner, editorId: item.editorId, editGeneration: item.captured.editGeneration,
+        baseline, value: item.captured.draft, predecessor: predecessor?.id ?? null, revision: 0, initialized: false,
+        working: baseline, intended: item.captured.draft, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
+    });
+    let saved: CommitRequest[];
+    try { saved = await this.options.store.createBatch(requests); }
+    catch (error) {
+      // Two tabs can choose identities before either capture commits. The winning
+      // immutable group is authoritative; only an exact capture may adopt it.
+      const available = await this.options.store.list(owner); this.assertCurrent(owner, generation);
+      const winner = repeated(available); if (!winner) throw error;
+      saved = winner;
+    }
+    this.assertCurrent(owner, generation);
+    saved.forEach(record => this.emit(record)); this.requested = true; return clone(saved);
   }
 
   /** Local preparation is permitted offline; transport delivery follows engine lifecycle. */
@@ -180,15 +234,17 @@ export class CommitQueue {
   /** A terminal failed chain has no unknown effects; retiring it is an explicit user choice. */
   async cancel(editorId: string, additionalRequestIds: readonly string[] = []): Promise<void> {
     const owner = this.owner, generation = this.generation;
-    if (!owner) throw new Error('Authentication required');
-    const records = (await this.options.store.list(owner)).filter(record => (record.editorId === editorId || additionalRequestIds.includes(record.id))
-      && record.state !== 'acknowledged' && record.state !== 'cancelled');
+    if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
+    const all = await this.options.store.list(owner);
+    const records = cancellationScope(all, editorId, additionalRequestIds);
     this.assertCurrent(owner, generation);
     const journal = await this.options.runtime.list();
     const unsafe = records.some(record => record.command && !['conflict', 'refused'].includes(record.state)
       && !journal.some(entry => entry.command.operationId === record.command!.operationId && ['conflict', 'refused'].includes(entry.state)));
     if (unsafe || !records.some(record => ['conflict', 'refused'].includes(record.state))) throw new Error('Resolve pending commands before replacing saved intent');
+    await cancelAtomicCommits(records, this.atomicContext(owner, generation));
     for (const record of records) {
+      if (record.atomic) continue;
       if (record.command) await this.options.runtime.discard(record.command.operationId);
       this.assertCurrent(owner, generation);
       const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled' });
@@ -199,18 +255,32 @@ export class CommitQueue {
 
   private async advanceBatch(records: CommitRequest[], owner: string, generation: number, failures: Map<string, unknown>, races: number) {
     let changed = false;
+    const advancedOperations = new Set<string>();
     for (const record of records) {
       this.assertCurrent(owner, generation);
-      if (failures.has(record.id)) continue;
+      const groupId = record.atomic?.id;
+      if (failures.has(record.id) || (groupId && advancedOperations.has(groupId))) continue;
       if (terminal(record) && !record.unfinalized.length) { this.emit(record); continue; }
-      try { changed = await this.advance(record, records, owner, generation) || changed; }
+      advancedOperations.add(groupId ?? record.id);
+      try {
+        changed = await this.advanceRequest(record, records, owner, generation) || changed;
+      }
       catch (error) {
         if ((error as { code?: string }).code === 'commit-changed' && ++races < 100) { changed = true; continue; }
         if (!this.current(owner, generation)) throw error;
-        failures.set(record.id, error);
+        for (const participant of atomicParticipants(record, records)) failures.set(participant.id, error);
       }
     }
     return { changed, races };
+  }
+
+  private atomicContext(owner: string, generation: number) {
+    return { ...this.options, assertCurrent: () => this.assertCurrent(owner, generation), emit: (request: CommitRequest) => this.emit(request) };
+  }
+
+  private advanceRequest(record: CommitRequest, records: CommitRequest[], owner: string, generation: number): Promise<boolean> {
+    return record.atomic ? advanceAtomicCommit(atomicParticipants(record, records), records, this.atomicContext(owner, generation))
+      : this.advance(record, records, owner, generation);
   }
 
   private async advance(record: CommitRequest, records: CommitRequest[], owner: string, generation: number): Promise<boolean> {
@@ -251,15 +321,8 @@ export class CommitQueue {
   }
 
   private async initialize(record: CommitRequest, records: CommitRequest[], commit: (next: CommitRequest) => Promise<boolean>): Promise<boolean> {
-    const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
-    if (record.predecessor && (!predecessor || predecessor.state !== 'acknowledged')) return false;
-    if (predecessor && predecessor.result?.kind === 'acknowledged') {
-      const snapshot = predecessor.result.snapshot;
-      const rebased = mergeDocumentFields(predecessor.value, record.value, snapshot.value);
-      if (rebased.conflicts.length) return commit({ ...record, initialized: true, state: 'conflict', result: { kind: 'conflict', operationId: record.id, snapshot, conflicts: rebased.conflicts } });
-      return commit({ ...record, initialized: true, working: clone(snapshot), intended: rebased.value.exists ? rebased.value.value as DocumentData : null });
-    }
-    return commit({ ...record, initialized: true });
+    const initialized = initializeCommit(record, records);
+    return initialized ? commit(initialized) : false;
   }
 
   private async advanceCommand(record: CommitRequest, owner: string, generation: number, commit: (next: CommitRequest) => Promise<boolean>): Promise<boolean> {

@@ -5,13 +5,36 @@ import { engineOwnerRange, type StorageRead } from './storage.client';
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 
-export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration'>): IDBValidKey => ['request', request.owner, request.editorId, request.editGeneration];
+export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic'>, kind = request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
+
+/** Old bundles scan only `request`. They must never prepare atomic participants separately. */
+export function readCommitRows(store: IDBObjectStore, read: StorageRead, owner: string, done: (requests: CommitRequest[]) => void): void {
+  const rows: CommitRequest[] = [];
+  let remaining = 2;
+  for (const kind of ['request', 'atomic-request']) read(store.getAll(engineOwnerRange(kind, owner)), values => {
+    rows.push(...values as CommitRequest[]);
+    if (!--remaining) done(rows);
+  });
+}
 
 export function checkpointCommitReferences(record: EditorRecord): string[] {
   // Prepared legacy commands belong to the older journal, not the request store.
   return Object.keys(record.checkpoint.pending).filter(id => id !== record.prepared?.operationId);
+}
+
+function retainAtomicParticipants(requests: readonly CommitRequest[], references: Set<string>): void {
+  // Keep a complete participant group while any side still needs delivery,
+  // projection or recovery. Otherwise one editor could compact the other's ACK.
+  let expanded: boolean;
+  do {
+    expanded = false;
+    for (const request of requests) if (request.atomic && (references.has(request.id)
+      || !['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length)) {
+      for (const id of request.atomic.participants) if (!references.has(id)) { references.add(id); expanded = true; }
+    }
+  } while (expanded);
 }
 
 /** Run in the same transaction as checkpoint/manual mutations: no recovery read can
@@ -26,6 +49,7 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
     for (const request of requests) {
       if (!request.initialized && request.predecessor) references.add(request.predecessor);
     }
+    retainAtomicParticipants(requests, references);
     const watermarks = new Map<string, number>();
     for (const request of requests) {
       if (!['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length || references.has(request.id)) continue;
@@ -45,7 +69,7 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
       });
     }
   };
-  read(store.getAll(engineOwnerRange('request', owner)), values => { requests = values as CommitRequest[]; finish(); });
+  readCommitRows(store, read, owner, values => { requests = values; finish(); });
   read(store.getAll(engineOwnerRange('checkpoint', owner)), values => {
     for (const record of values as EditorRecord[]) for (const id of checkpointCommitReferences(record)) references.add(id);
     finish();
