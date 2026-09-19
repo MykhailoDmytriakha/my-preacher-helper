@@ -64,6 +64,12 @@ function NoteContent({ id }: { id: string }) {
   not server acceptance. Only `status.phase === 'saved'` with the associated confirmed
   state proves the current editor has no outstanding changes. Freshness is separate:
   a cached saved copy is not evidence of a successful current server read.
+- **Leaving:** a screen that goes away closes its editor with `close({ flush })`; the React
+  layer passes the document's autosave setting. A savable draft — typed inside the autosave
+  delay, or a deletion not yet queued — becomes a durable request in the engine's queue before
+  the editor closes, and a hidden or departing page (`visibilitychange`, `pagehide`) saves at once.
+  Never navigate away expecting a later timer to send anything; never call `dispose()` from a
+  screen that had autosave (it drops the last edit). Manual forms and creation pass `flush: false`.
 - **Conflict:** show `DataSyncStatus`; `keepLocal` and `acceptRemote` are explicit
   choices. Unknown outcomes cannot be discarded. Remote deletion cannot be changed
   into an update/create of the same generation.
@@ -106,6 +112,8 @@ forms until open/edit/remote-change/save and cancel scenarios pass through it.
 10. A draft the domain policy cannot turn into a command ends as a terminal `refused` request
     the person can resolve; only a failure without a policy code (a target unreadable offline)
     stays retryable. A queue that retries the impossible leaves the editor no way out.
+11. Closing an editor never strands a savable draft: with `flush` it becomes a durable request
+    first (BUG-20260919-engine-leaving-strands-last-edit).
 
 ## Verification and migration evidence
 

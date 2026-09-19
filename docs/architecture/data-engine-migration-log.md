@@ -4,42 +4,68 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
-## Read this first — where the work stands on 2026-09-18
+## Read this first — where the work stands on 2026-09-19
 
-**Nothing is live.** Both switches default to off, the marker rules are prepared but
-not deployed, and no production data has gone through the engine.
+**Production: nothing is live.** Every engine switch is off in Production, the prepared rules are
+not deployed, and no production user's data has gone through the engine.
 
-**Councils is the first domain and is functionally complete**, verified in a browser
-against the dev test account with the collection enabled on both sides: creating a
-council and landing on its page, renaming it, adding and naming a section, conducting
-it, deleting it (which leaves a tombstone), recovering unfinished work left by an
-earlier page load, and the hub count, calendar entry and breadcrumb title all reading
-through one shared reader. Carrying a section between two councils is proven at the
-protocol level — one transaction touches both documents, and an identical replay adds
-nothing. The button was reported broken on 2026-09-13; that report misread its own
-measurement (see "Corrections to earlier records"). The screen logic is pinned by a test and
-the button was walked end to end in a browser on 2026-09-18: it works.
+**Preview: councils run on the engine.** Branch alias
+`https://my-preacher-helper-git-data-engine-mykhailos-projects-97382f6c.vercel.app` (Vercel
+sign-in in front of it). Three variables are set for **Preview · branch `data-engine` only**:
+`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils`, `DATA_ENGINE_COLLECTIONS=councils`,
+`NEXT_PUBLIC_ENABLE_TEST_LOGIN=true`. Google sign-in does not work there (the OAuth client allows
+the production origin only); sign in with **"Sign in as Test User"**, the dev test account.
+The preview shares the production database.
 
-**Open defects of this migration** — all in `BUGS.md` at the repository root:
+**Councils is the first domain and is functionally complete, proven twice in a browser:** on
+localhost (2026-09-18) and on the preview's production build with a live service worker
+(2026-09-19). Create, rename, add and name sections, conduct, carry a section by the button,
+delete (tombstone), an offline edit that survives a reload, two tabs on one field ending in a
+conflict with both versions kept, leaving a screen right after an edit or a delete, a legacy
+write beside the engine, and every council reader agreeing. Revisions for each case are in the
+closing log.
 
-- `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads
-  "Saved" while unfinished drafts sit beside it, findable only by pressing a button
-  blind.
+**Open defects of this migration** — in `BUGS.md` at the repository root of this branch:
 
-The seven core defects the engine's author filed on 2026-09-12 are **fixed and guarded
-by tests**; their tracker entries were stale and have been removed. Evidence, one
-mutation per fix, is in "Corrections to earlier records" below.
+- `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads "Saved" while
+  unfinished drafts sit beside it; a checkpoint left by an earlier page load can even list work
+  that has since been delivered, so "Найти сохранённые черновики" may offer something already saved.
 
-Closed on 2026-09-18, each with a test that was red first (see the closing log):
-the 409 refusal that old bundles read as a conflict, the engine list that kept showing
-what a legacy writer deleted, the tombstone that haunted every legacy reader, the save
-queue that one refused carry wedged for good, and the build gate that the enabling deploy
-would have failed.
+Everything else filed during this migration is closed with a test that was red first; the closing
+log names each one.
 
-**How a domain is rolled out changed on 2026-09-18** — read "Rollout order" below before
-touching any switch. Closing a collection to legacy writers is the LAST step, not the first.
+**`main` holds two commits that are NOT pushed** (a push of `main` is a production deploy — the
+owner's button): `778b3b02` (a test pinned to 2026-09-18 that turned red on that day and would
+block every Vercel build) and `ecec9508` (the dev test account's password shipped in the public
+production bundle). Both are already merged into this branch. After they reach production, the
+test account's password must be rotated — `BUGS.md` → "Открыто, но не «код-фикс»".
+
+**How a domain is rolled out changed on 2026-09-18** — read "Rollout order" before touching any
+switch. Closing a collection to legacy writers is the LAST step, not the first.
 
 **The eleven other domains have not been started.** See "Whole-app remainder" below.
+
+### Where the next agent continues
+
+In this order; each step is done when its proof is written into the closing log.
+
+1. **Owner's acceptance on an iPad** — Safari on the preview alias, "Sign in as Test User", no
+   installed PWA needed. Owner's action; ask what was seen. The case in Elephant (`el` from the
+   main checkout, case `2026-09-18-data-engine`, item 4.4) waits on it.
+2. **Owner's push of `main`**, then rotate the test account's password (Firebase Console →
+   Authentication, then `frontend/app/utils/testLogin.ts`, one change).
+3. **P2 above**: make unfinished work visible without pressing a button blind, and retire a
+   checkpoint whose pending requests were delivered by another editor.
+4. **Before any production switch** — the rest of "Blockers that gate every domain": deploy the
+   rules (run `npm run test:rules` first — it is not in the build gate), measure reads and writes
+   per session, decide retention for receipts and change-feed pointers, walk an installed PWA.
+5. **Then the rollout** itself, step by step as "Rollout order" says, the owner pressing each
+   button.
+6. **Only after councils is live and quiet**, the next domain (see "Domains"; groups carries two
+   of the five audited losses and has the same embedded-array shape as council sections).
+
+Independent review: the owner declined a pass by a second engine (Codex) on 2026-09-18; the only
+adversarial review on record ran on the same provider. Offer it again before the production switch.
 
 ## How to run and check this locally
 
@@ -141,9 +167,9 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
-| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | mechanism closed — create, update, delete, carry, replay and recovery all proven; the carry **button** is a filed defect |
+| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | closed — create, update, delete, carry, replay and recovery proven; the carry button works (it was misread, see Corrections) |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers and carry-over done; retiring the legacy hook left |
-| 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | closed 2026-09-18 on localhost against the dev test account — see the closing log. Not yet on a real device, an installed PWA or a preview deployment |
+| 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | closed — localhost 2026-09-18 and the preview's production build 2026-09-19, both against the dev test account. Not yet on a real iPad or an installed PWA |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | the seven filed on 2026-09-12 are closed with red checks (2026-09-18); anything step 5 surfaces still lands here |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | closed — was already fixed in `35abc917`: an acknowledged receipt is under 1 KB whatever the document size (`__tests__/data-engine/server.test.ts`, "stores a compact ACK…"). Receipts still grow by COUNT, one small document per save; retention of old receipts is not designed yet |
 | 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
@@ -205,7 +231,7 @@ Nothing may be switched on in production while these stand.
 | Manual Save forms | `app/data-engine/README.md`, manual scopes | The mechanism exists and is wired for the sermon title and verse (`useDataForm`, `manualScope.ts`; the open-A / type-B / remote-C case is guarded by `manualScope.test.ts`). What is owed is a live pass per form as each domain migrates — not a design |
 | Rules not deployed | `frontend/firestore.rules` | Prepared rules exist but are not live; until they are, an old client can still write a migrated document offline, the engine's SDK listener is denied the change head (it falls back to HTTP polling, up to ~15 s late), and a tombstone is unreadable to its owner's listener. `npm run test:rules` proves them on the emulator (256 + 5 checks) and is NOT part of the build gate — run it before deploying rules |
 | Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes. **For councils this discovery finds nothing by construction:** their legacy queue lives in memory (`councilWriteQueue.client.ts`) and their optimistic copy in the persisted React Query cache `['councils', uid]` — neither is a place `discoverLegacyRecovery` looks. What an old bundle could not save survives a reload only there, unread |
-| No browser/device validation | — | Nothing has been proven in a genuinely foregrounded window, an installed PWA, or on a phone |
+| Device validation | — | Proven on a production build with a live service worker (preview, desktop Chrome, 2026-09-19). Not yet on an iPad, a phone, or an installed PWA — and the automation tab is always `hidden`, so a genuinely foregrounded window is still unproven |
 | No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
 
 ### Domains
@@ -289,18 +315,34 @@ installed PWA. It is a different address and the SAME production database.
    `data-engine` only — never to Production: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils` and
    `DATA_ENGINE_COLLECTIONS=councils`. Redeploy the preview: the first of the two is compiled into
    the bundle. Do NOT set `DATA_ENGINE_CLOSED_COLLECTIONS`.
-3. Open the preview address, sign in, and work ONLY on councils created there for the test.
-   Reading your real councils is harmless — only a write marks a document. A council the engine
+3. Open the preview address and sign in with **"Sign in as Test User"** (Google sign-in is not
+   allowed on this origin). Work ONLY on councils created there for the test; the test account's
+   own "QA совет с секциями" is left alone. Reading real councils is harmless — only a write marks
+   a document. A council the engine
    has written is refused by this branch's legacy road, but **production still runs `main`, which
    has no such guard yet**: opening a test council in the production app and editing it there
    would overwrite it, marker included. Leave test councils to the preview.
 4. When done, delete the test councils on the preview. A deleted one leaves a tombstone that the
-   production list does not show.
+   production list does not show — except four tombstones written on 2026-09-13 in the old shape
+   (with `userId`): until this branch reaches production, the production app shows them to the
+   test account as blank councils. Test account only; harmless; do not "fix" them by hand.
 5. Expect other devices' changes to arrive within about fifteen seconds rather than at once: the
    production rules do not yet let the engine's listener read its change head, so it polls.
 
 What to try on the device: create and type, close the app mid-typing and reopen, airplane mode
 while typing then back, the same council open on two devices, carry a section, delete.
+
+**Before checking a new build in a tab that already had the preview open**, remove its service
+worker and caches for that origin only (never clear localStorage or IndexedDB — the session and the
+engine's state live there), then reload:
+
+```js
+for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+for (const k of await caches.keys()) await caches.delete(k);
+```
+
+A marker that the new client code is loaded: search the loaded chunks
+(`performance.getEntriesByType('resource')`) for a string of the change, e.g. `leavingIntent`.
 
 ## Corrections to earlier records
 
