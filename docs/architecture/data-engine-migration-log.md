@@ -1786,3 +1786,31 @@ Group implementation checkpoint in progress:
   Logs: `/tmp/data-engine-entry-{full-final,types-final,unused-final,lint-final,build}.log`.
 - Live browser/device proof remains blocked by previously observed Firestore quota;
   no production flags, deployment or cloud data were changed for this checkpoint.
+
+### 2026-09-19 — pinned sermon metadata forms and shared conflict choices
+
+- Existing sermon editing now uses a durable manual form with the engine opening
+  version. Title, verse, church and planned dates are one document capture; a series
+  membership change remains a separate, visibly tracked engine action. Legacy
+  metadata/date callbacks are never invoked by the enabled form.
+- Date edits retain their record identity across reorder, modal restart and elapsed
+  calendar time. Close preserves input; Cancel sends nothing. Recovery restores the
+  exact added date instead of allocating a duplicate.
+- Closed `BUG-20260919-manual-form-hides-delivery`: clean manual forms now retain
+  the document's queued/conflict/refused outcome. Public form resolution freezes
+  the stage and updates its accepted baseline. It refuses unrelated unsent fields
+  and rechecks after asynchronous journal retirement, so late typing survives both
+  Keep mine and Accept remote. Councils, series and group conduct reuse this fix.
+- Real-engine UI tests reproduce the previously hidden conflict and prove both
+  choices after reopening. Additional tests cover late unrelated typing, scoped
+  Save refusal, metadata/date capture, recovery and Cancel. Sequential review
+  covered these races, field ownership, account fences and legacy separation; no
+  independent reviewer agent was used.
+- Final gates: **727 suites / 7230 tests pass**, 2 suites / 13 emulator-only cases
+  skipped; both TypeScript configurations pass; lint 0 errors / 15 inherited
+  warnings; isolated production build passes in **19.22 seconds**. Logs:
+  `/tmp/data-engine-edit-{full-final,types-final,unused-final,lint-final,build-final}.log`.
+- Main fetched at 09:01; `HEAD..origin/main` empty. No production flags or deployment
+  changed. Live QA remains blocked by the previously observed Firestore quota.
+  Next: remaining thought, outline, plan and date writers/readers, other domains,
+  bypass closure and live/device rollout acceptance. Whole-app readiness is open.

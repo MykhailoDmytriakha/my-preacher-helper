@@ -36,7 +36,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null });
   jest.mocked(useDataForm).mockImplementation(() => ({
     data: api.data, initialData: api.data, recoveryIdentity: {}, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
-    begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
+    keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
 }

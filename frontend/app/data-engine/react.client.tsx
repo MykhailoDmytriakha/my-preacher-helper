@@ -518,6 +518,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     update: (updater: (draft: DocumentData) => DocumentData) => run(form => form.update(updater), false),
     save: (updater?: (draft: DocumentData) => DocumentData) => run(form => form.save(updater)),
     cancel: () => run(form => form.cancel()),
+    keepLocal: () => run(form => form.resolve('local')),
+    acceptRemote: () => run(form => form.resolve('remote')),
     retry: () => run(form => form.retry()),
     listRecoverable: async () => { if (!target || !current()) throw new Error(EDITOR_CHANGED); const records = await target.form.listRecoverable(); if (!current()) throw new Error(EDITOR_CHANGED); return records; },
     recover: (scopeId: string) => run(form => form.recover(scopeId)),

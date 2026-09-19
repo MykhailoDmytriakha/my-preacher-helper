@@ -1,5 +1,6 @@
 import { requiredDomainTargets } from './domainPolicy';
 import { projectManualSelection, type ManualPath } from './manualScope';
+import { equalValues } from './protocol';
 import { DataSession, type SessionCheckpoint } from './session';
 
 import type { CommitQueue, CommitRequest } from './commits';
@@ -136,9 +137,10 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
-  save(capturedIntent?: SessionCheckpoint): Promise<void> {
+  save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[]): Promise<void> {
     this.assertCurrent();
     const captured = capturedIntent ?? this.session.checkpoint();
+    this.assertManualResolution(selection, captured);
     this.preparations += 1;
     this.emit();
     return this.enqueue(async () => {
@@ -211,14 +213,16 @@ export class EditorController {
   }
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
-  acceptRemote(): Promise<void> {
+  acceptRemote(selection?: readonly ManualPath[]): Promise<void> {
     return this.enqueue(async () => {
+      this.assertManualResolution(selection);
       if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
         this.prepared = null;
       }
+      this.assertManualResolution(selection);
       this.session.acceptRemote();
       this.result = null;
       await this.persist();
@@ -226,8 +230,9 @@ export class EditorController {
   }
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
-  keepLocal(): Promise<void> {
+  keepLocal(selection?: readonly ManualPath[]): Promise<void> {
     return this.enqueue(async () => {
+      this.assertManualResolution(selection);
       if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
       const checkpoint = this.session.checkpoint();
       if (this.result?.kind === 'refused' && this.result.code === 'generation-mismatch'
@@ -245,11 +250,21 @@ export class EditorController {
         this.session.release(this.prepared.operationId);
         this.prepared = null;
       }
+      this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
       this.session.keepLocal();
       this.result = null;
       await this.persist();
     });
+  }
+
+  /** A form may resolve only its fields; unrelated unsent editor work needs its own decision. */
+  assertManualResolution(selection?: readonly ManualPath[], checkpoint = this.session.checkpoint()): void {
+    this.assertCurrent();
+    if (selection && checkpoint.confirmed.value && checkpoint.draft && !equalValues(checkpoint.draft,
+      projectManualSelection(checkpoint.confirmed.value, checkpoint.draft, selection))) {
+      throw new Error('Save or resolve other document changes before resolving this form');
+    }
   }
 
   /** Await durable projection work, including ACK callbacks, for lifecycle and tests. */

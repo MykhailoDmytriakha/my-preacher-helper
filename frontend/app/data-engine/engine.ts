@@ -49,6 +49,7 @@ export interface ManagedManualForm {
   save(updater?: (value: DocumentData) => DocumentData): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
+  resolve(choice: 'local' | 'remote'): Promise<void>;
   listRecoverable(): Promise<StoredManualScope[]>;
   recover(sourceScopeId: string): Promise<void>;
 }
@@ -841,6 +842,23 @@ export class DataEngine {
       }),
       cancel: () => execute(() => requireScope().cancel()),
       retry: () => execute(async () => { if (state.scope) await state.scope.retryPersistence(); else await start(); await this.retry(resource); }),
+      resolve: choice => execute(async () => {
+        const scope = state.scope;
+        if (scope?.getState().dirty) throw new Error('Save or cancel the unsent form before resolving delivery');
+        parent.controller!.assertManualResolution(selection);
+        // Freeze the clean form before awaiting retirement so later typing cannot be discarded.
+        if (scope) await scope.cancel();
+        active();
+        if (choice === 'remote') await parent.controller!.acceptRemote(selection);
+        else {
+          await parent.controller!.keepLocal(selection); active();
+          await parent.controller!.save(undefined, selection); active();
+          await this.prepareCommits(); this.backgroundDrain();
+        }
+        active();
+        // Reopen from the resolved document, never from the retired form's displayed values.
+        if (parent.controller!.getState().checkpoint.draft) await start();
+      }),
       listRecoverable: async () => {
         active();
         const values = await store.list(owner, resource);

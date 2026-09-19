@@ -5,8 +5,10 @@ import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
@@ -41,7 +43,8 @@ interface EditSermonModalProps {
 }
 
 export default function EditSermonModal(props: EditSermonModalProps) {
-  return <SermonEditor key={props.sermon.id} {...props} />;
+  return isCollectionOnEngine('sermons') ? <EngineEditSermonModal key={props.sermon.id} sermonId={props.sermon.id} onClose={props.onClose} />
+    : <SermonEditor key={props.sermon.id} {...props} />;
 }
 
 function SermonEditor({

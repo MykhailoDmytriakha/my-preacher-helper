@@ -36,6 +36,20 @@ describe('Shared synchronization status', () => {
     staged.record.active = false;
     expect(describeManualSync(staged, editor, parent, null)).toBe(parent);
   });
+  it.each(['queued', 'sending', 'unknown', 'conflict', 'refused'] as const)('does not let a pristine open form hide %s delivery', async phase => {
+    const editor = state();
+    const form = ManualScope.begin({ owner: 'owner', resource: snapshot.resource, scopeId: 'form', selection: [['content']], port: {
+      isCurrent: () => true, capture: () => ({ checkpoint: editor.checkpoint, provenance: [], requests: [] }),
+      persist: async () => undefined, save: jest.fn(),
+    } });
+    await form.settled();
+    const parent = { ...describeSync(editor, observation, []), phase, canKeepLocal: phase === 'conflict', canAcceptRemote: phase === 'conflict' };
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ phase, canSave: false,
+      canKeepLocal: phase === 'conflict', canAcceptRemote: phase === 'conflict' });
+    await form.update(value => ({ ...value, content: 'Later unsent input' }));
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ phase: 'draft', canKeepLocal: false, canAcceptRemote: false });
+  });
+
   it('keeps save confirmation separate from current freshness', () => {
     expect(describeSync(state(), { ...observation, checking: true, error: true }, [])).toMatchObject({ phase: 'saved', freshness: 'cache', checking: true, readFailed: true, canSave: false });
   });

@@ -99,6 +99,20 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+  it('refuses form conflict resolution while either its own or unrelated unsent input needs a decision', async () => {
+    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
+    const form = editor.form('title', [['title']]); await form.begin();
+    await form.update(value => ({ ...value, title: 'Unsent form' }));
+    await expect(form.resolve('remote')).rejects.toThrow('unsent form');
+    expect(form.getState()?.value.title).toBe('Unsent form');
+    await form.cancel(); await form.begin();
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'Unsent sibling' });
+    await expect(form.resolve('local')).rejects.toThrow('other document changes');
+    expect(editor.getState().checkpoint.draft?.content).toBe('Unsent sibling');
+    expect(form.getState()?.record.active).toBe(true);
+    expect(await s.commits.list('owner')).toEqual([]); s.engine.dispose();
+  });
+
   it('saves title B then D offline while unrelated unsaved content stays outside both requests', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'unsaved scratch C' });

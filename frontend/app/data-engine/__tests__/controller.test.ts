@@ -240,6 +240,26 @@ describe('EditorController keeps local conflict fields explicitly', () => {
     expect(editor.getState().checkpoint).toMatchObject({ draft: { content: 'newer typing', tags: ['remote'] }, dirty: true, pending: { 'op-2': expect.any(Object) } });
     expect([...s.records.values()][0].checkpoint.draft?.content).toBe('newer typing');
   });
+  it.each(['local', 'remote'] as const)('preserves unrelated typing arriving during a manual %s conflict decision', async choice => {
+    const s = setup(), editor = await EditorController.open(s.options);
+    await editor.edit({ ...initial().value, content: 'mine' }); await editor.save();
+    const remote = { ...initial(), value: { ...initial().value, content: 'theirs' }, metadata: { ...initial().metadata!, revision: 2 } };
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'conflict', operationId: 'op-1', snapshot: remote, conflicts: [] });
+    await s.runtime.drain(); await editor.settled();
+    let finish!: () => void;
+    const remove = jest.mocked(s.journal.remove).getMockImplementation()!;
+    jest.mocked(s.journal.remove).mockImplementationOnce(async (owner, id) => { await new Promise<void>(resolve => { finish = resolve; }); await remove(owner, id); });
+    const resolving = choice === 'local' ? editor.keepLocal([['content']]) : editor.acceptRemote([['content']]);
+    const refused = expect(resolving).rejects.toThrow('other document changes');
+    while (!finish) await Promise.resolve();
+    const typing = editor.edit({ ...initial().value, content: 'mine', tags: ['later unsent'] });
+    finish(); await refused; await typing; await editor.settled();
+    expect(editor.getState().checkpoint.draft).toMatchObject({ content: 'mine', tags: ['later unsent'] });
+    expect([...s.records.values()][0].checkpoint.draft?.tags).toEqual(['later unsent']);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(() => editor.save(undefined, [['content']])).toThrow('other document changes');
+  });
+
   it('retries a failed local checkpoint with the latest draft and the same edit generation', async () => {
     const s = setup(); const editor = await EditorController.open(s.options);
     jest.mocked(s.store.put).mockRejectedValueOnce(new Error('quota'));

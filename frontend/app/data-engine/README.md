@@ -126,10 +126,23 @@ recovery itself never sends it. An acknowledged or explicitly cancelled Save is
 terminal: reopening starts from the current document, and clean inactive manual
 records can be compacted. Later unsaved typing must still survive.
 
+A clean active form preserves the document's queued/unknown/conflict/refused status;
+it must not relabel an unresolved Save as a saved or merely stale form. Expose
+`keepLocal` and `acceptRemote` from the same hook to resolve terminal delivery and
+reopen the form from the chosen version. Keeping local submits that explicit choice.
+The engine refuses these form decisions if unsent form input or changes outside
+its selected fields would be affected; save/cancel that input or resolve through
+the owning document first. Guards run inside the controller queue before and after
+asynchronous retirement, so concurrent typing remains durable.
+
 `components/council/CouncilOutcomeForm.tsx` is the integrated example. Its tests
 exercise the real engine and storage adapters: open A, type B, observe C, Save
 conflicts; Cancel sends nothing; restart recovers B only by choice. Every migrated
-form needs these behavior checks and a screen-level wiring check. Import gates
+form needs these behavior checks and a screen-level wiring check.
+`EngineEditSermonModal` is the metadata/date example: it pins the selected planned
+row identity, persists all typed fields through the manual scope, and saves metadata
+plus dates as one document request. Series membership remains its own pinned action
+with separate delivery; metadata retry reuses that action's captured identity. Import gates
 alone cannot detect a component that discards its opening ancestor in `useState`.
 
 ## Preserving previous clients' input

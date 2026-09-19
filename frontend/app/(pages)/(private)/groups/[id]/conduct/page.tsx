@@ -39,6 +39,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
     <DataSyncStatus status={document.status} error={document.error} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
     {form.active && <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
+      onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} onListRecovery={recovery.refresh} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />}
   </div>;
