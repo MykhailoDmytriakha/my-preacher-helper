@@ -7,8 +7,8 @@ import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { hydrateSeries, sortSeries } from '@/utils/seriesDocument';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
-import { timeOrZero, compareById } from '@/utils/sortHelpers';
 import { auth } from '@services/firebaseAuth.service';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -42,29 +42,6 @@ const SERIES_COLLECTION = 'series';
 const SERIES_UPDATE_FIELDS: (keyof Series)[] = [
   'title', 'theme', 'description', 'bookOrTopic', 'startDate', 'duration', 'color', 'status', 'seriesKind',
 ];
-
-// --- helpers mirroring series.repository.ts (kept byte-identical) ---
-
-
-function hydrateSeries(series: Series): Series {
-  const items = normalizeSeriesItems(series.items, series.sermonIds || []);
-  return {
-    ...series,
-    items,
-    sermonIds: deriveSermonIdsFromItems(items),
-    seriesKind: series.seriesKind || inferSeriesKind(items),
-  };
-}
-
-function sortSeries(list: Series[]): Series[] {
-  return [...list].sort((a, b) => {
-    const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
-    if (byDate !== 0) return byDate;
-    const byTitle = (a.title || '').localeCompare(b.title || '');
-    if (byTitle !== 0) return byTitle;
-    return compareById(a, b);
-  });
-}
 
 // --- client-SDK read/write paths ---
 

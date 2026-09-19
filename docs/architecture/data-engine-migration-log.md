@@ -18,8 +18,9 @@ with crash/retention regression proof and a successful isolated production build
 The checkpoint passed final coverage/review recording. Cascade write-set activation
 guards are committed as `c699ae74`. Whole-action discard now owns every participant
 and dependent request in one local transaction; validation is recorded below.
-Public delivery/retry/discard controls are implemented and validated. Domain
-screens and all series readers/writers remain next.
+Public delivery/retry/discard controls are committed as `eda634e2`. Series list
+readers and durable creation are now wired and validated. Series detail, metadata
+forms, deletion and membership callers remain next.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1508,3 +1509,34 @@ Group implementation checkpoint in progress:
 - Sequential review covered ownership, failed storage, completion retention,
   lifecycle races, shared policy, and bypass boundaries. Domain UI/readers remain
   next; no live browser or physical-device acceptance claimed for this API block.
+
+## 2026-09-19 — series list readers and durable creation
+
+- Public action-control checkpoint committed as `eda634e2`.
+- `useSeriesDataCollection` shapes the engine's confirmed/submitted collection;
+  the existing `useSeries` read facade now delegates when enabled, including
+  selectors and group list consumers. Legacy list queries are disabled in that
+  deployment. An explicit owner mismatch yields no rows; an empty overlay cannot
+  fall back to stale confirmed rows.
+- Hydration/sorting moved from the SDK service into transport-free
+  `seriesDocument.ts`, shared by both paths. No new data ownership logic lives in
+  the adapter. The canonical client guard also runs before legacy hooks enqueue
+  mutations, so offline calls cannot manufacture new legacy pending work.
+- Series list creation uses `useDataDocument(create, autoSave=false)`, preserving
+  raw typing immediately and capturing only on Create. Creation discovery/recovery
+  is available from the list. Read errors remain inline instead of unmounting a
+  draft. Required fields are validated in the form, with all three locales, so
+  browser-native validation cannot silently block submission on mobile.
+- Actual editor/runtime/storage-harness tests prove restart recovery, raw trailing
+  space retention, one capture on Create, offline queue ownership and visible
+  validation. Enabled-facade tests prove zero legacy reads/mutations and shared
+  refresh. Legacy page/hook regressions still pass.
+- Gates: **716 suites / 7151 tests pass**, 10 skipped; lint 15 inherited warnings,
+  both TypeScript checks pass. Production build passes in 22.60s (TypeScript 23.44s).
+  The final deduplication to the canonical client guard then passed 40 focused
+  tests, targeted lint and TypeScript. Logs: `/tmp/data-engine-series-entry-{full,lint,build,final}.log`.
+- Sequential review: shape compatibility, owner isolation, local durability,
+  form lifetime/validation, old-mode behavior and shared-boundary compliance.
+  No new browser/device acceptance yet. **Series detail, metadata forms, deletion,
+  all membership callers and real offline navigation remain unfinished.** The
+  enabled creation route must not ship before its destination detail page migrates.
