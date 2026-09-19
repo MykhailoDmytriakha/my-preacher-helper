@@ -94,6 +94,8 @@ describe('durable pinned membership stage', () => {
     expect(recovered.getState().values[1].value.items).toEqual([member]); expect(t.save).not.toHaveBeenCalled();
     await recovered.cancel(); expect((await t.commits.list('owner'))).toEqual([]);
     await t.scopes.compact('owner', 'scope'); expect(await t.scopes.list('owner')).toEqual([]);
+    expect(await t.scopes.completion('owner', 'scope')).toBe('cancelled');
+    expect(await t.scopes.completion('other', 'scope')).toBeNull();
     expect(() => recovered.save()).toThrow('cancelled');
     await expect(t.begin().settled()).rejects.toThrow('another session');
   });
@@ -254,11 +256,13 @@ describe('DataEngine membership ownership', () => {
   it('discards a proven failed action through its owner and preserves later participant text', async () => {
     const t = engineFixture(), scope = await t.engine.beginMembership(); await scope.update(move); await scope.save();
     const scopeId = scope.getState().record.scopeId;
+    expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'queued', canDiscard: false });
     await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('Resolve pending');
     for (const request of await t.commits.list('owner')) await t.commits.compareAndSet(request, {
       ...request, state: 'refused', command: null, result: { kind: 'refused', operationId: request.id, code: 'target-deleted' },
     });
     const editor = await t.engine.openEditor(snapshot('a').resource, 'participant');
+    expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'refused', canDiscard: true, code: 'target-deleted' });
     await editor.edit({ ...editor.getState().checkpoint.draft, title: 'Later title' });
     const compact = jest.spyOn(t.scopes, 'compact').mockRejectedValueOnce(new Error('compaction failed'));
     await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('compaction failed');
@@ -266,7 +270,34 @@ describe('DataEngine membership ownership', () => {
     await t.engine.discardMembership(scopeId);
     expect(editor.getState()).toMatchObject({ result: null, actionResolutionRequired: false, checkpoint: { pending: {}, draft: { items: [member], title: 'Later title' } } });
     expect(await t.engine.listMembershipRecovery()).toEqual([]);
+    expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'cancelled', canDiscard: false });
     t.engine.setOwner('other'); await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('pending Save');
+    t.engine.dispose();
+  });
+  it.each(['saving', 'submitted'])('retries %s persistence without inventing new Save identities', async phase => {
+    const t = engineFixture(), scope = await t.engine.beginMembership(); await scope.update(move);
+    const scopeId = scope.getState().record.scopeId, actual = t.scopes.persist;
+    const persist = jest.spyOn(t.scopes, 'persist').mockImplementation(async (record, revision) => {
+      if (record.phase === phase) throw new Error('disk failure');
+      return actual(record, revision);
+    });
+    await expect(scope.save()).rejects.toThrow('disk failure');
+    const before = await t.commits.list('owner'); persist.mockRestore();
+    await t.engine.retryMembership(scopeId);
+    expect(scope.getState()).toMatchObject({ durable: true, record: { phase: 'submitted' } });
+    const after = await t.commits.list('owner'); expect(after).toHaveLength(2);
+    if (before.length) expect(after.map(request => request.id)).toEqual(before.map(request => request.id));
+    expect(t.send).not.toHaveBeenCalled(); t.engine.dispose();
+  });
+  it('keeps completed outcome evidence after compaction and never recaptures on retry', async () => {
+    const t = engineFixture(), scope = await t.engine.beginMembership(), scopeId = scope.getState().record.scopeId;
+    expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'editing' });
+    await scope.save(); expect(await t.engine.listMembershipRecovery()).toEqual([]);
+    expect(await t.scopes.read('owner', scopeId)).toBeUndefined();
+    expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'acknowledged' });
+    await t.engine.retryMembership(scopeId); expect(await t.commits.list('owner')).toEqual([]);
+    expect(await t.engine.membershipDelivery('missing')).toMatchObject({ phase: 'unavailable' });
+    t.engine.setOwner('other'); expect(await t.engine.membershipDelivery(scopeId)).toMatchObject({ phase: 'unavailable' });
     t.engine.dispose();
   });
   it('finishes invoked Save after navigation and preserves unsent selections on ordinary release', async () => {

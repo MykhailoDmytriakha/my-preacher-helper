@@ -4,6 +4,7 @@ import { EditorController, type CheckpointRecoveryStore, type CheckpointStore, t
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
+import { describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
@@ -324,6 +325,37 @@ export class DataEngine {
     this.assertCurrent(owner, generation);
     await store!.compact(owner, scopeId); this.assertCurrent(owner, generation);
     this.releaseMembership(scopeId);
+  }
+
+  async membershipDelivery(scopeId: string): Promise<MembershipDelivery> {
+    const owner = this.requireOwner(), generation = this.generation, store = this.options.membershipScopes;
+    const outcome = await store?.completion(owner, scopeId); this.assertCurrent(owner, generation);
+    if (outcome) return { phase: outcome, canDiscard: false, code: null };
+    const record = this.membershipForms.get(scopeId)?.getState().record ?? await store?.read(owner, scopeId);
+    this.assertCurrent(owner, generation);
+    if (!record) return { phase: 'unavailable', canDiscard: false, code: null };
+    const [requests, journal] = await Promise.all([this.commits.list(), this.options.runtime.list()]);
+    this.assertCurrent(owner, generation);
+    return describeMembershipDelivery(record, requests, journal);
+  }
+
+  subscribeMembership(listener: () => void): () => void {
+    const owner = this.requireOwner(), generation = this.generation;
+    const notify = () => { if (this.current(owner, generation)) listener(); };
+    const stopCommits = this.commits.subscribe(notify), stopPending = this.subscribePending(notify);
+    return () => { stopCommits(); stopPending(); };
+  }
+
+  /** Resume frozen capture or replay its existing identity; never rebase on retry. */
+  async retryMembership(scopeId: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const outcome = await this.options.membershipScopes?.completion(owner, scopeId); this.assertCurrent(owner, generation);
+    if (outcome) return;
+    const scope = await this.recoverMembership(scopeId); this.assertCurrent(owner, generation);
+    if (scope.getState().record.phase === 'editing') await scope.retryPersistence();
+    else if (scope.getState().record.phase !== 'cancelled') await scope.save();
+    this.assertCurrent(owner, generation);
+    await this.retry(); this.assertCurrent(owner, generation);
   }
 
   private membershipPort(owner: string, generation: number): import('./membershipScope').MembershipScopePort {

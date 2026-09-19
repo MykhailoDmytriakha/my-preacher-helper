@@ -157,10 +157,11 @@ before the stage records its IDs, but cannot compact the only dedupe evidence.
 Old collectors already honor the reference range. Only complete ACK/cancellation
 allows compaction; failures retain their whole original stage.
 
-The public `useDataMembership` hook supports begin/update/save/recover/cancel and
-owner-fenced presentation. It is not yet connected to domain screens. Delivery
-status, whole-action conflict/discard controls, all series callers and live browser/
-PWA acceptance remain outstanding. Production activation is still forbidden.
+The public `useDataMembership` hook supports begin/update/save/recover/cancel,
+delivery status, identity-preserving retry and whole-action discard. Presentation
+is fenced by account and response order. It is not yet connected to domain screens.
+All series callers, explicit re-selection UX after refusal, and live browser/PWA
+acceptance remain outstanding. Production activation is still forbidden.
 
 ## Whole-action resolution
 

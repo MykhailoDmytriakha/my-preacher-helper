@@ -12,8 +12,9 @@ export interface MembershipScopeStore {
   list(owner: string): Promise<MembershipScopeRecord[]>;
   persist(record: MembershipScopeRecord, expectedRevision: number | null): Promise<MembershipScopeRecord>;
   compact(owner: string, scopeId: string): Promise<void>;
+  completion(owner: string, scopeId: string): Promise<'acknowledged' | 'cancelled' | null>;
 }
-interface ScopeWatermark { owner: string; scopeId: string; revision: number; closed: true }
+interface ScopeWatermark { owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled' }
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const key = (owner: string, id: string): IDBValidKey => ['membership-scope', owner, id];
 const referenceKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'membership', id];
@@ -29,6 +30,9 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
     return clone(record);
   };
   return {
+    completion: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
+      done(value && !live(value) && value.owner === owner && value.scopeId === scopeId ? value.outcome ?? null : null);
+    })),
     read: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       done(value && live(value) ? validated(value, owner, scopeId) : undefined);
     })),
@@ -60,17 +64,19 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
     compact: (owner, scopeId) => transaction('readwrite', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       if (!value || !live(value) || !['cancelled', 'submitted'].includes(value.phase)) { done(undefined); return; }
       const record = validated(value, owner, scopeId);
-      const finish = () => {
-        store.put({ owner, scopeId, revision: record.revision + 1, closed: true }, key(owner, scopeId));
+      const finish = (outcome: 'acknowledged' | 'cancelled') => {
+        store.put({ owner, scopeId, revision: record.revision + 1, closed: true, outcome }, key(owner, scopeId));
         store.delete(referenceKey(owner, scopeId)); collectCommitRows(store, read, owner, () => done(undefined));
       };
-      if (!record.requestIds.length) { finish(); return; }
+      if (!record.requestIds.length) { finish(record.phase === 'cancelled' ? 'cancelled' : 'acknowledged'); return; }
       let remaining = record.requestIds.length, settled = true;
+      const outcomes = new Set<string>();
       for (const id of record.requestIds) read(store.get(['identity', owner, id]), (requestKey: IDBValidKey | undefined) => {
         if (!requestKey) throw new Error('Membership request evidence is missing');
         read(store.get(requestKey), (request: CommitRequest | undefined) => {
           if (!request || !['acknowledged', 'cancelled'].includes(request.state)) settled = false;
-          if (!--remaining) { if (settled) finish(); else done(undefined); }
+          if (request) outcomes.add(request.state);
+          if (!--remaining) { if (settled && outcomes.size === 1) finish(outcomes.has('cancelled') ? 'cancelled' : 'acknowledged'); else done(undefined); }
         });
       });
     })),

@@ -1,4 +1,4 @@
-import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
+import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
@@ -11,7 +11,7 @@ export interface CommitRequest {
   atomic?: AtomicCommitIdentity;
   /** A durable stage owns capture before it can persist the resulting request IDs. */
   retentionScope?: string;
-  /** Whole-action discard must remove its projection, retaining only later unsent edits. */
+  /** Whole-action discard removes membership intent while retaining later metadata edits. */
   cancelledByAction?: boolean;
   owner: string;
   editorId: string;
@@ -264,14 +264,12 @@ export class CommitQueue {
     if (!wholeAction && records.some(record => record.atomic)) throw Object.assign(
       new Error('Resolve the complete action before replacing one participant'), { code: 'atomic-action-resolution-required' });
     const journal = await this.options.runtime.list();
-    const unsafe = records.some(record => record.command && !['conflict', 'refused'].includes(record.state)
-      && !journal.some(entry => entry.command.operationId === record.command!.operationId && ['conflict', 'refused'].includes(entry.state)));
-    if (unsafe || !records.some(record => ['conflict', 'refused'].includes(record.state))) throw new Error('Resolve pending commands before replacing saved intent');
+    if (!canCancelSavedIntent(records, journal)) throw new Error('Resolve pending commands before replacing saved intent');
     if (wholeAction) return cancelActionCommits(orderRequests(records), this.atomicContext(owner, generation));
     for (const record of records) {
       if (record.command) await this.options.runtime.discard(record.command.operationId);
       this.assertCurrent(owner, generation);
-      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', ...(wholeAction ? { cancelledByAction: true } : {}) });
+      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled' });
       this.assertCurrent(owner, generation);
       this.emit(cancelled);
     }

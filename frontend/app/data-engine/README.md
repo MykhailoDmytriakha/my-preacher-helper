@@ -185,3 +185,25 @@ The opt-in Firestore Emulator integration suite is documented in its test header
 `test-utils/data-engine-browser/README.md` documents actual browser/IndexedDB adverse
 scenarios. These checks are distinct from production activation, PWA app-shell offline
 availability, and validation on physical iOS/Android/macOS devices.
+
+## Series membership actions
+
+Use `useDataMembership()` for assign/remove/reorder. Call `begin()` **before**
+opening the selector, confirmation, or drag session: this pins the displayed series
+and their exact submitted predecessors. `update(action)` persists an unsent stage;
+`save()` freezes and captures one complete action. Do not open a new stage inside
+an old form's final Save callback, and do not build a move from two document saves.
+
+`delivery` reports the whole action, separately from local stage `phase` and
+`durable`. `retry()` resumes frozen capture or replays the same identity;
+`discard()` is permitted only for proven failed delivery and retires the whole
+chain while preserving subsequent metadata edits. Use `delivery.canDiscard` for
+presentation; the engine enforces the same rule again. Unknown delivery must be
+retried, not replaced. A participant's document Keep Local/Accept Remote cannot
+resolve an atomic action.
+
+`dismiss()` preserves unsent work. `listRecoverable()` and `recover(scopeId)`
+explicitly reopen it; recovery alone never submits. `cancel()` cancels an unsent
+stage only. Never implement domain-owned journals or read a fresh baseline at
+Save time. Series UI migration is still in progress; the public API being available
+is not authorization to enable the collection in production.

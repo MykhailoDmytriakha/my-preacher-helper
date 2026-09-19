@@ -18,7 +18,8 @@ with crash/retention regression proof and a successful isolated production build
 The checkpoint passed final coverage/review recording. Cascade write-set activation
 guards are committed as `c699ae74`. Whole-action discard now owns every participant
 and dependent request in one local transaction; validation is recorded below.
-Domain screens, public delivery/conflict controls and all series readers/writers remain next.
+Public delivery/retry/discard controls are implemented and validated. Domain
+screens and all series readers/writers remain next.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1486,3 +1487,24 @@ Group implementation checkpoint in progress:
   inherited warnings; TypeScript and unused-symbol checks pass. Isolated production
   build passes in 19.54s. Logs: `/tmp/data-engine-action-{full,lint,build}.log`;
   focused owner/discard proof: `/tmp/data-engine-discard-owner-2.log`.
+
+## 2026-09-19 — public membership delivery and recovery controls
+
+- Complete-action discard checkpoint committed as `e621e553`.
+- `useDataMembership` now exposes the engine's delivery summary, whole-action
+  discard and identity-preserving retry. Stage durability stays separate from
+  server confirmation. Account/generation and response-order fences reject old
+  subscriptions and late status responses.
+- The action summary and queue use one cancellation predicate, including dependent
+  work. Every participant must be acknowledged before presenting success.
+- Compaction retains a small owner-scoped completion outcome so a mounted/reopened
+  status does not invent success from missing payloads. Earlier watermarks without
+  an outcome remain explicitly unavailable. Mixed terminal outcomes do not compact.
+- Retry repairs both pre-capture and completion persistence failures without fresh
+  ancestry or another action ID. A completed stage never captures again.
+- Validation: **714 suites / 7147 tests pass**, 10 skipped; lint 15 inherited
+  warnings, both TypeScript checks pass; isolated production build passes in
+  16.37s. Logs: `/tmp/data-engine-action-api-{full,lint,build,races}.log`.
+- Sequential review covered ownership, failed storage, completion retention,
+  lifecycle races, shared policy, and bypass boundaries. Domain UI/readers remain
+  next; no live browser or physical-device acceptance claimed for this API block.

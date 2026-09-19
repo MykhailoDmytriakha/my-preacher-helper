@@ -4,7 +4,7 @@ import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CommitRequest, CommitStore } from './commits';
 import type { DataEngineRuntime } from './runtime';
-import type { CommandResult, DocumentData, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export interface AtomicCommitIdentity { id: string; participants: string[] }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -137,6 +137,13 @@ export function cancellationScope(records: readonly CommitRequest[], editorId: s
     }
   } while (added);
   return records.filter(record => selected.has(record.id) && record.state !== 'acknowledged' && record.state !== 'cancelled');
+}
+
+/** Shared by the authoritative queue guard and the action's presentation. */
+export function canCancelSavedIntent(records: readonly CommitRequest[], journal: readonly JournalEntry[]): boolean {
+  const unsafe = records.some(record => record.command && !['conflict', 'refused'].includes(record.state)
+    && !journal.some(entry => entry.command.operationId === record.command!.operationId && ['conflict', 'refused'].includes(entry.state)));
+  return !unsafe && records.some(record => ['conflict', 'refused'].includes(record.state));
 }
 
 export async function cancelActionCommits(records: readonly CommitRequest[], context: AtomicCommitContext): Promise<void> {

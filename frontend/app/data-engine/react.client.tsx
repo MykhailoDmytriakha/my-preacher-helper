@@ -15,6 +15,7 @@ import type { CollectionState } from './collections';
 import type { EditorState } from './controller';
 import type { ManagedEditor, ManagedManualForm } from './engine';
 import type { ManualPath } from './manualScope';
+import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
 import type { DocumentData, ResourceRef } from './types';
@@ -89,17 +90,29 @@ export function useDataMembership() {
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
   const latest = useRef<object>(identity); latest.current = identity;
-  const current = useRef<{ identity: object; scope: MembershipScope; stop: () => void } | null>(null);
+  const current = useRef<{ identity: object; scope: MembershipScope; scopeId: string; stop: () => void } | null>(null);
   const opening = useRef<{ identity: object; promise: Promise<void> } | null>(null);
   const [stored, setStored] = useState<{ identity: object; state: ReturnType<MembershipScope['getState']> } | null>(null);
   const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
+  const [delivery, setDelivery] = useState<{ identity: object; scopeId: string; state: MembershipDelivery } | null>(null);
+  const refreshVersion = useRef(0);
   const active = useCallback(() => {
     if (latest.current !== identity || !browser || !owner) throw new Error(EDITOR_CHANGED);
     return browser.engine;
   }, [browser, owner, identity]);
   const refresh = useCallback(() => {
-    if (current.current?.identity === identity && latest.current === identity) setStored({ identity, state: current.current.scope.getState() });
-  }, [identity]);
+    const held = current.current;
+    if (held?.identity !== identity || latest.current !== identity) return;
+    const version = ++refreshVersion.current;
+    setStored({ identity, state: held.scope.getState() });
+    void browser!.engine.membershipDelivery(held.scopeId).then(state => {
+      if (latest.current === identity && current.current === held && version === refreshVersion.current) setDelivery({ identity, scopeId: held.scopeId, state });
+    }).catch(error => {
+      if (latest.current === identity && current.current === held && version === refreshVersion.current) {
+        setDelivery(null); setFailure({ identity, message: message(error) });
+      }
+    });
+  }, [browser, identity]);
   const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
     active(); setFailure(null);
     try { const result = await action(); active(); refresh(); return result; }
@@ -112,7 +125,8 @@ export function useDataMembership() {
     const promise = run(async () => {
       const scope = sourceId ? await engine.recoverMembership(sourceId) : await engine.beginMembership();
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
-      current.current = { identity, scope, stop: scope.subscribe(refresh) }; refresh();
+      const stopScope = scope.subscribe(refresh), stopDelivery = engine.subscribeMembership(refresh);
+      current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: () => { stopScope(); stopDelivery(); } }; refresh();
     });
     opening.current = { identity, promise };
     void promise.finally(() => { if (opening.current?.promise === promise) opening.current = null; }).catch(() => undefined);
@@ -123,8 +137,8 @@ export function useDataMembership() {
   }, [active, identity]);
   const dismiss = useCallback(() => {
     active(); const held = current.current;
-    if (held?.identity === identity) { held.stop(); browser!.engine.releaseMembership(held.scope.getState().record.scopeId); current.current = null; }
-    setStored(null); setFailure(null);
+    if (held?.identity === identity) { held.stop(); browser!.engine.releaseMembership(held.scopeId); current.current = null; }
+    setStored(null); setFailure(null); setDelivery(null);
   }, [active, browser, identity]);
   useEffect(() => {
     latest.current = identity;
@@ -134,7 +148,7 @@ export function useDataMembership() {
       if (held?.identity === identity) {
         held.stop();
         // The owner may already have changed. The old engine still owns its cleanup.
-        try { browser?.engine.releaseMembership(held.scope.getState().record.scopeId); } catch { /* Owner disposal already closed the stage. */ }
+        try { browser?.engine.releaseMembership(held.scopeId); } catch { /* Owner disposal already closed the stage. */ }
         current.current = null;
       }
     };
@@ -143,10 +157,12 @@ export function useDataMembership() {
   return {
     ready: Boolean(browser && owner), error: failure?.identity === identity ? failure.message : null,
     values: state?.values ?? [], phase: state?.record.phase ?? null, durable: state?.durable ?? false,
+    delivery: delivery?.identity === identity && delivery.scopeId === state?.record.scopeId ? delivery.state : null,
     begin: () => begin(), recover: (scopeId: string) => begin(scopeId), dismiss,
     update: (action: MembershipAction | null) => run(() => required().update(action)),
     save: () => run(() => required().save()), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
-    retry: () => run(() => required().retryPersistence()),
+    retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),
+    discard: () => run(async () => { await active().discardMembership(required().getState().record.scopeId); dismiss(); }),
     listRecoverable: () => run(() => active().listMembershipRecovery()),
   };
 }
