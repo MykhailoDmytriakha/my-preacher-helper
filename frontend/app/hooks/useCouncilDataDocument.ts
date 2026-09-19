@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { useDataDocument } from '@/data-engine/react.client';
+import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -92,6 +92,13 @@ export function useCouncilDataDocument(councilId: string) {
   }, [document, councilId]);
 
   const recover = useCallback(async (sourceId: string) => { await document.recover(sourceId); }, [document]);
+  const recovery = useRecoveryDiscovery({
+    identity: document.recoveryIdentity,
+    enabled: !document.loading && document.status !== null,
+    version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
+    list: listRecoverable,
+    recover,
+  });
 
   return {
     council,
@@ -108,5 +115,6 @@ export function useCouncilDataDocument(councilId: string) {
     carryTopicToNext,
     listRecoverable,
     recover,
+    recovery,
   };
 }

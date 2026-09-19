@@ -13,12 +13,15 @@ import { createIndexedDbJournal } from '../journal.client';
 import { createIndexedDbSnapshots } from '../snapshots.client';
 import { createFirestoreObservationSource } from '../source.client';
 import { createHttpEngineTransport } from '../transport.client';
+import { applyCommand } from '../protocol';
+import { installStorageHarness } from './storageHarness';
 
 import type { EditorRecord } from '../controller';
 import type { CollectionCursor, CollectionState } from '../collections';
 import type { CollectionTransport, EngineTransport, JournalEntry, JournalStore, ResourceSnapshot } from '../types';
 
 jest.mock('firebase/auth', () => ({ onAuthStateChanged: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/services/firebaseAuth.service', () => ({ auth: {} }));
 jest.mock('@/utils/clientId', () => ({ newClientId: jest.fn() }));
 jest.mock('../manualScopes.client', () => ({ createIndexedDbManualScopes: jest.fn() }));
@@ -107,15 +110,41 @@ describe('Browser DataEngine lifecycle composition', () => {
   });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('isolates editor identities across factories and keeps resource/slot identities stable within one', () => {
+  it('allocates a fresh editor lifetime even when revisiting the same resource and slot', () => {
     const s = setup(); const first = createBrowserDataEngine(); const second = createBrowserDataEngine();
-    expect(first.editorId(resource)).toBe(first.editorId({ ...resource }));
+    expect(first.editorId(resource)).not.toBe(first.editorId({ ...resource }));
     expect(first.editorId(resource)).not.toBe(second.editorId(resource));
     expect(first.editorId(resource, 'other')).not.toBe(first.editorId(resource));
     expect(first.editorId({ ...resource, id: 'other' })).not.toBe(first.editorId(resource));
     expect(s.authCallbacks).toHaveLength(2);
     first.dispose(); second.dispose();
     expect(s.authCallbacks[0].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('can save again after navigating away from an acknowledged and compacted editor', async () => {
+    const s = setup(); installStorageHarness();
+    jest.mocked(createIndexedDbCommitStore).mockReturnValue(jest.requireActual('../commits.client').createIndexedDbCommitStore());
+    jest.mocked(createIndexedDbCheckpoints).mockReturnValue(jest.requireActual('../checkpoint.client').createIndexedDbCheckpoints());
+    let server = copy(snapshot);
+    jest.mocked(s.transport.read).mockImplementation(async () => copy(server));
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const result = applyCommand(command, server);
+      if (result.kind === 'acknowledged') server = copy(result.snapshot);
+      return result;
+    });
+    const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
+    const first = await browser.engine.openEditor(resource, browser.editorId(resource));
+    await first.commit(value => ({ ...value, content: 'first visit' }));
+    await browser.engine.retry(); await settle();
+    expect(first.getState().checkpoint.dirty).toBe(false);
+    expect(await createIndexedDbCommitStore().list('owner')).toEqual([]);
+    first.close({ flush: true });
+    const second = await browser.engine.openEditor(resource, browser.editorId(resource));
+    await second.commit(value => ({ ...value, content: 'second visit' }));
+    await browser.engine.retry(); await settle();
+    expect(server.value?.content).toBe('second visit');
+    expect(second.getState()).toMatchObject({ durable: true, error: null, checkpoint: { dirty: false } });
+    browser.dispose();
   });
 
   it('persists offline edits and resumes their journal delivery on an online event', async () => {

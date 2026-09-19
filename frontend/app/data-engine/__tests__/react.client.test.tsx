@@ -92,6 +92,18 @@ describe('React DataEngine contract', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('exposes asynchronous checkpoint failures and clears them after durable recovery', async () => {
+    const editor = makeEditor(), browser = makeBrowser(editor.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const hook = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    act(() => editor.setState({ ...editor.state, durable: false, error: 'Checkpoint transaction failed' }));
+    expect(hook.result.current.status?.phase).toBe('localFailure');
+    expect(hook.result.current.error).toBe('Checkpoint transaction failed');
+    act(() => editor.setState({ ...editor.state, durable: true, error: null }));
+    expect(hook.result.current.error).toBeNull();
+  });
+
   it('shares its parent editor and stages manual typing without autosave or per-key busy state', async () => {
     const parent = makeEditor(), manual = makeManualForm(), browser = makeBrowser(parent.editor);
     jest.mocked(parent.editor.form).mockReturnValue(manual.form); jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);

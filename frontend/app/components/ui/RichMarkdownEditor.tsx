@@ -7,6 +7,7 @@ import { Markdown } from 'tiptap-markdown';
 import { MarkdownSourcePaste } from '@/utils/markdownPaste';
 
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
+import { useBufferedText } from './useBufferedText';
 
 interface RichMarkdownEditorProps {
     value: string;
@@ -26,6 +27,7 @@ export function RichMarkdownEditor({
     autoFocus = false,
     stickyToolbarTop,
 }: RichMarkdownEditorProps) {
+    const { draft, change } = useBufferedText(value, onChange);
     const editor = useEditor({
         extensions: [
             StarterKit,
@@ -53,7 +55,7 @@ export function RichMarkdownEditor({
         },
         onUpdate: ({ editor }) => {
             // @ts-expect-error - tiptap-markdown types don't extend core storage types properly
-            onChange((editor.storage.markdown).getMarkdown());
+            change((editor.storage.markdown).getMarkdown());
         },
     });
 
@@ -61,16 +63,12 @@ export function RichMarkdownEditor({
     useEffect(() => {
         // @ts-expect-error - type
         const currentMarkdown = editor ? (editor.storage.markdown).getMarkdown() : '';
-        if (editor && value !== currentMarkdown) {
-            // Small timeout prevents race conditions right after mounting
-            setTimeout(() => {
-                // @ts-expect-error - type
-                if (value !== (editor.storage.markdown).getMarkdown()) {
-                    editor.commands.setContent(value);
-                }
-            }, 0);
+        if (editor && draft !== currentMarkdown) {
+            // Rendering observed content is not a user edit. In TipTap 3 the default
+            // emits onUpdate, which would send a remote snapshot back as local intent.
+            editor.commands.setContent(draft, { emitUpdate: false });
         }
-    }, [value, editor]);
+    }, [draft, editor]);
 
     if (!editor) {
         return null;

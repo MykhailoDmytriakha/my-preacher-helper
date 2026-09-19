@@ -55,7 +55,7 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   return <div className={`space-y-3 text-sm ${className}`}>
     {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
-      <p>{t(`dataSync.phase.${status.phase}`)}</p>
+      <p>{t(status.phase === 'saved' && recoveryChoices.length ? 'dataSync.unfinishedWork' : `dataSync.phase.${status.phase}`)}</p>
       {status.freshness !== 'server' && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {status.checking && <p className="mt-1 text-xs">{t('dataSync.checking')}</p>}
       {status.readFailed && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}

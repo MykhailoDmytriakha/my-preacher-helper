@@ -35,6 +35,7 @@
     "findRecovery": "Find saved drafts",
     "recoveryLoading": "Finding drafts…",
     "recoveryLabel": "Saved draft",
+    "unfinishedWork": "This version is saved. Unfinished drafts from earlier editing sessions are available below.",
     "chooseRecovery": "Choose a draft",
     "recover": "Recover selected draft",
     "recoveryHint": "Recovery opens a separate copy. The original saved draft stays on this device.",

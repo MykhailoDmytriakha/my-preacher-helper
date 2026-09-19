@@ -7,6 +7,7 @@ import { newClientId } from '@/utils/clientId';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { describeSync, type SyncStatus } from './status';
+import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 import type { CollectionState } from './collections';
 import type { EditorState } from './controller';
@@ -22,6 +23,11 @@ interface EngineContextValue {
 const EngineContext = createContext<EngineContextValue | null>(null);
 const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
 const EDITOR_CHANGED = 'The active editor changed';
+
+/** Public recovery UI seam; storage and owner fencing remain inside the engine. */
+export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
+  return useDiscovery(options);
+}
 
 const listed = (value: string | undefined): string[] =>
   (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
@@ -260,13 +266,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   return {
     getManualForm,
+    recoveryIdentity: identity as object,
     data: current?.state.checkpoint.draft ?? null,
     confirmed: current?.state.checkpoint.confirmed ?? null,
     remote: current?.state.checkpoint.remoteCandidate ?? null,
     state: current?.state ?? null,
     status: current?.status ?? null,
     loading: Boolean(resource && owner && !current && !error),
-    error: error ?? engineError,
+    error: error ?? current?.state.error ?? engineError,
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
       return run(editor => editor.edit(value));

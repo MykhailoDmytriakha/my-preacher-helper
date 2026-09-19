@@ -4,9 +4,10 @@ import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
+import { recoveryCheckpointId, selectRecoverableCheckpoints } from '../recovery.client';
 import { planDataCommand } from '../serverRelations';
 
-import type { EditorRecord } from '../controller';
+import type { CheckpointRecoveryStore, EditorRecord } from '../controller';
 import type { CommandResult, EngineTransport, JournalEntry, ResourceSnapshot } from '../types';
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -44,7 +45,12 @@ function setup() {
     const runtime = makeRuntime();
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const engine = new DataEngine({ runtime, observer, transport, commits: requests,
-      checkpoints: { read: async (_owner, id) => records.get(id), put: async record => { records.set(record.editorId, copy(record)); } },
+      checkpoints: {
+        read: async (_owner, id) => records.get(id),
+        put: async record => { records.set(record.editorId, copy(record)); },
+        listRecoverable: async (owner, resource) => selectRecoverableCheckpoints([...records.values()].map(record => [recoveryCheckpointId(record.owner, record.editorId), record]), owner, resource),
+        create: async record => { if (records.has(record.editorId)) throw new Error('occupied'); records.set(record.editorId, copy(record)); },
+      } as CheckpointRecoveryStore,
       snapshots: { read: async () => copy(cache), put: async (_owner, snapshot) => { cache = copy(snapshot); } },
       operationId: () => `op-${++sequence}` });
     engine.setOnline(false); engine.setOwner('owner'); return engine;
@@ -55,6 +61,39 @@ function setup() {
 describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it('does not offer a closed editor whose save was delivered in the background', async () => {
+    const s = setup(); const engine = s.makeEngine();
+    const editor = await engine.openEditor(initial().resource, 'old-page');
+    await editor.commit(current => ({ ...current, title: 'saved A' }));
+    editor.dispose();
+    engine.setOnline(true); await engine.retry(); await settle();
+    expect(s.server().value?.title).toBe('saved A');
+    expect(await engine.listRecoverable(initial().resource)).toEqual([]);
+    await expect(engine.recoverEditor(initial().resource, 'new-page', recoveryCheckpointId('owner', 'old-page'))).rejects.toThrow('no pending local work');
+    engine.dispose();
+  });
+
+  it('offers only post-save typing after background delivery and recovers its rebased baseline', async () => {
+    const s = setup(); const engine = s.makeEngine();
+    const editor = await engine.openEditor(initial().resource, 'old-page');
+    await editor.commit(current => ({ ...current, title: 'saved A' }));
+    await editor.edit({ ...editor.getState().checkpoint.draft, title: 'unsent B' });
+    expect(await engine.listRecoverable(initial().resource)).toEqual([]);
+    editor.dispose();
+    engine.setOnline(true); await engine.retry(); await settle();
+    const choices = await engine.listRecoverable(initial().resource);
+    expect(choices).toHaveLength(1);
+    expect(choices[0].record.checkpoint).toMatchObject({
+      draft: { title: 'unsent B' }, confirmed: { value: { title: 'saved A' } }, dirty: true, pending: {}, conflicts: [],
+    });
+    const recovered = await engine.recoverEditor(initial().resource, 'new-page', choices[0].id);
+    expect(recovered.getState().checkpoint).toMatchObject({ draft: { title: 'unsent B' }, pending: {}, conflicts: [] });
+    await recovered.save(); await engine.retry(); await settle();
+    expect(s.server().value?.title).toBe('unsent B');
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    engine.dispose();
+  });
 
   it('delivers saved A then B after a full engine restart without opening an editor, leaving staged C unsent', async () => {
     const s = setup(); const first = s.makeEngine();

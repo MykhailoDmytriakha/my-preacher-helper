@@ -289,17 +289,8 @@ export class EditorController {
   private async applyCommit(request: CommitRequest): Promise<void> {
     this.assertCurrent();
     if (this.completedCommits.includes(request.id)) return;
-    if (request.state === 'cancelled') {
-      this.session.release(request.id);
-      this.completedCommits.push(request.id);
-    } else {
-      this.session.registerCommit(request.id, request.editGeneration, request.value, request.command?.operationId);
-      if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) {
-        this.result = request.result;
-        this.session.accept(request.result);
-        if (request.state === 'acknowledged') this.completedCommits.push(request.id);
-      }
-    }
+    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.result = request.result;
+    if (this.session.applyCommit(request)) this.completedCommits.push(request.id);
     await this.persist();
   }
 

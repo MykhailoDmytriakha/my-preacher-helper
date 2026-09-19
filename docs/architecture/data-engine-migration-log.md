@@ -6,6 +6,68 @@ migrated, in which order, what is already closed and with which evidence.
 
 ## Read this first — where the work stands on 2026-09-19
 
+**Active continuation, 2026-09-19 (Codex).** Resumed from clean `62dde054` after the
+Opus/Fable hand-off. Production readiness is still open. The current local work
+prioritizes shared data safety before more domain adapters. Progress is also tracked
+by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
+
+- Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
+  hid remote content already accepted by the engine; blur could also discard a
+  keystroke before its local echo. Six tests failed before the fix and pass now.
+- Added a shared presentation-only text buffer: it retains unacknowledged local
+  keystrokes, then follows the owning document even while focused. No conflict or
+  transport policy moved into the field.
+- The council decision now stages each keystroke through the same document writer
+  as other council fields. Its component no longer sends a last write during
+  cleanup, after its parent editor may already have closed.
+- The Markdown editor shares that buffer, no longer schedules stale content
+  replacement, and renders incoming content with `emitUpdate: false`. TipTap 3
+  otherwise emits a write callback for programmatic content replacement:
+  https://tiptap.dev/docs/editor/api/commands/content/set-content .
+- Recovery discovery now runs automatically through the public React engine API.
+  It projects terminal durable request results using the same `DataSession.applyCommit`
+  rule as mounted editors, excluding already-delivered saves while preserving later
+  unsent typing. Owner changes and overlapping discovery responses are fenced.
+  The saved banner explicitly mentions outstanding recovery choices. Source records
+  remain untouched: this is a projection, not cross-tab garbage collection.
+- A live conflict test exposed `BUG-20260919-engine-conflict-local-failure`:
+  navigation reused an editor ID after its clean checkpoint had been compacted.
+  Its restarted edit counter collided with the completion watermark. Browser editor
+  IDs now allocate a fresh lifetime on every opening; deduplication remains intact.
+  An integration regression uses actual checkpoint/commit adapters with the
+  transactional storage harness and fails before the fix with the exact browser error.
+  The React facade also now exposes asynchronous controller storage errors.
+- Current automated evidence after lifecycle/error fixes: 696 suites / 6963 tests
+  green (2 suites / 5 tests intentionally skipped), TypeScript green, lint 0 errors /
+  15 inherited warnings. Logs: `/tmp/data-engine-{full-tests-4,lint-4,types-4,revisit-before,revisit-after,error-before}.log`.
+- Live Chrome, localhost:3005, existing test account, disposable council
+  `761c359b-7477-4e6a-a8de-57044b7cf26b`: focused title accepted the other tab's text;
+  decision typing followed immediately by navigation survived reopening and appeared
+  in the second tab; reload automatically offered the unfinished second draft;
+  explicit recovery retained its title and exposed the conflict choices; keeping that
+  draft, navigating to the list, reopening and saving `QA save after navigation verified`
+  succeeded and appeared in both tabs. No visibility
+  emulation was used (`document.visibilityState` was `visible`). This is development
+  browser evidence, not installed-PWA or physical-device acceptance.
+- Current review scope: changes since `62dde054`; sequential lanes cover ownership,
+  races/retention, public boundaries, behavior regressions and error handling. The
+  boundary detector caught an internal recovery import; the consumer now uses the
+  public React facade and the detector remains unchanged.
+- Review conclusion for this checkpoint: no remaining high-confidence regressions
+  in the changed paths after the lifecycle repair. No independent agent was used.
+  `origin/main` was fetched on 2026-09-19; `HEAD..origin/main` is empty.
+- Next: finish navigation/save browser proof and full gates; pin held-council outcome
+  forms to engine manual scopes (their component-local draft is a separate audit risk).
+  Recovery of an original unsent fork still leaves its source available, as the UI
+  explains; retirement/active-tab distinction needs an explicit lifecycle design.
+  The eleven
+  remaining domains, legacy draft migration, cost/retention policy, rules rollout
+  and physical-device acceptance are still outstanding.
+
+The earlier decision to treat a focused field hiding accepted remote content as
+harmless is withdrawn: its next keystroke can overwrite the remote value without
+a conflict. The regressions above establish why this must be fixed before rollout.
+
 **Production: nothing is live.** Every engine switch is off in Production, the prepared rules are
 not deployed, and no production user's data has gone through the engine.
 
@@ -25,14 +87,11 @@ conflict with both versions kept, leaving a screen right after an edit or a dele
 write beside the engine, and every council reader agreeing. Revisions for each case are in the
 closing log.
 
-**Open defects of this migration** — in `BUGS.md` at the repository root of this branch:
-
-- `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads "Saved" while
-  unfinished drafts sit beside it; a checkpoint left by an earlier page load can even list work
-  that has since been delivered, so "Найти сохранённые черновики" may offer something already saved.
-
-Everything else filed during this migration is closed with a test that was red first; the closing
-log names each one.
+**Closed locally in the 2026-09-19 continuation:**
+`BUG-20260913-engine-idle-banner-hides-unfinished-work`,
+`BUG-20260919-engine-field-buffer-diverges`, and
+`BUG-20260919-engine-conflict-local-failure`. Evidence and limitations are above.
+The earlier claim of complete council integration still needs the held-outcome form audit.
 
 **`main` holds two commits that are NOT pushed** (a push of `main` is a production deploy — the
 owner's button): `778b3b02` (a test pinned to 2026-09-18 that turned red on that day and would
@@ -54,8 +113,8 @@ In this order; each step is done when its proof is written into the closing log.
    main checkout, case `2026-09-18-data-engine`, item 4.4) waits on it.
 2. **Owner's push of `main`**, then rotate the test account's password (Firebase Console →
    Authentication, then `frontend/app/utils/testLogin.ts`, one change).
-3. **P2 above**: make unfinished work visible without pressing a button blind, and retire a
-   checkpoint whose pending requests were delivered by another editor.
+3. **Continue the current checkpoint above**: verify held-outcome manual forms; recovery
+   visibility and delivered-request projection are now repaired locally.
 4. **Before any production switch** — the rest of "Blockers that gate every domain": deploy the
    rules (run `npm run test:rules` first — it is not in the build gate), measure reads and writes
    per session, decide retention for receipts and change-feed pointers, walk an installed PWA.

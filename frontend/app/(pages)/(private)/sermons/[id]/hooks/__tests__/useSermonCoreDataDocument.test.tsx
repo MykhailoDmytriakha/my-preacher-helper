@@ -15,6 +15,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   const session = new DataSession({ resource: { collection: 'sermons', id: 'sermon' }, value, metadata: null });
   let durable = Promise.resolve();
   const api = {
+    recoveryIdentity: {},
     data: value, confirmed: session.checkpoint().confirmed, remote: null,
     state: null, status: null, loading: false, error: null,
     commit: jest.fn(),

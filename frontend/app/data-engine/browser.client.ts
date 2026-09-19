@@ -23,7 +23,7 @@ import type { ResourceRef } from './types';
 export interface BrowserDataEngine {
   engine: DataEngine;
   dispose(): void;
-  /** Stable for this factory lifetime only; recovery across reload is explicit. */
+  /** Allocate once per editor opening; recovery of a previous lifetime is explicit. */
   editorId(resource: ResourceRef, slot?: string): string;
 }
 
@@ -89,5 +89,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     dispose();
     throw error;
   }
-  return { engine, dispose, editorId: (resource, slot = 'default') => JSON.stringify([tabId, resource.collection, resource.id, slot]) };
+  // A clean checkpoint is compacted after ACK. Reusing its editor ID would restart
+  // editGeneration at zero behind the durable dedupe watermark. Every page opening
+  // therefore gets a new identity; DataDocumentProvider shares it within that page.
+  return { engine, dispose, editorId: (resource, slot = 'default') => JSON.stringify([tabId, resource.collection, resource.id, slot, newClientId()]) };
 }

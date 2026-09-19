@@ -25,6 +25,11 @@ several editors for the same document uses `DataDocumentProvider`; all matching
 `useDataDocument` calls inside it share one editor. The provider owns autosave timing.
 Different documents remain independent.
 
+Every opening allocates a new editor identity. A closed, acknowledged checkpoint may
+already be compacted; reusing its identity would restart the edit counter behind the
+durable deduplication watermark. Share a mounted editor through the provider, and
+recover previous work explicitly rather than reusing an earlier page identity.
+
 ```tsx
 import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -73,8 +78,12 @@ function NoteContent({ id }: { id: string }) {
 - **Conflict:** show `DataSyncStatus`; `keepLocal` and `acceptRemote` are explicit
   choices. Unknown outcomes cannot be discarded. Remote deletion cannot be changed
   into an update/create of the same generation.
-- **Recovery:** call `listRecoverable` explicitly, show each candidate and preview,
-  and call `recover(id)` only for the chosen record. Recovery forks the complete
+- **Recovery:** use `useRecoveryDiscovery` from the public React facade to discover
+  records when the document opens and its delivery changes; discovery does not restore.
+  Pass the document's opaque `recoveryIdentity` to fence account/document changes.
+  Show each candidate and preview, and call `recover(id)` only for the chosen record.
+  Durable ACKs are projected before listing so delivered requests are not offered again.
+  Recovery forks the complete
   checkpoint, including the exact pending operation. It does not steal another tab's
   editor or silently apply an old draft.
 - **Collections:** `useDataCollection(collection)` returns confirmed snapshots,

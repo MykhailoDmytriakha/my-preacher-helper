@@ -1,6 +1,7 @@
 import { prepareDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields } from './protocol';
 
+import type { CommitRequest } from './commits';
 import type { CommandResult, ConflictDetail, DataCommand, DocumentData, ResourceSnapshot } from './types';
 
 export interface SessionCheckpoint {
@@ -43,6 +44,17 @@ export class DataSession {
     if (!this.state.pending[operationId]) this.state.pending[operationId] = { generation, value: copy(value) };
     const pending = this.state.pending[operationId];
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
+  }
+
+  /** One projection rule for mounted editors and recovery of editors that already closed. */
+  applyCommit(request: CommitRequest): boolean {
+    if (request.state === 'cancelled') {
+      this.release(request.id);
+      return true;
+    }
+    this.registerCommit(request.id, request.editGeneration, request.value, request.command?.operationId);
+    if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result);
+    return request.state === 'acknowledged';
   }
 
   prepare(operationId: string, owner: string, targets: readonly ResourceSnapshot[] = [], intended: SessionCheckpoint = this.state): DataCommand | null {

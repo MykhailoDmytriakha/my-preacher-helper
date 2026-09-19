@@ -5,7 +5,7 @@ import { EditorController, type CheckpointRecoveryStore, type CheckpointStore, t
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
-import { forkCheckpoint } from './recovery.client';
+import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 
 import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
@@ -235,8 +235,11 @@ export class DataEngine {
     if (resource) this.validateResource(resource, owner);
     const generation = this.generation;
     const records = await this.recoveryStore().listRecoverable(owner, resource && copy(resource));
+    const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
-    return copy(records);
+    return records.filter(({ record }) => !this.editors.has(record.editorId))
+      .map(({ id, record }) => ({ id, record: reconcileRecoveryRecord(record, requests) }))
+      .filter(({ record }) => isRecoverableCheckpoint(record));
   }
 
   /** Explicitly fork a checkpoint to a fresh editor identity, preserving pending operation IDs. */
@@ -262,7 +265,11 @@ export class DataEngine {
     });
     try {
       const forking = forkCheckpoint({
-        read: async (uid, id) => { const record = await store.read(uid, id); active(); return record; },
+        read: async (uid, id) => {
+          const record = await store.read(uid, id); active();
+          const requests = await this.commits.list(); active();
+          return record && reconcileRecoveryRecord(record, requests);
+        },
         create: async record => { active(); await store.create(record); active(); },
       }, owner, sourceId, editorId, frozen);
       const forked = await (cancelled ? Promise.race([forking, cancelled]) : forking);

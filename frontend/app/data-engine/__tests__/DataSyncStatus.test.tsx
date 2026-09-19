@@ -15,6 +15,11 @@ const status = (phase: SyncPhase, extras: Partial<SyncStatus> = {}): SyncStatus 
 const deferred = () => { let resolve!: () => void; let reject!: (reason: unknown) => void; const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
 describe('DataSyncStatus', () => {
+  it('makes earlier unfinished drafts visible beside an otherwise saved document', () => {
+    render(<DataSyncStatus status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
+    expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.unfinishedWork);
+    expect(screen.queryByText(en.dataSync.phase.saved)).not.toBeInTheDocument();
+  });
   it.each(Object.keys(en.dataSync.phase) as SyncPhase[])('renders the canonical %s phase with translated copy', phase => {
     render(<DataSyncStatus status={status(phase)} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase[phase]);

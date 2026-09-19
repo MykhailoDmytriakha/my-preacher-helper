@@ -19,6 +19,7 @@ const snapshot = (): ResourceSnapshot => ({ resource: { collection: 'sermons', i
 function setup(value: ResourceSnapshot = snapshot()) {
   const session = new DataSession(value);
   const api = {
+    recoveryIdentity: {},
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {

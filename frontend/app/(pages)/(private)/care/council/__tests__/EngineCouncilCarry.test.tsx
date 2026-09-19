@@ -39,6 +39,7 @@ jest.mock('@/hooks/useCouncilDataDocument', () => ({
     refresh: jest.fn(), acceptRemote: jest.fn(), keepLocal: jest.fn(),
     updateCouncil: jest.fn().mockResolvedValue(undefined), deleteCouncil: jest.fn().mockResolvedValue(undefined),
     carryTopicToNext: mockCarry, listRecoverable: jest.fn().mockResolvedValue([]), recover: jest.fn(),
+    recovery: { choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn() },
   }),
 }));
 

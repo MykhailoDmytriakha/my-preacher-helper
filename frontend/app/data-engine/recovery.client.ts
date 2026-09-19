@@ -3,8 +3,10 @@
 import { z } from 'zod';
 
 import { getResourcePolicy, isValidIdentifier, validateCommand } from './protocol';
+import { DataSession } from './session';
 import { snapshotSchema } from './transport.client';
 
+import type { CommitRequest } from './commits';
 import type { CheckpointRecoveryStore, EditorRecord, RecoveryCheckpoint } from './controller';
 import type { ConflictDetail, FieldValue, ResourceRef } from './types';
 
@@ -53,6 +55,24 @@ export function validateRecoveryRecord(value: unknown, owner: string, editorId: 
 
 export function isRecoverableCheckpoint(record: EditorRecord): boolean {
   return record.checkpoint.dirty || record.prepared !== null || Object.keys(record.checkpoint.pending).length > 0 || record.unfinalized.length > 0;
+}
+
+/**
+ * Background delivery outlives the editor that saved. Project its durable results
+ * before offering recovery, using exactly the mounted editor's ACK/rebase rule.
+ * This is a read-only view: another live tab may still own the stored checkpoint.
+ * Requests must be in dependency order, as returned by CommitQueue.list().
+ */
+export function reconcileRecoveryRecord(record: EditorRecord, requests: readonly CommitRequest[]): EditorRecord {
+  const session = DataSession.restore(record.checkpoint);
+  const completed = new Set(record.completedCommits ?? []);
+  for (const request of requests) {
+    if (request.owner !== record.owner || !sameResource(request.baseline.resource, record.checkpoint.confirmed.resource)
+      || completed.has(request.id)
+      || (request.editorId !== record.editorId && !session.checkpoint().pending[request.id])) continue;
+    if (session.applyCommit(request)) completed.add(request.id);
+  }
+  return { ...clone(record), checkpoint: session.checkpoint(), ...(completed.size ? { completedCommits: [...completed] } : {}) };
 }
 
 /** Owner filtering happens before reading another owner's record contents. */

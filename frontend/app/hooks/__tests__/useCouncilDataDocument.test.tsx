@@ -6,7 +6,9 @@ import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import type { DocumentData } from '@/data-engine/types';
 import type { Council, CouncilTopic } from '@/models/models';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'), useDataDocument: jest.fn(),
+}));
 
 const topic = (id: string, extra: Partial<CouncilTopic> = {}): CouncilTopic =>
   ({ id, title: `Topic ${id}`, questions: [], options: [], ...extra });
