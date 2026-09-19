@@ -11,14 +11,13 @@ Opus/Fable hand-off. Production readiness is still open. The current local work
 prioritizes shared data safety before more domain adapters. Progress is also tracked
 by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
-Current hard-path checkpoint: shared atomic client ownership now covers local
-capture/CAS, one immutable command, participant ACK proof, dependency retention and
-mixed-version request isolation. `b5060049` introduced ACK evidence and `384843ac`
-introduced atomic storage. The queue extension passed its local gates and sequential review;
-see `data-engine-atomic-edits.md` and the closing entries below. It is still internal:
-public membership scopes and every series reader/writer must migrate before group
-activation. The next checkpoint preserves legacy series cache/mutation inputs and
-blocks the old writer in newly enabled clients; it does not activate series. No production deployment or switch changed.
+Current hard-path checkpoint: atomic queue ownership is committed as `61104b4b`;
+legacy series preservation is committed as `ea536555`. Pinned membership stages,
+CAS storage and the public `useDataMembership` hook are now implemented locally,
+with crash/retention regression proof and a successful isolated production build.
+The checkpoint passed final coverage/review recording. Domain screens,
+whole-action delivery/conflict controls and all series readers/writers remain next.
+Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
   hid remote content already accepted by the engine; blur could also discard a
@@ -1374,3 +1373,40 @@ Group implementation checkpoint in progress:
   remains in this diff. Already shipped clients are not changed by these guards.
 - Next: public pinned membership scopes and all series readers/writers. Groups and
   series remain disabled for production; PWA/device acceptance remains outstanding.
+
+## 2026-09-19 — pinned membership stages and crash-safe capture
+
+- Public engine begin/recover/release pins the complete available series list and
+  explicit saved predecessors. A selector cannot silently infer a new opening
+  ancestor at Save. Typed bulk assignment/removal and exact reorder reuse the
+  canonical item helpers; every changed source and the assignment target are
+  captured together, including an already-satisfied target.
+- Staging is durable but unsent. Save first freezes the choice; a crash resumes the
+  same scope/resource/generation. Storage uses CAS and a separate range, so two
+  restored tabs cannot overwrite the same stage or feed it to ordinary autosave.
+  Owner changes fence values and callbacks. A queued target creation is supported.
+- Review found and reproduced `BUG-20260919-membership-capture-retention-gap`:
+  another editor can consume the ACK before the stage records its request IDs.
+  Request creation now acquires its stage reference atomically; completion transfers
+  ownership in one transaction. The regression failed with zero retained requests,
+  then passed with both retained and the same IDs on recovery.
+  Logs: `/tmp/data-engine-membership-retention-{before,after}.log`.
+- Current gates: **713 suites / 7,120 tests pass**, 9 skipped. Lint: 0 errors /
+  15 inherited warnings; unused and normal TypeScript checks pass after correcting
+  the hook identity ref type. Isolated production build, councils/groups/series
+  switches, passes in 20.61s (`/tmp/data-engine-membership-production-build-2.log`).
+  This is compile proof only: the old series screens are not enabled safely yet.
+- The broad fast run reported a worker-exit warning; direct new tests with
+  `--detectOpenHandles` finish normally: **24 tests**, no handle report.
+  `/tmp/data-engine-membership-handles.log`. Earlier new-module coverage was
+  99.35% lines / 95.31% branches; final full coverage passes: 713 suites / 7,120
+  tests, 92.05% total lines, 94.59–100% new-module lines. Two final navigation
+  cases bring the focused suite to 26 passing tests, without open handles.
+  Logs: `/tmp/data-engine-membership-{full-coverage,release-tests}.log`.
+- Review lanes: immutable capture, uncertain-save recovery, two tabs, mixed-version
+  retention, predecessor creation, target lifecycle, owner separation and React
+  cleanup. No separate reviewer agent was used. No remaining high-confidence
+  regression was found in this checkpoint. UI/rollout gaps are tracked separately.
+- Remaining: delivery/refusal/whole-action conflict controls, integration of every
+  series membership caller and CRUD reader/writer, migrated-boundary detector
+  closure, browser/PWA acceptance, remaining domains and production rollout proof.

@@ -129,3 +129,35 @@ an old tab to split an action into separate commands. New reads and retention us
 stay compatible; one generation cannot change ownership format. The shared runtime
 journal contains one complete command and remains safe for old executors to replay.
 No atomic requests were deployed in the prior single-range prototype.
+
+## 2026-09-19 — pinned membership stage (local implementation)
+
+`MembershipScope` owns one staged semantic action and one explicit Save. Opening
+through `DataEngine.beginMembership` requires a complete cached series list and
+pins confirmed versions plus explicit submitted predecessors before presenting the
+selector. Ambiguous/refused/deleting work blocks opening; no fresh ancestor is
+read at Save. A queued series creation remains an explicit dependency.
+
+`membershipIntent.ts` projects assign/remove/reorder through the existing pure
+series item helpers. Changed source series and the assignment target participate
+together, even when the target already contains the selected member. An unchanged
+target still needs lifecycle validation before removing the remaining source.
+
+Stages live in a separate `membership-scope` range with CAS revisions. Save freezes
+the stage durably before `CommitQueue` captures any requests. Further editing or
+cancellation is forbidden while capture is uncertain; retry/recovery uses the same
+scope/resource/generation identities. Recovery alone never submits. Leaving a
+selector preserves a staged action and lets an invoked local Save finish.
+
+Capture and stage completion are separate transactions, so each request initially
+acquires a `reference/capture` hold in its creation transaction. Stage completion
+transfers it to the stage reference in one transaction. This closes
+`BUG-20260919-membership-capture-retention-gap`: another editor may consume an ACK
+before the stage records its IDs, but cannot compact the only dedupe evidence.
+Old collectors already honor the reference range. Only complete ACK/cancellation
+allows compaction; failures retain their whole original stage.
+
+The public `useDataMembership` hook supports begin/update/save/recover/cancel and
+owner-fenced presentation. It is not yet connected to domain screens. Delivery
+status, whole-action conflict/discard controls, all series callers and live browser/
+PWA acceptance remain outstanding. Production activation is still forbidden.

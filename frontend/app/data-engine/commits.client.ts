@@ -1,7 +1,7 @@
 'use client';
 
 import { assertCommitBatch, assertCommitCapture, type CommitRequest, type CommitStore } from './commits';
-import { collectCommitRows, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
+import { collectCommitRows, commitCaptureKey, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -20,6 +20,7 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
           validateCommitReferences(store, read, frozen.owner, frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : [], () => {
             store.put(commitRowKey(frozen), identity);
             store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
+            if (frozen.retentionScope) store.put({ commitReferences: [frozen.id] }, commitCaptureKey(frozen.owner, frozen.retentionScope, frozen.id));
             store.put(frozen, commitRowKey(frozen));
             done(frozen);
           });

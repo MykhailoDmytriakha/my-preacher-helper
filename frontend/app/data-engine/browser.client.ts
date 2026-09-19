@@ -12,6 +12,7 @@ import { createIndexedDbCommitStore } from './commits.client';
 import { DataEngine } from './engine';
 import { createIndexedDbJournal } from './journal.client';
 import { createIndexedDbManualScopes } from './manualScopes.client';
+import { createIndexedDbMembershipScopes } from './membershipScopes.client';
 import { ResourceObserver } from './observer';
 import { DataEngineRuntime } from './runtime';
 import { createIndexedDbSnapshots } from './snapshots.client';
@@ -40,7 +41,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const engine = new DataEngine({
     runtime, observer, transport, checkpoints: createIndexedDbCheckpoints(), collections,
     snapshots, operationId: newClientId, onError: report,
-    commits: createIndexedDbCommitStore(), manualScopes: createIndexedDbManualScopes(),
+    commits: createIndexedDbCommitStore(), manualScopes: createIndexedDbManualScopes(), membershipScopes: createIndexedDbMembershipScopes(),
   });
   let active = true;
   let owner: string | null = null;

@@ -9,6 +9,8 @@ import type { CommandResult, DataCommand, DocumentData, EngineMetadata, Resource
 export interface CommitRequest {
   id: string;
   atomic?: AtomicCommitIdentity;
+  /** A durable stage owns capture before it can persist the resulting request IDs. */
+  retentionScope?: string;
   owner: string;
   editorId: string;
   editGeneration: number;
@@ -52,13 +54,14 @@ export function assertCommitBatch(requests: readonly CommitRequest[]): void {
   }
 }
 
-export interface AtomicCapture { editorId: string; captured: SessionCheckpoint; predecessorId?: string | null }
+export interface AtomicCapture { editorId: string; captured: SessionCheckpoint; predecessorId?: string | null; retentionScope?: string }
 
 export interface CommitEvent { request: CommitRequest }
 export function assertCommitCapture(current: CommitRequest, incoming: CommitRequest): void {
   if (current.owner !== incoming.owner || current.editorId !== incoming.editorId || current.editGeneration !== incoming.editGeneration
     || current.predecessor !== incoming.predecessor || !equalValues(current.baseline, incoming.baseline)
-    || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)) throw new Error('Saved generation cannot change its captured intent');
+    || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
+    || current.retentionScope !== incoming.retentionScope) throw new Error('Saved generation cannot change its captured intent');
 }
 const AUTHENTICATION_REQUIRED = 'Authentication required';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -111,7 +114,7 @@ export class CommitQueue {
     return this.current(owner, generation) ? orderRequests(records) : [];
   }
 
-  async save(editorId: string, captured: SessionCheckpoint, options?: { predecessorId?: string | null }): Promise<CommitRequest | null> {
+  async save(editorId: string, captured: SessionCheckpoint, options?: { predecessorId?: string | null; retentionScope?: string }): Promise<CommitRequest | null> {
     const owner = this.owner, generation = this.generation;
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     const intent = clone(captured);
@@ -125,6 +128,7 @@ export class CommitQueue {
     if (options?.predecessorId && (!predecessor || predecessor.owner !== owner || predecessor.state === 'cancelled'
       || !resourceMatches(predecessor.baseline.resource, intent.confirmed.resource))) throw new Error('Invalid predecessor request');
     if (existing) {
+      if (existing.retentionScope !== options?.retentionScope) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
       return clone(existing);
     }
@@ -133,6 +137,7 @@ export class CommitQueue {
     const baseline = clone(intent.confirmed);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
+      ...(options?.retentionScope ? { retentionScope: options.retentionScope } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
       revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
@@ -162,6 +167,7 @@ export class CommitQueue {
       if (!existing.every(Boolean) || !existing[0]!.atomic || existing.some(record => !equalValues(existing[0]!.atomic, record!.atomic))
         || !equalValues(existing[0]!.atomic.participants, existing.map(record => record!.id))
         || existing.some((record, index) => !equalValues(record!.baseline, frozen[index].captured.confirmed) || !equalValues(record!.value, frozen[index].captured.draft)
+          || frozen[index].retentionScope !== record!.retentionScope
           || (frozen[index].predecessorId !== undefined && frozen[index].predecessorId !== record!.predecessor))) throw new Error('Saved atomic capture cannot change');
       return clone(existing as CommitRequest[]);
     };
@@ -176,6 +182,7 @@ export class CommitQueue {
         || !resourceMatches(predecessor.baseline.resource, item.captured.confirmed.resource)))) throw new Error('Invalid predecessor request');
       const baseline = item.captured.confirmed;
       return { id: atomic.participants[index], atomic, owner, editorId: item.editorId, editGeneration: item.captured.editGeneration,
+        ...(item.retentionScope ? { retentionScope: item.retentionScope } : {}),
         baseline, value: item.captured.draft, predecessor: predecessor?.id ?? null, revision: 0, initialized: false,
         working: baseline, intended: item.captured.draft, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
     });

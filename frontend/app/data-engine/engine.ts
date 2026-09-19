@@ -3,6 +3,8 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
+import { captureMembershipPins } from './membershipCapture';
+import { MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
@@ -10,6 +12,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
+import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint } from './session';
@@ -33,6 +36,7 @@ export interface DataEngineOptions {
   operationId: () => string;
   commits: CommitStore;
   manualScopes?: ManualScopeStore;
+  membershipScopes?: MembershipScopeStore;
   onError?: (error: unknown) => void;
 }
 
@@ -114,6 +118,7 @@ export class DataEngine {
   private readonly stopCommits: () => void;
   private commitRecords = new Map<string, CommitRequest>();
   private manualForms = new Map<string, { parent: EditorEntry; selection: readonly ManualPath[]; form: ManagedManualForm; scope: ManualScope | null; scopeId: string; emit: () => void }>();
+  private membershipForms = new Map<string, MembershipScope>();
 
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
@@ -145,6 +150,8 @@ export class DataEngine {
     this.editors.clear();
     for (const manual of this.manualForms.values()) manual.scope?.dispose();
     this.manualForms.clear();
+    for (const scope of this.membershipForms.values()) scope.dispose();
+    this.membershipForms.clear();
     this.recovering.clear();
     this.reads.clear();
     this.options.runtime.setOwner(owner);
@@ -248,6 +255,74 @@ export class DataEngine {
   /** Explicit absent intent: a server-side create can never replace an existing ID. */
   createEditor(resource: ResourceRef, editorId: string, options?: EditorOpenOptions): Promise<ManagedEditor> {
     return this.open(resource, editorId, true, options);
+  }
+
+  /** The selector opens only after the engine pins its complete displayed series list. */
+  async beginMembership(): Promise<MembershipScope> {
+    const owner = this.requireOwner(), generation = this.generation;
+    if (!this.options.membershipScopes) throw new Error('Membership stage storage is not configured');
+    const state = await this.collectionReader().read('series');
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    const scopeId = this.options.operationId();
+    const scope = MembershipScope.begin(owner, scopeId, captureMembershipPins(owner, state, requests), this.membershipPort(owner, generation));
+    this.membershipForms.set(scopeId, scope);
+    try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
+    catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }
+  }
+
+  /** Recovery is an explicit continuation of the same durable Save identity. */
+  async recoverMembership(scopeId: string): Promise<MembershipScope> {
+    const owner = this.requireOwner(), generation = this.generation;
+    if (!this.options.membershipScopes) throw new Error('Membership stage storage is not configured');
+    const existing = this.membershipForms.get(scopeId);
+    if (existing) return existing;
+    const record = await this.options.membershipScopes.read(owner, scopeId); this.assertCurrent(owner, generation);
+    if (!record) throw new Error('Membership recovery no longer exists');
+    const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
+    this.membershipForms.set(scopeId, scope); return scope;
+  }
+
+  /** Leaving a selector retains its unsent stage; an invoked Save finishes local ownership. */
+  releaseMembership(scopeId: string): void {
+    const scope = this.membershipForms.get(scopeId);
+    if (!scope || !this.owner) return;
+    const owner = this.owner, generation = this.generation;
+    this.membershipForms.delete(scopeId);
+    this.background(scope.settled().then(async () => {
+      this.assertCurrent(owner, generation);
+      const record = scope.getState().record;
+      if (record.phase === 'editing' && record.action === null) await scope.cancel();
+      await this.options.membershipScopes!.compact(owner, scopeId);
+    }).finally(() => scope.dispose()), owner, generation);
+  }
+
+  async listMembershipRecovery(): Promise<MembershipScopeRecord[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const store = this.options.membershipScopes;
+    if (!store) return [];
+    const records = await store.list(owner); this.assertCurrent(owner, generation);
+    for (const record of records) { await store.compact(owner, record.scopeId); this.assertCurrent(owner, generation); }
+    const remaining = await store.list(owner); this.assertCurrent(owner, generation);
+    return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.phase === 'saving'));
+  }
+
+  private membershipPort(owner: string, generation: number): import('./membershipScope').MembershipScopePort {
+    const store = this.options.membershipScopes!;
+    return {
+      isCurrent: () => this.current(owner, generation),
+      persist: async (record, revision) => {
+        this.assertCurrent(owner, generation);
+        const saved = await store.persist(record, revision); this.assertCurrent(owner, generation); return saved;
+      },
+      save: async captures => {
+        this.assertCurrent(owner, generation);
+        const first = captures[0];
+        const saved = captures.length > 1 ? await this.commits.saveAtomic(captures)
+          : [await this.commits.save(first.editorId, first.captured, { predecessorId: first.predecessorId, retentionScope: first.retentionScope })].filter((request): request is CommitRequest => Boolean(request));
+        this.assertCurrent(owner, generation);
+        await this.prepareCommits(); this.backgroundDrain(); return saved;
+      },
+    };
   }
 
   /** Discovery never takes ownership of, rewrites or removes a saved editor. */
