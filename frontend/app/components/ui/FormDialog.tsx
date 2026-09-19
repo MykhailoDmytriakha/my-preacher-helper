@@ -36,6 +36,8 @@ interface FormDialogProps {
   /** Wraps the whole dialog in a form, so a submit button may live in the sticky foot. */
   onSubmit?: (event: React.FormEvent) => void;
   children: ReactNode;
+  /** A separate dismiss action when the footer's Cancel explicitly discards a draft. */
+  showCloseButton?: boolean;
 }
 
 const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
@@ -46,7 +48,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, children }: FormDialogProps) {
+export default function FormDialog({ title, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, children, showCloseButton = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -66,7 +68,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
         <h2 id={titleId} className={`break-words font-bold text-gray-900 dark:text-gray-100 ${banded ? 'text-lg' : 'mt-2 text-2xl'}`}>{title}</h2>
         {description && <p id={descriptionId} className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>}
       </div>
-      {!banded && (
+      {(!banded || showCloseButton) && (
         <button type="button" onClick={onClose} aria-label={t('common.close')} disabled={closeDisabled}
           className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:bg-gray-800">
           <XMarkIcon className="h-6 w-6" />

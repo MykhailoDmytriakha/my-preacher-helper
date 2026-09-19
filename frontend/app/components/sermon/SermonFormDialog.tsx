@@ -46,6 +46,7 @@ interface SermonFormDialogProps {
   onChange: (patch: Partial<SermonFormValues>) => void;
   onSubmit: (event: React.FormEvent) => void;
   onCancel: () => void;
+  onDismiss?: () => void;
   submitLabel: string;
   saving: boolean;
   /** Save stays down until there is something to save (the edit door uses this). */
@@ -78,6 +79,7 @@ export default function SermonFormDialog({
   onChange,
   onSubmit,
   onCancel,
+  onDismiss,
   submitLabel,
   saving,
   submitDisabled = false,
@@ -175,7 +177,7 @@ export default function SermonFormDialog({
   );
 
   return (
-    <FormDialog title={heading} onClose={onCancel} onSubmit={handleSubmit} footer={footer} closeDisabled={saving}>
+    <FormDialog title={heading} onClose={onDismiss ?? onCancel} showCloseButton={Boolean(onDismiss)} onSubmit={handleSubmit} footer={footer} closeDisabled={saving}>
       {notice && (
         <div
           role="alert"

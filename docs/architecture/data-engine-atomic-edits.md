@@ -210,7 +210,9 @@ CAS storage, capture retention, retry and completion logic. Creation records use
 `creation-scope`, invisible to older membership recovery. Full document validation
 happens before Save freezes the stage; typing can remain incomplete.
 
-Creation-form and workspace-recovery UI integration is still open. The existing
-membership-only recovery dialog deliberately excludes creation records rather than
-opening only their link half. Do not bridge this with UI-owned Promise chains,
-separate queues, fresh reads at Save, or compensating removal.
+`EngineCreateSermonModal` and workspace recovery now consume this stage and restore
+the whole draft. Creation entry points and sermon collection readers still require
+migration, including durable preselected-series intent before catalog reads.
+Group creation recovery is not exposed through the sermon form. Do not bridge
+remaining callers with UI-owned Promise chains, separate queues, fresh reads at
+Save, or compensating removal.

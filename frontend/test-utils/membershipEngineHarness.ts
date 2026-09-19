@@ -40,6 +40,10 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     }),
   };
   const commits = createIndexedDbCommitStore(), scopes = createIndexedDbMembershipScopes();
+  const collectionTransport = {
+    list: jest.fn(async (owner: string, collection: string) => ({ snapshots: copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection && snapshot.value?.userId === owner)), nextCursor: null, version, legacyOpen: true })),
+    changes: jest.fn(async () => ({ snapshots: [], cursor: version, version, hasMore: false, legacyOpen: true })),
+  };
   const createBrowser = (): BrowserDataEngine => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => copy([...journal.values()].filter(entry => entry.command.owner === owner)),
@@ -57,15 +61,12 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
       put: async (owner, collection, expected, next) => {
         const value = { ...next, revision: (expected?.revision ?? 0) + 1 }; cursors.set(`${owner}:${collection}`, value); return copy(value);
       },
-    }, transport: {
-      list: async (owner, collection) => ({ snapshots: copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection && snapshot.value?.userId === owner)), nextCursor: null, version, legacyOpen: true }),
-      changes: async () => ({ snapshots: [], cursor: version, version, hasMore: false, legacyOpen: true }),
-    } });
+    }, transport: collectionTransport });
     engine = new DataEngine({ transport, runtime, snapshots, observer, collections, commits, checkpoints: createIndexedDbCheckpoints(),
       membershipScopes: scopes, manualScopes: createIndexedDbManualScopes(), operationId: () => `operation-${++sequence}` });
     const instance = engine;
     return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
   };
-  return { createBrowser, transport, commits, scopes, disk, read, get engine() { return engine; },
+  return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; },
     replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); version += 1; } };
 }

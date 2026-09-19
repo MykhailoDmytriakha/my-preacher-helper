@@ -239,6 +239,6 @@ the complete draft before freezing, then captures the new document and selected
 destination atomically. Recovery/retry keeps the original ID and capture identity.
 
 Creation scopes use a separate durable range so older membership-only dialogs
-cannot recover half of their intent. The public stage is tested, but creation-form
-and workspace-recovery integration remains the next migration step. Do not activate
-sermons or expose these stages without the matching creation/recovery UI.
+cannot recover half of their intent. `EngineCreateSermonModal` and workspace recovery
+are example consumers. Creation entry points/readers and durable preselected-series
+intent still require migration; their availability does not authorize activation.

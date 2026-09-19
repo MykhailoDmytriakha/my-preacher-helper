@@ -24,6 +24,12 @@ the public engine for metadata, deletion and pinned assign/remove/reorder stages
 Workspace-wide membership recovery and group/sermon-menu entry points are committed
 as `1b8d2bce`. The existing-sermon edit field now uses a pinned engine scope too.
 Creation with membership, sermon backlinks and live acceptance still block activation.
+Atomic create-and-link is committed as `de572d6a`; its durable stage/public API is
+committed as `c90ad88a`. `EngineCreateSermonModal` and workspace recovery now consume
+that API, with **724 suites / 7201 tests** passing. Remaining immediate work:
+replace dashboard/list/series-selector creation entry points together with their
+canonical sermon collection reads; preserve old cache/mutation input before that
+switch, and support durable preselected-series intent. No entry-point rollout yet.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1715,3 +1721,32 @@ Group implementation checkpoint in progress:
   creation form and matching workspace recovery, migrate dashboard and selector
   entry points/readers, then complete sermon/domain migration and live acceptance.
   Atomic queue/server foundation is committed as `de572d6a`.
+
+### 2026-09-19 — creation form and whole-draft workspace recovery
+
+- `EngineCreateSermonModal` reuses the existing sermon fields and the public stage.
+  Typing is durable immediately; the series catalog is optional and opens separately.
+  A planned date is part of the same new document, not a follow-up network write.
+- Workspace recovery distinguishes creation from existing-member actions and opens
+  the complete creation form. Both dialogs load on demand. Close preserves input;
+  explicit Cancel cancels the unsent stage. The shared dialog's optional Close button
+  supports that distinction without changing existing callers by default.
+- Real-engine component tests prove one create/date/link command, standalone create
+  after catalog failure, complete title/verse recovery after close plus restart with
+  the same resource ID, and Cancel with no command or residual recovery choice.
+- Gates: **724 suites / 7201 tests**, 2 suites / 13 emulator-only cases skipped;
+  both TypeScript configurations pass; lint 0 errors / 15 inherited warnings;
+  isolated production build passes. Prior **13 real emulator checks** remain valid:
+  this checkpoint changes presentation and test I/O seams, not server processing.
+  Logs: `/tmp/data-engine-creation-ui-{full,lint,types-final,unused,build}.log`.
+- Sequential review: public boundary, lifecycle/account fencing, draft versus Save,
+  atomic date/link ownership, optional read failure, explicit cancellation, lazy
+  recovery and legacy dialog compatibility. No independent reviewer agent was used.
+- Main fetched again at 08:29: `HEAD..origin/main` is empty. No push, deployment,
+  production flag change or claim of live/PWA/device acceptance. Firestore quota
+  exhaustion still blocks live QA and its project-wide source remains unattributed.
+- Next: switch AddSermonModal/dashboard/list/series-selector creation together with
+  engine collection projection and legacy cache preservation. Preselected-series
+  intent must itself be durable before a catalog read; do not silently omit it on
+  failure/restart. Then finish legacy sermon backlinks, all remaining domain writes,
+  bypass closure, independent live/device acceptance and production rollout gates.
