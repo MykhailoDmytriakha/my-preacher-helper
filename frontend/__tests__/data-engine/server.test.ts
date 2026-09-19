@@ -133,6 +133,79 @@ describe('document operation budgets', () => {
   });
 });
 
+describe('atomic acknowledgement participants', () => {
+  const attach: DataCommand = { protocol: 1, owner: 'owner-1', operationId: 'attach',
+    resource: { collection: 'studyMaterials', id: 'm' }, generation: null, dependsOn: [], kind: 'relation', relation: 'material-notes',
+    beforeNoteIds: [], afterNoteIds: ['n'], targets: [{ id: 'n', generation: null }] };
+  const seed = () => {
+    documents.set('studyMaterials/m', { userId: 'owner-1', noteIds: [] });
+    documents.set('studyNotes/n', { userId: 'owner-1', content: 'Keep text', materialIds: [] });
+  };
+
+  it('returns secondary accepted content without storing it in compact history or adding initial reads', async () => {
+    seed();
+    const result = await processCommand('owner-1', attach);
+    expect(result).toMatchObject({ kind: 'acknowledged', relatedSnapshots: [{ resource: { collection: 'studyNotes', id: 'n' },
+      value: { content: 'Keep text', materialIds: ['m'] }, metadata: { generation: 'attach', revision: 1 } }] });
+    expect(documentReadUnits).toBe(5);
+    const stored = JSON.parse(documents.get(receiptPath('owner-1', 'attach'))!.resultJson as string);
+    expect(stored.relatedSnapshots).toBeUndefined();
+    expect(JSON.stringify(stored)).not.toContain('Keep text');
+    expect(stored.affected).toHaveLength(1);
+  });
+  it('acknowledges a new already-satisfied relation with its own replayable proof', async () => {
+    seed(); await processCommand('owner-1', attach);
+    const noChange: DataCommand = { ...attach, operationId: 'already-satisfied', generation: 'attach', beforeNoteIds: ['n'], targets: [{ id: 'n', generation: 'attach' }] };
+    const accepted = await processCommand('owner-1', noChange);
+    expect(accepted).toMatchObject({ kind: 'acknowledged', committed: { operationId: 'already-satisfied', revision: 2 },
+      snapshot: { value: { noteIds: ['n'] }, metadata: { operationId: 'already-satisfied' } } });
+    const writes = [...transactionWrites];
+    expect(await processCommand('owner-1', noChange)).toEqual(accepted);
+    expect(transactionWrites).toEqual(writes);
+    expect((await readDocument('owner-1', { collection: 'studyNotes', id: 'n' })).metadata?.revision).toBe(1);
+  });
+
+  it('replays current related content with proof of the earlier effect and zero new writes', async () => {
+    seed(); await processCommand('owner-1', attach);
+    await processCommand('owner-1', { ...update('edit-note', 'attach'), resource: { collection: 'studyNotes', id: 'n' },
+      changes: [{ path: ['content'], before: { exists: true, value: 'Keep text' }, after: { exists: true, value: 'Later remote text' } }] });
+    const writes = [...transactionWrites]; documentReadUnits = 0;
+    expect(await processCommand('owner-1', attach)).toMatchObject({ kind: 'acknowledged',
+      affected: [{ metadata: { revision: 1 } }], relatedSnapshots: [{ value: { content: 'Later remote text' }, metadata: { revision: 2 } }] });
+    expect(transactionWrites).toEqual(writes);
+    expect(documentReadUnits).toBe(3);
+  });
+
+  it.each(['missing', 'owner', 'generation', 'revision', 'corrupt'])('keeps related %s evidence retryable without replaying writes or exposing data', async reason => {
+    seed(); await processCommand('owner-1', attach);
+    const stored = documents.get('studyNotes/n')!;
+    if (reason === 'missing') documents.delete('studyNotes/n');
+    else if (reason === 'owner') documents.set('studyNotes/n', { ...stored, userId: 'other' });
+    else documents.set('studyNotes/n', { ...stored, _dataEngine: { ...(stored._dataEngine as Raw),
+      ...(reason === 'generation' ? { generation: 'replacement' } : reason === 'revision' ? { revision: 0 } : { protocol: 2 }) } });
+    const writes = [...transactionWrites];
+    await expect(processCommand('owner-1', attach)).rejects.toMatchObject({ code: 'receipt-snapshot-unavailable', status: 503 });
+    expect(transactionWrites).toEqual(writes);
+  });
+  it('replays a later related deletion without resurrecting it', async () => {
+    seed(); await processCommand('owner-1', attach);
+    const note = await readDocument('owner-1', { collection: 'studyNotes', id: 'n' });
+    await processCommand('owner-1', { protocol: 1, owner: 'owner-1', operationId: 'delete-related', resource: note.resource,
+      generation: note.metadata!.generation, dependsOn: [], kind: 'delete', baseline: note.value! });
+    expect(await processCommand('owner-1', attach)).toMatchObject({ kind: 'acknowledged',
+      affected: [{ metadata: { deleted: false } }], relatedSnapshots: [{ value: null, metadata: { deleted: true } }] });
+  });
+  it('keeps compact ACK proof available when later related content exceeds the response budget', async () => {
+    seed(); await processCommand('owner-1', attach);
+    // Synthetic oversized storage probes the response bound without a cloud write.
+    const stored = documents.get('studyNotes/n')!;
+    documents.set('studyNotes/n', { ...stored, content: 'x'.repeat(8 * 1024 * 1024) });
+    const result = await processCommand('owner-1', attach);
+    expect(result).toMatchObject({ kind: 'acknowledged', affected: [{ resource: { collection: 'studyNotes', id: 'n' } }] });
+    expect(result).not.toHaveProperty('relatedSnapshots');
+  });
+});
+
 describe('transactional relation execution', () => {
   const relation = (operationId = 'attach'): DataCommand => ({ protocol: 1, owner: 'owner-1', operationId,
     resource: { collection: 'studyMaterials', id: 'm' }, generation: null, dependsOn: [], kind: 'relation', relation: 'material-notes',

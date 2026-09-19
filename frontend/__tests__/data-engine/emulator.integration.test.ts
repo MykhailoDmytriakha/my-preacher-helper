@@ -69,6 +69,30 @@ run('DataEngine against real Firestore transactions', () => {
   jest.setTimeout(30_000);
   afterAll(async () => { await adminDb.terminate(); });
 
+  it('replays both participants of an atomic relation with current content and compact proof', async () => {
+    const material = { collection: 'studyMaterials', id: `${owner}-ack-material` };
+    const note = { collection: 'studyNotes', id: `${owner}-ack-note` };
+    await adminDb.collection(material.collection).doc(material.id).set({ userId: owner, noteIds: [] });
+    await adminDb.collection(note.collection).doc(note.id).set({ userId: owner, content: 'Original text', materialIds: [] });
+    const command: DataCommand = { protocol: 1, operationId: operationId(), owner, resource: material, generation: null,
+      dependsOn: [], kind: 'relation', relation: 'material-notes', beforeNoteIds: [], afterNoteIds: [note.id], targets: [{ id: note.id, generation: null }] };
+    const accepted = await processCommand(owner, command);
+    if (accepted.kind !== 'acknowledged') throw new Error('Expected atomic acknowledgement');
+    const secondary = accepted.relatedSnapshots![0];
+    expect(secondary).toMatchObject({ resource: note, value: { materialIds: [material.id], content: 'Original text' } });
+    const noChange: DataCommand = { ...command, operationId: operationId(), generation: accepted.snapshot.metadata!.generation,
+      beforeNoteIds: [note.id], targets: [{ id: note.id, generation: secondary.metadata!.generation }] };
+    const satisfied = await processCommand(owner, noChange);
+    expect(satisfied).toMatchObject({ kind: 'acknowledged', committed: { operationId: noChange.operationId, revision: 2 } });
+    expect(await processCommand(owner, noChange)).toEqual(satisfied);
+    await processCommand(owner, { protocol: 1, operationId: operationId(), owner, resource: note, generation: secondary.metadata!.generation,
+      dependsOn: [], kind: 'update', changes: [{ path: ['content'], before: { exists: true, value: 'Original text' }, after: { exists: true, value: 'Later remote text' } }] });
+    const replay = await processCommand(owner, command);
+    expect(replay).toMatchObject({ kind: 'acknowledged', affected: [{ metadata: { revision: 1 } }],
+      relatedSnapshots: [{ resource: note, value: { content: 'Later remote text', materialIds: [material.id] }, metadata: { revision: 2 } }] });
+    expect((await readDocument(owner, material)).metadata?.revision).toBe(2);
+  });
+
   it('serializes competing series assignments and preserves one owner after duplicate delivery', async () => {
     const member = await seed('exclusive-member');
     const createSeries = async (name: string, items: unknown[] = []) => {

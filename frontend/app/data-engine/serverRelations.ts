@@ -398,8 +398,10 @@ class RelationPlanner {
       result = this.command.relation === 'material-notes' ? await this.materialRelation(this.command)
         : this.command.relation === 'council-carry' ? await this.councilCarry(this.command)
         : await this.seriesRelation(this.command);
-      // A legacy no-op still establishes a durable generation.
-      if (!result && !(this.writes.get(key(this.primary.resource)) ?? this.primary).metadata) {
+      // Every new accepted operation needs its own primary proof, even when a
+      // concurrent writer already satisfied the relation. Receipt replays bypass
+      // this planner and therefore never increment the revision twice.
+      if (!result && !this.writes.has(key(this.primary.resource))) {
         this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.live(this.primary), this.command.operationId, []));
       }
     } else result = await this.ordinary(this.command);

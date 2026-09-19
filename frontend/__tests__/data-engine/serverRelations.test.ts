@@ -185,12 +185,13 @@ describe('registered transactional relation planning', () => {
     expect(await planDataCommand(materialCommand(primary, [], []), primary, reader)).toMatchObject({ result: { code: 'invalid-material-section-membership' }, writes: [] });
   });
 
-  it('accepts an unchanged relation without advancing an existing generation', async () => {
+  it('keeps the generation of an unchanged relation while recording the new operation proof', async () => {
     const primary = put('studyMaterials', 'm', { noteIds: [] });
     primary.metadata = { protocol: 1, generation: 'old', revision: 4, deleted: false };
     const plan = await planDataCommand(materialCommand(primary, [], []), primary, reader);
-    expect(plan.result).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { revision: 4 } } });
-    expect(plan.writes).toEqual([]);
+    expect(plan.result).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { generation: 'old', revision: 5, operationId: 'operation' } } });
+    expect(plan.writes).toHaveLength(1);
+    expect(plan.writes[0].value?.noteIds).toEqual([]);
   });
 
   it('gives an unchanged legacy relation a durable generation and rejects a mismatched primary resource', async () => {

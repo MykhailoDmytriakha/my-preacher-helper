@@ -6,6 +6,7 @@ import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
 import { getResourcePolicy, isValidIdentifier } from './protocol';
+import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { CollectionChanges, CollectionPage, CollectionTransport, CommandResult, EngineTransport, Json, ResourceSnapshot } from './types';
 
@@ -19,16 +20,17 @@ export const snapshotSchema: z.ZodType<ResourceSnapshot> = z.object({
   metadata: metadataSchema.nullable(),
 }).refine((snapshot) => !snapshot.metadata || (snapshot.metadata.deleted === (snapshot.value === null)), 'Inconsistent deletion metadata');
 const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(), affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).optional() }),
+  z.object({ kind: z.literal('acknowledged'), operationId: z.string(), snapshot: snapshotSchema, committed: metadataSchema.optional(),
+    affected: z.array(z.object({ resource: resourceSchema, metadata: metadataSchema })).max(99).optional(),
+    relatedSnapshots: z.array(snapshotSchema).max(99).optional() }),
   z.object({ kind: z.literal('conflict'), operationId: z.string(), snapshot: snapshotSchema, conflicts: z.array(z.object({ path: z.array(z.string()), base: field, mine: field, theirs: field })) }),
   z.object({ kind: z.literal('deleted'), operationId: z.string(), snapshot: snapshotSchema }),
   z.object({ kind: z.literal('refused'), operationId: z.string(), code: z.string() }),
   z.object({ kind: z.literal('blocked'), operationId: z.string(), dependencies: z.array(z.string()) }),
-]).refine(result => result.kind !== 'acknowledged' || !result.committed || Boolean(result.snapshot.metadata
-  && result.snapshot.metadata.generation === result.committed.generation
-  && result.snapshot.metadata.revision >= result.committed.revision
+]).refine(result => result.kind !== 'acknowledged' || !result.committed || Boolean(
+  coversCommittedEffect(result.snapshot, result.snapshot.resource, result.committed)
   && result.committed.operationId === result.operationId
-  && (!result.committed.deleted || result.snapshot.metadata.deleted)), 'Inconsistent committed effect');
+), 'Inconsistent committed effect');
 const messages = { failed: 'Data engine request failed', timedOut: 'Data engine request timed out', unavailable: 'Data engine unavailable' };
 const version = z.number().int().safe().nonnegative();
 const pageSchema: z.ZodType<CollectionPage> = z.object({
@@ -73,6 +75,21 @@ function validateCollectionSnapshots(owner: string, collection: string, snapshot
   }
 }
 
+function validateRelatedSnapshots(owner: string, result: Extract<CommandResult, { kind: 'acknowledged' }>): void {
+  if (!result.relatedSnapshots) return; // Compatible with an older server during rollout.
+  const related = result.relatedSnapshots, affected = result.affected ?? [];
+  const identities = new Set(related.map(snapshot => JSON.stringify(snapshot.resource)));
+  const proofs = new Set(affected.map(effect => JSON.stringify(effect.resource)));
+  if (identities.size !== related.length || proofs.size !== affected.length || related.length !== affected.length || affected.some(effect =>
+    effect.metadata.operationId !== result.operationId
+    || !related.some(snapshot => coversCommittedEffect(snapshot, effect.resource, effect.metadata))
+    || (effect.resource.collection === result.snapshot.resource.collection && effect.resource.id === result.snapshot.resource.id))) {
+    throw Object.assign(new Error('Mismatched related acknowledgement'), { code: 'data-loss' });
+  }
+  try { for (const snapshot of related) validateCollectionSnapshots(owner, snapshot.resource.collection, [snapshot]); }
+  catch { throw Object.assign(new Error('Mismatched related acknowledgement owner or resource'), { code: 'data-loss' }); }
+}
+
 export function createHttpEngineTransport(): EngineTransport & CollectionTransport {
   return {
     async send(command) {
@@ -83,6 +100,7 @@ export function createHttpEngineTransport(): EngineTransport & CollectionTranspo
       if (result.operationId !== command.operationId || ('snapshot' in result && (
         result.snapshot.resource.collection !== command.resource.collection || result.snapshot.resource.id !== command.resource.id
       ))) throw Object.assign(new Error('Mismatched data engine response'), { code: 'data-loss' });
+      if (result.kind === 'acknowledged') validateRelatedSnapshots(command.owner, result);
       return result;
     },
     async read(owner, resource) {

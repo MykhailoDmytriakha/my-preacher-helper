@@ -25,6 +25,7 @@ a controlled rollout. Cloud billing reports remain the external source of truth.
 | Replay of the same acknowledged operation | 2 | 0 |
 | Competing update producing a conflict receipt | 2 | 1 |
 | Atomic material/note relation, two documents in two collections | 5 | 7 |
+| Replay of that two-document relation, including current participant copies | 3 | 0 |
 | Empty collection listing | 3 | 0 |
 | One live document, no tombstones, one list page | 3 | 0 |
 | Two feed pointers for one distinct changed document | 4 | 0 |
@@ -46,6 +47,19 @@ that scan. The planner bounds total distinct participants at 100 and refuses
 a truncated uniqueness check. This is an additional relation cost, not an ordinary
 three-read save. The emulator regression proves one ACK/one refusal for concurrent
 assignments; it does not measure live billing or client security rules.
+
+ACK responses include current related snapshots when available. Initial delivery
+reuses the transaction's existing copies; replay adds one read per affected
+document. Compact receipts still retain metadata only. If subsequent edits grow
+the current copies past the 8 MiB effect-response budget, replay returns compact
+ACK proof without those copies; a multi-document client must read them separately
+before confirming its participant projections. The primary-plus-related size is
+bounded here; this model does not count hosting bandwidth.
+
+A new already-satisfied relation still advances its primary revision once so its
+receipt names its own operation. It incurs the normal primary/head/pointer/receipt
+writes; duplicate delivery of that same identity incurs none. Reusing an older
+operation marker created an invalid replay receipt and is no longer permitted.
 
 The current Standard-edition free allowance is 50,000 document reads, 20,000 writes
 and 20,000 deletes per day for one database per project; it is shared by users and

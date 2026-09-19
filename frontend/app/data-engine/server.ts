@@ -8,6 +8,7 @@ import { isCollectionServed, isEngineServing, isLegacyOpen } from './activation'
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
+import { coversCommittedEffect } from './snapshotFreshness';
 
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
@@ -15,6 +16,7 @@ import type { Transaction } from 'firebase-admin/firestore';
 
 export const MAX_COMMAND_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 1_000_000;
+const MAX_EFFECT_BYTES = 8 * 1024 * 1024;
 const MAX_LIST_BYTES = 4 * 1024 * 1024;
 const RECEIPTS = '_dataEngineReceipts';
 const INVALID_ARGUMENT = 'invalid-argument';
@@ -198,13 +200,33 @@ function replayAcknowledgement(result: CompactAcknowledgement, resource: Resourc
   let snapshot: ResourceSnapshot;
   try { snapshot = snapshotFromRaw(resource, raw); }
   catch { throw unavailableReceiptSnapshot(); }
-  if (result.resource.collection !== resource.collection || result.resource.id !== resource.id
-    || !snapshot.metadata || snapshot.metadata.generation !== result.committed.generation
-    || snapshot.metadata.revision < result.committed.revision || (result.committed.deleted && !snapshot.metadata.deleted)) {
+  if (!coversCommittedEffect(snapshot, result.resource, result.committed)) {
     throw unavailableReceiptSnapshot();
   }
   return { kind: 'acknowledged', operationId: result.operationId, snapshot, committed: result.committed,
     ...(result.affected ? { affected: result.affected } : {}) };
+}
+
+/** Current participant copies accompany replay; compact history retains only their proof. */
+async function relatedAcknowledgement(transaction: Transaction, owner: string, result: Acknowledgement): Promise<Acknowledgement> {
+  if (!result.affected?.length) return result;
+  const relatedSnapshots = await Promise.all(result.affected.map(async effect => {
+    const stored = await transaction.get(adminDb.collection(effect.resource.collection).doc(effect.resource.id));
+    const raw = stored.exists ? stored.data() : undefined;
+    if (!owns(owner, effect.resource, raw)) throw unavailableReceiptSnapshot();
+    return replayAcknowledgement({ receiptVersion: 2, kind: 'acknowledged', operationId: result.operationId,
+      resource: effect.resource, committed: effect.metadata }, effect.resource, raw).snapshot;
+  }));
+  // A later edit may grow the participants beyond the original transaction size.
+  // Keep ACK proof available; clients can read the omitted copies individually.
+  return effectBytes([result.snapshot, ...relatedSnapshots]) <= MAX_EFFECT_BYTES ? { ...result, relatedSnapshots } : result;
+}
+
+const effectBytes = (effects: ResourceSnapshot[]) => effects.reduce((bytes, effect) => bytes + Buffer.byteLength(JSON.stringify(effect)), 0);
+function withAcceptedCopies(result: CommandResult, effects: ResourceSnapshot[]): CommandResult {
+  if (result.kind !== 'acknowledged') return result;
+  const relatedSnapshots = effects.filter(effect => effect.resource.collection !== result.snapshot.resource.collection || effect.resource.id !== result.snapshot.resource.id);
+  return { ...result, committed: result.snapshot.metadata!, ...(relatedSnapshots.length ? { relatedSnapshots } : {}) };
 }
 
 function previousCommandResult(previous: StoredReceipt | undefined, command: DataCommand, commandHash: string,
@@ -265,7 +287,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     const raw = stored.exists ? stored.data() : undefined;
     const previous = existingReceipt.exists ? readReceipt(existingReceipt.data()) : undefined;
     const replay = previousCommandResult(previous, command, commandHash, raw);
-    if (replay) return replay;
+    if (replay) return replay.kind === 'acknowledged' ? relatedAcknowledgement(transaction, owner, replay) : replay;
 
     const dependencies = await Promise.all(command.dependsOn.map(id => transaction.get(receiptRef(owner, id))));
     const blocked = command.dependsOn.filter((id, index) => {
@@ -302,11 +324,10 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           });
         },
       });
-      result = plan.result;
-      if (result.kind === 'acknowledged') result = { ...result, committed: result.snapshot.metadata! };
       effects = plan.writes;
+      result = withAcceptedCopies(plan.result, effects);
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
-      if (effects.reduce((bytes, effect) => bytes + Buffer.byteLength(JSON.stringify(effect)), 0) > 8 * 1024 * 1024) {
+      if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
       }
     }

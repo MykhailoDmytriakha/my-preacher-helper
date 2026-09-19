@@ -7,6 +7,30 @@ jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: jest.fn(() => 'owner') 
 const command: DataCommand = { protocol: 1, operationId: 'op', owner: 'owner', resource: { collection: 'studies', id: 'one' }, generation: null, dependsOn: [], kind: 'create', value: { text: 'mine' } };
 const snapshot: ResourceSnapshot = { resource: command.resource, value: { text: 'mine' }, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
 describe('HTTP engine transport', () => {
+  it('preserves proven related snapshots and rejects incomplete, ambiguous or foreign participant evidence', async () => {
+    const metadata = { ...snapshot.metadata!, operationId: 'op' };
+    const related: ResourceSnapshot = { resource: { collection: 'series', id: 'secondary' }, value: { userId: 'owner', theme: 'Related' }, metadata };
+    const effect = { resource: related.resource, metadata };
+    const result = { kind: 'acknowledged', operationId: 'op', snapshot, affected: [effect], relatedSnapshots: [related] };
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: result });
+    expect(await createHttpEngineTransport().send(command)).toEqual(result);
+    const second = { ...related, resource: { ...related.resource, id: 'second' } };
+    for (const invalid of [
+      { relatedSnapshots: [] }, { affected: undefined },
+      { relatedSnapshots: [related, related], affected: [effect, effect] },
+      { relatedSnapshots: [related, second], affected: [effect, effect] },
+      { relatedSnapshots: [{ ...related, metadata: { ...metadata, generation: 'other' } }] },
+      { affected: [{ ...effect, metadata: { ...metadata, revision: 2 } }] },
+      { affected: [{ ...effect, metadata: { ...metadata, deleted: true } }] },
+      { affected: [{ ...effect, metadata: { ...metadata, operationId: 'other' } }] },
+      { relatedSnapshots: [{ ...related, value: { userId: 'other' } }] },
+      { relatedSnapshots: [{ ...related, resource: snapshot.resource }], affected: [{ resource: snapshot.resource, metadata }] },
+      { relatedSnapshots: [{ ...related, resource: { collection: 'secret', id: 'x' } }], affected: [{ resource: { collection: 'secret', id: 'x' }, metadata }] },
+    ]) {
+      jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: { ...result, ...invalid } });
+      await expect(createHttpEngineTransport().send(command)).rejects.toMatchObject({ code: 'data-loss' });
+    }
+  });
   it('preserves the original committed metadata when a replay snapshot is newer', async () => {
     const committed = { ...snapshot.metadata!, operationId: 'op' };
     const current = { ...snapshot, metadata: { ...committed, revision: 2, operationId: 'later' } };

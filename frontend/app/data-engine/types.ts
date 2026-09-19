@@ -71,7 +71,9 @@ export type CommandResult =
   | { kind: 'acknowledged'; operationId: string; snapshot: ResourceSnapshot;
       /** Original committed effect; replay may return a newer current snapshot. */
       committed?: EngineMetadata;
-      affected?: Array<{ resource: ResourceRef; metadata: EngineMetadata }> }
+      affected?: Array<{ resource: ResourceRef; metadata: EngineMetadata }>;
+      /** Current proven copies of secondary effects; never retained in compact ACK history. */
+      relatedSnapshots?: ResourceSnapshot[] }
   | { kind: 'conflict'; operationId: string; snapshot: ResourceSnapshot; conflicts: ConflictDetail[] }
   | { kind: 'deleted'; operationId: string; snapshot: ResourceSnapshot }
   | { kind: 'refused'; operationId: string; code: string }

@@ -11,6 +11,13 @@ Opus/Fable hand-off. Production readiness is still open. The current local work
 prioritizes shared data safety before more domain adapters. Progress is also tracked
 by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
+Latest committed shared-queue checkpoint: **`d3a7bfb4`**. Its isolated production
+build with councils/groups enabled also passed (17.31 s including types;
+`/tmp/data-engine-production-build-handoff.log`). Current continuation adds the
+atomic ACK participant contract and repairs no-op relation receipts. Client
+multi-document capture/projection remains the next hard blocker; see
+`data-engine-atomic-edits.md`. No production deployment or switch changed.
+
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
   hid remote content already accepted by the engine; blur could also discard a
   keystroke before its local echo. Six tests failed before the fix and pass now.
@@ -1264,3 +1271,22 @@ Group implementation checkpoint in progress:
   `BUG-20260919-engine-series-double-assignment`,
   `BUG-20260919-engine-emulator-optin-cleared`. Physical-device and production PWA
   verification of this checkpoint remain open. No cloud switch/rules/deploy changed.
+
+2026-09-19 atomic acknowledgement foundation:
+- ACKs include current related snapshots; HTTP validation checks a one-to-one match
+  with effect proofs, operation identity, generation/revision, deletion and owner.
+  Compact history retains metadata only. Replay adds one read per participant;
+  oversized current copies are omitted while compact proof remains available.
+- Review reproduced `BUG-20260919-engine-relation-noop-invalid-receipt`. A new
+  already-satisfied relation reused an earlier operation marker and could not
+  replay its receipt. The planner now records its own primary proof once; repeated
+  delivery of that identity writes nothing. The old no-advance unit expectation
+  contradicted the end-to-end receipt contract and was corrected.
+- Gates: 710 suites / 7,060 tests pass; six real emulator scenarios pass (including
+  the no-op and secondary lost-ACK replay); lint/types pass with 15 inherited
+  warnings. Focused coverage is recorded in `/tmp/data-engine-atomic-final-coverage.log`;
+  full logs are `/tmp/data-engine-atomic-final-{tests,lint,emulator}.log`.
+- Review lanes: receipt identity/replay, owner fencing, proof completeness, payload
+  bounds, unchanged compact history and actual emulator behavior. No independent
+  agent was used. Client multi-document ownership is still pending; this server
+  foundation does not complete series migration or authorize production activation.

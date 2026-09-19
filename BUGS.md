@@ -15,7 +15,6 @@
 ## 🔴 P1 — открыто
 
 
-
 ### BUG-20260916-series-read-hangs-on-silent-transport · Серия не загружается: скелетон навсегда
 **P1** — раздел серий на iPad владельца не открывается вообще, и ждать бесполезно · `frontend/app/services/series.service.ts:70` · `:77` · `frontend/app/services/groups.service.ts:64` · `:72` · `frontend/app/services/studies.service.ts:104`
 Ожидалось: серия открывается или честно говорит, что не прочиталась. Получилось: `getDocs`/`getDoc` на молчащем транспорте Firestore не отвечают ни данными, ни ошибкой, срока ожидания нет, второго канала нет — экран остаётся скелетоном.
