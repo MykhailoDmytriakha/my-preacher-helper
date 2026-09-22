@@ -7,6 +7,11 @@ import type { CommitQueue, CommitRequest } from './commits';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
+/** A retired controller rejects late work; this is cancellation, not a storage failure. */
+export class InactiveEditorError extends Error {
+  constructor() { super('Editor is no longer active'); this.name = 'InactiveEditorError'; }
+}
+
 export interface EditorRecord {
   owner: string;
   editorId: string;
@@ -367,7 +372,7 @@ export class EditorController {
   }
 
   private assertCurrent(): void {
-    if (this.disposed || !this.options.isCurrentOwner(this.options.owner)) throw new Error('Editor is no longer active');
+    if (this.disposed || !this.options.isCurrentOwner(this.options.owner)) throw new InactiveEditorError();
   }
 
   private emit(): void {

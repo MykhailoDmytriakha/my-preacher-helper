@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import DatePickerField from "@/components/ui/DatePickerField";
-import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW, GROUP_CARD } from "@/components/ui/formCardClasses";
 import FormDialog from "@/components/ui/FormDialog";
+import { isCollectionOnEngine } from "@/data-engine/react.client";
 import { PreachDate, Church, PreachDateStatus } from "@/models/models";
 import { isUnspecifiedChurch } from "@/utils/church";
 import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
@@ -14,7 +13,8 @@ import {
     type WriteSubmission,
 } from "@/utils/recoverableWrite";
 
-import ChurchAutocomplete from "./ChurchAutocomplete";
+import { EnginePreachDateModal } from "./EnginePreachDateModal";
+import { PreachDateFields } from "./PreachDateFields";
 
 import type { DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 
@@ -23,6 +23,7 @@ const SAVE_ERROR_KEY = 'common.saveError';
 
 interface PreachDateModalProps {
     isOpen: boolean;
+    sermonId: string;
     onClose: () => void;
     onSave: (
         data: Omit<PreachDate, 'id' | 'createdAt'>
@@ -41,7 +42,13 @@ interface PreachDateModalProps {
     syncState?: DashboardSermonSyncState;
 }
 
-export default function PreachDateModal({
+export default function PreachDateModal(props: PreachDateModalProps) {
+    if (isCollectionOnEngine('sermons')) return props.isOpen ? <EnginePreachDateModal key={`${props.sermonId}:${props.initialData?.id ?? 'new'}`} sermonId={props.sermonId}
+        action={{ kind: props.initialData?.id ? 'edit' : 'add', dateId: props.initialData?.id, status: props.defaultStatus }} onClose={props.onClose} /> : null;
+    return <LegacyPreachDateModal {...props} />;
+}
+
+function LegacyPreachDateModal({
     isOpen,
     onClose,
     onSave,
@@ -164,69 +171,13 @@ export default function PreachDateModal({
             footer={footer}
             closeDisabled={isSaving}
         >
-            {/* One rounded card, hairline dividers — the same grouping the sermon form
-                uses, so the three windows a sermon travels through read as one thing. */}
-            <div className={GROUP_CARD}>
-                <div className={FIELD_ROW}>
-                    <label htmlFor="preach-date-input" className={FIELD_LABEL}>
-                        {t('calendar.date')}
-                    </label>
-                    <DatePickerField
-                        id="preach-date-input"
-                        value={date}
-                        onChange={(value) => {
-                            setDate(value);
-                            setSaveError("");
-                        }}
-                        inputClassName={`${FIELD_INPUT} pr-12`}
-                        required
-                    />
-                </div>
-
-                {/* Emits its own two card rows (name, city) so the card's dividers
-                    separate them like every other field pair. */}
-                <ChurchAutocomplete
-                    initialValue={church}
-                    onChange={(value) => {
-                        setChurch(value);
-                        setSaveError("");
-                    }}
-                />
-
-                <div className={FIELD_ROW}>
-                    <label htmlFor="preach-audience-input" className={FIELD_LABEL}>
-                        {t('calendar.audience')}
-                    </label>
-                    <input
-                        id="preach-audience-input"
-                        type="text"
-                        value={audience}
-                        onChange={(e) => {
-                            setAudience(e.target.value);
-                            setSaveError("");
-                        }}
-                        placeholder={t('calendar.audiencePlaceholder')}
-                        className={FIELD_INPUT}
-                    />
-                </div>
-
-                <div className={FIELD_ROW}>
-                    <label htmlFor="preach-notes-input" className={FIELD_LABEL}>
-                        {t('calendar.notes')}
-                    </label>
-                    <textarea
-                        id="preach-notes-input"
-                        value={notes}
-                        onChange={(e) => {
-                            setNotes(e.target.value);
-                            setSaveError("");
-                        }}
-                        rows={3}
-                        placeholder={t('calendar.notesPlaceholder')}
-                        className={`${FIELD_INPUT} resize-none`}
-                    />
-                </div>
-            </div>
+            <PreachDateFields value={{ date, church, audience, notes }} onChange={patch => {
+                if (patch.date !== undefined) setDate(patch.date);
+                if (patch.church !== undefined) setChurch(patch.church);
+                if (patch.audience !== undefined) setAudience(patch.audience);
+                if (patch.notes !== undefined) setNotes(patch.notes);
+                setSaveError("");
+            }} />
 
             {saveError && (
                 <p role="alert" className="text-sm text-red-600 dark:text-red-400">

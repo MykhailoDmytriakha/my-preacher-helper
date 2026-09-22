@@ -161,6 +161,21 @@ describe('DataEngine composition', () => {
     expect(s.onError).not.toHaveBeenCalled(); s.engine.dispose();
   });
 
+  it('requires the same action slot for both recovery discovery and direct recovery', async () => {
+    const s = setup(); const editor = await s.engine.openEditor(resource, 'old');
+    const source = editor.form('mark', [['title']]); await source.begin();
+    await source.update(value => ({ ...value, title: 'Mark draft' }));
+    const sourceId = source.getState()!.record.scopeId; editor.close();
+    const next = await s.engine.openEditor(resource, 'next');
+    const different = next.form('unmark', [['title']]); await different.begin();
+    expect(await different.listRecoverable()).toEqual([]);
+    await expect(different.recover(sourceId)).rejects.toThrow('Manual recovery selection mismatch');
+    const same = next.form('mark', [['title']]); await same.begin();
+    expect(await same.listRecoverable()).toHaveLength(1);
+    await same.recover(sourceId); expect(same.getState()!.value.title).toBe('Mark draft');
+    s.engine.dispose();
+  });
+
   it('recovers stage-only forms explicitly and owner fences old actions', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'first-tab');
     const form = editor.form('title', [['title']]); await form.begin(); await form.update(value => ({ ...value, title: 'recover me' }));
@@ -651,6 +666,29 @@ describe('DataEngine composition', () => {
     await s.engine.retry(); expect(s.transport.send).not.toHaveBeenCalled();
     s.engine.setVisible(true); await s.engine.retry();
     expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('hidden queued');
+    s.engine.dispose();
+  });
+
+  it('does not broadcast a cancelled observation from a closed editor to the next form', async () => {
+    const s = setup(); const editor = await s.engine.openEditor(resource, 'old');
+    await drainMicrotasks(); s.onError.mockClear();
+    s.next(initial(2, 'remote'));
+    editor.close();
+    await drainMicrotasks();
+    const next = await s.engine.openEditor(resource, 'next'); await drainMicrotasks();
+    expect(next.getState().durable).toBe(true);
+    expect(s.onError).not.toHaveBeenCalled();
+    s.engine.dispose();
+  });
+
+  it('still reports an actual observation persistence failure after editor closure', async () => {
+    const s = setup(); const editor = await s.engine.openEditor(resource, 'old');
+    await drainMicrotasks(); s.onError.mockClear();
+    const disk = deferred<void>();
+    jest.mocked(s.checkpoints.put).mockReturnValueOnce(disk.promise);
+    s.next(initial(2, 'remote')); await drainMicrotasks();
+    editor.close(); disk.reject(new Error('Disk full')); await drainMicrotasks();
+    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }));
     s.engine.dispose();
   });
 

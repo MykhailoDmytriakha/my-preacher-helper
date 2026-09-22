@@ -1,6 +1,6 @@
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
-import { EditorController, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
+import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
@@ -20,6 +20,8 @@ import type { SessionCheckpoint } from './session';
 import type { DocumentData, EngineMetadata, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
+
+export type ManualRecoveryPolicy = 'same-slot' | 'same-selection';
 
 export interface SnapshotStore {
   read(owner: string, resource: ResourceRef): Promise<ResourceSnapshot | undefined>;
@@ -59,7 +61,7 @@ export interface ManagedEditor {
   getState(): EditorState;
   getObservation(): Observation;
   getDelivery(): JournalEntry[];
-  form(slot: string, selection: readonly ManualPath[]): ManagedManualForm;
+  form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
   edit(value: DocumentData | null): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
@@ -671,7 +673,7 @@ export class DataEngine {
         getState: () => { active(); return controller.getState(); },
         getObservation: () => { active(); return copy(entry.observation); },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
-        form: (slot, selection) => { active(); return this.manualForm(owner, generation, frozen, editorId, entry, slot, selection); },
+        form: (slot, selection, recovery = 'same-slot') => { active(); return this.manualForm(owner, generation, frozen, editorId, entry, slot, selection, recovery); },
         subscribe: listener => {
           active();
           const subscription = () => listener();
@@ -736,9 +738,9 @@ export class DataEngine {
     return Object.assign(new Error('Editor opening was cancelled'), { name: 'AbortError' });
   }
 
-  private manualForm(owner: string, generation: number, resource: ResourceRef, parentEditorId: string, parent: EditorEntry, slot: string, selection: readonly ManualPath[]): ManagedManualForm {
+  private manualForm(owner: string, generation: number, resource: ResourceRef, parentEditorId: string, parent: EditorEntry, slot: string, selection: readonly ManualPath[], recovery: ManualRecoveryPolicy): ManagedManualForm {
     if (!this.options.manualScopes) throw new Error('Manual form storage is not configured');
-    const registryKey = JSON.stringify([parentEditorId, slot]);
+    const registryKey = JSON.stringify([parentEditorId, slot, recovery]);
     const previous = this.manualForms.get(registryKey);
     if (previous && previous.parent === parent) {
       if (!equalValues(previous.selection, selection)) throw new Error('Manual form selection changed');
@@ -783,7 +785,7 @@ export class DataEngine {
         records.forEach(request => this.commitRecords.set(request.id, request));
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
         if (sourceScopeId && !source?.record) throw new Error('Manual recovery record no longer exists');
-        if (source?.record && (!sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
+        if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
         const targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
         const existing = source ?? await store.read(owner, targetId); active();
         if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
@@ -877,7 +879,7 @@ export class DataEngine {
         const values = await store.list(owner, resource);
         const requests = await this.commits.list(); active();
         const settled = new Set(requests.filter(request => ['acknowledged', 'cancelled'].includes(request.state)).map(request => request.id));
-        return values.filter(value => value.scopeId !== state.scopeId && equalValues(value.record.selection, selection)
+        return values.filter(value => value.scopeId !== state.scopeId && (recovery === 'same-selection' || value.slot === slot) && equalValues(value.record.selection, selection)
           && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && !settled.has(value.record.predecessor.id))));
       },
       recover: sourceScopeId => start(sourceScopeId),
@@ -1026,7 +1028,8 @@ export class DataEngine {
 
   private background(operation: Promise<unknown>, owner: string, generation: number): void {
     void operation.catch(error => {
-      if (this.current(owner, generation)) this.options.onError?.(error);
+      // Editor queues can settle after normal form closure. Keep real I/O failures visible.
+      if (!(error instanceof InactiveEditorError) && this.current(owner, generation)) this.options.onError?.(error);
     });
   }
 

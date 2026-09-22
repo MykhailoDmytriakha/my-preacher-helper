@@ -45,12 +45,12 @@ jest.mock('react-i18next', () => ({
 
 // Mock ChurchAutocomplete
 jest.mock('@/components/calendar/ChurchAutocomplete', () => {
-    return function MockChurchAutocomplete({ onChange, initialValue }: any) {
+    return function MockChurchAutocomplete({ onChange, initialValue, value }: any) {
         return (
             <div data-testid="church-autocomplete">
                 <input
                     data-testid="church-input"
-                    defaultValue={initialValue?.name || ''}
+                    value={value?.name ?? initialValue?.name ?? ''}
                     onChange={(e) => onChange({ id: 'c1', name: e.target.value, city: 'City' })}
                 />
             </div>
@@ -75,7 +75,7 @@ describe('PreachDateModal', () => {
             // church field started empty even though the sermon itself names one — the
             // person had to type a congregation the app already knew.
             render(
-                <PreachDateModal
+                <PreachDateModal sermonId="sermon"
                     isOpen
                     onClose={mockOnClose}
                     onSave={mockOnSave}
@@ -90,7 +90,7 @@ describe('PreachDateModal', () => {
 
         it('offers it when the existing date still holds the stand-in', () => {
             render(
-                <PreachDateModal
+                <PreachDateModal sermonId="sermon"
                     isOpen
                     onClose={mockOnClose}
                     onSave={mockOnSave}
@@ -104,7 +104,7 @@ describe('PreachDateModal', () => {
 
         it('NEVER overrides a congregation the date itself names', () => {
             render(
-                <PreachDateModal
+                <PreachDateModal sermonId="sermon"
                     isOpen
                     onClose={mockOnClose}
                     onSave={mockOnSave}
@@ -119,7 +119,7 @@ describe('PreachDateModal', () => {
 
     it('renders with "Add" title when no initialData is provided', () => {
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -141,7 +141,7 @@ describe('PreachDateModal', () => {
         };
 
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -158,7 +158,7 @@ describe('PreachDateModal', () => {
     it('calls onSave with form data on submit', async () => {
         mockOnSave.mockImplementation(() => persistedWrite(Promise.resolve()));
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -187,7 +187,7 @@ describe('PreachDateModal', () => {
 
     it('calls onClose when cancel button is clicked', () => {
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -200,7 +200,7 @@ describe('PreachDateModal', () => {
 
     it('disables save button if church name is empty', () => {
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -215,7 +215,7 @@ describe('PreachDateModal', () => {
         const refusal = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
         mockOnSave.mockImplementationOnce(() => persistedWrite(Promise.reject(refusal)));
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}
@@ -260,7 +260,7 @@ describe('PreachDateModal', () => {
             }>();
 
             return (
-                <PreachDateModal
+                <PreachDateModal sermonId="sermon"
                     isOpen={true}
                     onClose={mockOnClose}
                     syncState={syncState}
@@ -295,7 +295,7 @@ describe('PreachDateModal', () => {
     it('closes silently after an offline preach-date write is locally accepted', async () => {
         mockOnSave.mockImplementationOnce(() => queuedWrite('preach-date:queued', new Promise<void>(() => undefined)));
         render(
-            <PreachDateModal
+            <PreachDateModal sermonId="sermon"
                 isOpen={true}
                 onClose={mockOnClose}
                 onSave={mockOnSave}

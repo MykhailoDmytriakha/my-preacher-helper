@@ -16,6 +16,8 @@ import { auth } from '@services/firebaseAuth.service';
 
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: any) =>
+  <input aria-label="Date" value={value} onChange={event => onChange(event.target.value)} /> }));
 
 // Mock dependencies
 jest.mock('@services/sermon.service', () => ({
@@ -765,6 +767,40 @@ describe('OptionMenu Component', () => {
         { isPreached: true }
       );
     });
+  });
+
+  it.each([false, true])('uses one pinned engine form to toggle preached=%s without legacy writes', async preached => {
+    const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+    const sermon: Sermon = { ...mockSermon, isPreached: preached, preachDates: [{
+      id: 'date', date: '2099-10-03', status: preached ? 'preached' : 'planned',
+      church: { id: 'church', name: 'Named church', city: '' }, createdAt: 'now',
+    }] };
+    const { id, ...value } = sermon;
+    const resource = { collection: 'sermons', id };
+    const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const optimistic = buildOptimisticActions();
+    const view = render(<DataEngineProvider><OptionMenu sermon={sermon} optimisticActions={optimistic} /></DataEngineProvider>);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+      fireEvent.click(screen.getByText(preached ? 'optionMenu.markAsNotPreached' : 'optionMenu.markAsPreached'));
+      const save = await screen.findByRole('button', { name: 'buttons.save' });
+      await waitFor(() => expect(save).toBeEnabled());
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      fireEvent.click(save);
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      await waitFor(() => expect(harness.read(resource).value!.isPreached).toBe(!preached));
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      expect(updateSermon).not.toHaveBeenCalled();
+      expect(preachDatesService.updatePreachDate).not.toHaveBeenCalled();
+      expect(optimistic.markAsPreachedFromPreferred).not.toHaveBeenCalled();
+      expect(optimistic.unmarkAsPreached).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+    }
   });
 
   it('asks in the app\'s own window, never in the browser\'s box', async () => {

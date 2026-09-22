@@ -6,17 +6,17 @@ migrated, in which order, what is already closed and with which evidence.
 
 ## Latest checkpoint — 2026-09-22
 
-Task **4.12 is implemented, locally validated and live AI-tested**: manual and AI scratch proposals
-now use the shared pinned durable form, and Apply validates consumed source notes
-atomically. See the closing entry at the end of this file for evidence and live QA.
-Whole-app production readiness remains open. Next: finish the structure/plan/date
-writers, then the remaining domain migrations, legacy closure, cloud cost attribution,
-Security Rules rollout and physical-device/PWA acceptance. Do not activate production
-collection switches from this checkpoint alone. The 2026-09-19 quota blockage below
-is historical: fresh authenticated browser reads and writes succeeded on 2026-09-22.
-No cloud deployment or production configuration was changed. The later live AI check
-passed on 2026-09-22; the configured provider was Gemini, correcting the earlier
-OpenAI label. See the final entry for that correction and the exact evidence.
+Task **4.13 is implemented and validated locally and in Chrome**: preach-date
+CRUD and preached status use the shared pinned durable form from the menu, calendar
+and history component. Scratch proposals (4.12) remain completed, including live AI
+acceptance. A live date test exposed late closed-editor work being reported as a
+workspace failure; the typed cancellation fix has red/green and storage-error
+negative-control coverage. Final gates: 734 suites / 7320 tests pass, TypeScript and production build pass;
+lint has 0 errors and 15 inherited warnings. See the closing entry below for evidence.
+Whole-app production readiness remains open. Next: structure/plan writers, remaining
+domain migrations, legacy closure, cloud cost attribution, Security Rules rollout
+and physical-device/PWA acceptance. Do not activate production collection switches
+from this checkpoint alone. No cloud deployment or production configuration changed.
 
 ## Read this first — where the work stands on 2026-09-19
 
@@ -2021,3 +2021,78 @@ Group implementation checkpoint in progress:
   Server evidence: `/tmp/data-engine-proposal-live-ai-server-corrected.log`.
   No runtime code changed in this continuation. No deployment or production switch
   change. QA tabs and server are closed after verification.
+
+## 2026-09-22 — 4.13 preach dates and preached status
+
+- Menu mark/unmark, calendar date modal and the history component now use
+  `EnginePreachDateModal` / `useDataForm` for enabled sermons. Date CRUD stages
+  `preachDates` and `isPreached` together; one Save creates one command. Legacy
+  callbacks stay available only behind the disabled collection switch. The modal
+  requires a sermon ID, making an enabled identity-less fallback impossible.
+- Shared `PreachDateFields` / `PreachDateRows` preserve the existing date, church,
+  city, audience, notes, status and outcome presentation. The church adapter now
+  supports controlled values so explicit recovery is actually visible in its input.
+- `BUG-20260922-preach-recovery-retargets-date`: two red tests exposed target changes
+  after time advances and after normalization of a legacy sibling. Recovery now
+  follows the added/changed preached row ID. Explicit edit/delete IDs were unaffected.
+- Live mark → unmark exposed `BUG-20260922-closed-editor-poisons-workspace`:
+  background observation/adoption could finish after closure and publish a global
+  error. Controller retirement now raises typed `InactiveEditorError`; only this
+  cancellation is excluded from background error reporting. A negative-control
+  test still reports actual `Disk full` after closure. Foreground retired-editor
+  calls remain rejected.
+- `BUG-20260922-manual-recovery-crosses-action`: same fields do not imply the same
+  action. Discovery and direct recovery default to matching the action slot as well
+  as resource and selection. Equivalent thought-creation openings explicitly opt
+  into `same-selection`, preserving their existing unique-slot recovery; the thought
+  component's real engine recovery tests pass. Other current consumers use stable
+  slots or child-specific selections.
+- Behavior evidence includes independent-row merge, same-row conflict with either
+  explicit choice, delete-versus-edit conflict, no resurrection after remote delete,
+  stage-only restart recovery, cancellation, offline replay of the same command,
+  menu bypass prevention, calendar routing and history deletion. No engine transport,
+  retry or merge policy was copied into the date adapter.
+- Live Chrome / isolated production build / localhost:3005 / existing test account:
+  sermon `b1c1fd2d-aa9e-4e2e-915e-d626ece9f5e4` (`QA scratch proposal 2026-09-22`).
+  Entered `QA dates church` and `QA dates recovery 2026-09-22`, reloaded before Save,
+  explicitly recovered both fields, then saved. The second calendar tab automatically
+  displayed the dated preached event. After the cancellation fix, unmark saved and
+  the second tab changed to planned while retaining the event and church; reopening
+  mark retained the note and had no stale-editor error. Cancel left it planned.
+  One pre-fix Save click was rejected by automatic review because the form carried
+  that error; after fixing, rebuilding and reopening the exact QA record, the action
+  was accepted. No approval workaround was used.
+- Sequential review covered regressions, ancestry/ownership, lifetime/error handling,
+  recovery semantics, public boundaries and behavior tests. The findings above were
+  fixed and tested. The subsequent independent review is recorded below.
+- This is browser and automated evidence, not physical iOS/macOS/Android or installed
+  PWA acceptance. No AI invocation, production deployment or switch activation.
+  Remaining work: structure/plan writers, other domains, legacy migration closure,
+  cloud cost attribution, Security Rules rollout and physical-device/PWA validation.
+
+- Final gates: `npm run test:fast` → **734 suites / 7320 tests passed**, 2 suites /
+  15 tests intentionally skipped. `npm run lint:full` → 0 errors / 15 inherited
+  warnings and both TypeScript checks pass. Isolated production build with
+  councils/groups/series/sermons enabled passes in **22.42s**, including Serwist.
+  Evidence: `/tmp/data-engine-dates-{full-final,lint-final,build-final}.log`;
+  red/green checks: `/tmp/data-engine-dates-{identity-before,normalization-red,lifecycle-red,lifecycle-green,slot-red,slot-green}.log`.
+- Final rebuilt-browser spot check: the mark form retains church/note, offers three
+  mark drafts rather than five mixed-action drafts, and shows no stale-editor error.
+  Cancel leaves the QA event planned. QA tabs and the isolated server were closed.
+- The exact remaining workflow and evidence are also in `el`, task 4.13, case
+  `2026-09-19-data-engine-production-readiness`. Owner acceptance is deferred until
+  the owner's review; this checkpoint does not claim whole-app production readiness.
+
+- Independent read-only review received **2026-09-22 10:18 PDT** from agent
+  `dates_final_review`, base `32a9bd68` through this staged change, including new
+  files. Frontend diff SHA-256:
+  `13cf8f3d6cde95662e508f282d4d392dfb5393d2ac1e69d94df9802d28c818d4`.
+  Reviewed actual menu/calendar/history wiring, pinned date/status ancestry,
+  row recovery, conflict/delete behavior, recovery-policy compatibility and typed
+  cancellation versus real I/O failure. **No actionable findings at confidence ≥80.**
+  Reviewer inspected source and regressions; did not independently rerun tests or
+  browser QA. Automated concurrency/offline checks use the real engine with a
+  controlled transport/storage harness; physical devices were not tested.
+- Versioning uses the Vercel Git SHA (`next.config.mjs`), so this source checkpoint
+  receives its version from the commit. Package semver is unchanged. Branch remains
+  `data-engine` tracking `origin/data-engine`; this task commits locally only.

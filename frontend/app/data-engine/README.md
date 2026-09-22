@@ -122,7 +122,10 @@ describe that stage, including remote changes while it is open.
 
 Use its `recoveryIdentity`, `listRecoverable` and `recover` with the public
 `useRecoveryDiscovery`. A reload offers unfinished work for explicit recovery;
-recovery itself never sends it. An acknowledged or explicitly cancelled Save is
+recovery itself never sends it. Discovery and direct recovery both require the same
+action slot and field selection; sharing fields does not make opposite actions interchangeable. The fourth argument
+`same-selection` is an explicit compatibility policy for equivalent creation openings
+with unique slots (see `EngineThoughtModal`). Do not use it for opposite actions. An acknowledged or explicitly cancelled Save is
 terminal: reopening starts from the current document, and clean inactive manual
 records can be compacted. Later unsaved typing must still survive.
 
@@ -146,6 +149,17 @@ row identity, persists all typed fields through the manual scope, and saves meta
 plus dates as one document request. Series membership remains its own pinned action
 with separate delivery; metadata retry reuses that action's captured identity. Import gates
 alone cannot detect a component that discards its opening ancestor in `useState`.
+
+`EnginePreachDateModal` owns date add/edit/delete and mark/unmark actions. Its
+selection includes both `preachDates` and the legacy `isPreached` fallback, so Save
+captures one document command. `preachDateForm.ts` contains only domain transforms;
+ID-based merge, delivery and recovery stay in the engine. A recovered mark uses the
+changed preached row's durable ID, never a newly computed nearest date or a sibling
+whose legacy status was only normalized. Unmark affects opening rows; independently
+added remote dates are retained. Readers use `getEffectiveIsPreached`, because the
+merged date statuses are authoritative over the legacy fallback flag.
+`PreachDateModal` requires `sermonId` and routes enabled collections to this form;
+calendar, history and menu wiring tests must prove legacy writers are not called.
 
 `EngineOutlineModal` is the outline example: selected fields include the outline,
 thoughts and placement aliases, because hierarchy edits affect all of them. The pure

@@ -49,10 +49,12 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
   const { isMagicAvailable } = useConnection();
   const [newThought] = useState<Thought>(() => ({ id: newClientId(), text: '', tags: [], date: new Date().toISOString() }));
   // Each creation opening is independent, including while earlier creations are offline.
-  // Creation selects the array so discovery can restore its original embedded ID.
+  // Creation selects the array and explicitly shares recovery across unique creation slots,
+  // so discovery can restore the original embedded ID. Existing thought selection differs.
   // Existing thoughts select their stable child identity, never a display index.
   const form = useDataForm({ collection: 'sermons', id: sermonId }, thoughtId ? `thought:${thoughtId}` : `thought-create:${newThought.id}`,
-    thoughtId ? [['thoughts', { id: thoughtId }], ...placement] : [['thoughts'], ...placement]);
+    thoughtId ? [['thoughts', { id: thoughtId }], ...placement] : [['thoughts'], ...placement],
+    thoughtId ? 'same-slot' : 'same-selection');
   const { loading, begin } = form;
   useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
   useScrollLock(true);

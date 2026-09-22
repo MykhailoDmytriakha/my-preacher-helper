@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -33,6 +34,8 @@ import SeriesSelector from "@components/series/SeriesSelector";
 import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
 import * as preachDatesService from "@services/preachDates.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
+
+import type { PreachDateAction } from '@/components/calendar/preachDateForm';
 
 import "@locales/i18n";
 
@@ -67,6 +70,7 @@ export default function OptionMenu({
 }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [engineDateAction, setEngineDateAction] = useState<PreachDateAction | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPreachModal, setShowPreachModal] = useState(false);
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
@@ -118,8 +122,8 @@ export default function OptionMenu({
   const currentSeries = getSeriesForRef(sermon.id, series);
 
   useEffect(() => {
-    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker);
-  }, [showEditModal, showPreachModal, showSourceNotePicker, onEditorOpenChange]);
+    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker || Boolean(engineDateAction));
+  }, [showEditModal, showPreachModal, showSourceNotePicker, engineDateAction, onEditorOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -308,6 +312,12 @@ export default function OptionMenu({
     // Captured BEFORE the write: an optimistic update flips this while the request is in
     // flight and rolls it back on refusal, so reading it inside `catch` asks about the
     // wrong direction.
+    if (isCollectionOnEngine('sermons')) {
+      setEngineDateAction({ kind: effectiveIsPreached ? 'unmark' : 'mark' });
+      closeMenu();
+      return;
+    }
+
     const wasPreached = effectiveIsPreached;
     /**
      * Does the row already speak for this? The optimistic path fails into the mutation
@@ -539,7 +549,11 @@ export default function OptionMenu({
         />
       )}
 
+      {engineDateAction && <EnginePreachDateModal key={`${sermon.id}:${engineDateAction.kind}`} sermonId={sermon.id}
+        action={engineDateAction} onClose={() => setEngineDateAction(null)} />}
+
       <PreachDateModal
+        sermonId={sermon.id}
         isOpen={showPreachModal}
         onClose={() => {
           setPreachDateToMark(null);

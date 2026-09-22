@@ -13,7 +13,7 @@ import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } f
 
 import type { CollectionState } from './collections';
 import type { EditorState } from './controller';
-import type { ManagedEditor, ManagedManualForm } from './engine';
+import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
@@ -356,9 +356,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   }, [autoSave, autoSaveDelayMs, current?.editor, current?.state.checkpoint.editGeneration, current?.status.canSave, isCurrent, setError]);
 
   const manualEditor = current?.editor;
-  const getManualForm = useCallback((formSlot: string, fields: readonly ManualPath[]) => {
+  const getManualForm = useCallback((formSlot: string, fields: readonly ManualPath[], recovery?: ManualRecoveryPolicy) => {
     if (!manualEditor || !isCurrent()) throw new Error(EDITOR_CHANGED);
-    return manualEditor.form(formSlot, fields);
+    return manualEditor.form(formSlot, fields, recovery);
   }, [manualEditor, isCurrent]);
 
   return {
@@ -457,12 +457,12 @@ export function useDataCollection(collection: string | null) {
 
 
 /** Explicit forms share the document observer and delivery while keeping typing stage-only. */
-export function useDataForm(resource: ResourceRef | null, slot: string, selection: readonly ManualPath[]) {
+export function useDataForm(resource: ResourceRef | null, slot: string, selection: readonly ManualPath[], recovery: ManualRecoveryPolicy = 'same-slot') {
   const { owner, browser } = useDataEngine();
   const document = useDataDocument(resource, { autoSave: false });
   const fieldsKey = JSON.stringify(selection);
   const fields = useMemo(() => JSON.parse(fieldsKey) as ManualPath[], [fieldsKey]);
-  const key = JSON.stringify([resource?.collection, resource?.id, slot, fieldsKey]);
+  const key = JSON.stringify([resource?.collection, resource?.id, slot, fieldsKey, recovery]);
   const hasResource = Boolean(resource), documentReady = !document.loading && Boolean(document.state);
   const getManualForm = document.getManualForm;
   const identity = useMemo(() => ({ owner, browser, key, editor: document.getManualForm }), [owner, browser, key, document.getManualForm]);
@@ -478,12 +478,12 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     let active = true;
     let stop: (() => void) | undefined;
     try {
-      const form = getManualForm(slot, fields);
+      const form = getManualForm(slot, fields, recovery);
       const update = () => { if (active && current()) setOpened({ identity, form, state: form.getState() }); };
       stop = form.subscribe(update); update();
     } catch (error) { if (current()) setFailure({ identity, message: message(error) }); }
     return () => { active = false; stop?.(); };
-  }, [identity, owner, browser, hasResource, documentReady, getManualForm, slot, fields, current]);
+  }, [identity, owner, browser, hasResource, documentReady, getManualForm, slot, fields, recovery, current]);
   const target = opened?.identity === identity ? opened : null;
   const targetForm = target?.form;
   const run = useCallback(async (action: (form: ManagedManualForm) => Promise<void>, busy = true) => {
