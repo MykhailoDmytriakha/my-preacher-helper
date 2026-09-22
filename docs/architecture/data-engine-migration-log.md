@@ -4,6 +4,18 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## Latest checkpoint — 2026-09-22
+
+Task **4.12 is implemented and locally validated**: manual and AI scratch proposals
+now use the shared pinned durable form, and Apply validates consumed source notes
+atomically. See the closing entry at the end of this file for evidence and live QA.
+Whole-app production readiness remains open. Next: finish the structure/plan/date
+writers, then the remaining domain migrations, legacy closure, cloud cost attribution,
+Security Rules rollout and physical-device/PWA acceptance. Do not activate production
+collection switches from this checkpoint alone. The 2026-09-19 quota blockage below
+is historical: fresh authenticated browser reads and writes succeeded on 2026-09-22.
+No cloud deployment or production configuration was changed.
+
 ## Read this first — where the work stands on 2026-09-19
 
 **Active continuation, 2026-09-19 (Codex).** Resumed from clean `62dde054` after the
@@ -1913,3 +1925,60 @@ Group implementation checkpoint in progress:
   change (`/tmp/data-engine-outline-verified-build.log`). No emulator rerun was needed
   for this UI/pure-transform checkpoint; the preceding 14 transaction checks remain
   recorded separately and are not presented as a new run.
+
+
+### 2026-09-22 — pinned scratch proposals and atomic Apply (task 4.12)
+
+- `EngineScratchWorkspace` opens `EngineOutlineModal withScratch`. Capture stays on
+  the main screen; the editor stages outline, thoughts/placement aliases and scratch
+  consumption together. Manual placement and AI output remain local until Apply.
+  The old late `applyOutlineAndConsume` adapter is removed from the engine path;
+  legacy callers remain unchanged behind the migration switch.
+- Public `useDataForm.propose` pins a durable source before invoking asynchronous
+  work. Edits, a newer proposal, cancellation, owner changes, form unmount and parent
+  closure reject late output. Valid output persists through the existing scope,
+  without a new queue, storage format or command. Stable generated IDs survive recovery.
+- `scratchComposeSource` binds title, verse and selected note text/date/section to
+  the compose API read before AI is invoked. A changed source gets HTTP 409; an
+  unrelated added note does not block a selected subset. The model prompt is unchanged.
+- Closed `BUG-20260922-scratch-consumption-loses-source`: ordinary delete/delete
+  merging previously admitted stale generated text after another device deleted
+  its source. `scratchConsumptionConflicts` now checks consumed notes before the
+  candidate mutation. Changed/deleted input conflicts the entire action. Explicit
+  Keep local/Accept remote use shared resolution; unrelated notes/siblings survive.
+  Standalone deletion does not consume derived input and is unaffected. Receipt
+  replay retains the original decision even if a source is later restored.
+- Red proof: `/tmp/data-engine-proposal-behavior.log`; green proof:
+  `/tmp/data-engine-proposal-behavior-after.log`. Eleven real-engine UI tests cover
+  pinned input, stage-only generation, recovery, Cancel, remote source changes/deletion,
+  independent edits, late completion, offline retry identity, both explicit conflict
+  choices and generation failure. API tests cover all source fields and old callers.
+- Full fast gate: **733 suites / 7301 tests pass**, 15 emulator-only tests skipped.
+  Both local Firestore suites then pass **15/15**, including atomic source conflict,
+  unchanged document, conflicting receipt replay and successful idempotent replay.
+  Both TypeScript configurations pass; lint has 0 errors / 15 inherited warnings.
+  Production build with councils/groups/series/sermons switches passes in 32.08s.
+  Logs: `/tmp/data-engine-proposal-{full,emulator,lint-2,build}.log`.
+- Sequential code review covered lifecycle races, transaction/receipt invariants,
+  source ownership/authentication, public module boundaries, legacy compatibility,
+  error presentation and regression evidence. No remaining high-confidence finding
+  in this diff; no independent agent was used. No detector exception was added.
+- Fresh live QA used the existing authorized test account on the isolated production
+  build at localhost:3005. Disposable sermon `b1c1fd2d-aa9e-4e2e-915e-d626ece9f5e4`
+  is titled `QA scratch proposal 2026-09-22`. Capture reached Saved. A manual draft
+  survived Close/reload and was explicitly recovered. Before Apply the second tab
+  showed the source in its pool and no outline. After Apply that already-open tab
+  showed `QA pinned main` with its source reminder, empty pool and Saved status.
+  This proves desktop browser delivery, not physical-device or installed-PWA behavior.
+- A second synthetic source remains available for live AI QA. Automatic approval
+  review rejected the Compose click before submission because external AI payload
+  consent is required. No live AI result is claimed; automated API/engine evidence
+  is complete. Tabs/server are closed after QA. No production rollout occurred.
+- Public usage contract and the canonical-mechanism registry are updated in
+  `frontend/app/data-engine/README.md` and `MEMORY.md`. Continue with remaining
+  structure/plan/date writer migration; do not repeat completed 4.12 implementation.
+- Final isolated build after the three-language help clarification also passes in
+  **16.93 seconds** (`/tmp/data-engine-proposal-final-build.log`). Runtime code is
+  unchanged since the full test/lint/type/emulator gates. `el check` has no violations
+  or warnings; the QA server is stopped. Remaining live AI acceptance is explicitly
+  separate from completed implementation and automated verification.

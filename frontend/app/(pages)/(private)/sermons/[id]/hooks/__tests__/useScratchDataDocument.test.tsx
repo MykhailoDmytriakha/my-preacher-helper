@@ -9,19 +9,13 @@ import { useScratchDataDocument } from '../useScratchDataDocument';
 import type { EditorState } from '@/data-engine/controller';
 import type { SyncStatus } from '@/data-engine/status';
 import type { DocumentData, Json } from '@/data-engine/types';
-import type { ScratchNote, SermonOutline } from '@/models/models';
+import type { ScratchNote } from '@/models/models';
 
 jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn() }));
 jest.mock('@/utils/clientId', () => ({ newClientId: jest.fn() }));
 
-const outline: SermonOutline = { introduction: [], main: [{ id: 'point', text: 'Applied' }], conclusion: [] };
 const note = (id: string, text = id): ScratchNote => ({ id, text, createdAt: '2026-09-12' });
 const json = (value: unknown) => value as Json;
-const deferred = () => {
-  let resolve!: () => void;
-  const promise = new Promise<void>(done => { resolve = done; });
-  return { promise, resolve };
-};
 
 function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep title', scratch: json([note('a'), note('b')]) }) {
   const session = new DataSession({ resource: { collection: 'sermons', id: 'sermon' }, value: initial, metadata: null });
@@ -127,65 +121,6 @@ describe('useScratchDataDocument', () => {
     expect(s.notes()).toEqual([note('a', 'Edited')]);
   });
 
-  it('applies outline and consumes only selected current notes in one durable update before queuing delivery', async () => {
-    const s = setup(); const durable = deferred(); s.defer(durable.promise);
-    const { result } = renderHook(() => useScratchDataDocument('sermon'));
-    const apply = result.current.applyOutlineAndConsume;
-    result.current.addScratchNote('voice before apply');
-    const pending = apply(outline, ['a', 'a', 'missing']);
-    result.current.addScratchNote('voice during persistence');
-    expect(s.notes().map(item => item.id)).toEqual(['new-2', 'new-1', 'b']);
-    expect(s.draft().outline).toEqual(outline);
-    expect(s.draft().title).toBe('Keep title');
-    expect((s.captured[0]?.scratch as unknown as ScratchNote[]).map(item => item.id)).toEqual(['new-1', 'b']);
-    expect(s.commit).toHaveBeenCalledTimes(1);
-    expect(s.save).not.toHaveBeenCalled();
-    durable.resolve();
-    await expect(pending).resolves.toEqual({ delivery: 'queued' });
-    expect(s.save).toHaveBeenCalledTimes(1);
-    expect(s.notes().map(item => item.id)).toEqual(['new-2', 'new-1', 'b']);
-  });
-
-  it('saves manual outline changes through the same editor while retaining every scratch note', async () => {
-    const s = setup(); const { result, rerender } = renderHook(() => useScratchDataDocument('sermon'));
-    await expect(result.current.onOutlineChange(outline)).resolves.toEqual({ delivery: 'queued' });
-    expect(s.notes()).toEqual([note('a'), note('b')]);
-    expect(s.update).toHaveBeenCalledTimes(1);
-    expect(s.save).toHaveBeenCalledTimes(1);
-    rerender(); expect(result.current.outline).toEqual(outline);
-  });
-
-  it('keeps a newer Apply draft when an earlier command is already pending', async () => {
-    const s = setup();
-    s.session.edit({ ...s.draft(), title: 'Earlier pending edit' });
-    const command = s.session.prepare('pending-operation', 'owner');
-    expect(command).not.toBeNull();
-    const { result, rerender } = renderHook(() => useScratchDataDocument('sermon'));
-    await expect(result.current.applyOutlineAndConsume(outline, ['a'])).resolves.toEqual({ delivery: 'queued' });
-    expect(Object.keys(s.session.checkpoint().pending)).toEqual(['pending-operation']);
-    expect(s.draft()).toMatchObject({ title: 'Earlier pending edit', outline, scratch: [note('b')] });
-    rerender(); expect(result.current.isWritePending).toBe(true);
-  });
-
-  it('surfaces local persistence failures without rolling back the newest draft or submitting Apply', async () => {
-    const s = setup(); s.defer(Promise.reject(new Error('Storage full')));
-    const { result, rerender } = renderHook(() => useScratchDataDocument('sermon'));
-    await expect(result.current.applyOutlineAndConsume(outline, ['a'])).rejects.toThrow('Storage full');
-    expect(s.save).not.toHaveBeenCalled();
-    expect(s.draft().outline).toEqual(outline);
-    expect(s.notes()).toEqual([note('b')]);
-    rerender(); expect(result.current.error).toBe('Storage full');
-    await act(async () => { result.current.addScratchNote('retained after failed Apply'); });
-    expect(s.notes()[0].text).toBe('retained after failed Apply');
-  });
-
-  it('propagates submission failure and never reports an acknowledgement', async () => {
-    const s = setup(); s.save.mockRejectedValueOnce(new Error('Journal unavailable'));
-    const { result } = renderHook(() => useScratchDataDocument('sermon'));
-    await expect(result.current.onOutlineChange(outline)).rejects.toThrow('Journal unavailable');
-    expect(s.draft().outline).toEqual(outline);
-  });
-
   it('uses canonical durability, dirty, delivery and error state to block composing unconfirmed notes', () => {
     const s = setup(); const clean = s.getState();
     const { result, rerender } = renderHook(() => useScratchDataDocument('sermon'));
@@ -197,16 +132,6 @@ describe('useScratchDataDocument', () => {
     s.phase('saved'); rerender(); expect(result.current.isWritePending).toBe(false);
     s.setState(null); rerender(); expect(result.current.scratchRevision).toBe(0);
     expect(result.current.isWritePending).toBe(false);
-  });
-
-  it('never turns missing sermon data into a new document', async () => {
-    const s = setup(null); const { result, rerender } = renderHook(() => useScratchDataDocument(null));
-    expect(result.current.notes).toEqual([]);
-    expect(result.current.outline).toBeUndefined();
-    await expect(result.current.onOutlineChange(outline)).rejects.toThrow('not available');
-    expect(s.save).not.toHaveBeenCalled();
-    expect(s.session.checkpoint().draft).toBeNull();
-    rerender(); expect(result.current.error).toMatch('not available');
   });
 
   it('supports legacy sermons without a scratch field', async () => {

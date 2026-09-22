@@ -74,6 +74,7 @@ function makeManualForm() {
   const listeners = new Set<() => void>();
   const emit = () => listeners.forEach(listener => listener());
   const form: ManagedManualForm = {
+    propose: jest.fn(),
     resolve: jest.fn(),
     getState: () => state && clone(state),
     subscribe: jest.fn(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }),

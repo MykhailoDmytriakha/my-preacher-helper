@@ -46,6 +46,7 @@ export interface ManagedManualForm {
   subscribe(listener: () => void): () => void;
   begin(): Promise<void>;
   update(updater: (value: DocumentData) => DocumentData): Promise<void>;
+  propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void>;
   save(updater?: (value: DocumentData) => DocumentData): Promise<void>;
   cancel(): Promise<void>;
   retry(): Promise<void>;
@@ -834,6 +835,9 @@ export class DataEngine {
       subscribe: listener => { active(); listeners.add(listener); return () => { listeners.delete(listener); }; },
       begin: () => start(),
       update: updater => execute(() => requireScope().update(updater)),
+      propose: (producer, signal) => execute(() => requireScope().propose(async source => {
+        const proposed = await producer(source); active(); return proposed;
+      }, signal)),
       save: updater => execute(async () => {
         if (this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state))) {
           throw new Error('Resolve the failed delivery with Keep local or Accept remote before saving');

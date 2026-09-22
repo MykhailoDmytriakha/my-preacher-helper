@@ -74,6 +74,7 @@ export {
   type ComposePlanTargetKind,
   type ComposePlanSource
 } from './composePlan.zod';
+export type { ComposePlanExpectedSource } from './composePlan.zod';
 export {
   BrainstormSuggestionSchema,
   type BrainstormSuggestion

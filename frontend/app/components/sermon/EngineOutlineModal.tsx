@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { ScratchProposalBoard } from '@/components/sermon/scratch/ScratchProposalBoard';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
@@ -19,9 +20,9 @@ const empty: SermonOutline = { introduction: [], main: [], conclusion: [] };
 const sections = ['introduction', 'main', 'conclusion'] as const;
 
 /** One durable stage owns the outline and every dependent thought assignment. */
-export function EngineOutlineModal({ sermonId, onClose }: { sermonId: string; onClose: () => void }) {
+export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: { sermonId: string; onClose: () => void; withScratch?: boolean }) {
   const { t } = useTranslation();
-  const form = useDataForm({ collection: 'sermons', id: sermonId }, 'outline', fields);
+  const form = useDataForm({ collection: 'sermons', id: sermonId }, withScratch ? 'scratch-outline' : 'outline', withScratch ? [...fields, ['scratch']] : fields);
   const { loading, begin } = form;
   useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
   useScrollLock(true);
@@ -52,11 +53,12 @@ export function EngineOutlineModal({ sermonId, onClose }: { sermonId: string; on
         onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onListRecovery={recovery.refresh} onRecover={recovery.recover} />
-      <OutlineBoard value={outline} onChange={change} directText showNotes isReadOnly={readOnly}
+      {withScratch && sermon ? <ScratchProposalBoard sermonId={sermonId} sermon={sermon} form={form} readOnly={readOnly}
+        valid={valid} onChange={change} /> : <OutlineBoard value={outline} onChange={change} directText showNotes isReadOnly={readOnly}
         getPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.outlinePointId === id).length ?? 0}
-        getSubPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.subPointId === id).length ?? 0} />
+        getSubPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.subPointId === id).length ?? 0} />}
       <form onSubmit={event => { event.preventDefault(); void save(); }}><FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
-        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
+        submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
         submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} /></form>
     </div>
   </FormDialog>;

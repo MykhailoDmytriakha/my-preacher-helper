@@ -1,4 +1,6 @@
-import type { DocumentData, Json } from './types';
+import { serializeContent } from '@/utils/contentFingerprint';
+
+import type { ConflictDetail, DocumentData, FieldChange, Json } from './types';
 
 const sections = ['introduction', 'main', 'conclusion', 'ambiguous'] as const;
 const object = (value: Json | undefined): value is DocumentData => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -43,4 +45,19 @@ function addPlacementDefects(value: DocumentData, thoughtIds: Set<Json>, defects
 export function preservesSermonLinks(previous: DocumentData | null, candidate: DocumentData): boolean {
   const existing = previous ? brokenLinks(previous) : new Set<string>();
   return [...brokenLinks(candidate)].every(defect => existing.has(defect));
+}
+
+/** Moving scratch content into an outline consumes the exact source, not merely its ID. */
+export function scratchConsumptionConflicts(changes: FieldChange[], current: DocumentData): ConflictDetail[] {
+  if (!changes.some(change => change.path[0] === 'outline')) return [];
+  const scratch = changes.find(change => change.path[0] === 'scratch');
+  if (!scratch) return [];
+  const retained = new Set(rows(scratch.after.value).map(note => note.id));
+  const live = rows(current.scratch);
+  return rows(scratch.before.value).filter(note => !retained.has(note.id)).flatMap(note => {
+    const found = live.find(item => item.id === note.id);
+    if (found && serializeContent(found) === serializeContent(note)) return [];
+    return [{ path: ['scratch', String(note.id)], base: { exists: true, value: note }, mine: { exists: false },
+      theirs: found ? { exists: true, value: found } : { exists: false } }];
+  });
 }

@@ -727,3 +727,17 @@ describe('canReplaceSnapshot', () => {
     expect(canReplaceSnapshot(absent(), legacy)).toBe(true);
   });
 });
+
+it('refuses a managed proposal after its parent editor has closed', async () => {
+  const s = setup(); s.engine.setOwner('owner');
+  const editor = await s.engine.openEditor(resource, 'proposal-parent');
+  const form = editor.form('title', [['title']]); await form.begin();
+  const pending = deferred<NonNullable<ResourceSnapshot['value']>>();
+  const proposing = form.propose(async () => pending.promise); await drainMicrotasks();
+  await editor.close({ flush: false });
+  pending.resolve({ ...initial().value!, title: 'Late result' });
+  await expect(proposing).rejects.toThrow('parent editor changed');
+  const recovery = await s.manualScopes.list('owner', resource);
+  expect(recovery.every(row => row.record.stage[0]?.value !== 'Late result')).toBe(true);
+  expect(s.transport.send).not.toHaveBeenCalled(); s.engine.dispose();
+});

@@ -266,3 +266,47 @@ it('recovers an old never-saved opening without guessing an already-saved origin
   expect(ManualScope.restore(test.options, old).getState()).toMatchObject({ openingValue: { title: 'A' }, value: { title: 'Unsent' } });
   expect(() => ManualScope.restore(test.options, { ...old, openingSelection: [] })).toThrow('opening selection');
 });
+
+it('pins async proposal input and stages its result durably without sending', async () => {
+  const test = fixture(); const scope = ManualScope.begin(test.options);
+  const result = deferred<DocumentData>();
+  const producer = jest.fn(async () => result.promise);
+  const pending = scope.propose(producer); await scope.settled(); await Promise.resolve();
+  expect(producer).toHaveBeenCalledWith(snapshot().value);
+  test.captured.checkpoint = new DataSession(snapshot('Remote', 'remote', 2)).checkpoint();
+  result.resolve({ ...snapshot().value!, title: 'Proposal' }); await pending;
+  expect(test.disk().stage[0].value).toBe('Proposal'); expect(test.save).not.toHaveBeenCalled();
+  expect(test.disk().baseline).toEqual(snapshot());
+});
+
+it.each(['edit', 'cancel', 'dispose', 'owner', 'abort'] as const)('rejects late proposal after %s without replacing retained work', async reason => {
+  const test = fixture(); const scope = ManualScope.begin(test.options); await scope.settled();
+  const result = deferred<DocumentData>(), controller = new AbortController();
+  const pending = scope.propose(async () => result.promise, controller.signal); await Promise.resolve();
+  if (reason === 'edit') await scope.update(value => ({ ...value, title: 'Newer typing' }));
+  if (reason === 'cancel') await scope.cancel();
+  if (reason === 'dispose') scope.dispose();
+  if (reason === 'owner') test.changeOwner();
+  if (reason === 'abort') controller.abort();
+  const before = test.disk();
+  result.resolve({ ...snapshot().value!, title: 'Late proposal' });
+  await expect(pending).rejects.toThrow(); expect(test.disk()).toEqual(before); expect(test.save).not.toHaveBeenCalled();
+});
+
+it('accepts only the latest async proposal and rejects out-of-selection output', async () => {
+  const test = fixture(); const scope = ManualScope.begin(test.options); await scope.settled();
+  const first = deferred<DocumentData>(), second = deferred<DocumentData>();
+  const older = scope.propose(async () => first.promise); await Promise.resolve();
+  const newer = scope.propose(async () => second.promise); await Promise.resolve();
+  second.resolve({ ...snapshot().value!, title: 'Latest proposal' }); await newer;
+  first.resolve({ ...snapshot().value!, title: 'Old proposal' }); await expect(older).rejects.toThrow();
+  expect(test.disk().stage[0].value).toBe('Latest proposal');
+  await expect(scope.propose(async source => ({ ...source, verse: 'Unselected' }))).rejects.toThrow('unselected');
+  expect(test.disk().stage[0].value).toBe('Latest proposal');
+});
+
+it('does not call a producer until the source is durably owned', async () => {
+  const test = fixture(); test.persist.mockRejectedValue(new Error('Storage full'));
+  const scope = ManualScope.begin(test.options), producer = jest.fn(async source => source);
+  await expect(scope.propose(producer)).rejects.toThrow('Storage full'); expect(producer).not.toHaveBeenCalled();
+});

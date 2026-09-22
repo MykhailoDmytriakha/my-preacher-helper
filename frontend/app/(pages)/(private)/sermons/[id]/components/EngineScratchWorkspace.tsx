@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus, type RecoveryChoice } from '@/data-engine/DataSyncStatus';
 import { useDataEngine } from '@/data-engine/react.client';
@@ -23,6 +24,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const { t } = useTranslation();
   const { owner } = useDataEngine();
   const scratch = useScratchDataDocument(sermonId);
+  const [proposalOpen, setProposalOpen] = useState(false);
   const latest = useRef(scratch); latest.current = scratch;
   const identity = useMemo(() => ({ owner, sermonId }), [owner, sermonId]);
   const scope = useRef(identity); scope.current = identity;
@@ -89,7 +91,9 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}
       updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
       isScratchWritePending={scratch.isWritePending} scratchRevision={scratch.scratchRevision}
-      onApplyOutline={scratch.applyOutlineAndConsume} onOutlineChange={async outline => { await scratch.onOutlineChange(outline); }}
+      onEditPlan={() => setProposalOpen(true)}
       isReadOnly={isReadOnly || deleted || !owner} />}
+    {proposalOpen && !isReadOnly && !deleted && owner && <EngineOutlineModal key={`${owner}:${sermonId}`} sermonId={sermonId}
+      withScratch onClose={() => setProposalOpen(false)} />}
   </section>;
 }

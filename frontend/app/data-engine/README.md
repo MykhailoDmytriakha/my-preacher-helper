@@ -155,6 +155,24 @@ keystroke into that form, while one outer Save submits the complete action. The 
 itself owns no transport or conflict rules. A pending AI proposal needs the same
 opening discipline; do not apply its old full outline to a newly read document.
 
+Use `form.propose(async source => next)` for asynchronous proposals. The engine
+waits for the captured source to be durable before calling the producer, and rejects
+late output after another edit/proposal, cancellation, owner change or closure.
+The React facade aborts staging when its form unmounts; it does not promise to cancel
+an already running external request. Successful output persists only a selected-field
+stage. It never sends a document command or changes the opening ancestor.
+
+`EngineOutlineModal` with `withScratch` is the example: manual placement and AI
+output stage outline, dependent thought links and scratch consumption together.
+Close retains the draft; Cancel discards unsent intent; Apply submits one action.
+The compose API optionally checks `scratchComposeSource` (title, verse and selected
+note contents/order) against the repository read before calling AI. Legacy callers
+remain compatible. At Apply, `scratchConsumptionConflicts` checks consumed source
+notes in the same server transaction as the outline merge. A changed or missing
+source conflicts the whole action; independent new notes survive. Explicit Keep
+local/Accept remote use the existing shared resolution path. Immutable receipts
+make replay return the original decision, even after the source has changed again.
+
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or

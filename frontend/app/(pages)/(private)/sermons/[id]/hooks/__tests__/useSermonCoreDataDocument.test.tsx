@@ -25,7 +25,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
       await durable;
     }),
     save: jest.fn(async () => undefined),
-    keepLocal: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), recover: jest.fn(), retry: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), edit: jest.fn(), remove: jest.fn(),
   } as ReturnType<typeof useDataDocument>;
   api.commit = jest.fn(async updater => {
     const staged = api.update(updater);
@@ -36,7 +36,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null });
   jest.mocked(useDataForm).mockImplementation(() => ({
     data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
-    keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
+    propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
 }

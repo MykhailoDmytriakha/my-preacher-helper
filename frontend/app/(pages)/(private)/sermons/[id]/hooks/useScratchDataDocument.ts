@@ -1,13 +1,11 @@
 import { useDataDocument } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { moveNoteTo } from '@/utils/scratchOrder';
-import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 
 import type { DocumentData, Json } from '@/data-engine/types';
-import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
+import type { ScratchNote, SermonOutline } from '@/models/models';
 
 type ScratchPatch = { text?: string; section?: ScratchNote['section'] | null };
-export interface QueuedScratchDelivery { delivery: 'queued' }
 
 const notesOf = (document: DocumentData): ScratchNote[] => (document.scratch ?? []) as unknown as ScratchNote[];
 function existing(document: DocumentData | null): DocumentData {
@@ -46,15 +44,6 @@ export function useScratchDataDocument(sermonId: string | null) {
     }
     return next;
   }));
-  const applyOutlineAndConsume = async (outline: SermonOutline, consumedNoteIds: string[]): Promise<QueuedScratchDelivery> => {
-    const consumed = new Set(consumedNoteIds);
-    await document.commit(current => {
-      const sermon = existing(current);
-      return { ...replaceSermonOutline(sermon as unknown as Sermon, outline) as unknown as DocumentData,
-        scratch: notesOf(sermon).filter(note => !consumed.has(note.id)) as unknown as Json };
-    });
-    return { delivery: 'queued' };
-  };
   const state = document.state;
   const isWritePending = Boolean(state && (!state.durable || state.checkpoint.dirty
     || Object.keys(state.checkpoint.pending).length > 0
@@ -70,8 +59,6 @@ export function useScratchDataDocument(sermonId: string | null) {
     deleteScratchNote: (noteId: string) => mutateNotes(notes => notes.filter(note => note.id !== noteId)),
     moveScratchNote: (noteId: string, neighbourIds: string[], index: number) => mutateNotes(notes => moveNoteTo(notes, noteId, neighbourIds, index)),
     setScratchNoteSection: (noteId: string, section: ScratchNote['section'] | null) => updateScratchNote(noteId, { section }),
-    applyOutlineAndConsume,
-    onOutlineChange: (outline: SermonOutline) => applyOutlineAndConsume(outline, []),
     isWritePending,
     scratchRevision: state?.checkpoint.editGeneration ?? 0,
   };

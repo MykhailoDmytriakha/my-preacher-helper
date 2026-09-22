@@ -74,9 +74,18 @@ export const ComposedPlanOutlineSchema = z.object({
   conclusion: z.array(ComposedPlanPointSchema),
 });
 
+/** HTTP-only source assertion; this schema is never sent to a model. */
+export const ComposePlanExpectedSourceSchema = z.object({
+  title: z.string(), verse: z.string(),
+  scratch: z.array(z.object({ id: z.string().min(1), text: z.string(), createdAt: z.string(),
+    section: ComposePlanSectionSchema.nullable() })).max(300),
+});
+export type ComposePlanExpectedSource = z.infer<typeof ComposePlanExpectedSourceSchema>;
+
 export const ComposePlanApiRequestSchema = z.object({
   existingOutline: ComposedPlanOutlineSchema.optional(),
   scratchNoteIds: z.array(z.string().min(1)).optional(),
+  expectedSource: ComposePlanExpectedSourceSchema.optional(),
 }).optional();
 
 export const ComposePlanApiResponseSchema = z.object({

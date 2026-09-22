@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 
+import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine } from '@/data-engine/react.client';
@@ -10,6 +11,7 @@ import { EngineScratchWorkspace } from '../EngineScratchWorkspace';
 import type { RecoveryCheckpoint } from '@/data-engine/controller';
 import type { Json, ResourceSnapshot } from '@/data-engine/types';
 
+jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal: jest.fn(() => <div data-testid="proposal" />) }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/data-engine/react.client', () => ({ useDataEngine: jest.fn() }));
 jest.mock('../../hooks/useScratchDataDocument', () => ({ useScratchDataDocument: jest.fn() }));
@@ -57,10 +59,9 @@ describe('EngineScratchWorkspace', () => {
     expect(screen.getByTestId('sync-status')).toBeInTheDocument();
     expect(panelProps()).toMatchObject({ sermonId: 'sermon', notes: scratch.notes, outline: scratch.outline, scratchRevision: 3, isScratchWritePending: true, isReadOnly: false });
     for (const key of ['addScratchNote', 'restoreScratchNote', 'updateScratchNote', 'deleteScratchNote', 'moveScratchNote'] as const) expect(panelProps()[key]).toBe(scratch[key]);
-    expect(panelProps().onApplyOutline).toBe(scratch.applyOutlineAndConsume);
-    await expect(panelProps().onApplyOutline(scratch.outline!, ['note'])).resolves.toEqual({ delivery: 'queued' });
-    await panelProps().onOutlineChange(scratch.outline!);
-    expect(scratch.onOutlineChange).toHaveBeenCalledWith(scratch.outline);
+    expect(panelProps().onApplyOutline).toBeUndefined();
+    expect(panelProps().onOutlineChange).toBeUndefined();
+    expect(panelProps().onEditPlan).toEqual(expect.any(Function));
     expect(scratch.listRecoverable).not.toHaveBeenCalled();
     await statusProps().onKeepLocal?.(); await statusProps().onAcceptRemote?.(); await statusProps().onRetry?.();
     expect(scratch.keepLocal).toHaveBeenCalledTimes(1); expect(scratch.acceptRemote).toHaveBeenCalledTimes(1); expect(scratch.retry).toHaveBeenCalledTimes(1);
@@ -187,4 +188,12 @@ describe('EngineScratchWorkspace', () => {
     await act(async () => { old.resolve([recovered('stale')]); await first; });
     expect(statusProps().recoveryChoices?.[0].id).toBe('new');
   });
+});
+
+it('opens a pinned proposal form instead of using late outline callbacks', () => {
+  setup(); const view = render(<EngineScratchWorkspace sermonId="sermon" />);
+  act(() => { panelProps().onEditPlan!(); });
+  expect(jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'sermon', withScratch: true });
+  act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
+  expect(screen.queryByTestId('proposal')).not.toBeInTheDocument(); view.unmount();
 });

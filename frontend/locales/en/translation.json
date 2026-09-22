@@ -2093,7 +2093,9 @@
       "unplace": "↩ to pool",
       "selectedHint": "Drag the selected scratch note onto a point or sub-point.",
       "emptyColumn": "No points yet",
-      "clickColumn": "Click here to place the selected scratch note"
+      "clickColumn": "Click here to place the selected scratch note",
+      "proposalHelp": "Review and edit this draft, then Apply. Used scratch notes leave the main list only when you apply. Close keeps the draft; Cancel discards it.",
+      "proposalReady": "The proposal is saved on this device. Review it before applying."
     },
     "applyGuard": {
       "title": "Replace existing sermon structure?",

@@ -1,13 +1,14 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 
-import { useScratchDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useScratchDataDocument';
 import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataDocumentProvider, DataEngineProvider } from '@/data-engine/react.client';
+import { DataDocumentProvider, DataEngineProvider, useDataForm } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
-import type { ResourceSnapshot } from '@/data-engine/types';
+import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import type { Sermon } from '@/models/models';
+import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -41,10 +42,11 @@ it('replaces a scratch outline and detaches affected thoughts in the same acknow
   const source = { ...original, value: { ...original.value!, thoughts: [{ ...a, outlinePointId: 'main' }, b],
     scratch: [{ id: 'note', text: 'Consumed material', createdAt: 'today' }] } };
   const harness = membershipEngineHarness([source]); jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const hook = renderHook(() => useScratchDataDocument('sermon'), { wrapper: ({ children }) =>
+  const hook = renderHook(() => useDataForm(resource, 'scratch-outline', [['outline'], ['thoughts'], ['structure'], ['thoughtsBySection'], ['scratch']]), { wrapper: ({ children }) =>
     <DataEngineProvider><DataDocumentProvider resource={resource}>{children}</DataDocumentProvider></DataEngineProvider> });
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
-  await act(async () => { await hook.result.current.applyOutlineAndConsume({ introduction: [], main: [], conclusion: [] }, ['note']);
+  await act(async () => { await hook.result.current.begin();
+    await hook.result.current.save(current => ({ ...replaceSermonOutline(current as unknown as Sermon, { introduction: [], main: [], conclusion: [] }), scratch: [] }) as unknown as DocumentData);
     await harness.engine.retry(); await settleEngine(); });
   expect(harness.read(resource).value).toMatchObject({ thoughts: [{ ...a, outlinePointId: null, subPointId: null }, b], scratch: [],
     outline: { main: [] } });

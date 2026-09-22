@@ -97,6 +97,31 @@ run('DataEngine against real Firestore transactions', () => {
     expect(await processCommand(owner, { ...attempted, operationId: operationId() })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: [{ text: 'My edit', outlinePointId: 'point' }] } } });
   });
 
+  it('guards scratch consumption atomically and preserves accepted and conflicting receipts on replay', async () => {
+    const initial = await seed('scratch-proposal');
+    const base = { protocol: 1 as const, owner, resource: initial.resource, generation: initial.metadata!.generation, dependsOn: [] };
+    const command: DataCommand = { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['scratch'], before: { exists: true, value: baseValue().scratch }, after: { exists: true, value: [note('b', 'B')] } },
+      { path: ['outline'], before: { exists: false }, after: { exists: true, value: { introduction: [], main: [{ id: 'derived', text: 'A' }], conclusion: [] } } },
+    ] };
+    const remote = await processCommand(owner, { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['scratch'], before: { exists: true, value: baseValue().scratch }, after: { exists: true, value: [note('b', 'B')] } },
+    ] });
+    if (remote.kind !== 'acknowledged') throw new Error('Remote deletion failed');
+    const conflict = await processCommand(owner, command);
+    expect(conflict).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['scratch', 'a'] }] });
+    expect(await readDocument(owner, initial.resource)).toEqual(remote.snapshot);
+    await processCommand(owner, { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['scratch'], before: { exists: true, value: [note('b', 'B')] }, after: { exists: true, value: baseValue().scratch } },
+    ] });
+    expect(await processCommand(owner, command)).toEqual(conflict);
+    const explicit = { ...command, operationId: operationId() };
+    const accepted = await processCommand(owner, explicit); expect(accepted.kind).toBe('acknowledged');
+    const after = await readDocument(owner, initial.resource);
+    expect((await processCommand(owner, explicit)).kind).toBe('acknowledged');
+    expect(await readDocument(owner, initial.resource)).toEqual(after);
+  });
+
   it('atomically creates a sermon in a series and replays a lost response without duplicating either effect', async () => {
     const destination = { collection: 'series', id: `${owner}-create-destination` };
     const seeded = await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource: destination, generation: null, dependsOn: [], kind: 'create',

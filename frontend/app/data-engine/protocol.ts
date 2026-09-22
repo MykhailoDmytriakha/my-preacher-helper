@@ -1,7 +1,7 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 
 import { validateResourceDocument } from './resourceSchemas';
-import { preservesSermonLinks } from './sermonIntegrity';
+import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
@@ -382,7 +382,7 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
       { path: [], base: { exists: true, value: command.baseline }, mine: { exists: false }, theirs: { exists: true, value } },
     ];
   }
-  const conflicts: ConflictDetail[] = [];
+  const conflicts: ConflictDetail[] = command.resource.collection === 'sermons' ? scratchConsumptionConflicts(command.changes, value) : [];
   for (const change of command.changes) {
     const merged = mergeFields(change.before, change.after, readField(value, change.path), change.path);
     putField(value, change.path, merged.value);

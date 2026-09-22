@@ -501,6 +501,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     }
   }, [targetForm, current, identity]);
   const begin = useCallback(() => run(form => form.begin()), [run]);
+  const proposals = useMemo(() => ({ identity, pending: new Set<AbortController>() }), [identity]);
+  useEffect(() => () => { proposals.pending.forEach(controller => controller.abort()); }, [proposals]);
   const error = failure?.identity === identity ? failure.message : document.error;
   return {
     active: target?.state?.record.active ?? false,
@@ -517,6 +519,10 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     status: describeManualSync(target?.state ?? null, document.state, document.status, error),
     error,
     begin,
+    propose: (producer: (source: DocumentData) => Promise<DocumentData>) => {
+      const controller = new AbortController(); proposals.pending.add(controller);
+      return run(form => form.propose(producer, controller.signal)).finally(() => proposals.pending.delete(controller));
+    },
     update: (updater: (draft: DocumentData) => DocumentData) => run(form => form.update(updater), false),
     save: (updater?: (draft: DocumentData) => DocumentData) => run(form => form.save(updater)),
     cancel: () => run(form => form.cancel()),

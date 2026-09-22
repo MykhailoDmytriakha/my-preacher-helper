@@ -68,6 +68,7 @@ export class ManualScope {
   private durable = false;
   private tail: { generation: number; stage: FieldValue[] } | null = null;
   private saves = new Map<number, Promise<{ delivery: 'queued'; requestId: string } | null>>();
+  private proposalVersion = 0;
 
   private constructor(private readonly options: ScopeOptions, record: ManualScopeRecord) { this.record = copy(record); }
 
@@ -128,6 +129,24 @@ export class ManualScope {
     this.record.stage = stage;
     this.record.generation += 1;
     return this.persist();
+  }
+
+  /** Async work produces a durable stage, never a write or a new ancestor. */
+  async propose(producer: (source: DocumentData) => Promise<DocumentData>, signal?: AbortSignal): Promise<void> {
+    this.assertActive();
+    const generation = this.record.generation, version = ++this.proposalVersion;
+    const source = this.value();
+    const assertUnchanged = () => {
+      this.assertActive();
+      if (signal?.aborted || this.record.generation !== generation || this.proposalVersion !== version) {
+        throw new Error('The proposal source changed or the editor closed');
+      }
+    };
+    await this.settled();
+    assertUnchanged();
+    const proposed = await producer(copy(source));
+    assertUnchanged();
+    await this.update(() => proposed);
   }
 
   save(): Promise<{ delivery: 'queued'; requestId: string } | null> {
