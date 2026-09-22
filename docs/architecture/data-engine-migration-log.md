@@ -6,7 +6,7 @@ migrated, in which order, what is already closed and with which evidence.
 
 ## Latest checkpoint — 2026-09-22
 
-Task **4.12 is implemented and locally validated**: manual and AI scratch proposals
+Task **4.12 is implemented, locally validated and live AI-tested**: manual and AI scratch proposals
 now use the shared pinned durable form, and Apply validates consumed source notes
 atomically. See the closing entry at the end of this file for evidence and live QA.
 Whole-app production readiness remains open. Next: finish the structure/plan/date
@@ -14,7 +14,9 @@ writers, then the remaining domain migrations, legacy closure, cloud cost attrib
 Security Rules rollout and physical-device/PWA acceptance. Do not activate production
 collection switches from this checkpoint alone. The 2026-09-19 quota blockage below
 is historical: fresh authenticated browser reads and writes succeeded on 2026-09-22.
-No cloud deployment or production configuration was changed.
+No cloud deployment or production configuration was changed. The later live AI check
+passed on 2026-09-22; the configured provider was Gemini, correcting the earlier
+OpenAI label. See the final entry for that correction and the exact evidence.
 
 ## Read this first — where the work stands on 2026-09-19
 
@@ -1982,3 +1984,40 @@ Group implementation checkpoint in progress:
   unchanged since the full test/lint/type/emulator gates. `el check` has no violations
   or warnings; the QA server is stopped. Remaining live AI acceptance is explicitly
   separate from completed implementation and automated verification.
+
+
+### 2026-09-22 — live AI proposal acceptance after owner approval
+
+- Owner approved sending the synthetic QA sermon inputs for the outstanding live
+  generation check. The first attempt returned `Failed to fetch`: the isolated UI
+  on port 3005 had inherited `NEXT_PUBLIC_API_BASE=http://localhost:3000` from the
+  normal checkout. The QA copy was rebuilt with that variable set to
+  `http://localhost:3005`, without editing repository environment files or the other
+  server. Build passed in 18.06s (`/tmp/data-engine-proposal-same-origin-build.log`).
+  Future isolated QA builds must explicitly set both the collection switches and
+  their own API origin; engine CRUD's relative routes alone do not prove AI wiring.
+- The description given to the owner incorrectly named OpenAI based on the client
+  module name. Runtime actually used the configured Google Gemini provider,
+  `gemini-3.1-flash-lite-preview`. This mismatch was disclosed immediately after
+  reading the server log; no further generation was requested. Only the synthetic
+  QA title, James 1:22, existing synthetic outline/reminder and the single synthetic
+  scratch note were used. Do not infer the actual provider from `openAI.client.ts`:
+  resolve the runtime routing/catalog before naming a data recipient.
+- The real response took **5.2 seconds**, using **545 tokens** (494 input, 51 output).
+  It placed the note as `Acting on the Word` under the existing `QA pinned main`.
+  Semantic check: the heading accurately summarizes acting on the word; the source
+  reminder remained verbatim, with no added factual claims or missing source text.
+  Existing outline text/reminders were retained. `unplaced` was empty.
+- Before Apply, the generated proposal displayed the local-draft status; an already
+  open second tab still showed the original outline and one scratch note. Close and
+  reload offered the proposal through the shared recovery selector. Explicit recovery
+  restored its generated subpoint and verbatim reminder without server publication.
+- After Apply, the second tab updated without navigation to the generated subpoint,
+  retained both reminders, showed an empty scratch pool and **Saved** status. This
+  closes the previously pending live happy-path AI acceptance for task 4.12. Remote
+  conflict/late-response/offline replay coverage remains the automated evidence in
+  the preceding entry; physical-device/installed-PWA acceptance remains outstanding.
+- Fixture: `b1c1fd2d-aa9e-4e2e-915e-d626ece9f5e4`, `QA scratch proposal 2026-09-22`.
+  Server evidence: `/tmp/data-engine-proposal-live-ai-server-corrected.log`.
+  No runtime code changed in this continuation. No deployment or production switch
+  change. QA tabs and server are closed after verification.
