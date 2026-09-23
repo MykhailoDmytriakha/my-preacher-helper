@@ -15,6 +15,7 @@ import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -875,6 +876,38 @@ export default function StudyNoteEditorPage() {
         }
     }, [applyRemote, confirmedDraft, draftPayload, freshness.state, freshness.remote, freshness.diagnostics?.lastServerResponseAt, freshness.diagnostics?.lastServerResult, markSaved]);
 
+    /*
+     * ON THE ENGINE THE ROW IS ALREADY THE ANSWER: the server's copy plus this device's own
+     * submitted work, while the freshness listener that fed `applyRemote` stays silent there.
+     * A clean editor follows the row; a dirty, saving or conflicted one keeps the person's words,
+     * and "take theirs" reads the same row.
+     */
+    const followsEngine = isCollectionOnEngine('studyNotes');
+    const rowPayload = useMemo<NoteDraftPayload | null>(() => existingNote ? {
+        title: existingNote.title || '',
+        content: existingNote.content || '',
+        tags: existingNote.tags || [],
+        scriptureRefs: existingNote.scriptureRefs || [],
+        type: existingNote.type || 'note',
+    } : null, [existingNote]);
+    const adoptRow = useCallback(() => {
+        if (!rowPayload) return;
+        setTitle(rowPayload.title);
+        setContent(rowPayload.content);
+        setTags(rowPayload.tags);
+        setScriptureRefs(rowPayload.scriptureRefs);
+        setType(rowPayload.type);
+        baselineRef.current = rowPayload;
+        setConfirmedDraft(rowPayload);
+        markSaved(rowPayload);
+        serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
+    }, [rowPayload, existingNote, markSaved]);
+    useEffect(() => {
+        if (!followsEngine || isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
+        if (editorIsDirty || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
+        adoptRow();
+    }, [followsEngine, isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, adoptRow]);
+
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
         setTitle(unsavedRecovery.title);
@@ -1240,7 +1273,8 @@ export default function StudyNoteEditorPage() {
                             setResaveNonce((n) => n + 1);
                         }}
                         onTakeTheirs={() => {
-                            applyRemote();
+                            if (followsEngine) adoptRow();
+                            else applyRemote();
                             setSaveConflict(false);
                         }}
                         className="mb-2"

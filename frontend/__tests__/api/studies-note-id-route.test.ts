@@ -147,3 +147,26 @@ describe('studies notes [id] route', () => {
     });
   });
 });
+
+describe('a note deleted through the engine', () => {
+  // The tombstone names its owner only in `_dataEngineOwner`; it carries no `userId`.
+  const tombstone = { id: 'note-1', _dataEngine: { deleted: true, generation: 'g', revision: 3 }, _dataEngineOwner: 'user-1' };
+  beforeEach(() => { jest.clearAllMocks(); mockRepo.getNote.mockResolvedValue(tombstone as any); });
+
+  it('is not found for its owner rather than forbidden', async () => {
+    const response = await route.GET(makeRequest('user-1'), params);
+    expect(response.status).toBe(404);
+  });
+
+  it('is already deleted for its owner, and nothing is written', async () => {
+    const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(mockRepo.deleteNote).not.toHaveBeenCalled();
+  });
+
+  it('stays forbidden for anyone else', async () => {
+    const response = await route.GET(makeRequest('user-2'), params);
+    expect(response.status).toBe(403);
+  });
+});

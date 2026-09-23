@@ -111,6 +111,13 @@ describe('studies share-links route', () => {
       expect(data.error).toBe('Study note not found');
     });
 
+    it('returns 404 for a note its owner deleted through the engine', async () => {
+      mockStudiesRepo.getNote.mockResolvedValue({ _dataEngine: { deleted: true }, _dataEngineOwner: 'user-1' } as any);
+
+      const response = await shareLinksRoute.POST(makeRequest({ userId: 'user-1', noteId: 'note-1' }));
+      expect(response.status).toBe(404);
+    });
+
     it('returns 403 when note belongs to different user', async () => {
       mockStudiesRepo.getNote.mockResolvedValue({ userId: 'user-2' } as any);
 

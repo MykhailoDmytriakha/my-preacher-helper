@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { isOwnersTombstone, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 // Error messages
@@ -18,7 +18,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   try {
     const note = await studiesRepository.getNote(id);
-    if (!note) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    // A note deleted through the engine is a tombstone that names its owner only in
+    // `_dataEngineOwner`: for that owner it is simply gone, not someone else's note.
+    if (!note || isOwnersTombstone(note as unknown as Record<string, unknown>, uid)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (note.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(note);
   } catch (error) {
@@ -38,7 +40,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const existing = await studiesRepository.getNote(id);
-    if (!existing) return NextResponse.json({ success: true });
+    if (!existing || isOwnersTombstone(existing as unknown as Record<string, unknown>, uid)) return NextResponse.json({ success: true });
     if (existing.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     await studiesRepository.deleteNote(id, uid);

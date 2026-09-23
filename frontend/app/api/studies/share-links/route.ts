@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { isOwnersTombstone } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
     }
 
     const note = await studiesRepository.getNote(noteId);
-    if (!note) {
+    if (!note || isOwnersTombstone(note as unknown as Record<string, unknown>, uid)) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_NOT_FOUND }, { status: 404 });
     }
 

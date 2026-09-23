@@ -1,6 +1,7 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { ScratchNote, StudyNote } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
@@ -217,6 +218,7 @@ export async function getStudyNotes(userId: string, filters: NoteFilters = {}): 
 export async function createStudyNote(
   note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }
 ): Promise<StudyNote> {
+  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
   return createStudyNoteViaClient(note);
 }
 
@@ -227,6 +229,7 @@ export async function updateStudyNote(
   /** The note's fields as the editor OPENED them — see the guard's baseline. */
   expectedBaseline: Record<string, unknown> | null = null
 ): Promise<StudyNote & { revision?: number }> {
+  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
   return updateStudyNoteViaClient(id, updates, expectedRevision, expectedBaseline);
 }
 
@@ -364,6 +367,7 @@ export async function cutStudyNoteIntoScratch(
 }
 
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {
+  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
   const authHeaders = await getAuthenticatedRequestHeaders();
   const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, {
     method: 'DELETE',
