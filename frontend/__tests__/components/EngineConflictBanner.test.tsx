@@ -63,4 +63,30 @@ describe('a late conflict on a document no screen has open', () => {
     await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Typed offline' })); await settleEngine(); });
     expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
   });
+
+  it('keeps a refused change copyable and replaces it with the stored version when asked', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await act(async () => { await actions!.commit(resource, current => ({ ...current!, title: 'Refused title', content: 42 as never })); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
+    expect(screen.getByText('Refused title')).toBeInTheDocument();
+    expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
+    expect(harness.server.value?.content).toBe('Opening text');
+  });
+
+  it('asks before deleting a record another device changed, and keeps it when asked', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemote({ content: 'Three new paragraphs from the phone' });
+    await act(async () => { await actions!.remove(resource); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.deleteConflictTitle')).toBeInTheDocument());
+    expect(screen.getByText(/Three new paragraphs from the phone/)).toBeInTheDocument();
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.keepRecord')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.deleteConflictTitle')).not.toBeInTheDocument());
+    expect(harness.server.metadata?.deleted).toBe(false);
+    expect(harness.server.value?.content).toBe('Three new paragraphs from the phone');
+  });
 });

@@ -13,13 +13,13 @@ import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 import type { CollectionState } from './collections';
-import type { EditorState } from './controller';
+import type { EditorRecord, EditorState } from './controller';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
 import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
-import type { DocumentData, ResourceRef } from './types';
+import type { DocumentData, JournalEntry, ResourceRef } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
@@ -90,6 +90,17 @@ export function useDataEngine(): EngineContextValue {
  * exactly this change as one durable request and closes; delivery, retries and conflicts stay
  * with the engine like any save. A screen that shows the document keeps its own editor instead.
  */
+/**
+ * Whether a closed editor's checkpoint waits for the person: the server answered a request with
+ * a conflict or a refusal, or an edited draft has nothing in flight. Queued work does not.
+ */
+export function waitsForDecision(record: EditorRecord, journal: readonly JournalEntry[]): boolean {
+  const failed = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
+  const pending = Object.keys(record.checkpoint.pending);
+  return record.checkpoint.conflicts.length > 0 || pending.some(id => failed.has(id))
+    || (record.checkpoint.dirty && pending.length === 0 && record.prepared === null);
+}
+
 export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
@@ -108,21 +119,33 @@ export function useDocumentActions() {
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /**
      * Settle work the server did not accept as sent — a conflict or a refusal — on a document no
-     * screen has open. Only an editor whose own status allows the choice is touched (the same
-     * `canKeepLocal` / `canAcceptRemote` a pinned editor's buttons use), so work that is merely
-     * queued offline is never cancelled. Resolves to the number of settled drafts.
+     * screen has open, ONCE PER DOCUMENT. One-shot saves made before an answer arrives form a
+     * chain: each later checkpoint carries its ancestors' pending requests and a higher
+     * `editGeneration`, so the tip holds the newest text. Keeping mine saves the tip and only the
+     * tip; its ancestors, and everything on "theirs", are retired without saving. A refusal has
+     * no stored version to accept, so "theirs" there returns the draft to the confirmed copy.
+     * Nothing is touched unless the document really waits for a decision (a conflict, a refused
+     * request, or an edited draft with nothing in flight): work merely queued offline is never
+     * cancelled. Each editor is reopened under its own identity, so a settled checkpoint stops
+     * being recoverable. Resolves to the number of settled checkpoints.
      */
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
       if (!browser || !owner) throw new Error('The data engine is not ready');
+      const [records, journal] = await Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]);
+      if (!records.some(({ record }) => waitsForDecision(record, journal))) return 0;
+      const chain = [...records].sort((a, b) => b.record.checkpoint.editGeneration - a.record.checkpoint.editGeneration);
       let settled = 0;
-      // Reopened under its own identity, not forked: the settled checkpoint then stops being
-      // recoverable instead of leaving its source behind as an orphan.
-      for (const { record } of await browser.engine.listRecoverable(resource)) {
+      for (const [index, { record }] of chain.entries()) {
         const editor = await browser.engine.openEditor(resource, record.editorId);
         try {
-          const status = describeSync(editor.getState(), editor.getObservation(), editor.getDelivery());
-          if (choice === 'mine' && status.canKeepLocal) { await editor.keepLocal(); await editor.save(); settled += 1; }
-          if (choice === 'theirs' && status.canAcceptRemote) { await editor.acceptRemote(); settled += 1; }
+          if (choice === 'mine' && index === 0) {
+            await editor.keepLocal(); await editor.save();
+          } else {
+            await editor.acceptRemote();
+            const { checkpoint } = editor.getState();
+            if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
+          }
+          settled += 1;
         } finally { editor.close({ flush: false }); }
       }
       return settled;

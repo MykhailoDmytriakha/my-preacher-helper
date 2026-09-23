@@ -82,4 +82,45 @@ describe('one action on a document no screen has open', () => {
       await waitFor(async () => { await settleEngine(); expect(harness.server.value?.title).toBe('Typed offline'); });
     });
   });
+
+  describe('a chain of one-shot saves answered after the fact', () => {
+    const offlineChain = async (context: ReturnType<typeof setup>) => {
+      await waitFor(() => expect(context.result.current.ready).toBe(true));
+      const send = jest.mocked(context.harness.transport.send);
+      const deliver = send.getMockImplementation()!;
+      send.mockImplementation(async () => { throw Object.assign(new TypeError('Failed to fetch'), { code: 'unavailable' }); });
+      for (const title of ['Draft one', 'Draft two', 'Draft three']) {
+        await act(async () => { await context.result.current.commit(resource, current => ({ ...current!, title })); await settleEngine(); });
+      }
+      context.harness.silentRemote({ title: 'Written on the phone' });
+      send.mockImplementation(deliver);
+      await act(async () => { await context.harness.engine.retry(resource); await settleEngine(); await settleEngine(); });
+    };
+
+    it.each([false, true])('keeps the newest text whatever order the checkpoints are read in (reversed: %s)', async reversed => {
+      const context = setup();
+      await offlineChain(context);
+      if (reversed) {
+        const list = context.harness.engine.listRecoverable.bind(context.harness.engine);
+        jest.spyOn(context.harness.engine, 'listRecoverable').mockImplementation(async target => (await list(target)).reverse());
+      }
+      await act(async () => { await context.result.current.resolve(resource, 'mine'); await settleEngine(); await settleEngine(); });
+      await waitFor(async () => { await settleEngine(); expect(context.harness.server.value?.title).toBe('Draft three'); });
+      jest.restoreAllMocks();
+      expect(await context.harness.engine.listRecoverable(resource)).toHaveLength(0);
+    });
+
+    it('drops a refused change on "theirs", so the next save is not stuck behind it', async () => {
+      const { harness, result } = setup();
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 42 as never })); await settleEngine(); await settleEngine(); });
+      await act(async () => { await result.current.commit(resource, current => ({ ...current!, verse: 'John 3:16' })); await settleEngine(); await settleEngine(); });
+      expect(harness.server.value?.verse).toBe('John 1:14');
+      await act(async () => { await result.current.resolve(resource, 'theirs'); await settleEngine(); });
+      expect(await harness.engine.listRecoverable(resource)).toHaveLength(0);
+      await act(async () => { await result.current.commit(resource, current => ({ ...current!, verse: 'Romans 8:28' })); await settleEngine(); await settleEngine(); });
+      await waitFor(async () => { await settleEngine(); expect(harness.server.value?.verse).toBe('Romans 8:28'); });
+      expect(harness.server.value?.title).toBe('Grace');
+    });
+  });
 });

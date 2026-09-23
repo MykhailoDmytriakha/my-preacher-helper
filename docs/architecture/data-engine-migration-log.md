@@ -2153,3 +2153,24 @@ log) and an independent Claude reviewer with an open mandate (ten findings, prob
 | Paused legacy mutations of newly migrated collections refused after the upgrade | Open, rollout risk: deploy the client switch when no offline edits are queued on the owner's devices; refused replays surface through the existing write-recovery toasts |
 | A paid AI result could be refused by old malformed data validated with the changed field | Open, P2, not observed: a dry-run of the command before the AI call would remove it |
 | Tombstoned sermon answers 403 (not 404) in AI and audio routes; standard-set seeding is not idempotent across devices; the structure board reads tags from the legacy cache | Open, P3 |
+
+### Third review — the fixes themselves (b4779277, b2e49187)
+
+A focused independent review of the two fix commits found that the conflict door was built per
+checkpoint while one-shot saves form per-document chains. Rather than patch each symptom, the
+resolution was rebuilt around the chain (probed on the real engine: three offline saves plus a
+remote edit → keep mine leaves the newest text whatever order IndexedDB returns the checkpoints;
+a refusal chain leaves nothing stuck and the next save delivers).
+
+| Finding | Disposition |
+|---|---|
+| P0 "Keep my text" could save the oldest draft of a chain (checkpoints read in random key order) | Fixed: `resolve` works per document from the chain tip (highest `editGeneration`); red: without the sort the newest text is lost |
+| P1 a deletion that met a change was offered as "keep my text" with an empty text | Fixed: its own banner kind, showing the other device's text, "Keep it" / "Delete anyway" (new `dataSync.*` strings in en/ru/uk) |
+| P1 a refused one-shot write had no door and blocked every later save of the document | Fixed: `waitsForDecision` counts refused requests; "use server version" returns the draft to the confirmed copy, and the next save delivers |
+| P1 an offline note save could swallow the stale-baseline refusal (acceptance before the local commit) | Fixed: acceptance waits for the engine's local commit, then names it queued or persisted; red with the old acceptance |
+| P2 a deliberate overwrite stayed armed after a queued save | Fixed in `useNoteAutoSave` for both roads |
+| P2 the tag cleanup stopped at the first refusing sermon; the legacy route answered 500 after the tag was gone; the sermons were listed twice | Fixed: each sermon is its own try, failures are logged, the legacy route reports success once the tag is deleted, one listing |
+| P2 no durable "cleanup owed" marker: a cleanup cut short (a timeout) is not resumed | Open: the stray label stays on those thoughts until it is removed by hand; a resumable cleanup needs a marker on the tag tombstone |
+| P3 the banner re-reads this device's IndexedDB every 5 s and on each journal change; acknowledged checkpoints of closed editors are not compacted | Open: local cost only, no database reads |
+| P3 a watcher that joins an in-flight feed-only sync leaves its sweep for the next head change or the timer | Open |
+

@@ -255,6 +255,25 @@ describe('creating a note keeps the durable draft at all times', () => {
     await act(async () => { jest.advanceTimersByTime(6000); });
     expect(updateNote).toHaveBeenCalledTimes(1);
   });
+  it('disarms a deliberate overwrite once it is queued, so later saves are guarded again', async () => {
+    const deliberateOverwriteRef = { current: true };
+    const updateNote = jest.fn(() => ({ ...queuedMutation('outbox:study-note:update:n1', Promise.resolve()), result: new Promise(() => undefined) }));
+    const updated: NoteDraftPayload = { ...payload, content: 'kept on purpose' };
+    renderHook(() =>
+      useNoteAutoSave({
+        noteId: 'n1', isNew: false, isInitialized: true,
+        existingNote: { id: 'n1', ...payload } as unknown as StudyNote,
+        title: updated.title, content: updated.content, tags: updated.tags, scriptureRefs: updated.scriptureRefs, type: updated.type,
+        updateNote: updateNote as never, createNote: jest.fn() as never, uid: 'u1', setCreatedNoteId: jest.fn(),
+        t: ((key: string) => key) as never, baselineRef: { current: null } as never, revisionRef: { current: 1 } as never,
+        deliberateOverwriteRef: deliberateOverwriteRef as never, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(),
+      })
+    );
+    await waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ expectedBaseline: null }));
+    await waitFor(() => expect(deliberateOverwriteRef.current).toBe(false), { timeout: 4000 });
+  });
+
   it.each([2, 1])('acknowledges a queued update only after actual persistence at revision %s', async (savedRevision) => {
     let finish!: () => void;
     const pending = new Promise<void>(resolve => { finish = resolve; });

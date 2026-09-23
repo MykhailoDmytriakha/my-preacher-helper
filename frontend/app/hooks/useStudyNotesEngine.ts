@@ -8,7 +8,7 @@ import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { persistedWrite, queuedMutation, refusedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
+import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNotesApi } from '@/hooks/useStudyNotes';
@@ -21,12 +21,18 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type'];
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
 /**
- * What the editor may say about a write the engine holds on this device. Offline it is a
- * receipt ("queued"), never "Saved": the server has not seen it. Online the engine delivers at
- * once, and a late conflict is offered by EngineConflictBanner.
+ * What the editor may say about a write the engine holds on this device. Acceptance waits for
+ * the engine's local commit — quick, and it works offline — because that is where a stale
+ * baseline is refused; only then is the write named. Offline it is a receipt ("queued"), never
+ * "Saved": the server has not seen it. Online the engine delivers at once, and a late answer is
+ * offered by EngineConflictBanner.
  */
-const accepted = (key: string, request: Promise<unknown>): WriteSubmission =>
-  isBrowserOffline() ? queuedMutation(key, request) : persistedWrite(request);
+const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
+  const persistence = request.then(() => undefined);
+  void persistence.catch(() => undefined);
+  const acceptance = persistence.then((): WriteAcceptance => (isBrowserOffline() ? { kind: 'queued', receipt: key } : { kind: 'persisted' }));
+  return { acceptance, persistence };
+};
 
 export function engineNote(value: DocumentData, id: string): StudyNote {
   const note = value as unknown as StudyNote;

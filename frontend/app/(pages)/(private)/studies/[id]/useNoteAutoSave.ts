@@ -207,6 +207,9 @@ export function useNoteAutoSave({
                  */
                 if (acceptance.kind === 'queued') {
                     baselineRef.current = { title, content, tags, scriptureRefs, type };
+                    // A deliberate overwrite is one send; left armed, every later save
+                    // would go out unguarded until the next persisted one.
+                    if (wasDeliberate) deliberateOverwriteRef.current = false;
                     // A paused mutation can later become persisted. Retire its exact
                     // payload then, never merely because the queue accepted it.
                     void submission.persistence.then(async () => {

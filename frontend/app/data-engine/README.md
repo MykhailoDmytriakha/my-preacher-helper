@@ -112,13 +112,17 @@ baseline, capture exactly that change as one durable request and close. It is to
 missing provider (`ready` is false), because such menus render in both deployments.
 
 Such an action is accepted once the engine holds it on this device. If the server then answers
-with a conflict, the list shows the stored version and this device's words wait in the closed
-editor's checkpoint. `resolve(resource, 'mine' | 'theirs')` settles that checkpoint in place
-(reopened under its own editor identity, so it stops being recoverable) and only when the
-editor's own status allows the choice, so work merely queued offline is never cancelled.
-`EngineConflictBanner`, mounted once in the private layout next to the legacy outbox banner,
-lists such checkpoints for the one-shot collections (prayers, service orders, study notes,
-tags, templates) and offers keep-mine / take-theirs.
+with a conflict or a refusal, the list shows the stored version while this device's words wait
+in closed checkpoints — and later saves of that document wait behind them. Saves made before
+an answer form a chain: each later checkpoint carries its ancestors' pending requests and a
+higher `editGeneration`, so the tip holds the newest text. `resolve(resource, 'mine' | 'theirs')`
+settles the whole chain ONCE PER DOCUMENT: mine saves the tip only, theirs retires everything
+(for a refusal, which has no stored version to accept, the draft returns to the confirmed copy).
+It acts only when `waitsForDecision` says the document waits for the person, so work merely
+queued offline is never cancelled. `EngineConflictBanner`, mounted once in the private layout
+next to the legacy outbox banner, shows one entry per document for the one-shot collections:
+keep-mine / take-theirs for a conflict, copy / use-server-version for a refusal, keep / delete
+anyway for a deletion that met a change.
 
 Legacy client writers of an engine collection refuse with the typed `data-engine-required`
 error (`assertLegacyClientWriteAllowed`). Sermons carry that guard on every SDK and HTTP writer,

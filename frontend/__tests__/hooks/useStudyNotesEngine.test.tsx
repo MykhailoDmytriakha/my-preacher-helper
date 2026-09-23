@@ -97,6 +97,26 @@ describe('study notes on the engine', () => {
     } finally { online.mockRestore(); }
   });
 
+  it('surfaces a stale refusal offline even when the local commit answers late', async () => {
+    const { result } = render();
+    store.set('n1', note({ content: 'Phone paragraph', rev: { note: 5 } }));
+    // IndexedDB answers after several tasks, not in the same microtask.
+    actions.commit.mockImplementationOnce(async (resource: { id: string }, updater: (value: Row | null) => Row | null) => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      const next = updater(store.get(resource.id) ?? null);
+      if (next) store.set(resource.id, next);
+    });
+    const online = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      let outcome: unknown;
+      await act(async () => {
+        outcome = await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Laptop rewrite' }, expectedBaseline: opened }), () => undefined)
+          .then(acceptance => acceptance, error => error);
+      });
+      expect(isStaleWriteError(outcome)).toBe(true);
+    } finally { online.mockRestore(); }
+  });
+
   it('creates a note without relations and deletes through the engine', async () => {
     const { result } = render();
     let id = '';

@@ -101,7 +101,8 @@ export async function deleteTag(userId: string, tagName: string) {
   try {
     // Every sermon that carries the name must be writable on some road before anything is
     // removed; otherwise the tag would vanish while its label stays on those thoughts.
-    const carriers = (await listOwnedDocuments(userId, 'sermons')).filter(({ data }) => Array.isArray(data.thoughts)
+    const sermons = await listOwnedDocuments(userId, 'sermons');
+    const carriers = sermons.filter(({ data }) => Array.isArray(data.thoughts)
       && data.thoughts.some((thought: { tags?: unknown }) => Array.isArray(thought?.tags) && thought.tags.includes(tagName)));
     carriers.forEach(({ data }) => assertServerWritable(data, 'sermons'));
     const affectedThoughts = carriers.reduce((count, { data }) => count
@@ -115,8 +116,9 @@ export async function deleteTag(userId: string, tagName: string) {
       if (tag.data().required || isRequiredTag(tagName) || isRequiredTag(tag.id)) throw new Error('RESERVED_NAME');
       transaction.delete(tag.ref);
     });
-    // One sermon at a time, each on its own road — production never had a ceiling here.
-    await removeTagFromSermons(userId, tagName);
+    // One sermon at a time, each on its own road — production never had a ceiling here. The tag
+    // is already gone: a sermon that could not be cleaned is logged, not reported as a failed delete.
+    await removeTagFromSermons(userId, tagName, carriers);
     return { affectedThoughts };
   } catch (error) {
     console.error(`Error deleting tag ${tagName} for user ${userId}:`, error);

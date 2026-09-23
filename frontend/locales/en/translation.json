@@ -50,7 +50,11 @@
     "chooseRecovery": "Choose a draft",
     "recover": "Recover selected draft",
     "recoveryHint": "Recovery opens a separate copy. The original saved draft stays on this device.",
-    "actionFailed": "Could not complete this action."
+    "actionFailed": "Could not complete this action.",
+    "deleteConflictTitle": "This record changed after you deleted it",
+    "deleteConflictBody": "Another device changed it before the deletion arrived. This is what it holds now.",
+    "deleteAnyway": "Delete anyway",
+    "keepRecord": "Keep it"
   },
   "diagnostics": {
     "collecting": "Collecting technical information…",

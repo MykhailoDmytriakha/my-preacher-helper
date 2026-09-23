@@ -180,4 +180,19 @@ describe('a tag deleted through the engine', () => {
     expect((documents.get('sermons/foreign')!.thoughts as DocumentData[])[0].tags).toEqual(['Topic']);
     expect((documents.get('sermons/plain-7')!.thoughts as DocumentData[])[0].tags).toEqual(['Other']);
   });
+
+  it('skips a sermon that refuses and still cleans the ones after it', async () => {
+    const { processCommand } = await import('@/data-engine/server');
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    documents.set('tags/t1', { ...tagValue, _dataEngine: tagMarker });
+    // An old thought without a date: the engine refuses any rewrite of this sermon's thoughts.
+    documents.set('sermons/broken', { ...base, thoughts: [{ id: 'old', text: 'Old', tags: ['Topic'] }], _dataEngine: marker });
+    documents.set('sermons/later', { ...base, thoughts: [tagged('c', ['Topic'])] });
+    const result = await processCommand('owner-1', { protocol: 1, operationId: 'delete-tag-2', owner: 'owner-1',
+      resource: { collection: 'tags', id: 't1' }, generation: 'gt', dependsOn: [], kind: 'delete', baseline: tagValue });
+    expect(result.kind).toBe('acknowledged');
+    expect((documents.get('sermons/later')!.thoughts as DocumentData[])[0].tags).toEqual([]);
+    expect(errors).toHaveBeenCalledWith(expect.stringContaining('sermon broken'), expect.anything());
+    errors.mockRestore();
+  });
 });

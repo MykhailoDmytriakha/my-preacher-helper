@@ -153,19 +153,27 @@ const withoutTag = (thoughts: DocumentData[], name: string): DocumentData[] => t
  * legacy sermon by a legacy transaction that recomputes from the document as read, an engine
  * sermon by an ordinary update command. The engine used to fold this into the tag's own
  * relation transaction, bounded at 100 documents, and so refused to delete a tag for anyone
- * with a hundred sermons; production never had that ceiling. Resolves to the sermons changed.
+ * with a hundred sermons; production never had that ceiling. A sermon that refuses is logged
+ * and skipped, never allowed to strand the others. Pass the owner's sermons when already read.
  */
-export async function removeTagFromSermons(owner: string, name: string): Promise<number> {
-  let changed = 0;
-  for (const { id, data } of await listOwnedDocuments(owner, 'sermons')) {
+export async function removeTagFromSermons(owner: string, name: string,
+  sermons?: { id: string; data: DocumentData }[]): Promise<{ changed: number; failed: number }> {
+  let changed = 0, failed = 0;
+  for (const { id, data } of sermons ?? await listOwnedDocuments(owner, 'sermons')) {
     if (!carriesTag(data.thoughts, name)) continue;
-    await writeOwnedDocument({
-      owner, resource: { collection: 'sermons', id },
-      legacy: () => mutateLegacyResource({ collection: 'sermons', id }, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
-        ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts'),
-      engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutTag(current.thoughts as DocumentData[], name) } : current,
-    });
-    changed += 1;
+    // One sermon that refuses must not strand the rest: each is its own write.
+    try {
+      await writeOwnedDocument({
+        owner, resource: { collection: 'sermons', id },
+        legacy: () => mutateLegacyResource({ collection: 'sermons', id }, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
+          ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts'),
+        engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutTag(current.thoughts as DocumentData[], name) } : current,
+      });
+      changed += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`A deleted tag could not leave sermon ${id}`, error);
+    }
   }
-  return changed;
+  return { changed, failed };
 }
