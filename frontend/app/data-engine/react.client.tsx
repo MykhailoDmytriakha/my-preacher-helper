@@ -106,6 +106,27 @@ export function useDocumentActions() {
     commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null) =>
       withEditor(resource, editor => editor.commit(updater)),
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
+    /**
+     * Settle work the server did not accept as sent — a conflict or a refusal — on a document no
+     * screen has open. Only an editor whose own status allows the choice is touched (the same
+     * `canKeepLocal` / `canAcceptRemote` a pinned editor's buttons use), so work that is merely
+     * queued offline is never cancelled. Resolves to the number of settled drafts.
+     */
+    resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
+      if (!browser || !owner) throw new Error('The data engine is not ready');
+      let settled = 0;
+      // Reopened under its own identity, not forked: the settled checkpoint then stops being
+      // recoverable instead of leaving its source behind as an orphan.
+      for (const { record } of await browser.engine.listRecoverable(resource)) {
+        const editor = await browser.engine.openEditor(resource, record.editorId);
+        try {
+          const status = describeSync(editor.getState(), editor.getObservation(), editor.getDelivery());
+          if (choice === 'mine' && status.canKeepLocal) { await editor.keepLocal(); await editor.save(); settled += 1; }
+          if (choice === 'theirs' && status.canAcceptRemote) { await editor.acceptRemote(); settled += 1; }
+        } finally { editor.close({ flush: false }); }
+      }
+      return settled;
+    },
   }), [browser, owner, withEditor]);
 }
 

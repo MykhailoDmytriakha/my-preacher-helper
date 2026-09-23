@@ -82,10 +82,14 @@ No claim that whole-app operation stays inside free quota is currently justified
 
 Legacy writers do not move the engine head. The previous implementation only
 re-listed on navigation or explicit refresh; an open list could stay stale forever.
-`CollectionReader` schedules one sweep **five minutes** after the preceding request
-settles, only while `legacyOpen`, watched, visible and online. Opening a list,
+`CollectionReader` schedules one sweep **five minutes** after the preceding full
+listing, only while `legacyOpen`, watched, visible and online. Opening a list,
 returning to a hidden tab and reconnecting sweep at once, so the timer is a safety
-net for a list left open, not the freshness path. All consumers in one engine share
+net for a list left open, not the freshness path. An engine write in between only
+moves the head, and the reader answers it from the feed (the changed rows), never
+with a full listing: until 2026-09-23 every head change re-listed the collection,
+so each autosave cost a read per row for every tab watching that list, and the
+sweep timer restarted after each of those reads. All consumers in one engine share
 it. Slow requests never overlap; failures retry after 30 seconds and back off up to 120 seconds;
 head observations cannot bypass that backoff. Failure cooldown also applies before
 the first response establishes legacy mode and to failed closed-collection feeds. Hidden/offline/unwatched readers

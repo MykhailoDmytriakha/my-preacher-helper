@@ -452,6 +452,35 @@ describe('a collection legacy writers may still change', () => {
     s.reader.dispose(); s.observer.dispose();
   });
 
+  it('reads an engine write from the feed instead of listing the whole collection again', async () => {
+    const s = mixed(); s.seed(row('a'));
+    let state!: CollectionState;
+    const stop = s.reader.watch(collection, next => { state = next; }); await settle();
+    jest.mocked(s.transport.list).mockClear(); jest.mocked(s.transport.changes).mockClear();
+    // Twenty autosaves in a row: each moves the head, none may cost a read per row.
+    for (let index = 0; index < 20; index += 1) {
+      s.change(row('a', index + 2, `draft ${index}`)); s.head(); await settle();
+    }
+    expect(s.transport.list).not.toHaveBeenCalled();
+    expect(s.transport.changes).toHaveBeenCalled();
+    expect(state.snapshots.find(snapshot => snapshot.resource.id === 'a')?.value).toMatchObject({ content: 'draft 19' });
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
+
+  it('keeps the sweep on its own clock while engine writes keep arriving', async () => {
+    const s = mixed(); s.seed(row('a'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.transport.list).mockClear();
+    for (let minute = 1; minute <= 5; minute += 1) {
+      await jest.advanceTimersByTimeAsync(59_000);
+      s.change(row('a', minute + 1, `minute ${minute}`)); s.head(); await settle();
+      await jest.advanceTimersByTimeAsync(1_000);
+    }
+    // Five minutes of writes, one per minute: the listing still came due once.
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
+
   it('does not overlap a slow sweep and stops polling once the server closes legacy writes', async () => {
     const s = mixed(); const stop = s.reader.watch(collection, jest.fn()); await settle();
     const response = pending<CollectionPage>();

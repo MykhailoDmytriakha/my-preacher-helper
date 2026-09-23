@@ -5,6 +5,7 @@ import { ReactNode, Suspense } from 'react';
 
 import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
+import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
@@ -54,6 +55,8 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
                 surfaces on reconnect, when the person may be on another screen.
                 Inside the existing gutter — its own container leaked into pages. */}
             <OutboxConflictBanner />
+            {/* The same door for engine writes the server refused after this device kept them. */}
+            <EngineConflictBanner />
             <Breadcrumbs />
           </div>
         </>

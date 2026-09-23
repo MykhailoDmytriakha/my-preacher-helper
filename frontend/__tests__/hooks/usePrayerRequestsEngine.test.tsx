@@ -21,11 +21,11 @@ function render() {
   jest.mocked(useDocumentActions).mockReturnValue(actions as never);
   jest.mocked(useDataCollection).mockReturnValue({ state: { snapshots: [], documents: [{ resource: { collection: 'prayerRequests', id: 'p1' }, value: stored }],
     complete: true, freshness: 'server', checking: false, version: 1, error: null }, loading: false, error: null, refresh: jest.fn() } as never);
-  return renderHook(() => usePrayerRequestsEngine('u', true));
+  return renderHook(() => usePrayerRequestsEngine('u', 'p1', true));
 }
 
 describe('prayers on the engine', () => {
-  beforeEach(() => { jest.clearAllMocks(); current = stored; });
+  beforeEach(() => { jest.clearAllMocks(); current = stored; window.localStorage.clear(); });
 
   it('refuses an edit of a field rewritten elsewhere, keeps the document, and keeping mine overwrites on purpose', async () => {
     const { result } = render();
@@ -37,6 +37,18 @@ describe('prayers on the engine', () => {
     await act(async () => { await result.current.keepMineOnConflict(); });
     expect(current.description).toBe('Laptop text');
     expect(result.current.saveConflict).toBeNull();
+  });
+
+  it('keeps the refused text across leaving the screen, and retires it only when the resend lands', async () => {
+    const first = render();
+    await act(async () => { await first.result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined); });
+    first.unmount();
+    const second = render();
+    expect(second.result.current.saveConflict).toEqual(expect.objectContaining({ payload: { id: 'p1', updates: { description: 'Laptop text' } } }));
+    await act(async () => { await second.result.current.keepMineOnConflict(); });
+    expect(current.description).toBe('Laptop text');
+    second.unmount();
+    expect(render().result.current.saveConflict).toBeNull();
   });
 
   it('adds an update, answers the prayer and creates a new one through engine actions', async () => {

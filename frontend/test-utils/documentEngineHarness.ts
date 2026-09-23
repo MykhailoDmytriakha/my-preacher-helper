@@ -57,6 +57,10 @@ export function documentEngineHarness(initial: ResourceSnapshot) {
     return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
   };
   return { createBrowser, transport, commits, checkpoints, get engine() { return engine; }, get server() { return copy(server); },
+    /** Another device's save the engine has not heard about yet: the next command meets it as a conflict. */
+    silentRemote: (patch: DocumentData) => {
+      server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1 }, value: { ...server.value, ...patch } };
+    },
     remote: async (patch: DocumentData) => {
       server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1 }, value: { ...server.value, ...patch } };
       await engine.retry(initial.resource); await settleEngine();

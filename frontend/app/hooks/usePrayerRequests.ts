@@ -87,7 +87,7 @@ type StatusMutationVars = {
  */
 export function usePrayerRequests(userId?: string | null, activeDocId?: string | null) {
   const onEngine = isCollectionOnEngine('prayerRequests');
-  const engine = usePrayerRequestsEngine(userId, onEngine);
+  const engine = usePrayerRequestsEngine(userId, activeDocId, onEngine);
   const legacy = useLegacyPrayerRequests(userId, activeDocId, !onEngine);
   return onEngine ? engine : legacy;
 }

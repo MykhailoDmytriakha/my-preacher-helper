@@ -37,4 +37,49 @@ describe('one action on a document no screen has open', () => {
     await waitFor(async () => { await settleEngine(); expect(harness.server.metadata?.deleted).toBe(true); });
     expect(harness.server.value).toBeNull();
   });
+
+  describe('a change the server did not accept as sent', () => {
+    const conflicted = async () => {
+      const context = setup();
+      await waitFor(() => expect(context.result.current.ready).toBe(true));
+      context.harness.silentRemote({ title: 'Written on the phone' });
+      await act(async () => { await context.result.current.commit(resource, current => ({ ...current!, title: 'Written on the laptop' })); });
+      await waitFor(async () => { await settleEngine(); expect(await context.harness.engine.listRecoverable(resource)).toHaveLength(1); });
+      expect(context.harness.server.value?.title).toBe('Written on the phone');
+      return context;
+    };
+
+    it('keeps this device\'s version when asked, and nothing is left waiting', async () => {
+      const { harness, result } = await conflicted();
+      let settled = 0;
+      await act(async () => { settled = await result.current.resolve(resource, 'mine'); });
+      expect(settled).toBe(1);
+      await waitFor(async () => { await settleEngine(); expect(harness.server.value?.title).toBe('Written on the laptop'); });
+      expect(harness.server.value?.sourceNoteIds).toEqual(['note-a']);
+    });
+
+    it('takes the stored version when asked, dropping this device\'s draft', async () => {
+      const { harness, result } = await conflicted();
+      await act(async () => { await result.current.resolve(resource, 'theirs'); });
+      await settleEngine();
+      expect(harness.server.value?.title).toBe('Written on the phone');
+      expect(await harness.engine.listRecoverable(resource)).toHaveLength(0);
+    });
+
+    it('never cancels work that is only waiting for the network', async () => {
+      const { harness, result } = setup();
+      await waitFor(() => expect(result.current.ready).toBe(true));
+      const send = jest.mocked(harness.transport.send);
+      const deliver = send.getMockImplementation()!;
+      send.mockImplementation(async () => { throw Object.assign(new TypeError('Failed to fetch'), { code: 'unavailable' }); });
+      await act(async () => { await result.current.commit(resource, current => ({ ...current!, title: 'Typed offline' })); });
+      await settleEngine();
+      let settled = -1;
+      await act(async () => { settled = await result.current.resolve(resource, 'theirs'); });
+      expect(settled).toBe(0);
+      send.mockImplementation(deliver);
+      await act(async () => { await harness.engine.retry(resource); });
+      await waitFor(async () => { await settleEngine(); expect(harness.server.value?.title).toBe('Typed offline'); });
+    });
+  });
 });

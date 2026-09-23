@@ -456,7 +456,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 | Plan templates | 5 | Integrated 2026-09-23 (`e9f1102f`): list, create, edit with `rev.template` refusal, delete; legacy writers guarded | Preview pass |
 | User settings | 18 | **Stays legacy by decision, 2026-09-23** — `users` is left out of every switch list. Settings are toggles, not typed text; they are written from public pages and at sign-in where no engine is mounted (language switch, profile), co-written by server metering/referral/admin through the Admin SDK, and the browser heartbeat (`lastSeenAt`) is allowed by the prepared rules only on a non-engine document. Moving them would need three write roads for no protected content | Revisit only with a server settings route through `serverEdit.server.ts` and a rules carve-out for `lastSeenAt`; never set `NEXT_PUBLIC_DATA_ENGINE_ENABLED=true` (it would include `users`) |
 | Tags | 4 | Integrated 2026-09-23 (`e9f1102f`): list, custom create/edit/delete, required tags stay protected; legacy writers guarded | Preview pass |
-| Prayer categories | — | Integrated with tags (`e9f1102f`) | Preview pass |
+| Prayer categories | — | No application code reads or writes a `prayerCategories` collection (only `categoryId` on a prayer); the engine registration exists but no switch is needed | Nothing until a screen uses it |
 | Calendar / care views | — | Read-only projections over the domains above | Follows whatever its underlying domains do |
 
 Total legacy write surface: **118 exported operations across 11 services**, none

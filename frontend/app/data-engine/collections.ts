@@ -73,6 +73,15 @@ interface CollectionEntry {
   legacyOpen: boolean;
   /** Whether the server has been asked at all since this reader was created. */
   asked: boolean;
+  /**
+   * A full mixed-mode listing is owed: the list was opened, the tab came back, the network
+   * returned, someone asked explicitly or the sweep timer fired. An engine write only moves the
+   * head, and the feed answers it row by row; re-listing the collection on every head change made
+   * each autosave cost a read per row for every open tab.
+   */
+  sweepDue: boolean;
+  /** When the last full listing finished (ms); the sweep timer counts from here, not from any read. */
+  sweptAt: number | null;
   refreshTimer: ReturnType<typeof setTimeout> | null;
   refreshFailures: number;
 }
@@ -163,6 +172,7 @@ export class CollectionReader {
     const entry = this.entry(collection);
     const subscription: Listener = state => listener(state);
     entry.listeners.add(subscription);
+    entry.sweepDue = true;
     this.notify(subscription, entry.state);
     this.startHead(entry);
     const generation = this.generation;
@@ -187,7 +197,10 @@ export class CollectionReader {
     };
   }
 
-  refresh(collection: string): Promise<CollectionState> { return this.requestRefresh(collection, true); }
+  refresh(collection: string): Promise<CollectionState> {
+    this.entry(collection).sweepDue = true;
+    return this.requestRefresh(collection, true);
+  }
 
   private requestRefresh(collection: string, explicit: boolean): Promise<CollectionState> {
     const entry = this.entry(collection);
@@ -239,7 +252,7 @@ export class CollectionReader {
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
         loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
-        legacyOpen: false, asked: false, refreshTimer: null, refreshFailures: 0 };
+        legacyOpen: false, asked: false, sweepDue: true, sweptAt: null, refreshTimer: null, refreshFailures: 0 };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -309,7 +322,7 @@ export class CollectionReader {
     if (!entry.cursor?.initialized) return this.hydrate(entry, generation);
     // A complete mixed-mode listing already catches the feed up from its page anchor.
     // Reading the same feed before it adds cost but cannot prove legacy freshness.
-    if (entry.legacyOpen) return this.hydrate(entry, generation);
+    if (entry.legacyOpen && entry.sweepDue) return this.hydrate(entry, generation);
     try { await this.changes(entry, generation, entry.cursor.version, true); }
     catch (error) {
       if (errorCode(error) !== 'feed-reset') throw error;
@@ -320,8 +333,9 @@ export class CollectionReader {
     // write raises no feed event: the feed just said "nothing changed" about a collection in
     // which a council may have been edited or deleted. The whole list is the only witness, and
     // reconcileAbsence turns an unversioned row that vanished into a confirmed absence.
-    // The cost is one listing per synchronisation, so it lasts only while the server says so.
-    if (entry.legacyOpen) await this.hydrate(entry, generation);
+    // The listing is owed only when a sweep is due (sweepDue); an engine write in between is read
+    // from the feed above. It lasts only while the server says so.
+    if (entry.legacyOpen && entry.sweepDue) await this.hydrate(entry, generation);
   }
 
   private async hydrate(entry: CollectionEntry, generation: number): Promise<void> {
@@ -358,6 +372,8 @@ export class CollectionReader {
     const version = await this.changes(entry, generation, anchor!, false, seen, latestPageVersion);
     await this.reconcileAbsence(entry, generation, seen, candidates);
     await this.commitCursor(entry, generation, { version, initialized: true });
+    entry.sweepDue = false;
+    entry.sweptAt = Date.now();
   }
 
   private async changes(entry: CollectionEntry, generation: number, after: number, commit: boolean,
@@ -485,6 +501,7 @@ export class CollectionReader {
     for (const entry of this.entries.values()) {
       this.clearRefreshTimer(entry);
       entry.state = { ...entry.state, checking: false, freshness: entry.state.snapshots.length || entry.state.complete ? 'cache' : 'unknown' };
+      entry.sweepDue = true;
       this.emit(entry);
       if (this.online && this.visible && entry.listeners.size) this.background(this.requestRefresh(entry.collection, false), entry, this.generation);
     }
@@ -502,10 +519,13 @@ export class CollectionReader {
     const generation = this.generation;
     const delay = entry.refreshFailures > 0
       ? Math.min(Math.max(120_000, this.retryIntervalMs), this.retryIntervalMs * 2 ** Math.min(entry.refreshFailures, 16))
-      : this.legacySweepIntervalMs;
+      // Counted from the last full listing: feed reads after every autosave must not keep
+      // pushing the sweep away for as long as someone types.
+      : Math.max(0, (entry.sweptAt ?? Date.now()) + this.legacySweepIntervalMs - Date.now());
     entry.refreshTimer = setTimeout(() => {
       entry.refreshTimer = null;
       if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {
+        entry.sweepDue = true;
         this.background(this.requestRefresh(entry.collection, false), entry, generation);
       }
     }, delay);

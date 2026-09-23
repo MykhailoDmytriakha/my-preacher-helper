@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
@@ -13,7 +14,6 @@ import type { PrayerRequest, PrayerStatus } from '@/models/models';
 
 type CreatePrayerPayload = Pick<PrayerRequest, 'userId' | 'title'> &
   Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & { recoveryDraft?: string };
-interface Conflict<T> { payload: T; actualRevision: number }
 type SaveConflictPayload = { id: string; updates: Partial<PrayerRequest> };
 type StatusConflictPayload = { id: string; status: PrayerStatus; answerText?: string };
 
@@ -26,9 +26,11 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
  * screens do not change. Rows come from the engine collection; each action is one engine
  * command. The legacy guard is kept: a field changed elsewhere since the person opened it
  * (`expectedBaseline`) refuses the save with a StaleWriteError, the screen offers
- * keep-mine / take-theirs, and keep-mine re-sends without the baseline.
+ * keep-mine / take-theirs, and keep-mine re-sends without the baseline. The refused text is held
+ * durably per prayer (usePersistedConflict, the same keys as the legacy hook), so leaving the
+ * screen or reloading does not throw it away.
  */
-export function usePrayerRequestsEngine(userId: string | null | undefined, enabled: boolean) {
+export function usePrayerRequestsEngine(userId: string | null | undefined, activeDocId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   /**
    * A queued write is accepted at launch, so a later failure has no other voice: the legacy
@@ -44,8 +46,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, enabl
   });
   const collection = useDataCollection(enabled && userId ? 'prayerRequests' : null);
   const actions = useDocumentActions();
-  const [saveConflict, setSaveConflictState] = useState<Conflict<SaveConflictPayload> | null>(null);
-  const [statusConflict, setStatusConflictState] = useState<Conflict<StatusConflictPayload> | null>(null);
+  const [saveConflict, setSaveConflict] = usePersistedConflict<SaveConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE);
+  const [statusConflict, setStatusConflict] = usePersistedConflict<StatusConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_STATUS_AGGREGATE);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const pending = useRef(new Set<string>());
 
@@ -82,8 +84,9 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, enabl
     expectedBaseline?: Record<string, unknown> | null): WriteSubmission =>
     once(`prayer:update:${id}:${JSON.stringify(updates)}`, async () => {
       const refusal = await guardedEdit(id, PRAYER_CORE_AGGREGATE, updates as DocumentData, expectedBaseline);
-      if (refusal) { setSaveConflictState({ payload: { id, updates }, actualRevision: refusal.actualRevision }); throw refusal; }
-      setSaveConflictState(current => current?.payload.id === id ? null : current);
+      if (refusal) { setSaveConflict({ payload: { id, updates }, actualRevision: refusal.actualRevision }, id); throw refusal; }
+      // Retired only on a write that landed, and for the prayer it belongs to.
+      setSaveConflict(null, id);
     });
 
   const statusPatch = (status: PrayerStatus, answerText?: string): DocumentData => {
@@ -95,8 +98,8 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, enabl
     expectedBaseline?: Record<string, unknown> | null): WriteSubmission =>
     once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
       const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, statusPatch(status, answerText), expectedBaseline);
-      if (refusal) { setStatusConflictState({ payload: { id, status, answerText }, actualRevision: refusal.actualRevision }); throw refusal; }
-      setStatusConflictState(current => current?.payload.id === id ? null : current);
+      if (refusal) { setStatusConflict({ payload: { id, status, answerText }, actualRevision: refusal.actualRevision }, id); throw refusal; }
+      setStatusConflict(null, id);
     });
 
   const resolve = async (run: () => Promise<StaleWriteError | null>, clear: () => void) => {
@@ -127,12 +130,13 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, enabl
     resolvingConflict,
     // Keeping mine re-sends the same fields without the baseline: a deliberate overwrite.
     keepMineOnConflict: () => saveConflict ? resolve(() => guardedEdit(saveConflict.payload.id, PRAYER_CORE_AGGREGATE,
-      saveConflict.payload.updates as DocumentData, null), () => setSaveConflictState(null)) : Promise.resolve(),
-    takeTheirsOnConflict: async () => { setSaveConflictState(null); },
+      saveConflict.payload.updates as DocumentData, null), () => setSaveConflict(null, saveConflict.payload.id)) : Promise.resolve(),
+    // The engine rows are already the current copy: taking theirs only retires the held text.
+    takeTheirsOnConflict: async () => { setSaveConflict(null, saveConflict?.payload.id); },
     statusConflict,
     keepMineOnStatusConflict: () => statusConflict ? resolve(() => guardedEdit(statusConflict.payload.id, PRAYER_STATUS_AGGREGATE,
-      statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflictState(null)) : Promise.resolve(),
-    takeTheirsOnStatusConflict: () => { setStatusConflictState(null); },
+      statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflict(null, statusConflict.payload.id)) : Promise.resolve(),
+    takeTheirsOnStatusConflict: () => { setStatusConflict(null, statusConflict?.payload.id); },
     deletePrayer: (id: string): WriteSubmission => once(`prayer:delete:${id}`, () => actions.remove(resource(id))),
     addUpdate: (id: string, text: string): WriteSubmission => {
       const entry = { id: newClientId(), text, createdAt: now() };
