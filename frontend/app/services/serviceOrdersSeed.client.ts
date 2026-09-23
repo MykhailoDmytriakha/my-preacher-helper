@@ -1,5 +1,6 @@
 'use client';
 
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { accountChangedError, codeForHttpStatus } from '@/services/ownerHttpTransport.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
@@ -18,6 +19,7 @@ import type { ServiceOrder } from '@/models/models';
 export async function seedServiceOrdersOnServer(
   drafts: Omit<ServiceOrder, 'id'>[]
 ): Promise<ServiceOrder[]> {
+  assertLegacyClientWriteAllowed('serviceOrders');
   const owner = resolveOwnerUid();
   const headers = await getAuthenticatedRequestHeaders();
   if (!headers.Authorization) {

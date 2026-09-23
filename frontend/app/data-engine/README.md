@@ -114,7 +114,14 @@ missing provider (`ready` is false), because such menus render in both deploymen
 Legacy client writers of an engine collection refuse with the typed `data-engine-required`
 error (`assertLegacyClientWriteAllowed`). Sermons carry that guard on every SDK and HTTP writer,
 so a screen that was not migrated fails where it can be seen instead of writing around the
-engine. A legacy read of an owner's tombstone answers 404, not 403 (`isOwnersTombstone`).
+engine. Tags, categories, plan templates, prayers and service orders carry it on their legacy
+writers too (service orders at the `serviceOrders.service.ts` facade and the seed call). A
+legacy read of an owner's tombstone answers 404, not 403 (`isOwnersTombstone`); routes that
+match on `userId` already do, because a tombstone names its owner only in `_dataEngineOwner`.
+
+A domain hook that keeps its screens unchanged exposes the legacy hook's exact interface
+(`ServiceOrdersApi`, the prayer hook) and picks the road with `isCollectionOnEngine`, calling
+both hooks with complementary `enabled` flags so the unused one stays silent.
 
 Browser composition outside React may use `browser.client.ts`. Type-only imports
 from the module are allowed. Runtime imports of internal modules by features are

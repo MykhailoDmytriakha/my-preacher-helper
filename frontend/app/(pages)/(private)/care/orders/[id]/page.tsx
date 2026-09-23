@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { Chip } from '@/components/ui/Chip';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
@@ -694,6 +695,18 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * plainly and selectably, with what happened said above them.
    */
   const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
+  /*
+   * ON THE ENGINE THE ROW IS ALREADY THE ANSWER. Its value is the server's copy plus this
+   * device's own submitted work, and the freshness banner that offered the legacy road's
+   * "take theirs" stays silent there. With nothing unsaved on screen the page follows the row;
+   * a new title starts a new sitting, so a rename is judged against the title now on screen.
+   */
+  const followsEngine = isCollectionOnEngine('serviceOrders');
+  useEffect(() => {
+    if (!followsEngine || !cachedOrder || hasLocalChanges || acceptedOrder === cachedOrder) return;
+    if (acceptedOrder && acceptedOrder.title !== cachedOrder.title) setSession(newClientId());
+    setAcceptedOrder(cachedOrder);
+  }, [followsEngine, cachedOrder, hasLocalChanges, acceptedOrder]);
   const acceptRemote = async () => {
     if (hasLocalChanges || refreshing) return;
     setRefreshing(true);

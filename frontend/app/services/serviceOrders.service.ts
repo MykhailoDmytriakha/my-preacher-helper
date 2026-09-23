@@ -6,6 +6,7 @@
  * guard, or into the offline outbox — and a later change of that answer touches one file.
  */
 
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { createServiceOrderOnServer, deleteServiceOrderOnServer, setServiceOrderRanksOnServer, updateServiceOrderMetaOnServer, updateServiceOrderStepsOnServer } from '@/services/serviceOrderEditing.client';
 import {
   createServiceOrderViaClient,
@@ -21,6 +22,12 @@ import { isBrowserOffline } from '@/utils/connectivity';
 
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 
+/** Every legacy write refuses once the engine owns the collection (useServiceOrdersEngine writes there). */
+const legacyWrite = <T,>(write: () => Promise<T>): Promise<T> => {
+  try { assertLegacyClientWriteAllowed('serviceOrders'); } catch (error) { return Promise.reject(error); }
+  return write();
+};
+
 export const getAllServiceOrders = (userId: string): Promise<ServiceOrder[]> =>
   getAllServiceOrdersViaClient(userId);
 
@@ -29,16 +36,17 @@ export const getAllServiceOrdersFromServer = (userId: string): Promise<ServiceOr
   getAllServiceOrdersFromServerViaClient(userId);
 
 export const createServiceOrder = (order: Omit<ServiceOrder, 'id'>): Promise<ServiceOrder> =>
-  isBrowserOffline() ? createServiceOrderViaClient(order) : createServiceOrderOnServer(order);
+  legacyWrite(() => isBrowserOffline() ? createServiceOrderViaClient(order) : createServiceOrderOnServer(order));
 
-export const deleteServiceOrder = (id: string): Promise<void> => isBrowserOffline() ? deleteServiceOrderViaClient(id) : deleteServiceOrderOnServer(id);
+export const deleteServiceOrder = (id: string): Promise<void> =>
+  legacyWrite(() => isBrowserOffline() ? deleteServiceOrderViaClient(id) : deleteServiceOrderOnServer(id));
 
 export const setServiceOrderRank = (id: string, rank: number): Promise<void> =>
-  isBrowserOffline() ? setServiceOrderRankViaClient(id, rank) : setServiceOrderRanksOnServer([{ id, rank }]);
+  legacyWrite(() => isBrowserOffline() ? setServiceOrderRankViaClient(id, rank) : setServiceOrderRanksOnServer([{ id, rank }]));
 
 /** All the ranks of a spread-out list, committed together or not at all. */
 export const setServiceOrderRanks = (entries: { id: string; rank: number }[]): Promise<void> =>
-  isBrowserOffline() ? setServiceOrderRanksViaClient(entries) : setServiceOrderRanksOnServer(entries);
+  legacyWrite(() => isBrowserOffline() ? setServiceOrderRanksViaClient(entries) : setServiceOrderRanksOnServer(entries));
 
 export const updateServiceOrderMeta = (
   id: string,
@@ -47,14 +55,14 @@ export const updateServiceOrderMeta = (
   expectedBaseline: Record<string, unknown> | null = null,
   userId?: string
 ): Promise<number | null> =>
-  isBrowserOffline()
+  legacyWrite(() => isBrowserOffline()
     ? updateServiceOrderMetaViaClient(id, updates, expectedRevision, expectedBaseline, userId)
-    : updateServiceOrderMetaOnServer(id, updates, expectedRevision, expectedBaseline);
+    : updateServiceOrderMetaOnServer(id, updates, expectedRevision, expectedBaseline));
 
 /** Resolves with the steps as they were COMMITTED, or null when the write changed nothing. */
 export const updateServiceOrderSteps = (
   id: string,
   mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null
-): Promise<ServiceOrderStep[] | null> => isBrowserOffline()
+): Promise<ServiceOrderStep[] | null> => legacyWrite(() => isBrowserOffline()
   ? updateServiceOrderStepsViaClient(id, mutate)
-  : updateServiceOrderStepsOnServer(id, mutate);
+  : updateServiceOrderStepsOnServer(id, mutate));
