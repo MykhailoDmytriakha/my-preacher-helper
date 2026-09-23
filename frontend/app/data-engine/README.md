@@ -119,6 +119,11 @@ writers too (service orders at the `serviceOrders.service.ts` facade and the see
 legacy read of an owner's tombstone answers 404, not 403 (`isOwnersTombstone`); routes that
 match on `userId` already do, because a tombstone names its owner only in `_dataEngineOwner`.
 
+`users` stays on the legacy road by decision: list collections explicitly in
+`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` / `DATA_ENGINE_COLLECTIONS` and leave `users` out
+(`docs/architecture/data-engine-migration-log.md`, Domains). The all-or-nothing
+`*_DATA_ENGINE_ENABLED=true` switches would include it and are not for rollout.
+
 A domain hook that keeps its screens unchanged exposes the legacy hook's exact interface
 (`ServiceOrdersApi`, the prayer hook) and picks the road with `isCollectionOnEngine`, calling
 both hooks with complementary `enabled` flags so the unused one stays silent.
