@@ -11,7 +11,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertLegacyWritable, legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
 
 import type { AudioChunk } from '@/types/audioGeneration.types';
 
@@ -38,7 +39,7 @@ export async function PUT(
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
         }
 
-        assertLegacyWritable(sermonDoc.data());
+        assertServerWritable(sermonDoc.data(), 'sermons');
         const body = await request.json();
         if (!body.chunks || !Array.isArray(body.chunks)) {
             return NextResponse.json(
@@ -61,11 +62,11 @@ export async function PUT(
         if (mode) {
             updates['audioMetadata.mode'] = mode;
         }
-        await updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), updates);
+        await updateOwnedDocument(uid, { collection: 'sermons', id: sermonId }, updates);
 
         return NextResponse.json({ success: true, count: chunks.length });
     } catch (error) {
-    const boundary = legacyBoundaryResponse(error);
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
         console.error('Bulk chunk update error:', error);
         return NextResponse.json(

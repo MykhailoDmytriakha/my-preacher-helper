@@ -4,11 +4,14 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
-import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-import { Sermon, Insights } from '@/models/models';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse } from '@/data-engine/serverEdit.server';
+import { Sermon } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSermonTopics } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
+
+import { storeInsights } from '../storeInsights';
 
 // POST /api/insights/topics?sermonId=<id>
 export async function POST(request: Request) {
@@ -37,10 +40,7 @@ export async function POST(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    assertLegacyWritable(sermon);
-
-    // Get current insights to preserve other sections
-    const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
+    assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
 
     // Generate topics using OpenAI
     const topics = await generateSermonTopics(sermon, uid);
@@ -49,19 +49,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to generate topics" }, { status: 500 });
     }
 
-    // Update the sermon with new topics but preserve other insights
-    const updatedInsights: Insights = {
-      ...currentInsights,
-      topics
-    };
-
-    // Update the sermon with insights using sermonsRepository instead of direct adminDb
-    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights }, 'insights');
+    // Other sections are taken from the sermon as it is when the result lands, not as it was read.
+    const updatedInsights = await storeInsights(uid, sermonId, sermon.insights, current => ({ ...current, topics }));
     console.log("Topics route: Updated sermon with generated topics");
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
-    const boundary = legacyBoundaryResponse(error);
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error('Topics route: Error generating topics:', error);

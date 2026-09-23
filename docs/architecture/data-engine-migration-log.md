@@ -4,7 +4,30 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
-## Latest checkpoint — 2026-09-22
+## Latest checkpoint — 2026-09-22 (evening, Opus continuation)
+
+Task **4.14 server writers** and **4.15 sermon-page features** are implemented and validated
+locally. Server routes that store AI/transcription/audio results (`api/thoughts`, five
+`api/insights/*`, four `api/sermons/[id]/audio/*`) now write an engine-owned sermon through
+`processCommand` (`app/data-engine/serverEdit.server.ts`) instead of answering 426. The engine
+sermon page shows dictation, brainstorm, insights and the outline editor entry again; only
+transport differs between modes. Gates: 736 suites / 7336 tests, TypeScript, lint 0 errors /
+15 inherited warnings. Live (localhost:3005, test account, sermon `b1c1fd2d…`): a synthesized
+voice recording posted to `/api/thoughts` was refused by the legacy road and stored through the
+engine with its structure placement in one command (Admin read: revision 8, `structure.ambiguous`
+holds the thought); a second one reached an open page without reload. Topics then verses were
+generated on the engine document; verses kept the topics (the change is applied to the copy
+current at write time). Found and fixed on the way: the migration gate's hydration mismatch and
+the "local copies" archive growing on every visit. Open: `BUG-20260922-firestore-sdk-crashes-on-denied-engine-head`
+(SDK 11.2.0 race on a denied head listener while protective rules are not deployed).
+Next: structure page (4.16), plan page (4.17), then the remaining domains.
+
+Browser note for the next agent: the Chrome extension tab counts as hidden whenever the window
+is covered, and the engine observer deliberately sleeps on hidden pages. Live checks ran in a
+private headless Chrome driven over the DevTools protocol (scratchpad `cdp.mjs`), which is always
+visible and does not touch the owner's windows.
+
+## Earlier checkpoint — 2026-09-22
 
 Task **4.13 is implemented and validated locally and in Chrome**: preach-date
 CRUD and preached status use the shared pinned durable form from the menu, calendar

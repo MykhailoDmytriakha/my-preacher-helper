@@ -721,6 +721,10 @@ useEffect(() => {
   isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
   const [isEngineOutlineOpen, setIsEngineOutlineOpen] = useState(false);
+  // One entry to outline editing in both modes: the engine opens its pinned form.
+  const openPlanEditor = engineEnabled
+    ? (isReadOnly ? undefined : () => setIsEngineOutlineOpen(true))
+    : (legacyReadOnly ? undefined : () => setIsPlanEditorOpen(true));
   // Bumped when the plan editor changes the outline, to force SermonOutline to
   // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
   const [outlineRefreshKey, setOutlineRefreshKey] = useState(0);
@@ -1513,6 +1517,19 @@ useEffect(() => {
     setSermon(updatedSermon);
   }, [setSermon]);
 
+  /**
+   * The server stores a transcribed thought itself, so a result paid for survives the person
+   * leaving mid-transcription. On an engine document it lands with its place in the structure
+   * in the same command (api/thoughts/route.ts); the open page only reads the document again.
+   */
+  const placeAudioThought = async (newThought: Thought) => {
+    if (core) {
+      await core.retry().catch(() => undefined);
+      return;
+    }
+    await appendNewThoughtWithStructure(newThought);
+  };
+
   const handleNewRecording = async (audioBlob: Blob) => {
     if (!sermon) return;
     setIsProcessing(true);
@@ -1522,8 +1539,7 @@ useEffect(() => {
 
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
-      const newThought: Thought = { ...thoughtResponse };
-      await appendNewThoughtWithStructure(newThought);
+      await placeAudioThought({ ...thoughtResponse });
       setStoredAudioBlob(null);
       setTranscriptionError(null);
     } catch (error) {
@@ -1544,8 +1560,7 @@ useEffect(() => {
 
     try {
       const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
-      const newThought: Thought = { ...thoughtResponse };
-      await appendNewThoughtWithStructure(newThought);
+      await placeAudioThought({ ...thoughtResponse });
       setStoredAudioBlob(null);
       setTranscriptionError(null);
       setRetryCount(0);
@@ -1566,7 +1581,7 @@ useEffect(() => {
   // Reusable renderers moved after all hooks
   const renderClassicContent = (options?: { withBrainstorm?: boolean, portalRef?: React.Ref<HTMLDivElement> }) => (
     <ClassicThoughtsPanel
-      withBrainstorm={engineEnabled ? false : options?.withBrainstorm}
+      withBrainstorm={options?.withBrainstorm}
       portalRef={options?.portalRef}
       isClassicMode={uiMode === 'classic'}
       activeCount={activeCount}
@@ -1914,14 +1929,11 @@ useEffect(() => {
           tagCounts={tagCounts}
           totalThoughts={sermon?.thoughts?.length ?? 0}
           hasInconsistentThoughts={hasInconsistentThoughts}
-          onOpenPlanEditor={!legacyReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
+          onOpenPlanEditor={openPlanEditor}
         />
       </div>
 
-      {engineEnabled && uiMode !== 'raw' && <button type="button" disabled={isReadOnly}
-        className={`rounded-lg px-4 py-2 disabled:opacity-50 ${UI_COLORS.button.plan.bg} ${UI_COLORS.button.plan.hover} ${UI_COLORS.button.plan.text}`}
-        onClick={() => setIsCreateModalOpen(true)}>{t('manualThought.addManual')}</button>}
-      {!engineEnabled && uiMode !== 'raw' && (
+      {uiMode !== 'raw' && (
         <AudioRecorderPortalBridge
           RecorderComponent={AudioRecorder}
           portalTarget={uiMode === 'prep' ? prepPortal : classicPortal}
@@ -1933,7 +1945,7 @@ useEffect(() => {
           transcriptionError={transcriptionError}
           onClearError={handleClearError}
           hideKeyboardShortcuts={uiMode === 'prep'}
-          isReadOnly={!isMagicAvailable}
+          isReadOnly={!isMagicAvailable || isReadOnly}
           isRecorderDisabled={dictationBlocked}
           recorderTitle={dictationBlocked && dictationBlockedKey ? t(dictationBlockedKey) : undefined}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
@@ -1974,7 +1986,7 @@ useEffect(() => {
                     tagCounts={tagCounts}
                     totalThoughts={sermon?.thoughts?.length ?? 0}
                     hasInconsistentThoughts={hasInconsistentThoughts}
-                    onOpenPlanEditor={!legacyReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
+                    onOpenPlanEditor={openPlanEditor}
                   />
                 </div>
                 {engineEnabled && !isReadOnly && <button type="button" onClick={() => setIsEngineOutlineOpen(true)}
@@ -1990,7 +2002,8 @@ useEffect(() => {
                   onSubPointDeleted={handleSubPointDeleted}
                   isReadOnly={legacyReadOnly}
                 />
-                {!engineEnabled && <KnowledgeSection sermon={sermon} updateSermon={handleSermonUpdate} />}
+                {/* On an engine document the insights route stores the result itself; the page reads it back. */}
+                {sermon && !(core && isReadOnly) && <KnowledgeSection sermon={sermon} updateSermon={core ? () => { void core.retry().catch(() => undefined); } : handleSermonUpdate} />}
                 {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
               </div>
             </div>

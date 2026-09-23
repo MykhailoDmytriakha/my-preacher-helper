@@ -18,7 +18,8 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   }, [enabled, attempt]);
   if (state === 'ready') return <>{children}</>;
   return <div role={state === 'failed' ? 'alert' : 'status'} className="m-4 rounded-xl border p-4">
-    <p>{t(state === 'failed' ? 'legacyRecovery.preservationFailed' : 'legacyRecovery.preserving')}</p>
+    {/* Rendered before the language is detected on the server, so the text differs by design. */}
+    <p suppressHydrationWarning>{t(state === 'failed' ? 'legacyRecovery.preservationFailed' : 'legacyRecovery.preserving')}</p>
     {state === 'failed' && <button type="button" className="mt-3 rounded border px-3 py-2" onClick={() => setAttempt(value => value + 1)}>{t('dataSync.retry')}</button>}
   </div>;
 }

@@ -145,3 +145,18 @@ it('archives sermon list, owner-scoped detail, calendar and every paused dashboa
   await preserveLegacyQueryCache(collection => collection === 'sermons');
   expect(await listLegacyQueryCopies('owner')).toHaveLength(9);
 });
+
+describe('which legacy queries the persisted cache may keep', () => {
+  const { isEngineOwnedLegacyQuery } = jest.requireActual('../legacyQueryRecovery.client') as typeof import('../legacyQueryRecovery.client');
+  const onEngine = (collection: string) => collection === 'sermons';
+
+  it('keeps an engine-owned collection out of the persisted cache so it is not archived again on the next start', () => {
+    expect(isEngineOwnedLegacyQuery(['sermon', 'owner', 'sermon-1'], onEngine)).toBe(true);
+    expect(isEngineOwnedLegacyQuery(['calendarSermons', 'owner', 'a', 'b'], onEngine)).toBe(true);
+  });
+
+  it('leaves collections still on the legacy road and unrelated queries persisted', () => {
+    expect(isEngineOwnedLegacyQuery(['groups', 'owner'], onEngine)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['userSettings', 'owner'], onEngine)).toBe(false);
+  });
+});

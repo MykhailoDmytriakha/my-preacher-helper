@@ -10,7 +10,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertLegacyWritable, legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk } from '@/types/audioGeneration.types';
@@ -48,7 +49,7 @@ export async function PUT(
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
         }
 
-        assertLegacyWritable(sermonDoc.data());
+        assertServerWritable(sermonDoc.data(), 'sermons');
         const body = await request.json();
         const newText: string = body.text;
         if (!newText || typeof newText !== 'string') {
@@ -67,9 +68,18 @@ export async function PUT(
             text: newText,
         };
 
-        // 4. Save back
-        await updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), {
-            audioChunks: chunks,
+        // 4. Save back. On an engine document only this chunk's text changes, on the copy
+        // current at write time.
+        await writeOwnedDocument({
+            owner: uid,
+            resource: { collection: 'sermons', id: sermonId },
+            legacy: () => updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), { audioChunks: chunks }),
+            engine: current => {
+                const stored = Array.isArray(current.audioChunks) ? [...current.audioChunks] : [];
+                if (chunkIndex >= stored.length) throw new ServerEditError('chunk-out-of-range', 409);
+                stored[chunkIndex] = { ...(stored[chunkIndex] as Record<string, never>), text: newText };
+                return { ...current, audioChunks: stored };
+            },
         });
 
         return NextResponse.json({
@@ -81,7 +91,7 @@ export async function PUT(
             },
         });
     } catch (error) {
-    const boundary = legacyBoundaryResponse(error);
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
         console.error('Chunk update error:', error);
         return NextResponse.json(

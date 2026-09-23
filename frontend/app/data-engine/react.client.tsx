@@ -8,6 +8,7 @@ import { newClientId } from '@/utils/clientId';
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
+import { isEngineOwnedLegacyQuery } from './legacyQueryRecovery.client';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -34,6 +35,11 @@ const EDITOR_CHANGED = 'The active editor changed';
 /** Public recovery UI seam; storage and owner fencing remain inside the engine. */
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
   return useDiscovery(options);
+}
+
+/** Whether the persisted query cache may keep this query; engine-owned collections are session-only. */
+export function shouldPersistLegacyQuery(queryKey: readonly unknown[]): boolean {
+  return !isEngineOwnedLegacyQuery(queryKey, isCollectionOnEngine);
 }
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */

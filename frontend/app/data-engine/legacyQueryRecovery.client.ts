@@ -28,6 +28,16 @@ const QUERY_SOURCES: Record<string, { collection: string; length: number; kind: 
   sermon: { collection: 'sermons', length: 3, kind: OWNER_DETAIL },
   calendarSermons: { collection: 'sermons', length: 4, kind: 'list' },
 };
+/**
+ * A legacy query whose collection the engine now owns. Its rows are a session-only view, so the
+ * persisted cache must not keep them: the next start would archive a fresh read as if it were an
+ * unsaved copy from the previous version, and the count of "local copies" would grow on every visit.
+ */
+export function isEngineOwnedLegacyQuery(queryKey: readonly unknown[], enabled: (collection: string) => boolean): boolean {
+  const source = QUERY_SOURCES[String(queryKey[0])];
+  return Boolean(source && enabled(source.collection));
+}
+
 function querySource(query: unknown, enabled: (collection: string) => boolean) {
   if (!object(query) || !Array.isArray(query.queryKey) || !object(query.state)) return null;
   const key = query.queryKey, source = QUERY_SOURCES[String(key[0])];

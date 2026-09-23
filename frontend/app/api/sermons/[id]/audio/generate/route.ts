@@ -17,7 +17,8 @@ import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { resolveSections } from '@/api/services/sermonTextService';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertLegacyWritable, legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
@@ -242,7 +243,7 @@ export async function POST(
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
         }
 
-        assertLegacyWritable(sermonDoc.data());
+        assertServerWritable(sermonDoc.data(), 'sermons');
         const body = await request.json();
         const sections: string | string[] = body.sections ?? 'all'; // 'all' | section key | array of keys
 
@@ -511,7 +512,7 @@ export async function POST(
                     // Update metadata once per generation (first batch only — later
                     // batches would just rewrite identical values).
                     if (batchOffset === 0) {
-                        await updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), {
+                        await updateOwnedDocument(uid, { collection: 'sermons', id: sermonId }, {
                             'audioMetadata.provider': provider,
                             'audioMetadata.voice': voice,
                             'audioMetadata.model': requestedTarget.modelId,
@@ -554,7 +555,7 @@ export async function POST(
         if (isUsageCapReachedError(error)) {
             return usageCapResponse(error);
         }
-        return legacyBoundaryResponse(error) ?? NextResponse.json(
+        return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
             { error: error instanceof Error ? error.message : 'Generation failed' },
             { status: 500 }
         );

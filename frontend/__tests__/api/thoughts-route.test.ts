@@ -77,6 +77,12 @@ jest.mock('@/config/firebaseAdminConfig', () => {
   };
 });
 
+// The engine's command door: only its transport is replaced, the route's edit is real.
+jest.mock('@/data-engine/server', () => ({
+  readDocument: jest.fn(),
+  processCommand: jest.fn(),
+}));
+
 // Mock UUID
 jest.mock('uuid', () => ({
   v4: jest.fn(() => 'mock-uuid'),
@@ -239,5 +245,44 @@ describe('Thoughts API POST', () => {
       text: "Formatted text",
       tags: ["Примеры"]
     }));
+  });
+
+  it('lands the voice thought on an engine-owned sermon through the command door, placed in the structure', async () => {
+    process.env.DATA_ENGINE_COLLECTIONS = 'sermons';
+    try {
+      const engineServer = await import('@/data-engine/server');
+      const metadata = { protocol: 1, generation: 'g1', revision: 3, deleted: false };
+      const value = { userId: 'user-1', title: 'Grace', verse: 'John 1:14', date: '2026-09-01', thoughts: [],
+        structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
+      sermonsRepoMock.sermonsRepository.fetchSermonById.mockResolvedValueOnce({ ...value, _dataEngine: metadata });
+      // The legacy bridge refuses an engine-owned document inside its own transaction.
+      sermonsRepoMock.sermonsRepository.updateSermonData.mockRejectedValueOnce(
+        Object.assign(new Error('data-engine-required'), { code: 'data-engine-required', status: 426 }));
+      (engineServer.readDocument as jest.Mock).mockResolvedValue({ resource: { collection: 'sermons', id: mockSermonId }, value, metadata });
+      (engineServer.processCommand as jest.Mock).mockImplementation(async (_owner: string, command: { operationId: string }) => ({
+        kind: 'acknowledged', operationId: command.operationId,
+        snapshot: { resource: { collection: 'sermons', id: mockSermonId }, value, metadata: { ...metadata, revision: 4 } },
+      }));
+      generateThoughtStructuredMock.mockResolvedValue({
+        meaningSuccessfullyPreserved: true, originalText: mockTranscription, formattedText: 'Grace is a gift', tags: [],
+      });
+      const formData = new FormData();
+      formData.append('audio', mockAudioBlob);
+      formData.append('sermonId', mockSermonId);
+      jest.spyOn(console, 'log').mockImplementation();
+
+      const response = await POST(createMockRequest(formData));
+
+      expect(response.status).toBe(200);
+      const [owner, command] = (engineServer.processCommand as jest.Mock).mock.calls[0];
+      expect(owner).toBe('user-1');
+      expect(command).toMatchObject({ kind: 'update', owner: 'user-1', generation: 'g1',
+        resource: { collection: 'sermons', id: mockSermonId } });
+      const after = Object.fromEntries(command.changes.map((change: { path: string[]; after: { value: unknown } }) => [change.path[0], change.after.value]));
+      expect(after.thoughts).toEqual([expect.objectContaining({ id: 'mock-uuid', text: 'Grace is a gift' })]);
+      expect((after.structure as { ambiguous: string[] }).ambiguous).toEqual(['mock-uuid']);
+    } finally {
+      delete process.env.DATA_ENGINE_COLLECTIONS;
+    }
   });
 });

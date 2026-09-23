@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
-import { deleteLegacyDocument, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { deleteLegacyDocument, isDataEngineRequired, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 
@@ -111,7 +111,8 @@ export class SermonsRepository {
       await updateLegacyDocument(docRef, dataWithTimestamp);
       console.log(`Firestore: updated sermon data ${id} successfully`);
     } catch (error) {
-      console.error(`Error updating sermon data for ${id}:`, error);
+      // An engine-owned document refuses the legacy road by design; the caller takes the engine one.
+      if (!isDataEngineRequired(error)) console.error(`Error updating sermon data for ${id}:`, error);
       throw error;
     }
   }

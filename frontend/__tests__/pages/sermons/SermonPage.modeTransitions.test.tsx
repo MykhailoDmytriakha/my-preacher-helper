@@ -26,10 +26,24 @@ import useSermon from '@/hooks/useSermon';
 
 import { TestProviders } from '../../../test-utils/test-providers';
 
+jest.mock('@/services/thought.service', () => ({
+  ...jest.requireActual('@/services/thought.service'),
+  createAudioThought: jest.fn(async () => ({ id: 'voice-thought', text: 'Spoken', tags: [], date: '2026-09-22' })),
+}));
+jest.mock('@/services/structure.service', () => ({
+  ...jest.requireActual('@/services/structure.service'),
+  updateStructure: jest.fn(async () => undefined),
+}));
+
 // Mock dynamic AudioRecorder
 jest.mock('@/components/AudioRecorder', () => ({
   __esModule: true,
-  AudioRecorder: ({}) => <div data-testid="audio-recorder" />,
+  // Renders what the page passes in, so the manual-thought button and the disabled state are real.
+  AudioRecorder: ({ splitLeft, disabled, onRecordingComplete }: { splitLeft?: React.ReactNode; disabled?: boolean; onRecordingComplete: (blob: Blob) => void }) =>
+    <div data-testid="audio-recorder" data-disabled={String(Boolean(disabled))}>
+      {splitLeft}
+      <button type="button" onClick={() => onRecordingComplete(new Blob(['voice']))}>finish-recording</button>
+    </div>,
 }));
 
 let searchParamsMock: URLSearchParams;
@@ -215,7 +229,8 @@ describe('SermonPage mode transitions', () => {
     searchParamsMock.set('mode', 'prep');
     render(<TestProviders><SermonPage /></TestProviders>);
     expect(await screen.findByTestId('sermon-header')).toBeInTheDocument();
-    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    // Dictation works on an engine document: the server stores the thought through the engine.
+    expect(screen.getByTestId('audio-recorder')).toBeInTheDocument();
     expect(screen.getByTestId('engine-scratch-workspace')).toBeInTheDocument();
     expect(screen.queryByTestId('scratch-panel')).not.toBeInTheDocument();
     expect(useScratchNotes).toHaveBeenLastCalledWith(expect.objectContaining({ sermon: null }));
@@ -266,16 +281,16 @@ describe('SermonPage mode transitions', () => {
     expect(mockSetSermon).not.toHaveBeenCalled();
   });
 
-  test('keeps a deleted dirty document visible but locks core/preparation and disables unmigrated writers', () => {
+  test('keeps a deleted dirty document visible but locks core, preparation, dictation and insights', () => {
     mockEngineEnabled = true; mockCore.isReadOnly = true;
     mockCore.confirmed = { ...mockCore.confirmed!, value: null, metadata: { ...mockCore.confirmed!.metadata!, deleted: true } };
     render(<TestProviders><SermonPage /></TestProviders>);
     expect(jest.mocked(SermonHeader).mock.calls.at(-1)![0].sermon.title).toBe('Canonical title');
     expect(jest.mocked(SermonHeader).mock.calls.at(-1)![0].editor?.isReadOnly).toBe(true);
     expect(screen.getByTestId('text-context').closest('fieldset')).toBeDisabled();
-    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('audio-recorder').every(node => node.dataset.disabled === 'true')).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'manualThought.addManual', hidden: true }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
     expect(screen.queryByTestId('knowledge')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('brainstorm.title')).not.toBeInTheDocument();
   });
 
   test('does not reconstruct an absent document from metadata or legacy query data', () => {
@@ -475,8 +490,22 @@ describe('SermonPage mode transitions', () => {
     act(() => { list.onEditStart(thought, 0); });
     expect(jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc', thoughtId: 'thought' });
     act(() => { jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0].onClose(); });
-    fireEvent.click(screen.getByRole('button', { name: 'manualThought.addManual' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'manualThought.addManual', hidden: true })[0]);
     expect(jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc', thoughtId: undefined });
+    view.unmount(); mockEngineEnabled = false;
+  });
+
+  it('stores a voice thought on an engine document without a legacy structure write, then reads the document again', async () => {
+    mockEngineEnabled = true;
+    searchParamsMock = new URLSearchParams();
+    const { createAudioThought } = jest.requireMock('@/services/thought.service') as { createAudioThought: jest.Mock };
+    const { updateStructure } = jest.requireMock('@/services/structure.service') as { updateStructure: jest.Mock };
+    const view = render(<TestProviders><SermonPage /></TestProviders>);
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'finish-recording', hidden: true })[0]); });
+    await waitFor(() => expect(mockCore.retry).toHaveBeenCalled());
+    expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'abc', 0, 3);
+    expect(updateStructure).not.toHaveBeenCalled();
+    expect(mockSetSermon).not.toHaveBeenCalled();
     view.unmount(); mockEngineEnabled = false;
   });
 });

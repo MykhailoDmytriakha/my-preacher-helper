@@ -187,6 +187,31 @@ source conflicts the whole action; independent new notes survive. Explicit Keep
 local/Accept remote use the existing shared resolution path. Immutable receipts
 make replay return the original decision, even after the source has changed again.
 
+## Trusted server writers
+
+Transcription, AI results and audio are computed on the server and stored by the server, so a
+paid result survives the person leaving the screen. On a legacy document these routes keep their
+legacy write. On an engine-owned document that write is refused (426), so they go through
+`serverEdit.server.ts` instead: `writeOwnedDocument({ owner, resource, legacy, engine })` tries the
+legacy road first (it re-reads the marker inside its own transaction) and on refusal sends the
+same change as an ordinary update command through `processCommand`. Revision, feed and receipt
+move exactly as for a browser save, and an open editor merges the result like any remote edit.
+
+The `engine` argument is a function of the CURRENT document, never a value computed from an
+earlier read: a competing edit of the same field makes it run again on the newer copy (three
+attempts). Use the editor's own pure transforms (`addSermonThought`), so there is one rule.
+`updateOwnedDocument` lays a legacy flat patch (`parent.child` keys) over the current copy and
+leaves `rev` counters to the engine. Routes check early with `assertServerWritable` (an engine
+document passes only where its collection is served) and answer failures with
+`serverEditResponse`. A full replacement of what the person wrote (a sorted structure, a
+generated plan over a manual one) is not a server write: it is a reviewed proposal through the
+editor's form. Callers are the reviewed legacy-boundary routes only
+(`__tests__/architecture/firestoreBoundary.ts`).
+
+Legacy React Query rows of an engine-owned collection are session-only
+(`shouldPersistLegacyQuery`): persisting them would make the next start archive a fresh read as
+an unsaved copy from the previous version.
+
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or

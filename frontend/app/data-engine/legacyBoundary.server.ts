@@ -103,6 +103,12 @@ export async function updateLegacyDocument(reference: DocumentReference, patch: 
   });
 }
 
+/** The same legacy update addressed by collection and ID, for callers that hold no database handle. */
+export async function updateLegacyResource(resource: { collection: string; id: string }, patch: DocumentData): Promise<void> {
+  const { adminDb } = await import('@/config/firebaseAdminConfig');
+  await updateLegacyDocument(adminDb.collection(resource.collection).doc(resource.id), patch);
+}
+
 export async function deleteLegacyDocument(reference: DocumentReference): Promise<void> {
   await runLegacyTransaction(async transaction => {
     await transaction.get(reference);

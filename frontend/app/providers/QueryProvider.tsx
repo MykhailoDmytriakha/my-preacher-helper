@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
-import { DataEngineMigrationGate } from '@/data-engine/react.client';
+import { DataEngineMigrationGate, shouldPersistLegacyQuery } from '@/data-engine/react.client';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
@@ -118,7 +118,8 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         maxAge: ONE_WEEK_MS,
         dehydrateOptions: {
           // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
-          shouldDehydrateQuery: (query) => query.state.status === 'success',
+          // A collection the engine owns is read through the engine; its legacy queries stay in memory.
+          shouldDehydrateQuery: (query) => query.state.status === 'success' && shouldPersistLegacyQuery(query.queryKey),
           shouldDehydrateMutation,
         },
       }}
