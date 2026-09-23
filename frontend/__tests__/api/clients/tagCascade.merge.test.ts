@@ -38,10 +38,8 @@ function wireAdminDb() {
       const get = jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'tag-1' }] });
       return { where: () => ({ where: () => ({ limit: () => ({ __kind: 'tags', get }) }) }), doc };
     }
-    // sermons
-    return {
-      where: () => ({
-        limit: () => ({ __kind: 'sermons', get: jest.fn(async () => {
+    // sermons — read as `where().limit()` inside a transaction or `where().get()` outside one
+    const read = { __kind: 'sermons', get: jest.fn(async () => {
           const docs = Object.entries(store).map(([id, data]) => {
             // FROZEN HERE, deliberately. Returning a lazy `data()` would read the
             // store at call time and quietly pick up the other device's write — the
@@ -52,8 +50,9 @@ function wireAdminDb() {
           // The other device commits right after this read.
           landsAfterRead?.();
           return { empty: docs.length === 0, forEach: (fn: (d: unknown) => void) => docs.forEach(fn), docs };
-        }) }),
-      }),
+        }) };
+    return {
+      where: () => ({ limit: () => read, get: read.get }),
       doc: (id: string) => sermonRef(id),
     };
   });

@@ -1,7 +1,7 @@
-import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/config/firebaseAdminConfig";
-import { assertLegacyWritable, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { assertLegacyWritable, listOwnedDocuments, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, removeTagFromSermons } from '@/data-engine/serverEdit.server';
 import { Tag } from "@/models/models";
 import {
   getTranslationKeyForTag as getStructureTranslationKeyForTag,
@@ -99,33 +99,25 @@ export async function saveTag(tag: Tag) {
 export async function deleteTag(userId: string, tagName: string) {
   console.log(`Firestore: deleting tag ${tagName} for user ${userId}`);
   try {
+    // Every sermon that carries the name must be writable on some road before anything is
+    // removed; otherwise the tag would vanish while its label stays on those thoughts.
+    const carriers = (await listOwnedDocuments(userId, 'sermons')).filter(({ data }) => Array.isArray(data.thoughts)
+      && data.thoughts.some((thought: { tags?: unknown }) => Array.isArray(thought?.tags) && thought.tags.includes(tagName)));
+    carriers.forEach(({ data }) => assertServerWritable(data, 'sermons'));
+    const affectedThoughts = carriers.reduce((count, { data }) => count
+      + (data.thoughts as { tags?: unknown }[]).filter(thought => Array.isArray(thought?.tags) && thought.tags.includes(tagName)).length, 0);
     const tagsQuery = adminDb.collection('tags').where('userId', '==', userId).where('name', '==', tagName).limit(1);
-    const sermonsQuery = adminDb.collection('sermons').where('userId', '==', userId).limit(101);
-    return await runLegacyTransaction(async transaction => {
+    await runLegacyTransaction(async transaction => {
       const tags = await transaction.get(tagsQuery);
       if (tags.empty) throw new Error('Tag not found');
       const tag = tags.docs[0];
       if (tag.data().userId !== userId) throw new Error('Forbidden');
       if (tag.data().required || isRequiredTag(tagName) || isRequiredTag(tag.id)) throw new Error('RESERVED_NAME');
-      const sermons = await transaction.get(sermonsQuery);
-      if (sermons.docs.length > 99) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required' });
-      let affectedThoughts = 0;
-      for (const sermon of sermons.docs) {
-        const data = sermon.data();
-        if (data.userId !== userId) continue;
-        const thoughts = Array.isArray(data.thoughts) ? data.thoughts as Record<string, unknown>[] : [];
-        const updated = thoughts.map(thought => {
-          const tags = Array.isArray(thought.tags) ? thought.tags as string[] : [];
-          const kept = tags.filter(value => value !== tagName);
-          affectedThoughts += tags.length - kept.length;
-          return kept.length === tags.length ? thought : { ...thought, tags: kept };
-        });
-        if (JSON.stringify(updated) !== JSON.stringify(thoughts)) transaction.update(sermon.ref, { thoughts: updated, 'rev.thoughts': FieldValue.increment(1) });
-      }
-      transaction.delete(tags.docs[0].ref);
-      return { affectedThoughts };
+      transaction.delete(tag.ref);
     });
-
+    // One sermon at a time, each on its own road — production never had a ceiling here.
+    await removeTagFromSermons(userId, tagName);
+    return { affectedThoughts };
   } catch (error) {
     console.error(`Error deleting tag ${tagName} for user ${userId}:`, error);
     throw error;

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { isClosedToLegacyWriters, isCollectionServed } from './activation';
-import { assertLegacyWritable, isDataEngineRequired, updateLegacyResource } from './legacyBoundary.server';
+import { assertLegacyWritable, isDataEngineRequired, listOwnedDocuments, mutateLegacyResource, updateLegacyResource } from './legacyBoundary.server';
 import { diffFields } from './protocol';
 
 import type { DocumentData, ResourceRef } from './types';
@@ -137,4 +137,35 @@ export async function updateOwnedDocument(owner: string, resource: ResourceRef, 
 /** The route answer for a server write the engine did not accept; null for any other error. */
 export function serverEditResponse(error: unknown): NextResponse | null {
   return error instanceof ServerEditError ? NextResponse.json({ code: error.code, error: error.code }, { status: error.status }) : null;
+}
+
+const carriesTag = (thoughts: unknown, name: string): boolean =>
+  Array.isArray(thoughts) && thoughts.some(thought => Boolean(thought) && Array.isArray((thought as { tags?: unknown }).tags)
+    && ((thought as { tags: unknown[] }).tags).includes(name));
+const withoutTag = (thoughts: DocumentData[], name: string): DocumentData[] => thoughts.map(thought => Array.isArray(thought.tags) && thought.tags.includes(name)
+  ? { ...thought, tags: thought.tags.filter(tag => tag !== name) } : thought);
+
+/**
+ * A DELETED TAG LEAVES EVERY THOUGHT, ONE SERMON AT A TIME.
+ *
+ * Removing a name is idempotent, so the cascade needs no single transaction: it lists the
+ * owner's sermons once and rewrites only those that carry the tag, each on its own road — a
+ * legacy sermon by a legacy transaction that recomputes from the document as read, an engine
+ * sermon by an ordinary update command. The engine used to fold this into the tag's own
+ * relation transaction, bounded at 100 documents, and so refused to delete a tag for anyone
+ * with a hundred sermons; production never had that ceiling. Resolves to the sermons changed.
+ */
+export async function removeTagFromSermons(owner: string, name: string): Promise<number> {
+  let changed = 0;
+  for (const { id, data } of await listOwnedDocuments(owner, 'sermons')) {
+    if (!carriesTag(data.thoughts, name)) continue;
+    await writeOwnedDocument({
+      owner, resource: { collection: 'sermons', id },
+      legacy: () => mutateLegacyResource({ collection: 'sermons', id }, raw => raw?.userId === owner && carriesTag(raw.thoughts, name)
+        ? { thoughts: withoutTag(raw.thoughts as DocumentData[], name) } : null, 'thoughts'),
+      engine: current => carriesTag(current.thoughts, name) ? { ...current, thoughts: withoutTag(current.thoughts as DocumentData[], name) } : current,
+    });
+    changed += 1;
+  }
+  return changed;
 }

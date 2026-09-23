@@ -85,6 +85,18 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')).not.toHaveProperty('materialIds');
   });
 
+  it('reports an offline save as queued, never as saved', async () => {
+    const { result } = render();
+    const online = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      let acceptance: unknown;
+      await act(async () => {
+        acceptance = await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Typed offline' }, expectedBaseline: opened }), () => undefined);
+      });
+      expect(acceptance).toEqual(expect.objectContaining({ kind: 'queued' }));
+    } finally { online.mockRestore(); }
+  });
+
   it('creates a note without relations and deletes through the engine', async () => {
     const { result } = render();
     let id = '';

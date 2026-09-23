@@ -24,6 +24,7 @@ export async function storeInsights(owner: string, sermonId: string, readBefore:
     engine: current => ({
       ...current,
       insights: change((current.insights as unknown as Insights | undefined) ?? EMPTY) as unknown as DocumentData,
+      updatedAt: new Date().toISOString(),
     }),
   });
   return accepted ? accepted.insights as unknown as Insights : legacyValue;

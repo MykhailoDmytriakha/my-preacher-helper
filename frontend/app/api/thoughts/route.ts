@@ -71,7 +71,9 @@ async function appendThoughtToSermon(uid: string, sermonId: string, thought: Tho
     }, 'thoughts'),
     // On an engine document the thought and its place in the structure land as one edit,
     // through the same transform the editor uses (idempotent by thought ID).
-    engine: current => addSermonThought({ ...current, thoughts: current.thoughts ?? [] } as unknown as Sermon, thought) as unknown as DocumentData,
+    // `updatedAt` moves as the legacy updateSermonData moved it, so the sermon rises in "recent".
+    engine: current => ({ ...addSermonThought({ ...current, thoughts: current.thoughts ?? [] } as unknown as Sermon, thought) as unknown as DocumentData,
+      updatedAt: new Date().toISOString() }),
   });
 }
 

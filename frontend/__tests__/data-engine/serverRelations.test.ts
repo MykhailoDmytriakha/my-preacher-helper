@@ -228,16 +228,13 @@ describe('registered transactional relation planning', () => {
     expect(plan.writes.some(write => write.resource.id === 'foreign')).toBe(false);
   });
 
-  it('removes a deleted custom tag only from current owner thoughts and advances their revision', async () => {
+  it('deletes a custom tag in its own transaction; the thoughts are cleaned after the commit', async () => {
     const tag = put('tags', 't', { name: 'Remove', required: false });
-    const thoughts = [{ id: 'thought', text: 'Remote latest words', date: 'now', tags: ['Remove', 'keep'] }, { id: 'second', text: 'Keep', date: 'now', tags: [] }];
-    put('sermons', 's', { thoughts, title: 'Keep title' });
-    put('sermons', 'foreign', { userId: 'victim', thoughts });
-    put('studyNotes', 'independent-labels', { tags: ['Remove'] });
+    put('sermons', 's', { thoughts: [{ id: 'thought', text: 'Words', date: 'now', tags: ['Remove', 'keep'] }], title: 'Keep title' });
     const plan = await planDataCommand(remove(tag), tag, reader);
     expect(plan.result.kind).toBe('acknowledged');
-    expect(changed(plan.writes, 'sermons', 's').value).toMatchObject({ title: 'Keep title', thoughts: [{ ...thoughts[0], tags: ['keep'] }, thoughts[1]], rev: { thoughts: 1 } });
-    expect(plan.writes).toHaveLength(2);
+    // Only the tag: removeTagFromSermons (serverEdit.server.ts) cleans the sermons afterwards.
+    expect(plan.writes.map(write => write.resource)).toEqual([{ collection: 'tags', id: 't' }]);
   });
 
   it.each([{ name: 'Custom', required: true }, { name: 'Main part', required: false }, { name: 'Основна частина', required: false }])('refuses deleting required structure tag %j', async value => {
@@ -245,10 +242,10 @@ describe('registered transactional relation planning', () => {
     expect(await planDataCommand(remove(tag), tag, reader)).toMatchObject({ result: { code: 'required-tag' }, writes: [] });
   });
 
-  it('refuses an oversized tag cascade without partial cleanup', async () => {
+  it('deletes a tag however many sermons the owner has', async () => {
     const tag = put('tags', 't', { name: 'Remove', required: false });
-    for (let index = 0; index < 100; index++) put('sermons', `s-${index}`, { thoughts: [] });
-    expect(await planDataCommand(remove(tag), tag, reader)).toMatchObject({ result: { code: 'relation-scope-too-large' }, writes: [] });
+    for (let index = 0; index < 300; index++) put('sermons', `s-${index}`, { thoughts: [] });
+    expect(await planDataCommand(remove(tag), tag, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
   });
 
   it('requires the delete baseline even when a registered cascade would otherwise succeed', async () => {

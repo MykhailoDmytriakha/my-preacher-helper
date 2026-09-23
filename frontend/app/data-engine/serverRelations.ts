@@ -342,14 +342,9 @@ class RelationPlanner {
     const tag = this.primary.value!;
     if (tag.required === true || (typeof tag.name === 'string' && isStructureTag(tag.name))) fail('required-tag');
     if (typeof tag.name !== 'string' || !tag.name) fail(INVALID_DOCUMENT);
-    for (const sermon of await this.list('sermons')) {
-      if (!sermon.value || sermon.metadata?.deleted || !Array.isArray(sermon.value.thoughts)) continue;
-      const thoughts = sermon.value.thoughts.map(thought => {
-        if (!ownObject(thought) || !Array.isArray(thought.tags) || !thought.tags.includes(tag.name)) return thought;
-        return { ...thought, tags: thought.tags.filter(name => name !== tag.name) };
-      });
-      this.stage(sermon, { thoughts });
-    }
+    // The thoughts that carry the name are cleaned after this commit, one sermon at a time
+    // (server.ts → removeTagFromSermons): folding every sermon into this transaction refused
+    // the deletion outright for anyone with a hundred sermons.
   }
 
   private async checkSermonSources(command: Exclude<DataCommand, { kind: 'relation' | 'delete' }>, accepted: DocumentData): Promise<void> {

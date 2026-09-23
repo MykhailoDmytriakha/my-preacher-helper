@@ -12,6 +12,10 @@ const ref = (id: string) => ({ path: `sermons/${id}` }) as DocumentReference;
 const records = new Map<string, Record<string, unknown>>();
 const marker = { protocol: 1, generation: 'g', revision: 1, deleted: false };
 const snap = (reference: DocumentReference) => ({ ref: reference, exists: records.has(reference.path), data: () => records.get(reference.path) });
+type Query = { queryCollection: string; filters: Array<[string, string, unknown]>; maximum: number };
+const matching = (query: Query) => [...records].filter(([path, value]) => path.startsWith(`${query.queryCollection}/`)
+  && query.filters.every(([field, operator, expected]) => operator === 'array-contains' ? (value[field] as unknown[])?.includes(expected) : value[field] === expected))
+  .slice(0, query.maximum);
 let beforeCommit: (() => void) | undefined;
 let attempts = 0;
 beforeEach(() => {
@@ -22,6 +26,8 @@ beforeEach(() => {
       doc: (id: string) => ({ path: `${collection}/${id}`, id }),
       where: (field: string, operator: string, value: unknown) => { filters.push([field, operator, value]); return query; },
       limit: (maximum: number) => { query.maximum = maximum; return query; },
+      // A read outside any transaction (the tag cascade lists sermons before it writes).
+      get: async () => ({ docs: matching(query).map(([path]) => ({ ...snap({ path } as DocumentReference), id: path.split('/')[1] })) }),
     };
     return query as never;
   });
@@ -34,8 +40,7 @@ beforeEach(() => {
       const transaction = {
         get: async (reference: any) => {
           if (reference.queryCollection) {
-            const docs = [...records].filter(([path, value]) => path.startsWith(`${reference.queryCollection}/`) && reference.filters.every(([field, operator, expected]: [string, string, unknown]) => operator === 'array-contains' ? (value[field] as unknown[])?.includes(expected) : value[field] === expected))
-              .slice(0, reference.maximum).map(([path]) => ({ ...snap({ path } as DocumentReference), id: path.split('/')[1] }));
+            const docs = matching(reference).map(([path]) => ({ ...snap({ path } as DocumentReference), id: path.split('/')[1] }));
             return { docs, empty: docs.length === 0 };
           }
           return 'docs' in reference ? { docs: reference.docs.map(snap) } : snap(reference);
@@ -182,12 +187,23 @@ describe('legacy repository cascades are atomic', () => {
     await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(records.has('series/list')).toBe(true);
   });
-  it('removes tag references atomically and preserves untouched thoughts', async () => {
+  it('removes tag references and preserves untouched thoughts', async () => {
     records.set('tags/tag', { userId: 'owner', name: 'Topic' });
     records.set('sermons/a', { userId: 'owner', thoughts: [{ id: 'a', text: 'Keep', tags: ['Topic', 'Other'] }, { id: 'b', text: 'No tags' }] });
     expect(await deleteTag('owner', 'Topic')).toEqual({ affectedThoughts: 1 });
     expect(records.has('tags/tag')).toBe(false);
     expect(records.get('sermons/a')?.thoughts).toEqual([{ id: 'a', text: 'Keep', tags: ['Other'] }, { id: 'b', text: 'No tags' }]);
+  });
+  it('deletes a tag for an owner with more sermons than one transaction could hold', async () => {
+    records.set('tags/tag', { userId: 'owner', name: 'Topic' });
+    for (let index = 0; index < 150; index++) {
+      records.set(`sermons/s${index}`, { userId: 'owner', thoughts: [{ id: `t${index}`, text: 'Words', tags: index % 3 ? ['Other'] : ['Topic', 'Other'] }] });
+    }
+    records.set('sermons/foreign', { userId: 'other', thoughts: [{ id: 'f', text: 'Theirs', tags: ['Topic'] }] });
+    expect(await deleteTag('owner', 'Topic')).toEqual({ affectedThoughts: 50 });
+    expect(records.has('tags/tag')).toBe(false);
+    expect([...records].filter(([path, value]) => path.startsWith('sermons/s') && JSON.stringify(value.thoughts).includes('"Topic"'))).toEqual([]);
+    expect(records.get('sermons/foreign')?.thoughts).toEqual([{ id: 'f', text: 'Theirs', tags: ['Topic'] }]);
   });
   it.each(['tags/tag', 'sermons/a'])('keeps tag and every reference if %s is protected', async path => {
     records.set('tags/tag', { userId: 'owner', name: 'Topic' });

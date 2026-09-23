@@ -9,7 +9,7 @@ import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermo
 
 import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { DocumentData } from '@/data-engine/types';
-import type { Sermon, SermonOutline } from '@/models/models';
+import type { Sermon, SermonOutline, ThoughtsBySection } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
@@ -18,6 +18,21 @@ const THOUGHT_FIELDS: (keyof ThoughtFieldPatch)[] = ['text', 'tags', 'date', 'ou
 const asSermon = (value: DocumentData): Sermon => ({ ...value, thoughts: (value.thoughts ?? []) } as unknown as Sermon);
 const asDocument = (sermon: Sermon): DocumentData => deepCleanUndefined(sermon) as unknown as DocumentData;
 const unavailable = () => new Error('The sermon is not available for editing');
+
+/**
+ * Placement may name only thoughts the document still has, each once. The board can hold a
+ * thought deleted on another device (its rebuild pauses during a drag or an AI sort review),
+ * and the merge keeps ids the screen did not mention; the server's integrity rule refuses a
+ * missing or doubled id, and every later edit of the sermon would queue behind that refusal.
+ */
+export function placeExisting(structure: ThoughtsBySection, thoughts: readonly { id: string }[]): ThoughtsBySection {
+  const alive = new Set(thoughts.map(thought => thought.id));
+  const seen = new Set<string>();
+  const keep = (ids: string[] | undefined) => (ids ?? []).filter(id => alive.has(id) && !seen.has(id) && Boolean(seen.add(id)));
+  const placed: ThoughtsBySection = { introduction: keep(structure.introduction), main: keep(structure.main), conclusion: keep(structure.conclusion) };
+  if (structure.ambiguous) placed.ambiguous = keep(structure.ambiguous);
+  return placed;
+}
 
 /**
  * The structure screen's writes on an engine document. Each change is laid over the CURRENT
@@ -42,7 +57,7 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
   return {
     immediate: true,
     updateStructure: (_sermonId, structure, baseStructure) => edit(current => {
-      const merged = mergeSections(structure, current.structure ?? current.thoughtsBySection, baseStructure ?? null);
+      const merged = placeExisting(mergeSections(structure, current.structure ?? current.thoughtsBySection, baseStructure ?? null), current.thoughts);
       return { next: { ...current, structure: merged, thoughtsBySection: merged }, result: merged };
     }),
     updateThought: (_sermonId, thought, baseThought) => edit(current => {

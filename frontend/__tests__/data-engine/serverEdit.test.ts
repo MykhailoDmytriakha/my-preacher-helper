@@ -156,3 +156,28 @@ describe('a legacy flat patch laid over the current document', () => {
     expect(() => applyLegacyPatch({}, { count: new Sentinel(1) })).toThrow('unsupported-server-patch');
   });
 });
+
+describe('a tag deleted through the engine', () => {
+  const tagMarker = { protocol: 1, generation: 'gt', revision: 1, deleted: false };
+  const tagValue = { userId: 'owner-1', name: 'Topic', color: '#111111', required: false };
+  const tagged = (id: string, tags: string[]) => ({ id, text: 'Words', date: '2026-09-22T00:00:00.000Z', tags });
+
+  it('leaves every thought after its own commit, on each sermon\'s road, with no ceiling', async () => {
+    const { processCommand } = await import('@/data-engine/server');
+    documents.set('tags/t1', { ...tagValue, _dataEngine: tagMarker });
+    documents.set('sermons/legacy', { ...base, thoughts: [tagged('a', ['Topic', 'Other'])] });
+    documents.set('sermons/engine', { ...base, thoughts: [tagged('b', ['Topic'])], _dataEngine: marker });
+    for (let index = 0; index < 120; index++) documents.set(`sermons/plain-${index}`, { ...base, thoughts: [tagged(`p${index}`, ['Other'])] });
+    documents.set('sermons/foreign', { ...base, userId: 'someone-else', thoughts: [tagged('f', ['Topic'])] });
+    const result = await processCommand('owner-1', { protocol: 1, operationId: 'delete-tag-1', owner: 'owner-1',
+      resource: { collection: 'tags', id: 't1' }, generation: 'gt', dependsOn: [], kind: 'delete', baseline: tagValue });
+    expect(result.kind).toBe('acknowledged');
+    expect(documents.get('tags/t1')).toMatchObject({ _dataEngine: { deleted: true } });
+    expect((documents.get('sermons/legacy')!.thoughts as DocumentData[])[0].tags).toEqual(['Other']);
+    expect(documents.get('sermons/legacy')).not.toHaveProperty('_dataEngine');
+    expect((documents.get('sermons/engine')!.thoughts as DocumentData[])[0].tags).toEqual([]);
+    expect(documents.get('sermons/engine')!._dataEngine).toMatchObject({ revision: 5 });
+    expect((documents.get('sermons/foreign')!.thoughts as DocumentData[])[0].tags).toEqual(['Topic']);
+    expect((documents.get('sermons/plain-7')!.thoughts as DocumentData[])[0].tags).toEqual(['Other']);
+  });
+});

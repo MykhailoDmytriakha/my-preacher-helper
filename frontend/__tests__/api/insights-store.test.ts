@@ -18,6 +18,9 @@ describe('storing generated insights', () => {
       insights => ({ ...insights, relatedVerses: verses }));
 
     expect(stored).toEqual({ topics: ['Grace'], relatedVerses: verses, possibleDirections: [] });
+    // The sermon rises in "recent" as the legacy updateSermonData made it rise.
+    const written = await jest.mocked(writeOwnedDocument).mock.calls[0][0].engine(current);
+    expect(typeof written.updatedAt).toBe('string');
   });
 
   it('returns the legacy value when the legacy road took the write', async () => {

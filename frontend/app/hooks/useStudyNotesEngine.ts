@@ -6,8 +6,9 @@ import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { persistedWrite, refusedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
+import { persistedWrite, queuedMutation, refusedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNotesApi } from '@/hooks/useStudyNotes';
@@ -19,6 +20,13 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
 const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type'];
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
+/**
+ * What the editor may say about a write the engine holds on this device. Offline it is a
+ * receipt ("queued"), never "Saved": the server has not seen it. Online the engine delivers at
+ * once, and a late conflict is offered by EngineConflictBanner.
+ */
+const accepted = (key: string, request: Promise<unknown>): WriteSubmission =>
+  isBrowserOffline() ? queuedMutation(key, request) : persistedWrite(request);
 
 export function engineNote(value: DocumentData, id: string): StudyNote {
   const note = value as unknown as StudyNote;
@@ -33,8 +41,7 @@ export function engineNote(value: DocumentData, id: string): StudyNote {
  * added on the phone survives a paragraph written on the laptop. The editor's baseline guard is
  * kept, and narrowed to what it protects: a field this save changes that was also changed
  * elsewhere since the editor's baseline refuses with the other value, and the editor offers
- * keep-mine / take-theirs. `persisted` here means the engine holds the change durably on this
- * device; delivery to the server is the engine's job and shows in its sync status.
+ * keep-mine / take-theirs. Offline a write is reported as queued, not saved (`accepted`).
  */
 export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
   const { t } = useTranslation();
@@ -53,7 +60,7 @@ export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
     inFlight.current.add(key);
     const request = run().finally(() => inFlight.current.delete(key));
     void request.catch(() => undefined);
-    return persistedWrite(request);
+    return accepted(key, request);
   };
 
   const refusal = () => refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
@@ -74,7 +81,7 @@ export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
       }) as unknown as DocumentData;
       const request = actions.create(resource(id), value);
       void request.catch(() => undefined);
-      return { ...persistedWrite(request), note: optimistic };
+      return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
     },
     updating: updating > 0,
     updateNote: ({ id, updates, expectedRevision, expectedBaseline }) => {

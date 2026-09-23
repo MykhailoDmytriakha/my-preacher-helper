@@ -1,4 +1,5 @@
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
+import { preservesSermonLinks } from '@/data-engine/sermonIntegrity';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
@@ -56,6 +57,19 @@ describe('structure writes on an engine document', () => {
     const saved = await writer.updateSermonOutline('s1', { ...opened, main: [{ id: 'p1', text: 'One, renamed' }] }, opened, 'preferMine');
     expect(saved?.main.map(point => point.text)).toEqual(['One, renamed', 'Added on the phone']);
     expect((state.current!.outline as unknown as SermonOutline).main).toHaveLength(2);
+  });
+
+  it('never places a thought deleted on another device, so the server has nothing to refuse', async () => {
+    const { state, writer } = draft(base());
+    const opened = structure({ introduction: ['a'], main: ['b'] });
+    // The phone deleted "b"; this board still shows it and moves "a" next to it.
+    state.current = { ...state.current!, thoughts: [thought('a', 'First')] as unknown as DocumentData[],
+      structure: structure({ introduction: ['a'] }) as unknown as DocumentData };
+    const before = state.current!;
+    await writer.updateStructure('s1', structure({ main: ['a', 'b', 'a'] }), opened);
+    expect(state.current!.structure).toEqual(expect.objectContaining({ introduction: [], main: ['a'] }));
+    // The server's own integrity rule accepts the result.
+    expect(preservesSermonLinks(before, state.current!)).toBe(true);
   });
 
   it('refuses a document of another owner instead of writing into it', async () => {

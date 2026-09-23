@@ -2132,3 +2132,24 @@ Group implementation checkpoint in progress:
 - Versioning uses the Vercel Git SHA (`next.config.mjs`), so this source checkpoint
   receives its version from the commit. Package semver is unchanged. Branch remains
   `data-engine` tracking `origin/data-engine`; this task commits locally only.
+
+## 2026-09-23 — independent review of the domain range (0ca57915..43a71b2d)
+
+Two reviewers: Codex gpt-6-astra (stopped at its usage limit; four leads recovered from its
+log) and an independent Claude reviewer with an open mandate (ten findings, probes against a
+`git archive` of HEAD). Dispositions:
+
+| Finding | Disposition |
+|---|---|
+| Mixed mode re-listed a collection on every head change (each autosave cost a read per row per watching tab; the sweep timer restarted after each read) | Fixed `b4779277`: full listing only when due; engine writes read from the feed; timer counts from the last listing. Red: 20 autosaves → 20 listings before, 0 after |
+| A one-shot action answered with a server conflict vanished from the screen with no way out | Fixed `b4779277`: `useDocumentActions().resolve()` settles the checkpoint in place; `EngineConflictBanner` in the private layout |
+| Refused prayer text held only in memory | Fixed `b4779277`: `usePersistedConflict` with the legacy keys |
+| Structure board could place a thought deleted elsewhere → `invalid-document`, later edits stuck behind it | Fixed: `placeExisting` in the engine structure writer; the server's own `preservesSermonLinks` accepts the result |
+| Deleting a custom tag refused with ≥100 sermons (engine relation bound; the branch's legacy road also capped at 99; production has no cap) | Fixed: the tag commits alone; `removeTagFromSermons` cleans sermons one at a time on each sermon's road, from both the engine and the legacy route |
+| Engine server writers did not move `updatedAt` for thoughts and insights | Fixed: parity with `updateSermonData` |
+| Note editor said "Saved" for an offline write | Fixed: offline writes report `queued` |
+| Same-field thought edits on two devices: later one wins | Accepted: identical to the legacy writer, which never refuses by design (`sermons.client.ts`) |
+| Delete refused while the document has an unacknowledged request (`controller.ts`) | Open, P2: an edit followed at once by a delete, or offline, shows an error instead of queuing the delete |
+| Paused legacy mutations of newly migrated collections refused after the upgrade | Open, rollout risk: deploy the client switch when no offline edits are queued on the owner's devices; refused replays surface through the existing write-recovery toasts |
+| A paid AI result could be refused by old malformed data validated with the changed field | Open, P2, not observed: a dry-run of the command before the AI call would remove it |
+| Tombstoned sermon answers 403 (not 404) in AI and audio routes; standard-set seeding is not idempotent across devices; the structure board reads tags from the legacy cache | Open, P3 |

@@ -281,8 +281,11 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
   const commandReceiptRef = receiptRef(owner, command.operationId);
   const documentRef = adminDb.collection(command.resource.collection).doc(command.resource.id);
   const refusal = (code: string): CommandResult => ({ kind: 'refused', operationId: command.operationId, code });
+  // A deleted tag leaves the thoughts after its own commit, one sermon at a time (removeTagFromSermons).
+  let deletedTag: string | null = null;
 
-  return adminDb.runTransaction(async transaction => {
+  const outcome = await adminDb.runTransaction(async transaction => {
+    deletedTag = null;
     // Rights and receipts are read in the same transaction as the eventual effect.
     const [stored, existingReceipt] = await Promise.all([transaction.get(documentRef), transaction.get(commandReceiptRef)]);
     const raw = stored.exists ? stored.data() : undefined;
@@ -345,6 +348,9 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       result = refusal('receipt-too-large');
       receipt = { ...receipt, result };
     }
+    if (result.kind === 'acknowledged' && command.kind === 'delete' && command.resource.collection === 'tags' && typeof raw?.name === 'string') {
+      deletedTag = raw.name;
+    }
     if (result.kind === 'acknowledged') {
       const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
       for (const snapshot of effects) {
@@ -359,6 +365,16 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
     transaction.set(commandReceiptRef, serializeReceipt(receipt));
     return result;
   });
+  const tag = deletedTag as string | null;
+  if (tag) {
+    // After the commit and outside it: the tag is gone whatever happens here, and a partial
+    // cleanup leaves only a harmless label that the next pass removes.
+    try {
+      const { removeTagFromSermons } = await import('./serverEdit.server');
+      await removeTagFromSermons(owner, tag);
+    } catch (error) { console.error('Deleted tag could not leave every thought', error); }
+  }
+  return outcome;
 }
 
 export async function readDocument(owner: string, resource: ResourceRef): Promise<ResourceSnapshot> {

@@ -119,6 +119,30 @@ export async function updateLegacyResource(resource: { collection: string; id: s
   await updateLegacyDocument(adminDb.collection(resource.collection).doc(resource.id), patch);
 }
 
+/**
+ * A legacy read-modify-write addressed by collection and ID: `mutate` sees the document as read
+ * inside the transaction and returns the patch, or null to leave it alone. An engine-owned
+ * document refuses here (runLegacyTransaction), which is how a caller learns to take the engine road.
+ */
+export async function mutateLegacyResource(resource: { collection: string; id: string },
+  mutate: (raw: DocumentData | undefined) => DocumentData | null, aggregate?: string): Promise<void> {
+  const [{ adminDb }, { FieldValue }] = await Promise.all([import('@/config/firebaseAdminConfig'), import('firebase-admin/firestore')]);
+  const reference = adminDb.collection(resource.collection).doc(resource.id);
+  await runLegacyTransaction(async transaction => {
+    const snapshot = await transaction.get(reference);
+    const patch = mutate(snapshot.exists ? snapshot.data() : undefined);
+    // Every legacy writer of an aggregate advances its counter, or the counter lies.
+    if (patch) transaction.update(reference, aggregate ? { ...patch, [`rev.${aggregate}`]: FieldValue.increment(1) } : patch);
+  });
+}
+
+/** Every document an owner holds in a collection, read outside any transaction. */
+export async function listOwnedDocuments(owner: string, collection: string): Promise<{ id: string; data: DocumentData }[]> {
+  const { adminDb } = await import('@/config/firebaseAdminConfig');
+  const snapshot = await adminDb.collection(collection).where('userId', '==', owner).get();
+  return snapshot.docs.map(document => ({ id: document.id, data: document.data() }));
+}
+
 export async function deleteLegacyDocument(reference: DocumentReference): Promise<void> {
   await runLegacyTransaction(async transaction => {
     await transaction.get(reference);
