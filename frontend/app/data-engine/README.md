@@ -100,8 +100,9 @@ function NoteContent({ id }: { id: string }) {
   the result; views exclude rows whose value is null. An offline
   incomplete cache must not be presented as an authoritative empty collection.
   While the server says `legacyOpen`, one shared, lifecycle-bounded collection
-  sweep also discovers old writers that do not publish feed events. Closure stops
-  that sweep. Cost and retention constraints are in
+  sweep also discovers old writers that do not publish feed events: on opening a
+  list, on returning to the tab, on reconnecting and every five minutes while the
+  list stays open (each sweep reads every row). Closure stops that sweep. Cost and retention constraints are in
   `docs/architecture/data-engine-operations.md` at the repository root.
 
 **One action on a document no screen has open** — a list-row menu, a link made from the other

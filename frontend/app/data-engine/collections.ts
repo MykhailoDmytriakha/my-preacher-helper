@@ -45,8 +45,14 @@ export interface CollectionReaderOptions {
   pageSize?: number;
   /** Protect against an endless or damaged feed without silently truncating a collection. */
   maxPages?: number;
-  /** Legacy writers do not publish feed events; bound freshness while rollout is mixed. */
-  legacyPollIntervalMs?: number;
+  /** First retry delay after a failed automatic read; doubles up to 120 seconds. */
+  retryIntervalMs?: number;
+  /**
+   * Legacy writers do not publish feed events, so while rollout is mixed an open list is swept
+   * on this timer. Each sweep reads every row, so the timer is a safety net, not the freshness
+   * path: opening a list, returning to the tab and reconnecting sweep at once.
+   */
+  legacySweepIntervalMs?: number;
 }
 
 type Listener = (state: CollectionState) => void;
@@ -96,15 +102,21 @@ export class CollectionReader {
   private readonly entries = new Map<string, CollectionEntry>();
   private readonly pageSize: number;
   private readonly maxPages: number;
-  private readonly legacyPollIntervalMs: number;
+  private readonly retryIntervalMs: number;
+  private readonly legacySweepIntervalMs: number;
 
   constructor(private readonly options: CollectionReaderOptions) {
     this.pageSize = options.pageSize ?? 100;
     this.maxPages = options.maxPages ?? 1_000;
-    this.legacyPollIntervalMs = options.legacyPollIntervalMs ?? 15_000;
+    this.retryIntervalMs = options.retryIntervalMs ?? 15_000;
+    // Five minutes: one sweep of 20 rows costs ~24 reads, so a visible list costs ~300 reads an
+    // hour instead of ~6,000 at the former 15 s — the free daily allowance is 50,000 for everyone.
+    this.legacySweepIntervalMs = options.legacySweepIntervalMs ?? 300_000;
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1 || this.pageSize > 100
       || !Number.isInteger(this.maxPages) || this.maxPages < 1
-      || !Number.isFinite(this.legacyPollIntervalMs) || this.legacyPollIntervalMs < 1) throw failure('Invalid collection paging budget', 'invalid-argument');
+      || ![this.retryIntervalMs, this.legacySweepIntervalMs].every(delay => Number.isFinite(delay) && delay >= 1)) {
+      throw failure('Invalid collection paging budget', 'invalid-argument');
+    }
   }
 
   setOwner(owner: string | null): void {
@@ -488,7 +500,9 @@ export class CollectionReader {
     if (!this.current(entry, this.generation) || (!entry.legacyOpen && entry.refreshFailures === 0) || !this.online || !this.visible
       || !entry.listeners.size || entry.inFlight) return;
     const generation = this.generation;
-    const delay = Math.min(Math.max(120_000, this.legacyPollIntervalMs), this.legacyPollIntervalMs * 2 ** Math.min(entry.refreshFailures, 16));
+    const delay = entry.refreshFailures > 0
+      ? Math.min(Math.max(120_000, this.retryIntervalMs), this.retryIntervalMs * 2 ** Math.min(entry.refreshFailures, 16))
+      : this.legacySweepIntervalMs;
     entry.refreshTimer = setTimeout(() => {
       entry.refreshTimer = null;
       if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {

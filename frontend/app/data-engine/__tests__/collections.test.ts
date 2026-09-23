@@ -431,18 +431,23 @@ describe('a collection legacy writers may still change', () => {
     await settle();
     expect(s.transport.list).toHaveBeenCalledTimes(1);
     jest.mocked(s.transport.list).mockClear(); jest.mocked(s.transport.changes).mockClear();
-    await jest.advanceTimersByTimeAsync(60_000);
+    // Every sweep reads every row, so the timer is a five-minute safety net, not a 15 s poll.
+    await jest.advanceTimersByTimeAsync(299_999);
+    expect(s.transport.list).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(900_000);
     expect(s.transport.list).toHaveBeenCalledTimes(4);
     expect(s.transport.changes).toHaveBeenCalledTimes(4); // One catch-up per list, no duplicate pre-list feed read.
-    s.reader.setVisible(false); await jest.advanceTimersByTimeAsync(60_000);
+    s.reader.setVisible(false); await jest.advanceTimersByTimeAsync(1_200_000);
     expect(s.transport.list).toHaveBeenCalledTimes(4);
     s.reader.setVisible(true); await settle();
     expect(s.transport.list).toHaveBeenCalledTimes(5);
-    s.reader.setOnline(false); await jest.advanceTimersByTimeAsync(60_000);
+    s.reader.setOnline(false); await jest.advanceTimersByTimeAsync(1_200_000);
     expect(s.transport.list).toHaveBeenCalledTimes(5);
     s.reader.setOnline(true); await settle();
     expect(s.transport.list).toHaveBeenCalledTimes(6);
-    stopA(); stopB(); await jest.advanceTimersByTimeAsync(60_000);
+    stopA(); stopB(); await jest.advanceTimersByTimeAsync(1_200_000);
     expect(s.transport.list).toHaveBeenCalledTimes(6);
     s.reader.dispose(); s.observer.dispose();
   });
@@ -451,13 +456,13 @@ describe('a collection legacy writers may still change', () => {
     const s = mixed(); const stop = s.reader.watch(collection, jest.fn()); await settle();
     const response = pending<CollectionPage>();
     jest.mocked(s.transport.list).mockReturnValueOnce(response.promise);
-    await jest.advanceTimersByTimeAsync(15_000);
+    await jest.advanceTimersByTimeAsync(300_000);
     expect(s.transport.list).toHaveBeenCalledTimes(2);
-    await jest.advanceTimersByTimeAsync(120_000);
+    await jest.advanceTimersByTimeAsync(600_000);
     expect(s.transport.list).toHaveBeenCalledTimes(2);
     jest.mocked(s.transport.changes).mockResolvedValue({ snapshots: [], cursor: 0, version: 0, hasMore: false });
     response.resolve({ snapshots: [], nextCursor: null, version: 0 }); await settle();
-    await jest.advanceTimersByTimeAsync(120_000);
+    await jest.advanceTimersByTimeAsync(600_000);
     expect(s.transport.list).toHaveBeenCalledTimes(2);
     stop(); s.reader.dispose(); s.observer.dispose();
   });
@@ -466,8 +471,9 @@ describe('a collection legacy writers may still change', () => {
     const s = mixed(); const stop = s.reader.watch(collection, jest.fn()); await settle();
     const list = jest.mocked(s.transport.list).getMockImplementation()!;
     jest.mocked(s.transport.list).mockRejectedValueOnce(new Error('unavailable'));
-    await jest.advanceTimersByTimeAsync(15_000);
+    await jest.advanceTimersByTimeAsync(300_000);
     expect(s.transport.list).toHaveBeenCalledTimes(2);
+    // A failed sweep retries on the short failure clock, not after another five minutes.
     await jest.advanceTimersByTimeAsync(29_999);
     expect(s.transport.list).toHaveBeenCalledTimes(2);
     jest.mocked(s.transport.list).mockImplementation(list);
@@ -487,7 +493,7 @@ describe('a collection legacy writers may still change', () => {
     const initialLists = jest.mocked(s.transport.list).mock.calls.length;
     s.server.set('kept', { ...legacy('kept'), value: { userId: 'owner', content: 'Legacy changed this', updatedAt: '2026-09-19' } });
     s.server.delete('doomed');
-    await jest.advanceTimersByTimeAsync(15_000); await settle();
+    await jest.advanceTimersByTimeAsync(300_000); await settle();
     expect(s.transport.list).toHaveBeenCalledTimes(initialLists + 1);
     expect(state.snapshots.filter(snapshot => snapshot.value)).toEqual([
       expect.objectContaining({ value: expect.objectContaining({ content: 'Legacy changed this' }) }),

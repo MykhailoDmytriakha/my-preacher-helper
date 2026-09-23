@@ -82,9 +82,11 @@ No claim that whole-app operation stays inside free quota is currently justified
 
 Legacy writers do not move the engine head. The previous implementation only
 re-listed on navigation or explicit refresh; an open list could stay stale forever.
-`CollectionReader` now schedules one sweep 15 seconds after the preceding request
-settles, only while `legacyOpen`, watched, visible and online. All consumers in one
-engine share it. Slow requests never overlap; failures back off up to 120 seconds;
+`CollectionReader` schedules one sweep **five minutes** after the preceding request
+settles, only while `legacyOpen`, watched, visible and online. Opening a list,
+returning to a hidden tab and reconnecting sweep at once, so the timer is a safety
+net for a list left open, not the freshness path. All consumers in one engine share
+it. Slow requests never overlap; failures retry after 30 seconds and back off up to 120 seconds;
 head observations cannot bypass that backoff. Failure cooldown also applies before
 the first response establishes legacy mode and to failed closed-collection feeds. Hidden/offline/unwatched readers
 stop, and the sweep stops once a response establishes collection closure.
@@ -96,9 +98,21 @@ head when no collection changes are reported.
 
 Example steady-state model, one page, no tombstones, no changes, successful HTTP
 fallback: with 20 live rows, a mixed sweep costs 22 list reads + 2 feed reads.
-Four sweeps/minute plus four head checks/minute is about **100 reads/minute**,
-or **6,000/hour per visible runtime**. With 50 rows it is about **13,200/hour**.
-Multiple visible tabs/devices multiply this; cross-tab leadership is not implemented.
+Twelve sweeps/hour is about **290 reads/hour** for one watched collection in one
+visible runtime; with 50 rows about **650/hour**. Until the protective rules let the
+head listener run, the head is also read over HTTP every 15 seconds (four checks per
+minute, roughly 240–480 reads/hour per watched collection); with the rules deployed
+the listener carries it and HTTP only renews a two-minute lease. Multiple visible
+tabs/devices multiply this; cross-tab leadership is not implemented.
+
+The sweep ran every 15 seconds until 2026-09-23 (~6,000 reads/hour for 20 rows,
+~13,200 for 50). A local QA session that left 37 authenticated tabs open exhausted
+the shared free allowance that morning (`8 RESOURCE_EXHAUSTED`, 08:37 UTC), and the
+allowance is project-wide, so production reads fail with it until the daily reset. Five minutes keeps a list
+left open bounded-stale while making a day of ordinary use affordable. A cheaper
+witness — a client-SDK query listener on the legacy collection, charged per changed
+document — was considered and not taken: it adds a second read path during a
+temporary phase, and the shortest mixed phase is the stronger remedy.
 These are calculated scenarios, not live cloud invoices. Do not leave large domains
 in mixed mode indefinitely or disable freshness silently to satisfy a budget.
 
