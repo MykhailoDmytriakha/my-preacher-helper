@@ -56,7 +56,8 @@ describe('SermonHeader canonical editor injection', () => {
     expect(screen.getByRole('heading', { name: 'Canonical title' })).toBeInTheDocument();
     expect(screen.getByText('Canonical verse')).toBeInTheDocument();
     expect(screen.getByTestId('canonical-sync-status')).toHaveTextContent('queued');
-    expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+    // Lifecycle actions (dates, series, delete) run through the engine, so the menu stays.
+    expect(screen.getByTestId('option-menu')).toBeInTheDocument();
     fireEvent.click(screen.getAllByTitle('Edit')[0]);
     await waitFor(() => expect(screen.getByTitle('Save')).toBeInTheDocument());
     fireEvent.change(screen.getByDisplayValue('Canonical title'), { target: { value: 'Typed title' } });
@@ -114,7 +115,8 @@ describe('SermonHeader canonical editor injection', () => {
     expect(screen.queryByText('Legacy title')).not.toBeInTheDocument();
     expect(screen.queryByText('Legacy verse')).not.toBeInTheDocument();
     expect(jest.mocked(DataSyncStatus).mock.calls.at(-1)![0].status).toBeNull();
-    expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+    // Lifecycle actions (dates, series, delete) run through the engine, so the menu stays.
+    expect(screen.getByTestId('option-menu')).toBeInTheDocument();
   });
 });
 

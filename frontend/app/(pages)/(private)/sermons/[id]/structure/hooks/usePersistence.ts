@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
 
-import { useStructureWriter } from "../structureWriter";
 import { applyConfirmedThought } from "../utils/confirmedThought";
 
 const SYNC_TTL_MS = 30 * 60 * 1000;

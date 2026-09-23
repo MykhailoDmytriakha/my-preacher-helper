@@ -1,3 +1,4 @@
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PreachDate, Sermon } from '@/models/models';
 import { fetchCalendarSermonsViaClient } from '@/services/sermons.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
@@ -33,6 +34,7 @@ async function throwResponseError(response: Response, fallbackMessage: string): 
 }
 
 export async function addPreachDate(sermonId: string, data: Omit<PreachDate, 'id' | 'createdAt'> & { id?: string }): Promise<PreachDate> {
+  assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates`, {
         method: 'POST',
@@ -47,6 +49,7 @@ export async function addPreachDate(sermonId: string, data: Omit<PreachDate, 'id
 }
 
 export async function updatePreachDate(sermonId: string, dateId: string, updates: Partial<PreachDate>): Promise<PreachDate> {
+  assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, {
         method: 'PUT',
@@ -61,6 +64,7 @@ export async function updatePreachDate(sermonId: string, dateId: string, updates
 }
 
 export async function deletePreachDate(sermonId: string, dateId: string): Promise<void> {
+  assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, {
         method: 'DELETE',

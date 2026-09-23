@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine, useDocumentActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -27,6 +28,7 @@ import {
 } from '@/services/studies.service';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -34,6 +36,7 @@ import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 
 
 import type { BibleLocale } from '../bibleData';
+import type { DocumentData } from '@/data-engine/types';
 import type { ScriptureReference, Sermon } from '@/models/models';
 
 /**
@@ -207,6 +210,15 @@ export default function CreateSermonFromNoteModal({
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const documentActions = useDocumentActions();
+  /**
+   * On the engine the sermon is born through it under the same client ID, so a retry after a
+   * lost answer cannot make a second one, and the engine's lists show it at once.
+   */
+  const bearSermon = (born: Sermon & { id: string }): Promise<Sermon> => isCollectionOnEngine('sermons')
+    ? documentActions.create({ collection: 'sermons', id: born.id },
+      deepCleanUndefined({ ...born, id: undefined, createdAt: born.date }) as unknown as DocumentData).then(() => born)
+    : createSermon(born);
   const { uid } = useResolvedUid();
 
   const { locale: bibleLocale } = useAppLocale();
@@ -478,7 +490,7 @@ export default function CreateSermonFromNoteModal({
       if (!verseForSermon) throw new VerseMissingAfterCutError();
 
       setStep(CREATE_STEP, 'running');
-      const sermon: Sermon = await createSermon({
+      const born: Sermon = {
         id: sermonIdRef.current,
         title: cleanTitle,
         verse: verseForSermon,
@@ -487,7 +499,8 @@ export default function CreateSermonFromNoteModal({
         userId: uid,
         sourceNoteIds: [noteId],
         scratch: notes,
-      });
+      };
+      const sermon: Sermon = await bearSermon(born);
       if (!aliveRef.current) return;
 
       // Seed what the next screen reads, so it opens with the sermon instead of a blank

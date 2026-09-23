@@ -11,11 +11,11 @@ import { useState, useCallback, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useStructureWriter, type StructureWriter } from "@/components/sermon/structureWriter";
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
-import { useStructureWriter, type StructureWriter } from "../structureWriter";
 import { applyConfirmedThought } from "../utils/confirmedThought";
 import {
   isStructureChanged,

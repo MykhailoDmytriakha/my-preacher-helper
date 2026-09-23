@@ -198,3 +198,18 @@ describe('legacy repository cascades are atomic', () => {
     expect(JSON.stringify([...records])).toBe(original);
   });
 });
+
+describe('an owner reading its own engine tombstone through a legacy route', () => {
+  const { isOwnersTombstone } = jest.requireActual('@/data-engine/legacyBoundary.server') as typeof import('@/data-engine/legacyBoundary.server');
+  const tombstone = { _dataEngine: { protocol: 1, generation: 'g', revision: 3, deleted: true }, _dataEngineOwner: 'owner' };
+
+  it('reads as gone for its owner, not as someone else\'s document', () => {
+    expect(isOwnersTombstone(tombstone, 'owner')).toBe(true);
+  });
+
+  it('stays foreign for anyone else and never matches a live document', () => {
+    expect(isOwnersTombstone(tombstone, 'stranger')).toBe(false);
+    expect(isOwnersTombstone({ userId: 'owner', _dataEngine: { ...tombstone._dataEngine, deleted: false } }, 'owner')).toBe(false);
+    expect(isOwnersTombstone(undefined, 'owner')).toBe(false);
+  });
+});

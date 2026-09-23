@@ -85,6 +85,31 @@ export function useDataEngine(): EngineContextValue {
 }
 
 /**
+ * ONE ACTION ON A DOCUMENT THAT NO SCREEN HAS OPEN — a menu entry on a list row, a link made
+ * from the other side of a relation. The editor opens on the document's own baseline, captures
+ * exactly this change as one durable request and closes; delivery, retries and conflicts stay
+ * with the engine like any save. A screen that shows the document keeps its own editor instead.
+ */
+export function useDocumentActions() {
+  // Menus that offer these actions render in both deployments; without an engine they are not ready.
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const withEditor = useCallback(async (resource: ResourceRef, action: (editor: ManagedEditor) => Promise<void>, creating = false) => {
+    if (!browser || !owner) throw new Error('The data engine is not ready');
+    const editorId = browser.editorId(resource, 'action');
+    const editor = await (creating ? browser.engine.createEditor(resource, editorId) : browser.engine.openEditor(resource, editorId));
+    try { await action(editor); } finally { editor.close({ flush: false }); }
+  }, [browser, owner]);
+  return useMemo(() => ({
+    ready: Boolean(browser && owner),
+    /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
+    create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),
+    commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null) =>
+      withEditor(resource, editor => editor.commit(updater)),
+    remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
+  }), [browser, owner, withEditor]);
+}
+
+/**
  * For readers that exist in both deployments. A document editor keeps the strict boundary — a
  * missing provider there is a mistake — but a collection read from a screen that also runs
  * without the engine is an absence of rows, not a programming error.

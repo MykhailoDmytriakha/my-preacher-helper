@@ -1,3 +1,4 @@
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Sermon, Preparation } from '@/models/models';
 import {
   getSermonByIdViaClient,
@@ -38,6 +39,7 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
 };
 
 export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string }): Promise<Sermon> => {
+  assertLegacyClientWriteAllowed('sermons');
   // createSermon stays on the server as a principled boundary. The server's
   // get-then-set is idempotent by client id, and addPreachDate is idempotent by
   // id too (see preachDates), so there is no replay-dup landmine. Moving create
@@ -69,6 +71,7 @@ export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string })
 };
 
 export async function deleteSermon(sermonId: string): Promise<void> {
+  assertLegacyClientWriteAllowed('sermons');
   const authHeaders = await getAuthenticatedRequestHeaders();
   const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}`, {
     method: 'DELETE',

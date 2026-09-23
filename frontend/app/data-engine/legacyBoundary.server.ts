@@ -43,6 +43,16 @@ function collectionOf(reference: DocumentReference): string | undefined {
   return segments.length === 2 ? segments[0] : undefined;
 }
 
+/**
+ * A document the engine deleted, read by its owner through a legacy route. The tombstone names
+ * its owner outside `userId` on purpose (no legacy owner query may list it), so an owner check
+ * alone would answer "forbidden"; for its owner it is simply gone.
+ */
+export function isOwnersTombstone(raw: DocumentData | Record<string, unknown> | undefined, uid: string): boolean {
+  const metadata = raw?._dataEngine as { deleted?: unknown } | undefined;
+  return Boolean(metadata?.deleted === true && raw?._dataEngineOwner === uid);
+}
+
 export function isDataEngineRequired(error: unknown): boolean {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === DATA_ENGINE_REQUIRED);
 }

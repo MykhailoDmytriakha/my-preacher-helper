@@ -7,7 +7,7 @@ import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 
-import type { StructureWriter } from './structureWriter';
+import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { DocumentData } from '@/data-engine/types';
 import type { Sermon, SermonOutline } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';

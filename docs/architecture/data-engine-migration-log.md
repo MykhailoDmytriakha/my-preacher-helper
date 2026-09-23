@@ -27,8 +27,13 @@ appeared in B after 1.1 s; offline A kept the move queued ("Изменения �
 and 0.8 s after reconnect B showed it. Admin read confirmed revisions 15+.
 **4.17 plan screens** read the engine document and write through one plan-writer seam with
 the legacy per-cell rule. Live: a plan cell typed and saved in window A appeared in window B
-(the ~12 s seen once was the dev server recompiling the command route). Next: close the class
-of legacy sermon writers reachable on the engine, then the remaining domains.
+(the ~12 s seen once was the dev server recompiling the command route). The class of legacy sermon
+writers reachable on the engine is closed: every legacy sermon writer now refuses on the engine;
+the sermon page header menu is back (edit, dates, series, source notes, delete through the
+engine); source-note links, sermon-from-note and column outline edits go through the engine.
+Live headless: create → link a note (Admin rev 2) → delete from the page (tombstone with
+`_dataEngineOwner`, redirect to the list in ~4 s on the dev server), no `data-engine-required`
+in the console. Next: the remaining domains.
 
 Browser note for the next agent: the Chrome extension tab counts as hidden whenever the window
 is covered, and the engine observer deliberately sleeps on hidden pages. Live checks ran in a

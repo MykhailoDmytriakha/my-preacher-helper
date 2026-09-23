@@ -803,6 +803,32 @@ describe('OptionMenu Component', () => {
     }
   });
 
+  it('deletes an engine sermon through the engine, leaving a tombstone, without legacy or optimistic writers', async () => {
+    const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+    const { id, ...value } = mockSermon;
+    const resource = { collection: 'sermons', id };
+    const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const optimistic = buildOptimisticActions();
+    const onDelete = jest.fn();
+    const view = render(<DataEngineProvider><OptionMenu sermon={mockSermon} optimisticActions={optimistic} onDelete={onDelete} /></DataEngineProvider>);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+      fireEvent.click(screen.getByText('Delete'));
+      await answerDeleteQuestion('confirm');
+      await waitFor(() => expect(onDelete).toHaveBeenCalledWith(id));
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      await waitFor(() => expect(harness.read(resource).metadata?.deleted).toBe(true));
+      expect(deleteSermon).not.toHaveBeenCalled();
+      expect(optimistic.deleteSermon).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+    }
+  });
+
   it('asks in the app\'s own window, never in the browser\'s box', async () => {
     const native = jest.spyOn(window, 'confirm');
     render(<OptionMenu {...defaultProps} />);

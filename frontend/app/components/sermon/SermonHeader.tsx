@@ -357,7 +357,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             away (we're ON the sermon being deleted), rather than refreshing a dead page.
             REPLACE, not push: pushing left this very page in history, so a swipe back
             re-opened a full editor over a sermon that no longer exists — BUG-20260905. */}
-        {!editor && !isReadOnly && <OptionMenu
+        {!(editor ? editor.isReadOnly : isReadOnly) && <OptionMenu
           sermon={sermon}
           series={series}
           onUpdate={onUpdate}

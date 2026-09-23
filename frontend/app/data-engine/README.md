@@ -104,6 +104,17 @@ function NoteContent({ id }: { id: string }) {
   that sweep. Cost and retention constraints are in
   `docs/architecture/data-engine-operations.md` at the repository root.
 
+**One action on a document no screen has open** — a list-row menu, a link made from the other
+side of a relation, a sermon born from a note — uses `useDocumentActions()`: `commit(resource,
+updater)`, `remove(resource)` and `create(resource, value)` open an editor on the document's own
+baseline, capture exactly that change as one durable request and close. It is tolerant of a
+missing provider (`ready` is false), because such menus render in both deployments.
+
+Legacy client writers of an engine collection refuse with the typed `data-engine-required`
+error (`assertLegacyClientWriteAllowed`). Sermons carry that guard on every SDK and HTTP writer,
+so a screen that was not migrated fails where it can be seen instead of writing around the
+engine. A legacy read of an owner's tombstone answers 404, not 403 (`isOwnersTombstone`).
+
 Browser composition outside React may use `browser.client.ts`. Type-only imports
 from the module are allowed. Runtime imports of internal modules by features are
 blocked by `__tests__/architecture/dataEngineBoundary.test.ts`.

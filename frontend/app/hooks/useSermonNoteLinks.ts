@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { isCollectionOnEngine, useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -305,6 +306,7 @@ export function useSourceNoteLink(
   const { uid } = useResolvedUid();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const documentActions = useDocumentActions();
   /**
    * THE FRESHEST LOCAL COPY, not the one this save started from.
    *
@@ -386,6 +388,27 @@ export function useSourceNoteLink(
 
       setSaving(true);
       try {
+        if (isCollectionOnEngine('sermons')) {
+          // Same rule as the legacy guard, applied to the engine's current copy: a list chosen
+          // elsewhere since this dialog opened is handed back, never overwritten.
+          let refusedWith: string[] | null = null;
+          await documentActions.commit({ collection: 'sermons', id: target.id }, current => {
+            if (!current) throw new Error('The sermon was deleted');
+            const stored = Array.isArray(current.sourceNoteIds) ? current.sourceNoteIds as string[] : [];
+            if (opening.noteIds && !sameIdSet(stored, opening.noteIds) && !sameIdSet(stored, nextIds)) {
+              refusedWith = stored;
+              return current;
+            }
+            return { ...current, sourceNoteIds: nextIds };
+          });
+          if (refusedWith) {
+            await publish({ sermonId: target.id, sourceNoteIds: refusedWith });
+            toast.error(t('freshness.staleSaveToast'));
+            return { outcome: 'stale', serverNoteIds: refusedWith };
+          }
+          await publish({ sermonId: target.id, sourceNoteIds: nextIds });
+          return { outcome: 'saved' };
+        }
         const updated = await updateSermon(
           { ...target, sourceNoteIds: nextIds },
           { sourceNoteIds: nextIds },
@@ -430,7 +453,7 @@ export function useSourceNoteLink(
         setSaving(false);
       }
     },
-    [sermon, publish, t]
+    [sermon, publish, t, documentActions]
   );
 
   return { saving, setSourceNotes };

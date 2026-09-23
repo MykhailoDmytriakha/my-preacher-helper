@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { useResolvedUid } from "@/hooks/useResolvedUid";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { newClientId } from "@/utils/clientId";
@@ -12,7 +13,6 @@ import { insertThoughtIdInStructure, replaceThoughtIdInStructure, resolveSection
 import { recoveryText, showRecoverableWriteFailure, writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { auth } from "@services/firebaseAuth.service";
 
-import { useStructureWriter } from "../structureWriter";
 import { buildStructureFromContainers, buildItemForUI, findOutlinePoint } from "../utils/structure";
 
 type StructureSection = 'introduction' | 'main' | 'conclusion';

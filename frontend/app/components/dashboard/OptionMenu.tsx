@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
+import { useDocumentActions } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import {
@@ -71,6 +72,7 @@ export default function OptionMenu({
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [engineDateAction, setEngineDateAction] = useState<PreachDateAction | null>(null);
+  const documentActions = useDocumentActions();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPreachModal, setShowPreachModal] = useState(false);
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
@@ -152,6 +154,20 @@ export default function OptionMenu({
       confirmText: t('common.delete'),
     });
     if (!confirmed) return;
+
+    // On the engine a deletion is one engine action: the collection keeps the row as pending
+    // until the tombstone is confirmed, on every screen that lists it.
+    if (isCollectionOnEngine('sermons')) {
+      try {
+        await documentActions.remove({ collection: 'sermons', id: sermon.id });
+        if (onDelete) onDelete(sermon.id);
+      } catch (error) {
+        console.error("Error deleting sermon:", error);
+        alert(t('optionMenu.deleteError'));
+      }
+      setOpen(false);
+      return;
+    }
 
     if (optimisticActions?.deleteSermon) {
       await awaitAcceptance(

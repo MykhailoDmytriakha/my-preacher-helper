@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
@@ -16,7 +17,6 @@ import {
 } from "@/utils/aiSorting";
 import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
-import { useStructureWriter } from "../structureWriter";
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 
 type AiSortTarget = {
