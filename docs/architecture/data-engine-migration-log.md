@@ -25,7 +25,10 @@ drag-and-drop, thought actions, AI sort acceptance, locks and outline edits; the
 document and holds still while a card is in hand. Live headless Chrome, two windows: a move in A
 appeared in B after 1.1 s; offline A kept the move queued ("Изменения в очереди"), B unchanged,
 and 0.8 s after reconnect B showed it. Admin read confirmed revisions 15+.
-Next: plan page (4.17), then the remaining domains.
+**4.17 plan screens** read the engine document and write through one plan-writer seam with
+the legacy per-cell rule. Live: a plan cell typed and saved in window A appeared in window B
+(the ~12 s seen once was the dev server recompiling the command route). Next: close the class
+of legacy sermon writers reachable on the engine, then the remaining domains.
 
 Browser note for the next agent: the Chrome extension tab counts as hidden whenever the window
 is covered, and the engine observer deliberately sleeps on hidden pages. Live checks ran in a

@@ -4,13 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import { updateSermonOutline } from "@/services/outline.service";
-import {
-  planTextConflictValues,
-  savePlanModeViaClient,
-  savePlanTextViaClient,
-} from "@/services/sermons.client";
-import { updateThought } from "@/services/thought.service";
+import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
 import { readPlanText } from "@/utils/planText";
@@ -18,6 +12,7 @@ import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { usePlanTextBaseline } from "../planTextBaseline";
+import { usePlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
 
 import type { SermonSectionKey } from "../types";
@@ -77,6 +72,7 @@ export function useManualConspectus({
   t,
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
+  const planWriter = usePlanWriter();
   const [contentByNodeId, setContentByNodeId] = useState<Record<string, string>>({});
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
   const [modifiedNodeIds, setModifiedNodeIds] = useState<Record<string, boolean>>({});
@@ -271,7 +267,7 @@ export function useManualConspectus({
      * judging by the last thing the server actually confirmed.
      */
     try {
-      await savePlanTextViaClient(currentSermon.id, changedText, removedNodeIds, {
+      await planWriter.savePlanText(currentSermon.id, changedText, removedNodeIds, {
         userId: currentSermon.userId,
         baselineByNodeId: baseline.forNodes(Object.keys(changedText)),
       });
@@ -292,7 +288,7 @@ export function useManualConspectus({
      * never overruled by merely typing.
      */
     if (!currentSermon.planMode) {
-      savePlanModeViaClient(currentSermon.id, mode)
+      planWriter.savePlanMode(currentSermon.id, mode)
         .then(() => setSermon((previous) => (previous ? { ...previous, planMode: mode } : previous)))
         .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
     }
@@ -308,7 +304,7 @@ export function useManualConspectus({
     Object.keys(changedText).forEach((nodeId) => { delete contestedRef.current[nodeId]; });
     refreshPending();
     await mirror();
-  }, [baseline, mode, refreshPending, setSermon]);
+  }, [baseline, mode, planWriter, refreshPending, setSermon]);
 
   /**
    * Marks as saved only the nodes whose text still matches what was actually sent, and
@@ -490,7 +486,7 @@ export function useManualConspectus({
     await setSermon((previous) => (previous ? { ...previous, outline: nextOutline } : previous));
 
     try {
-      const saved = await updateSermonOutline(currentSermon.id, nextOutline, baseOutline, "preferMine");
+      const saved = await planWriter.updateSermonOutline(currentSermon.id, nextOutline, baseOutline, "preferMine");
       if (saved) {
         confirmedOutlineRef.current = saved;
         await setSermon((previous) => (previous ? { ...previous, outline: saved } : previous));
@@ -502,7 +498,7 @@ export function useManualConspectus({
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
       return false;
     }
-  }, [setSermon, t]);
+  }, [planWriter, setSermon, t]);
 
   /**
    * A DELETED NODE MUST NOT KEEP THOUGHTS ATTACHED TO IT — the structure editor detaches
@@ -529,10 +525,10 @@ export function useManualConspectus({
       : previous));
 
     affected.forEach((thought) => {
-      updateThought(currentSermon.id, detach(thought) as typeof thought, thought)
+      planWriter.updateThought(currentSermon.id, detach(thought) as typeof thought, thought)
         .catch((error) => debugLog("Detaching a thought from a deleted node failed", { id: thought.id, error }));
     });
-  }, [setSermon]);
+  }, [planWriter, setSermon]);
 
   const sectionOfPoint = useCallback((pointId: string): SermonSectionKey | null => {
     const outline = sermonRef.current?.outline;

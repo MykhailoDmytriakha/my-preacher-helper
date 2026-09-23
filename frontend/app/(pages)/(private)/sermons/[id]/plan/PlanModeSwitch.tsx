@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { savePlanModeViaClient } from "@/services/sermons.client";
 import { debugLog } from "@/utils/debugMode";
 
+import { usePlanWriter } from "./planWriter";
+
 import type { Sermon } from "@/models/models";
+
 
 /**
  * WHICH EDITOR THIS PLAN IS KEPT IN — shown, and switchable.
@@ -36,6 +38,7 @@ export function PlanModeSwitch({
   onSwitched?: (mode: 'manual' | 'ai' | 'note') => void;
 }) {
   const { t } = useTranslation();
+  const planWriter = usePlanWriter();
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
@@ -55,7 +58,7 @@ export function PlanModeSwitch({
        * what it is from a sermon that still says the old thing — and on a slow connection the
        * person would arrive, look at the toggle, and see it pointing back where they came from.
        */
-      await savePlanModeViaClient(sermon.id, mode);
+      await planWriter.savePlanMode(sermon.id, mode);
       onSwitched?.(mode);
       router.push(mode === 'note' ? `/sermons/${sermon.id}/plan/manual?source=note` : mode === 'manual' ? `/sermons/${sermon.id}/plan/manual` : `/sermons/${sermon.id}/plan`);
     } catch (error) {

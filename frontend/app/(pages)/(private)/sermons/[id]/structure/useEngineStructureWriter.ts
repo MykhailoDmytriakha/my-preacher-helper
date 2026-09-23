@@ -25,17 +25,20 @@ const unavailable = () => new Error('The sermon is not available for editing');
  * changedFields, mergeOutline) and the editor's own transforms, so a remote edit that landed
  * after this screen opened is kept rather than overwritten by the screen's older picture.
  */
+/** One edit of the owner's sermon draft; `apply` sees the current copy and may throw to refuse. */
+export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, owner: string | null,
+  apply: (current: Sermon) => { next: Sermon; result: T }): Promise<T> {
+  let result: T | undefined;
+  return document.update(current => {
+    if (!current || !owner || current.userId !== owner) throw unavailable();
+    const outcome = apply(asSermon(current));
+    result = outcome.result;
+    return asDocument(outcome.next);
+  }).then(() => result as T);
+}
+
 export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null): StructureWriter {
-  const edit = async <T,>(apply: (current: Sermon) => { next: Sermon; result: T }): Promise<T> => {
-    let result: T | undefined;
-    await document.update(current => {
-      if (!current || !owner || current.userId !== owner) throw unavailable();
-      const outcome = apply(asSermon(current));
-      result = outcome.result;
-      return asDocument(outcome.next);
-    });
-    return result as T;
-  };
+  const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
   return {
     immediate: true,
     updateStructure: (_sermonId, structure, baseStructure) => edit(current => {

@@ -215,6 +215,12 @@ current copy with the legacy merge rules (`mergeSections`, `changedFields`, `mer
 the editor's transforms. The board is rebuilt from the engine document on every change, except
 while a card is dragged or an AI proposal is under review; that rebuild waits and then runs.
 
+The plan screens use the same arrangement (`plan/planWriter.ts`, `useEnginePlanWriter`): a plan
+cell is written only if it still holds what the person started from, and a refusal is the same
+`StaleWriteError` the legacy guard raised, so the screens' conflict handling is unchanged. Pages
+with a `useSermon` shape read the engine document through `useEngineSermonSource`, whose
+`setSermon` is a no-op: the engine write already changed the draft the page renders.
+
 Legacy React Query rows of an engine-owned collection are session-only
 (`shouldPersistLegacyQuery`): persisting them would make the next start archive a fresh read as
 an unsaved copy from the previous version.

@@ -8,6 +8,8 @@ import { toast } from "sonner";
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
@@ -16,8 +18,6 @@ import { useRouteId } from "@/hooks/useRouteId";
 import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
-import { savePlanModeViaClient } from "@/services/sermons.client";
-import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
@@ -34,6 +34,8 @@ import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrd
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
+import { useEngineSermonSource } from "../hooks/useEngineSermonSource";
+
 import {
   TRANSLATION_KEYS,
   TRANSLATION_SECTIONS_CONCLUSION,
@@ -49,7 +51,9 @@ import PlanPageHeader from "./PlanPageHeader";
 import PlanPreachingView from "./PlanPreachingView";
 import { assessPlanReadiness, type PlanReadinessIssue } from "./planReadiness";
 import { usePlanTextBaseline } from "./planTextBaseline";
+import { PlanWriterContext, usePlanWriter } from "./planWriter";
 import useCopyFormattedContent from "./useCopyFormattedContent";
+import { useEnginePlanWriter } from "./useEnginePlanWriter";
 import usePairedPlanCardHeights from "./usePairedPlanCardHeights";
 import { usePendingPlanCells } from "./usePendingPlanCells";
 import usePlanActions from "./usePlanActions";
@@ -131,8 +135,34 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
   );
 };
 
+/**
+ * The engine reads this sermon from its document and writes through the engine plan writer;
+ * the screen itself is the same (see planWriter.ts).
+ */
 export default function PlanPage() {
+  const sermonId = useRouteId();
+  return sermonId && isCollectionOnEngine('sermons')
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
+    : <PlanPageContent />;
+}
+
+function EnginePlanPage({ sermonId }: { sermonId: string }) {
+  const { owner } = useDataEngine();
+  const source = useEngineSermonSource(sermonId);
+  const writer = useEnginePlanWriter(sermonId, owner);
+  const { document } = source;
+  return <PlanWriterContext.Provider value={writer}>
+    <div className="px-4 pt-4"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>
+    <PlanPageContent source={source as unknown as SermonSource} />
+  </PlanWriterContext.Provider>;
+}
+
+type SermonSource = ReturnType<typeof useSermon>;
+
+function PlanPageContent({ source }: { source?: SermonSource }) {
   const { t } = useTranslation();
+  const planWriter = usePlanWriter();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
   const sermonId = useRouteId();
   const router = useRouter();
@@ -156,7 +186,8 @@ export default function PlanPage() {
 
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError, refreshSermon } = useSermon(sermonId);
+  const legacySource = useSermon(source ? '' : sermonId);
+  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError, refreshSermon } = source ?? legacySource;
   /** What the server held for each plan cell when this screen took it — see `planTextBaseline.ts`. */
   const planTextBaseline = usePlanTextBaseline(sermon?.id);
 
@@ -205,7 +236,8 @@ export default function PlanPage() {
     collection: 'sermons',
     docId: sermonId || null,
     uid: planFreshnessUid,
-    enabled: Boolean(sermon),
+    // On the engine the document observer owns freshness; DataSyncStatus says it.
+    enabled: Boolean(sermon) && !source,
     known: knownPlan,
     select: (data) => planFreshnessProjection(data),
   });
@@ -758,7 +790,7 @@ export default function PlanPage() {
       }
 
       try {
-        const savedThought = await updateThought(
+        const savedThought = await planWriter.updateThought(
           latestSermon.id,
           latestThought,
           thoughtBaselinesRef.current[thoughtId] ?? null
@@ -806,7 +838,7 @@ export default function PlanPage() {
     };
 
     return persistedWrite(executeSave(saveVersion));
-  }, [setSermon, t]);
+  }, [planWriter, setSermon, t]);
 
   // Find outline point by id
   const findSermonPointById = useCallback((outlinePointId: string): SermonPoint | undefined => {
@@ -1039,7 +1071,7 @@ export default function PlanPage() {
           {!!sermon.sourceNoteIds?.length && <Button
             onClick={async () => {
               try {
-                await savePlanModeViaClient(sermonId, 'note');
+                await planWriter.savePlanMode(sermonId, 'note');
                 router.push(`/sermons/${sermonId}/plan/manual?source=note`);
               } catch {
                 toast.error(t('plan.modeSwitchFailed'));
@@ -1155,7 +1187,7 @@ export default function PlanPage() {
 
       {/* Deliberately NOT shown in preaching or immersive view: someone standing in
           front of a congregation must not be handed a decision. */}
-      {(planFreshness.state === 'stale' || planFreshness.state === 'unknown') &&
+      {!source && (planFreshness.state === 'stale' || planFreshness.state === 'unknown') &&
         !planFreshnessDismissed && (
           <DataFreshnessBanner
             entityKey="entitySermon"

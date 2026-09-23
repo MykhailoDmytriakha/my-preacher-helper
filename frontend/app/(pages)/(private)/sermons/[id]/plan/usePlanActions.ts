@@ -4,11 +4,7 @@ import { toast } from "sonner";
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { Sermon } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import {
-  planTextConflictValues,
-  savePlanModeViaClient,
-  savePlanTextViaClient,
-} from "@/services/sermons.client";
+import { planTextConflictValues } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { debugLog } from "@/utils/debugMode";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
@@ -16,6 +12,7 @@ import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { generatePlanPointContent } from "./planApi";
 import { getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
+import { usePlanWriter } from "./planWriter";
 
 import type { PlanOutlineLookup } from "./planOutlineLookup";
 import type { PlanTextBaseline } from "./planTextBaseline";
@@ -64,6 +61,7 @@ export default function usePlanActions({
   aiBlocked = false,
   planTextBaseline,
 }: UsePlanActionsParams) {
+  const planWriter = usePlanWriter();
   /** Saves run one after another, so each states the baseline its predecessor confirmed. */
   const writeChainRef = useRef<Promise<unknown>>(Promise.resolve());
   /** The cells as they are RIGHT NOW, for actions taken long after a save was attempted. */
@@ -161,7 +159,7 @@ export default function usePlanActions({
        * its predecessor confirmed.
        */
       const run = async () => {
-        await savePlanTextViaClient(sermon.id, contentByNodeId, [], {
+        await planWriter.savePlanText(sermon.id, contentByNodeId, [], {
           userId: sermon.userId,
           baselineByNodeId: planTextBaseline?.forNodes(Object.keys(contentByNodeId)),
         });
@@ -174,7 +172,7 @@ export default function usePlanActions({
       // The first save from this editor records that the plan lives here — see the same note
       // in `useManualConspectus`. Only when nothing is recorded; a deliberate choice stands.
       if (!sermon.planMode) {
-        savePlanModeViaClient(sermon.id, 'ai')
+        planWriter.savePlanMode(sermon.id, 'ai')
           .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
       }
 
@@ -243,7 +241,7 @@ export default function usePlanActions({
       debugLog("Plan save failed", { sermonId: sermon.id, outlinePointId, section, error });
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
     }
-  }, [onSaved, planTextBaseline, sermon, t]);
+  }, [onSaved, planTextBaseline, planWriter, sermon, t]);
 
   // Wired after definition so the refusal message can re-enter it.
   saveSermonPointRef.current = saveSermonPoint;

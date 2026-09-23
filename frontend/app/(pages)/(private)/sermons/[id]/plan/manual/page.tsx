@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useDocumentFreshness } from "@/hooks/useDocumentFreshness";
 import { useFreshnessUid } from "@/hooks/useFreshnessUid";
 import { useRouteId } from "@/hooks/useRouteId";
@@ -21,6 +23,7 @@ import {
 } from "@/utils/sermonFreshnessProjection";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 
+import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
 import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "../PlanDraftRecoveryBar";
@@ -29,7 +32,9 @@ import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
 import PlanPageHeader from "../PlanPageHeader";
 import PlanPreachingView from "../PlanPreachingView";
+import { PlanWriterContext } from "../planWriter";
 import useCopyFormattedContent from "../useCopyFormattedContent";
+import { useEnginePlanWriter } from "../useEnginePlanWriter";
 import usePlanTextDraft from "../usePlanTextDraft";
 import usePlanViewMode from "../usePlanViewMode";
 
@@ -252,11 +257,37 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
   );
 };
 
+/**
+ * The engine reads this sermon from its document and writes through the engine plan writer;
+ * the screen itself is the same (see planWriter.ts).
+ */
 export default function ManualConspectusPage() {
+  const sermonId = useRouteId();
+  return sermonId && isCollectionOnEngine('sermons')
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EngineManualConspectusPage sermonId={sermonId} /></DataDocumentProvider>
+    : <ManualConspectusContent />;
+}
+
+function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
+  const { owner } = useDataEngine();
+  const source = useEngineSermonSource(sermonId);
+  const writer = useEnginePlanWriter(sermonId, owner);
+  const { document } = source;
+  return <PlanWriterContext.Provider value={writer}>
+    <div className="px-4 pt-4"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>
+    <ManualConspectusContent source={source as unknown as SermonSource} />
+  </PlanWriterContext.Provider>;
+}
+
+type SermonSource = ReturnType<typeof useSermon>;
+
+function ManualConspectusContent({ source }: { source?: SermonSource }) {
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
-  const { sermon, setSermon, loading, error, refreshSermon } = useSermon(sermonId);
+  const legacySource = useSermon(source ? '' : sermonId);
+  const { sermon, setSermon, loading, error, refreshSermon } = source ?? legacySource;
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
   const conspectus = useManualConspectus({ sermon, setSermon, t, mode: noteMode ? 'note' : 'manual' });
@@ -317,7 +348,8 @@ export default function ManualConspectusPage() {
     collection: "sermons",
     docId: sermonId || null,
     uid: freshnessUid,
-    enabled: Boolean(sermon),
+    // On the engine the document observer owns freshness; DataSyncStatus says it.
+    enabled: Boolean(sermon) && !source,
     known: knownPlan,
     select: (data) => planFreshnessProjection(data),
   });
@@ -523,7 +555,7 @@ export default function ManualConspectusPage() {
 
       {/* Like the paired screen: never in the preaching or immersive views, which return
           above — someone standing in front of a congregation must not be handed a decision. */}
-      {(planFreshness.state === "stale" || planFreshness.state === "unknown") &&
+      {!source && (planFreshness.state === "stale" || planFreshness.state === "unknown") &&
         !freshnessDismissed && (
           <DataFreshnessBanner
             entityKey="entitySermon"
