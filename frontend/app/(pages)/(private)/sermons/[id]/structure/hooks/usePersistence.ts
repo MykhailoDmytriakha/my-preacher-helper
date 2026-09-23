@@ -4,9 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
-import { updateStructure } from "@/services/structure.service";
-import { updateThought } from "@/services/thought.service";
 
+import { useStructureWriter } from "../structureWriter";
 import { applyConfirmedThought } from "../utils/confirmedThought";
 
 const SYNC_TTL_MS = 30 * 60 * 1000;
@@ -23,6 +22,10 @@ interface UsePersistenceProps {
 
 export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersistenceProps) => {
   const { t } = useTranslation();
+  const writer = useStructureWriter();
+  // An engine write is local and durable on return; delaying it only widens the window in
+  // which a remote update can repaint the screen from the older document.
+  const saveDelayMs = writer.immediate ? 0 : 500;
   const debouncedThoughtsRef = useRef<Map<string, ReturnType<typeof debounce>>>(new Map());
   const latestThoughtByKeyRef = useRef<Map<string, { sermonId: string; thought: Thought }>>(new Map());
   /**
@@ -71,13 +74,13 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
     async (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => {
       if (baseStructure && !baseStructureRef.current) baseStructureRef.current = baseStructure;
       try {
-        await updateStructure(sermonId, structure, baseStructureRef.current);
+        await writer.updateStructure(sermonId, structure, baseStructureRef.current);
         baseStructureRef.current = structure;
       } catch {
         toast.error(t('errors.failedToSaveStructure'));
       }
     },
-    [t]
+    [t, writer]
   );
 
   const saveThought = useCallback(
@@ -101,7 +104,7 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
       }
 
       try {
-        const updatedThought = await updateThought(
+        const updatedThought = await writer.updateThought(
           sermonId,
           thought,
           baseThoughtByKeyRef.current.get(key) ?? null
@@ -123,11 +126,11 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
         toast.error(t('errors.failedToSaveThought'));
       }
     },
-    [buildSyncExpiresAt, clearSuccessTimer, onThoughtSyncStateChange, scheduleSyncClear, setSermon, t]
+    [buildSyncExpiresAt, clearSuccessTimer, onThoughtSyncStateChange, scheduleSyncClear, setSermon, t, writer]
   );
 
   // Create debounced versions
-  const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
+  const debouncedSaveStructure = useMemo(() => debounce(saveStructure, saveDelayMs), [saveStructure, saveDelayMs]);
   const debouncedSaveThought = useCallback(
     /**
      * `baseThought` is REQUIRED here, not only at the writer.
@@ -154,12 +157,12 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
       if (!debounced) {
         debounced = debounce((nextSermonId: string, nextThought: Thought) => {
           void saveThought(nextSermonId, nextThought, { markPending: false });
-        }, 500);
+        }, saveDelayMs);
         debouncedThoughtsRef.current.set(key, debounced);
       }
       debounced(sermonId, thought);
     },
-    [buildSyncExpiresAt, clearSuccessTimer, onThoughtSyncStateChange, saveThought]
+    [buildSyncExpiresAt, clearSuccessTimer, onThoughtSyncStateChange, saveThought, saveDelayMs]
   );
 
   const retryThoughtSave = useCallback(async (sermonId: string, thoughtId: string) => {

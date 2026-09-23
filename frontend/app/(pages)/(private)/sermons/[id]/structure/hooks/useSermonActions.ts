@@ -4,8 +4,6 @@ import { toast } from "sonner";
 
 import { useResolvedUid } from "@/hooks/useResolvedUid";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
-import { updateStructure } from "@/services/structure.service";
-import { updateThought, deleteThought, createManualThought } from "@/services/thought.service";
 import { newClientId } from "@/utils/clientId";
 import { isBrowserOffline } from '@/utils/connectivity';
 import { debugLog } from "@/utils/debugMode";
@@ -14,6 +12,7 @@ import { insertThoughtIdInStructure, replaceThoughtIdInStructure, resolveSection
 import { recoveryText, showRecoverableWriteFailure, writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { auth } from "@services/firebaseAuth.service";
 
+import { useStructureWriter } from "../structureWriter";
 import { buildStructureFromContainers, buildItemForUI, findOutlinePoint } from "../utils/structure";
 
 type StructureSection = 'introduction' | 'main' | 'conclusion';
@@ -49,6 +48,7 @@ export function useSermonActions({
     retryThoughtSave,
 }: UseSermonActionsProps) {
     const { t } = useTranslation();
+    const writer = useStructureWriter();
     const { uid } = useResolvedUid();
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
@@ -291,7 +291,7 @@ export function useSermonActions({
 
         const persistence = (async () => {
             try {
-                const addedThought = await createManualThought(currentSermon.id, newThought);
+                const addedThought = await writer.createManualThought(currentSermon.id, newThought);
 
                 // The client SDK echoes the id (no-op). A server fallback that mints a
                 // different id is reconciled here: swap temp->real in the container item,
@@ -323,7 +323,7 @@ export function useSermonActions({
 
                 const persistStructure = buildStructureFromContainers(containersRef.current);
                 try {
-                    await updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
+                    await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
                 } catch (structureError) {
                     console.error("Error updating structure after add:", structureError);
                     toast.error(t('errors.failedToSaveStructure'));
@@ -348,7 +348,7 @@ export function useSermonActions({
         })();
 
         return queuedMutation(`thought:create:${currentSermon.id}:${newId}`, persistence);
-    }, [addingThoughtToSection, allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, t, updateItemInContainers]);
+    }, [addingThoughtToSection, allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, t, updateItemInContainers, writer]);
 
     // UPDATE — optimistic + version-guarded (a newer edit must win over an older
     // in-flight save). A terminal failure rolls back and restores the editor.
@@ -405,7 +405,7 @@ export function useSermonActions({
                 // `existingThought` is what this screen holds as stored, so only the
                 // fields the person actually edited in the modal are written — the rest
                 // keeps whatever is on the server, including a text rewritten elsewhere.
-                const updatedThought = await updateThought(currentSermon.id, updatedItem, existingThought);
+                const updatedThought = await writer.updateThought(currentSermon.id, updatedItem, existingThought);
                 if (thoughtUpdateVersionRef.current[updatedItem.id] !== nextVersion) {
                     return;
                 }
@@ -476,7 +476,7 @@ export function useSermonActions({
         return isBrowserOffline()
             ? queuedMutation(`thought:update:${currentSermon.id}:${updatedItem.id}`, persistence)
             : persistedWrite(persistence);
-    }, [allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, updateItemInContainers]);
+    }, [allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, updateItemInContainers, writer]);
 
     const handleDeleteThought = useCallback((thoughtId: string): WriteSubmission => {
         const currentSermon = sermonRef.current;
@@ -504,12 +504,12 @@ export function useSermonActions({
 
         const persistence = (async () => {
             try {
-                await deleteThought(currentSermon.id, thoughtToDelete);
+                await writer.deleteThought(currentSermon.id, thoughtToDelete);
                 // Persist the structure rebuilt from the CURRENT containers (post-await),
                 // so a DnD reorder made while the delete was in flight is preserved
                 // instead of being overwritten by the older pre-await snapshot.
                 const persistStructure = structureFromContainers(containersRef.current);
-                await updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
+                await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
             } catch (error) {
                 console.error("Error deleting thought:", error);
                 setContainers(prevContainers);
@@ -522,7 +522,7 @@ export function useSermonActions({
             }
         })();
         return queuedMutation(`thought:delete:${currentSermon.id}:${thoughtId}`, persistence);
-    }, [containersRef, setContainers, setSermon]);
+    }, [containersRef, setContainers, setSermon, writer]);
 
     const handleSaveEdit = useCallback((updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null): WriteSubmission => {
         // The sermon is gone, so nothing takes this text: refuse rather than report a

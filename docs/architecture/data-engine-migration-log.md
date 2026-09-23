@@ -20,7 +20,12 @@ generated on the engine document; verses kept the topics (the change is applied 
 current at write time). Found and fixed on the way: the migration gate's hydration mismatch and
 the "local copies" archive growing on every visit. Open: `BUG-20260922-firestore-sdk-crashes-on-denied-engine-head`
 (SDK 11.2.0 race on a denied head listener while protective rules are not deployed).
-Next: structure page (4.16), plan page (4.17), then the remaining domains.
+**4.16 structure page** is on the engine as well (commit after `1c8a2920`): one writer seam for
+drag-and-drop, thought actions, AI sort acceptance, locks and outline edits; the board follows the
+document and holds still while a card is in hand. Live headless Chrome, two windows: a move in A
+appeared in B after 1.1 s; offline A kept the move queued ("Изменения в очереди"), B unchanged,
+and 0.8 s after reconnect B showed it. Admin read confirmed revisions 15+.
+Next: plan page (4.17), then the remaining domains.
 
 Browser note for the next agent: the Chrome extension tab counts as hidden whenever the window
 is covered, and the engine observer deliberately sleeps on hidden pages. Live checks ran in a

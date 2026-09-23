@@ -735,3 +735,49 @@ describe('useSermonStructureData · which copy the screen shows', () => {
     expect(result.current.sermon?.thoughts[0].text).toBe('Still readable after a failed refresh');
   });
 });
+
+describe('useSermonStructureData on the engine', () => {
+  const sermonWith = (structure: ThoughtsBySection): Sermon => ({ ...mockSermon, structure, thoughtsBySection: structure });
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false } } }) }, children);
+  const ids = (items: { id: string }[] | undefined) => (items ?? []).map(item => item.id);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useOnlineStatus as jest.Mock).mockReturnValue(true);
+    (getTags as jest.Mock).mockResolvedValue({ requiredTags: [], customTags: [] });
+  });
+
+  it('builds the board from the engine document and never reads the legacy sermon', async () => {
+    const engine = { sermon: sermonWith({ introduction: ['t7'], main: ['t2'], conclusion: [], ambiguous: [] }), loading: false, error: null, isHolding: () => false };
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction, engine), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(ids(result.current.containers.introduction)).toContain('t7');
+    expect(getSermonById).not.toHaveBeenCalled();
+  });
+
+  it('follows a remote move, but waits while a card is in hand and catches up afterwards', async () => {
+    let holding = false;
+    let engine = { sermon: sermonWith({ introduction: ['t7'], main: [], conclusion: [], ambiguous: [] }), loading: false, error: null, isHolding: () => holding };
+    const { result, rerender } = renderHook(({ source }) => useSermonStructureData('sermon123', mockT as MockTFunction, source), { wrapper, initialProps: { source: engine } });
+    await waitFor(() => expect(ids(result.current.containers.introduction)).toContain('t7'));
+
+    // Another device moves t7 to the conclusion while nobody is dragging: the board follows.
+    engine = { ...engine, sermon: sermonWith({ introduction: [], main: [], conclusion: ['t7'], ambiguous: [] }) };
+    rerender({ source: engine });
+    await waitFor(() => expect(ids(result.current.containers.conclusion)).toContain('t7'));
+
+    // A second remote move arrives mid-drag: the board holds still.
+    holding = true;
+    engine = { ...engine, sermon: sermonWith({ introduction: [], main: ['t7'], conclusion: [], ambiguous: [] }) };
+    rerender({ source: engine });
+    await act(async () => { await Promise.resolve(); });
+    expect(ids(result.current.containers.conclusion)).toContain('t7');
+    expect(ids(result.current.containers.main)).not.toContain('t7');
+
+    // The drag ends: the waiting rebuild runs.
+    holding = false;
+    act(() => { result.current.syncFromEngine(); });
+    expect(ids(result.current.containers.main)).toContain('t7');
+  });
+});

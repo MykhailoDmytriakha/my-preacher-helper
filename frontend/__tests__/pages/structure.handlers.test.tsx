@@ -14,6 +14,29 @@ import { toast } from 'sonner';
 import { createMockSermon, createMockThought, createMockItem, createMockSermonPoint } from '@test-utils/structure-test-utils';
 
 jest.mock('@/hooks/useSermonStructureData');
+let mockEngineOn = false;
+const mockEngineWriter = {
+  immediate: true,
+  updateStructure: jest.fn().mockResolvedValue({}),
+  updateThought: jest.fn(async (_id: string, thought: unknown) => thought),
+  deleteThought: jest.fn().mockResolvedValue(undefined),
+  createManualThought: jest.fn(async (_id: string, thought: unknown) => thought),
+  updateSermonOutline: jest.fn().mockResolvedValue(null),
+};
+let mockEngineDocumentData: Record<string, unknown> | null = null;
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  isCollectionOnEngine: () => mockEngineOn,
+  DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useDataEngine: () => ({ owner: 'user-1', browser: null, error: null }),
+}));
+jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => <div data-testid="engine-sync-status" /> }));
+jest.mock('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter', () => ({
+  useEngineStructureWriter: () => ({ writer: mockEngineWriter, document: {
+    data: mockEngineDocumentData, loading: false, error: null, status: null,
+    retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
+  } }),
+}));
 jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn().mockResolvedValue({}) }));
 jest.mock('@/services/thought.service', () => ({
   updateThought: jest.fn().mockResolvedValue({}),
@@ -416,6 +439,39 @@ describe('StructurePage handlers', () => {
     // A lock write is offline-first (`queued`): the server may still refuse it, so
     // this interaction must not announce that it was saved.
     expect(toast.success).not.toHaveBeenCalledWith('Thought locked');
+  });
+
+  it('on the engine, hands the board the engine document and sends a lock through the engine writer only', async () => {
+    mockEngineOn = true;
+    autoTriggerPointLock = false;
+    autoTriggerThoughtLock = true;
+    const sermon = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [createMockThought({ id: 't1', text: 'Intro thought', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false })],
+      structure: { introduction: ['t1'], main: [], conclusion: [], ambiguous: [] },
+      outline: { introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })], main: [], conclusion: [] },
+    });
+    mockEngineDocumentData = { ...sermon, userId: 'user-1' };
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon, setSermon: jest.fn(),
+      containers: { introduction: [createMockItem({ id: 't1', content: 'Intro thought', outlinePointId: 'op-1', isLocked: false })], main: [], conclusion: [], ambiguous: [] },
+      setContainers: jest.fn(), outlinePoints: sermon.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [], loading: false, error: null, isAmbiguousVisible: true, setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+    });
+    try {
+      render(<StructurePage />);
+      await waitFor(() => expect(mockEngineWriter.updateThought).toHaveBeenCalledWith(
+        'sermon-1', expect.objectContaining({ id: 't1', isLocked: true }), expect.objectContaining({ id: 't1', isLocked: false })));
+      expect(updateThought).not.toHaveBeenCalled();
+      const engineSource = (useSermonStructureData as jest.Mock).mock.calls.at(-1)![2];
+      expect(engineSource.sermon).toEqual(expect.objectContaining({ id: 'sermon-1', userId: 'user-1' }));
+      expect(screen.getByTestId('engine-sync-status')).toBeInTheDocument();
+    } finally {
+      mockEngineOn = false;
+      mockEngineDocumentData = null;
+    }
   });
 
   /**

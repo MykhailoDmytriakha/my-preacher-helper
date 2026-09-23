@@ -208,6 +208,13 @@ generated plan over a manual one) is not a server write: it is a reviewed propos
 editor's form. Callers are the reviewed legacy-boundary routes only
 (`__tests__/architecture/firestoreBoundary.ts`).
 
+A screen with its own optimistic model can keep it and change only where writes go. The
+structure board is the example: `structure/structureWriter.ts` is one seam for all its writes
+(legacy services by default); `useEngineStructureWriter` lays each change over the document's
+current copy with the legacy merge rules (`mergeSections`, `changedFields`, `mergeOutline`) and
+the editor's transforms. The board is rebuilt from the engine document on every change, except
+while a card is dragged or an AI proposal is under review; that rebuild waits and then runs.
+
 Legacy React Query rows of an engine-owned collection are session-only
 (`shouldPersistLegacyQuery`): persisting them would make the next start archive a fresh read as
 an unsaved copy from the previous version.
