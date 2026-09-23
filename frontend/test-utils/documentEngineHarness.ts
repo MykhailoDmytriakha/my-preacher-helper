@@ -57,6 +57,10 @@ export function documentEngineHarness(initial: ResourceSnapshot) {
     return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
   };
   return { createBrowser, transport, commits, checkpoints, get engine() { return engine; }, get server() { return copy(server); },
+    /** Another device's deletion the engine has not heard about yet. */
+    silentRemoteDelete: () => {
+      server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1, deleted: true }, value: null };
+    },
     /** Another device's save the engine has not heard about yet: the next command meets it as a conflict. */
     silentRemote: (patch: DocumentData) => {
       server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1 }, value: { ...server.value, ...patch } };

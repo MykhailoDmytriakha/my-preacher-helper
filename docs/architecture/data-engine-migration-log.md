@@ -2174,3 +2174,28 @@ a refusal chain leaves nothing stuck and the next save delivers).
 | P3 the banner re-reads this device's IndexedDB every 5 s and on each journal change; acknowledged checkpoints of closed editors are not compacted | Open: local cost only, no database reads |
 | P3 a watcher that joins an in-flight feed-only sync leaves its sweep for the next head change or the timer | Open |
 
+### Fourth review — the chain-based door (5ff28049), and why the door is now conservative
+
+The fourth focused review showed that `editGeneration` cannot order a document's closed
+checkpoints: saves attempted after a conflict tie, a new chain after "keep mine" restarts low,
+and two concurrent one-shot saves branch. "Keep mine" could therefore save an older text (three
+P0s, reproduced on the harness). P0s by round in this node: 1 → 1 → 3 — a patch loop that does
+not converge. The door was made conservative instead of patched again:
+
+- A document that waits for a decision refuses further one-shot changes (`decision-required`),
+  so no chain grows behind an answer and the note editor's retry loop no longer stores a new
+  checkpoint every two seconds.
+- `resolve('mine')` only for exactly one waiting checkpoint of a document that still exists;
+  otherwise every waiting draft is shown in full (all changed fields) for copying and the only
+  choice is the stored version. Deleted-elsewhere, deleted-here, refused and refused-creation
+  each have their own wording and choices.
+- `waitsForDecision` no longer treats "edited, nothing in flight" as a decision (that matched
+  another tab's save in progress).
+
+**Open, engine-level:** an order and an owner for a document's closed checkpoints across tabs,
+and a retirement flow for forks, would let "keep mine" work for several drafts. Until then the
+person copies what they need. Also open from this review: a request refused locally by policy
+(`commits.ts`, no journal entry) is not seen by `waitsForDecision`; `generation-mismatch`
+refusals are offered only the stored version; acknowledged one-shot checkpoints are never
+compacted.
+

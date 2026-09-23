@@ -91,25 +91,39 @@ export function useDataEngine(): EngineContextValue {
  * with the engine like any save. A screen that shows the document keeps its own editor instead.
  */
 /**
- * Whether a closed editor's checkpoint waits for the person: the server answered a request with
- * a conflict or a refusal, or an edited draft has nothing in flight. Queued work does not.
+ * Whether a closed editor's checkpoint waits for the person: the server answered one of its
+ * requests with a conflict or a refusal. Work that is queued, or an edit still on its way into a
+ * request (possibly another tab's), does not.
  */
 export function waitsForDecision(record: EditorRecord, journal: readonly JournalEntry[]): boolean {
   const failed = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
-  const pending = Object.keys(record.checkpoint.pending);
-  return record.checkpoint.conflicts.length > 0 || pending.some(id => failed.has(id))
-    || (record.checkpoint.dirty && pending.length === 0 && record.prepared === null);
+  return record.checkpoint.conflicts.length > 0 || Object.keys(record.checkpoint.pending).some(id => failed.has(id));
 }
+
+const decisionRequired = () => Object.assign(new Error('An earlier change to this document waits for a decision'), { code: 'decision-required' });
+const remoteDeleted = (record: EditorRecord) => {
+  const candidate = record.checkpoint.remoteCandidate;
+  return Boolean(candidate && (candidate.value === null || candidate.metadata?.deleted));
+};
 
 export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  /** The closed checkpoints of a document that wait for the person, if any. */
+  const waitingFor = useCallback(async (resource: ResourceRef) => {
+    if (!browser) return [];
+    const [records, journal] = await Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]);
+    return records.filter(({ record }) => waitsForDecision(record, journal));
+  }, [browser]);
   const withEditor = useCallback(async (resource: ResourceRef, action: (editor: ManagedEditor) => Promise<void>, creating = false) => {
     if (!browser || !owner) throw new Error('The data engine is not ready');
+    // A document that waits for a decision takes no further one-shot change: each attempt
+    // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
+    if (!creating && (await waitingFor(resource)).length) throw decisionRequired();
     const editorId = browser.editorId(resource, 'action');
     const editor = await (creating ? browser.engine.createEditor(resource, editorId) : browser.engine.openEditor(resource, editorId));
     try { await action(editor); } finally { editor.close({ flush: false }); }
-  }, [browser, owner]);
+  }, [browser, owner, waitingFor]);
   return useMemo(() => ({
     ready: Boolean(browser && owner),
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
@@ -118,39 +132,35 @@ export function useDocumentActions() {
       withEditor(resource, editor => editor.commit(updater)),
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /**
-     * Settle work the server did not accept as sent — a conflict or a refusal — on a document no
-     * screen has open, ONCE PER DOCUMENT. One-shot saves made before an answer arrives form a
-     * chain: each later checkpoint carries its ancestors' pending requests and a higher
-     * `editGeneration`, so the tip holds the newest text. Keeping mine saves the tip and only the
-     * tip; its ancestors, and everything on "theirs", are retired without saving. A refusal has
-     * no stored version to accept, so "theirs" there returns the draft to the confirmed copy.
-     * Nothing is touched unless the document really waits for a decision (a conflict, a refused
-     * request, or an edited draft with nothing in flight): work merely queued offline is never
-     * cancelled. Each editor is reopened under its own identity, so a settled checkpoint stops
-     * being recoverable. Resolves to the number of settled checkpoints.
+     * Settle the answer the server gave to a document no screen has open — a conflict or a
+     * refusal — without ever choosing for the person. "Mine" is allowed only when exactly one
+     * checkpoint waits and the document still exists on the server: the engine gives no order
+     * between several closed checkpoints of one document (their generations restart and tie),
+     * so among several only "theirs" is possible, after the banner has shown every draft for
+     * copying. "Theirs" retires exactly the waiting checkpoints; a refusal, which has no stored
+     * version to accept, returns its draft to the confirmed copy. Queued work is never touched.
+     * Each editor is reopened under its own identity so a settled checkpoint stops being
+     * recoverable. Resolves to the number of settled checkpoints.
      */
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
       if (!browser || !owner) throw new Error('The data engine is not ready');
-      const [records, journal] = await Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]);
-      if (!records.some(({ record }) => waitsForDecision(record, journal))) return 0;
-      const chain = [...records].sort((a, b) => b.record.checkpoint.editGeneration - a.record.checkpoint.editGeneration);
-      let settled = 0;
-      for (const [index, { record }] of chain.entries()) {
+      const waiting = await waitingFor(resource);
+      if (!waiting.length) return 0;
+      if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
+        throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
+      }
+      for (const { record } of waiting) {
         const editor = await browser.engine.openEditor(resource, record.editorId);
         try {
-          if (choice === 'mine' && index === 0) {
-            await editor.keepLocal(); await editor.save();
-          } else {
-            await editor.acceptRemote();
-            const { checkpoint } = editor.getState();
-            if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
-          }
-          settled += 1;
+          if (choice === 'mine') { await editor.keepLocal(); await editor.save(); continue; }
+          await editor.acceptRemote();
+          const { checkpoint } = editor.getState();
+          if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }
-      return settled;
+      return waiting.length;
     },
-  }), [browser, owner, withEditor]);
+  }), [browser, owner, withEditor, waitingFor]);
 }
 
 /**

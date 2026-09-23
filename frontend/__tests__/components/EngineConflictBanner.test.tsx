@@ -69,7 +69,7 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(actions?.ready).toBe(true));
     await act(async () => { await actions!.commit(resource, current => ({ ...current!, title: 'Refused title', content: 42 as never })); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
-    expect(screen.getByText('Refused title')).toBeInTheDocument();
+    expect(screen.getByText(/title: Refused title/)).toBeInTheDocument();
     expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
@@ -88,5 +88,37 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(screen.queryByText('dataSync.deleteConflictTitle')).not.toBeInTheDocument());
     expect(harness.server.metadata?.deleted).toBe(false);
     expect(harness.server.value?.content).toBe('Three new paragraphs from the phone');
+  });
+
+  it('shows every draft when several wait, and offers no pick among them', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    const send = jest.mocked(harness.transport.send);
+    const deliver = send.getMockImplementation()!;
+    send.mockImplementation(async () => { throw Object.assign(new TypeError('Failed to fetch'), { code: 'unavailable' }); });
+    for (const content of ['Offline one', 'Offline two']) {
+      await act(async () => { await actions!.commit(resource, current => ({ ...current!, content })); await settleEngine(); });
+    }
+    harness.silentRemote({ content: 'Written on the phone' });
+    send.mockImplementation(deliver);
+    await act(async () => { await harness.engine.retry(resource); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.severalDrafts')).toBeInTheDocument());
+    expect(screen.getByText(/Offline one[\s\S]*Offline two/)).toBeInTheDocument();
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.severalDrafts')).not.toBeInTheDocument());
+    expect(harness.server.value?.content).toBe('Written on the phone');
+  });
+
+  it('keeps the words of an edit to a record deleted elsewhere copyable, with no dead "keep mine"', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemoteDelete();
+    await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Typed on the laptop' })); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('freshness.deletedElsewhereTitle')).toBeInTheDocument());
+    expect(screen.getByText(/Typed on the laptop/)).toBeInTheDocument();
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('freshness.discardAction')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('freshness.deletedElsewhereTitle')).not.toBeInTheDocument());
   });
 });
