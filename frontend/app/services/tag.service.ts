@@ -1,6 +1,7 @@
 import { addDoc, collection, getDocs, query, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Tag } from '@/models/models';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isStructureTag } from '@/utils/structureTags';
@@ -61,10 +62,12 @@ async function updateTagViaClient(tag: Tag): Promise<{ message: string; tag: Tag
 }
 
 export async function addCustomTag(tag: Tag) {
+  assertLegacyClientWriteAllowed('tags');
   return addCustomTagViaClient(tag);
 }
 
 export async function removeCustomTag(userId: string, tagName: string) {
+  assertLegacyClientWriteAllowed('tags');
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
     const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, {
@@ -83,5 +86,6 @@ export async function removeCustomTag(userId: string, tagName: string) {
 }
 
 export async function updateTag(tag: Tag) {
+  assertLegacyClientWriteAllowed('tags');
   return updateTagViaClient(tag);
 }

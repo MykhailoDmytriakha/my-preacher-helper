@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 
+import { isCollectionOnEngine, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   createPlanTemplate,
   deletePlanTemplate,
@@ -11,6 +12,7 @@ import {
   type CreatePlanTemplatePayload,
   type UpdatePlanTemplatePayload,
 } from '@/services/planTemplate.service';
+import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { PLAN_TEMPLATE_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { queuedMutation, queuedWrite, useWriteRecovery, type WriteSubmission } from '@/utils/recoverableWrite';
 import { recoveryText } from '@/utils/writeRecovery';
@@ -22,12 +24,19 @@ const buildQueryKey = (userId: string | null | undefined) => ['planTemplates', u
 export function usePlanTemplates(userId: string | null | undefined) {
   const queryClient = useQueryClient();
   const rejectedRevisionByTemplateId = useRef(new Map<string, number>());
+  const onEngine = isCollectionOnEngine('planTemplates');
+  const engineTemplates = useDataCollection(onEngine && userId ? 'planTemplates' : null);
+  const documentActions = useDocumentActions();
 
   const templatesQuery = useServerFirstQuery<PlanTemplate[]>({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getPlanTemplates(userId) : Promise.resolve([])),
-    enabled: !!userId,
+    // On the engine the list comes from the engine collection below.
+    enabled: !!userId && !onEngine,
   });
+  const engineList = useMemo<PlanTemplate[]>(() => (engineTemplates.state?.documents ?? [])
+    .flatMap(row => row.value ? [{ ...(row.value as unknown as PlanTemplate), id: row.resource.id }] : [])
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '')), [engineTemplates.state?.documents]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
 
@@ -182,6 +191,35 @@ export function usePlanTemplates(userId: string | null | undefined) {
     owns: (id) => ownsTemplate(id),
     retry: (id) => deleteMutation.mutate(id),
   });
+
+  if (onEngine) {
+    const now = () => new Date().toISOString();
+    return {
+      templates: engineList,
+      loading: Boolean(userId) && engineTemplates.loading,
+      error: engineTemplates.error ? new Error(engineTemplates.error) : null,
+      refresh: engineTemplates.refresh,
+      createTemplate: (payload: CreatePlanTemplatePayload): WriteSubmission => queuedMutation(`plan-template:create:${payload.id}`,
+        documentActions.create({ collection: 'planTemplates', id: payload.id },
+          { userId: payload.userId, name: payload.name, structure: payload.structure as never, createdAt: now(), updatedAt: now() })),
+      updateTemplate: (id: string, updates: UpdatePlanTemplatePayload, expectedRevision?: number | null): WriteSubmission => {
+        // The same rule as the legacy guard: an edit built from an older template is refused with
+        // the revision the template holds now, and the screen offers the choice.
+        let refusedAt: number | null = null;
+        const request = documentActions.commit({ collection: 'planTemplates', id }, current => {
+          if (!current) throw new Error('The template was deleted');
+          const actual = (current.rev as Record<string, number> | undefined)?.[PLAN_TEMPLATE_AGGREGATE] ?? 0;
+          if (expectedRevision != null && actual !== expectedRevision) { refusedAt = actual; return current; }
+          return { ...current, ...(updates as Record<string, never>), updatedAt: now() };
+        }).then(() => {
+          if (refusedAt !== null) throw new StaleWriteError(PLAN_TEMPLATE_AGGREGATE, expectedRevision ?? 0, refusedAt);
+        });
+        return queuedWrite(`plan-template:update:${id}`, request);
+      },
+      deleteTemplate: (id: string): WriteSubmission =>
+        queuedMutation(`plan-template:delete:${id}`, documentActions.remove({ collection: 'planTemplates', id })),
+    };
+  }
 
   return {
     templates: templatesQuery.data ?? [],

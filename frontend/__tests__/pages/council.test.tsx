@@ -42,6 +42,7 @@ const mockEngineRefresh = jest.fn();
 let engineCollections = '';
 
 jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
   isCollectionOnEngine: (collection: string) => engineCollections.split(',').includes(collection),
 }));
 jest.mock('@/hooks/useCouncilsDataCollection', () => ({

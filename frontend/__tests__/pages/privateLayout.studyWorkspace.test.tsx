@@ -10,6 +10,7 @@ jest.mock('next/navigation', () => ({
     useSearchParams: () => new URLSearchParams(mockSearch),
 }));
 jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
     DataEngineWorkspace: ({ children }: { children: ReactNode }) => <div data-testid="data-engine-workspace">{children}</div>,
 }));
 jest.mock('@/components/series/SeriesMembershipRecovery', () => ({ SeriesMembershipRecovery: () => <div data-testid="membership-recovery" /> }));

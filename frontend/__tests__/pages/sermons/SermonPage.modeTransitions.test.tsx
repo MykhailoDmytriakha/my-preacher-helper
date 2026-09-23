@@ -53,6 +53,8 @@ const mockSetSermon = jest.fn();
 let mockCore: ReturnType<typeof useSermonCoreDataDocument>;
 
 jest.mock('@/data-engine/react.client', () => ({
+  // The real module first: a blanket mock breaks here whenever the module gains an export.
+  ...jest.requireActual('@/data-engine/react.client'),
   isDataEngineEnabled: () => mockEngineEnabled,
   // The page asks about its own collection: activation is per migrated domain.
   isCollectionOnEngine: (collection: string) => collection === 'sermons' && mockEngineEnabled,

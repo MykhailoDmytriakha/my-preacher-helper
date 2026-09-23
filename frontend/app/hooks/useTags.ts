@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
@@ -12,9 +13,11 @@ import {
   persistedWrite,
   queuedMutation,
   refusedWrite,
+  skippedWrite,
   useWriteRecovery,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import { isStructureTag } from '@/utils/structureTags';
 import { recoveryText } from '@/utils/writeRecovery';
 
 import type { Tag } from '@/models/models';
@@ -25,6 +28,7 @@ type TagPayload = {
 };
 
 const EMPTY_TAGS: TagPayload = { requiredTags: [], customTags: [] };
+const NO_TAGS: Tag[] = [];
 
 const buildQueryKey = (userId: string | null | undefined) => ['tags', userId ?? null];
 
@@ -32,6 +36,9 @@ export function useTags(userId: string | null | undefined) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
+  const onEngine = isCollectionOnEngine('tags');
+  const engineTags = useDataCollection(onEngine && userId ? 'tags' : null);
+  const documentActions = useDocumentActions();
 
   const tagsQuery = useServerFirstQuery<TagPayload>({
     queryKey: buildQueryKey(userId),
@@ -43,10 +50,18 @@ export function useTags(userId: string | null | undefined) {
       ],
       customTags: [],
     })),
-    enabled: true,
+    // On the engine the list comes from the engine collection below.
+    enabled: !onEngine,
   });
 
-  const tags = tagsQuery.data ?? EMPTY_TAGS;
+  const engineCustomTags = useMemo<Tag[]>(() => (engineTags.state?.documents ?? []).flatMap(row => {
+    const value = row.value as Partial<Tag> | null;
+    if (!value || value.required !== false || typeof value.name !== 'string' || isStructureTag(value.name)
+      || isStructureTag(row.resource.id)) return [];
+    return [{ ...value, id: row.resource.id } as Tag];
+  }), [engineTags.state?.documents]);
+  const engineTagPayload = useMemo<TagPayload>(() => ({ requiredTags: NO_TAGS, customTags: engineCustomTags }), [engineCustomTags]);
+  const tags = onEngine ? engineTagPayload : (tagsQuery.data ?? EMPTY_TAGS);
 
   useEffect(() => {
     debugLog('Tags state', {
@@ -165,6 +180,35 @@ export function useTags(userId: string | null | undefined) {
     owns: (tag) => tag.userId === userId,
     retry: (tag) => updateTagMutation.mutate(tag),
   });
+
+  if (onEngine) {
+    const byName = (name: string) => engineCustomTags.find(tag => tag.name === name);
+    return {
+      tags, requiredTags: NO_TAGS, customTags: engineCustomTags, allTags,
+      loading: Boolean(userId) && engineTags.loading, error: engineTags.error ? new Error(engineTags.error) : null,
+      refreshTags: engineTags.refresh,
+      addCustomTag: (tag: Tag): WriteSubmission => {
+        if (!userId) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
+        const id = tag.id || newClientId();
+        // The same refusals the legacy writer raised, so the form's own messages still apply.
+        if (isStructureTag(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Reserved tag name')));
+        if (byName(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Tag with same name and userId already exists')));
+        return queuedMutation(`tag:add:${id}`, documentActions.create({ collection: 'tags', id },
+          { userId, name: tag.name, color: tag.color, required: false, createdAt: new Date().toISOString() }));
+      },
+      removeCustomTag: (tagName: string): WriteSubmission => {
+        const existing = byName(tagName);
+        if (!existing) return skippedWrite();
+        // The engine removes the tag from every sermon's thoughts in the same operation.
+        return queuedMutation(`tag:remove:${existing.id}`, documentActions.remove({ collection: 'tags', id: existing.id }));
+      },
+      updateTag: (tag: Tag): WriteSubmission => queuedMutation(`tag:update:${tag.id}`, documentActions.commit(
+        { collection: 'tags', id: tag.id }, current => {
+          if (!current) throw new Error('The tag was deleted');
+          return { ...current, name: tag.name, color: tag.color, updatedAt: new Date().toISOString() };
+        })),
+    };
+  }
 
   return {
     tags,

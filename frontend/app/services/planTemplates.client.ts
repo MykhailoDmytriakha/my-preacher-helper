@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PlanTemplate, SermonOutline } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
@@ -55,6 +56,7 @@ export async function createPlanTemplateViaClient(payload: {
   name: string;
   structure: SermonOutline;
 }): Promise<PlanTemplate> {
+  assertLegacyClientWriteAllowed('planTemplates');
   const db = getClientDb();
   const now = new Date().toISOString();
   const data = {
@@ -79,6 +81,7 @@ export async function updatePlanTemplateViaClient(
   /** Owner, so an offline attempt can be queued as an intent and replayed. */
   ownerUid?: string
 ): Promise<void> {
+  assertLegacyClientWriteAllowed('planTemplates');
   const db = getClientDb();
   const patch: { updatedAt: string; name?: string; structure?: SermonOutline } = {
     updatedAt: new Date().toISOString(),
@@ -102,6 +105,7 @@ export async function updatePlanTemplateViaClient(
 }
 
 export async function deletePlanTemplateViaClient(id: string): Promise<void> {
+  assertLegacyClientWriteAllowed('planTemplates');
   const db = getClientDb();
   await deleteDoc(doc(db, COLLECTION, id));
 }
