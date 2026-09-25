@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -47,7 +48,7 @@ export function useGroupDetail(groupId: string) {
 
   const { data, isLoading, error, refetch } = useServerFirstQuery<Group | null>({
     queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId],
-    enabled: !!groupId,
+    enabled: !!groupId && !isCollectionOnEngine('groups'),
     queryFn: async () => {
       if (!groupId) return null;
       const group = await getGroupById(groupId);

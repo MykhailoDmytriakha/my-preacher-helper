@@ -1,9 +1,9 @@
 'use client';
 
 import { Check, PauseCircle, XCircle } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { isInfoTopic, outcomeText, topicState, type TopicOutcome } from '@/utils/council';
 
 import type { CouncilTopic } from '@/models/models';
@@ -32,36 +32,6 @@ export function CouncilOutcomePanel({
   const large = size === 'lg';
   const state = topicState(topic);
   const info = isInfoTopic(topic);
-
-  // The typed line is local until it is committed: Enter or leaving the field is the natural
-  // end, and writing the whole council on every keystroke is churn a phone does not need.
-  const [decision, setDecision] = useState(topic.decision ?? '');
-  useEffect(() => setDecision(topic.decision ?? ''), [topic.decision]);
-  const commitDecision = () => {
-    if ((topic.decision ?? '') === decision.trim()) return;
-    onWrite({ decision: decision.trim() });
-  };
-
-  /*
-   * AND IT SURVIVES LEAVING. Enter and blur are the natural ends of typing, but a person who
-   * types the decision and then closes the tab, goes back, or steps to the next section performs
-   * neither: the text would live only in this component and die with it. The latest values are
-   * kept in a ref so the send on the way out is not re-armed on every keystroke.
-   */
-  const latest = useRef({ decision, stored: topic.decision ?? '', onWrite });
-  latest.current = { decision, stored: topic.decision ?? '', onWrite };
-  useEffect(() => {
-    const commitLatest = () => {
-      const { decision: typed, stored, onWrite: write } = latest.current;
-      if (stored === typed.trim()) return;
-      write({ decision: typed.trim() });
-    };
-    window.addEventListener('pagehide', commitLatest);
-    return () => {
-      window.removeEventListener('pagehide', commitLatest);
-      commitLatest();
-    };
-  }, []);
 
   const optionClass = (accepted: boolean) =>
     `flex w-full items-center gap-3 rounded-xl border text-left transition ${large ? 'px-4 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${
@@ -160,14 +130,15 @@ export function CouncilOutcomePanel({
 
       <label className="block">
         <span className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">{t('council.conduct.decisionLabel')}</span>
-        <input
-          value={decision}
-          onChange={(event) => setDecision(event.target.value)}
-          onBlur={commitDecision}
+        <LiveTextInput
+          value={topic.decision ?? ''}
+          // The shared document owns every keystroke and debounces delivery. Component
+          // cleanup can run after its parent editor closed, so it must not own a last save.
+          onChange={(decision) => onWrite({ decision })}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
               event.preventDefault();
-              commitDecision();
+              event.currentTarget.blur();
             }
           }}
           placeholder={t('council.topic.decisionPlaceholder')}

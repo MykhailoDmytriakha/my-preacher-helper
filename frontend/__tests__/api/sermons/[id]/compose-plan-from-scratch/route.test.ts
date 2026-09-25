@@ -265,3 +265,30 @@ describe('compose-plan-from-scratch route', () => {
     expect(body.unplacedScratchNoteIds).toEqual(['n2']);
   });
 });
+
+describe('pinned proposal generation source', () => {
+  const note = { id: 'n1', text: 'Pinned text', createdAt: '2026-09-22' };
+  const source = { title: 'Pinned title', verse: 'Romans 1', scratch: [{ ...note, section: null }] };
+  const outline = { introduction: [], main: [], conclusion: [] };
+  beforeEach(() => { jest.clearAllMocks(); (adminAuth.verifyIdToken as jest.Mock).mockResolvedValue({ uid: 'owner' }); });
+  it.each(['text', 'section', 'createdAt', 'title', 'verse'] as const)('refuses changed %s before spending an AI call', async field => {
+    const sermon = { id: 'sermon-1', userId: 'owner', title: 'Pinned title', verse: 'Romans 1', scratch: [note] };
+    const changed = ['title', 'verse'].includes(field) ? { ...sermon, [field]: 'Remote' }
+      : { ...sermon, scratch: [{ ...note, [field]: field === 'section' ? 'main' : 'Changed' }] };
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(changed);
+    const response = await postWithToken('valid', { existingOutline: outline, scratchNoteIds: ['n1'], expectedSource: source });
+    expect(response.status).toBe(409); expect(composePlanFromScratch).not.toHaveBeenCalled();
+  });
+  it('accepts the exact pinned subset despite unrelated newer notes', async () => {
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ id: 'sermon-1', userId: 'owner', title: source.title, verse: source.verse,
+      scratch: [note, { id: 'new', text: 'Unrelated', createdAt: 'later' }] });
+    (composePlanFromScratch as jest.Mock).mockResolvedValue({ success: true, outline, unplacedScratchNoteIds: [] });
+    const response = await postWithToken('valid', { existingOutline: outline, scratchNoteIds: ['n1'], expectedSource: source });
+    expect(response.status).toBe(200); expect(composePlanFromScratch).toHaveBeenCalledWith(expect.objectContaining({ scratch: [note] }), outline, 'owner');
+  });
+  it('rejects malformed source assertions instead of falling back to current server data', async () => {
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'owner', scratch: [note] });
+    const response = await postWithToken('valid', { expectedSource: { title: 'Only title' } });
+    expect(response.status).toBe(400); expect(composePlanFromScratch).not.toHaveBeenCalled();
+  });
+});

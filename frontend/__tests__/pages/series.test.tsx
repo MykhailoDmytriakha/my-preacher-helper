@@ -336,7 +336,7 @@ describe('Series Page', () => {
 
             render(<SeriesPage />);
 
-            expect(screen.getByText('Failed to load series. Please try again.')).toBeInTheDocument();
+            expect(screen.getByRole('alert')).toHaveTextContent('dataSync.readFailed');
         });
     });
 

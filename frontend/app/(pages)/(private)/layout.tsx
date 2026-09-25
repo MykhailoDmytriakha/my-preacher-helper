@@ -5,6 +5,7 @@ import { ReactNode, Suspense } from 'react';
 
 import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
+import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
@@ -12,14 +13,18 @@ import DevQuickNav from '@/components/navigation/DevQuickNav';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
+import { DataEngineWorkspace } from '@/data-engine/react.client';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
+      <DataEngineWorkspace>
       <TechnicalDetailsDialog />
       <Suspense fallback={null}>
         <PrivateLayoutContent>{children}</PrivateLayoutContent>
       </Suspense>
+      </DataEngineWorkspace>
     </ProtectedRoute>
   );
 }
@@ -50,10 +55,13 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
                 surfaces on reconnect, when the person may be on another screen.
                 Inside the existing gutter — its own container leaked into pages. */}
             <OutboxConflictBanner />
+            {/* The same door for engine writes the server refused after this device kept them. */}
+            <EngineConflictBanner />
             <Breadcrumbs />
           </div>
         </>
       )}
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /></div>
       <main
         id="main-content"
         tabIndex={-1}

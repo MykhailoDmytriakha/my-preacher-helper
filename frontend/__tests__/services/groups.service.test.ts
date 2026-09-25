@@ -85,6 +85,23 @@ describe('groups.service', () => {
     jest.dontMock('firebase/firestore');
   });
 
+  it('refuses every legacy write before SDK or HTTP work when groups use the engine', async () => {
+    const prior = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups';
+    try {
+      const service = await importServiceWithClientMocks();
+      const writes = [service.createGroup(baseGroup), service.updateGroup('g', { title: 'Old queued edit' }),
+        service.deleteGroup('g'), service.addGroupMeetingDate('g', { date: '2026-09-19' }),
+        service.updateGroupMeetingDate('g', 'm', { date: '2026-09-20' }), service.deleteGroupMeetingDate('g', 'm')];
+      const results = await Promise.allSettled(writes);
+      results.forEach(result => expect(result).toMatchObject({ status: 'rejected', reason: { code: 'data-engine-required', status: 426 } }));
+      expect(mockGetClientDb).not.toHaveBeenCalled(); expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      if (prior === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = prior;
+    }
+  });
+
   it('reads groups, creates groups, and performs content updates through the client SDK', async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [

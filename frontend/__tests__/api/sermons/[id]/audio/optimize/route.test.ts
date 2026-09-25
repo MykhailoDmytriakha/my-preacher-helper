@@ -37,6 +37,12 @@ const { NextRequest } = require('next/server'); // Re-import to use the mock cla
 jest.mock('@/config/firebaseAdminConfig', () => ({
     adminDb: {
         collection: jest.fn(),
+    runTransaction: jest.fn(async callback => {
+      const writes: Promise<unknown>[] = [];
+      const result = await callback({ get: (ref: any) => ref.get(), update: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.update(data))); } });
+      await Promise.all(writes);
+      return result;
+    }),
     },
 }));
 

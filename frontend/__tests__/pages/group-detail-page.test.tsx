@@ -5,7 +5,14 @@ import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
+import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 import { hasGroupsAccess } from '@/services/userSettings.service';
+
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -672,5 +679,92 @@ describe('GroupDetailPage', () => {
     // Unmount before restoring real timers to flush pending debounces
     unmount();
     jest.useRealTimers();
+  });
+});
+
+
+describe('GroupDetailPage with the actual data engine', () => {
+  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  beforeEach(() => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups'; });
+  afterEach(() => {
+    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
+  });
+  function setupEnginePage() {
+    mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+    const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
+      metadata: { protocol: 1, generation: 'group-generation', revision: 1, deleted: false }, value: {
+        userId: 'user-1', title: 'Engine group', status: 'draft', templates: [], flow: [], meetingDates: [], createdAt: 'created', updatedAt: 'old',
+      } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    function Workspace({ show = true }) {
+      return <DataEngineProvider>{show && <GroupDetailPage />}</DataEngineProvider>;
+    }
+    return { ...harness, harness, Workspace, view: render(<Workspace />) };
+  }
+  it('uses one pinned engine action for series assignment without calling the legacy sweep', async () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups,series';
+    mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+    mockUseSeries.mockReturnValue({ series: [] } as never); mockAddToSeries.mockClear();
+    const item = { id: 'group-group-1', type: 'group', refId: 'group-1', position: 1 };
+    const harness = membershipEngineHarness([
+      { resource: { collection: 'groups', id: 'group-1' }, metadata: null, value: {
+        userId: 'user-1', title: 'Engine group', status: 'draft', templates: [], flow: [], meetingDates: [], createdAt: 'created', updatedAt: 'old',
+      } },
+      ...['Source', 'Target'].map(id => ({ resource: { collection: 'series', id }, metadata: null,
+        value: { userId: 'user-1', title: id, items: id === 'Source' ? [item] : [], sermonIds: [], seriesKind: 'group' } })),
+    ]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await screen.findByDisplayValue('Engine group');
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
+    const target = await screen.findByRole('radio', { name: 'Target' }); fireEvent.click(target);
+    await act(async () => { await settleEngine(); }); expect(harness.transport.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+    await waitFor(() => expect(harness.read({ collection: 'series', id: 'Target' }).value!.items).toEqual([item]));
+    expect(harness.read({ collection: 'series', id: 'Source' }).value!.items).toEqual([]);
+    expect(mockAddToSeries).not.toHaveBeenCalled(); expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
+  });
+  it('durably owns the last keystroke before navigation and delivers it on reconnect', async () => {
+    const { harness, Workspace, view } = setupEnginePage();
+    const input = await screen.findByDisplayValue('Engine group');
+    act(() => harness.engine.setOnline(false));
+    fireEvent.change(input, { target: { value: 'Last offline keystroke' } });
+    view.rerender(<Workspace show={false} />);
+    await act(async () => { await settleEngine(); });
+    const commits = await harness.commits.list('user-1');
+    expect(commits.some(commit => commit.command?.kind === 'update' && commit.command.changes.some(change =>
+      change.path[0] === 'title' && change.after.value === 'Last offline keystroke'))).toBe(true);
+    expect(harness.server.value?.title).toBe('Engine group');
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+    expect(harness.server.value?.title).toBe('Last offline keystroke');
+    view.rerender(<Workspace />);
+    expect(await screen.findByDisplayValue('Last offline keystroke')).toBeInTheDocument();
+    view.unmount();
+  });
+  it('adopts clean remote text while focused and preserves a later competing local edit', async () => {
+    const { harness, view } = setupEnginePage();
+    const input = await screen.findByDisplayValue('Engine group');
+    fireEvent.focus(input);
+    await act(async () => { await harness.remote({ title: 'Remote clean text' }); });
+    expect(input).toHaveValue('Remote clean text');
+    act(() => harness.engine.setOnline(false));
+    fireEvent.change(input, { target: { value: 'Local competing text' } });
+    await act(async () => { await settleEngine(); });
+    // The server advances while this editor owns an offline draft.
+    await act(async () => { await harness.remote({ title: 'Remote competing text' }); });
+    expect(input).toHaveValue('Local competing text');
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+    fireEvent.blur(input);
+    await act(async () => { await settleEngine(); });
+    expect(input).toHaveValue('Local competing text');
+    expect(harness.server.value?.title).toBe('Remote competing text');
+    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    await waitFor(() => expect(input).toHaveValue('Remote competing text'));
+    view.unmount();
   });
 });

@@ -1,10 +1,12 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { StudyNote } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
@@ -56,7 +58,16 @@ export interface StudyNoteUpdateSubmission extends WriteSubmission {
   result: Promise<StudyNote & { revision?: number }>;
 }
 
-export function useStudyNotes() {
+export function useStudyNotes(): StudyNotesApi {
+  const onEngine = isCollectionOnEngine('studyNotes');
+  const engine = useStudyNotesEngine(onEngine);
+  const legacy = useLegacyStudyNotes(!onEngine);
+  return onEngine ? engine : legacy;
+}
+
+export type StudyNotesApi = ReturnType<typeof useLegacyStudyNotes>;
+
+function useLegacyStudyNotes(enabled: boolean) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { uid, isAuthLoading } = useResolvedUid();
@@ -65,7 +76,7 @@ export function useStudyNotes() {
   const notesQuery = useServerFirstQuery({
     queryKey: notesKey(uid),
     queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
-    enabled: !!uid,
+    enabled: !!uid && enabled,
   });
 
   // mutationKey + self-contained variables (userId carried in the payload) tie
@@ -188,7 +199,7 @@ export function useStudyNotes() {
     // Show loading when auth is loading OR query is loading
     loading: isAuthLoading || notesQuery.isLoading,
     error: notesQuery.error as Error | null,
-    refetch: notesQuery.refetch,
+    refetch: async () => { await notesQuery.refetch(); },
     // The stable id is available immediately. Online, acceptance still waits for
     // the server (`persisted`); offline, the persisted React Query mutation owns
     // the create (`queued`) and must never be announced as saved.

@@ -242,3 +242,58 @@ describe('note editor sync integration', () => {
     expect(window.localStorage.getItem('draft:v1:user-1:note-sync:note')).toBeNull();
   });
 });
+
+describe('note editor on the engine', () => {
+  const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
+  beforeEach(() => {
+    jest.useFakeTimers();
+    window.localStorage.clear();
+    process.env[ON_ENGINE] = 'studyNotes';
+    mockCache = initialNote;
+    updateNote.mockReset();
+    (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
+    (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+    (useStudyNotes as jest.Mock).mockImplementation(() => ({
+      uid: 'user-1', notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+    }));
+    (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
+    (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
+  });
+  afterEach(() => { delete process.env[ON_ENGINE]; jest.useRealTimers(); });
+
+  it('follows the engine row while the editor is clean, with no banner and no draft left behind', () => {
+    const view = render(<StudyNoteEditorPage />);
+    mockCache = { ...initialNote, content: 'Written on the phone', rev: { note: 2 } };
+    view.rerender(<StudyNoteEditorPage />);
+    expect(screen.getByText('Written on the phone')).toBeInTheDocument();
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
+    act(() => { jest.advanceTimersByTime(300); window.dispatchEvent(new Event('pagehide')); });
+    expect(window.localStorage.getItem('draft:v1:user-1:note-sync:note')).toBeNull();
+  });
+
+  it('keeps words being typed when the row changes underneath', () => {
+    const view = render(<StudyNoteEditorPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+    fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Typed on the laptop' } });
+    mockCache = { ...initialNote, content: 'Written on the phone', rev: { note: 2 } };
+    view.rerender(<StudyNoteEditorPage />);
+    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Typed on the laptop');
+  });
+
+  it('offers the row when a save is refused, and "take theirs" shows it', async () => {
+    const refusal = Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note', expectedRevision: 1, actualRevision: 2 });
+    const refused = Promise.reject(refusal);
+    refused.catch(() => undefined);
+    updateNote.mockReturnValue({ ...persistedWrite(refused), result: refused });
+    const view = render(<StudyNoteEditorPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+    fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Typed on the laptop' } });
+    mockCache = { ...initialNote, content: 'Written on the phone', rev: { note: 2 } };
+    view.rerender(<StudyNoteEditorPage />);
+    await act(async () => { jest.advanceTimersByTime(1500); });
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Written on the phone');
+  });
+});

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { adminDb } from '@/config/firebaseAdminConfig';
-import { groupsRepository } from '@repositories/groups.repository';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { seriesRepository } from '@repositories/series.repository';
 
 // Error messages
@@ -27,50 +26,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const items = series.items || [];
-    const sermonRefs = items.filter((item) => item.type === 'sermon').map((item) => item.refId);
-    const groupRefs = items.filter((item) => item.type === 'group').map((item) => item.refId);
-
-    // Legacy fallback for old series documents without items
-    if (items.length === 0 && series.sermonIds.length > 0) {
-      sermonRefs.push(...series.sermonIds);
-    }
-
-    // Clear series references from sermons before deleting the series
-    if (sermonRefs.length > 0) {
-      const batch = adminDb.batch();
-      let ownedSermonCount = 0;
-      for (const sermonId of Array.from(new Set(sermonRefs))) {
-        const sermonRef = adminDb.collection('sermons').doc(sermonId);
-        const sermonDoc = await sermonRef.get();
-        if (!sermonDoc.exists || sermonDoc.data()?.userId !== uid) {
-          continue;
-        }
-        batch.update(sermonRef, {
-          seriesId: null,
-          seriesPosition: null
-        });
-        ownedSermonCount += 1;
-      }
-      if (ownedSermonCount > 0) {
-        await batch.commit();
-      }
-      console.log(`Cleared series references from ${ownedSermonCount} owned sermons`);
-    }
-
-    if (groupRefs.length > 0) {
-      const ownedGroups = (await Promise.all(
-        Array.from(new Set(groupRefs)).map((groupId) => groupsRepository.fetchGroupById(groupId))
-      )).filter((group): group is NonNullable<typeof group> => group?.userId === uid);
-      await Promise.all(ownedGroups.map((group) =>
-        groupsRepository.updateGroupSeriesInfo(group.id, null, null)
-      ));
-      console.log(`Cleared series references from ${ownedGroups.length} owned groups`);
-    }
-
-    await seriesRepository.deleteSeries(id);
+    await seriesRepository.deleteSeriesAndDetach(id, uid);
     return NextResponse.json({ message: 'Series deleted successfully' }, { status: 200 });
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     const { id } = await params;
     console.error(`Error deleting series ${id}:`, error);
     return NextResponse.json(

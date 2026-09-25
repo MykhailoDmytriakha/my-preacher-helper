@@ -536,3 +536,9 @@ describe('an unrelated change in the same aggregate must not refuse the write', 
     });
   });
 });
+
+
+it('classifies a mandatory engine upgrade as a terminal refusal', () => {
+  expect(isWriteRefusedError(Object.assign(new Error('Use DataEngine'), { code: 'data-engine-required', status: 426 }))).toBe(true);
+  expect(isWriteRefusedError({ code: 'unavailable' })).toBe(false);
+});

@@ -420,3 +420,17 @@ describe('the offline membership queue keeps its promises', () => {
     expect(client.listMembershipTransforms('someone-else')).toHaveLength(1);
   });
 });
+
+it('holds legacy membership bytes and refuses SDK writes when series uses DataEngine', async () => {
+  localStorage.clear(); jest.clearAllMocks();
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+  const raw = JSON.stringify({ id: 'held', uid: 'u1', savedAt: 1, transform: { seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] } });
+  localStorage.setItem('membershipOutbox:v2:held', raw);
+  try {
+    const client = await importClient();
+    await expect(client.commitSeriesBatch([{ seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] }])).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(await client.replayMembershipOutbox('u1')).toBe(0);
+    expect(localStorage.getItem('membershipOutbox:v2:held')).toBe(raw);
+    expect(mockGetClientDb).not.toHaveBeenCalled(); expect(mockGetDoc).not.toHaveBeenCalled(); expect(batchCommit).not.toHaveBeenCalled();
+  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; }
+});

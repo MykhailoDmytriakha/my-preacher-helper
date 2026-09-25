@@ -1,6 +1,7 @@
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
+import { isCollectionOnEngine, useDataCollection } from '@/data-engine/react.client';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest } from '@/models/models';
 import { selectReadableCopy } from '@/utils/readFreshness';
@@ -14,6 +15,10 @@ function resolveUid(): string | undefined {
 export function usePrayerDetail(prayerId: string, userId?: string | null) {
   const queryClient = useQueryClient();
   const uid = userId ?? resolveUid();
+  const onEngine = isCollectionOnEngine('prayerRequests');
+  const engineRows = useDataCollection(onEngine && uid && prayerId ? 'prayerRequests' : null);
+  const engineRow = engineRows.state?.documents?.find(row => row.resource.id === prayerId);
+  const enginePrayer = engineRow?.value ? { ...(engineRow.value as unknown as PrayerRequest), id: prayerId } : null;
 
   // The persisted list can hydrate after this hook mounts. Subscribing to its key
   // lets an offline detail screen receive that stored prayer instead of sampling
@@ -43,7 +48,7 @@ export function usePrayerDetail(prayerId: string, userId?: string | null) {
       const stored = queryClient.getQueryData<PrayerRequest>(detailKey) ?? cachedFromList;
       return selectReadableCopy(server, stored) ?? null;
     },
-    enabled: !!prayerId,
+    enabled: !!prayerId && !onEngine,
     mode: 'server-first',
     // `null` means the server has proved absence. Feeding a cache miss in as
     // initial data would mark the query successful before its first getDoc and let
@@ -59,6 +64,7 @@ export function usePrayerDetail(prayerId: string, userId?: string | null) {
    * by freshness lets a tie (neither copy carrying `rev` or `updatedAt`) hand the
    * screen to the older list snapshot.
    */
+  if (onEngine) return { prayer: enginePrayer, isLoading: Boolean(prayerId) && !enginePrayer && engineRows.loading };
   const prayer = detailQuery.data ?? cachedFromList ?? null;
   return {
     prayer,

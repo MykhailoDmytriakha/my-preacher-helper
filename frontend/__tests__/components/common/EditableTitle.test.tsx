@@ -4,6 +4,7 @@ import React from 'react';
 import EditableTitle from '@/components/common/EditableTitle';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { manualTextFieldScenarios } from '@test-utils/manualTextFieldScenarios';
 
 // Mock translations
 jest.mock('react-i18next', () => ({
@@ -377,3 +378,5 @@ describe('EditableTitle Component', () => {
     });
   });
 });
+
+manualTextFieldScenarios('title', ({ value, onSave, manual }) => <EditableTitle initialTitle={value} onSave={onSave} manual={manual} />);

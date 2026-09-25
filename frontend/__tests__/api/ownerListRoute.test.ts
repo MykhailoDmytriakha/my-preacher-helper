@@ -138,3 +138,17 @@ it('refuses a list too long to read this way rather than shortening it', async (
 
   expect(response.status).toBe(507);
 });
+
+describe('GET /api/owner-list — documents the data engine deleted', () => {
+  it('leaves an engine tombstone out of the list instead of returning it as a row', async () => {
+    get.mockResolvedValue({
+      size: 2,
+      docs: [
+        { id: 'alive', data: () => ({ userId: 'owner-1', title: 'Живой совет' }) },
+        { id: 'buried', data: () => ({ userId: 'owner-1', _dataEngine: { protocol: 1, generation: 'g', revision: 2, deleted: true } }) },
+      ],
+    });
+    const response = await GET(request('councils'));
+    expect(await response.json()).toEqual([{ id: 'alive', userId: 'owner-1', title: 'Живой совет' }]);
+  });
+});

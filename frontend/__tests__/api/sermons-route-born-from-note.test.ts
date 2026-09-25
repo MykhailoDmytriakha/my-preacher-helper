@@ -12,6 +12,7 @@ import { studiesRepository } from '@/api/repositories/studies.repository';
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    runTransaction: jest.fn(),
   },
 }));
 
@@ -43,17 +44,23 @@ const mockGetNote = studiesRepository.getNote as jest.Mock;
 const baseBody = { title: 'Иавис', verse: '1 Пар 4:9-10', date: '2026-09-05T00:00:00.000Z' };
 
 describe('POST /api/sermons born from a study note', () => {
-  let mockAdd: jest.Mock;
+  let mockCreate: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockAdd = jest.fn().mockResolvedValue({ id: 'sermon-new' });
+    (adminDb.runTransaction as jest.Mock).mockImplementation(async callback => {
+      const writes: Promise<unknown>[] = [];
+      const result = await callback({ get: (ref: any) => ref.get(), create: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.set(data))); } });
+      await Promise.all(writes);
+      return result;
+    });
+    mockCreate = jest.fn().mockResolvedValue({ id: 'sermon-new' });
     const mockDoc = jest.fn().mockImplementation((id: string) => ({
-      id,
+      id: id ?? 'sermon-new',
       get: jest.fn().mockResolvedValue({ exists: false }),
-      set: jest.fn().mockResolvedValue(undefined),
+      set: mockCreate,
     }));
-    (adminDb as unknown as { collection: jest.Mock }).collection.mockImplementation(() => ({ add: mockAdd, doc: mockDoc }));
+    (adminDb as unknown as { collection: jest.Mock }).collection.mockImplementation(() => ({ add: jest.fn(), doc: mockDoc }));
     mockGetNote.mockResolvedValue({ id: 'note-1', userId: 'user123', content: 'x' });
   });
 
@@ -74,7 +81,7 @@ describe('POST /api/sermons born from a study note', () => {
 
     expect(response.status).toBe(200);
     expect(mockGetNote).toHaveBeenCalledWith('note-1');
-    const written = mockAdd.mock.calls[0][0];
+    const written = mockCreate.mock.calls[0][0];
     expect(written.sourceNoteIds).toEqual(['note-1']);
     expect(written.scratch).toHaveLength(3);
     expect(written.scratch[0]).toEqual({
@@ -107,26 +114,26 @@ describe('POST /api/sermons born from a study note', () => {
     mockGetNote.mockResolvedValue({ id: 'note-1', userId: 'other' });
     const response = await post({ ...baseBody, sourceNoteIds: ['note-1'] });
     expect(response.status).toBe(403);
-    expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('refuses a link to a note that does not exist', async () => {
     mockGetNote.mockResolvedValue(null);
     const response = await post({ ...baseBody, sourceNoteIds: ['ghost'] });
     expect(response.status).toBe(403);
-    expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('refuses a malformed sourceNoteIds', async () => {
     const response = await post({ ...baseBody, sourceNoteIds: 'note-1' });
     expect(response.status).toBe(400);
-    expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('writes neither key when the create carries no note, and answers without them', async () => {
     const response = await post(baseBody);
     expect(response.status).toBe(200);
-    const written = mockAdd.mock.calls[0][0];
+    const written = mockCreate.mock.calls[0][0];
     expect(written).not.toHaveProperty('sourceNoteIds');
     expect(written).not.toHaveProperty('scratch');
     expect(mockGetNote).not.toHaveBeenCalled();
@@ -145,7 +152,7 @@ describe('POST /api/sermons born from a study note', () => {
       ],
     });
     expect(response.status).toBe(200);
-    const written = mockAdd.mock.calls[0][0];
+    const written = mockCreate.mock.calls[0][0];
     expect(written.scratch[0].source).toEqual({ noteId: 'note-1', heading: 'H' });
     expect(written.scratch[1]).not.toHaveProperty('source');
     expect(written.scratch[1].text).toBe('чужая провенанс');
@@ -155,11 +162,11 @@ describe('POST /api/sermons born from a study note', () => {
     const scratch = Array.from({ length: 301 }, (_, index) => ({ id: `n${index}`, text: `t${index}`, createdAt: 'x' }));
     const response = await post({ ...baseBody, scratch });
     expect(response.status).toBe(400);
-    expect(mockAdd).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
 
     const exactly = Array.from({ length: 300 }, (_, index) => ({ id: `n${index}`, text: `t${index}`, createdAt: 'x' }));
     const ok = await post({ ...baseBody, scratch: exactly });
     expect(ok.status).toBe(200);
-    expect(mockAdd.mock.calls[0][0].scratch).toHaveLength(300);
+    expect(mockCreate.mock.calls[0][0].scratch).toHaveLength(300);
   });
 });

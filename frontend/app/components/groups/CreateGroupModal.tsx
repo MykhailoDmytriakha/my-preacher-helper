@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import DatePickerField from '@/components/ui/DatePickerField';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
+import { useBufferedText } from '@/components/ui/useBufferedText';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
@@ -52,6 +53,118 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
 
     try {
       setSaving(true);
+      // Wait for ACCEPTANCE, not for the call to return. A refusal that arrives
+      // before anything owns this write rejects here, and the catch below keeps the
+      // form open with every field intact — which is the whole contract.
+      await awaitAcceptance(
+        onCreate(createGroupDraft(user?.uid || '', title, description, firstMeetingDate, t)),
+        // useGroups' create recovery descriptor reports a late refusal with this draft
+        // while the groups screen is mounted; after that it is the tracked navigation debt.
+        () => undefined
+      );
+
+      onClose();
+    } catch (error) {
+      /**
+       * NO message here — this is the canonical example, and it must show the rule
+       * rather than break it. `useGroups` declares the recovery descriptor for this
+       * write: it carries the title and description, offers "copy my text", and keeps
+       * reporting after this modal closes. The modal's duty on a refusal is to stay
+       * open with everything the person typed still in it.
+       */
+      console.error('Failed to create group:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <CreateGroupView title={title} setTitle={setTitle} description={description} setDescription={setDescription}
+    firstMeetingDate={firstMeetingDate} setFirstMeetingDate={setFirstMeetingDate} saving={saving}
+    onClose={onClose} handleSubmit={handleSubmit} />;
+}
+
+export function CreateGroupView({ title, setTitle, description, setDescription, firstMeetingDate, setFirstMeetingDate,
+  saving, onClose, handleSubmit, feedback }: {
+  title: string; setTitle: (value: string) => void; description: string; setDescription: (value: string) => void;
+  firstMeetingDate: string; setFirstMeetingDate: (value: string) => void; saving: boolean;
+  onClose: () => void; handleSubmit: (event: React.FormEvent) => void; feedback?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const titleInput = useBufferedText(title, setTitle);
+  const descriptionInput = useBufferedText(description, setDescription);
+  return (
+    <FormDialog title={t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
+      eyebrow={t('navigation.groups', { defaultValue: 'Groups' })} tone="emerald" onClose={onClose}>
+          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+            {feedback}
+            <label className="space-y-2 block">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {t('workspaces.groups.form.title', { defaultValue: 'Title' })} *
+              </span>
+              <TextareaAutosize
+                disabled={saving}
+                value={titleInput.draft}
+                onChange={(event) => titleInput.change(event.target.value)}
+                placeholder={t('workspaces.groups.form.titlePlaceholder', {
+                  defaultValue: 'Family group - Week 1',
+                })}
+                className={FORM_INPUT_CLASS}
+                minRows={1}
+                maxRows={3}
+                required
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {t('workspaces.groups.form.description', { defaultValue: 'Description' })}
+              </span>
+              <TextareaAutosize
+                disabled={saving}
+                value={descriptionInput.draft}
+                onChange={(event) => descriptionInput.change(event.target.value)}
+                placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
+                  defaultValue: 'Optional context for this group meeting',
+                })}
+                className={FORM_INPUT_CLASS}
+                minRows={3}
+                maxRows={5}
+              />
+            </label>
+
+            <label className="space-y-2 block">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {t('workspaces.groups.meetings.title', { defaultValue: 'Meeting dates' })}{' '}
+                <span className="font-normal text-gray-500 dark:text-gray-400">
+                  ({t('common.optional', { defaultValue: 'optional' })})
+                </span>
+              </span>
+              <DatePickerField
+                disabled={saving}
+                value={firstMeetingDate}
+                onChange={setFirstMeetingDate}
+                inputClassName={`${FORM_INPUT_CLASS} pr-12`}
+              />
+            </label>
+
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-100">
+              {t('workspaces.groups.form.bootstrapHint', {
+                defaultValue: 'A starter flow with Main topic + Scripture will be created automatically. You can also schedule the first meeting now.',
+              })}
+            </div>
+
+            <FormActions onCancel={onClose} saving={saving} tone="emerald"
+              cancelLabel={t('common.cancel', { defaultValue: 'Cancel' })}
+              submitLabel={t('workspaces.groups.actions.create', { defaultValue: 'Create group' })} />
+          </form>
+    </FormDialog>
+  );
+}
+
+
+/** Shared starter shape; the engine owns when this value becomes durable or sent. */
+export function createGroupDraft(userId: string, title: string, description: string, firstMeetingDate: string,
+  t: ReturnType<typeof useTranslation>['t']): Omit<Group, 'id'> {
       const now = new Date().toISOString();
       const prayerTemplate = createTemplate('prayer', {
         title: t('workspaces.groups.defaults.prayer', { defaultValue: 'Prayer' }),
@@ -75,12 +188,8 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
         ]
         : [];
 
-      // Wait for ACCEPTANCE, not for the call to return. A refusal that arrives
-      // before anything owns this write rejects here, and the catch below keeps the
-      // form open with every field intact — which is the whole contract.
-      await awaitAcceptance(
-        onCreate({
-        userId: user?.uid || '',
+  return {
+        userId,
         title: title.trim(),
         description: description.trim() || undefined,
         status: 'draft',
@@ -95,88 +204,5 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
         updatedAt: now,
         seriesId: null,
         seriesPosition: null,
-        }),
-        // useGroups' create recovery descriptor reports a late refusal with this draft
-        // while the groups screen is mounted; after that it is the tracked navigation debt.
-        () => undefined
-      );
-
-      onClose();
-    } catch (error) {
-      /**
-       * NO message here — this is the canonical example, and it must show the rule
-       * rather than break it. `useGroups` declares the recovery descriptor for this
-       * write: it carries the title and description, offers "copy my text", and keeps
-       * reporting after this modal closes. The modal's duty on a refusal is to stay
-       * open with everything the person typed still in it.
-       */
-      console.error('Failed to create group:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <FormDialog title={t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
-      eyebrow={t('navigation.groups', { defaultValue: 'Groups' })} tone="emerald" onClose={onClose}>
-          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-            <label className="space-y-2 block">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {t('workspaces.groups.form.title', { defaultValue: 'Title' })} *
-              </span>
-              <TextareaAutosize
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder={t('workspaces.groups.form.titlePlaceholder', {
-                  defaultValue: 'Family group - Week 1',
-                })}
-                className={FORM_INPUT_CLASS}
-                minRows={1}
-                maxRows={3}
-                required
-              />
-            </label>
-
-            <label className="space-y-2 block">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {t('workspaces.groups.form.description', { defaultValue: 'Description' })}
-              </span>
-              <TextareaAutosize
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
-                  defaultValue: 'Optional context for this group meeting',
-                })}
-                className={FORM_INPUT_CLASS}
-                minRows={3}
-                maxRows={5}
-              />
-            </label>
-
-            <label className="space-y-2 block">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {t('workspaces.groups.meetings.title', { defaultValue: 'Meeting dates' })}{' '}
-                <span className="font-normal text-gray-500 dark:text-gray-400">
-                  ({t('common.optional', { defaultValue: 'optional' })})
-                </span>
-              </span>
-              <DatePickerField
-                value={firstMeetingDate}
-                onChange={setFirstMeetingDate}
-                inputClassName={`${FORM_INPUT_CLASS} pr-12`}
-              />
-            </label>
-
-            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-100">
-              {t('workspaces.groups.form.bootstrapHint', {
-                defaultValue: 'A starter flow with Main topic + Scripture will be created automatically. You can also schedule the first meeting now.',
-              })}
-            </div>
-
-            <FormActions onCancel={onClose} saving={saving} tone="emerald"
-              cancelLabel={t('common.cancel', { defaultValue: 'Cancel' })}
-              submitLabel={t('workspaces.groups.actions.create', { defaultValue: 'Create group' })} />
-          </form>
-    </FormDialog>
-  );
+        };
 }

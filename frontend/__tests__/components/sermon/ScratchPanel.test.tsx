@@ -1304,4 +1304,20 @@ describe('ScratchPanel', () => {
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
   });
+  it('treats explicit queued Apply as local delivery and keeps compose disabled until canonical pending clears', async () => {
+    const onApplyOutline = jest.fn().mockResolvedValue({ delivery: 'queued' });
+    composePlanFromScratchMock().mockResolvedValueOnce(composeOutline({ main: [{ id: 'ai-point', scratchNoteId: 'n1', text: 'Queued proposed point', source: 'ai' }] }));
+    const { user, props, rerender } = renderScratchPanel({ onApplyOutline });
+    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+    await screen.findByText('Queued proposed point');
+    await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
+    await screen.findByText('scratch.board.applyQueued');
+    expect(onApplyOutline).toHaveBeenCalledTimes(1);
+    expect(toastMock().success).not.toHaveBeenCalled();
+    rerender(<ScratchPanel {...props} isScratchWritePending />);
+    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
+    rerender(<ScratchPanel {...props} isScratchWritePending={false} scratchRevision={1} />);
+    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
+  });
+
 });

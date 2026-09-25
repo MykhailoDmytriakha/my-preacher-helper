@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useCouncils } from '@/hooks/useCouncils';
-import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
+import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
@@ -174,7 +174,7 @@ type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 
 type SermonData = ReturnType<typeof useSermon>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
-type GroupData = ReturnType<typeof useGroupDetail>['group'];
+type GroupData = ReturnType<typeof useGroupRead>['group'];
 type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
@@ -328,7 +328,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   const { series } = useSeriesDetail(seriesId || '');
 
   // Get group data if we have groupId
-  const { group } = useGroupDetail(groupId || '');
+  const { group } = useGroupRead(groupId || '');
 
   // Get prayer data if we have prayerId
   const { prayer } = usePrayerDetail(prayerId || '');
@@ -350,7 +350,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
   // Councils are a small local list already read by the section; a lookup costs nothing.
-  const { councils } = useCouncils();
+  const { councils } = useCouncilsRead();
   const council = councilId ? councils.find((item) => item.id === councilId) : undefined;
 
   const items = useMemo<BreadcrumbItem[]>(() => {

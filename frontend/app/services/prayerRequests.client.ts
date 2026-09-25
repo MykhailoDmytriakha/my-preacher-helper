@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
@@ -109,6 +110,7 @@ export async function updatePrayerRequestViaClient(
    */
   expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> {
+  assertLegacyClientWriteAllowed('prayerRequests');
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
   const snap = await getDoc(ref);
@@ -144,6 +146,7 @@ export async function updatePrayerRequestViaClient(
 }
 
 export async function deletePrayerRequestViaClient(id: string): Promise<void> {
+  assertLegacyClientWriteAllowed('prayerRequests');
   const db = getClientDb();
   await deleteDoc(doc(db, PRAYER_REQUESTS_COLLECTION, id));
 }
@@ -152,6 +155,7 @@ export async function addPrayerUpdateViaClient(
   id: string,
   payload: AddPrayerUpdateViaClientPayload
 ): Promise<PrayerRequest> {
+  assertLegacyClientWriteAllowed('prayerRequests');
   const trimmedText = payload.text.trim();
   if (!trimmedText) throw new Error('Missing text');
 
@@ -209,6 +213,7 @@ export async function setPrayerStatusViaClient(
   /** The status/answer values as the modal OPENED them — see the guard. */
   expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> {
+  assertLegacyClientWriteAllowed('prayerRequests');
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
   const snap = await getDoc(ref);

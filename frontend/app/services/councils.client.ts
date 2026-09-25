@@ -5,6 +5,7 @@ import { collection, deleteDoc, doc, getDocs, query, setDoc, where } from 'fireb
 import { getClientDb } from '@/config/firebaseClientDb';
 import { readOwnerList } from '@/services/ownerListRead.client';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { isEngineTombstone } from '@/utils/engineTombstone';
 
 import type { Council } from '@/models/models';
 
@@ -12,7 +13,7 @@ export const COUNCILS_COLLECTION = 'councils';
 
 /** The same shaping for both roads: the browser's own read and the server's answer. */
 export const shapeCouncils = (documents: Record<string, unknown>[]): Council[] =>
-  documents.map((data) => hydrateCouncil(data, String(data.id ?? '')));
+  documents.filter((data) => !isEngineTombstone(data)).map((data) => hydrateCouncil(data, String(data.id ?? '')));
 
 export function hydrateCouncil(data: Record<string, unknown>, id: string): Council {
   return {

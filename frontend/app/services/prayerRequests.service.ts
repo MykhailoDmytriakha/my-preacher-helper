@@ -1,3 +1,4 @@
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import {
   addPrayerUpdateViaClient,
@@ -82,6 +83,7 @@ export const createPrayerRequest = async (
   payload: Pick<PrayerRequest, 'userId' | 'title'> &
     Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & { id?: string }
 ): Promise<PrayerRequest> => {
+  assertLegacyClientWriteAllowed('prayerRequests');
   // Create stays server-only (the rest of prayer is client-SDK now). It has no
   // cascade, but replaying client setDoc could full-overwrite mutable fields like
   // updates/status; the server create path returns existing client-id docs

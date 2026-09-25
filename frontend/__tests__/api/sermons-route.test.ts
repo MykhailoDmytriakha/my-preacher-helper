@@ -13,6 +13,7 @@ interface MockRequest {
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    runTransaction: jest.fn(),
   },
 }));
 
@@ -29,10 +30,10 @@ jest.mock('next/server', () => ({
 }));
 
 // Mock the series repository to verify it is called when seriesId is set
-const mockAddSermonToSeries = jest.fn().mockResolvedValue(undefined);
+const mockCreateSermonToSeries = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/api/repositories/series.repository', () => ({
   seriesRepository: {
-    addSermonToSeries: (...args: unknown[]) => mockAddSermonToSeries(...args),
+    addSermonToSeries: (...args: unknown[]) => mockCreateSermonToSeries(...args),
   },
 }));
 
@@ -47,7 +48,7 @@ import * as sermonsRouteModule from 'app/api/sermons/route';
 describe('Sermons API Route', () => {
   let mockRequest: MockRequest;
   let mockCollection: jest.Mock;
-  let mockAdd: jest.Mock;
+  let mockCreate: jest.Mock;
   let mockDoc: jest.Mock;
   let mockDelete: jest.Mock;
   let mockDocRef: any;
@@ -55,6 +56,12 @@ describe('Sermons API Route', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
+    (adminDb.runTransaction as jest.Mock).mockImplementation(async callback => {
+      const writes: Promise<unknown>[] = [];
+      const result = await callback({ get: (ref: any) => ref.get(), create: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.set(data))); } });
+      await Promise.all(writes);
+      return result;
+    });
 
     // Set up mock docRef for POST tests
     mockDelete = jest.fn().mockResolvedValue(undefined);
@@ -64,17 +71,17 @@ describe('Sermons API Route', () => {
     };
 
     // Create mock Firestore chain
-    mockAdd = jest.fn().mockResolvedValue(mockDocRef);
+    mockCreate = jest.fn().mockResolvedValue(mockDocRef);
     // doc(id) — for the client-supplied-id (idempotent) create path. By default
     // the doc does not exist, so the route writes via .set() and keeps the id.
     mockDoc = jest.fn().mockImplementation((id: string) => ({
-      id,
+      id: id ?? 'newSermonId123',
       get: jest.fn().mockResolvedValue({ exists: false }),
-      set: jest.fn().mockResolvedValue(undefined),
+      set: mockCreate,
       delete: mockDelete,
     }));
     mockCollection = jest.fn().mockReturnValue({
-      add: mockAdd,
+      add: jest.fn(),
       doc: mockDoc,
     });
 
@@ -111,7 +118,7 @@ describe('Sermons API Route', () => {
 
       await sermonsRouteModule.POST(mockRequest as unknown as Request);
 
-      const written = mockAdd.mock.calls[0][0];
+      const written = mockCreate.mock.calls[0][0];
       expect(typeof written.updatedAt).toBe('string');
       expect(Number.isNaN(Date.parse(written.updatedAt))).toBe(false);
     });
@@ -157,7 +164,7 @@ describe('Sermons API Route', () => {
 
       // Assert
       expect(mockCollection).toHaveBeenCalledWith('sermons');
-      expect(mockAdd).toHaveBeenCalledWith({
+      expect(mockCreate).toHaveBeenCalledWith({
         userId: 'user123',
         title: 'New Sermon',
         verse: 'Matthew 5:1-12',
@@ -193,7 +200,7 @@ describe('Sermons API Route', () => {
         expect(response.status).toBe(400);
         expect(responseData).toHaveProperty('error');
         expect(responseData.error).toBe('User not authenticated or sermon data is missing');
-        expect(mockAdd).not.toHaveBeenCalled();
+        expect(mockCreate).not.toHaveBeenCalled();
       }
     });
 
@@ -207,7 +214,7 @@ describe('Sermons API Route', () => {
         thoughts: []
       };
       mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
-      mockAdd.mockRejectedValueOnce(new Error('Firestore error'));
+      mockCreate.mockRejectedValueOnce(new Error('Firestore error'));
 
       // Act
       const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
@@ -249,7 +256,7 @@ describe('Sermons API Route', () => {
       const responseData = await response.json();
 
       // Assert
-      expect(mockAdd).toHaveBeenCalledWith({
+      expect(mockCreate).toHaveBeenCalledWith({
         userId: 'user123',
         title: 'New Sermon',
         verse: 'Matthew 5:1-12',
@@ -304,7 +311,7 @@ describe('Sermons API Route', () => {
 
       // Assert
       expect(mockDoc).toHaveBeenCalledWith('client-id-xyz');
-      expect(mockAdd).not.toHaveBeenCalled(); // client-id path uses doc().set(), not add()
+      expect(mockCreate).toHaveBeenCalledTimes(1); // Both paths now use a guarded transaction create.
       expect(responseData.sermon.id).toBe('client-id-xyz');
     });
 
@@ -328,7 +335,7 @@ describe('Sermons API Route', () => {
 
       expect(response.status).toBe(200);
       expect(responseData.sermon.id).toBe('newSermonId123');
-      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
+      expect(mockCreateSermonToSeries).not.toHaveBeenCalled();
     });
 
     test('does NOT call addSermonToSeries when no seriesId is provided', async () => {
@@ -343,7 +350,7 @@ describe('Sermons API Route', () => {
 
       await sermonsRouteModule.POST(mockRequest as unknown as Request);
 
-      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
+      expect(mockCreateSermonToSeries).not.toHaveBeenCalled();
     });
   });
 });

@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
 interface ConductPreflightProps {
@@ -11,9 +12,11 @@ interface ConductPreflightProps {
   templates: GroupBlockTemplate[];
   onStart: (updatedFlow: GroupFlowItem[], totalMeetingMin: number | null) => void;
   onBack: () => void;
+  onUpdateDuration?: (id: string, durationMin: number | null) => void;
+  disabled?: boolean;
 }
 
-export default function ConductPreflight({ flow, templates, onStart, onBack }: ConductPreflightProps) {
+export default function ConductPreflight({ flow, templates, onStart, onBack, onUpdateDuration, disabled = false }: ConductPreflightProps) {
   const { t } = useTranslation();
   const [localFlow, setLocalFlow] = useState<GroupFlowItem[]>(flow);
   const [totalMeetingMin, setTotalMeetingMin] = useState<number | null>(null);
@@ -26,24 +29,27 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
     }
   }, [flow]);
 
+  const displayedFlow = onUpdateDuration ? flow : localFlow;
+
   const templatesById = useMemo(
     () => new Map(templates.map((tpl) => [tpl.id, tpl])),
     [templates]
   );
 
   const blocksDuration = useMemo(
-    () => localFlow.reduce((sum, item) => sum + (item.durationMin || 0), 0),
-    [localFlow]
+    () => displayedFlow.reduce((sum, item) => sum + (item.durationMin || 0), 0),
+    [displayedFlow]
   );
 
   const minLabel = t('groupFlow.minutesShort', { defaultValue: 'min' });
 
-  const hasDurations = localFlow.some((item) => item.durationMin && item.durationMin > 0);
-  const someEmpty = hasDurations && localFlow.some((item) => !item.durationMin || item.durationMin <= 0);
+  const hasDurations = displayedFlow.some((item) => item.durationMin && item.durationMin > 0);
+  const someEmpty = hasDurations && displayedFlow.some((item) => !item.durationMin || item.durationMin <= 0);
 
   const updateDuration = (flowItemId: string, value: string) => {
     flowEditedRef.current = true;
     const num = value === '' ? null : parseInt(value, 10);
+    if (onUpdateDuration) { onUpdateDuration(flowItemId, num && num > 0 ? num : null); return; }
     setLocalFlow((prev) =>
       prev.map((item) =>
         item.id === flowItemId ? { ...item, durationMin: num && num > 0 ? num : null } : item
@@ -122,7 +128,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
       {/* Block list */}
       <div className="flex-1 overflow-y-auto px-5 py-4">
         <div className="space-y-2">
-          {localFlow.map((item, index) => {
+          {displayedFlow.map((item, index) => {
             const template = templatesById.get(item.templateId);
             const title = item.instanceTitle || template?.title || `Block ${index + 1}`;
             const isEmpty = !item.durationMin || item.durationMin <= 0;
@@ -144,12 +150,13 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
                   {title}
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <input
+                  <LiveTextInput
                     type="number"
                     min="0"
                     max="999"
-                    value={item.durationMin ?? ''}
-                    onChange={(e) => updateDuration(item.id, e.target.value)}
+                    value={item.durationMin == null ? '' : String(item.durationMin)}
+                    disabled={disabled}
+                    onChange={(value) => updateDuration(item.id, value)}
                     placeholder={t('conduct.preflight.noLimit', { defaultValue: '—' })}
                     className={`w-20 rounded-lg border px-2 py-1 text-right text-sm transition-colors focus:outline-none ${
                       highlight
@@ -170,7 +177,8 @@ export default function ConductPreflight({ flow, templates, onStart, onBack }: C
       {/* Start button */}
       <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-700">
         <button
-          onClick={() => onStart(localFlow, totalMeetingMin)}
+          disabled={disabled}
+          onClick={() => onStart(displayedFlow, totalMeetingMin)}
           className="w-full rounded-xl bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.98]"
         >
           {t('conduct.preflight.startButton', { defaultValue: 'Start Meeting' })} →

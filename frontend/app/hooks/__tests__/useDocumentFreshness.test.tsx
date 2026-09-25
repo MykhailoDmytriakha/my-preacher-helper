@@ -900,3 +900,17 @@ describe('independent service-order reads', () => {
     expect(result.current.state).not.toBe('stale');
   });
 });
+
+describe('useDocumentFreshness for a collection the engine owns', () => {
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+
+  it('stays silent and never subscribes, because the engine owns that freshness', async () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'studyNotes';
+    emit = null as unknown as typeof emit;
+    const { result } = render({ title: 'Mine' });
+    await act(async () => { jest.advanceTimersByTime?.(60_000); });
+    expect(result.current.state).toBe('fresh');
+    expect(result.current.canCheck).toBe(false);
+    expect(emit).toBeNull();
+  });
+});

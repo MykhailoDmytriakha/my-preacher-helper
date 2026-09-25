@@ -1,8 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useResolvedUid } from "@/hooks/useResolvedUid";
+import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
@@ -50,6 +53,9 @@ export function useSeries(userId?: string | null) {
   const isOnline = useOnlineStatus();
   const { uid: resolvedUid } = useResolvedUid();
   const effectiveUserId = userId ?? resolvedUid ?? null;
+  const engineEnabled = isCollectionOnEngine('series');
+  const engine = useSeriesDataCollection(engineEnabled, effectiveUserId);
+  const refreshEngineSeries = engine.refreshSeries;
 
   const {
     data: series = [],
@@ -59,7 +65,7 @@ export function useSeries(userId?: string | null) {
   } = useServerFirstQuery({
     queryKey: buildQueryKey(effectiveUserId),
     queryFn: () => (effectiveUserId ? getAllSeries(effectiveUserId) : Promise.resolve([])),
-    enabled: !!effectiveUserId,
+    enabled: !!effectiveUserId && !engineEnabled,
   });
 
   useEffect(() => {
@@ -235,6 +241,7 @@ export function useSeries(userId?: string | null) {
   // awaiting the network; offline the mutation pauses + persists and replays.
   const createNewSeries = useCallback(
     (seriesData: Omit<Series, "id"> & { id?: string }): WriteSubmission => {
+      assertLegacyClientWriteAllowed('series');
       // Mint a stable client id so the create is idempotent (setDoc by this id) —
       // a buffered create that ever replays overwrites the same doc, no duplicate.
       const payload = { ...seriesData, id: seriesData.id ?? newClientId() };
@@ -245,6 +252,7 @@ export function useSeries(userId?: string | null) {
 
   const updateExistingSeries = useCallback(
     (seriesId: string, updates: Partial<Series>): WriteSubmission => {
+      assertLegacyClientWriteAllowed('series');
       return queuedMutation(
         `series:update:${seriesId}:${JSON.stringify(updates)}`,
         updateSeriesMutation.mutateAsync({ seriesId, updates, userId: effectiveUserId ?? undefined })
@@ -255,6 +263,7 @@ export function useSeries(userId?: string | null) {
 
   const deleteExistingSeries = useCallback(
     (seriesId: string): WriteSubmission => {
+      assertLegacyClientWriteAllowed('series');
       // DELETE is a plain fetch request, not a replayable client-SDK write. React
       // Query does not retain an online pending request across a reload either.
       return persistedWrite(deleteSeriesMutation.mutateAsync(seriesId));
@@ -263,6 +272,7 @@ export function useSeries(userId?: string | null) {
   );
 
   const refreshSeries = useCallback(async () => {
+    if (engineEnabled) { await refreshEngineSeries(); return; }
     if (!effectiveUserId || !isOnline) return;
     setMutationError(null);
     try {
@@ -274,11 +284,11 @@ export function useSeries(userId?: string | null) {
       setMutationError(errorObj);
       throw errorObj;
     }
-  }, [queryClient, isOnline, effectiveUserId]);
+  }, [queryClient, isOnline, effectiveUserId, engineEnabled, refreshEngineSeries]);
 
   return {
-    series,
-    loading: isLoading,
+    series: engineEnabled ? engine.series : series,
+    loading: engineEnabled ? engine.loading : isLoading,
     /**
      * ONLY the query's error. A refused WRITE used to travel through this same field,
      * and the page renders that as a fatal state — the whole screen replaced, the open
@@ -286,7 +296,7 @@ export function useSeries(userId?: string | null) {
      * by the recovery descriptor. A write that fails must never cost the person the
      * screen they are working on.
      */
-    error: (error as Error | null) ?? null,
+    error: engineEnabled ? (engine.error ? new Error(engine.error) : null) : (error as Error | null) ?? null,
     refreshSeries,
     createNewSeries,
     updateExistingSeries,

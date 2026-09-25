@@ -11,18 +11,20 @@ import Column from "@/components/Column";
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
+import { StructureWriterContext, useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
-import { useSermonStructureData } from "@/hooks/useSermonStructureData";
+import { useSermonStructureData, type StructureEngineSource } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import { updateThought } from "@/services/thought.service";
 import { newClientId } from "@/utils/clientId";
 import { getExportContent } from "@/utils/exportContent";
 import {
@@ -45,6 +47,7 @@ import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
+import { useEngineStructureWriter } from "./useEngineStructureWriter";
 import { createStructureCollisionDetection } from "./utils/collision";
 import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
 import { findOutlinePoint } from "./utils/structure";
@@ -71,6 +74,8 @@ interface UseSermonStructureDataReturn {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   isAmbiguousVisible: boolean;
   setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
+  /** Present on the engine; the legacy board has nothing to catch up with. */
+  syncFromEngine?: () => void;
 }
 
 export default function StructurePage() {
@@ -83,11 +88,45 @@ export default function StructurePage() {
 
 function StructurePageContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const sermonIdFromPath = useRouteId();
   const sermonIdFromQuery = searchParams?.get("sermonId");
   const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
+  return sermonId && isCollectionOnEngine('sermons')
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EngineStructureBoard sermonId={sermonId} /></DataDocumentProvider>
+    : <StructureBoard sermonId={sermonId} />;
+}
+
+/**
+ * The same board on the engine: the document is the only store, every write goes through the
+ * engine writer, and the board follows the document except while a card is in the person's hand.
+ */
+function EngineStructureBoard({ sermonId }: { sermonId: string }) {
+  const { owner } = useDataEngine();
+  const { writer, document } = useEngineStructureWriter(sermonId, owner);
+  const holdingRef = useRef(false);
+  const sermon = useMemo(() => document.data
+    ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)
+    : null, [document.data, sermonId]);
+  const engine = useMemo<StructureEngineSource>(() => ({
+    sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
+  }), [sermon, document.loading, document.error]);
+  return <StructureWriterContext.Provider value={writer}>
+    <StructureBoard sermonId={sermonId} engine={engine} holdingRef={holdingRef} syncStatus={<DataSyncStatus
+      status={document.status} error={document.error} onRetry={document.retry}
+      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
+  </StructureWriterContext.Provider>;
+}
+
+function StructureBoard({ sermonId, engine, holdingRef, syncStatus }: {
+  sermonId: string | null;
+  engine?: StructureEngineSource;
+  holdingRef?: React.MutableRefObject<boolean>;
+  syncStatus?: React.ReactNode;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const { t } = useTranslation();
+  const structureWriter = useStructureWriter();
   const { confirm, confirmDialog } = useConfirm();
   const { refresh: refreshAiUsage } = useAiUsage();
   const [isClient, setIsClient] = useState(false);
@@ -124,13 +163,15 @@ function StructurePageContent() {
     error,
     retry,
     isAmbiguousVisible,
-    setIsAmbiguousVisible
-  }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t);
+    setIsAmbiguousVisible,
+    syncFromEngine,
+  }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t, engine);
 
   const freshnessUid = useFreshnessUid(sermon?.userId);
   const freshness = useDocumentFreshness({
     collection: 'sermons', docId: sermonId, uid: freshnessUid,
-    enabled: Boolean(sermon),
+    // On the engine the document observer owns freshness; DataSyncStatus says it.
+    enabled: Boolean(sermon) && !engine,
     known: sermon ? sermonFreshnessProjection(sermon as unknown as Record<string, unknown>) : null,
     select: sermonFreshnessProjection,
   });
@@ -266,6 +307,13 @@ function StructurePageContent() {
     sermon,
     setSermon,
   });
+
+  // A drag or an AI review owns the board; the engine's rebuild waits and then catches up.
+  const holdingBoard = dndActiveId !== null || isDiffModeActive;
+  if (holdingRef) holdingRef.current = holdingBoard;
+  useEffect(() => {
+    if (!holdingBoard) syncFromEngine?.();
+  }, [holdingBoard, syncFromEngine]);
 
   // Safety timeout to prevent stuck drag state (especially on touch devices)
   useEffect(() => {
@@ -528,7 +576,7 @@ function StructurePageContent() {
         // Without it every field of this screen's copy is claimed as changed, and a
         // padlock pressed on a tab open since morning republishes its stale text over
         // a rewrite made on another device.
-        thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked }, thought)),
+        thoughtsToUpdate.map((thought) => structureWriter.updateThought(sermon.id, { ...thought, isLocked }, thought)),
       );
 
       const failed = results.find(
@@ -543,7 +591,7 @@ function StructurePageContent() {
           // Legacy thoughts omit `isLocked`, but omission means unlocked. Materialize
           // that value here or the diff has no lock key and the server stays locked
           // while the optimistic rollback falsely shows an unlocked card.
-          successfulRollbacks.map((thought) => updateThought(
+          successfulRollbacks.map((thought) => structureWriter.updateThought(
             sermon.id,
             { ...thought, isLocked: Boolean(thought.isLocked) },
             { ...thought, isLocked },
@@ -567,7 +615,7 @@ function StructurePageContent() {
     };
     void awaitAcceptance(submission, handleFailure).catch(handleFailure);
     return submission;
-  }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon]);
+  }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon, structureWriter]);
 
   const handleToggleThoughtLock = useCallback((thoughtId: string, isLocked: boolean): WriteSubmission => {
     return commitThoughtLockChange({
@@ -747,9 +795,9 @@ function StructurePageContent() {
       setSermon(prev => prev ? { ...prev, outline: updatedOutline } : null);
 
       // 5. Save to backend
-      const { updateSermonOutline } = await import('@/services/outline.service');
+
       // `preferMine` — no surface here to ask the person to choose; see the writer.
-      const savedOutline = await updateSermonOutline(sermon.id, updatedOutline, baseOutline, 'preferMine');
+      const savedOutline = await structureWriter.updateSermonOutline(sermon.id, updatedOutline, baseOutline, 'preferMine');
       // Only a newer SUCCESS may advance the base. A newer request that failed does
       // not block this late answer, while an older delayed answer cannot roll back a
       // baseline already confirmed by a newer successful save.
@@ -806,7 +854,8 @@ function StructurePageContent() {
 
   return (
     <div className="p-4">
-      {freshness.state !== 'fresh' && !freshnessDismissed && <DataFreshnessBanner
+      {syncStatus && <div className="mb-4">{syncStatus}</div>}
+      {!engine && freshness.state !== 'fresh' && !freshnessDismissed && <DataFreshnessBanner
         entityKey="entitySermon" dirty={false}
         unknown={freshness.state === 'unknown'} deleted={freshness.remotelyDeleted}
         diagnostics={freshness.diagnostics} checking={freshness.checking}

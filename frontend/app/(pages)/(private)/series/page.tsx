@@ -11,31 +11,73 @@ import {
   ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ChevronIcon } from '@/components/Icons';
 import CreateSeriesModal from '@/components/series/CreateSeriesModal';
+import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
 import SeriesCard from '@/components/series/SeriesCard';
 import { SeriesGridSkeleton } from '@/components/skeletons/SeriesCardSkeleton';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useSeries } from '@/hooks/useSeries';
+import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
+import { newClientId } from '@/utils/clientId';
 import '@locales/i18n';
 
 type StatusFilter = 'all' | 'draft' | 'active' | 'completed';
 type SortOption = 'recent' | 'title' | 'sermons';
 
 export default function SeriesPage() {
-  const { t } = useTranslation();
   const { user } = useAuth();
-  const { series, loading, error, createNewSeries, refreshSeries } = useSeries(user?.uid || null);
+  return isCollectionOnEngine('series') ? <EngineSeriesPage key={user?.uid ?? ''} /> : <LegacySeriesPage />;
+}
+function LegacySeriesPage() {
+  const { user } = useAuth();
+  const source = useSeries(user?.uid ?? null);
+  return <SeriesView source={source} />;
+}
+function EngineSeriesPage() {
+  const source = useSeriesDataCollection(), router = useRouter();
+  const { browser, owner } = useDataEngine();
+  const [creation, setCreation] = useState<{ id: string; recoveryId?: string } | null>(null);
+  const recovery = useRecoveryDiscovery({ identity: browser ?? {}, enabled: Boolean(browser && owner), version: String(Boolean(creation)),
+    list: async () => (await browser!.engine.listRecoverable()).filter(entry =>
+      entry.record.checkpoint.confirmed.resource.collection === 'series' && entry.record.checkpoint.confirmed.value === null && entry.record.checkpoint.draft !== null)
+      .map(entry => ({ id: entry.id, title: String(entry.record.checkpoint.draft?.title || entry.record.checkpoint.confirmed.resource.id),
+        preview: String(entry.record.checkpoint.draft?.description ?? '') })),
+    recover: async id => {
+      const records = await browser!.engine.listRecoverable();
+      const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'series');
+      if (!selected) throw new Error('Series draft no longer exists');
+      setCreation({ id: selected.record.checkpoint.confirmed.resource.id, recoveryId: id });
+    } });
+  return <>
+    <SeriesView source={source} onCreate={() => setCreation({ id: newClientId() })}
+      feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus status={null} recoveryChoices={recovery.choices}
+        onListRecovery={recovery.refresh} onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
+    {creation && <EngineCreateSeriesModal key={`${owner}:${creation.id}`} seriesId={creation.id} recoveryId={creation.recoveryId}
+      onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/series/${id}`); }} />}
+  </>;
+}
+function SeriesView({ source, onCreate, feedback }: {
+  source: Pick<ReturnType<typeof useSeries>, 'series' | 'loading'> & { error: unknown; refreshSeries: () => unknown }
+    & Partial<Pick<ReturnType<typeof useSeries>, 'createNewSeries'>>;
+  onCreate?: () => void; feedback?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const { series, loading, error, createNewSeries, refreshSeries } = source;
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sort, setSort] = useState<SortOption>('recent');
 
-  const handleCreateSeries = (seriesData: Parameters<typeof createNewSeries>[0]) => createNewSeries(seriesData);
+  const handleCreateSeries = (seriesData: Parameters<NonNullable<typeof createNewSeries>>[0]) => createNewSeries!(seriesData);
 
   const filteredSeries = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -74,23 +116,11 @@ export default function SeriesPage() {
     return { total: series.length, active, completed, drafts };
   }, [series]);
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            {t('navigation.series')}
-          </h1>
-        </header>
-        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          <p>Failed to load series. Please try again.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
+      {feedback}
+      {Boolean(error) && <p role="alert" className="text-rose-700 dark:text-rose-300">{t('dataSync.readFailed')}</p>}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="space-y-2 max-w-3xl">
           <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/40 dark:text-blue-100 dark:ring-blue-800/60">
@@ -106,14 +136,14 @@ export default function SeriesPage() {
         </div>
         <div className="flex items-center gap-2 self-end sm:self-auto">
           <button
-            onClick={refreshSeries}
+            onClick={() => { void Promise.resolve(refreshSeries()).catch(() => undefined); }}
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
             <ArrowPathIcon className="h-5 w-5" />
             {t('common.refresh', { defaultValue: 'Refresh' })}
           </button>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
           >
             <PlusIcon className="h-5 w-5" />
@@ -266,7 +296,7 @@ export default function SeriesPage() {
           </p>
           <div className="mt-5 flex justify-center">
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
             >
               <PlusIcon className="h-5 w-5" />

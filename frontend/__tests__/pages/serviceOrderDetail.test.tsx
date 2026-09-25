@@ -1347,3 +1347,49 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
     expect(screen.getByText('Ин. 11:25,')).toBeInTheDocument();
   });
 });
+
+describe('One service on the engine', () => {
+  const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+    state.orders = [order([step('s1', 'Перед началом')])];
+    state.loading = false;
+    state.isOnline = true;
+  });
+  afterEach(() => { delete process.env[ON_ENGINE]; });
+
+  const remoteEdit = () => { state.orders = [{ ...order([step('s1', 'Written on the phone')]), title: 'Renamed on the phone' }]; };
+
+  it('follows the row when nothing is unsaved: the engine row already is the server copy', () => {
+    process.env[ON_ENGINE] = 'serviceOrders';
+    const { rerender } = render(<ServiceOrderPage />);
+    remoteEdit();
+    rerender(<ServiceOrderPage />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Renamed on the phone');
+    expect(screen.getByText('Written on the phone')).toBeInTheDocument();
+  });
+
+  it('keeps the legacy page on the copy it accepted, where the freshness banner offers the change', () => {
+    const { rerender } = render(<ServiceOrderPage />);
+    remoteEdit();
+    rerender(<ServiceOrderPage />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Погребение');
+  });
+
+  it('holds the row back while a title is being typed, so the field and its sitting survive a rename elsewhere', () => {
+    process.env[ON_ENGINE] = 'serviceOrders';
+    const { rerender } = render(<ServiceOrderPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+    const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
+    fireEvent.focus(title);
+    fireEvent.change(title, { target: { value: 'Typed here' } });
+    remoteEdit();
+    rerender(<ServiceOrderPage />);
+    // A new sitting would remount the field with the phone's title and drop what was typed.
+    expect(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' })).toHaveValue('Typed here');
+    fireEvent.blur(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }));
+    // The rename is judged in the sitting that saw the old title, so it can be refused.
+    expect(mockRenameOrder).toHaveBeenCalledWith('order-1', 'Typed here', mockOpenedWith.mock.calls[0][2]);
+  });
+});

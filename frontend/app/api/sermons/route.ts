@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { studiesRepository } from '@/api/repositories/studies.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { createLegacyDocument, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { ScratchNote, Sermon } from '@/models/models';
 
 const MAX_SOURCE_NOTES = 20;
@@ -185,21 +186,10 @@ export async function POST(request: Request) {
     // mismatch (incl. a missing userId) is rejected so a client id can never
     // reach another user's sermon.
     const clientId = typeof sermon.id === 'string' && sermon.id ? sermon.id : undefined;
-    let docRef;
-    if (clientId) {
-      const ref = adminDb.collection('sermons').doc(clientId);
-      const existing = await ref.get();
-      if (existing.exists) {
-        const existingData = existing.data() as { userId?: string } | undefined;
-        if (!existingData || existingData.userId !== userId) {
-          return NextResponse.json({ error: 'Forbidden: sermon id belongs to another user' }, { status: 403 });
-        }
-        return NextResponse.json({ message: 'Sermon already exists', sermon: { ...existingData, id: clientId } });
-      }
-      await ref.set(sermonData);
-      docRef = ref;
-    } else {
-      docRef = await adminDb.collection('sermons').add(sermonData);
+    const docRef = clientId ? adminDb.collection('sermons').doc(clientId) : adminDb.collection('sermons').doc();
+    const result = await createLegacyDocument(docRef, sermonData, uid);
+    if (!result.created) {
+      return NextResponse.json({ message: 'Sermon already exists', sermon: { ...result.data, id: docRef.id } });
     }
     console.log("Sermon written with ID:", docRef.id);
 
@@ -216,6 +206,9 @@ export async function POST(request: Request) {
     console.log("Returning success response for created sermon");
     return NextResponse.json({ message: 'Sermon created successfully', sermon: newSermon });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
+    if ((error as { code?: string })?.code === 'permission-denied') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     console.error("Error occurred while creating sermon:", error);
     return NextResponse.json({ error: 'Failed to create sermon' }, { status: 500 });
   }

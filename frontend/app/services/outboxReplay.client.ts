@@ -4,10 +4,12 @@ import { doc } from 'firebase/firestore';
 
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   listOutbox,
   markOutboxConflicted,
+  markOutboxRecoveryRequired,
   removeFromOutbox,
   type OutboxEntry,
 } from '@/services/writeOutbox.client';
@@ -31,6 +33,7 @@ export async function replayOutbox(uid: string): Promise<{
   replayed: number;
   conflicted: number;
   failed: number;
+  recoveryRequired: number;
   /** Documents this run actually wrote — the caller must refresh their views. */
   touched: Array<{ collection: string; docId: string }>;
 }> {
@@ -40,6 +43,7 @@ export async function replayOutbox(uid: string): Promise<{
   let replayed = 0;
   let conflicted = 0;
   let failed = 0;
+  let recoveryRequired = 0;
   const touched: Array<{ collection: string; docId: string }> = [];
 
   /**
@@ -75,6 +79,7 @@ export async function replayOutbox(uid: string): Promise<{
     const lane = laneOf(entry);
     const rebased = committedHere.get(lane);
     try {
+      assertLegacyClientWriteAllowed(entry.collection);
       /**
        * A SEMANTIC intent: redo the merge instead of applying a patch.
        *
@@ -114,12 +119,16 @@ export async function replayOutbox(uid: string): Promise<{
       touched.push({ collection: entry.collection, docId: entry.docId });
       replayed += 1;
     } catch (error) {
-      if (recordReplayConflict(entry, error)) conflicted += 1;
+      const recovery = recordOutboxRecoveryRefusal(entry.id, error);
+      if (recovery !== null) {
+        if (recovery) recoveryRequired += 1;
+        else failed += 1;
+      } else if (recordReplayConflict(entry, error)) conflicted += 1;
       else failed += 1;
     }
   }
 
-  return { replayed, conflicted, failed, touched };
+  return { replayed, conflicted, failed, recoveryRequired, touched };
 }
 
 /** Conflicted intents waiting for a human decision — the UI reads these. */
@@ -203,4 +212,27 @@ function recordReplayConflict(entry: OutboxEntry, error: unknown): boolean {
   // Still unreachable, or a real error: KEEP the entry. Dropping it here
   // would be the silent loss the outbox exists to prevent.
   return false;
+}
+
+/** Kept separate from conflicts: legacy "keep mine" must never replay these. */
+export function pendingOutboxRecovery(uid: string): OutboxEntry[] {
+  return listOutbox(uid).filter(entry => entry.status === 'migration-required' || entry.status === 'blocked');
+}
+
+const ENGINE_REQUIRED = 'data-engine-required';
+
+function replayRecoveryReason(error: unknown): 'data-engine-required' | 'permission-denied' | null {
+  if (!error || typeof error !== 'object') return null;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (code === ENGINE_REQUIRED || message === ENGINE_REQUIRED) return ENGINE_REQUIRED;
+  // Rules cannot distinguish a migrated document from other permission failures.
+  // Hold the intent visibly, without claiming that migration was proven.
+  if (code === 'permission-denied' || code === 'firestore/permission-denied') return 'permission-denied';
+  return null;
+}
+
+/** Null means a different failure; false means the terminal status could not persist. */
+export function recordOutboxRecoveryRefusal(id: string, error: unknown): boolean | null {
+  const reason = replayRecoveryReason(error);
+  return reason ? markOutboxRecoveryRequired(id, reason) : null;
 }

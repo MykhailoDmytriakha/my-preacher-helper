@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 
-import { useCouncils } from '@/hooks/useCouncils';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { councilEntries, type CalendarEntry } from '@/utils/calendarEntries';
 
 /**
@@ -18,7 +18,7 @@ export function useCalendarCouncils(): {
   isLoading: boolean;
   error: unknown;
 } {
-  const { councils, loading, error } = useCouncils();
+  const { councils, loading, error } = useCouncilsRead();
   const entries = useMemo(() => councilEntries(councils), [councils]);
   return { entries, isLoading: loading, error };
 }

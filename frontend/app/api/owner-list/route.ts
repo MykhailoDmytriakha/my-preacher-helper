@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { isEngineTombstone } from '@/utils/engineTombstone';
 
 /**
  * ONE DOOR TO THE OWNER'S OWN LISTS — the second road, for every list at once.
@@ -70,7 +71,8 @@ export async function GET(request: Request) {
         .limit(PAGE_SIZE);
       if (after) page = page.startAfter(after);
       const snapshot = await page.get();
-      snapshot.docs.forEach((doc) => documents.push({ ...doc.data(), id: doc.id }));
+      // A tombstone is the engine's record that a document is gone — never a row of the list.
+      snapshot.docs.forEach((doc) => { if (!isEngineTombstone(doc.data())) documents.push({ ...doc.data(), id: doc.id }); });
       if (snapshot.size < PAGE_SIZE) break;
       if (documents.length >= MAX_DOCUMENTS) {
         return NextResponse.json({ error: 'List too large to read this way' }, { status: 507 });

@@ -3,10 +3,13 @@ import { z } from 'zod';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
 
 import { noStore, stepsSchema, writeError } from '../writeSupport';
 
 import type { ServiceOrder } from '@/models/models';
+
+const NOT_FOUND = 'Service order not found';
 
 type Context = { params: Promise<{ id: string }> };
 const payloadSchema = z.discriminatedUnion('aggregate', [
@@ -26,7 +29,7 @@ export async function GET(request: Request, { params }: Context) {
     const { id } = await params;
     const snapshot = await adminDb.collection('serviceOrders').doc(id).get();
     if (!snapshot.exists || snapshot.data()?.userId !== uid) {
-      return NextResponse.json({ error: 'Service order not found' }, { status: 404 });
+      return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
     }
     return NextResponse.json({ ...snapshot.data(), id }, { headers: noStore });
   } catch (error) { return writeError(error); }
@@ -42,11 +45,12 @@ export async function PATCH(request: Request, { params }: Context) {
     const { id } = await params;
     const input = parsed.data;
     const ref = adminDb.collection('serviceOrders').doc(id);
-    const result = await adminDb.runTransaction(async tx => {
+    const result = await runLegacyTransaction(async tx => {
       const snapshot = await tx.get(ref);
       if (!snapshot.exists || snapshot.data()?.userId !== uid) {
-        throw Object.assign(new Error('Service order not found'), { code: 'not-found' });
+        throw Object.assign(new Error(NOT_FOUND), { code: 'not-found' });
       }
+      assertLegacyWritable(snapshot.data());
       const current = { ...snapshot.data(), id } as ServiceOrder;
       const revision = current.rev?.[input.aggregate] ?? 0;
       const baselineMatches = input.aggregate === 'meta' && input.expectedBaseline !== null
@@ -69,10 +73,10 @@ export async function DELETE(request: Request, { params }: Context) {
   try {
     const { id } = await params;
     const ref = adminDb.collection('serviceOrders').doc(id);
-    await adminDb.runTransaction(async tx => {
+    await runLegacyTransaction(async tx => {
       const snapshot = await tx.get(ref);
       if (!snapshot.exists || snapshot.data()?.userId !== uid) {
-        throw Object.assign(new Error('Service order not found'), { code: 'not-found' });
+        throw Object.assign(new Error(NOT_FOUND), { code: 'not-found' });
       }
       tx.delete(ref);
     });

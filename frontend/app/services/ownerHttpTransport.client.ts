@@ -16,7 +16,8 @@ import { resolveOwnerUid } from '@/utils/queryKeys';
  *   and is never a reason to replay through the SDK. It comes back as `deadline-exceeded`.
  * - WHOSE REQUEST THIS IS IS FIXED WHEN IT STARTS. A sign-in that happens while the token is
  *   fetched, or while the answer is in the air, must not hand one account's request to another.
- * - A 409 IS AN ANSWER, not a failure: the caller reads the server's current document from it.
+ * - A CAS 409 carries the server's current document. A typed migration refusal
+ *   is terminal and must never be interpreted as that document.
  */
 
 const HTTP_ERROR_CODES: Record<number, string> = {
@@ -104,8 +105,15 @@ export async function requestOwnerJson<T>(
       signal: controller.signal,
       ...(keepalive && withinKeepaliveBudget ? { keepalive: true } : {}),
     });
-    const value = (await response.json().catch(() => ({}))) as T & { error?: string };
+    const value = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
     if (resolveOwnerUid() !== owner) throw accountChangedError();
+    // A migration refusal is terminal for this legacy write, never a CAS document. It is known
+    // by the body's code at ANY status: the server moved it off 409 for the sake of bundles that
+    // read 409 as a conflict, and matching the status too would turn the refusal into a
+    // retryable "unavailable" — an offline intent that loops instead of being offered back.
+    if (value?.code === 'data-engine-required') {
+      throw Object.assign(new Error(value.error ?? messages.failed), { code: 'data-engine-required', status: response.status });
+    }
     if (!response.ok && !answerStatuses.includes(response.status)) {
       throw Object.assign(new Error(value?.error ?? messages.failed), {
         code: codeForHttpStatus(response.status),

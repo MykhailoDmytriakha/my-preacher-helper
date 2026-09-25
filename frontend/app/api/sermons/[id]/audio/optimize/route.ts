@@ -33,6 +33,8 @@ import {
 } from '@/api/services/sermonTransitions';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
@@ -91,6 +93,7 @@ export async function POST(
 
         // Default to true for backward compatibility
         const saveToDb = body.saveToDb !== false;
+        if (saveToDb) assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
 
         // 2. Prepare Segments based on Outline & Thoughts
         // `sections` may be 'all', a single section key, or an array of keys (checkboxes).
@@ -167,7 +170,7 @@ export async function POST(
         // Use dot-path updates so we record the source mode and refresh chunk/optimize
         // metadata WITHOUT clobbering voice/model/lastGenerated from a previous render.
         if (saveToDb) {
-            await adminDb.collection('sermons').doc(sermonId).update({
+            await updateOwnedDocument(uid, { collection: 'sermons', id: sermonId }, {
                 audioChunks: allChunks,
                 'audioMetadata.mode': useRawText ? 'raw' : 'ai',
                 'audioMetadata.chunksCount': allChunks.length,
@@ -193,7 +196,7 @@ export async function POST(
     } catch (error) {
         console.error('Optimize error:', error);
         if (isUsageCapReachedError(error)) return usageCapResponse(error);
-        return NextResponse.json(
+        return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
             { error: error instanceof Error ? error.message : 'Optimization failed' },
             { status: 500 }
         );

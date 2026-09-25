@@ -4,10 +4,13 @@ import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { ManualTextBinding } from './manualTextBinding';
+
 interface EditableTitleProps {
   initialTitle: string;
   onSave: (newTitle: string) => Promise<void>; // Expects a promise to handle async save
   disabled?: boolean;
+  manual?: ManualTextBinding;
   textSizeClass?: string; // e.g., "text-2xl sm:text-3xl"
   inputSizeClass?: string; // e.g., "text-2xl sm:text-3xl"
   buttonSizeClass?: string; // e.g., "w-5 h-5"
@@ -19,6 +22,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   initialTitle,
   onSave,
   disabled = false,
+  manual,
   textSizeClass = 'text-2xl sm:text-3xl',
   inputSizeClass = 'text-2xl sm:text-3xl',
   buttonSizeClass = 'w-5 h-5',
@@ -26,9 +30,12 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   containerClass = 'flex items-center gap-2 flex-grow min-w-0',
 }) => {
   const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState(initialTitle);
-  const [isSaving, setIsSaving] = useState(false);
+  const [legacyEditing, setIsEditing] = useState(false);
+  const isEditing = manual?.active ?? legacyEditing;
+  const [legacyValue, setEditedTitle] = useState(initialTitle);
+  const editedTitle = manual?.value ?? legacyValue;
+  const [localSaving, setIsSaving] = useState(false);
+  const isSaving = localSaving || Boolean(manual?.busy);
   const [error, setError] = useState<string | null>(null); // To display potential save errors
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -47,22 +54,31 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
     }
   }, [isEditing]);
 
+  const manualAction = async (action: () => Promise<void>) => {
+    setError(null);
+    try { await action(); } catch { setError(t('errors.failedToSaveTitle')); }
+  };
+
   const handleEditClick = () => {
-    if (disabled) return;
+    if (disabled || isSaving) return;
+    if (manual) { void manualAction(() => manual.begin()); return; }
     setEditedTitle(initialTitle); // Reset edit field to current title when starting edit
     setIsEditing(true);
     setError(null); // Clear previous errors
   };
 
   const handleCancelEdit = () => {
+    if (manual) { void manualAction(() => manual.cancel()); return; }
     setIsEditing(false);
     setEditedTitle(initialTitle); // Revert changes
     setError(null);
   };
 
   const handleSave = async () => {
+    if (disabled || isSaving) return;
     const trimmedTitle = editedTitle.trim();
-    if (!trimmedTitle || trimmedTitle === initialTitle) {
+    if (!trimmedTitle || (!manual && trimmedTitle === initialTitle)) {
+      if (manual) { await manualAction(() => manual.cancel()); return; }
       setIsEditing(false); // No changes or empty title, just close
       setError(null);
       return;
@@ -71,7 +87,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
     setIsSaving(true);
     setError(null);
     try {
-      await onSave(trimmedTitle); // Call the parent save handler
+      await (manual ? manual.save(trimmedTitle) : onSave(trimmedTitle)); // Call the parent save handler
       setIsEditing(false); // Close edit mode on successful save
     } catch (err) {
       console.error("Error saving title:", err);
@@ -99,7 +115,11 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
             ref={inputRef}
             type="text"
             value={editedTitle}
-            onChange={(e) => setEditedTitle(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (manual) void manualAction(() => manual.update(value));
+              else setEditedTitle(value);
+            }}
             onKeyDown={handleKeyDown}
             className={`flex-grow px-2 py-1 font-bold border rounded bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-1 ${inputSizeClass} ${error ? 'border-red-500 focus:ring-red-500' : 'border-blue-500 focus:ring-blue-500'}`}
             disabled={isSaving || disabled}
@@ -140,13 +160,14 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           <button
             onClick={handleEditClick}
             className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
-            disabled={disabled}
+            disabled={disabled || isSaving}
             title={t('common.edit')}
           >
             <PencilIcon className={`w-4 h-4 sm:${buttonSizeClass.replace('w-','').replace('h-','w-').replace('w-','h-')}`} /> {/* Adjusted pencil icon size slightly */} 
           </button>
         </div>
       )}
+      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{error}</p>}
     </div>
   );
 };

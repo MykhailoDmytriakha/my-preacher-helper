@@ -6,6 +6,8 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config/schemas/zod';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { serializeContent } from '@/utils/contentFingerprint';
+import { scratchComposeSource } from '@/utils/scratchComposeSource';
 import { composePlanFromScratch } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -73,8 +75,10 @@ async function readComposeRequest(request: NextRequest): Promise<ComposeRequestR
  */
 function findSelectionProblem(
   requestedScratchNoteIds: string[] | undefined,
-  scratch: Array<{ id: string }>
+  scratch: Array<{ id: string }>,
+  sourceMatches = true
 ): { status: number; payload: Record<string, unknown> } | null {
+  if (!sourceMatches) return { status: 409, payload: { error: 'Scratch proposal source changed; reopen the proposal before composing' } };
   if (!requestedScratchNoteIds) return null;
 
   if (requestedScratchNoteIds.length === 0) {
@@ -142,17 +146,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const existingOutline = requestBody?.existingOutline ?? sermon.outline;
     const requestedScratchNoteIds = requestBody?.scratchNoteIds;
 
-    const selectionProblem = findSelectionProblem(requestedScratchNoteIds, sermon.scratch ?? []);
-    if (selectionProblem) {
-      return jsonNoStore(selectionProblem.payload, { status: selectionProblem.status });
-    }
-
     const requestedScratchIdSet = requestedScratchNoteIds
       ? new Set(requestedScratchNoteIds)
       : null;
     const scratchForCompose = requestedScratchIdSet
       ? (sermon.scratch ?? []).filter((note) => requestedScratchIdSet.has(note.id))
       : (sermon.scratch ?? []);
+    const selectionProblem = findSelectionProblem(requestedScratchNoteIds, sermon.scratch ?? [],
+      !requestBody?.expectedSource || serializeContent(requestBody.expectedSource) === serializeContent(scratchComposeSource({ ...sermon, scratch: scratchForCompose })));
+    if (selectionProblem) return jsonNoStore(selectionProblem.payload, { status: selectionProblem.status });
     const sermonForCompose = requestedScratchIdSet
       ? { ...sermon, scratch: scratchForCompose }
       : sermon;

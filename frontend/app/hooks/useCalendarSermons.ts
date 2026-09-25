@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
+import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PreachDate, Sermon } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
@@ -16,13 +18,14 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
     const startStr = startDate?.toISOString().split('T')[0];
     const endStr = endDate?.toISOString().split('T')[0];
 
-    const { data: sermons = [], isLoading, error, refetch } = useServerFirstQuery({
+    const engine = useSermonsDataCollection();
+    const { data: legacySermons = [], isLoading: legacyLoading, error: legacyError, refetch: legacyRefetch } = useServerFirstQuery({
         queryKey: ['calendarSermons', userId, startStr, endStr],
         queryFn: () => {
             if (!userId) return Promise.resolve([]);
             return preachDatesService.fetchCalendarSermons(userId, startStr, endStr);
         },
-        enabled: !!userId,
+        enabled: !!userId && !isCollectionOnEngine('sermons'),
         /**
          * ASK THE SERVER AGAIN WHENEVER THE PERSON COMES BACK TO THIS TAB.
          *
@@ -38,6 +41,16 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
          */
         refetchOnWindowFocus: true,
     });
+
+    const onEngine = isCollectionOnEngine('sermons');
+    const sermons = onEngine ? engine.sermons.filter(sermon => sermon.userId === userId &&
+        ((!startStr && !endStr) || sermon.preachDates?.some(preachDate => {
+            const date = toDateOnlyKey(preachDate.date);
+            return date && (!startStr || date >= startStr) && (!endStr || date <= endStr);
+        }))) : legacySermons;
+    const isLoading = onEngine ? engine.loading : legacyLoading;
+    const error = onEngine ? engine.error : legacyError;
+    const refetch = onEngine ? engine.refresh : legacyRefetch;
 
     // Identify "pending" sermons (legacy preached sermons without factual preached dates)
     const pendingSermons = sermons.filter(

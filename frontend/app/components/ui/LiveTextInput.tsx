@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+
+import { useBufferedText } from './useBufferedText';
 
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
@@ -14,63 +16,26 @@ import type { InputHTMLAttributes, TextareaHTMLAttributes } from 'react';
  * character, and a question typed and left alone can vanish a second later when an older copy
  * arrives: nothing failed, the field simply went back in time.
  *
- * So the field owns its text while the person is in it, and follows the store when they are not.
- * Every keystroke still goes outward at once, so nothing waits for a blur to be saved — what
- * changes is only which copy is allowed to paint the field.
+ * The field owns only text the document has not echoed yet. Once the document owns
+ * those keystrokes, its next value is safe to display even while the field has focus.
+ * Keeping a second stale copy after that point would bypass the engine's conflict baseline.
  *
  * Written here rather than in the council screens because any section editing text held in a
  * cache needs the same thing.
  */
-function useLiveDraft(value: string, onChange: (next: string) => void) {
-  const [draft, setDraft] = useState(value);
-  const editing = useRef(false);
-  const latest = useRef(value);
-  latest.current = value;
-
-  // While the caret is in the field its own text wins; outside it, the store is the truth.
-  useEffect(() => {
-    if (!editing.current) setDraft(value);
-  }, [value]);
-
-  return {
-    draft,
-    change: (next: string) => {
-      setDraft(next);
-      onChange(next);
-    },
-    enter: () => {
-      editing.current = true;
-    },
-    leave: () => {
-      editing.current = false;
-      // A change that arrived from elsewhere while the caret was here was held back; now that the
-      // field is free it takes it, instead of showing a stale line until the next edit.
-      setDraft(latest.current);
-    },
-  };
-}
-
 type LiveTextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string;
   onChange: (next: string) => void;
 };
 
-export function LiveTextInput({ value, onChange, onFocus, onBlur, ...rest }: LiveTextInputProps) {
-  const { draft, change, enter, leave } = useLiveDraft(value, onChange);
+export function LiveTextInput({ value, onChange, ...rest }: LiveTextInputProps) {
+  const { draft, change } = useBufferedText(value, onChange);
 
   return (
     <input
       {...rest}
       value={draft}
       onChange={(event) => change(event.target.value)}
-      onFocus={(event) => {
-        enter();
-        onFocus?.(event);
-      }}
-      onBlur={(event) => {
-        leave();
-        onBlur?.(event);
-      }}
     />
   );
 }
@@ -86,8 +51,8 @@ type LiveTextAreaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'valu
  * it is being written. This one grows with what is in it — no scrollbar inside a field three
  * words long, no truncation of a long one — and shrinks again when the text is cut.
  */
-export function LiveTextArea({ value, onChange, onFocus, onBlur, ...rest }: LiveTextAreaProps) {
-  const { draft, change, enter, leave } = useLiveDraft(value, onChange);
+export function LiveTextArea({ value, onChange, ...rest }: LiveTextAreaProps) {
+  const { draft, change } = useBufferedText(value, onChange);
   const field = useRef<HTMLTextAreaElement | null>(null);
 
   const fit = (element: HTMLTextAreaElement | null) => {
@@ -121,14 +86,6 @@ export function LiveTextArea({ value, onChange, onFocus, onBlur, ...rest }: Live
       onChange={(event) => {
         change(event.target.value);
         fit(event.target);
-      }}
-      onFocus={(event) => {
-        enter();
-        onFocus?.(event);
-      }}
-      onBlur={(event) => {
-        leave();
-        onBlur?.(event);
       }}
       className={`resize-none overflow-hidden ${rest.className ?? ''}`}
     />

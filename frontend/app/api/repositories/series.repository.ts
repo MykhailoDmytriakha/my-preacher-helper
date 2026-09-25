@@ -1,6 +1,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { deleteLegacyDocument, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
 import { Series } from '@/models/models';
 import {
   deriveSermonIdsFromItems,
@@ -50,7 +51,7 @@ export class SeriesRepository {
     console.log(`Firestore: deleting series ${seriesId}`);
 
     try {
-      await adminDb.collection(this.collection).doc(seriesId).delete();
+      await deleteLegacyDocument(adminDb.collection(this.collection).doc(seriesId));
       console.log(`Series ${seriesId} deleted successfully`);
     } catch (error) {
       console.error(`Error deleting series ${seriesId}:`, error);
@@ -67,40 +68,18 @@ export class SeriesRepository {
 
     try {
       // Find all series that contain this sermon
-      const seriesSnapshot = await adminDb.collection(this.collection)
-        .where('sermonIds', 'array-contains', sermonId)
-        .get();
-
-      if (seriesSnapshot.empty) {
-        console.log(`No series found containing sermon ${sermonId}`);
-        return;
-      }
-
-      // Update each series to remove the sermon ID
-      const updatePromises = seriesSnapshot.docs.map(async (doc) => {
-        const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
-        if (series.userId !== ownerUid) {
-          return;
+      const query = adminDb.collection(this.collection).where('userId', '==', ownerUid)
+        .where('sermonIds', 'array-contains', sermonId).limit(101);
+      await runLegacyTransaction(async transaction => {
+        const snapshot = await transaction.get(query);
+        for (const doc of snapshot.docs) {
+          const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
+          if (series.userId !== ownerUid) continue;
+          const items = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
+          transaction.update(doc.ref, { items, sermonIds: deriveSermonIdsFromItems(items), seriesKind: inferSeriesKind(items),
+            'rev.items': FieldValue.increment(1), updatedAt: new Date().toISOString() });
         }
-        const nextItems = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
-        const nextSermonIds = deriveSermonIdsFromItems(nextItems);
-
-        await doc.ref.update({
-          items: nextItems,
-          sermonIds: nextSermonIds,
-          seriesKind: inferSeriesKind(nextItems),
-          // Membership is its own aggregate and EVERY writer must advance its
-          // counter — this one runs with Admin rights, which bypass Security
-          // Rules, so nothing else would notice it lying.
-          'rev.items': FieldValue.increment(1),
-          updatedAt: new Date().toISOString()
-        });
-
-        console.log(`Removed sermon ${sermonId} from series ${doc.id}`);
       });
-
-      await Promise.all(updatePromises);
-      console.log(`Successfully removed sermon ${sermonId} from ${seriesSnapshot.docs.length} series`);
 
     } catch (error) {
       console.error(`Error removing sermon ${sermonId} from series:`, error);
@@ -116,10 +95,12 @@ export class SeriesRepository {
    */
   async deleteSermonAndDetachFromAllSeries(sermonId: string, ownerUid: string): Promise<void> {
     const seriesQuery = adminDb.collection(this.collection)
-      .where('sermonIds', 'array-contains', sermonId);
+      .where('userId', '==', ownerUid).where('sermonIds', 'array-contains', sermonId).limit(101);
     const sermonRef = adminDb.collection('sermons').doc(sermonId);
 
-    await adminDb.runTransaction(async (transaction) => {
+    await runLegacyTransaction(async (transaction) => {
+      const sermon = await transaction.get(sermonRef);
+      if (sermon.exists && sermon.data()?.userId !== ownerUid) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied' });
       const seriesSnapshot = await transaction.get(seriesQuery);
 
       seriesSnapshot.docs.forEach((doc) => {
@@ -141,14 +122,41 @@ export class SeriesRepository {
     });
   }
 
+  /** Refuse the entire legacy cascade if any participant now belongs to DataEngine. */
+  async deleteSeriesAndDetach(seriesId: string, ownerUid: string): Promise<void> {
+    const seriesRef = adminDb.collection(this.collection).doc(seriesId);
+    await runLegacyTransaction(async transaction => {
+      const snapshot = await transaction.get(seriesRef);
+      if (!snapshot.exists) return;
+      const raw = snapshot.data()!;
+      if (raw.userId !== ownerUid) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied' });
+      const series = this.hydrateSeries({ ...raw, id: snapshot.id } as Series);
+      const refs = new Map<string, { collection: string; id: string }>();
+      for (const item of series.items || []) {
+        const collection = item.type === 'sermon' ? 'sermons' : 'groups';
+        refs.set(`${collection}/${item.refId}`, { collection, id: item.refId });
+      }
+      if (refs.size > 99) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required' });
+      const targets = await Promise.all([...refs.values()].map(value => transaction.get(adminDb.collection(value.collection).doc(value.id))));
+      for (const target of targets) {
+        if (!target.exists || target.data()?.userId !== ownerUid) continue;
+        // Only clear the back-reference that still belongs to the deleted series.
+        if (target.data()?.seriesId && target.data()?.seriesId !== seriesId) continue;
+        transaction.update(target.ref, { seriesId: null, seriesPosition: null });
+      }
+      transaction.delete(seriesRef);
+    });
+  }
+
   async removeGroupFromAllSeries(groupId: string, ownerUid: string): Promise<void> {
     console.log(`Firestore: removing group ${groupId} from owner ${ownerUid}'s series`);
 
     try {
-      const ownerSeriesQuery = adminDb.collection(this.collection).where('userId', '==', ownerUid);
+      const ownerSeriesQuery = adminDb.collection(this.collection).where('userId', '==', ownerUid).limit(101);
       let removedFromCount = 0;
-      await adminDb.runTransaction(async (transaction) => {
+      await runLegacyTransaction(async (transaction) => {
         const snapshot = await transaction.get(ownerSeriesQuery);
+        if (snapshot.docs.length > 100) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required' });
         const candidates = snapshot.docs
           .map((doc) => ({ id: doc.id, data: this.hydrateSeries({ id: doc.id, ...doc.data() } as Series), ref: doc.ref }))
           .filter((entry) => entry.data.userId === ownerUid)

@@ -3,9 +3,13 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { Sermon, Insights } from '@/models/models';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse } from '@/data-engine/serverEdit.server';
+import { Sermon } from '@/models/models';
 import { generateSermonVerses } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
+
+import { storeInsights } from '../storeInsights';
 
 // POST /api/insights/verses?sermonId=<id>
 export async function POST(request: Request) {
@@ -34,9 +38,7 @@ export async function POST(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-
-    // Get current insights to preserve other sections
-    const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
+    assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
 
     // Generate related verses using OpenAI
     const relatedVerses = await generateSermonVerses(sermon, uid);
@@ -45,18 +47,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to generate related verses" }, { status: 500 });
     }
 
-    // Update the sermon with new verses but preserve other insights
-    const updatedInsights: Insights = {
-      ...currentInsights,
-      relatedVerses
-    };
-
-    // Update the sermon with insights using sermonsRepository instead of direct adminDb
-    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights }, 'insights');
+    // Other sections are taken from the sermon as it is when the result lands, not as it was read.
+    const updatedInsights = await storeInsights(uid, sermonId, sermon.insights, current => ({ ...current, relatedVerses }));
     console.log("Verses route: Updated sermon with generated related verses");
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
+    if (boundary) return boundary;
     console.error('Verses route: Error generating related verses:', error);
     return NextResponse.json({ error: 'Failed to generate related verses' }, { status: 500 });
   }

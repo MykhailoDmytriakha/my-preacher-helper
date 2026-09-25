@@ -1,4 +1,62 @@
 {
+  "legacyRecovery": {
+    "preserving": "Preserving local copies from the previous version…",
+    "preservationFailed": "Could not preserve previous local copies. The original cache has been kept. Retry before opening the workspace.",
+    "cacheTitle": "Local copies from the previous version ({{count}})",
+    "cacheBody": "These copies may contain unsaved text. They may also be older than the server version. Inspect or export them to recover your text; they are never sent automatically.",
+    "title": "A saved change needs recovery",
+    "blockedTitle": "A saved change could not be delivered",
+    "body": "Your original change is still on this device. Automatic delivery has stopped. Its old format does not contain a complete starting version, so it cannot safely replace the current document. Copy or export it for recovery; this keeps the original local record.",
+    "preview": "View the complete saved record",
+    "copy": "Copy saved record",
+    "export": "Export saved record",
+    "actionFailed": "Could not read or export the saved change. The original record has been kept."
+  },
+  "dataSync": {
+    "missingOpeningVersion": "This saved form lacks its original opening version. Copy the preserved text and start a new form.",
+    "actionCancelled": "This action was cancelled.",
+    "actionChecking": "Checking the saved action…",
+    "discardAction": "Discard this action",
+    "discardActionHint": "This also discards dependent membership changes. Later text edits remain in drafts.",
+    "collectionAttention": "Some submitted changes need attention. Open the item or its saved drafts to review them.",
+    "collectionIncomplete": "The local list may be incomplete. Connect to check the server.",
+    "phase": {
+      "savingLocally": "Saving on this device…",
+      "localFailure": "Could not save on this device. Keep this page open and retry.",
+      "draft": "Draft saved on this device.",
+      "queued": "Queued for delivery. The server has not confirmed these changes.",
+      "sending": "Sending changes…",
+      "unknown": "Delivery result unknown. Your draft is retained.",
+      "blocked": "Delivery is waiting for an earlier operation.",
+      "refused": "The server refused these changes. Your draft is retained.",
+      "conflict": "These changes conflict with the server version. Your draft is retained.",
+      "remoteChanged": "A newer version is available. Your draft is retained.",
+      "deleted": "Deleted on the server. Any local draft remains here.",
+      "saved": "Saved."
+    },
+    "freshness": {
+      "unknown": "The server version has not been checked yet.",
+      "cache": "Showing a saved copy from this device."
+    },
+    "checking": "Checking for updates…",
+    "readFailed": "Could not check for updates.",
+    "keepLocal": "Keep my changes",
+    "acceptRemote": "Use server version",
+    "retry": "Retry",
+    "findRecovery": "Find saved drafts",
+    "recoveryLoading": "Finding drafts…",
+    "recoveryLabel": "Saved draft",
+    "unfinishedWork": "This version is saved. Unfinished drafts from earlier editing sessions are available below.",
+    "chooseRecovery": "Choose a draft",
+    "recover": "Recover selected draft",
+    "recoveryHint": "Recovery opens a separate copy. The original saved draft stays on this device.",
+    "actionFailed": "Could not complete this action.",
+    "deleteConflictTitle": "This record changed after you deleted it",
+    "deleteConflictBody": "Another device changed it before the deletion arrived. This is what it holds now.",
+    "deleteAnyway": "Delete anyway",
+    "keepRecord": "Keep it",
+    "severalDrafts": "Several changes to this record were not accepted. All of them are below: copy what you need, then use the version on the server."
+  },
   "diagnostics": {
     "collecting": "Collecting technical information…",
     "open": "Technical information for developers",
@@ -379,6 +437,8 @@
     }
   },
   "addSermon": {
+    "pendingSeries": "The selected series must load before saving. Your draft is kept on this device.",
+    "createWithoutSeries": "Create without a series",
     "newSermon": "New Sermon",
     "createNewSermon": "Create New Sermon",
     "titleLabel": "Title",
@@ -1367,6 +1427,8 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "fillRequiredField": "Fill in \"{{field}}\"",
+    "noData": "No local data is available.",
     "done": "Done",
     "warning": "Warning",
     "confirm": "Confirm",
@@ -2028,6 +2090,7 @@
       "applyPendingWrites": "Wait until scratch notes finish saving.",
       "applyReadOnly": "Editing is disabled for this sermon.",
       "applySuccess": "Scratch notes applied to the sermon structure.",
+      "applyQueued": "Changes are queued. The server has not confirmed them yet.",
       "applyError": "Could not apply the scratch notes to the structure.",
       "applyPlacementError": "One placed scratch note could not be matched to its target. Move it back to the pool or place it again.",
       "aiBadge": "✨ AI",
@@ -2035,7 +2098,9 @@
       "unplace": "↩ to pool",
       "selectedHint": "Drag the selected scratch note onto a point or sub-point.",
       "emptyColumn": "No points yet",
-      "clickColumn": "Click here to place the selected scratch note"
+      "clickColumn": "Click here to place the selected scratch note",
+      "proposalHelp": "Review and edit this draft, then Apply. Used scratch notes leave the main list only when you apply. Close keeps the draft; Cancel discards it.",
+      "proposalReady": "The proposal is saved on this device. Review it before applying."
     },
     "applyGuard": {
       "title": "Replace existing sermon structure?",
@@ -2521,12 +2586,14 @@
         "customColor": "Custom color"
       },
       "actions": {
+        "reorder": "Reorder items",
         "createSeries": "Create Series",
         "saveChanges": "Save Changes",
         "cancel": "Cancel",
         "addToSeries": "Add to Series",
         "removeFromSeries": "Remove from Series",
         "removeFromSeriesConfirm": "Remove the sermon from the series \"{{series}}\"?",
+        "membershipRemoveHint": "The items stay in your library; only their series membership changes.",
         "removeFromSeriesKeepsSermon": "The sermon itself stays; only the series changes.",
         "moveToDifferentSeries": "Move to Another Series",
         "viewSeries": "View Series",
@@ -2598,7 +2665,10 @@
         "addGroupFailed": "Failed to add group to series"
       },
       "groupsAdded_one": "Group added to series",
-      "groupsAdded_other": "{{count}} groups added to series"
+      "groupsAdded_other": "{{count}} groups added to series",
+      "membershipAssignment": "Assign items to a series",
+      "membershipRecovery": "Unfinished series actions",
+      "metadataRecovery": "Unfinished series details"
     },
     "studies": {
       "badge": "Preview",
@@ -3292,6 +3362,7 @@
       "notTold": "not said yet",
       "tell": "Said",
       "carryFailed": "The section could not be carried over: the council was not saved. Try again.",
+      "carryNeedsTarget": "Create the next council first, then carry the section into it.",
       "toNextCouncil": "To the next council",
       "carryWhere": "Carry to which council?",
       "carryNew": "To a new council",

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { isOwnersTombstone, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -13,7 +14,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const { adminDb } = await import('@/config/firebaseAdminConfig');
     const { id } = await params;
     const snapshot = await adminDb.collection('sermons').doc(id).get();
-    if (!snapshot.exists) return NextResponse.json({ error: 'Not found' }, { status: 404, headers });
+    if (!snapshot.exists || isOwnersTombstone(snapshot.data(), uid)) return NextResponse.json({ error: 'Not found' }, { status: 404, headers });
     const sermon = snapshot.data()!;
     if (sermon.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers });
     return NextResponse.json({ ...sermon, id: snapshot.id }, { headers });
@@ -32,7 +33,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     const { id } = await params;
     const sermon = await sermonsRepository.fetchSermonById(id);
-    if (!sermon) {
+    if (!sermon || isOwnersTombstone(sermon as unknown as Record<string, unknown>, uid)) {
       return NextResponse.json({ message: 'Проповедь уже отсутствует' }, { status: 200 });
     }
     if (sermon.userId !== uid) {
@@ -47,6 +48,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ message: 'Проповедь успешно удалена' }, { status: 200 });
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     const { id } = await params;
     console.error(`Ошибка при удалении проповеди ${id}:`, error);
     return NextResponse.json(

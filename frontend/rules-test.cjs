@@ -5,7 +5,7 @@ const {
   assertSucceeds,
   assertFails,
 } = require('@firebase/rules-unit-testing');
-const { doc, getDoc, setDoc, updateDoc, deleteDoc } = require('firebase/firestore');
+const { doc, getDoc, setDoc, updateDoc, deleteDoc, disableNetwork, enableNetwork, getDocFromServer } = require('firebase/firestore');
 
 let pass = 0, fail = 0;
 async function check(label, p) {
@@ -15,7 +15,7 @@ async function check(label, p) {
 
 // Collections owned via a `userId` field.
 const USER_COLS = [
-  'sermons', 'studyNotes', 'studyNoteBranchStates', 'series', 'groups',
+  'sermons', 'planTemplates', 'studyMaterials', 'studyNotes', 'studyNoteBranchStates', 'series', 'groups',
   'prayerRequests', 'prayerCategories', 'tags', 'feedback', 'serviceOrders', 'councils',
 ];
 const SERVER_MANAGED_USER_FIELDS = {
@@ -33,7 +33,7 @@ const SERVER_MANAGED_USER_FIELDS = {
 
 (async () => {
   const testEnv = await initializeTestEnvironment({
-    projectId: 'demo-preacher',
+    projectId: process.env.RULES_TEST_PROJECT || 'demo-preacher',
     firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') },
   });
 
@@ -155,6 +155,60 @@ const SERVER_MANAGED_USER_FIELDS = {
   // shareLinks: create pointing at note but stamped as OTHER owner (deny)
   await check('shareLink stamped as OTHER ownerId (deny)', assertFails(setDoc(doc(a, 'studyNoteShareLinks', 'z'), { ownerId: 'userB', noteId: 'n', token: 't' })));
 
+  console.log('\n=== DataEngine cutover boundary ===');
+  const metadata = { protocol: 1, generation: 'created', revision: 1, deleted: false };
+  const protectedCollections = [...USER_COLS, 'studyNoteShareLinks', 'users'];
+  for (const collection of protectedCollections) {
+    const owner = collection === 'users' ? {} : { [collection === 'studyNoteShareLinks' ? 'ownerId' : 'userId']: 'userA' };
+    const id = collection === 'users' ? 'userA' : 'protected';
+    const reference = doc(a, collection, id);
+    await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), collection, id), { ...owner, language: 'en', v: 2, _dataEngine: metadata }));
+    await check(`${collection}: migrated owner can read`, assertSucceeds(getDoc(reference)));
+    await check(`${collection}: legacy partial update denied`, assertFails(updateDoc(reference, { language: 'ru' })));
+    await check(`${collection}: old full set cannot erase marker`, assertFails(setDoc(reference, { ...owner, language: 'ru' })));
+    await check(`${collection}: legacy delete denied`, assertFails(deleteDoc(reference)));
+    await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), collection, id), { ...owner, _dataEngine: { ...metadata, deleted: true } }));
+    await check(`${collection}: tombstone cannot be resurrected`, assertFails(setDoc(reference, { ...owner, language: 'ru' })));
+    if (collection !== 'users') {
+      // Since 2026-09-18 a tombstone names its owner outside the legacy owner field, so that no
+      // legacy owner query returns it. Its owner still reads it; nobody revives it from a browser.
+      await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), collection, 'buried'), { _dataEngineOwner: 'userA', _dataEngine: { ...metadata, deleted: true } }));
+      await check(`${collection}: owner reads an owner-hidden tombstone`, assertSucceeds(getDoc(doc(a, collection, 'buried'))));
+      await check(`${collection}: foreign read of an owner-hidden tombstone denied`, assertFails(getDoc(doc(b, collection, 'buried'))));
+      await check(`${collection}: owner-hidden tombstone cannot be resurrected`, assertFails(setDoc(doc(a, collection, 'buried'), { ...owner, language: 'ru' })));
+      await check(`${collection}: owner-hidden tombstone cannot be deleted from a browser`, assertFails(deleteDoc(doc(a, collection, 'buried'))));
+    }
+    if (collection !== 'users') await check(`${collection}: client cannot manufacture marker`, assertFails(setDoc(doc(a, collection, 'forged'), { ...owner, _dataEngine: metadata })));
+  }
+  for (const marker of [null, {}, { protocol: 99 }]) {
+    await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'sermons', 'malformed'), { userId: 'userA', _dataEngine: marker }));
+    await check('malformed marker remains protected', assertFails(setDoc(doc(a, 'sermons', 'malformed'), { userId: 'userA' })));
+  }
+  const headId = JSON.stringify(['userA', 'sermons']);
+  await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), '_dataEngineHeads', headId), { userId: 'userA', collection: 'sermons', version: 1 }));
+  await check('absent head reads as absent, not denied', assertSucceeds(getDoc(doc(a, '_dataEngineHeads', JSON.stringify(['userA', 'councils'])))));
+  await check('head owner read allowed', assertSucceeds(getDoc(doc(a, '_dataEngineHeads', headId))));
+  await check('head foreign read denied', assertFails(getDoc(doc(b, '_dataEngineHeads', headId))));
+  await check('head SDK write denied', assertFails(updateDoc(doc(a, '_dataEngineHeads', headId), { version: 2 })));
+  await check('feed pointer SDK write denied', assertFails(setDoc(doc(a, '_dataEngineHeads', headId, 'changes', '0001'), { version: 1 })));
+  await check('receipt SDK write denied', assertFails(setDoc(doc(a, '_dataEngineReceipts', 'operation'), { userId: 'userA' })));
+
+  // The pending full set is enqueued BEFORE server migration, then reconnects AFTER.
+  // Attaching the rejection handler immediately avoids an unhandled promise race.
+  const offlineRef = doc(a, 'sermons', 'offline-transition');
+  await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'sermons', 'offline-transition'), { userId: 'userA', title: 'before' }));
+  await getDoc(offlineRef);
+  await disableNetwork(a);
+  const queued = assertFails(setDoc(offlineRef, { userId: 'userA', title: 'stale offline full set' }));
+  await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), 'sermons', 'offline-transition'), { userId: 'userA', title: 'engine committed', _dataEngine: metadata }));
+  await enableNetwork(a);
+  await check('offline queued write rejected after migration', queued);
+  await check('offline rejected write preserves engine commit', (async () => {
+    const actual = (await getDocFromServer(offlineRef)).data();
+    if (actual.title !== 'engine committed' || actual._dataEngine.revision !== 1) throw new Error('Engine commit overwritten');
+  })());
+
+  await check('an unmarked council is writable from a browser while its collection is open', assertSucceeds(updateDoc(doc(a, 'councils', 'd1'), { v: 2 })));
   await testEnv.cleanup();
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);

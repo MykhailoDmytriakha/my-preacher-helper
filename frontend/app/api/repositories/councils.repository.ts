@@ -1,11 +1,11 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, createLegacyDocument, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { isEngineTombstone } from '@/utils/engineTombstone';
 
 import type { CouncilBody } from '@/api/councils/writeSupport';
 import type { Council } from '@/models/models';
 
 const COLLECTION = 'councils';
-/** gRPC status for "this document is already there" — Firestore's answer to a losing `create`. */
-const ALREADY_EXISTS = 6;
 
 /**
  * THE SERVER'S OWN WAY TO THE COUNCILS — the second road, for the device where the browser's
@@ -34,12 +34,12 @@ function hydrate(data: Record<string, unknown>, id: string): Council {
 export class CouncilsRepository {
   async listForOwner(userId: string): Promise<Council[]> {
     const snapshot = await adminDb.collection(COLLECTION).where('userId', '==', userId).get();
-    return snapshot.docs.map((doc) => hydrate(doc.data(), doc.id));
+    return snapshot.docs.filter((doc) => !isEngineTombstone(doc.data())).map((doc) => hydrate(doc.data(), doc.id));
   }
 
   async getForOwner(userId: string, id: string): Promise<Council | null> {
     const snapshot = await adminDb.collection(COLLECTION).doc(id).get();
-    if (!snapshot.exists || snapshot.data()?.userId !== userId) return null;
+    if (!snapshot.exists || snapshot.data()?.userId !== userId || isEngineTombstone(snapshot.data())) return null;
     return hydrate(snapshot.data() ?? {}, id);
   }
 
@@ -51,15 +51,8 @@ export class CouncilsRepository {
   async createForOwner(userId: string, id: string, body: CouncilBody): Promise<Council> {
     const ref = adminDb.collection(COLLECTION).doc(id);
     const data = stripUndefined({ ...body, userId, rev: 0 });
-    try {
-      await ref.create(data);
-      return hydrate(data, id);
-    } catch (error) {
-      if ((error as { code?: number }).code !== ALREADY_EXISTS) throw error;
-      const existing = await this.getForOwner(userId, id);
-      if (!existing) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied' });
-      return existing;
-    }
+    const result = await createLegacyDocument(ref, data, userId);
+    return hydrate(result.data, id);
   }
 
   /**
@@ -74,11 +67,12 @@ export class CouncilsRepository {
     expectedRev: number | null
   ): Promise<{ conflict: boolean; current: Council }> {
     const ref = adminDb.collection(COLLECTION).doc(id);
-    return adminDb.runTransaction(async (tx) => {
+    return runLegacyTransaction(async (tx) => {
       const snapshot = await tx.get(ref);
       if (!snapshot.exists || snapshot.data()?.userId !== userId) {
         throw Object.assign(new Error('Council not found'), { code: 'not-found' });
       }
+      assertLegacyWritable(snapshot.data());
       const current = hydrate(snapshot.data() ?? {}, id);
       if (expectedRev !== null && expectedRev !== current.rev) {
         return { conflict: true, current };
@@ -91,7 +85,7 @@ export class CouncilsRepository {
 
   async deleteForOwner(userId: string, id: string): Promise<void> {
     const ref = adminDb.collection(COLLECTION).doc(id);
-    await adminDb.runTransaction(async (tx) => {
+    await runLegacyTransaction(async (tx) => {
       const snapshot = await tx.get(ref);
       if (!snapshot.exists || snapshot.data()?.userId !== userId) {
         throw Object.assign(new Error('Council not found'), { code: 'not-found' });

@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
+import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
+import { useDocumentActions } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import {
@@ -31,6 +35,8 @@ import SeriesSelector from "@components/series/SeriesSelector";
 import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
 import * as preachDatesService from "@services/preachDates.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
+
+import type { PreachDateAction } from '@/components/calendar/preachDateForm';
 
 import "@locales/i18n";
 
@@ -65,6 +71,8 @@ export default function OptionMenu({
 }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [engineDateAction, setEngineDateAction] = useState<PreachDateAction | null>(null);
+  const documentActions = useDocumentActions();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPreachModal, setShowPreachModal] = useState(false);
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
@@ -99,7 +107,7 @@ export default function OptionMenu({
     onUpdate?.(applySourceNoteLinkPatch(own, patch));
   });
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
-  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
+  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change' | 'remove'>('add');
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -116,8 +124,8 @@ export default function OptionMenu({
   const currentSeries = getSeriesForRef(sermon.id, series);
 
   useEffect(() => {
-    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker);
-  }, [showEditModal, showPreachModal, showSourceNotePicker, onEditorOpenChange]);
+    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker || Boolean(engineDateAction));
+  }, [showEditModal, showPreachModal, showSourceNotePicker, engineDateAction, onEditorOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -146,6 +154,20 @@ export default function OptionMenu({
       confirmText: t('common.delete'),
     });
     if (!confirmed) return;
+
+    // On the engine a deletion is one engine action: the collection keeps the row as pending
+    // until the tombstone is confirmed, on every screen that lists it.
+    if (isCollectionOnEngine('sermons')) {
+      try {
+        await documentActions.remove({ collection: 'sermons', id: sermon.id });
+        if (onDelete) onDelete(sermon.id);
+      } catch (error) {
+        console.error("Error deleting sermon:", error);
+        alert(t('optionMenu.deleteError'));
+      }
+      setOpen(false);
+      return;
+    }
 
     if (optimisticActions?.deleteSermon) {
       await awaitAcceptance(
@@ -306,6 +328,12 @@ export default function OptionMenu({
     // Captured BEFORE the write: an optimistic update flips this while the request is in
     // flight and rolls it back on refusal, so reading it inside `catch` asks about the
     // wrong direction.
+    if (isCollectionOnEngine('sermons')) {
+      setEngineDateAction({ kind: effectiveIsPreached ? 'unmark' : 'mark' });
+      closeMenu();
+      return;
+    }
+
     const wasPreached = effectiveIsPreached;
     /**
      * Does the row already speak for this? The optimistic path fails into the mutation
@@ -405,6 +433,7 @@ export default function OptionMenu({
     e.preventDefault();
     e.stopPropagation();
     if (!currentSeries) return;
+    if (isCollectionOnEngine('series')) { setSeriesSelectorMode('remove'); setShowSeriesSelector(true); closeMenu(); return; }
     // A question of its own, naming the series — it used to be the button's label with "?" glued on.
     // The answer button repeats the menu item the person just chose, and the note says the sermon
     // stays: "remove" next to a sermon otherwise reads as deleting it.
@@ -536,7 +565,11 @@ export default function OptionMenu({
         />
       )}
 
+      {engineDateAction && <EnginePreachDateModal key={`${sermon.id}:${engineDateAction.kind}`} sermonId={sermon.id}
+        action={engineDateAction} onClose={() => setEngineDateAction(null)} />}
+
       <PreachDateModal
+        sermonId={sermon.id}
         isOpen={showPreachModal}
         onClose={() => {
           setPreachDateToMark(null);
@@ -550,14 +583,11 @@ export default function OptionMenu({
         defaultStatus="preached"
       />
 
-      {showSeriesSelector && (
-        <SeriesSelector
-          onClose={() => setShowSeriesSelector(false)}
-          onSelect={handleSeriesSelected}
-          currentSeriesId={currentSeries?.id}
-          mode={seriesSelectorMode}
-        />
-      )}
+      {showSeriesSelector && (isCollectionOnEngine('series')
+        ? <SeriesMembershipDialog seriesId={currentSeries?.id ?? ''} member={{ type: 'sermon', refId: sermon.id }}
+          mode={seriesSelectorMode === 'remove' ? 'remove' : 'target'} onClose={() => setShowSeriesSelector(false)} />
+        : <SeriesSelector onClose={() => setShowSeriesSelector(false)} onSelect={handleSeriesSelected}
+          currentSeriesId={currentSeries?.id} mode={seriesSelectorMode === 'remove' ? 'change' : seriesSelectorMode} />)}
 
       {showSourceNotePicker && sourceNoteOpening && (
         <SourceNotePickerModal

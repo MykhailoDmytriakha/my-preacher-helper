@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { groupsRepository } from '@repositories/groups.repository';
-import { seriesRepository } from '@repositories/series.repository';
 
 const ERROR_MESSAGES = {
   GROUP_NOT_FOUND: 'Group not found',
@@ -30,11 +30,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    await seriesRepository.removeGroupFromAllSeries(id, uid);
-    await groupsRepository.deleteGroup(id);
+    await groupsRepository.deleteGroup(id, uid);
 
     return NextResponse.json({ message: 'Group deleted successfully' }, { status: 200 });
   } catch (error: unknown) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     const { id } = await params;
     console.error(`Error deleting group ${id}:`, error);
     return NextResponse.json(

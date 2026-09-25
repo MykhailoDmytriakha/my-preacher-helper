@@ -118,3 +118,12 @@ describe('scratch.service', () => {
     );
   });
 });
+
+it('sends the frozen generation source without replacing it with a fresh read', async () => {
+  const outline = { introduction: [], main: [], conclusion: [] };
+  const source = { title: 'Pinned', verse: 'Romans 1', scratch: [{ id: 'n1', text: 'Pinned text', createdAt: 'today', section: null }] };
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+  apiClientMock().mockResolvedValue({ ok: true, json: async () => ({ outline }) });
+  await composePlanFromScratch('sermon', outline, ['n1'], source);
+  expect(JSON.parse(apiClientMock().mock.calls.at(-1)[1].body)).toEqual({ existingOutline: outline, scratchNoteIds: ['n1'], expectedSource: source });
+});

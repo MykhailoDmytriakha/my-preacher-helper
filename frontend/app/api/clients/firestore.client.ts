@@ -1,6 +1,7 @@
-import { FieldValue } from "firebase-admin/firestore";
 
 import { adminDb } from "@/config/firebaseAdminConfig";
+import { assertLegacyWritable, listOwnedDocuments, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, removeTagFromSermons } from '@/data-engine/serverEdit.server';
 import { Tag } from "@/models/models";
 import {
   getTranslationKeyForTag as getStructureTranslationKeyForTag,
@@ -78,17 +79,17 @@ export async function saveTag(tag: Tag) {
     if (isRequiredTag(tag.name)) {
       throw new Error("RESERVED_NAME");
     }
-    // Check if tag already exists
-    const querySnapshot = await tagsRef
-      .where("name", "==", tag.name)
-      .where("userId", "==", tag.userId)
-      .get();
-      
-    if (!querySnapshot.empty) {
-      throw new Error("Tag with same name and userId already exists");
-    }
-    
-    await tagsRef.add(tag);
+    if (tag.required) throw new Error('RESERVED_NAME');
+    assertLegacyWritable(tag);
+    const reference = tagsRef.doc();
+    await runLegacyTransaction(async transaction => {
+      const existing = await transaction.get(tagsRef.where('name', '==', tag.name).where('userId', '==', tag.userId).limit(1));
+      const collision = await transaction.get(reference);
+      if (!existing.empty) throw new Error('Tag with same name and userId already exists');
+      assertLegacyWritable(collision.data());
+      if (collision.exists) throw new Error('Tag identity already exists');
+      transaction.create(reference, tag);
+    });
   } catch (error) {
     console.error("Error saving tag:", error);
     throw error;
@@ -98,74 +99,26 @@ export async function saveTag(tag: Tag) {
 export async function deleteTag(userId: string, tagName: string) {
   console.log(`Firestore: deleting tag ${tagName} for user ${userId}`);
   try {
-    const tagsRef = adminDb.collection("tags");
-    const querySnapshot = await tagsRef
-      .where("userId", "==", userId)
-      .where("name", "==", tagName)
-      .get();
-      
-    if (querySnapshot.empty) {
-      throw new Error("Tag not found");
-    }
-    
-    await tagsRef.doc(querySnapshot.docs[0].id).delete();
-    console.log(`Firestore: deleted tag ${tagName} for user ${userId}`);
-    // Cascade: remove tag from all thoughts in all user's sermons
-    /**
-     * CASCADE THE REMOVAL, DO NOT REPLAY A SNAPSHOT.
-     *
-     * This used to read every sermon, strip the tag in memory and write the WHOLE
-     * `thoughts` array back through a batch. A batch is atomic per write but gives no
-     * read isolation, so anything stored between the read and the commit was replaced
-     * — and this runs across ALL of the person's sermons at once, so deleting one tag
-     * in Settings could swallow a thought dictated on the phone a second earlier.
-     *
-     * Each sermon now gets its own transaction: the array is recomputed from the
-     * document AS READ INSIDE the attempt, and the SDK re-runs the callback if it
-     * changed meanwhile. Safe to re-run precisely because removing a tag is
-     * idempotent — a second pass over already-clean thoughts changes nothing.
-     *
-     * `rev.thoughts` moves too. Leaving it alone made the counter LIE: a later client
-     * save built from older text still matched the number and was handed permission
-     * to overwrite what the server had just written.
-     */
-    const sermonsSnap = await adminDb.collection("sermons").where("userId", "==", userId).get();
-    let affectedThoughts = 0;
-
-    const stripTag = (thoughts: Record<string, unknown>[]) =>
-      thoughts.map((th) => ({
-        ...th,
-        tags: Array.isArray(th.tags) ? th.tags.filter((t: string) => t !== tagName) : []
-      }));
-
-    const countRemoved = (before: Record<string, unknown>[], after: Record<string, unknown>[]) =>
-      before.reduce((total, th, idx) => {
-        const had = Array.isArray(th.tags) ? th.tags.length : 0;
-        const has = Array.isArray(after[idx]?.tags) ? (after[idx].tags as string[]).length : 0;
-        return total + Math.max(0, had - has);
-      }, 0);
-
-    // Sequential rather than parallel: tag deletion is rare, and one transaction at a
-    // time keeps contention (and retries) out of the picture entirely.
-    for (const sermonDoc of sermonsSnap.docs) {
-      await adminDb.runTransaction(async (tx) => {
-        const fresh = await tx.get(sermonDoc.ref);
-        if (!fresh.exists) return;
-        const data = fresh.data() as { thoughts?: Record<string, unknown>[] };
-        const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
-        const updated = stripTag(thoughts);
-        if (JSON.stringify(updated) === JSON.stringify(thoughts)) return;
-
-        // Counted from the transaction's own read, and reset per attempt by being
-        // derived rather than accumulated across retries.
-        affectedThoughts += countRemoved(thoughts, updated);
-        tx.update(sermonDoc.ref, {
-          thoughts: updated,
-          'rev.thoughts': FieldValue.increment(1)
-        });
-      });
-    }
-
+    // Every sermon that carries the name must be writable on some road before anything is
+    // removed; otherwise the tag would vanish while its label stays on those thoughts.
+    const sermons = await listOwnedDocuments(userId, 'sermons');
+    const carriers = sermons.filter(({ data }) => Array.isArray(data.thoughts)
+      && data.thoughts.some((thought: { tags?: unknown }) => Array.isArray(thought?.tags) && thought.tags.includes(tagName)));
+    carriers.forEach(({ data }) => assertServerWritable(data, 'sermons'));
+    const affectedThoughts = carriers.reduce((count, { data }) => count
+      + (data.thoughts as { tags?: unknown }[]).filter(thought => Array.isArray(thought?.tags) && thought.tags.includes(tagName)).length, 0);
+    const tagsQuery = adminDb.collection('tags').where('userId', '==', userId).where('name', '==', tagName).limit(1);
+    await runLegacyTransaction(async transaction => {
+      const tags = await transaction.get(tagsQuery);
+      if (tags.empty) throw new Error('Tag not found');
+      const tag = tags.docs[0];
+      if (tag.data().userId !== userId) throw new Error('Forbidden');
+      if (tag.data().required || isRequiredTag(tagName) || isRequiredTag(tag.id)) throw new Error('RESERVED_NAME');
+      transaction.delete(tag.ref);
+    });
+    // One sermon at a time, each on its own road — production never had a ceiling here. The tag
+    // is already gone: a sermon that could not be cleaned is logged, not reported as a failed delete.
+    await removeTagFromSermons(userId, tagName, carriers);
     return { affectedThoughts };
   } catch (error) {
     console.error(`Error deleting tag ${tagName} for user ${userId}:`, error);
@@ -176,33 +129,16 @@ export async function deleteTag(userId: string, tagName: string) {
 export async function updateTagInDb(tag: Tag) {
   try {
     const tagsRef = adminDb.collection('tags');
-    let querySnapshot;
-    
-    if (tag.required) {
-      querySnapshot = await tagsRef
-        .where('required', '==', true)
-        .where('name', '==', tag.name)
-        .get();
-    } else {
-      querySnapshot = await tagsRef
-        .where('userId', '==', tag.userId)
-        .where('name', '==', tag.name)
-        .get();
-    }
-    
-    if (querySnapshot.empty) {
-      console.error('updateTagInDb: No matching tag found for tag', tag);
-      throw new Error('Tag not found');
-    }
-    
-    const tagDoc = querySnapshot.docs[0];
-    console.log('updateTagInDb: Found tag doc', tagDoc.id, tagDoc.data());
-    
-    await tagsRef.doc(tagDoc.id).update({ color: tag.color });
-    
-    const updatedDoc = await tagsRef.doc(tagDoc.id).get();
-    console.log('updateTagInDb: Updated tag doc', updatedDoc.data());
-    return updatedDoc.data();
+    if (tag.required || isRequiredTag(tag.name)) throw new Error('RESERVED_NAME');
+    return await runLegacyTransaction(async transaction => {
+      const snapshot = await transaction.get(tagsRef.where('userId', '==', tag.userId).where('name', '==', tag.name).limit(1));
+      if (snapshot.empty) throw new Error('Tag not found');
+      const current = snapshot.docs[0];
+      const data = current.data();
+      if (data.userId !== tag.userId || data.required || isRequiredTag(current.id)) throw new Error('RESERVED_NAME');
+      transaction.update(current.ref, { color: tag.color });
+      return { ...data, color: tag.color };
+    });
   } catch (error) {
     console.error('Error updating tag:', error);
     throw error;

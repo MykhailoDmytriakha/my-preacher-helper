@@ -47,6 +47,18 @@ for (const key of Object.keys(process.env)) {
   }
 }
 
+// Same hazard, the DataEngine switches. A domain is turned on by setting
+// NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS / DATA_ENGINE_COLLECTIONS in the Vercel env — and the build
+// runs this suite with that env. Left in place, the very deploy that enables a domain fails its
+// own gate: suites asserting "off unless opted in" see it on (measured 2026-09-18: four red
+// tests with councils listed). A test that wants the engine on sets the flag itself.
+for (const key of [
+  'NEXT_PUBLIC_DATA_ENGINE_ENABLED', 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS',
+  'DATA_ENGINE_ENABLED', 'DATA_ENGINE_COLLECTIONS', 'DATA_ENGINE_CLOSED_COLLECTIONS',
+]) {
+  delete process.env[key];
+}
+
 // Same hazard, different flag: NEXT_PUBLIC_GOOGLE_CLIENT_ID lives in the Vercel env and
 // is present during the build's test run. When set, the landing mounts @react-oauth/google's
 // GoogleOAuthProvider, which injects the GSI <script> into <head> and then throws

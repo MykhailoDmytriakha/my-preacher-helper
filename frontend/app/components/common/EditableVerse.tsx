@@ -4,10 +4,13 @@ import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import type { ManualTextBinding } from './manualTextBinding';
+
 interface EditableVerseProps {
   initialVerse: string;
   onSave: (newVerse: string) => Promise<void>;
   disabled?: boolean;
+  manual?: ManualTextBinding;
   textSizeClass?: string;
   inputSizeClass?: string;
   buttonSizeClass?: string;
@@ -19,6 +22,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   initialVerse,
   onSave,
   disabled = false,
+  manual,
   textSizeClass = 'text-sm',
   inputSizeClass = 'text-sm',
   buttonSizeClass = 'w-4 h-4',
@@ -26,9 +30,12 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   containerClass = 'flex items-center gap-2 flex-grow min-w-0',
 }) => {
   const { t } = useTranslation();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedVerse, setEditedVerse] = useState(initialVerse);
-  const [isSaving, setIsSaving] = useState(false);
+  const [legacyEditing, setIsEditing] = useState(false);
+  const isEditing = manual?.active ?? legacyEditing;
+  const [legacyValue, setEditedVerse] = useState(initialVerse);
+  const editedVerse = manual?.value ?? legacyValue;
+  const [localSaving, setIsSaving] = useState(false);
+  const isSaving = localSaving || Boolean(manual?.busy);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -61,26 +68,36 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
 
   // Handle textarea input to adjust height
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setEditedVerse(e.target.value);
+    const value = e.target.value;
+    if (manual) void manualAction(() => manual.update(value));
+    else setEditedVerse(value);
     adjustTextareaHeight();
   };
 
+  const manualAction = async (action: () => Promise<void>) => {
+    setError(null);
+    try { await action(); } catch { setError(t('errors.failedToSaveVerse')); }
+  };
+
   const handleEditClick = () => {
-    if (disabled) return;
+    if (disabled || isSaving) return;
+    if (manual) { void manualAction(() => manual.begin()); return; }
     setEditedVerse(initialVerse);
     setIsEditing(true);
     setError(null);
   };
 
   const handleCancelEdit = () => {
+    if (manual) { void manualAction(() => manual.cancel()); return; }
     setIsEditing(false);
     setEditedVerse(initialVerse);
     setError(null);
   };
 
   const handleSave = async () => {
+    if (disabled || isSaving) return;
     const trimmedVerse = editedVerse.trim();
-    if (trimmedVerse === initialVerse) {
+    if (!manual && trimmedVerse === initialVerse) {
       setIsEditing(false);
       setError(null);
       return;
@@ -88,6 +105,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
 
     // Don't save if the trimmed verse is empty
     if (!trimmedVerse) {
+      if (manual) { await manualAction(() => manual.cancel()); return; }
       setIsEditing(false);
       setError(null);
       return;
@@ -96,7 +114,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
     setIsSaving(true);
     setError(null);
     try {
-      await onSave(trimmedVerse);
+      await (manual ? manual.save(trimmedVerse) : onSave(trimmedVerse));
       setIsEditing(false);
     } catch (err) {
       console.error("Error saving verse:", err);
@@ -173,13 +191,14 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
           <button
             onClick={handleEditClick}
             className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
-            disabled={disabled}
+            disabled={disabled || isSaving}
             title={t('common.edit')}
           >
             <PencilIcon className={buttonSizeClass} />
           </button>
         </div>
       )}
+      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{error}</p>}
     </div>
   );
 };

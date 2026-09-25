@@ -325,6 +325,7 @@ export default function CalendarPage() {
             )}
 
             <PreachDateModal
+                sermonId={selectedSermon?.id ?? ''}
                 isOpen={isModalOpen}
                 onClose={() => {
                     setIsModalOpen(false);

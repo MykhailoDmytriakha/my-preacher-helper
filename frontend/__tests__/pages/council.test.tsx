@@ -37,6 +37,19 @@ jest.mock('@/hooks/useCouncils', () => ({
   }),
 }));
 
+const engineState: { councils: Council[]; loading: boolean; error: string | null } = { councils: [], loading: false, error: null };
+const mockEngineRefresh = jest.fn();
+let engineCollections = '';
+
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  isCollectionOnEngine: (collection: string) => engineCollections.split(',').includes(collection),
+}));
+jest.mock('@/hooks/useCouncilsDataCollection', () => ({
+  useCouncilsDataCollection: () => ({ ...engineState, complete: true, freshness: 'server', serverAnswered: true,
+    knownIds: new Set(engineState.councils.map(council => council.id)), refresh: mockEngineRefresh }),
+}));
+
 jest.mock('next/link', () => ({
   __esModule: true,
   default: ({ children, href, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
@@ -52,6 +65,44 @@ describe('Brothers\' council list', () => {
     state.councils = [];
     state.loading = false;
     state.error = null;
+    engineState.councils = [];
+    engineState.loading = false;
+    engineState.error = null;
+    engineCollections = '';
+  });
+
+  // The page counts days from the real clock, and the seeded council is dated 2026-09-18:
+  // without a frozen "today" this suite turned red on that very day and stays red after it.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  // The switch is per collection, so the same screen has to answer from whichever reader the
+  // deployment migrated — and must not quietly keep rendering the other one's list.
+  it('renders the engine list only where councils are the migrated collection', () => {
+    const seeded = seedCouncils('u1', new Date('2026-09-11T00:00:00Z'));
+    state.councils = seeded;
+    engineState.councils = [{ ...seeded[0], id: 'from-engine', title: 'Engine council' }];
+
+    const legacy = render(<CouncilListPage />);
+    expect(screen.queryByText('Engine council')).not.toBeInTheDocument();
+    expect(mockEngineRefresh).not.toHaveBeenCalled();
+    legacy.unmount();
+
+    engineCollections = 'councils';
+    render(<CouncilListPage />);
+    expect(screen.getByText('Engine council')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Engine council/ })).toHaveAttribute('href', '/care/council/from-engine');
+  });
+
+  it('reports an engine read failure the same way as the legacy one', () => {
+    engineCollections = 'councils';
+    engineState.error = 'engine offline';
+    render(<CouncilListPage />);
+    expect(screen.getByText('council.readFailed')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('council-retry'));
+    expect(mockEngineRefresh).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   // The page counts days from the real clock, and the seeded council is dated 2026-09-18:

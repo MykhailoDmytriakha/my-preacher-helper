@@ -2,6 +2,10 @@ import { act, render, screen, fireEvent, waitFor, within } from '@testing-librar
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
+import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import { persistedWrite } from '@/utils/recoverableWrite';
 import { Sermon } from '@/models/models';
@@ -9,6 +13,11 @@ import { deleteSermon, updateSermon } from '@services/sermon.service';
 import * as preachDatesService from '@services/preachDates.service';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
 import { auth } from '@services/firebaseAuth.service';
+
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: any) =>
+  <input aria-label="Date" value={value} onChange={event => onChange(event.target.value)} /> }));
 
 // Mock dependencies
 jest.mock('@services/sermon.service', () => ({
@@ -88,9 +97,10 @@ jest.mock('@/providers/AuthProvider', () => ({
 }));
 
 const mockRemoveFromAllSeries = jest.fn();
+const mockAddToSeries = jest.fn();
 jest.mock('@/hooks/useSeriesMembership', () => ({
   useSeriesMembership: () => ({
-    addToSeries: jest.fn(),
+    addToSeries: mockAddToSeries,
     addRefsToSeries: jest.fn(),
     removeFromAllSeries: mockRemoveFromAllSeries,
     reorderSeries: jest.fn(),
@@ -759,6 +769,66 @@ describe('OptionMenu Component', () => {
     });
   });
 
+  it.each([false, true])('uses one pinned engine form to toggle preached=%s without legacy writes', async preached => {
+    const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+    const sermon: Sermon = { ...mockSermon, isPreached: preached, preachDates: [{
+      id: 'date', date: '2099-10-03', status: preached ? 'preached' : 'planned',
+      church: { id: 'church', name: 'Named church', city: '' }, createdAt: 'now',
+    }] };
+    const { id, ...value } = sermon;
+    const resource = { collection: 'sermons', id };
+    const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const optimistic = buildOptimisticActions();
+    const view = render(<DataEngineProvider><OptionMenu sermon={sermon} optimisticActions={optimistic} /></DataEngineProvider>);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+      fireEvent.click(screen.getByText(preached ? 'optionMenu.markAsNotPreached' : 'optionMenu.markAsPreached'));
+      const save = await screen.findByRole('button', { name: 'buttons.save' });
+      await waitFor(() => expect(save).toBeEnabled());
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      fireEvent.click(save);
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      await waitFor(() => expect(harness.read(resource).value!.isPreached).toBe(!preached));
+      expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      expect(updateSermon).not.toHaveBeenCalled();
+      expect(preachDatesService.updatePreachDate).not.toHaveBeenCalled();
+      expect(optimistic.markAsPreachedFromPreferred).not.toHaveBeenCalled();
+      expect(optimistic.unmarkAsPreached).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+    }
+  });
+
+  it('deletes an engine sermon through the engine, leaving a tombstone, without legacy or optimistic writers', async () => {
+    const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+    const { id, ...value } = mockSermon;
+    const resource = { collection: 'sermons', id };
+    const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const optimistic = buildOptimisticActions();
+    const onDelete = jest.fn();
+    const view = render(<DataEngineProvider><OptionMenu sermon={mockSermon} optimisticActions={optimistic} onDelete={onDelete} /></DataEngineProvider>);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+      fireEvent.click(screen.getByText('Delete'));
+      await answerDeleteQuestion('confirm');
+      await waitFor(() => expect(onDelete).toHaveBeenCalledWith(id));
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      await waitFor(() => expect(harness.read(resource).metadata?.deleted).toBe(true));
+      expect(deleteSermon).not.toHaveBeenCalled();
+      expect(optimistic.deleteSermon).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+    }
+  });
+
   it('asks in the app\'s own window, never in the browser\'s box', async () => {
     const native = jest.spyOn(window, 'confirm');
     render(<OptionMenu {...defaultProps} />);
@@ -791,6 +861,35 @@ describe('OptionMenu Component', () => {
       fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from Series' }));
       return screen.findByRole('dialog', { name: 'Remove the sermon from "Advent"?' });
     };
+
+    it.each(['move', 'remove'] as const)('uses a pinned engine action for %s when series is enabled', async mode => {
+      const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+      const { id: sourceId, ...source } = series[0];
+      const item = { ...source.items[0], position: 1 }; source.items = [item];
+      const harness = membershipEngineHarness([
+        { resource: { collection: 'series', id: sourceId }, metadata: null, value: source },
+        { resource: { collection: 'series', id: 'target' }, metadata: null, value: { ...source, title: 'Lent', items: [] } },
+        { resource: { collection: 'sermons', id: 'sermon-1' }, metadata: null, value: { userId: 'user-1', title: 'Sermon', verse: '', thoughts: [], date: '' } },
+      ]);
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+      const view = render(<DataEngineProvider><OptionMenu {...defaultProps} series={series as never} /></DataEngineProvider>);
+      try {
+        fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: mode === 'remove' ? 'Remove from Series' : 'workspaces.series.actions.moveToDifferentSeries' }));
+        if (mode === 'move') fireEvent.click(await screen.findByRole('radio', { name: 'Lent' }));
+        const save = await screen.findByRole('button', { name: 'common.save' });
+        await waitFor(() => expect(save).toBeEnabled()); expect(harness.transport.send).not.toHaveBeenCalled();
+        fireEvent.click(save); await act(async () => { await harness.engine.retry(); await settleEngine(); });
+        await waitFor(() => expect(harness.read({ collection: 'series', id: sourceId }).value!.items).toEqual([]));
+        expect(harness.read({ collection: 'series', id: 'target' }).value!.items).toEqual(mode === 'move' ? [expect.objectContaining({ type: 'sermon', refId: 'sermon-1', position: 1 })] : []);
+        expect(mockRemoveFromAllSeries).not.toHaveBeenCalled(); expect(mockAddToSeries).not.toHaveBeenCalled(); expect(harness.transport.send).toHaveBeenCalledTimes(1);
+      } finally {
+        view.unmount();
+        if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+        else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+      }
+    });
 
     it('names the series, says the sermon stays, and answers with the menu item\'s own words', async () => {
       const question = await openQuestion();

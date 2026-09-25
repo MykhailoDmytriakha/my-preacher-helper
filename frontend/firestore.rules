@@ -18,12 +18,38 @@ service cloud.firestore {
       return request.auth != null;
     }
     // The EXISTING doc's owner field equals the caller.
+    //
+    // A DataEngine tombstone names its owner in `_dataEngineOwner` INSTEAD of the legacy owner
+    // field, so that no legacy `where(userId == uid)` query ever returns a deleted document.
+    // Its owner may still READ it (the engine's listener has to learn the document is gone);
+    // every WRITE rule below also demands legacyExisting(), which a tombstone never satisfies.
     function ownsExisting(field) {
-      return signedIn() && resource.data[field] == request.auth.uid;
+      return signedIn() && (resource.data[field] == request.auth.uid
+        || (!(field in resource.data) && resource.data.get('_dataEngineOwner', null) == request.auth.uid));
     }
     // The INCOMING doc's owner field equals the caller (and can't be reassigned away).
     function ownsIncoming(field) {
       return signedIn() && request.resource.data[field] == request.auth.uid;
+    }
+
+    // Protocol documents are mutated only by the authenticated Admin command engine.
+    // Inspect EXISTING data too: an old queued full-set must not erase the marker.
+    function legacyExisting() {
+      return !resource.data.keys().hasAny(['_dataEngine']);
+    }
+    function legacyIncoming() {
+      return !request.resource.data.keys().hasAny(['_dataEngine']);
+    }
+
+    // Collections CLOSED to browser writes — the LAST step of a domain's rollout, deployed
+    // together with the server's DATA_ENGINE_CLOSED_COLLECTIONS (app/data-engine/activation.ts).
+    // Rules cannot read the server's environment, so the same decision is spelled here.
+    // Until a collection is listed, a bundle that has not updated may still write the documents
+    // the engine has not touched; once listed, nothing reaches it from a browser at all — the
+    // engine writes through the Admin SDK, which rules do not govern.
+    // To close a domain, add its collection here:        ↓ e.g. ['councils']
+    function closedToBrowserWrites(name) {
+      return name in [];
     }
 
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
@@ -88,83 +114,110 @@ service cloud.firestore {
 
     // ---- Collections owned via a `userId` field ----
     match /sermons/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /studyNotes/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+    }
+    match /studyMaterials/{id} {
+      allow read: if ownsExisting('userId');
+      allow create: if ownsIncoming('userId') && legacyIncoming();
+      allow update: if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting();
     }
     match /studyNoteBranchStates/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /series/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /groups/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /prayerRequests/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     // Orders of service — the pastor's own reference book, one document per rite.
     match /serviceOrders/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     // Brothers' council — one document per council, sections inside, the pastor's own.
     match /councils/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('councils');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('councils');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('councils');
     }
     match /prayerCategories/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /tags/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /planTemplates/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
     match /feedback/{id} {
-      allow read, delete: if ownsExisting('userId');
-      allow create:       if ownsIncoming('userId');
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+      allow read: if ownsExisting('userId');
+      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create:       if ownsIncoming('userId') && legacyIncoming();
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
     }
 
     // ---- Share links: owned via `ownerId` (public READ is server-only via Admin, not here) ----
     match /studyNoteShareLinks/{id} {
-      allow read, delete: if ownsExisting('ownerId');
-      allow create:       if ownsIncoming('ownerId');
-      allow update:       if ownsExisting('ownerId') && ownsIncoming('ownerId');
+      allow read: if ownsExisting('ownerId');
+      allow delete: if ownsExisting('ownerId') && legacyExisting();
+      allow create:       if ownsIncoming('ownerId') && legacyIncoming();
+      allow update:       if ownsExisting('ownerId') && ownsIncoming('ownerId') && legacyExisting() && legacyIncoming();
     }
 
     // ---- User settings: owned by DOC ID == uid ----
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null && request.auth.uid == uid
+      allow create: if request.auth != null && request.auth.uid == uid && legacyIncoming()
         && !request.resource.data.keys().hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
-      allow update: if request.auth != null && request.auth.uid == uid
+      allow update: if request.auth != null && request.auth.uid == uid && legacyExisting() && legacyIncoming()
         && !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
+    }
+
+    match /_dataEngineHeads/{id} {
+      // The head is born with the owner's FIRST engine write. Until then a listener must get
+      // "no such document", not an evaluation error: `resource` is null for an absent document,
+      // and a denied listener looks like an authentication failure in the middle of a rollout.
+      allow read: if signedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow write: if false;
     }
 
     // ---- Server-managed AI model defaults (Admin SDK only) ----

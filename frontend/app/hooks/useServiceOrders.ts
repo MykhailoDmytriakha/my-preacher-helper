@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { useServiceOrdersEngine } from '@/hooks/useServiceOrdersEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   createServiceOrder,
@@ -48,7 +50,17 @@ import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/m
  * Everything a person TYPES stays available offline — that is the whole point of the app —
  * and lives on the order's own screen, not here.
  */
-export function useServiceOrders(
+export function useServiceOrders(userId?: string | null, options?: { enabled?: boolean }) {
+  const onEngine = isCollectionOnEngine('serviceOrders');
+  const { uid: resolvedUid } = useResolvedUid();
+  const engine = useServiceOrdersEngine(userId ?? resolvedUid ?? null, onEngine && options?.enabled !== false);
+  const legacy = useLegacyServiceOrders(userId, { enabled: !onEngine && options?.enabled !== false });
+  return onEngine ? engine : legacy;
+}
+
+export type ServiceOrdersApi = ReturnType<typeof useLegacyServiceOrders>;
+
+function useLegacyServiceOrders(
   userId?: string | null,
   /**
    * `false` keeps the hook silent. The breadcrumb needs an order's TITLE only while standing

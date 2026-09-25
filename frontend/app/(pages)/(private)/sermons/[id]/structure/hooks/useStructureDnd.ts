@@ -11,10 +11,9 @@ import { useState, useCallback, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useStructureWriter, type StructureWriter } from "@/components/sermon/structureWriter";
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import { updateStructure } from "@/services/structure.service";
-import { updateThought } from "@/services/thought.service";
 import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
 import { applyConfirmedThought } from "../utils/confirmedThought";
@@ -577,6 +576,7 @@ const persistThoughtChange = (
   finalSubPointId: string | null | undefined,
   newPos: number,
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>,
+  writer: StructureWriter,
 ): Promise<Thought> | null => {
   const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
   if (thought) {
@@ -592,7 +592,7 @@ const persistThoughtChange = (
     };
     // The pre-drag thought IS the baseline: a move changes placement, so the write
     // must state placement only and leave the words alone.
-    return updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
+    return writer.updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
       // The screen's own copy has to hold what was just stored, or the freshness banner
       // reports this move as somebody else's edit — see `applyConfirmedThought`.
       applyConfirmedThought(setSermon, confirmed);
@@ -606,7 +606,8 @@ const persistThoughtChange = (
 const handleStructureUpdate = async (
   sermon: Sermon,
   newStructure: ThoughtsBySection,
-  setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>
+  setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>,
+  writer: StructureWriter
 ): Promise<void> => {
   const normalizedStructure: ThoughtsBySection = {
     ...newStructure,
@@ -616,7 +617,7 @@ const handleStructureUpdate = async (
   if (changesDetected) {
     // `sermon.structure` is the arrangement this screen holds as stored: with it, a
     // thought moved on another device keeps that section instead of jumping back.
-    await updateStructure(sermon.id, normalizedStructure, sermon.structure);
+    await writer.updateStructure(sermon.id, normalizedStructure, sermon.structure);
     setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: normalizedStructure } : prev));
   }
 };
@@ -639,6 +640,7 @@ export const useStructureDnd = ({
   setSermon,
 }: UseStructureDndProps) => {
   const { t } = useTranslation();
+  const writer = useStructureWriter();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalContainer, setOriginalContainer] = useState<string | null>(null);
   const [isDragEnding, setIsDragEnding] = useState(false);
@@ -961,11 +963,12 @@ export const useStructureDnd = ({
         const structurePersistence = handleStructureUpdate(
           sermon,
           buildStructureFromContainers(preview),
-          setSermon
+          setSermon,
+          writer
         );
         const movedThought = sermon.thoughts.find((thought) => thought.id === String(active.id));
         const thoughtPersistence = movedThought
-          ? updateThought(sermon.id, {
+          ? writer.updateThought(sermon.id, {
               ...movedThought,
               position: typeof now.item.position === 'number' ? now.item.position : movedThought.position,
               outlinePointId: now.item.outlinePointId,
@@ -1037,6 +1040,7 @@ export const useStructureDnd = ({
         updatedItem.subPointId,
         updatedItem.position || 0,
         setSermon,
+        writer,
       );
     }
 
@@ -1060,14 +1064,14 @@ export const useStructureDnd = ({
           position: newPos,
         };
         // Reordering states position only; the baseline keeps the text out of it.
-        thoughtPersistence = updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
+        thoughtPersistence = writer.updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
           applyConfirmedThought(setSermon, confirmed);
           return confirmed;
         });
       }
     }
 
-    const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon);
+    const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon, writer);
     const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
     const submission = queuedMutation(
       `structure:drag:${sermon.id}:${String(active.id)}`,
@@ -1076,6 +1080,7 @@ export const useStructureDnd = ({
     void awaitAcceptance(submission, rollback).catch(rollback);
     return submission;
   }, [
+    writer,
     sermon,
     originalContainer,
     containers,

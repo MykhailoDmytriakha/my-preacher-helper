@@ -123,7 +123,27 @@ describe('RichMarkdownEditor', () => {
             jest.runAllTimers();
         });
 
-        expect(mockEditor.commands.setContent).toHaveBeenCalledWith('new value');
+        expect(mockEditor.commands.setContent).toHaveBeenCalledWith('new value', { emitUpdate: false });
+        jest.useRealTimers();
+    });
+
+    it('does not replay an obsolete external value over newer typing', () => {
+        jest.useFakeTimers();
+        const editor = getMockEditor();
+        const onChange = jest.fn();
+        editor.storage.markdown.getMarkdown.mockReturnValue('A');
+        const { rerender, unmount } = render(<RichMarkdownEditor value="A" onChange={onChange} />);
+        rerender(<RichMarkdownEditor value="remote" onChange={onChange} />);
+        editor.commands.setContent.mockClear();
+        editor.storage.markdown.getMarkdown.mockReturnValue('remote plus typing');
+        act(() => {
+            const calls = (TiptapReact.useEditor as jest.Mock).mock.calls;
+            calls[calls.length - 1][0].onUpdate({ editor });
+        });
+        act(() => { jest.runAllTimers(); });
+        expect(editor.commands.setContent).not.toHaveBeenCalled();
+        expect(onChange).toHaveBeenLastCalledWith('remote plus typing');
+        unmount();
         jest.useRealTimers();
     });
 });

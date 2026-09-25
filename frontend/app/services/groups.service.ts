@@ -1,13 +1,15 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
-import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
+import { Group, GroupMeetingDate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { hydrateGroup, normalizeStoredGroupFlow as normalizeFlow } from '@/utils/groupDocument';
 import { auth } from '@services/firebaseAuth.service';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -37,27 +39,6 @@ async function writeResponseError(response: Response, fallbackMessage: string): 
 // (removeGroupFromAllSeries) and updates that change seriesId/seriesPosition.
 const GROUPS_COLLECTION = 'groups';
 const GROUP_NOT_FOUND = 'Group not found';
-
-// --- helpers mirroring groups.repository.ts (kept byte-identical so client and
-// server produce the same shape) ---
-
-function normalizeFlow(flow: GroupFlowItem[] = []): GroupFlowItem[] {
-  return [...flow]
-    .filter((item) => Boolean(item?.id) && Boolean(item.templateId))
-    .sort((a, b) => a.order - b.order)
-    .map((item, index) => ({ ...item, order: index + 1 }));
-}
-
-
-function hydrateGroup(group: Group): Group {
-  return {
-    ...group,
-    templates: group.templates || [],
-    flow: normalizeFlow(group.flow || []),
-    meetingDates: group.meetingDates || [],
-    status: group.status || 'draft',
-  };
-}
 
 // --- client-SDK read/write paths ---
 
@@ -302,6 +283,7 @@ export const getGroupById = async (groupId: string): Promise<Group | undefined> 
 };
 
 export const createGroup = async (group: Omit<Group, 'id'> & { id?: string }): Promise<Group> => {
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   return createGroupViaClient(group);
 };
 
@@ -318,6 +300,7 @@ export const updateGroup = async (
   // back-ref. Strip the deprecated seriesId/seriesPosition so a stray caller
   // can't write them, and keep updateGroup a pure own-doc client write.
   const { seriesId: _seriesId, seriesPosition: _seriesPosition, ...contentUpdates } = updates;
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   return updateGroupViaClient(groupId, contentUpdates, expectedRevision, expectedBaseline);
 };
 
@@ -325,6 +308,7 @@ export const updateGroup = async (
 // (writes into the `series` collection — a cross-collection effect Security Rules
 // can't express on the client).
 export const deleteGroup = async (groupId: string): Promise<void> => {
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   const authHeaders = await getAuthenticatedRequestHeaders();
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
     method: 'DELETE',
@@ -343,6 +327,7 @@ export const addGroupMeetingDate = async (
   groupId: string,
   payload: Omit<GroupMeetingDate, 'id' | 'createdAt'> & { id?: string }
 ): Promise<GroupMeetingDate> => {
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   return addGroupMeetingDateViaClient(groupId, payload);
 };
 
@@ -351,10 +336,12 @@ export const updateGroupMeetingDate = async (
   dateId: string,
   updates: Partial<GroupMeetingDate>
 ): Promise<GroupMeetingDate> => {
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   return updateGroupMeetingDateViaClient(groupId, dateId, updates);
 };
 
 export const deleteGroupMeetingDate = async (groupId: string, dateId: string): Promise<void> => {
+  assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   return deleteGroupMeetingDateViaClient(groupId, dateId);
 };
 

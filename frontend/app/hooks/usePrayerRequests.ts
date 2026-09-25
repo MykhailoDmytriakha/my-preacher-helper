@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
+import { usePrayerRequestsEngine } from '@/hooks/usePrayerRequestsEngine';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
@@ -84,6 +86,13 @@ type StatusMutationVars = {
  *   of the typed text. List screens can omit it — they do not edit text.
  */
 export function usePrayerRequests(userId?: string | null, activeDocId?: string | null) {
+  const onEngine = isCollectionOnEngine('prayerRequests');
+  const engine = usePrayerRequestsEngine(userId, activeDocId, onEngine);
+  const legacy = useLegacyPrayerRequests(userId, activeDocId, !onEngine);
+  return onEngine ? engine : legacy;
+}
+
+function useLegacyPrayerRequests(userId: string | null | undefined, activeDocId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
@@ -137,7 +146,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
   } = useServerFirstQuery<PrayerRequest[]>({
     queryKey: listKey,
     queryFn: () => (effectiveUserId ? getAllPrayerRequests(effectiveUserId) : Promise.resolve([])),
-    enabled: !!effectiveUserId,
+    enabled: enabled && !!effectiveUserId,
   });
 
   // Optimistic + offline-buffered: mutationKey ties each mutation to its resumable

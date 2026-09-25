@@ -3,10 +3,10 @@ import { type DropResult } from "@hello-pangea/dnd";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import {
   generateSermonPointsForSection,
   getSermonOutline,
-  updateSermonOutline,
 } from "@/services/outline.service";
 import { newClientId } from "@/utils/clientId";
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -71,6 +71,7 @@ export function useColumnOutlineState({
   clearScheduledTask = clearTimeout,
   t,
 }: UseColumnOutlineStateOptions) {
+  const writer = useStructureWriter();
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
   const [addingNewPoint, setAddingNewPoint] = useState(false);
@@ -186,7 +187,7 @@ export function useColumnOutlineState({
 
         // `preferMine`: this view has nowhere to hold a refused plan, and a refusal here
         // would become an error toast with the edit lost at the next reload.
-        const request = updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
+        const request = writer.updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
         const acceptance = await awaitAcceptance(
           isBrowserOffline()
             ? queuedMutation(`outline:${sermonId}`, request)

@@ -16,7 +16,7 @@
     "test": "cross-env NODE_ENV=test jest --verbose --coverage",
     "test:build": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --passWithNoTests --reporters=./scripts/failure-only-jest-reporter.js --reporters=summary",
     "test:fast": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --passWithNoTests",
-    "test:rules": "firebase emulators:exec --only firestore --project demo-preacher \"node rules-test.cjs\"",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-preacher \"node rules-test.cjs && node rules-test-closed.cjs\"",
     "test:quick": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --bail --passWithNoTests",
     "test:coverage": "cross-env NODE_ENV=test jest --verbose --coverage",
     "test:clean": "cross-env NODE_ENV=test JEST_SHOW_LOGS=false jest --coverage",

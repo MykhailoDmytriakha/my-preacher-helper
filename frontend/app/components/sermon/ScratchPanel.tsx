@@ -58,8 +58,9 @@ interface ScratchPanelProps {
   moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
   isScratchWritePending: boolean;
   scratchRevision: number;
-  onApplyOutline: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
-  onOutlineChange: (outline: SermonOutline) => void | Promise<void>;
+  onEditPlan?: () => void;
+  onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | { delivery: 'queued' } | Promise<void | { delivery: 'queued' }>;
+  onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
   isReadOnly?: boolean;
 }
 
@@ -117,6 +118,7 @@ export default function ScratchPanel({
   scratchRevision,
   onApplyOutline,
   onOutlineChange,
+  onEditPlan,
   isReadOnly = false,
 }: ScratchPanelProps) {
   const { t } = useTranslation();
@@ -552,7 +554,7 @@ export default function ScratchPanel({
       outlineRevisionRef.current += 1;
       pendingManualOutlineSignatureRef.current = getOutlineSignature(cleanOutline);
       setManualOutline(cleanOutline);
-      void Promise.resolve(onOutlineChange(cleanOutline)).catch((error) => {
+      void Promise.resolve(onOutlineChange?.(cleanOutline)).catch((error) => {
         const message = error instanceof Error ? error.message : t(BOARD_APPLY_ERROR_KEY);
         toast.error(message || t(BOARD_APPLY_ERROR_KEY));
       });
@@ -676,10 +678,13 @@ export default function ScratchPanel({
         throw new Error(t("scratch.board.applyPlacementError"));
       }
 
-      const persistApply = Promise.resolve(onApplyOutline(finalOutline, Array.from(consumedNoteIds)));
+      let deliveryQueued = false;
+      const persistApply = Promise.resolve(onApplyOutline?.(finalOutline, Array.from(consumedNoteIds))).then(result => {
+        deliveryQueued = result?.delivery === 'queued';
+      });
       void persistApply.catch(reportApplyError);
 
-      let didOnlineWriteSettle = true;
+      let didOnlineWriteSettle = false;
       if (!isBrowserOffline()) {
         didOnlineWriteSettle = await waitForSettleWithTimeout(persistApply, APPLY_SETTLE_TIMEOUT_MS);
       }
@@ -695,7 +700,9 @@ export default function ScratchPanel({
       // shadow so the board renders the freshly-applied outline (which already folded that
       // edit in) instead of keeping the stale pre-Apply draft until a remount. (Review r8.)
       setManualOutline(null);
-      if (didOnlineWriteSettle) {
+      if (deliveryQueued) {
+        setComposeNoticeKey('scratch.board.applyQueued');
+      } else if (didOnlineWriteSettle) {
         toast.success(t("scratch.board.applySuccess"), SCRATCH_TOAST_OPTIONS);
       }
     } catch (error) {
@@ -709,7 +716,7 @@ export default function ScratchPanel({
   const composeDisabledTitle = composeDisabledKey ? t(composeDisabledKey) : undefined;
 
   const hasApplicableOutlineChanges = Boolean(cleanProposedOutline) || hasPlacements;
-  const applyDisabledTitle = isReadOnly
+  const applyDisabledTitle = onEditPlan ? undefined : isReadOnly
     ? t("scratch.board.applyReadOnly")
     : isVoiceProcessing
       ? t("scratch.board.applyVoiceProcessing")
@@ -892,11 +899,11 @@ export default function ScratchPanel({
       <ScratchNoteCard
         note={currentNote}
         isReadOnly={isBoardLocked}
-        dragHandleProps={dragHandleProps}
+        dragHandleProps={onEditPlan ? undefined : dragHandleProps}
         onEdit={handleEditNote}
         onDelete={requestDeleteNote}
         onUnplace={placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
-        placeTargets={placeTargets}
+        placeTargets={onEditPlan ? undefined : placeTargets}
         currentTargetKey={placementKey(placements[currentNote.id])}
         onPlaceInto={handlePlaceInto}
       />
@@ -913,7 +920,7 @@ export default function ScratchPanel({
           <span className="inline-flex items-center justify-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
             {pooledNotes.length}
           </span>
-          <button
+          {!onEditPlan && <button
             type="button"
             onClick={handleCompose}
             disabled={!canCompose}
@@ -922,7 +929,7 @@ export default function ScratchPanel({
           >
             <Sparkles className={["h-4 w-4", isComposing ? "animate-spin" : ""].join(" ")} aria-hidden="true" />
             {isComposing ? t("scratch.board.composing") : t("scratch.board.compose")}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -967,9 +974,9 @@ export default function ScratchPanel({
         <span title={applyDisabledTitle}>
           <button
             type="button"
-            onClick={applyOutline}
+            onClick={onEditPlan ?? applyOutline}
             disabled={
-              !hasApplicableOutlineChanges ||
+              (!onEditPlan && !hasApplicableOutlineChanges) ||
               isApplying ||
               isVoiceProcessing ||
               isReadOnly ||
@@ -978,7 +985,7 @@ export default function ScratchPanel({
             className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.01] hover:bg-violet-700 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400 sm:w-auto"
           >
             <Check className="h-4 w-4" aria-hidden="true" />
-            {isApplying ? t("common.saving") : t("scratch.board.apply")}
+            {onEditPlan ? t("planEditor.title") : isApplying ? t("common.saving") : t("scratch.board.apply")}
           </button>
         </span>
       </div>
@@ -989,7 +996,7 @@ export default function ScratchPanel({
         value={boardOutline}
         onChange={handleManualOutlineChange}
         showNotes
-        isReadOnly={isBoardLocked}
+        isReadOnly={isBoardLocked || Boolean(onEditPlan)}
         scratch={{
           pool: pooledNotes,
           notesById,

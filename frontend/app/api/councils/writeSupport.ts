@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+
 /**
  * WHAT A COUNCIL IS ALLOWED TO BE when it arrives from a browser — a proposal, checked field by
  * field, never stored as sent. Sizes refuse rather than trim: a section handed back with its
@@ -58,6 +60,8 @@ export const councilBodySchema = z
 export type CouncilBody = z.infer<typeof councilBodySchema>;
 
 export function writeError(error: unknown) {
+  const boundary = legacyBoundaryResponse(error);
+  if (boundary) return boundary;
   const code = (error as { code?: string }).code;
   const status = code === 'not-found' ? 404 : code === 'permission-denied' ? 403 : 503;
   return NextResponse.json(

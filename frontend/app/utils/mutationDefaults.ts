@@ -1,3 +1,4 @@
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
 import {
@@ -541,6 +542,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.create, {
     mutationFn: async (vars: DashboardSermonCreateVars): Promise<Sermon> => {
+      assertLegacyClientWriteAllowed('sermons');
       const { sermonId, uid, now, plannedDateId, input } = vars;
       // Playlist model: the create no longer carries seriesId — membership is
       // written by the client sweep (useDashboardOptimisticSermons.createSermon
@@ -604,6 +606,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.update, {
     mutationFn: async (vars: DashboardSermonUpdateVars): Promise<Sermon> => {
+      assertLegacyClientWriteAllowed('sermons');
       const { input, newPlannedDateId } = vars;
       const { sermon, title, verse, plannedDate, initialPlannedDate, church, unspecifiedChurchName } = input;
       const existingPlannedDate = getNextPlannedDate(sermon);
@@ -698,6 +701,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.delete, {
     mutationFn: async (vars: DashboardSermonDeleteVars): Promise<void> => {
+      assertLegacyClientWriteAllowed('sermons');
       await deleteSermonRequest(vars.sermonId);
     },
     // No onMutate: the row stays until the server confirms (mirrors the old
@@ -715,6 +719,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.markPreached, {
     mutationFn: async (vars: DashboardSermonMarkVars): Promise<Sermon> => {
+      assertLegacyClientWriteAllowed('sermons');
       const { sermon, preferredDate } = vars;
       await updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
       // A preached date is the source of truth for the derived status. Avoid a
@@ -746,6 +751,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.unmarkPreached, {
     mutationFn: async (vars: DashboardSermonUnmarkVars): Promise<Sermon> => {
+      assertLegacyClientWriteAllowed('sermons');
       const { sermon } = vars;
       const preachedDates = getPreachDatesByStatus(sermon, 'preached');
       if (preachedDates.length > 0) {
@@ -792,6 +798,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.savePreachDate, {
     mutationFn: async (vars: DashboardSermonSaveDateVars): Promise<Sermon> => {
+      assertLegacyClientWriteAllowed('sermons');
       const { sermon, data, preachDateToMark, newPreachDateId } = vars;
       const persistedPreachDate = preachDateToMark
         ? await updatePreachDate(sermon.id, preachDateToMark.id, { ...data, status: 'preached' })

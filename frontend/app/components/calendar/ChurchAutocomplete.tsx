@@ -9,6 +9,7 @@ import { Church } from "@/models/models";
 
 interface ChurchAutocompleteProps {
     initialValue?: Church;
+    value?: Church;
     onChange: (church: Church) => void;
 }
 
@@ -22,13 +23,15 @@ interface ChurchAutocompleteProps {
  */
 export default function ChurchAutocomplete({
     initialValue,
+    value,
     onChange
 }: ChurchAutocompleteProps) {
     const { t } = useTranslation();
-    const [church, setChurch] = useState<Church>(
+    const [localChurch, setChurch] = useState<Church>(
         initialValue ?? { id: "", name: "", city: "" }
     );
 
+    const church = value ?? localChurch;
     const publish = (next: Church) => {
         setChurch(next);
         onChange(next);

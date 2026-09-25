@@ -1,5 +1,7 @@
 "use client";
 
+
+
 import { doc, onSnapshot } from "firebase/firestore";
 import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
@@ -15,6 +17,7 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
+import { EngineOutlineModal } from "@/components/sermon/EngineOutlineModal";
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
@@ -31,10 +34,13 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
+import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { getClientDb } from "@/config/firebaseClientDb";
+import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon, { sermonIsMissing } from "@/hooks/useSermon";
@@ -75,7 +81,10 @@ import {
   resolveSectionForNewThought,
 } from "@utils/thoughtOrdering";
 
+import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { useScratchNotes } from "./hooks/useScratchNotes";
+import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
+import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { StructureSectionId } from '@utils/tagUtils';
@@ -334,6 +343,39 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
 
 export default function SermonPage() {
   const id = useRouteId();
+  return isCollectionOnEngine('sermons') ? (
+    <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon' }}>
+      <EngineSermonPageContent id={id} />
+    </DataDocumentProvider>
+  ) : <LegacySermonPageContent id={id} />;
+}
+
+function LegacySermonPageContent({ id }: { id: string }) {
+  const source = useSermon(id);
+  // Preserve normalization for legacy documents; canonical presentation normalizes below.
+  if (source.sermon?.thoughts === null) source.sermon.thoughts = [];
+  return <SermonPageContent id={id} source={source} />;
+}
+
+type CoreDocument = ReturnType<typeof useSermonCoreDataDocument>;
+// Legacy optimistic callbacks never become implicit engine writes. Those consumers
+// remain disabled until they issue explicit canonical commands of their own.
+const ignoreLegacyProjection = async () => undefined;
+
+function EngineSermonPageContent({ id }: { id: string }) {
+  const core = useSermonCoreDataDocument(id);
+  const thoughts = useSermonThoughtsDataDocument(id);
+  const isOnline = useOnlineStatus();
+  const sermon = useMemo(() => core.data ? ({ ...core.data, id, thoughts: core.data.thoughts ?? [] } as unknown as Sermon) : null, [core.data, id]);
+  const source = {
+    sermon, setSermon: ignoreLegacyProjection, loading: core.loading,
+    error: core.error ? new Error(core.error) : null, isOnline, awaitingFirstAnswer: core.loading,
+    refreshSermon: core.retry, getSortedThoughts: () => [...(sermon?.thoughts ?? [])],
+  };
+  return <SermonPageContent id={id} source={source} core={core} engineThoughts={thoughts} />;
+}
+
+function SermonPageContent({ id, source, core, engineThoughts }: { id: string; source: ReturnType<typeof useSermon>; core?: CoreDocument; engineThoughts?: ReturnType<typeof useSermonThoughtsDataDocument> }) {
   const { user } = useAuth();
   /**
    * WHOSE screen this is, answered from the LIVE source at report time.
@@ -364,14 +406,18 @@ export default function SermonPage() {
   const { blocked: usageBlocked, blockedLabelKey: usageBlockedLabelKey } = useAiUsage();
   const dictationBlocked = usageBlocked('dictation');
   const dictationBlockedKey = usageBlockedLabelKey('dictation');
-  const isReadOnly = false; // Support Indifferent Sync: edit always possible locally
+  const isReadOnly = Boolean(core?.isReadOnly);
+  const engineEnabled = Boolean(core);
+  // Explicit migration boundary: outline editing and AI writers still use
+  // legacy transports. Keep their controls inert until their canonical adapters land.
+  const legacyReadOnly = engineEnabled || isReadOnly;
 
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
 
   const { t } = useTranslation();
-  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer, refreshSermon } = useSermon(id);
+  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer, refreshSermon } = source;
 
   // Does the server hold a newer version of THIS sermon? Shared layer with the
   // note and series pages: observe only, never swap what is on screen.
@@ -396,7 +442,7 @@ export default function SermonPage() {
     // cleans up. Requiring the two to match also refuses to listen to a foreign
     // document left in the cache.
     uid: freshnessUid,
-    enabled: Boolean(sermon),
+    enabled: !engineEnabled && Boolean(sermon),
     known: knownSermon,
     select: (data) => sermonFreshnessProjection(data),
   });
@@ -434,11 +480,6 @@ export default function SermonPage() {
     if (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') setSermonFreshnessDismissed(false);
   }, [sermonFreshness.remote, sermonFreshness.state]);
 
-  // Normalize thoughts if they are null (happens in some test scenarios/legacy data)
-  if (sermon && sermon.thoughts === null) {
-    sermon.thoughts = [];
-  }
-
   const sermonRef = useRef<Sermon | null>(sermon);
   const structurePersistVersionRef = useRef(0);
   const scratchOutlinePersistVersionRef = useRef(0);
@@ -462,8 +503,10 @@ export default function SermonPage() {
    * good news about the SERVER.
    */
   const confirmedOutlineRef = useRef<{ version: number; outline: SermonOutlineType | null } | null>(null);
-  const [savingPrep, setSavingPrep] = useState(false);
-  const [prepDraft, setPrepDraft] = useState<Preparation>({});
+  const [legacySavingPrep, setSavingPrep] = useState(false);
+  const [legacyPrepDraft, setPrepDraft] = useState<Preparation>({});
+  const prepDraft = core?.preparation ?? legacyPrepDraft;
+  const savingPrep = core ? Boolean(core.status && core.status.phase !== 'saved') : legacySavingPrep;
   /**
    * Preparation text that was never confirmed saved — a failed write, a closed tab.
    * OFFERED, never applied by itself: a leftover copy silently merged over the
@@ -477,7 +520,7 @@ export default function SermonPage() {
     scratchOutlinePersistVersionRef.current += 1;
   }, []);
   const scratchNotes = useScratchNotes({
-    sermon,
+    sermon: engineEnabled ? null : sermon,
     sermonRef,
     setSermon,
     onOutlineWriteQueued: invalidateScratchOutlinePersistence,
@@ -507,8 +550,9 @@ export default function SermonPage() {
  * next account could read the previous one's text).
  */
 useEffect(() => {
+  if (engineEnabled) return;
   if (sermon?.preparation) setPrepDraft(sermon.preparation);
-}, [sermon?.preparation, sermon?.id]);
+}, [engineEnabled, sermon?.preparation, sermon?.id]);
 
 /**
  * Look for unconfirmed preparation text ONCE per sermon, and only OFFER it.
@@ -519,6 +563,7 @@ useEffect(() => {
  * computer the next account could read the previous one's text; it is retired here.)
  */
 useEffect(() => {
+  if (engineEnabled) return;
   const uid = user?.uid;
   if (!uid || !sermon?.id) return;
   const key = draftKey(uid, sermon.id, PREPARATION_DRAFT_AGGREGATE);
@@ -542,8 +587,9 @@ useEffect(() => {
     (field) => JSON.stringify(stored.value[field]) !== JSON.stringify(server[field])
   );
   if (differs) setPrepRecovery(stored.value);
-}, [user?.uid, sermon?.id]);
+}, [engineEnabled, user?.uid, sermon?.id]);
   const savePreparation = useCallback(async (partial: Preparation) => {
+    if (core) throw new Error('Use an explicit preparation field command');
     if (!sermon) return;
     setSavingPrep(true);
     const next: Preparation = { ...(sermon.preparation ?? {}), ...partial };
@@ -583,12 +629,15 @@ useEffect(() => {
       toast.error('Changes saved locally. They will sync when you are back online.', { id: 'prep-sync-error' });
     }
     setSavingPrep(false);
-  }, [sermon, setSermon, user?.uid]);
+  }, [core, sermon, setSermon, user?.uid]);
 
-  const applyPrepDraftUpdate = useCallback(async (next: Preparation) => {
+  const savePrepField = useCallback(async (field: keyof Preparation, value: unknown, child?: string) => {
+    const patch = { [field]: child ? { [child]: value } : value } as Partial<Preparation>;
+    if (core) { await core.patchPreparation(patch); return; }
+    const next = { ...prepDraft, [field]: child ? { ...(prepDraft[field] as object ?? {}), [child]: value } : value } as Preparation;
     setPrepDraft(next);
     await savePreparation(next);
-  }, [savePreparation]);
+  }, [core, prepDraft, savePreparation]);
 
   const { allTags } = useTags(sermon?.userId);
   const allowedTags = useMemo(
@@ -671,6 +720,11 @@ useEffect(() => {
   const isCreateModalOpenRef = useRef(isCreateModalOpen);
   isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
+  const [isEngineOutlineOpen, setIsEngineOutlineOpen] = useState(false);
+  // One entry to outline editing in both modes: the engine opens its pinned form.
+  const openPlanEditor = engineEnabled
+    ? (isReadOnly ? undefined : () => setIsEngineOutlineOpen(true))
+    : (legacyReadOnly ? undefined : () => setIsPlanEditorOpen(true));
   // Bumped when the plan editor changes the outline, to force SermonOutline to
   // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
   const [outlineRefreshKey, setOutlineRefreshKey] = useState(0);
@@ -1463,6 +1517,19 @@ useEffect(() => {
     setSermon(updatedSermon);
   }, [setSermon]);
 
+  /**
+   * The server stores a transcribed thought itself, so a result paid for survives the person
+   * leaving mid-transcription. On an engine document it lands with its place in the structure
+   * in the same command (api/thoughts/route.ts); the open page only reads the document again.
+   */
+  const placeAudioThought = async (newThought: Thought) => {
+    if (core) {
+      await core.retry().catch(() => undefined);
+      return;
+    }
+    await appendNewThoughtWithStructure(newThought);
+  };
+
   const handleNewRecording = async (audioBlob: Blob) => {
     if (!sermon) return;
     setIsProcessing(true);
@@ -1472,8 +1539,7 @@ useEffect(() => {
 
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
-      const newThought: Thought = { ...thoughtResponse };
-      await appendNewThoughtWithStructure(newThought);
+      await placeAudioThought({ ...thoughtResponse });
       setStoredAudioBlob(null);
       setTranscriptionError(null);
     } catch (error) {
@@ -1494,8 +1560,7 @@ useEffect(() => {
 
     try {
       const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
-      const newThought: Thought = { ...thoughtResponse };
-      await appendNewThoughtWithStructure(newThought);
+      await placeAudioThought({ ...thoughtResponse });
       setStoredAudioBlob(null);
       setTranscriptionError(null);
       setRetryCount(0);
@@ -1542,10 +1607,12 @@ useEffect(() => {
       setBrainstormSuggestion={setBrainstormSuggestion}
       filteredThoughts={filteredThoughts}
       sermonOutline={sermon?.outline}
-      onDelete={handleDeleteThought}
+      onDelete={engineThoughts ? id => { void engineThoughts.deleteThought(id).catch(() => undefined); } : handleDeleteThought}
       onEditStart={handleEditThoughtStart}
       onThoughtUpdate={handleThoughtUpdate}
-      onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
+      onThoughtOutlinePointChange={engineThoughts ? async (thought, outlinePointId, subPointId) => {
+        await engineThoughts.patchThought(thought.id, { outlinePointId, subPointId: subPointId ?? null }).catch(() => undefined);
+      } : handleThoughtOutlinePointChange}
       isReadOnly={isReadOnly}
       sermon={sermon}
       scratchNotes={scratchNotes.notes}
@@ -1553,7 +1620,9 @@ useEffect(() => {
     />
   );
 
-  const renderRawContent = () => (
+  const renderRawContent = () => engineEnabled ? (
+    <EngineScratchWorkspace sermonId={sermon!.id} isReadOnly={isReadOnly} />
+  ) : (
     <ScratchPanel
       sermonId={sermon!.id}
       notes={scratchNotes.notes}
@@ -1644,8 +1713,8 @@ useEffect(() => {
       spiritual: (
         <SpiritualStepContent
           prepDraft={prepDraft}
-          setPrepDraft={setPrepDraft}
-          savePreparation={savePreparation}
+          setPrepDraft={core ? () => undefined : setPrepDraft}
+          savePreparation={core ? next => savePrepField('spiritual', next.spiritual?.readAndPrayedConfirmed, 'readAndPrayedConfirmed') : savePreparation}
           savingPrep={savingPrep}
           formatSuperscriptVerses={formatSuperscriptVerses}
         />
@@ -1654,163 +1723,81 @@ useEffect(() => {
         <TextContextStepContent
           initialVerse={sermon?.verse || ''}
           onSaveVerse={async (nextVerse: string) => {
+            if (core) { await core.patchCore({ verse: nextVerse }); return; }
             if (!sermon) return;
             setSermon(prev => prev ? { ...prev, verse: nextVerse } : prev);
             const updated = await updateSermon({ ...sermon, verse: nextVerse }, { verse: nextVerse });
             if (updated) setSermon(updated);
           }}
           readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
-          onToggleReadWholeBookOnce={async (checked: boolean) => {
-            const next: Preparation = {
-              ...prepDraft,
-              textContext: { ...(prepDraft.textContext ?? {}), readWholeBookOnceConfirmed: checked },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onToggleReadWholeBookOnce={(checked) => savePrepField('textContext', checked, 'readWholeBookOnceConfirmed')}
           initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
-          onSavePassageSummary={async (summary: string) => {
-            const next: Preparation = {
-              ...prepDraft,
-              textContext: { ...(prepDraft.textContext ?? {}), passageSummary: summary },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSavePassageSummary={(summary) => savePrepField('textContext', summary, 'passageSummary')}
           initialContextNotes={prepDraft?.textContext?.contextNotes || ''}
-          onSaveContextNotes={async (notes: string) => {
-            const next: Preparation = {
-              ...prepDraft,
-              textContext: { ...(prepDraft.textContext ?? {}), contextNotes: notes },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveContextNotes={(notes) => savePrepField('textContext', notes, 'contextNotes')}
           initialRepeatedWords={prepDraft?.textContext?.repeatedWords || []}
-          onSaveRepeatedWords={async (words: string[]) => {
-            const next: Preparation = {
-              ...prepDraft,
-              textContext: { ...(prepDraft.textContext ?? {}), repeatedWords: words },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveRepeatedWords={(words) => savePrepField('textContext', words, 'repeatedWords')}
         />
       ),
       exegeticalPlan: (
         <ExegeticalPlanStepContent
           value={prepDraft?.exegeticalPlan || []}
           onChange={(nodes) => {
+            if (core) { void core.patchPreparation({ exegeticalPlan: nodes }).catch(() => undefined); return; }
             setPrepDraft(prev => ({ ...(prev || {}), exegeticalPlan: nodes }));
           }}
-          onSave={async (nodes) => {
-            const next = { ...(prepDraft || {}), exegeticalPlan: nodes } as Preparation;
-            await applyPrepDraftUpdate(next);
-          }}
+          onSave={(nodes) => savePrepField('exegeticalPlan', nodes)}
           saving={savingPrep}
           authorIntent={prepDraft?.authorIntent || ''}
-          onSaveAuthorIntent={async (text: string) => {
-            const next: Preparation = { ...(prepDraft || {}), authorIntent: text };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveAuthorIntent={(text) => savePrepField('authorIntent', text)}
         />
       ),
       mainIdea: (
         <MainIdeaStepContent
           initialContextIdea={prepDraft?.mainIdea?.contextIdea || ''}
-          onSaveContextIdea={async (text: string) => {
-            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), contextIdea: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveContextIdea={(text) => savePrepField('mainIdea', text, 'contextIdea')}
           initialTextIdea={prepDraft?.mainIdea?.textIdea || ''}
-          onSaveTextIdea={async (text: string) => {
-            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), textIdea: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveTextIdea={(text) => savePrepField('mainIdea', text, 'textIdea')}
           initialArgumentation={prepDraft?.mainIdea?.argumentation || ''}
-          onSaveArgumentation={async (text: string) => {
-            const next: Preparation = { ...prepDraft, mainIdea: { ...(prepDraft?.mainIdea || {}), argumentation: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveArgumentation={(text) => savePrepField('mainIdea', text, 'argumentation')}
         />
       ),
       goals: (
         <GoalsStepContent
           initialTimelessTruth={prepDraft?.timelessTruth || ''}
-          onSaveTimelessTruth={async (text: string) => {
-            const next: Preparation = { ...prepDraft, timelessTruth: text };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveTimelessTruth={(text) => savePrepField('timelessTruth', text)}
           initialChristConnection={prepDraft?.christConnection || ''}
-          onSaveChristConnection={async (text: string) => {
-            const next: Preparation = { ...prepDraft, christConnection: text };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveChristConnection={(text) => savePrepField('christConnection', text)}
           initialGoalStatement={prepDraft?.preachingGoal?.statement || ''}
-          onSaveGoalStatement={async (text: string) => {
-            const next: Preparation = {
-              ...prepDraft,
-              preachingGoal: { ...(prepDraft?.preachingGoal || {}), statement: text },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveGoalStatement={(text) => savePrepField('preachingGoal', text, 'statement')}
           initialGoalType={(prepDraft?.preachingGoal?.type as GoalType) || ''}
-          onSaveGoalType={async (type) => {
-            const next: Preparation = {
-              ...prepDraft,
-              preachingGoal: { ...(prepDraft?.preachingGoal || {}), type },
-            };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveGoalType={(type) => savePrepField('preachingGoal', type, 'type')}
         />
       ),
       thesis: (
         <ThesisStepContent
           exegetical={prepDraft?.thesis?.exegetical || ''}
-          onSaveExegetical={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), exegetical: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveExegetical={(text) => savePrepField('thesis', text, 'exegetical')}
           homiletical={prepDraft?.thesis?.homiletical || ''}
-          onSaveHomiletical={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), homiletical: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveHomiletical={(text) => savePrepField('thesis', text, 'homiletical')}
           pluralKey={prepDraft?.thesis?.pluralKey || ''}
-          onSavePluralKey={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), pluralKey: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSavePluralKey={(text) => savePrepField('thesis', text, 'pluralKey')}
           transitionSentence={prepDraft?.thesis?.transitionSentence || ''}
-          onSaveTransitionSentence={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), transitionSentence: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveTransitionSentence={(text) => savePrepField('thesis', text, 'transitionSentence')}
           oneSentence={prepDraft?.thesis?.oneSentence || ''}
-          onSaveOneSentence={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), oneSentence: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveOneSentence={(text) => savePrepField('thesis', text, 'oneSentence')}
           sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
-          onSaveSermonInOneSentence={async (text: string) => {
-            const next: Preparation = { ...prepDraft, thesis: { ...(prepDraft?.thesis || {}), sermonInOneSentence: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveSermonInOneSentence={(text) => savePrepField('thesis', text, 'sermonInOneSentence')}
         />
       ),
       homileticPlan: (
         <HomileticPlanStepContent
           initialModernTranslation={prepDraft?.homileticPlan?.modernTranslation || ''}
-          onSaveModernTranslation={async (text: string) => {
-            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), modernTranslation: text } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveModernTranslation={(text) => savePrepField('homileticPlan', text, 'modernTranslation')}
           initialUpdatedPlan={prepDraft?.homileticPlan?.updatedPlan || []}
-          onSaveUpdatedPlan={async (items) => {
-            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), updatedPlan: items } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveUpdatedPlan={(items) => savePrepField('homileticPlan', items, 'updatedPlan')}
           initialSermonPlan={prepDraft?.homileticPlan?.sermonPlan || []}
-          onSaveSermonPlan={async (items) => {
-            const next: Preparation = { ...prepDraft, homileticPlan: { ...(prepDraft?.homileticPlan || {}), sermonPlan: items } };
-            await applyPrepDraftUpdate(next);
-          }}
+          onSaveSermonPlan={(items) => savePrepField('homileticPlan', items, 'sermonPlan')}
         />
       ),
     };
@@ -1819,7 +1806,7 @@ useEffect(() => {
       <div className="space-y-4 sm:space-y-6">
         {/* Unconfirmed preparation text found in the durable store. It is shown, not
             applied: applying it by itself replaced newer work from another device. */}
-        {prepRecovery && (
+        {!engineEnabled && prepRecovery && (
           <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="font-medium text-amber-900 dark:text-amber-200">{t('unsavedDraft.title')}</p>
@@ -1871,7 +1858,7 @@ useEffect(() => {
             stepRef={(el) => { stepRefs.current[step.id] = el; }}
             done={step.done}
           >
-            {prepStepContentById[step.id]}
+            {core ? <fieldset className="min-w-0" disabled={isReadOnly}>{prepStepContentById[step.id]}</fieldset> : prepStepContentById[step.id]}
           </PrepStepCard>
         ))}
       </div>
@@ -1916,7 +1903,7 @@ useEffect(() => {
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
       {/* This SERMON changed elsewhere — distinct from the app-update toast. */}
-      {(sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') && !sermonFreshnessDismissed && (
+      {!engineEnabled && (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') && !sermonFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entitySermon"
           dirty={false}
@@ -1931,14 +1918,18 @@ useEffect(() => {
           onDismiss={() => setSermonFreshnessDismissed(true)}
         />
       )}
-      <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
+      <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} editor={core ? {
+        values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error,
+        titleForm: core.titleBinding, verseForm: core.verseBinding,
+        keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
+      } : undefined} />
       <div className="lg:hidden">
         <StructureStats
           sermon={sermon!}
           tagCounts={tagCounts}
           totalThoughts={sermon?.thoughts?.length ?? 0}
           hasInconsistentThoughts={hasInconsistentThoughts}
-          onOpenPlanEditor={!isReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
+          onOpenPlanEditor={openPlanEditor}
         />
       </div>
 
@@ -1954,7 +1945,7 @@ useEffect(() => {
           transcriptionError={transcriptionError}
           onClearError={handleClearError}
           hideKeyboardShortcuts={uiMode === 'prep'}
-          isReadOnly={!isMagicAvailable}
+          isReadOnly={!isMagicAvailable || isReadOnly}
           isRecorderDisabled={dictationBlocked}
           recorderTitle={dictationBlocked && dictationBlockedKey ? t(dictationBlockedKey) : undefined}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
@@ -1995,9 +1986,13 @@ useEffect(() => {
                     tagCounts={tagCounts}
                     totalThoughts={sermon?.thoughts?.length ?? 0}
                     hasInconsistentThoughts={hasInconsistentThoughts}
-                    onOpenPlanEditor={!isReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
+                    onOpenPlanEditor={openPlanEditor}
                   />
                 </div>
+                {engineEnabled && !isReadOnly && <button type="button" onClick={() => setIsEngineOutlineOpen(true)}
+                  className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                  {t('planEditor.title')}
+                </button>}
                 <SermonOutline
                   key={outlineRefreshKey}
                   sermon={sermon!}
@@ -2005,9 +2000,10 @@ useEffect(() => {
                   onOutlineUpdate={handleOutlineUpdate}
                   onOutlinePointDeleted={handleOutlinePointDeleted}
                   onSubPointDeleted={handleSubPointDeleted}
-                  isReadOnly={isReadOnly}
+                  isReadOnly={legacyReadOnly}
                 />
-                <KnowledgeSection sermon={sermon} updateSermon={handleSermonUpdate} />
+                {/* On an engine document the insights route stores the result itself; the page reads it back. */}
+                {sermon && !(core && isReadOnly) && <KnowledgeSection sermon={sermon} updateSermon={core ? () => { void core.retry().catch(() => undefined); } : handleSermonUpdate} />}
                 {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
               </div>
             </div>
@@ -2019,7 +2015,9 @@ useEffect(() => {
           </motion.div>
         </div>
       </div>
-      {editingModalData && (
+      {engineEnabled && !isReadOnly && isEngineOutlineOpen && <EngineOutlineModal
+        sermonId={sermon!.id} onClose={() => setIsEngineOutlineOpen(false)} />}
+      {!legacyReadOnly && editingModalData && (
         <EditThoughtModal
           // Remount for every queued edit because the modal seeds its fields only on mount.
           key={editingModalData.session}
@@ -2034,16 +2032,19 @@ useEffect(() => {
           allowOffline={true}
         />
       )}
-      <CreateThoughtModal
+      {engineEnabled && (editingModalData || isCreateModalOpen) && <EngineThoughtModal
+        key={editingModalData?.session ?? 'create'} sermonId={id} thoughtId={editingModalData?.thought.id}
+        allowedTags={allowedTags} onClose={() => { closeEditingModal(); setIsCreateModalOpen(false); }} />}
+      {!engineEnabled && <CreateThoughtModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreateThought={handleCreateManualThought}
         onSubmissionRejected={() => setIsCreateModalOpen(true)}
         allowedTags={allowedTags}
         sermonOutline={sermon?.outline}
-        disabled={isReadOnly}
-      />
-      {sermon && (
+        disabled={legacyReadOnly}
+      />}
+      {!engineEnabled && sermon && (
         <PlanEditorModal
           isOpen={isPlanEditorOpen}
           onClose={() => {
@@ -2056,7 +2057,7 @@ useEffect(() => {
           onSubPointDeleted={handleSubPointDeleted}
           onOutlinePointMoved={handleOutlinePointMoved}
           onSubPointMoved={handleSubPointMoved}
-          isReadOnly={isReadOnly}
+          isReadOnly={legacyReadOnly}
         />
       )}
     </div>

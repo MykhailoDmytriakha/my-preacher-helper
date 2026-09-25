@@ -5,6 +5,7 @@ import { doc, getDocFromServer, onSnapshot, waitForPendingWrites, type DocumentD
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -144,11 +145,18 @@ export function useDocumentFreshness<T>({
   uid,
   select,
   known,
-  enabled,
+  enabled: requestedEnabled,
   adoptFirstServerAnswerAsKnown = false,
   readFromServer,
   pollIntervalMs,
 }: UseDocumentFreshnessOptions<T>): UseDocumentFreshnessResult<T> {
+  /**
+   * A collection the engine owns has the engine's own freshness (its document observer and
+   * DataSyncStatus). This legacy observer would watch a copy the screen no longer renders and,
+   * with its read disabled, report "unknown" for ever — so it stays silent there.
+   */
+  const ownedByEngine = isCollectionOnEngine(collection);
+  const enabled = requestedEnabled && !ownedByEngine;
   const [state, setState] = useState<FreshnessState>('unknown');
   /**
    * Has the server ever answered for THIS document in this session?
@@ -550,6 +558,10 @@ export function useDocumentFreshness<T>({
       current.lastServerResult === 'different' ? { ...current, lastServerResult: 'matching' } : current
     ));
   }, []);
+
+  if (ownedByEngine) {
+    return { state: 'fresh', remote: null, remotelyDeleted: false, markSynced, diagnostics, checking: false, canCheck: false, checkAgain };
+  }
 
   return {
     // Before the first answer we say nothing rather than "unknown": a cold start

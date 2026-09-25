@@ -3,7 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useSeries } from '@/hooks/useSeries';
 import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
@@ -37,7 +39,29 @@ interface AddSermonModalProps {
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
 
-export default function AddSermonModal({
+export default function AddSermonModal(props: AddSermonModalProps) {
+  return isCollectionOnEngine('sermons') ? <EngineAddSermonModal {...props} /> : <LegacyAddSermonModal {...props} />;
+}
+
+/** Delivery belongs to the engine; legacy callbacks would replay creation and membership. */
+function EngineAddSermonModal({ isOpen, onClose, onCancel, showTriggerButton = true, allowPlannedDate = false,
+  preSelectedSeriesId, onOpenChange }: AddSermonModalProps) {
+  const { t } = useTranslation();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = isOpen ?? internalOpen;
+  const close = onClose ?? onCancel ?? (() => setInternalOpen(false));
+  useEffect(() => { onOpenChange?.(open); }, [open, onOpenChange]);
+  return <>
+    {showTriggerButton && <button onClick={() => setInternalOpen(true)}
+      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2" aria-label={t(NEW_SERMON_KEY)}>
+      <PlusIcon className="w-5 h-5" /><span className="hidden sm:inline">{t(NEW_SERMON_KEY)}</span>
+    </button>}
+    {open && <EngineCreateSermonModal preSelectedSeriesId={preSelectedSeriesId} allowPlannedDate={allowPlannedDate}
+      onClose={close} onQueued={close} />}
+  </>;
+}
+
+function LegacyAddSermonModal({
   onNewSermonCreated,
   onCancel,
   preSelectedSeriesId,

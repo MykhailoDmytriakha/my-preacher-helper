@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -52,6 +53,8 @@ export async function PUT(
         const preachDate = await sermonsRepository.updatePreachDate(id, dateId, safeUpdates);
         return NextResponse.json({ preachDate });
     } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
         const { id, dateId } = await params;
         console.error(`Error updating preach date ${dateId} in sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -92,6 +95,8 @@ export async function DELETE(
         await sermonsRepository.deletePreachDate(id, dateId);
         return NextResponse.json({ message: 'Preach date deleted' });
     } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
         const { id, dateId } = await params;
         console.error(`Error deleting preach date ${dateId} from sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

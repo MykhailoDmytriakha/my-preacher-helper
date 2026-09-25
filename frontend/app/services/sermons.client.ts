@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import {
   PreachDate,
   Preparation,
@@ -46,7 +47,8 @@ import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeScratch } from '@/utils/mergeScratch';
 import { mergeSections } from '@/utils/mergeSections';
 import { readWithDeadline } from '@/utils/readWithDeadline';
-import { compareById, timeOrZero } from '@/utils/sortHelpers';
+import { hydrateSermon, sortSermons } from '@/utils/sermonDocument';
+export { hydrateSermon } from '@/utils/sermonDocument';
 import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 
 // Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
@@ -63,6 +65,14 @@ const SERMONS_COLLECTION = 'sermons';
 
 /** Thoughts are their own aggregate: editing one must not collide with the title. */
 export const SERMON_THOUGHTS_AGGREGATE = 'thoughts';
+
+/**
+ * A collection the engine owns is written only through the engine. Every legacy writer below
+ * refuses there with the same typed `data-engine-required` error the other domains use, so a
+ * screen that was not migrated fails where it can be seen instead of writing around the engine
+ * (no revision, no feed event, and a refusal once protective rules are deployed).
+ */
+const guardEngineOwnedSermons = () => assertLegacyClientWriteAllowed('sermons');
 const SERMON_NOT_FOUND = 'Sermon not found';
 // Prefix historically used for not-yet-saved local thought ids. Keep stripping
 // it as a defensive migration backstop so saved thoughts read as real ids.
@@ -80,37 +90,6 @@ function db() {
 
 function sermonRef(id: string) {
   return doc(db(), SERMONS_COLLECTION, id);
-}
-
-/**
- * Mirrors the server hydration (sermons.repository.fetchSermonById): keep the
- * modern field and its legacy alias in sync so consumers see the same shape
- * whether the doc stored `thoughtsBySection`/`structure` or `draft`/`plan`.
- */
-export function hydrateSermon(raw: Sermon): Sermon {
-  const sermon: Sermon = { ...raw };
-
-  const hydratedStructure = raw.thoughtsBySection || raw.structure;
-  if (hydratedStructure) {
-    sermon.thoughtsBySection = hydratedStructure;
-    sermon.structure = raw.structure || hydratedStructure;
-  }
-
-  const hydratedDraft = raw.draft || raw.plan;
-  if (hydratedDraft) {
-    sermon.draft = hydratedDraft;
-    sermon.plan = raw.plan || hydratedDraft;
-  }
-
-  return sermon;
-}
-
-function sortSermons(sermons: Sermon[]): Sermon[] {
-  return [...sermons].sort((a, b) => {
-    const byDate = timeOrZero(b.date) - timeOrZero(a.date);
-    if (byDate !== 0) return byDate;
-    return compareById(a, b);
-  });
 }
 
 // --- READS ---
@@ -292,6 +271,7 @@ export async function updateSermonViaClient(
   /** The written fields AS THE EDITOR OPENED THEM — see the guard. */
   expectedBaseline?: Record<string, unknown> | null
 ): Promise<Sermon | null> {
+  guardEngineOwnedSermons();
   const ref = sermonRef(updated.id);
   const data = collectSermonCoreWrite(patch ?? updated, patch);
   if (Object.keys(data).length === 0) return null; // server replies 400 -> service null
@@ -346,6 +326,7 @@ export async function updateSermonPreparationViaClient(
   preparation: Preparation,
   changedKeys?: (keyof Preparation)[]
 ): Promise<Preparation | null> {
+  guardEngineOwnedSermons();
   // WHOLE-OBJECT WRITE (no changedKeys) replaces every preparation step from the
   // caller's snapshot, so editing one step on this device reverts a DIFFERENT
   // step edited meanwhile on another. When the caller knows which steps changed
@@ -434,6 +415,7 @@ export async function updateStructureViaClient(
    */
   baseStructure?: ThoughtsBySection | null
 ): Promise<{ message: string }> {
+  guardEngineOwnedSermons();
   // MERGED, not replaced. The map is built from the sermon this screen loaded, so a
   // thought created on another device is simply absent from it — and writing the map
   // whole dropped that thought out of every section, leaving it shown nowhere until
@@ -590,6 +572,7 @@ export async function updateSermonOutlineViaClient(
     onCollision?: 'refuse' | 'preferMine';
   }
 ): Promise<SermonOutline | null> {
+  guardEngineOwnedSermons();
   if (!outline.main) outline.main = [];
 
   if (options && 'baseOutline' in options) {
@@ -681,6 +664,7 @@ export async function applyScratchToOutlineViaClient(
    */
   base?: { outline?: SermonOutline | null; scratch?: ScratchNote[] | null }
 ): Promise<{ outline: SermonOutline; scratch: ScratchNote[] }> {
+  guardEngineOwnedSermons();
   const cleanOutline: SermonOutline = {
     introduction: outline.introduction ?? [],
     main: outline.main ?? [],
@@ -894,6 +878,7 @@ export async function addScratchNoteViaClient(
   /** The list this screen started from — see `writeScratchNotesViaClient`. */
   baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
+  guardEngineOwnedSermons();
   return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
@@ -903,6 +888,7 @@ export async function updateScratchNoteViaClient(
   /** The list this screen started from — see `writeScratchNotesViaClient`. */
   baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
+  guardEngineOwnedSermons();
   return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
@@ -912,6 +898,7 @@ export async function deleteScratchNoteViaClient(
   /** The list this screen started from — see `writeScratchNotesViaClient`. */
   baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
+  guardEngineOwnedSermons();
   return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
@@ -935,6 +922,7 @@ export async function createManualThoughtViaClient(
   sermonId: string,
   thought: Thought
 ): Promise<Thought> {
+  guardEngineOwnedSermons();
   const stableId =
     thought.id && thought.id.startsWith(LOCAL_OPTIMISTIC_ID_PREFIX)
       ? thought.id.slice(LOCAL_OPTIMISTIC_ID_PREFIX.length)
@@ -1014,6 +1002,7 @@ export async function updateThoughtViaClient(
    */
   baseThought: Thought | null
 ): Promise<Thought> {
+  guardEngineOwnedSermons();
   if (!updatedThought.id) throw new Error('Thought id is required');
 
   // TRANSACTIONAL, and the merge happens INSIDE each attempt.
@@ -1097,6 +1086,7 @@ export async function updateThoughtViaClient(
 
 /** Mirror DELETE /api/thoughts — remove the thought (by id) from the array. */
 export async function deleteThoughtViaClient(sermonId: string, thought: Thought): Promise<void> {
+  guardEngineOwnedSermons();
   await atomicUpdate<Sermon>(
     sermonRef(sermonId),
     (sermon) => ({
@@ -1124,6 +1114,7 @@ export async function addPreachDateViaClient(
   sermonId: string,
   data: Omit<PreachDate, 'id' | 'createdAt'> & { id?: string }
 ): Promise<PreachDate> {
+  guardEngineOwnedSermons();
   const normalizedDate = toDateOnlyKey(data.date);
   if (!normalizedDate) throw new Error('Invalid preach date format');
 
@@ -1183,6 +1174,7 @@ export async function updatePreachDateViaClient(
   dateId: string,
   updates: Partial<PreachDate>
 ): Promise<PreachDate> {
+  guardEngineOwnedSermons();
   // DELIBERATELY NOT transactional — same reason as updateThoughtViaClient: it
   // merges caller-supplied fields into the persisted entry, and Firestore may
   // re-run a transaction callback (up to 5 attempts) even after a commit whose
@@ -1221,6 +1213,7 @@ export async function updatePreachDateViaClient(
 
 /** Mirror DELETE /api/sermons/:id/preach-dates/:dateId. */
 export async function deletePreachDateViaClient(sermonId: string, dateId: string): Promise<void> {
+  guardEngineOwnedSermons();
   await atomicUpdate<Sermon>(
     sermonRef(sermonId),
     (sermon) => ({
@@ -1312,6 +1305,7 @@ export async function savePlanModeViaClient(
   sermonId: string,
   planMode: 'manual' | 'ai' | 'note'
 ): Promise<void> {
+  guardEngineOwnedSermons();
   await revisionedUpdate(
     sermonRef(sermonId),
     { planMode, updatedAt: now() },
@@ -1357,6 +1351,7 @@ export async function savePlanTextViaClient(
   removedNodeIds: string[] = [],
   { userId, baselineByNodeId }: PlanTextWriteContext = {}
 ): Promise<void> {
+  guardEngineOwnedSermons();
   const ref = sermonRef(sermonId);
   const writtenNodeIds = Object.keys(changedText);
 

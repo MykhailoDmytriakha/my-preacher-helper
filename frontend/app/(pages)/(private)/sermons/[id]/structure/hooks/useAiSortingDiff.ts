@@ -2,12 +2,11 @@ import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { sortItemsWithAI } from "@/services/sortAI.service";
-import { updateStructure } from "@/services/structure.service";
-import { updateThought } from "@/services/thought.service";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import {
   MAX_AI_SORT_ITEMS,
@@ -291,6 +290,7 @@ export const useAiSortingDiff = ({
   debouncedSaveStructure,
 }: UseAiSortingDiffProps) => {
   const { t } = useTranslation();
+  const writer = useStructureWriter();
   const isOnline = useOnlineStatus();
   
   // AI Sort with Interactive Confirmation state
@@ -561,7 +561,7 @@ export const useAiSortingDiff = ({
     const thoughtRequests = thoughtUpdates.map((update) => {
       const thought = sermon.thoughts.find((candidate) => candidate.id === update.id);
       return thought
-        ? updateThought(
+        ? writer.updateThought(
             sermonId,
             {
               ...thought,
@@ -576,7 +576,7 @@ export const useAiSortingDiff = ({
     const newStructure = createStructureFromContainers(containers);
     const persistence = Promise.allSettled([
       ...thoughtRequests,
-      updateStructure(sermonId, newStructure, sermon.structure),
+      writer.updateStructure(sermonId, newStructure, sermon.structure),
     ]).then((results) => {
       const refused = results.find(
         (result): result is PromiseRejectedResult =>
@@ -612,6 +612,7 @@ export const useAiSortingDiff = ({
     void awaitAcceptance(submission, restoreRejectedSort).catch(restoreRejectedSort);
     return submission;
   }, [
+    writer,
     highlightedItems,
     containers,
     sermon,

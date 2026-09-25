@@ -6,6 +6,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { studiesRepository } from '@/api/repositories/studies.repository';
 import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
+import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { SermonContent, ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
@@ -90,6 +91,7 @@ export async function GET(
       return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
 
+    assertLegacyWritable(sermon);
     // Generate the plan for the specified section (only pass style when provided)
     const sectionName = section.toLowerCase();
     const result = style
@@ -125,19 +127,16 @@ export async function GET(
         conclusion: (existingPlan as SermonContent)?.conclusion || { outline: '' }
       };
 
-      // Type-safe way to update the plan section
-      if (section.toLowerCase() === 'introduction') {
-        updatedPlan.introduction = normalizedPlan.introduction;
-      } else if (section.toLowerCase() === 'main') {
-        updatedPlan.main = normalizedPlan.main;
-      } else if (section.toLowerCase() === 'conclusion') {
-        updatedPlan.conclusion = normalizedPlan.conclusion;
-      }
+      // The section was validated above; update only that aggregate.
+      const sectionKey = section.toLowerCase() as keyof SermonContent;
+      updatedPlan[sectionKey] = normalizedPlan[sectionKey];
 
       // Save to database
       await sermonsRepository.updateSermonContent(id, updatedPlan);
       console.log(`Saved ${section} plan to database for sermon ${id}`);
     } catch (saveError: unknown) {
+      const boundary = legacyBoundaryResponse(saveError);
+      if (boundary) return boundary;
       const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
       console.error(`Error saving plan to database: ${errorMessage}`);
       // Continue and return the plan even if saving fails
@@ -148,7 +147,7 @@ export async function GET(
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const errorMessage = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR;
     console.error(`Error generating plan for section ${section}:`, error);
-    return jsonNoStore(
+    return legacyBoundaryResponse(error) ?? jsonNoStore(
       { error: 'Failed to generate plan', details: errorMessage },
       { status: 500 }
     );
@@ -385,6 +384,8 @@ export async function PUT(
 
     return jsonNoStore({ success: true, plan: sections });
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const { id } = await params;
     console.error(`Error saving plan for sermon ${id}:`, error);

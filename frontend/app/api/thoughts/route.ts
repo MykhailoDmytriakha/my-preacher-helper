@@ -7,8 +7,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, legacyBoundaryResponse, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { Sermon, Thought } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { addSermonThought } from '@/utils/sermonThoughtEdits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { sanitizeAvailableThoughtTags, stripStructureTags } from '@/utils/thoughtTagSanitizer';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
@@ -20,6 +23,8 @@ import {
   type TranscriptionErrorResponse,
 } from '@clients/transcriptionRetry';
 import { sermonsRepository } from '@repositories/sermons.repository';
+
+import type { DocumentData } from '@/data-engine/types';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
 
@@ -55,12 +60,21 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
   return thoughtWithId;
 }
 
-async function appendThoughtToSermon(sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
-  // Server-side thought writes advance the `thoughts` counter too, so a client
-  // editing thoughts cannot later be granted false permission.
-  await sermonsRepository.updateSermonData(sermonId, {
-    thoughts: union(thought)
-  }, 'thoughts');
+async function appendThoughtToSermon(uid: string, sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
+  await writeOwnedDocument({
+    owner: uid,
+    resource: { collection: 'sermons', id: sermonId },
+    // Server-side thought writes advance the `thoughts` counter too, so a client
+    // editing thoughts cannot later be granted false permission.
+    legacy: () => sermonsRepository.updateSermonData(sermonId, {
+      thoughts: union(thought)
+    }, 'thoughts'),
+    // On an engine document the thought and its place in the structure land as one edit,
+    // through the same transform the editor uses (idempotent by thought ID).
+    // `updatedAt` moves as the legacy updateSermonData moved it, so the sermon rises in "recent".
+    engine: current => ({ ...addSermonThought({ ...current, thoughts: current.thoughts ?? [] } as unknown as Sermon, thought) as unknown as DocumentData,
+      updatedAt: new Date().toISOString() }),
+  });
 }
 
 function normalizeGenerationResult(params: {
@@ -93,6 +107,7 @@ async function handleManualPost(request: Request, uid: string) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
     console.log("Thoughts route: Manual thought:", thought);
     console.log("Will not apply AI to manual thought");
 
@@ -102,10 +117,12 @@ async function handleManualPost(request: Request, uid: string) {
     }
 
     console.log("Manual thought with tags:", thoughtWithId);
-    await appendThoughtToSermon(sermonId, thoughtWithId, FieldValue.arrayUnion);
+    await appendThoughtToSermon(uid, sermonId, thoughtWithId, FieldValue.arrayUnion);
     console.log("Firestore update: Stored new manual thought into sermon document.");
     return NextResponse.json(thoughtWithId);
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
+    if (boundary) return boundary;
     console.error('Thoughts route: Manual POST error:', error);
     return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
   }
@@ -168,6 +185,7 @@ async function handleAutoPost(request: Request, uid: string) {
     if (sermon.userId !== uid) {
       return errorResponse('Forbidden', 403);
     }
+    assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
 
     tracker.addContext({
       audioSizeBytes: audioFile.size,
@@ -305,7 +323,7 @@ async function handleAutoPost(request: Request, uid: string) {
 
     await tracker.timePhase(
       "persist_thought",
-      () => appendThoughtToSermon(sermonId, thought, FieldValue.arrayUnion),
+      () => appendThoughtToSermon(uid, sermonId, thought, FieldValue.arrayUnion),
       {
         sermonId,
         thoughtId: thought.id,
@@ -321,6 +339,8 @@ async function handleAutoPost(request: Request, uid: string) {
     });
     return NextResponse.json(thought);
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
+    if (boundary) return boundary;
     console.error('Thoughts route: Transcription error:', error);
     if (isUsageCapReachedError(error)) {
       return usageCapResponse(error);
@@ -377,6 +397,7 @@ export async function DELETE(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
     console.log("Thoughts route: Deleting thought:", thought);
 
     await sermonsRepository.updateSermonData(sermonId, {
@@ -386,6 +407,8 @@ export async function DELETE(request: Request) {
     console.log("Successfully deleted thought.");
     return NextResponse.json({ message: "Thought deleted successfully." });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error("Error deleting thought:", error);
     return NextResponse.json({ error: "Failed to delete thought." }, { status: 500 });
   }
@@ -420,6 +443,7 @@ export async function PUT(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
 
     const oldThought = sermon.thoughts.find((th) => th.id === updatedThoughtNew.id);
     if (!oldThought) {
@@ -473,7 +497,7 @@ export async function PUT(request: Request) {
 
     // Use Admin SDK with transaction to ensure atomic update
     try {
-      await adminDb.runTransaction(async (transaction) => {
+      await runLegacyTransaction(async (transaction) => {
         const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
         const sermonDoc = await transaction.get(sermonDocRef);
 
@@ -514,10 +538,10 @@ export async function PUT(request: Request) {
       if (error instanceof Error && error.message === 'Forbidden') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+      return legacyBoundaryResponse(error) ?? NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
     }
   } catch (error) {
     console.error("Thoughts route: Error updating thought:", error);
-    return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+    return legacyBoundaryResponse(error) ?? NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
   }
 }

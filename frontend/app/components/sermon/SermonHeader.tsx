@@ -13,6 +13,7 @@ import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import SourceNoteChips from '@/components/sermon/SourceNoteChips';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useUserSettings } from '@/hooks/useUserSettings';
@@ -28,10 +29,24 @@ import { getExportContent } from '@utils/exportContent';
 import { getSeriesForRef } from '@utils/seriesMembership';
 import { getSermonPlanData } from '@utils/sermonPlanAccess';
 
+import type { ManualTextBinding } from '@/components/common/manualTextBinding';
+import type { SyncStatus } from '@/data-engine/status';
 import type { Sermon, Series } from '@/models/models';
 
 
 
+
+export interface SermonHeaderEditor {
+  values: Pick<Sermon, 'title' | 'verse'>;
+  isReadOnly: boolean;
+  status: SyncStatus | null;
+  error?: string | null;
+  titleForm: ManualTextBinding;
+  verseForm: ManualTextBinding;
+  keepLocal: () => Promise<void>;
+  acceptRemote: () => Promise<void>;
+  retry: () => Promise<void>;
+}
 
 export interface SermonHeaderProps {
   sermon: Sermon;
@@ -39,15 +54,17 @@ export interface SermonHeaderProps {
   onUpdate?: (updatedSermon: Sermon) => void; // Callback for successful update
   uiMode?: 'classic' | 'prep';
   onToggleMode?: () => void;
+  /** Canonical draft values and commands; omitted while the legacy path is active. */
+  editor?: SermonHeaderEditor;
 }
 
-const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate }) => {
+const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate, editor }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
-  const isReadOnly = false; // Always allow local edits
+  const isReadOnly = Boolean(editor?.isReadOnly || editor?.status?.phase === 'deleted');
 
   const enableAudio = settings?.enableAudioGeneration || false;
 
@@ -89,7 +106,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
    * draft behind them. A toast claiming "your text is still here" was false.
    */
   const [conflict, setConflict] = usePersistedConflict<{ field: 'title' | 'verse'; value: string }>(
-    sermon.userId,
+    editor ? null : sermon.userId,
     sermon.id,
     SERMON_CORE_AGGREGATE
   );
@@ -112,6 +129,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
      */
     baseValue: string | null
   ) => {
+    if (editor) {
+      throw new Error('Canonical text edits require the manual form binding');
+    }
     const patch = field === 'title' ? { title: value } : { verse: value };
     // The ONE field being replaced, as it looked when the edit started. The guard
     // hashes it itself, so there is a single definition of "what we started from".
@@ -220,7 +240,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     <div className="flex flex-col gap-4">
       {/* A save was TURNED AWAY. The editor has already closed and reverted, so the
           refused text lives here — shown, not just promised — until it is resolved. */}
-      {conflict && (
+      {editor && <DataSyncStatus status={editor.status} error={editor.error}
+        onKeepLocal={editor.keepLocal} onAcceptRemote={editor.acceptRemote} onRetry={editor.retry} />}
+      {!editor && conflict && (
         <SaveConflictBanner
           entityKey="entitySermon"
           pendingText={conflict.payload.value}
@@ -233,8 +255,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       {/* Title and identity share the top row with the actions on wide screens. */}
       <div className="min-w-0">
         <EditableTitle
-          initialTitle={sermon.title}
+          initialTitle={editor ? editor.values.title : sermon.title}
           onSave={handleSaveSermonTitle}
+          manual={editor?.titleForm}
           disabled={isReadOnly}
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -296,8 +319,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       {/* Scripture uses both columns; on small screens it stays before the actions. */}
       <div className="order-1 min-w-0 text-base md:text-lg lg:order-2 lg:col-span-2">
           <EditableVerse
-            initialVerse={sermon.verse || ''}
+            initialVerse={editor ? editor.values.verse : sermon.verse || ''}
             onSave={handleSaveSermonVerse}
+            manual={editor?.verseForm}
             disabled={isReadOnly}
           />
       </div>
@@ -333,12 +357,12 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             away (we're ON the sermon being deleted), rather than refreshing a dead page.
             REPLACE, not push: pushing left this very page in history, so a swipe back
             re-opened a full editor over a sermon that no longer exists — BUG-20260905. */}
-        <OptionMenu
+        {!(editor ? editor.isReadOnly : isReadOnly) && <OptionMenu
           sermon={sermon}
           series={series}
           onUpdate={onUpdate}
           onDelete={() => router.replace('/sermons')}
-        />
+        />}
         {/* Mode toggle moved to global DashboardNav */}
       </div>
       </div>

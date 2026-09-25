@@ -8,10 +8,13 @@ const mockAdd = jest.fn();
 const mockDoc = jest.fn();
 const mockSet = jest.fn();
 const mockDelete = jest.fn();
+const mockTransactionGet = jest.fn();
+const mockTransactionSet = jest.fn();
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    runTransaction: jest.fn(),
   },
   FieldValue: {
     increment: jest.fn(),
@@ -21,6 +24,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 const { adminDb, FieldValue } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock<unknown, unknown[]>;
+    runTransaction: jest.Mock;
   };
   FieldValue: {
     increment: jest.Mock;
@@ -43,6 +47,7 @@ const setupFirestoreMocks = () => {
   });
 
   mockDoc.mockReturnValue({
+    id: 'new-link-id',
     get: mockGet,
     set: mockSet.mockResolvedValue(undefined),
     delete: mockDelete.mockResolvedValue(undefined),
@@ -56,6 +61,8 @@ describe('StudyNoteShareLinksRepository', () => {
     jest.clearAllMocks();
     mockIncrement.mockReturnValue('increment-1');
     (adminDb.collection as jest.Mock).mockImplementation(mockCollection);
+    adminDb.runTransaction.mockImplementation(callback => callback({ get: mockTransactionGet, set: mockTransactionSet }));
+    mockTransactionGet.mockReset();
     setupFirestoreMocks();
     repository = new StudyNoteShareLinksRepository();
   });
@@ -196,7 +203,7 @@ describe('StudyNoteShareLinksRepository', () => {
     const dateSpy = jest.spyOn(global, 'Date').mockImplementation(() => mockDate as any);
     mockDate.toISOString = jest.fn().mockReturnValue('2024-02-02T12:00:00.000Z');
 
-    mockAdd.mockResolvedValue({ id: 'new-link-id' });
+    mockTransactionGet.mockResolvedValue({ data: () => ({ userId: 'user-1', content: 'Owned' }) });
 
     const result = await repository.createLink({
       ownerId: 'user-1',
@@ -204,7 +211,7 @@ describe('StudyNoteShareLinksRepository', () => {
       token: 'token-1',
     });
 
-    expect(mockAdd).toHaveBeenCalledWith({
+    expect(mockTransactionSet).toHaveBeenCalledWith(expect.objectContaining({ id: 'new-link-id' }), {
       ownerId: 'user-1',
       noteId: 'note-1',
       token: 'token-1',
@@ -224,15 +231,64 @@ describe('StudyNoteShareLinksRepository', () => {
   });
 
   it('increments view count with merge', async () => {
+    mockTransactionGet.mockResolvedValue({ data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) });
     await repository.incrementViewCount('link-1');
 
     expect(mockIncrement).toHaveBeenCalledWith(1);
-    expect(mockSet).toHaveBeenCalledWith({ viewCount: 'increment-1' }, { merge: true });
+    expect(mockTransactionSet).toHaveBeenCalledWith(expect.anything(), { viewCount: 'increment-1' }, { merge: true });
   });
 
   it('deletes a share link', async () => {
     await repository.deleteLink('link-1');
 
     expect(mockDelete).toHaveBeenCalled();
+  });
+
+  it.each([{ _dataEngine: { deleted: true } }, { revoked: true }, { token: '' }])('filters retired or invalid links through every read seam: %j', patch => {
+    const data = { ownerId: 'owner', noteId: 'note', token: 'token', ...patch };
+    const doc = { id: 'link', data: () => data };
+    mockGet.mockResolvedValue({ ...doc, exists: true, empty: false, docs: [doc] });
+    return Promise.all([
+      expect(repository.listByOwner('owner')).resolves.toEqual([]),
+      expect(repository.getById('link')).resolves.toBeNull(),
+      expect(repository.findByToken('token')).resolves.toBeNull(),
+      expect(repository.findByOwnerAndNoteId('owner', 'note')).resolves.toBeNull(),
+    ]);
+  });
+
+  it.each([undefined, { userId: 'foreign' }, { userId: 'owner', _dataEngine: { deleted: true } }])('refuses creation when its transaction reads an unavailable note: %j', data => {
+    mockTransactionGet.mockResolvedValue({ data: () => data });
+    return expect(repository.createLink({ ownerId: 'owner', noteId: 'note', token: 'token' })).rejects.toMatchObject({ code: 'permission-denied' }).then(() => {
+      expect(mockTransactionSet).not.toHaveBeenCalled();
+    });
+  });
+
+  it.each([undefined, { ownerId: 'owner', noteId: 'note', token: 'token', _dataEngine: { deleted: true } }])('does not revive a missing or tombstoned link during a late increment: %j', async data => {
+    mockTransactionGet.mockResolvedValue({ data: () => data });
+    await repository.incrementViewCount('link');
+    expect(mockTransactionSet).not.toHaveBeenCalled();
+    expect(mockIncrement).not.toHaveBeenCalled();
+  });
+
+  it('reads token authorization and note content inside the same transaction', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Public text' }) });
+    expect(await repository.readSharedNote('token')).toMatchObject({ shareLink: { id: 'link', ownerId: 'owner' }, content: 'Public text' });
+    expect(adminDb.runTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTransactionGet).toHaveBeenCalledTimes(2);
+    expect(mockGet).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, { userId: 'foreign', content: 'Private' }, { userId: 'owner', content: 'Deleted', _dataEngine: { deleted: true } }, { userId: 'owner' }])('does not publicly expose an unavailable or foreign note: %j', async data => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    mockTransactionGet.mockResolvedValueOnce({ data: () => data });
+    expect(await repository.readSharedNote('token')).toBeNull();
+  });
+
+  it('returns no public note for absent or retired token authorization', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: true });
+    expect(await repository.readSharedNote('token')).toBeNull();
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token', revoked: true }) }] });
+    expect(await repository.readSharedNote('token')).toBeNull();
   });
 });

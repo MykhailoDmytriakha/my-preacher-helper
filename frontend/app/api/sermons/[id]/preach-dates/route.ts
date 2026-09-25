@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -45,6 +46,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const preachDate = await sermonsRepository.addPreachDate(id, data);
         return NextResponse.json({ preachDate });
     } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
         const { id } = await params;
         console.error(`Error adding preach date to sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -80,6 +83,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
         return NextResponse.json({ preachDates: sermon.preachDates || [] });
     } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
         const { id } = await params;
         console.error(`Error fetching preach dates for sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

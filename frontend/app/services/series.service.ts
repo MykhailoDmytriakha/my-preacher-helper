@@ -1,13 +1,14 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Series } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { hydrateSeries, sortSeries } from '@/utils/seriesDocument';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
-import { timeOrZero, compareById } from '@/utils/sortHelpers';
 import { auth } from '@services/firebaseAuth.service';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -41,29 +42,6 @@ const SERIES_COLLECTION = 'series';
 const SERIES_UPDATE_FIELDS: (keyof Series)[] = [
   'title', 'theme', 'description', 'bookOrTopic', 'startDate', 'duration', 'color', 'status', 'seriesKind',
 ];
-
-// --- helpers mirroring series.repository.ts (kept byte-identical) ---
-
-
-function hydrateSeries(series: Series): Series {
-  const items = normalizeSeriesItems(series.items, series.sermonIds || []);
-  return {
-    ...series,
-    items,
-    sermonIds: deriveSermonIdsFromItems(items),
-    seriesKind: series.seriesKind || inferSeriesKind(items),
-  };
-}
-
-function sortSeries(list: Series[]): Series[] {
-  return [...list].sort((a, b) => {
-    const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
-    if (byDate !== 0) return byDate;
-    const byTitle = (a.title || '').localeCompare(b.title || '');
-    if (byTitle !== 0) return byTitle;
-    return compareById(a, b);
-  });
-}
 
 // --- client-SDK read/write paths ---
 
@@ -201,6 +179,7 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
 };
 
 export const createSeries = async (series: Omit<Series, 'id'> & { id?: string }): Promise<Series> => {
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   return createSeriesViaClient(series);
 };
 
@@ -214,10 +193,12 @@ export const updateSeries = async (
   // Items/sermonIds membership flows through the dedicated cascade endpoints, never
   // updateSeries; the client path whitelists metadata only (same as the server route),
   // so it stays a pure own-doc write with no cross-collection effect.
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   return updateSeriesViaClient(seriesId, updates, expectedRevision, expectedBaseline);
 };
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {

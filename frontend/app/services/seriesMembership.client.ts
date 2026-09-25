@@ -1,6 +1,7 @@
 import { doc, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed, isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
 import { revisionBump } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
@@ -216,7 +217,7 @@ function enqueueMembershipTransforms(uid: string, transforms: SeriesTransform[])
  * offline "add this sermon to the series" is never silently forgotten.
  */
 export async function replayMembershipOutbox(uid: string | null | undefined): Promise<number> {
-  if (!uid) return 0;
+  if (!uid || isCollectionOnEngine('series')) return 0;
   const entries = listMembershipEntries(uid);
   if (entries.length === 0) return 0;
 
@@ -254,6 +255,7 @@ export async function replayMembershipOutbox(uid: string | null | undefined): Pr
 
 export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<void> {
   if (transforms.length === 0) return;
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   const db = getClientDb();
 
   /**

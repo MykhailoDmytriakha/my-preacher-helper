@@ -186,6 +186,7 @@ export function isOfflineQueuedError(error: unknown): error is OfflineQueuedErro
  * glitch as final would throw away work that was about to succeed.
  */
 const REFUSAL_CODES = new Set([
+  'data-engine-required',
   'permission-denied',
   'unauthenticated',
   'not-found',

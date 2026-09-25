@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 const VIEW_COOKIE_PREFIX = 'share_note_viewed_';
@@ -17,17 +16,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { token } = await params;
 
   try {
-    const shareLink = await studyNoteShareLinksRepository.findByToken(token);
-    if (!shareLink) {
+    const shared = await studyNoteShareLinksRepository.readSharedNote(token);
+    if (!shared) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-
-    const note = await studiesRepository.getNote(shareLink.noteId);
-    // Re-validate cross-document ownership: the note must belong to the share link's owner.
-    // A forged/legacy link whose noteId points at another user's note must never expose it.
-    if (!note || note.userId !== shareLink.ownerId) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    }
+    const { shareLink, content } = shared;
 
     const cookieName = `${VIEW_COOKIE_PREFIX}${token}`;
     const viewedAtRaw = request.cookies.get(cookieName)?.value;
@@ -38,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const response = NextResponse.json(
-      { content: note.content },
+      { content },
       { headers: { 'Cache-Control': 'no-store' } }
     );
 

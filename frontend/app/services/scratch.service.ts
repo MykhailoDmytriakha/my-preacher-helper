@@ -1,6 +1,7 @@
 import {
   ComposePlanApiResponseSchema,
   type ComposedPlanOutline,
+  type ComposePlanExpectedSource,
   type ComposedPlanSubPoint,
 } from '@/config/schemas/zod';
 import { ScratchNote, SermonOutline } from '@/models/models';
@@ -63,7 +64,8 @@ export interface ComposePlanResult {
 export async function composePlanFromScratch(
   sermonId: string,
   existingOutline: SermonOutline | undefined,
-  knownScratchNoteIds: Iterable<string>
+  knownScratchNoteIds: Iterable<string>,
+  expectedSource?: ComposePlanExpectedSource
 ): Promise<ComposePlanResult> {
   if (isBrowserOffline()) {
     throw new Error('Scratch compose is unavailable offline');
@@ -82,7 +84,7 @@ export async function composePlanFromScratch(
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ existingOutline, scratchNoteIds }),
+    body: JSON.stringify({ existingOutline, scratchNoteIds, ...(expectedSource ? { expectedSource } : {}) }),
     category: 'ai',
     timeout: SCRATCH_COMPOSE_TIMEOUT_MS,
   });

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
+
+const REQUEST_REFUSED = 'Request refused';
 
 // Error messages
 const ERROR_MESSAGES = {
@@ -18,6 +21,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (material.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(material);
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : REQUEST_REFUSED }, { status: error.status });
+    }
     console.error(`GET /api/studies/materials/${id} error`, error);
     return NextResponse.json({ error: 'Failed to fetch material' }, { status: 500 });
   }
@@ -35,9 +43,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (updates.userId && updates.userId !== uid) {
       return NextResponse.json({ error: 'Cannot change userId' }, { status: 400 });
     }
-    const updated = await studiesRepository.updateMaterial(id, { ...updates, userId: uid });
+    const updated = await studiesRepository.updateMaterial(id, { ...updates, userId: uid }, uid);
     return NextResponse.json(updated);
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : REQUEST_REFUSED }, { status: error.status });
+    }
     console.error(`PUT /api/studies/materials/${id} error`, error);
     return NextResponse.json({ error: 'Failed to update material' }, { status: 500 });
   }
@@ -52,9 +65,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!existing) return NextResponse.json({ success: true });
     if (existing.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    await studiesRepository.deleteMaterial(id);
+    await studiesRepository.deleteMaterial(id, uid);
     return NextResponse.json({ success: true });
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : REQUEST_REFUSED }, { status: error.status });
+    }
     console.error(`DELETE /api/studies/materials/${id} error`, error);
     return NextResponse.json({ error: 'Failed to delete material' }, { status: 500 });
   }
