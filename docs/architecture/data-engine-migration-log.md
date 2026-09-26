@@ -34,6 +34,33 @@ run in the owner's desktop browser before shipping: 115 of 115 copies were echoe
 outbox entry already carries its opening values, so it is a command in all but name; and a
 paused operation re-archived after a failed replay counts twice.
 
+**The copies that remain are now a decision screen, not an export list.** After the echo
+release the owner's Android still showed 5 copies (series and sermons whose server copies had
+not changed since 7–16 September) and asked what differs, which side is newer, and for one
+"accept everything from the server". Each copy now shows its kind and title, the date of the
+device copy and of the server copy, a freshness label, and a git-style line diff per differing
+field (LCS, two lines of context, unchanged runs folded; the previous version's read aliases are
+not listed twice). Rows can be kept as on the server, copied or downloaded one by one; the
+header offers "Accept everything from the server". That button always asks first, inside the
+banner, and the question offers to download every copy before removing them — because no date
+proves whose words are newer: the previous version's optimistic series edits never touched
+`updatedAt`, a sermon's structure write does not move it, and the engine does not set it at all.
+The freshness label is therefore worded as a fact about dates ("changed later on the server"),
+never as "safe to remove". An independent review of the first draft found the silent path this
+closes (accept-all removed copies judged older by `updatedAt`), a double press that skipped the
+question, one failing comparison hiding the whole archive, a download failure that stayed
+invisible, and operations labelled as if they had a server version; all fixed with tests.
+A second review found two more: a copy with nothing to show as a difference (server copy not
+loaded, deleted or not comparable) could be removed in one press with its content folded — now
+it shows what it holds and asks first; and a sermon whose `thoughtsBySection` had drifted from
+`structure` (the previous version's drag-and-drop wrote only `structure` into its cache, while
+`sermonPlanAccess` read the alias first) was kept by the echo check yet showed an empty diff —
+now a drifted alias is listed as "Structure (older field)". Accepting everything removes only
+the copies listed when the question was asked. Removal still requires the stored copy to keep
+the compared id and content. Verified on localhost with three seeded copies (a series diff, a
+drifted sermon alias, a council without a server copy): per-row question, accept-all question
+with the header disabled, archive 3 → 0.
+
 ## Latest checkpoint — 2026-09-22 (evening, Opus continuation)
 
 Task **4.14 server writers** and **4.15 sermon-page features** are implemented and validated

@@ -1,6 +1,6 @@
 import { createStore, get } from 'idb-keyval';
 
-import { listLegacyQueryCopies, preserveLegacyQueryCache, retireLegacyEchoes } from '../legacyQueryRecovery.client';
+import { compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 
@@ -287,5 +287,70 @@ describe('retiring copies proven to be echoes of the server', () => {
     disk.rows.set(key('councils', 'c1'), { not: 'an array' });
     disk.rows.set(key('councils', 'c2'), [copy('councils', 'c2', 0, { id: 'c2', userId: 'owner' })]);
     expect(await listLegacyQueryCopies('owner')).toHaveLength(1);
+  });
+});
+
+describe('comparing a copy with the server for the person', () => {
+  const copyOf = (raw: unknown, collection = 'sermons', savedAt: number | null = Date.UTC(2026, 8, 1)) => ({
+    id: JSON.stringify(['legacy-query', 'owner', collection, 's1', 0]), owner: 'owner', collection, documentId: 's1', title: 'T',
+    raw: typeof raw === 'string' ? raw : JSON.stringify(raw), savedAt,
+  });
+
+  it('names the newer side by each document\'s own update time and lists only differing fields', () => {
+    const device = { id: 's1', userId: 'owner', title: 'T', verse: 'John 1', updatedAt: '2026-09-03T00:00:00.000Z', rev: { core: 2 } };
+    const server = { id: 's1', userId: 'owner', title: 'T', verse: 'John 3', updatedAt: '2026-09-15T00:00:00.000Z', rev: { core: 5 } };
+    const result = compareLegacyCopy(copyOf(device), server);
+    expect(result).toMatchObject({ kind: 'row', server: 'present', freshness: 'server-newer',
+      deviceVersionAt: '2026-09-03T00:00:00.000Z', serverVersionAt: '2026-09-15T00:00:00.000Z' });
+    expect(result.differences).toEqual([{ field: 'verse', device: 'John 1', server: 'John 3' }]);
+    expect(compareLegacyCopy(copyOf({ ...device, updatedAt: '2026-09-20T00:00:00.000Z' }), server).freshness).toBe('device-newer');
+    expect(compareLegacyCopy(copyOf({ ...device, updatedAt: server.updatedAt }), server).freshness).toBe('same-version');
+  });
+
+  it('does not report the previous version\'s read aliases as differences', () => {
+    const structure = { introduction: ['a'] };
+    const result = compareLegacyCopy(copyOf({ id: 's1', title: 'T', structure, thoughtsBySection: structure }), { id: 's1', title: 'T', structure });
+    expect(result.differences).toEqual([]);
+  });
+
+  it('falls back to when this device saved the copy, and to unknown without either date', () => {
+    const saved = compareLegacyCopy(copyOf({ id: 's1', title: 'A' }), { id: 's1', title: 'B', updatedAt: '2026-09-15T00:00:00.000Z' });
+    expect(saved).toMatchObject({ deviceVersionAt: '2026-09-01T00:00:00.000Z', freshness: 'server-newer' });
+    // When the device last saved its cache proves the server changed after that — never that the device changed later.
+    expect(compareLegacyCopy(copyOf({ id: 's1', title: 'A' }), { id: 's1', title: 'B', updatedAt: '2026-08-15T00:00:00.000Z' }).freshness).toBe('unknown');
+    expect(compareLegacyCopy(copyOf({ id: 's1', title: 'A' }, 'sermons', null), { id: 's1', title: 'B' }).freshness).toBe('unknown');
+  });
+
+  it('tells operations, unreadable copies, missing and deleted server copies apart', () => {
+    const operation = { mutationKey: ['series', 'update'], state: { isPaused: true, variables: {} } };
+    expect(compareLegacyCopy(copyOf(operation, 'series'), { id: 's1' })).toMatchObject({ kind: 'operation', differences: [] });
+    expect(compareLegacyCopy(copyOf('{broken'), undefined)).toMatchObject({ kind: 'unreadable', server: 'missing' });
+    expect(compareLegacyCopy(copyOf({ id: 's1', title: 'A' }), null)).toMatchObject({ kind: 'row', server: 'deleted', differences: [] });
+  });
+
+  it('shows a sermon alias that drifted from its field, so a copy kept for it never shows an empty diff', () => {
+    const current = { main: ['new order'] }, stale = { main: ['old order'] };
+    const result = compareLegacyCopy(copyOf({ id: 's1', title: 'T', structure: current, thoughtsBySection: stale }), { id: 's1', title: 'T', structure: current });
+    expect(result.differences).toEqual([{ field: 'thoughtsBySection', device: stale, server: current }]);
+  });
+
+  it('shows a sermon alias difference once, under its current name', () => {
+    const result = compareLegacyCopy(copyOf({ id: 's1', title: 'T', structure: { main: ['a'] } }), { id: 's1', title: 'T', structure: { main: ['b'] } });
+    expect(result.differences.map(entry => entry.field)).toEqual(['structure']);
+  });
+
+  it('compares a malformed cached series as stored instead of failing', () => {
+    const broken = copyOf({ id: 's1', title: 'S', sermonIds: 'not-a-list', items: 'nope' }, 'series');
+    expect(() => compareLegacyCopy(broken, { id: 's1', title: 'S', sermonIds: ['x'] })).not.toThrow();
+  });
+
+  it('removes a chosen copy only while its id and content still match', async () => {
+    const disk = installStorageHarness();
+    const kept = copyOf({ id: 's1', title: 'Other' });
+    const chosen = { ...copyOf({ id: 's1', title: 'Chosen' }), id: JSON.stringify(['legacy-query', 'owner', 'sermons', 's1', 1]) };
+    disk.rows.set(JSON.stringify(['legacy-query', 'owner', 'sermons', 's1']), [kept, chosen]);
+    expect(await removeLegacyCopies('owner', [{ id: chosen.id, raw: '{"changed":true}' }])).toBe(0);
+    expect(await removeLegacyCopies('owner', [{ id: chosen.id, raw: chosen.raw }])).toBe(1);
+    expect(await listLegacyQueryCopies('owner')).toEqual([kept]);
   });
 });

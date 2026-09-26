@@ -286,8 +286,22 @@ still has the id and content that were compared — an id freed by another tab c
 belong to a new copy. A difference, a document the engine has not read here yet (five attempts
 in all, 30 s apart), an unreadable server copy, a document deleted on the server, an operation
 and an unreadable copy all stay. Equality proves that the server held this content, not that it
-still does. What remains is shown for preview/export as copies
-that differ from the server, never submitted and never given an invented confirmed ancestor.
+still does. What remains is laid out for a decision, never submitted and never given an invented
+confirmed ancestor: each copy against the engine's server copy — which side changed last (each
+document's own `updatedAt`; a device date that is only when the previous version saved its cache
+can say the server changed later, never that the device did), both dates, and a line diff of
+only the differing fields with bookkeeping hidden. A sermon alias that repeats its field on both
+sides is listed once; one that drifted apart is listed too, because the previous version read it
+first on some screens and every difference the echo check keeps a copy for must be visible. No
+copy leaves without a decision made while its difference or a question is on screen: a copy
+whose diff is shown can keep the server version in one press; any other copy (an operation, an
+unreadable copy, a server copy not loaded, deleted or not comparable) shows what it holds and
+asks first; accepting everything from the server always asks once inside the banner, offers to
+download all copies first, and removes only the copies listed when it asked — because a date
+never proves whose words are newer (legacy optimistic edits left `updatedAt` alone, structure
+writes never moved it, and the engine does not set it). One copy whose comparison fails is shown
+as "could not be compared" and never hides the others. Field differences are computed when the
+banner loads; rows and line diffs render only when the list is opened.
 Measured on the owner's desktop archive before this shipped: 115 of 115 copies were echoes.
 Open: a paused operation that later fails on replay is archived again as a second copy of the
 same intent (its raw state changed), and legacy operations are still offered for export rather

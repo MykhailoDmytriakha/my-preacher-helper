@@ -2,6 +2,7 @@
 
 import { get } from 'idb-keyval';
 
+import { extractIsoString } from '@/utils/dateFormatter';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
@@ -178,7 +179,10 @@ const canonical = (value: unknown, top = true): unknown => {
 function asPreviouslyRead(collection: string, value: Record<string, unknown>): Record<string, unknown> {
   if (collection === 'sermons') return hydrateSermon(value as unknown as Sermon) as unknown as Record<string, unknown>;
   if (collection === 'series') {
-    const items = normalizeSeriesItems(value.items as SeriesItem[] | undefined, (value.sermonIds as string[] | undefined) ?? []);
+    // A malformed `items` or `sermonIds` counts as absent instead of failing the whole archive.
+    const stored = Array.isArray(value.items) ? value.items as SeriesItem[] : undefined;
+    const sermonIds = Array.isArray(value.sermonIds) ? value.sermonIds.filter((id): id is string => typeof id === 'string') : [];
+    const items = normalizeSeriesItems(stored?.filter(item => item && typeof item === 'object'), sermonIds);
     return { ...value, items, sermonIds: deriveSermonIdsFromItems(items), seriesKind: value.seriesKind || inferSeriesKind(items) };
   }
   return value;
@@ -217,16 +221,30 @@ export async function retireLegacyEchoes(owner: string, readServer: ServerCopyRe
     try { server = await servers.get(document)!; } catch { undecided += 1; continue; }
     if (server === undefined) { undecided += 1; continue; }
     if (server === null) continue;
-    const same = JSON.stringify(canonical(asPreviouslyRead(copy.collection, row)))
-      === JSON.stringify(canonical(asPreviouslyRead(copy.collection, server)));
+    let same = false;
+    try {
+      same = JSON.stringify(canonical(asPreviouslyRead(copy.collection, row)))
+        === JSON.stringify(canonical(asPreviouslyRead(copy.collection, server)));
+    } catch { undecided += 1; continue; }
     if (same) echoes.set(copy.id, copy.raw);
   }
   if (!echoes.size) return { retired: 0, undecided };
-  const retired = await createEngineStorageTransaction()<number>('readwrite', (store, read, done) => {
+  return { retired: await removeLegacyCopies(owner, [...echoes].map(([id, raw]) => ({ id, raw }))), undecided };
+}
+
+/**
+ * Removes the named copies — the person chose the server's version, or the copy is a proven echo.
+ * A copy leaves only while its stored id AND content are still the ones decided on: an id freed
+ * by another tab can meanwhile belong to a new copy. Returns how many were removed.
+ */
+export function removeLegacyCopies(owner: string, copies: readonly { id: string; raw: string }[]): Promise<number> {
+  if (!owner || !copies.length) return Promise.resolve(0);
+  const decided = new Map(copies.map(copy => [copy.id, copy.raw]));
+  return createEngineStorageTransaction()<number>('readwrite', (store, read, done) => {
     read(store.getAll(engineOwnerRange(ARCHIVE_KIND, owner)), (groups: unknown[]) => {
       let count = 0;
       for (const group of groups.filter(Array.isArray) as LegacyQueryCopy[][]) {
-        const kept = group.filter(copy => echoes.get(copy.id) !== copy.raw);
+        const kept = group.filter(copy => decided.get(copy.id) !== copy.raw);
         if (kept.length === group.length) continue;
         const key = archiveKey(group[0], owner);
         // A group whose own key cannot be proven stays whole: nothing is removed on a guess.
@@ -237,7 +255,77 @@ export async function retireLegacyEchoes(owner: string, readServer: ServerCopyRe
       done(count);
     });
   });
-  return { retired, undecided };
+}
+
+/** Which side changed last, by the document's own `updatedAt` on each side. */
+export type CopyFreshness = 'server-newer' | 'device-newer' | 'same-version' | 'unknown';
+
+export interface LegacyCopyComparison {
+  /** A cached document, an operation that never reached the server, or a copy that cannot be read. */
+  kind: 'row' | 'operation' | 'unreadable';
+  /** `unknown` when the comparison itself failed: nothing is claimed about the server then. */
+  server: 'present' | 'missing' | 'deleted' | 'unknown';
+  freshness: CopyFreshness;
+  /** The version the copy holds (its `updatedAt`), else when this device saved it. */
+  deviceVersionAt: string | null;
+  serverVersionAt: string | null;
+  /** Only the fields that differ, read through the previous version's transform, bookkeeping aside. */
+  differences: { field: string; device: unknown; server: unknown }[];
+}
+
+const isoOrNull = (value: unknown): string | null => {
+  const iso = extractIsoString(value);
+  return iso && !Number.isNaN(Date.parse(iso)) ? iso : null;
+};
+
+function copyKind(copy: LegacyQueryCopy, row: Record<string, unknown> | null): LegacyCopyComparison['kind'] {
+  if (row) return 'row';
+  try { JSON.parse(copy.raw); return 'operation'; } catch { return 'unreadable'; }
+}
+
+/**
+ * When the device date is only when the previous version saved its cache, it proves the server
+ * changed after this device last read it — never that the device changed anything later.
+ */
+function freshnessOf(deviceVersionAt: string | null, serverVersionAt: string | null, savedOnly: boolean): CopyFreshness {
+  if (!deviceVersionAt || !serverVersionAt) return 'unknown';
+  const device = Date.parse(deviceVersionAt), stored = Date.parse(serverVersionAt);
+  if (stored > device) return 'server-newer';
+  if (savedOnly) return 'unknown';
+  return device > stored ? 'device-newer' : 'same-version';
+}
+
+const SERMON_ALIASES = { thoughtsBySection: 'structure', draft: 'plan' } as const;
+
+/** Only the fields that differ, read through the previous version's transform, bookkeeping aside. */
+function differencesOf(collection: string, row: Record<string, unknown>, server: Record<string, unknown>): LegacyCopyComparison['differences'] {
+  const mine = asPreviouslyRead(collection, row), theirs = asPreviouslyRead(collection, server);
+  const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left, false)) === JSON.stringify(canonical(right, false));
+  // An alias that repeats its field on both sides is one line, not two. One that drifted apart
+  // stays: the previous version read it first on some screens, and any difference the echo check
+  // keeps a copy for must be on screen.
+  const aliases = collection === 'sermons'
+    ? new Set(Object.entries(SERMON_ALIASES).filter(([alias, field]) => same(mine[alias], mine[field]) && same(theirs[alias], theirs[field])).map(([alias]) => alias))
+    : new Set<string>();
+  return [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()
+    .filter(field => !BOOKKEEPING.has(field) && field !== 'id' && !aliases.has(field) && !same(mine[field], theirs[field]))
+    .map(field => ({ field, device: mine[field], server: theirs[field] }));
+}
+
+/** What the person needs to decide about one copy: which side is newer and what exactly differs. */
+export function compareLegacyCopy(copy: LegacyQueryCopy, server: Record<string, unknown> | null | undefined): LegacyCopyComparison {
+  const savedAt = typeof copy.savedAt === 'number' && Number.isFinite(copy.savedAt) ? new Date(copy.savedAt).toISOString() : null;
+  const row = cachedRow(copy);
+  const ownVersionAt = row ? isoOrNull(row.updatedAt) : null;
+  const deviceVersionAt = ownVersionAt ?? savedAt;
+  const serverVersionAt = server ? isoOrNull(server.updatedAt) : null;
+  let serverState: LegacyCopyComparison['server'] = 'present';
+  if (server === undefined) serverState = 'missing';
+  else if (server === null) serverState = 'deleted';
+  return {
+    kind: copyKind(copy, row), server: serverState, freshness: freshnessOf(deviceVersionAt, serverVersionAt, !ownVersionAt), deviceVersionAt, serverVersionAt,
+    differences: row && server ? differencesOf(copy.collection, row, server) : [],
+  };
 }
 
 /** The storage key a copy was filed under, derived from its id and accepted only for this owner. */
