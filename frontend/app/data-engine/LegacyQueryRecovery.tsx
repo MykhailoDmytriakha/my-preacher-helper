@@ -3,7 +3,20 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { listLegacyQueryCopies, preserveLegacyQueryCache, type LegacyQueryCopy } from './legacyQueryRecovery.client';
+import { listLegacyQueryCopies, preserveLegacyQueryCache, retireLegacyEchoes, type LegacyQueryCopy, type ServerCopyReader } from './legacyQueryRecovery.client';
+import { createIndexedDbSnapshots } from './snapshots.client';
+
+/** Reads the server copy the engine already holds on this device — no request leaves the browser. */
+function engineServerCopies(owner: string): ServerCopyReader {
+  const snapshots = createIndexedDbSnapshots();
+  return async (collection, id) => {
+    const snapshot = await snapshots.read(owner, { collection, id });
+    return snapshot === undefined ? undefined : snapshot.value;
+  };
+}
+/** Documents the engine has not read yet are compared again later, a bounded number of times. */
+const ECHO_RETRY_MS = 30_000;
+const ECHO_RETRIES = 5;
 
 /** Mount before React Query: even expired caches must be archived before its restore can remove them. */
 export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (collection: string) => boolean; children: ReactNode }) {
@@ -29,10 +42,20 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
   const [state, setState] = useState<{ owner: string; copies: LegacyQueryCopy[]; failed: boolean } | null>(null);
   useEffect(() => {
     let active = true;
-    void listLegacyQueryCopies(owner).then(copies => { if (active) setState({ owner, copies, failed: false }); }, () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const show = () => listLegacyQueryCopies(owner).then(copies => { if (active) setState({ owner, copies, failed: false }); }, () => {
       if (active) setState({ owner, copies: [], failed: true });
     });
-    return () => { active = false; };
+    // Copies that say exactly what the server says are retired; whatever differs stays shown.
+    const retire = (attempt: number) => {
+      void retireLegacyEchoes(owner, engineServerCopies(owner)).then(({ retired, undecided }) => {
+        if (!active) return;
+        if (retired) void show();
+        if (undecided && attempt < ECHO_RETRIES) timer = setTimeout(() => retire(attempt + 1), ECHO_RETRY_MS);
+      }, error => { console.error('Previous-version copies could not be compared with the server', error); });
+    };
+    void show().then(() => { if (active) retire(1); });
+    return () => { active = false; if (timer) clearTimeout(timer); };
   }, [owner]);
   const current = state?.owner === owner ? state : null;
   const download = (copy: LegacyQueryCopy) => {

@@ -4,6 +4,36 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## In production — 2026-09-25
+
+Rollout steps 0–2 are done. Protective rules were deployed on 2026-09-24 17:23 PDT (step 1,
+ahead of the merge: they admit legacy writes to unmarked documents). `data-engine` was merged
+into `main` as `95dad927` and deployed with the switches off; then Production got
+`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` and `DATA_ENGINE_COLLECTIONS` (the ten collections,
+without `users`) and was rebuilt at 14:19 PDT. Verified in the owner's session: every engine
+read answered 200 and the lists matched the database. Next: every device reloads into the new
+bundle (step 3), then closure (step 4).
+
+**The first release archived the previous version's whole cache.** Every device showed
+"Local copies from the previous version" — 115 in the owner's Chrome, 93 on Android. Measured
+in Chrome: 0 unsent operations among the 115; 74 copies equal to the server, 41 differing only
+by fields the previous version computed on read (`thoughtsBySection`, `draft`, `items`,
+`seriesKind` — the previous version's read aliases, absent in Firestore). The archive never
+compared anything with the server and never let a copy go. A first fix — stop archiving cached
+rows — was refuted before shipping by an independent review: a council's refused or unsent
+text lived only in its cached row (councils never used React Query mutations), the previous
+version showed it again offline or within 30 s and sent it with the next edit, and this very
+log's browser proof "QA legacy refused copy preserved" depends on that row being archived.
+Shipped instead: rows are still archived, and `retireLegacyEchoes` retires a copy only when it
+equals the engine's server copy through the previous version's read transform, bookkeeping
+aside, and removes it only while the stored copy keeps the id and content that were compared
+(a second review found that a freed id could otherwise be reused by a new copy between the
+decision and the removal). README "Preserving previous clients' input". The same comparison
+run in the owner's desktop browser before shipping: 115 of 115 copies were echoes, 0 kept. Still open, same class: delivering legacy operations and the outbox's
+`migration-required` entries through engine commands instead of offering them for export — the
+outbox entry already carries its opening values, so it is a command in all but name; and a
+paused operation re-archived after a failed replay counts twice.
+
 ## Latest checkpoint — 2026-09-22 (evening, Opus continuation)
 
 Task **4.14 server writers** and **4.15 sermon-page features** are implemented and validated

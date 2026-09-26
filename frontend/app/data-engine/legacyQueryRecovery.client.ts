@@ -2,7 +2,12 @@
 
 import { get } from 'idb-keyval';
 
+import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
+import { hydrateSermon } from '@/utils/sermonDocument';
+
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
+
+import type { Sermon, SeriesItem } from '@/models/models';
 
 export interface LegacyQueryCopy {
   id: string;
@@ -13,6 +18,8 @@ export interface LegacyQueryCopy {
   raw: string;
   savedAt: number | null;
 }
+/** The engine storage range this archive lives in. */
+const ARCHIVE_KIND = 'legacy-query';
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 type Candidate = Omit<LegacyQueryCopy, 'id'>;
@@ -104,7 +111,7 @@ export async function preserveLegacyQueryCache(enabled: (collection: string) => 
   const mutations = mutationCopies(Array.isArray(persisted.clientState.mutations) ? persisted.clientState.mutations : [], queries, enabled);
   const copies = new Map<string, Omit<LegacyQueryCopy, 'id'>[]>();
   for (const candidate of [...queries, ...mutations]) {
-      const identity = JSON.stringify(['legacy-query', candidate.owner, candidate.collection, candidate.documentId]);
+      const identity = JSON.stringify([ARCHIVE_KIND, candidate.owner, candidate.collection, candidate.documentId]);
       const group = copies.get(identity) ?? [];
       group.push(candidate);
       copies.set(identity, group);
@@ -119,7 +126,7 @@ export async function preserveLegacyQueryCache(enabled: (collection: string) => 
         for (const candidate of candidates) {
           // Timestamp changes alone are not new content. A stale tab cannot replace a newer copy.
           if (archive.some(copy => copy.raw === candidate.raw)) continue;
-          archive.push({ ...candidate, id: JSON.stringify([...JSON.parse(identity), archive.length]) });
+          archive.push({ ...candidate, id: nextCopyId(identity, archive) });
         }
         store.put(archive, key);
         if (--remaining === 0) done(undefined);
@@ -128,11 +135,116 @@ export async function preserveLegacyQueryCache(enabled: (collection: string) => 
   });
 }
 
+/** Retired echoes leave gaps in the numbering, so the position alone could repeat a kept copy's id. */
+function nextCopyId(identity: string, archive: readonly LegacyQueryCopy[]): string {
+  const used = new Set(archive.map(copy => copy.id));
+  for (let index = archive.length; ; index += 1) {
+    const id = JSON.stringify([...JSON.parse(identity), index]);
+    if (!used.has(id)) return id;
+  }
+}
+
 export function listLegacyQueryCopies(owner: string): Promise<LegacyQueryCopy[]> {
   if (!owner) return Promise.resolve([]);
   return createEngineStorageTransaction()('readonly', (store, read, done) => {
-    read(store.getAll(engineOwnerRange('legacy-query', owner)), (groups: LegacyQueryCopy[][]) => {
-      done(groups.flat().filter(copy => copy.owner === owner));
+    read(store.getAll(engineOwnerRange(ARCHIVE_KIND, owner)), (groups: unknown[]) => {
+      done(groups.filter(Array.isArray).flat().filter((copy: LegacyQueryCopy) => copy.owner === owner));
     });
   });
+}
+
+/**
+ * The server copy the engine holds on this device, as stored: `undefined` when the engine has not
+ * read the document here yet, `null` when the server says it was deleted.
+ */
+export type ServerCopyReader = (collection: string, documentId: string) => Promise<Record<string, unknown> | null | undefined>;
+
+/** Fields that record when and how a copy was written, never what the person wrote. */
+const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);
+
+const canonical = (value: unknown, top = true): unknown => {
+  if (Array.isArray(value)) return value.map(item => canonical(item, false));
+  if (!object(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort()
+    .filter(key => !BOOKKEEPING.has(key) && !(top && key === 'id'))
+    .map(key => [key, canonical(value[key], false)]));
+};
+
+/**
+ * The previous version's read transform, so a cached row and the server copy are compared through
+ * the same lens: it kept a sermon's legacy aliases in step (`thoughtsBySection`/`structure`,
+ * `draft`/`plan`) and rebuilt a series' `items`, `sermonIds` and `seriesKind` on every read.
+ */
+function asPreviouslyRead(collection: string, value: Record<string, unknown>): Record<string, unknown> {
+  if (collection === 'sermons') return hydrateSermon(value as unknown as Sermon) as unknown as Record<string, unknown>;
+  if (collection === 'series') {
+    const items = normalizeSeriesItems(value.items as SeriesItem[] | undefined, (value.sermonIds as string[] | undefined) ?? []);
+    return { ...value, items, sermonIds: deriveSermonIdsFromItems(items), seriesKind: value.seriesKind || inferSeriesKind(items) };
+  }
+  return value;
+}
+
+/** A cached row, or null for an operation or a copy that cannot be read — those are never retired. */
+function cachedRow(copy: LegacyQueryCopy): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(copy.raw);
+    return object(parsed) && !('mutationKey' in parsed) ? parsed : null;
+  } catch { return null; }
+}
+
+/**
+ * RETIRES ONLY WHAT IS PROVEN TO BE AN ECHO OF THE SERVER.
+ *
+ * A cached row can hold text the server never received: a council's refused or unsent edit lived
+ * only there, and the previous version showed it again and sent it with the next edit. So a row
+ * leaves the archive only when it says exactly what the server copy says, read through the same
+ * transform; a missing, deleted or unreadable server copy, an operation and an unreadable copy all
+ * stay. It runs in its own transaction after listing, so a failure here never hides the archive.
+ * Equality with the engine's copy proves the server held this content, not that it still does.
+ */
+export async function retireLegacyEchoes(owner: string, readServer: ServerCopyReader): Promise<{ retired: number; undecided: number }> {
+  if (!owner) return { retired: 0, undecided: 0 };
+  // Decided by id AND content: an id freed by another tab can be given to a new copy meanwhile.
+  const echoes = new Map<string, string>();
+  const servers = new Map<string, ReturnType<ServerCopyReader>>();
+  let undecided = 0;
+  for (const copy of await listLegacyQueryCopies(owner)) {
+    const row = cachedRow(copy);
+    if (!row) continue;
+    const document = `${copy.collection}/${copy.documentId}`;
+    if (!servers.has(document)) servers.set(document, readServer(copy.collection, copy.documentId));
+    let server: Awaited<ReturnType<ServerCopyReader>>;
+    try { server = await servers.get(document)!; } catch { undecided += 1; continue; }
+    if (server === undefined) { undecided += 1; continue; }
+    if (server === null) continue;
+    const same = JSON.stringify(canonical(asPreviouslyRead(copy.collection, row)))
+      === JSON.stringify(canonical(asPreviouslyRead(copy.collection, server)));
+    if (same) echoes.set(copy.id, copy.raw);
+  }
+  if (!echoes.size) return { retired: 0, undecided };
+  const retired = await createEngineStorageTransaction()<number>('readwrite', (store, read, done) => {
+    read(store.getAll(engineOwnerRange(ARCHIVE_KIND, owner)), (groups: unknown[]) => {
+      let count = 0;
+      for (const group of groups.filter(Array.isArray) as LegacyQueryCopy[][]) {
+        const kept = group.filter(copy => echoes.get(copy.id) !== copy.raw);
+        if (kept.length === group.length) continue;
+        const key = archiveKey(group[0], owner);
+        // A group whose own key cannot be proven stays whole: nothing is removed on a guess.
+        if (!key) continue;
+        count += group.length - kept.length;
+        if (kept.length) store.put(kept, key); else store.delete(key);
+      }
+      done(count);
+    });
+  });
+  return { retired, undecided };
+}
+
+/** The storage key a copy was filed under, derived from its id and accepted only for this owner. */
+function archiveKey(copy: LegacyQueryCopy, owner: string): IDBValidKey | null {
+  try {
+    const key = (JSON.parse(copy.id) as unknown[]).slice(0, 4);
+    return key.length === 4 && key[0] === ARCHIVE_KIND && key[1] === owner
+      && key[2] === copy.collection && key[3] === copy.documentId ? key as IDBValidKey : null;
+  } catch { return null; }
 }

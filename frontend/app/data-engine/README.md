@@ -266,16 +266,32 @@ an unsaved copy from the previous version.
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or
-replace its persisted cache. For councils and groups it archives owner-scoped legacy
-query copies in the engine database. Group paused/error mutation payloads are
-preserved too, including fields no longer present in an optimistic query row.
-Old ID-only operations without provable ownership are retained in quarantine,
-never assigned to the next signed-in account. Distinct contents remain separate; repeated
-startup is idempotent. A failed archive keeps the original cache untouched and
-holds workspace startup behind an explicit Retry. `LegacyDataRecoveryNotice`
-exposes preview/export to the current owner only, without inventing a confirmed
-ancestor or submitting any copy. These may be ordinary stale cache entries, not
-necessarily unsaved changes, so the UI says that explicitly.
+replace its persisted cache. For councils, groups, series and sermons it archives
+owner-scoped copies of cached query rows and paused/error mutation payloads in the engine
+database, including fields no longer present in an optimistic query row. Rows are kept
+because they can hold text the server never received: a council's refused or unsent edit
+lived only in its cached row, and the previous version showed it again and sent it with the
+next edit. Operations without provable ownership stay in quarantine, never assigned to the
+next signed-in account. A failed archive keeps the original cache untouched and holds
+workspace startup behind an explicit Retry.
+
+**A copy leaves the archive only when it is proven to be an echo of the server.**
+`LegacyQueryCopies` lists the owner's archive (read-only), then `retireLegacyEchoes` compares
+every cached row with the server copy the engine already holds on this device, both read
+through the previous version's transform (`hydrateSermon` aliases, rebuilt series `items`,
+`sermonIds`, `seriesKind`) and without bookkeeping (`updatedAt`, `createdAt`, `rev`,
+`_dataEngine`, `_dataEngineOwner` at every depth; `id` at the top). The server copy is read once
+per document. An exact match is retired in its own transaction, and only while the stored copy
+still has the id and content that were compared — an id freed by another tab can meanwhile
+belong to a new copy. A difference, a document the engine has not read here yet (five attempts
+in all, 30 s apart), an unreadable server copy, a document deleted on the server, an operation
+and an unreadable copy all stay. Equality proves that the server held this content, not that it
+still does. What remains is shown for preview/export as copies
+that differ from the server, never submitted and never given an invented confirmed ancestor.
+Measured on the owner's desktop archive before this shipped: 115 of 115 copies were echoes.
+Open: a paused operation that later fails on replay is archived again as a second copy of the
+same intent (its raw state changed), and legacy operations are still offered for export rather
+than delivered through engine commands.
 
 This protects input present at startup. It cannot recover text an old bundle never
 persisted or already overwrote. Protective Firestore rules must be deployed before

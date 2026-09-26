@@ -2,14 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react';
 
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from '../LegacyQueryRecovery';
-import { listLegacyQueryCopies, preserveLegacyQueryCache } from '../legacyQueryRecovery.client';
+import { listLegacyQueryCopies, preserveLegacyQueryCache, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
-jest.mock('../legacyQueryRecovery.client', () => ({ preserveLegacyQueryCache: jest.fn(), listLegacyQueryCopies: jest.fn() }));
+jest.mock('../legacyQueryRecovery.client', () => ({ preserveLegacyQueryCache: jest.fn(), listLegacyQueryCopies: jest.fn(), retireLegacyEchoes: jest.fn() }));
 const enabled = () => true;
 const record = { id: 'copy', owner: 'owner', collection: 'councils', documentId: 'council', title: 'Private saved text', raw: '{"title":"Private saved text"}', savedAt: 1 };
 
 describe('legacy cache preservation UI', () => {
-  beforeEach(() => jest.resetAllMocks());
+  beforeEach(() => { jest.resetAllMocks(); jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 0 }); });
   it('prevents cache hydration/expiry until preservation succeeds, and retries failed storage without mounting consumers', async () => {
     const mounted = jest.fn();
     function Consumer() { useEffect(() => { mounted(); }, []); return <p>Workspace</p>; }
@@ -38,5 +38,25 @@ describe('legacy cache preservation UI', () => {
     expect(screen.getByText(record.raw)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { hidden: true })).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'legacyRecovery.export', hidden: true })).toBeInTheDocument();
+  });
+  it('retires echoes of the server for the signed-in owner and shows only what still differs', async () => {
+    const echo = { ...record, id: 'echo', title: 'Same as the server' };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([echo, record]).mockResolvedValueOnce([record]);
+    jest.mocked(retireLegacyEchoes).mockResolvedValueOnce({ retired: 1, undecided: 0 });
+    render(<LegacyQueryCopies owner="owner" />);
+    await waitFor(() => expect(listLegacyQueryCopies).toHaveBeenCalledTimes(2));
+    expect(retireLegacyEchoes).toHaveBeenCalledWith('owner', expect.any(Function));
+    expect(await screen.findByText(record.title)).toBeInTheDocument();
+    expect(screen.queryByText(echo.title)).not.toBeInTheDocument();
+  });
+  it('keeps showing the archive when the comparison fails', async () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([record]);
+    jest.mocked(retireLegacyEchoes).mockRejectedValueOnce(new Error('snapshot unreadable'));
+    render(<LegacyQueryCopies owner="owner" />);
+    expect(await screen.findByText(record.title)).toBeInTheDocument();
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    expect(screen.getByText(record.title)).toBeInTheDocument();
+    error.mockRestore();
   });
 });

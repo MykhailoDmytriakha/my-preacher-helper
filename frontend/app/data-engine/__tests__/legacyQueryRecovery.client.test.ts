@@ -1,6 +1,8 @@
 import { createStore, get } from 'idb-keyval';
 
-import { listLegacyQueryCopies, preserveLegacyQueryCache } from '../legacyQueryRecovery.client';
+import { listLegacyQueryCopies, preserveLegacyQueryCache, retireLegacyEchoes } from '../legacyQueryRecovery.client';
+
+import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 
 import { installStorageHarness } from './storageHarness';
 
@@ -158,5 +160,132 @@ describe('which legacy queries the persisted cache may keep', () => {
   it('leaves collections still on the legacy road and unrelated queries persisted', () => {
     expect(isEngineOwnedLegacyQuery(['groups', 'owner'], onEngine)).toBe(false);
     expect(isEngineOwnedLegacyQuery(['userSettings', 'owner'], onEngine)).toBe(false);
+  });
+});
+
+describe('retiring copies proven to be echoes of the server', () => {
+  const key = (collection: string, documentId: string, owner = 'owner') => JSON.stringify(['legacy-query', owner, collection, documentId]);
+  const copy = (collection: string, documentId: string, index: number, raw: unknown, owner = 'owner') => ({
+    id: JSON.stringify(['legacy-query', owner, collection, documentId, index]), owner, collection, documentId,
+    title: 'Copy', raw: JSON.stringify(raw, null, 2), savedAt: 10,
+  });
+  const server = (copies: Record<string, Record<string, unknown> | null>) =>
+    async (collection: string, documentId: string) => copies[`${collection}/${documentId}`];
+
+  it('retires a row that says exactly what the server says, bookkeeping aside', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 'c1', userId: 'owner', title: 'Decided', topics: [{ id: 't', decision: 'Yes', updatedAt: 'later' }], rev: { council: 4 } };
+    disk.rows.set(key('councils', 'c1'), [copy('councils', 'c1', 0, { ...stored, updatedAt: 'old', rev: { council: 3 }, topics: [{ id: 't', decision: 'Yes' }] })]);
+    expect(await retireLegacyEchoes('owner', server({ 'councils/c1': stored }))).toEqual({ retired: 1, undecided: 0 });
+    expect(disk.rows.has(key('councils', 'c1'))).toBe(false);
+  });
+
+  it('keeps a council row whose text the server never received', async () => {
+    const disk = installStorageHarness();
+    const unsent = copy('councils', 'c1', 0, { id: 'c1', userId: 'owner', title: 'Decided', topics: [{ id: 't', decision: 'Refused edit' }] });
+    disk.rows.set(key('councils', 'c1'), [unsent]);
+    const result = await retireLegacyEchoes('owner', server({ 'councils/c1': { id: 'c1', userId: 'owner', title: 'Decided', topics: [{ id: 't', decision: 'Yes' }] } }));
+    expect(result).toEqual({ retired: 0, undecided: 0 });
+    expect(await listLegacyQueryCopies('owner')).toEqual([unsent]);
+  });
+
+  it('reads both sides through the previous version\'s lens: sermon aliases and rebuilt series fields', async () => {
+    const disk = installStorageHarness();
+    const structure = { introduction: ['a'], main: [], conclusion: [], ambiguous: [] };
+    const plan = { introduction: { outline: 'Intro' } };
+    disk.rows.set(key('sermons', 's1'), [copy('sermons', 's1', 0, { id: 's1', userId: 'owner', title: 'T', structure, thoughtsBySection: structure, plan, draft: plan })]);
+    const items = normalizeSeriesItems(undefined, ['s1']);
+    disk.rows.set(key('series', 'x1'), [copy('series', 'x1', 0, { id: 'x1', userId: 'owner', title: 'S', sermonIds: deriveSermonIdsFromItems(items), items, seriesKind: inferSeriesKind(items) })]);
+    const result = await retireLegacyEchoes('owner', server({
+      'sermons/s1': { id: 's1', userId: 'owner', title: 'T', structure, plan },
+      'series/x1': { id: 'x1', userId: 'owner', title: 'S', sermonIds: ['s1'] },
+    }));
+    expect(result).toEqual({ retired: 2, undecided: 0 });
+    expect(disk.rows.size).toBe(0);
+  });
+
+  it('keeps rows it cannot compare yet, rows of documents deleted on the server, operations and unreadable copies', async () => {
+    const disk = installStorageHarness();
+    const row = { id: 'g1', userId: 'owner', title: 'Group' };
+    const operation = { mutationKey: ['groups', 'update'], state: { isPaused: true, variables: { id: 'g1', userId: 'owner', updates: { title: 'Group' } } } };
+    disk.rows.set(key('groups', 'g1'), [copy('groups', 'g1', 0, operation), { ...copy('groups', 'g1', 1, row), raw: '{not json' }]);
+    disk.rows.set(key('groups', 'g2'), [copy('groups', 'g2', 0, { ...row, id: 'g2' })]);
+    disk.rows.set(key('groups', 'g3'), [copy('groups', 'g3', 0, { ...row, id: 'g3' })]);
+    const result = await retireLegacyEchoes('owner', server({ 'groups/g1': row, 'groups/g3': null }));
+    expect(result).toEqual({ retired: 0, undecided: 1 });
+    expect(await listLegacyQueryCopies('owner')).toHaveLength(4);
+  });
+
+  it('removes only the echo from a document that also holds an unsent copy, and files a later copy under a fresh id', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 'c1', userId: 'owner', title: 'Server' };
+    const unsent = copy('councils', 'c1', 1, { ...stored, title: 'Unsent' });
+    disk.rows.set(key('councils', 'c1'), [copy('councils', 'c1', 0, stored), unsent]);
+    await retireLegacyEchoes('owner', server({ 'councils/c1': stored }));
+    expect(disk.rows.get(key('councils', 'c1'))).toEqual([unsent]);
+    jest.mocked(get).mockResolvedValue({ clientState: { queries: [{ queryKey: ['councils', 'owner'], state: { data: [{ ...stored, title: 'Later' }] } }] } });
+    await preserveLegacyQueryCache(collection => collection === 'councils');
+    const copies = await listLegacyQueryCopies('owner');
+    expect(copies.map(entry => JSON.parse(entry.raw).title)).toEqual(['Unsent', 'Later']);
+    expect(new Set(copies.map(entry => entry.id)).size).toBe(2);
+  });
+
+  it('never touches another account, a misfiled group, or anything when storage fails', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 'c1', userId: 'owner', title: 'Server' };
+    disk.rows.set(key('councils', 'c1', 'other'), [copy('councils', 'c1', 0, { ...stored, userId: 'other' }, 'other')]);
+    const misfiled = { ...copy('councils', 'c2', 0, { ...stored, id: 'c2' }), id: JSON.stringify(['legacy-query', 'someone-else', 'councils', 'c2', 0]) };
+    disk.rows.set(key('councils', 'c2'), [misfiled]);
+    const unsent = copy('councils', 'c3', 1, { ...stored, id: 'c3', title: 'Unsent' });
+    disk.rows.set(key('councils', 'c3'), [copy('councils', 'c3', 0, { ...stored, id: 'c3' }), unsent]);
+    const everything = server({ 'councils/c1': stored, 'councils/c2': { ...stored, id: 'c2' }, 'councils/c3': { ...stored, id: 'c3' } });
+    disk.writeFailure = true;
+    await expect(retireLegacyEchoes('owner', everything)).rejects.toThrow('disk full');
+    expect(await listLegacyQueryCopies('owner')).toHaveLength(3);
+    disk.writeFailure = false;
+    expect(await retireLegacyEchoes('owner', everything)).toEqual({ retired: 1, undecided: 0 });
+    expect(disk.rows.has(key('councils', 'c1', 'other'))).toBe(true);
+    expect(disk.rows.get(key('councils', 'c2'))).toEqual([misfiled]);
+    expect(disk.rows.get(key('councils', 'c3'))).toEqual([unsent]);
+  });
+
+  it('removes a decided echo only while its stored content is still the one it compared', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 'c1', userId: 'owner', title: 'Server' };
+    disk.rows.set(key('councils', 'c1'), [copy('councils', 'c1', 0, stored)]);
+    // Another tab retires the same echo meanwhile, and a later start files a refused edit under the freed id.
+    const refused = copy('councils', 'c1', 0, { ...stored, title: 'Refused edit' });
+    const slow = async () => { disk.rows.set(key('councils', 'c1'), [refused]); return stored; };
+    expect(await retireLegacyEchoes('owner', slow)).toEqual({ retired: 0, undecided: 0 });
+    expect(disk.rows.get(key('councils', 'c1'))).toEqual([refused]);
+  });
+
+  it('treats an unreadable server copy as undecided and still retires the others', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 'c1', userId: 'owner', title: 'Server' };
+    disk.rows.set(key('councils', 'c1'), [copy('councils', 'c1', 0, stored)]);
+    disk.rows.set(key('councils', 'c2'), [copy('councils', 'c2', 0, { ...stored, id: 'c2' })]);
+    const reader = async (collection: string, documentId: string) => {
+      if (documentId === 'c1') throw new Error('snapshot unreadable');
+      return { ...stored, id: documentId };
+    };
+    expect(await retireLegacyEchoes('owner', reader)).toEqual({ retired: 1, undecided: 1 });
+    expect(disk.rows.has(key('councils', 'c1'))).toBe(true);
+  });
+
+  it('reads the server copy once per document however many cached copies it has', async () => {
+    const disk = installStorageHarness();
+    const stored = { id: 's1', userId: 'owner', title: 'T' };
+    disk.rows.set(key('sermons', 's1'), [copy('sermons', 's1', 0, stored), copy('sermons', 's1', 1, { ...stored, title: 'Other' }), copy('sermons', 's1', 2, stored)]);
+    const reader = jest.fn(async () => stored);
+    await retireLegacyEchoes('owner', reader);
+    expect(reader).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists around a damaged group instead of failing the whole archive', async () => {
+    const disk = installStorageHarness();
+    disk.rows.set(key('councils', 'c1'), { not: 'an array' });
+    disk.rows.set(key('councils', 'c2'), [copy('councils', 'c2', 0, { id: 'c2', userId: 'owner' })]);
+    expect(await listLegacyQueryCopies('owner')).toHaveLength(1);
   });
 });
