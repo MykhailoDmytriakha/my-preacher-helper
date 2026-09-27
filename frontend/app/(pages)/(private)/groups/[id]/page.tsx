@@ -41,6 +41,7 @@ import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
+import Select from '@/components/ui/Select';
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useLegacyGroupPageEditor } from '@/hooks/useLegacyGroupPageEditor';
@@ -338,15 +339,18 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               })}
             />
             <div className="flex flex-wrap items-center gap-3">
-              <select
+              <Select
+                size="sm"
+                accent="blue"
                 value={status}
                 onChange={(event) => { setStatus(event.target.value as typeof status); debouncedSave(); }}
-                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                wrapperClassName="w-44"
+                aria-label={t('workspaces.series.form.status')}
               >
                 <option value="draft">{t('workspaces.series.form.statuses.draft')}</option>
                 <option value="active">{t('workspaces.series.form.statuses.active')}</option>
                 <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
-              </select>
+              </Select>
               {groupSeries ? (
                 <div className="flex items-center gap-[1px]">
                   {(() => {

@@ -205,9 +205,10 @@ describe('AddSermonModal Component', () => {
 
     const seriesSelect = screen.getByLabelText('Series');
 
-    expect(seriesSelect).toHaveClass('appearance-none', 'pr-12');
+    // The shared Select primitive hides the browser arrow and seats its own at a fixed inset.
+    expect(seriesSelect).toHaveClass('appearance-none', 'pr-11');
     expect(seriesSelect.parentElement).toHaveClass('relative');
-    expect(seriesSelect.parentElement?.querySelector('svg')).toHaveClass('right-3');
+    expect(seriesSelect.parentElement?.querySelector('svg')).toHaveClass('right-3', 'pointer-events-none');
   });
   
   test('calls createSermon with correct data when form is submitted', async () => {

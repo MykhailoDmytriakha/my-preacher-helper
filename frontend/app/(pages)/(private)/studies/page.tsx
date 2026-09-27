@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import Select from '@/components/ui/Select';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
@@ -369,10 +370,16 @@ export default function StudiesPage() {
 
           {/* Filter toggles */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <select
+            {/* Both filters keep the same width whatever their longest option is: letting the
+                browser size them made the tag filter twice the book filter's width and left
+                its label stranded far from its arrow. */}
+            <Select
+              size="md"
+              accent="emerald"
               value={bookFilter || ''}
               onChange={(e) => setBookFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500"
+              wrapperClassName="w-full sm:w-52"
+              aria-label={t('studiesWorkspace.filterByBook')}
             >
               <option value="">{t('studiesWorkspace.filterByBook')}</option>
               {bookList.map((book) => (
@@ -380,12 +387,15 @@ export default function StudiesPage() {
                   {book.name}
                 </option>
               ))}
-            </select>
+            </Select>
 
-            <select
+            <Select
+              size="md"
+              accent="emerald"
               value={tagFilter || ''}
               onChange={(e) => setTagFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500"
+              wrapperClassName="w-full sm:w-52"
+              aria-label={t('studiesWorkspace.filterByTag')}
             >
               <option value="">{t('studiesWorkspace.filterByTag')}</option>
               {tagOptions.map((tag) => (
@@ -393,7 +403,7 @@ export default function StudiesPage() {
                   {tag}
                 </option>
               ))}
-            </select>
+            </Select>
 
             {hasActiveFilters && (
               <button

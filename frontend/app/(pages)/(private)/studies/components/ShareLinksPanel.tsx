@@ -4,6 +4,7 @@ import { DocumentDuplicateIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import Select from '@/components/ui/Select';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -20,7 +21,6 @@ interface ShareLinksPanelProps {
 const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800';
 const HEADER_CLASS = 'flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-gray-100 dark:border-gray-700 pb-5 mb-5';
 const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10';
-const SELECT_CLASS = 'w-full sm:w-[240px] h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm shadow-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white outline-none';
 const ACTION_BUTTON_CLASS = 'inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap';
 const GRID_COLS_CLASS = 'md:grid-cols-[2fr_minmax(180px,1.2fr)_110px_90px_310px]';
 const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
@@ -114,10 +114,12 @@ export default function ShareLinksPanel({
         </div>
 
         <div className={ACTIONS_CLASS}>
-          <select
+          <Select
+            accent="emerald"
             value={selectedNoteId}
             onChange={(event) => setSelectedNoteId(event.target.value)}
-            className={SELECT_CLASS}
+            wrapperClassName="w-full sm:w-[240px]"
+            aria-label={t('studiesWorkspace.shareLinks.selectPlaceholder')}
           >
             <option value="">{t('studiesWorkspace.shareLinks.selectPlaceholder')}</option>
             {availableNotes.map((note) => (
@@ -125,7 +127,7 @@ export default function ShareLinksPanel({
                 {note.title || t('studiesWorkspace.untitled')}
               </option>
             ))}
-          </select>
+          </Select>
           <button
             type="button"
             onClick={handleCreate}

@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import Select from '@/components/ui/Select';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
@@ -203,11 +204,12 @@ export default function CreateThoughtModal({
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {t('editThought.outlinePointLabel')}
             </label>
-            <select
+            <Select
+              accent="blue"
               value={selectedSermonPointId || ''}
               onChange={(e) => setSelectedSermonPointId(e.target.value || undefined)}
-              className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               disabled={isSubmitting}
+              aria-label={t('editThought.outlinePointLabel')}
             >
               <option value="">{t('editThought.noSermonPoint')}</option>
               {(['introduction', 'main', 'conclusion'] as const).map((section) => {
@@ -222,7 +224,7 @@ export default function CreateThoughtModal({
                   </optgroup>
                 );
               })}
-            </select>
+            </Select>
             {selectedPointInfo && (
               <p className="mt-1 text-sm text-gray-500">
                 {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section })}

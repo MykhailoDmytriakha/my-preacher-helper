@@ -1,6 +1,5 @@
 "use client";
 
-import { ChevronDown } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -8,6 +7,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import ChurchField from '@/components/church/ChurchField';
 import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW, GROUP_CARD, GROUP_HINT, GROUP_TITLE } from '@/components/ui/formCardClasses';
 import FormDialog from '@/components/ui/FormDialog';
+import Select from '@/components/ui/Select';
 import DatePickerField from '@components/ui/DatePickerField';
 
 import type { Church } from '@/models/models';
@@ -291,26 +291,21 @@ export default function SermonFormDialog({
                   <span>{t('workspaces.series.loadingSeries')}</span>
                 </div>
               ) : (
-              <div className="relative">
-                <select
-                  id={fieldId('series')}
-                  value={values.seriesId}
-                  onChange={(event) => onChange({ seriesId: event.target.value })}
-                  className={`${FIELD_INPUT} appearance-none pr-12`}
-                  disabled={locked || seriesDisabled}
-                >
-                  <option value="">{t('addSermon.noSeriesOption')}</option>
-                  {seriesOptions.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  aria-hidden="true"
-                  className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-300"
-                />
-              </div>
+              <Select
+                accent="blue"
+                id={fieldId('series')}
+                value={values.seriesId}
+                onChange={(event) => onChange({ seriesId: event.target.value })}
+                wrapperClassName="mt-1"
+                disabled={locked || seriesDisabled}
+              >
+                <option value="">{t('addSermon.noSeriesOption')}</option>
+                {seriesOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
               )}
             </div>
           )}

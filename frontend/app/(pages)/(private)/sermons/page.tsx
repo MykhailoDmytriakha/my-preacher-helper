@@ -10,6 +10,7 @@ import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import { Chip } from "@/components/ui/Chip";
+import Select from "@/components/ui/Select";
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useDashboardOptimisticSermons } from "@/hooks/useDashboardOptimisticSermons";
@@ -52,7 +53,6 @@ const TAB_BASE_CLASSES =
 const TAB_INACTIVE_CLASSES =
   "border-gray-200 text-gray-600 hover:text-gray-700 hover:border-gray-300 bg-white dark:bg-gray-900/40 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200";
 const BADGE_INACTIVE_CLASSES = "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300";
-const SELECT_CLASSES = "w-full appearance-none px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors";
 const CHECKBOX_CLASSES = "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:bg-gray-900 dark:border-gray-600 transition-colors cursor-pointer";
 
 export default function SermonsPage() {
@@ -426,16 +426,18 @@ export default function SermonsPage() {
                           <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             {t(SORT_ORDER_KEY)}
                           </label>
-                          <select
+                          <Select
+                            tone="muted"
+                            accent="blue"
                             value={sortOption}
                             onChange={(e) => setSortOption(e.target.value as typeof sortOption)}
-                            className={SELECT_CLASSES}
+                            aria-label={t(SORT_ORDER_KEY)}
                           >
                             <option value="newest">{t('dashboard.newest')}</option>
                             <option value="oldest">{t('dashboard.oldest')}</option>
                             <option value="alphabetical">{t('dashboard.alphabetical')}</option>
                             <option value="recentlyUpdated">{t('dashboard.recentlyUpdated')}</option>
-                          </select>
+                          </Select>
                         </div>
 
                         {/* Series Filter */}
@@ -443,15 +445,16 @@ export default function SermonsPage() {
                           <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Серии
                           </label>
-                          <select
+                          <Select
+                            tone="muted"
+                            accent="blue"
                             value={seriesFilter}
                             onChange={(e) => setSeriesFilter(e.target.value as typeof seriesFilter)}
-                            className={SELECT_CLASSES}
                           >
                             <option value="all">{t('workspaces.series.filters.allSermons')}</option>
                             <option value="inSeries">{t('workspaces.series.filters.inSeries')}</option>
                             <option value="standalone">{t('workspaces.series.filters.standalone')}</option>
-                          </select>
+                          </Select>
                         </div>
 
                         {/* Modifiers (Moved to Search Settings inside the Search Input) */}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import "@locales/i18n";
+import Select from '@/components/ui/Select';
 import { buildDiagnosticReport } from '@/utils/appDiagnostics';
 import { clipboardHasText, extractClipboardImageFiles } from '@/utils/clipboardImages';
 import {
@@ -275,10 +276,10 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" suppressHydrationWarning={true}>
           {t('feedback.typeLabel') || 'Feedback Type'}
         </label>
-        <select
+        <Select
+          accent="blue"
           value={feedbackType}
           onChange={(e) => setFeedbackType(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
           required
           disabled={isSubmitting}
         >
@@ -286,7 +287,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           <option value="bug" suppressHydrationWarning={true}>{t('feedback.typeBug') || 'Bug Report'}</option>
           <option value="question" suppressHydrationWarning={true}>{t('feedback.typeQuestion') || 'Question'}</option>
           <option value="other" suppressHydrationWarning={true}>{t('feedback.typeOther') || 'Other'}</option>
-        </select>
+        </Select>
       </div>
 
       <div className="mb-4">

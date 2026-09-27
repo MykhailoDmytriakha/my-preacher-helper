@@ -8,6 +8,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import ColorPickerModal from '@/components/ColorPickerModal';
 import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import Select from '@/components/ui/Select';
 import { SERIES_COLOR_PRESETS } from '@/utils/themeColors';
 
 import type { Series } from '@/models/models';
@@ -60,9 +61,9 @@ export default function SeriesFormFields({ values, onChange, colorPickerTitle }:
           placeholder={t('workspaces.series.form.descriptionPlaceholder')} minHeight="120px" />
       </FormField>
       <FormField label={t('workspaces.series.form.status')}>
-        <select value={values.status} onChange={e => onChange({ status: e.target.value as Series['status'] })} className={FORM_INPUT_CLASS}>
+        <Select accent="blue" value={values.status} onChange={e => onChange({ status: e.target.value as Series['status'] })}>
           {(['draft', 'active', 'completed'] as const).map(status => <option key={status} value={status}>{t(`workspaces.series.form.statuses.${status}`)}</option>)}
-        </select>
+        </Select>
       </FormField>
       <div className="space-y-3">
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('workspaces.series.form.color')}</span>

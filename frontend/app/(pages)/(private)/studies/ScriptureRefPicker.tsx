@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
@@ -15,7 +16,6 @@ import {
   psalmHebrewToSeptuagint,
   psalmSeptuagintToHebrew,
 } from './bibleData';
-import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
 /**
  * Reference scope determines the level of specificity.
@@ -283,18 +283,19 @@ export default function ScriptureRefPicker({
             <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
               {t('studiesWorkspace.book')}
             </label>
-            <select
+            <Select
+              size="sm"
+              accent="emerald"
               value={book}
               onChange={(e) => setBook(e.target.value)}
               onKeyDown={handleKeyDown}
-              className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
             >
               {bookList.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Chapter selector - shown for chapter, chapter-range, and verses scopes */}
@@ -307,18 +308,19 @@ export default function ScriptureRefPicker({
                     : t('studiesWorkspace.chapter')
                   }
                 </label>
-                <select
+                <Select
+              size="sm"
+              accent="emerald"
                   value={chapter}
                   onChange={(e) => setChapter(Number(e.target.value))}
                   onKeyDown={handleKeyDown}
-                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                 >
                   {chapterOptions.map((ch) => (
                     <option key={ch} value={ch}>
                       {ch}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* To chapter - only for chapter-range scope */}
@@ -327,18 +329,19 @@ export default function ScriptureRefPicker({
                   <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                     {t('studiesWorkspace.toChapter') || 'To Chapter'}
                   </label>
-                  <select
+                  <Select
+              size="sm"
+              accent="emerald"
                     value={toChapter}
                     onChange={(e) => setToChapter(Number(e.target.value))}
                     onKeyDown={handleKeyDown}
-                    className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                   >
                     {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
                       <option key={ch} value={ch}>
                         {ch}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
             </div>
@@ -351,28 +354,30 @@ export default function ScriptureRefPicker({
                 <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {t('studiesWorkspace.from')}
                 </label>
-                <select
+                <Select
+              size="sm"
+              accent="emerald"
                   value={fromVerse}
                   onChange={(e) => setFromVerse(Number(e.target.value))}
                   onKeyDown={handleKeyDown}
-                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                 >
                   {verseOptions.map((v) => (
                     <option key={v} value={v}>
                       {v}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
                   {t('studiesWorkspace.to')}
                 </label>
-                <select
+                <Select
+              size="sm"
+              accent="emerald"
                   value={toVerse === '' ? '' : toVerse}
                   onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
                   onKeyDown={handleKeyDown}
-                  className={`w-full ${STUDIES_INPUT_SHARED_CLASSES}`}
                 >
                   <option value="">—</option>
                   {verseOptions.filter((v) => v >= fromVerse).map((v) => (
@@ -380,7 +385,7 @@ export default function ScriptureRefPicker({
                       {v}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
           )}

@@ -15,11 +15,11 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ChevronIcon } from '@/components/Icons';
 import CreateSeriesModal from '@/components/series/CreateSeriesModal';
 import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
 import SeriesCard from '@/components/series/SeriesCard';
 import { SeriesGridSkeleton } from '@/components/skeletons/SeriesCardSkeleton';
+import Select from '@/components/ui/Select';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
@@ -247,36 +247,30 @@ function SeriesView({ source, onCreate, feedback }: {
           </div>
 
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <div className="relative flex-1 sm:min-w-[180px]">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                className="appearance-none w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              >
-                <option value="all">{t('workspaces.series.filter.allStatuses')}</option>
-                <option value="active">{t('workspaces.series.form.statuses.active')}</option>
-                <option value="draft">{t('workspaces.series.form.statuses.draft')}</option>
-                <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <ChevronIcon direction="down" className="h-4 w-4" />
-              </div>
-            </div>
+            <Select
+              accent="blue"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              wrapperClassName="flex-1 sm:min-w-[180px]"
+              aria-label={t('workspaces.series.filter.allStatuses')}
+            >
+              <option value="all">{t('workspaces.series.filter.allStatuses')}</option>
+              <option value="active">{t('workspaces.series.form.statuses.active')}</option>
+              <option value="draft">{t('workspaces.series.form.statuses.draft')}</option>
+              <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
+            </Select>
 
-            <div className="relative flex-1 sm:min-w-[180px]">
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortOption)}
-                className="appearance-none w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-3 pr-10 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-              >
-                <option value="recent">{t('workspaces.series.sort.newest')}</option>
-                <option value="title">{t('workspaces.series.sort.titleAZ')}</option>
-                <option value="sermons">{t('workspaces.series.sort.mostSermons')}</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
-                <ChevronIcon direction="down" className="h-4 w-4" />
-              </div>
-            </div>
+            <Select
+              accent="blue"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortOption)}
+              wrapperClassName="flex-1 sm:min-w-[180px]"
+              aria-label={t('workspaces.series.sort.newest')}
+            >
+              <option value="recent">{t('workspaces.series.sort.newest')}</option>
+              <option value="title">{t('workspaces.series.sort.titleAZ')}</option>
+              <option value="sermons">{t('workspaces.series.sort.mostSermons')}</option>
+            </Select>
           </div>
         </div>
       </div>

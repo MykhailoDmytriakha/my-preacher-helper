@@ -3,8 +3,9 @@
 import { BookOpen, Check, Info, Link as LinkIcon, ScrollText, Target, X } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import '@locales/i18n';
 
+import Select from '@/components/ui/Select';
+import '@locales/i18n';
 import { UI_COLORS } from '@/utils/themeColors';
 
 // Module-level constants to avoid duplicate strings
@@ -288,17 +289,18 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
         <div className="grid sm:grid-cols-3 gap-2 mb-2">
           <label className="text-sm font-medium sm:col-span-1 flex items-center">{t('wizard.steps.goals.goal.typeLabel')}</label>
           <div className="sm:col-span-2">
-            <select
+            <Select
+              accent="blue"
               value={typeDraft}
               onChange={(e) => setTypeDraft(e.target.value as GoalType)}
-              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
+              aria-label={t('wizard.steps.goals.goal.typeLabel')}
             >
               <option value="">{t('wizard.steps.goals.goal.typePlaceholder')}</option>
               <option value="informative">{t('wizard.steps.goals.goal.types.informative')}</option>
               <option value="proclamation">{t('wizard.steps.goals.goal.types.proclamation')}</option>
               <option value="didactic">{t('wizard.steps.goals.goal.types.didactic')}</option>
               <option value="exhortative">{t('wizard.steps.goals.goal.types.exhortative')}</option>
-            </select>
+            </Select>
             {typeChanged && (
               <div className="mt-2 flex items-center justify-end gap-2">
                 <button

@@ -22,6 +22,7 @@ import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
+import Select from '@/components/ui/Select';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
@@ -66,8 +67,6 @@ const TAB_BASE_CLASSES =
 const TAB_INACTIVE_CLASSES =
   'border-gray-200 text-gray-600 hover:text-gray-700 hover:border-gray-300 bg-white dark:bg-gray-900/40 dark:border-gray-700 dark:text-gray-400 dark:hover:text-gray-200';
 const BADGE_INACTIVE_CLASSES = 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-300';
-const SELECT_CLASSES =
-  'w-full appearance-none px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-medium text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-rose-500 outline-none cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors';
 const CHECKBOX_CLASSES =
   'w-4 h-4 rounded border-gray-300 text-rose-600 focus:ring-rose-500 dark:bg-gray-900 dark:border-gray-600 transition-colors cursor-pointer';
 
@@ -634,19 +633,21 @@ export default function PrayerPage() {
                           <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {t(SORT_LABEL_KEY)}
                           </label>
-                          <select
+                          <Select
+                            tone="muted"
+                            accent="rose"
                             value={effectiveSortKey}
                             onChange={(event) =>
                               void setSortKey(event.target.value as PrayerSortKey)
                             }
-                            className={SELECT_CLASSES}
+                            aria-label={t(SORT_LABEL_KEY)}
                           >
                             {sortOptions.map(({ key, label }) => (
                               <option key={key} value={key}>
                                 {label}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         {hasFilterChanges && (

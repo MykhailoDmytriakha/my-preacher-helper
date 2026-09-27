@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import Select from '@/components/ui/Select';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { composePlanFromScratch } from '@/services/scratch.service';
@@ -78,12 +79,11 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
         renderNote: (note, handle, options) => <div className="space-y-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
           <span {...handle} className="cursor-grab text-sm" aria-label={t('common.dragToReorder')}>⠿</span>
           <p className="whitespace-pre-wrap text-sm">{note.text}</p>
-          {!options?.overlay && <select aria-label={`${t('scratch.card.placeInto')}: ${note.text}`} value="" disabled={readOnly}
-            className="w-full rounded border bg-transparent p-1 text-sm"
+          {!options?.overlay && <Select size="sm" accent="blue" aria-label={`${t('scratch.card.placeInto')}: ${note.text}`} value="" disabled={readOnly}
             onChange={event => { if (event.target.value) place(note.id, JSON.parse(event.target.value) as ScratchPlacement); }}>
             <option value="">{t('scratch.card.placeInto')}</option>
             {targets.map(target => <option key={target.value} value={target.value}>{target.label}</option>)}
-          </select>}
+          </Select>}
         </div>,
       }} />
   </div>;

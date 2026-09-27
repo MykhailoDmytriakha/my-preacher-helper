@@ -15,6 +15,7 @@ import { BookInfo } from "@/(pages)/(private)/studies/bibleData";
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
 import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import MonthlySermonsModal from "@/components/calendar/MonthlySermonsModal";
+import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { Sermon } from "@/models/models";
 import { formatMonthTitle } from '@/utils/appLocale';
@@ -93,14 +94,16 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                     >
                         {t('calendar.analytics.year')}
                     </label>
-                    <select
+                    <Select
+                        size="sm"
+                        accent="blue"
                         id="calendar-analytics-year"
                         value={selectedYear}
                         onChange={(event) => {
                             const value = event.target.value;
                             setSelectedYear(value === 'all' ? 'all' : Number(value));
                         }}
-                        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-700 dark:text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        wrapperClassName="w-32"
                     >
                         <option value="all">{t('calendar.analytics.allYears')}</option>
                         {availableYears.map(year => (
@@ -108,7 +111,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                 {year}
                             </option>
                         ))}
-                    </select>
+                    </Select>
                 </div>
             </div>
 
