@@ -1,5 +1,6 @@
 import { BIBLE_BOOKS_DATA, getBookByName, getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
 import { getReferenceBookAliases, parseReferenceText } from '@/(pages)/(private)/studies/referenceParser';
+import { detectTextLocale } from '@/utils/appLocale';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { formatRussianOrdinal } from '@utils/russianOrdinals';
 
@@ -54,11 +55,7 @@ type ParsedScriptureReference = NonNullable<ReturnType<typeof parseReferenceText
 const hasExplicitReferenceSignal = (value: string, verse?: string): boolean =>
   Boolean(verse) || /[:]|(?:^|\s)(?:глава|главу|главе|главы|глав|стих|стиха|стихе|стихи|стихов|chapter|chapters|chap\.?|verse|verses|v\.?)(?:\s|$)/iu.test(value);
 
-const detectLocale = (value: string): BibleLocale => {
-  if (/[іїєґ]/iu.test(value)) return 'uk';
-  if (/[а-яё]/iu.test(value)) return 'ru';
-  return 'en';
-};
+const detectLocale = (value: string): BibleLocale => detectTextLocale(value);
 
 const formatReferenceForProse = (
   ref: NonNullable<ReturnType<typeof parseReferenceText>>,

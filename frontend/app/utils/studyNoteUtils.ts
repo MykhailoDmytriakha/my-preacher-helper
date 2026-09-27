@@ -1,8 +1,24 @@
-import { formatScriptureReference, scriptureReferenceSearchText } from '@/utils/scriptureReference';
+import { formatScriptureReference, formatScriptureReferences, scriptureReferenceSearchText } from '@/utils/scriptureReference';
 
 import { BibleLocale } from '../(pages)/(private)/studies/bibleData';
 
 import type { StudyNote } from '@/models/models';
+import type { ScriptureRefShape } from '@/utils/scriptureReference';
+
+/**
+ * THE NAME A NOTE GOES BY among other things — a dashboard card, a day on the calendar, the
+ * preview of its link: its own title, else its first passage in the reader's language, else
+ * nothing, and the caller says "untitled" in its own words. Three screens each spelled this
+ * rule out for themselves; a fourth (the link preview) is where they would have drifted.
+ */
+export function studyNoteOwnName(
+  note: { title?: string; scriptureRefs?: readonly ScriptureRefShape[] | null },
+  locale: BibleLocale
+): string | undefined {
+  const title = note.title?.trim();
+  if (title) return title;
+  return formatScriptureReferences(note.scriptureRefs, { locale, style: 'long', limit: 1 });
+}
 
 /**
  * Does this note match a typed search?

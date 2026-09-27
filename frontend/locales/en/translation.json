@@ -1557,7 +1557,8 @@
     "title": "Shared note",
     "subtitle": "Read-only access",
     "notFound": "This shared note is not available",
-    "error": "Unable to load the shared note"
+    "error": "Unable to load the shared note",
+    "morePassages": "and {{count}} more"
   },
   "outline": {
     "introduction": "Introduction",

@@ -80,6 +80,22 @@ describe('share notes route', () => {
     nowSpy.mockRestore();
   });
 
+  it('returns the note title and passages alongside the text, and nothing about the link', async () => {
+    const passage = { id: 'r1', book: 'Luke', chapter: 5, fromVerse: 17 };
+    mockShareLinksRepo.readSharedNote.mockResolvedValue({
+      shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' },
+      content: 'Hello',
+      title: 'Faith',
+      scriptureRefs: [passage],
+      type: 'note',
+    } as any);
+
+    const response = await shareNotesRoute.GET(makeRequest(String(Date.now())), { params: Promise.resolve({ token: 'token-1' }) });
+    const data = await response.json();
+
+    expect(data).toEqual({ content: 'Hello', title: 'Faith', scriptureRefs: [passage] });
+  });
+
   it('returns 500 on unexpected error', async () => {
     mockShareLinksRepo.readSharedNote.mockRejectedValue(new Error('boom'));
 

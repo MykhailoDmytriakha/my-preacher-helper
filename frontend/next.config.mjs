@@ -189,6 +189,13 @@ const nextConfig = {
     styledComponents: true, // If you're using styled-components
   },
 
+  // The shared-note preview card (app/(pages)/share/notes/[token]/opengraph-image.tsx) reads
+  // its Cyrillic fonts from disk at request time; on Vercel a serverless function only ships
+  // what the build traced, so the font files are named here rather than trusted to tracing.
+  outputFileTracingIncludes: {
+    "/share/notes/[token]/opengraph-image": ["./assets/fonts/**/*"],
+  },
+
   // Configure allowed image domains for external images
   images: {
     remotePatterns: [

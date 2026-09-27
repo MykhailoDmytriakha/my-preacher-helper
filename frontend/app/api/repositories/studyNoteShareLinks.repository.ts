@@ -1,7 +1,55 @@
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
-import { StudyNoteShareLink } from '@/models/models';
+import { ScriptureReference, StudyNote, StudyNoteShareLink } from '@/models/models';
 
 const SHARE_LINKS_COLLECTION = 'studyNoteShareLinks';
+
+/** What a share link makes public: the text, plus what a link preview names the note by. */
+export interface SharedNote {
+  shareLink: StudyNoteShareLink;
+  content: string;
+  title?: string;
+  scriptureRefs: ScriptureReference[];
+  type: NonNullable<StudyNote['type']>;
+}
+
+const finiteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+/**
+ * A reference as the public may see it: book and coordinates only. The stored object can also
+ * carry the author's own `text` snippet, which a link never publishes.
+ */
+function publicReference(value: unknown): ScriptureReference | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.book !== 'string' || !raw.book.trim()) return null;
+  const chapter = finiteNumber(raw.chapter);
+  const toChapter = finiteNumber(raw.toChapter);
+  const fromVerse = finiteNumber(raw.fromVerse);
+  const toVerse = finiteNumber(raw.toVerse);
+  return {
+    id: typeof raw.id === 'string' ? raw.id : '',
+    book: raw.book,
+    ...(chapter !== undefined ? { chapter } : {}),
+    ...(toChapter !== undefined ? { toChapter } : {}),
+    ...(fromVerse !== undefined ? { fromVerse } : {}),
+    ...(toVerse !== undefined ? { toVerse } : {}),
+  };
+}
+
+function toSharedNote(shareLink: StudyNoteShareLink, data: Record<string, unknown>, content: string): SharedNote {
+  const title = typeof data.title === 'string' ? data.title.trim() : '';
+  const scriptureRefs = Array.isArray(data.scriptureRefs)
+    ? data.scriptureRefs.map(publicReference).filter((reference): reference is ScriptureReference => reference !== null)
+    : [];
+  return {
+    shareLink,
+    content,
+    ...(title ? { title } : {}),
+    scriptureRefs,
+    type: data.type === 'question' ? 'question' : 'note',
+  };
+}
 
 function isRetired(data: Record<string, unknown>): boolean {
   const metadata = data._dataEngine;
@@ -71,7 +119,7 @@ export class StudyNoteShareLinksRepository {
   }
 
   /** Token authorization and content are read from one consistent transaction. */
-  async readSharedNote(token: string): Promise<{ shareLink: StudyNoteShareLink; content: string } | null> {
+  async readSharedNote(token: string): Promise<SharedNote | null> {
     return adminDb.runTransaction(async transaction => {
       const links = await transaction.get(adminDb.collection(SHARE_LINKS_COLLECTION).where('token', '==', token).limit(1));
       if (links.empty) return null;
@@ -80,7 +128,7 @@ export class StudyNoteShareLinksRepository {
       const note = await transaction.get(adminDb.collection('studyNotes').doc(link.noteId));
       const data = note.data();
       if (!data || isRetired(data) || data.userId !== link.ownerId || typeof data.content !== 'string') return null;
-      return { shareLink: link, content: data.content };
+      return toSharedNote(link, data, data.content);
     });
   }
 

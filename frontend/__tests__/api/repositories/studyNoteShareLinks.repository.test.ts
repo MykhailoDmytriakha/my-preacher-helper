@@ -279,6 +279,29 @@ describe('StudyNoteShareLinksRepository', () => {
     expect(mockGet).not.toHaveBeenCalled();
   });
 
+  it('carries the note title, passages and kind for the link preview', async () => {
+    const passage = { book: 'Luke', chapter: 5, fromVerse: 17, toVerse: 26 };
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Text', title: '  Faith that carries  ', scriptureRefs: [passage], type: 'question' }) });
+    expect(await repository.readSharedNote('token')).toMatchObject({ content: 'Text', title: 'Faith that carries', scriptureRefs: [passage], type: 'question' });
+  });
+
+  it('reads malformed preview fields as absent instead of passing them on', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Text', title: '   ', scriptureRefs: [null, { chapter: 3 }, 'John 3:16', { book: '  ' }], type: 'unknown' }) });
+    const shared = await repository.readSharedNote('token');
+    expect(shared).toMatchObject({ content: 'Text', scriptureRefs: [], type: 'note' });
+    expect(shared?.title).toBeUndefined();
+  });
+
+  it('publishes a reference as book and coordinates only — never the author\'s own text on it', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Text', scriptureRefs: [{ id: 'r', book: 'Luke', chapter: 5, fromVerse: '17', toVerse: 26, text: 'private annotation' }] }) });
+    const shared = await repository.readSharedNote('token');
+    expect(shared?.scriptureRefs).toEqual([{ id: 'r', book: 'Luke', chapter: 5, toVerse: 26 }]);
+    expect(JSON.stringify(shared)).not.toContain('private annotation');
+  });
+
   it.each([undefined, { userId: 'foreign', content: 'Private' }, { userId: 'owner', content: 'Deleted', _dataEngine: { deleted: true } }, { userId: 'owner' }])('does not publicly expose an unavailable or foreign note: %j', async data => {
     mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
     mockTransactionGet.mockResolvedValueOnce({ data: () => data });

@@ -2,6 +2,7 @@ import { councilProgress, topicPreview } from '@/utils/council';
 import { toDateOnlyKey, toLocalDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type { Council, Group, PrayerRequest, Sermon, StudyNote } from '@/models/models';
 import type { AppLocale } from '@/utils/appLocale';
@@ -179,7 +180,7 @@ export function noteEntries(notes: StudyNote[], words: NoteEntryWords): Calendar
     const base = {
       kind: 'note' as const,
       refId: note.id,
-      title: ownTitle || formatScriptureReferences(note.scriptureRefs, { ...face, limit: 1 }) || words.untitled,
+      title: studyNoteOwnName(note, words.locale) || words.untitled,
       href: `/studies/${note.id}`,
       // The references sit under a title of the note's own; under a title that IS the reference
       // they would only repeat it.

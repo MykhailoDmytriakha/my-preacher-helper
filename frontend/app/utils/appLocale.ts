@@ -28,6 +28,18 @@ export function resolveAppLocale(language?: string | null): AppLocale {
   return 'en';
 }
 
+/**
+ * The language a piece of text is written in, read off its letters: ї, і, є, ґ belong to
+ * Ukrainian alone, any other Cyrillic reads as Russian, everything else as English. For text
+ * that reaches a reader without the interface around it — a link's preview card, a reference
+ * pulled out of dictated prose — this is the only language signal there is.
+ */
+export function detectTextLocale(text: string): AppLocale {
+  if (/[іїєґ]/iu.test(text)) return 'uk';
+  if (/[а-яё]/iu.test(text)) return 'ru';
+  return 'en';
+}
+
 const DATE_LOCALES: Record<AppLocale, Locale> = { en: enUS, ru, uk };
 
 /** The date-fns locale for month and weekday names in the interface's own language. */

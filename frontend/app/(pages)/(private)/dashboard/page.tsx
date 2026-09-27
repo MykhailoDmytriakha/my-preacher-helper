@@ -42,6 +42,7 @@ import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
 import type {
   DashboardOptimisticActions,
@@ -1078,7 +1079,7 @@ function getStudyReferences(note: StudyNote, locale: string) {
 }
 
 function getStudyDisplayTitle(note: StudyNote, t: TFunction, locale: string) {
-  return note.title || getStudyReferences(note, locale)[0] || t('dashboardHome.sections.studies.untitled');
+  return studyNoteOwnName(note, resolveAppLocale(locale)) || t('dashboardHome.sections.studies.untitled');
 }
 
 function isWithinRange(date: string, start: Date, end: Date) {

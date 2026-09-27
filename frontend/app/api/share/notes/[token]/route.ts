@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (!shared) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    const { shareLink, content } = shared;
+    const { shareLink, content, title, scriptureRefs } = shared;
 
     const cookieName = `${VIEW_COOKIE_PREFIX}${token}`;
     const viewedAtRaw = request.cookies.get(cookieName)?.value;
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const response = NextResponse.json(
-      { content },
+      { content, ...(title ? { title } : {}), scriptureRefs },
       { headers: { 'Cache-Control': 'no-store' } }
     );
 
