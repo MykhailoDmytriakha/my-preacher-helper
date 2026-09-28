@@ -17,8 +17,8 @@ const SERIES_STATUS_TONES: Record<string, ChipTone> = { draft: 'neutral', active
 
 /** Shared presentation; opening ancestors, delivery and draft ownership belong to callers. */
 export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGroups, onEdit, onDelete, onRefresh,
-  feedback, itemsContent, reorderHint, children }: {
-  series: Series; items: ResolvedSeriesItem[];
+  feedback, itemsContent, reorderHint, children, readOnly = false }: {
+  series: Series; items: ResolvedSeriesItem[]; readOnly?: boolean;
   onBack: () => void; onAddSermons: () => void; onAddGroups: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void;
   feedback?: ReactNode; itemsContent: ReactNode; reorderHint?: ReactNode; children?: ReactNode;
 }) {
@@ -72,34 +72,34 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
 
           {/* Action Buttons: Always in a dedicated row below the title */}
           <div className="flex flex-wrap gap-3">
-            <button
+            {!readOnly && <button
               onClick={onAddSermons}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:w-auto sm:min-w-[180px]"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addSermon')}
-            </button>
-            <button
+            </button>}
+            {!readOnly && <button
               onClick={onAddGroups}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto sm:min-w-[180px]"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addGroup', { defaultValue: 'Add group' })}
-            </button>
-            <button
+            </button>}
+            {!readOnly && <button
               onClick={onEdit}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 sm:w-auto sm:min-w-[180px]"
             >
               <PencilIcon className="h-4 w-4" />
               {t('workspaces.series.editSeries')}
-            </button>
-            <button
+            </button>}
+            {!readOnly && <button
               onClick={onDelete}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-700/60 dark:bg-red-900/40 dark:text-red-200 sm:w-auto sm:min-w-[180px]"
             >
               <TrashIcon className="h-4 w-4" />
               {t('workspaces.series.deleteSeries')}
-            </button>
+            </button>}
           </div>
 
           {/* Bottom Section: Theme, Description and Stats bar */}
@@ -180,24 +180,24 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
               {t('workspaces.series.detail.sermonsInSeries', { defaultValue: 'Items in series' })}
             </h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {reorderHint ?? t('workspaces.series.detail.dragToReorder')}
+              {readOnly ? null : reorderHint ?? t('workspaces.series.detail.dragToReorder')}
             </p>
           </div>
           <div className="flex gap-3">
-            <button
+            {!readOnly && <button
               onClick={onAddSermons}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addSermon')}
-            </button>
-            <button
+            </button>}
+            {!readOnly && <button
               onClick={onAddGroups}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
             >
               <PlusIcon className="h-4 w-4" />
               {t('workspaces.series.actions.addGroup', { defaultValue: 'Add group' })}
-            </button>
+            </button>}
             <button
               onClick={onRefresh}
               className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"

@@ -2,7 +2,11 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * ONE DOOR FOR WRITING A DOCUMENT, AND IT IS NOT `updateDoc`.
+ * FREEZE DIRECT-WRITE DEBT IN THE LEGACY PATH.
+ *
+ * New domain code uses the public DataEngine API (app/data-engine/README.md).
+ * The engine boundary tests enforce that path. The helpers described below belong
+ * to the remaining legacy implementation; this test does not authorize new callers.
  *
  * The bug this exists to stop has been fixed by hand five times in five places: a laptop
  * holding yesterday's copy writes over what a phone stored a minute ago, and the paragraph

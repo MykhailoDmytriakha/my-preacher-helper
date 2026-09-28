@@ -703,6 +703,35 @@ describe('GroupDetailPage with the actual data engine', () => {
     }
     return { ...harness, harness, Workspace, view: render(<Workspace />) };
   }
+  it('reads the group during silent storage and becomes editable when the editor opens', async () => {
+    const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
+    jest.useFakeTimers(); resetDeviceStorageForTests();
+    mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+    const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {
+        userId: 'user-1', title: 'Prepared group', description: 'Description to read', status: 'draft', templates: [], flow: [], createdAt: 'created', updatedAt: 'old',
+      } });
+    let finishOpening!: () => void;
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+      const browser = harness.createBrowser(); const open = browser.engine.openEditor.bind(browser.engine);
+      jest.spyOn(browser.engine, 'openEditor').mockImplementation((...args) => new Promise(resolve => {
+        finishOpening = () => { void open(...args).then(resolve); };
+      }));
+      return browser;
+    });
+    const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    void trackStorage('engine-state', new Promise(() => undefined));
+    await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
+    await screen.findByRole('heading', { name: 'Prepared group' });
+    expect(screen.getByText('Description to read')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
+    await act(async () => { finishOpening(); await settleEngine(); });
+    expect(await screen.findByDisplayValue('Prepared group')).toBeEnabled();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+  });
   it('uses one pinned engine action for series assignment without calling the legacy sweep', async () => {
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups,series';
     mockUseParams.mockReturnValue({ id: 'group-1' });

@@ -109,6 +109,14 @@ minute, roughly 240–480 reads/hour per watched collection); with the rules dep
 the listener carries it and HTTP only renews a two-minute lease. Multiple visible
 tabs/devices multiply this; cross-tab leadership is not implemented.
 
+The 2026-09-27 lease regression found that the first idle expiry instead switched
+a healthy subscription permanently to fifteen-second fallback. The shared observer
+now retains subscription health while an HTTP probe checks freshness, renewing the
+lease only for an accepted answer. Its one-hour timer regression drops from 233
+reads to 30. A rejected stale answer or failed subscription still uses bounded
+fallback; hidden/offline readers still stop. This measures calls in the observer,
+not billing, and does not remove mixed-mode sweeps or prove a daily production cost.
+
 The sweep ran every 15 seconds until 2026-09-23 (~6,000 reads/hour for 20 rows,
 ~13,200 for 50). A local QA session that left 37 authenticated tabs open exhausted
 the shared free allowance that morning (`8 RESOURCE_EXHAUSTED`, 08:37 UTC), and the

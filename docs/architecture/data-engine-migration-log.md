@@ -4,6 +4,56 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## Audit fixes — 2026-09-27, based on main `ecadddd8`
+
+These fixes are local to branch `data-engine` until explicitly released. They extend the
+shared silent-storage fallback already merged in `ecadddd8`; they do not add a second cache
+or change production switches.
+
+- **Read-only consumers:** plan, manual plan, structure, group detail/conduct, series and
+  sermon date history opt into the shared read-only copy. Prepared content stays readable
+  while the editor waits for device storage; mutation controls are hidden or disabled.
+  The real editor mounts after storage responds. The existing preaching view remains intact;
+  the group conduct fallback shows meeting content but does not run its interactive timer.
+- **Idle observation cost:** silence on a healthy listener no longer permanently demotes it
+  to 15-second polling. A successful HTTP proof renews the existing two-minute lease; rejected
+  or failed evidence uses bounded fallback. The same one-hour timer regression went from
+  233 to 30 HTTP calls per resource. This is a protocol measurement, not a Firebase billing
+  measurement; full mixed-mode collection sweeps still exist.
+- **Previous-version recovery:** re-archiving the same submitted operation after a retry no
+  longer adds a copy solely because error/status counters changed. Words, opening context,
+  submission time and unknown fields remain significant; original export bytes are retained.
+  Existing duplicates are not deleted. Diff rows name device/server for screen readers, and
+  unchanged line diffs are memoized.
+- **Agent guidance:** repository MEMORY and engine README now name the public engine API as
+  the canonical path, explain read-only consumers, and distinguish deployed collection
+  activation from still-open legacy closure/settings/material-route exceptions.
+
+Validation: full `test:fast -- --runInBand` passed **759 suites / 7586 tests**, with 15 tests
+skipped in two suites. `lint:full` including TypeScript passed with **0 errors / 17 warnings**.
+The production build with all ten collections enabled passed, including route generation and
+the separate production TypeScript check. The first sandboxed attempt could not resolve Google
+Fonts; retrying with network access completed the build in 22.18 seconds.
+Focused tests cover 28 observer cases, 36 archive cases, 21 recovery UI cases and 48 consumer
+cases. Regressions were observed red before the observer/archive fixes; removing series
+read-only opt-in makes its content test fail. Independent review found no high-confidence
+defect in the observer/archive changes; integration review covered the consumer diffs.
+
+Live localhost Chrome, existing test account: temporarily injected a never-resolving storage
+adapter. Group title/description/flow/date and the prepared sermon plan remained readable;
+editing was unavailable. Restored the adapter byte-for-byte and observed the ordinary group
+editor again. No content writes were made in this browser pass. Same-runtime recovery after
+delayed storage is covered by automated consumer tests. Physical iPad/WebKit, Android PWA and
+production deployment are **not** validated by this pass.
+
+Handoff: Elephant case `.cases/2026-09-19-data-engine-production-readiness/`, items 5.9–5.12
+record these fixes. Remaining work is explicit: studies live acceptance (5.7), settings server
+entry point (6.5), safe import of old operations (6.8), unmapped recovery field names (6.9),
+coordinated collection closure after old-device acceptance (6.10), and measured production
+read cost (6.7/6.11). Pending-delete chains and choosing among multiple saved drafts still
+need engine-level contracts and tests; removing their guards is not a safe fix. The separate
+offline RSC navigation incident remains open in BUGS.md.
+
 ## In production — 2026-09-25
 
 Rollout steps 0–2 are done. Protective rules were deployed on 2026-09-24 17:23 PDT (step 1,
@@ -2255,4 +2305,3 @@ person copies what they need. Also open from this review: a request refused loca
 (`commits.ts`, no journal entry) is not seen by `waitsForDecision`; `generation-mismatch`
 refusals are offered only the stored version; acknowledged one-shot checkpoints are never
 compacted.
-

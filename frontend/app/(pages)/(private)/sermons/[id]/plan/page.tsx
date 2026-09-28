@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
+import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -141,20 +142,18 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
  */
 export default function PlanPage() {
   const sermonId = useRouteId();
-  // Preaching is a view with nothing to edit, so it may read a copy while device storage is
-  // silent — the pulpit is the worst place for a skeleton. The editable plan keeps waiting
-  // (BUG-20260927-plan-structure-group-wait-on-silent-storage).
-  const preaching = useSearchParams()?.get('planView') === 'preaching';
   return sermonId && isCollectionOnEngine('sermons')
-    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: preaching }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
     : <PlanPageContent />;
 }
 
 function EnginePlanPage({ sermonId }: { sermonId: string }) {
+  const preaching = useSearchParams()?.get('planView') === 'preaching';
   const { owner } = useDataEngine();
   const source = useEngineSermonSource(sermonId);
   const writer = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
+  if (document.readOnly && source.sermon && !preaching) return <SermonReadOnlyContent sermon={source.sermon} reason={document.readOnlyReason} />;
   return <PlanWriterContext.Provider value={writer}>
     <div className="px-4 pt-4"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>

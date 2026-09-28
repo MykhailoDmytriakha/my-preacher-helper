@@ -181,6 +181,18 @@ describe('legacy cache preservation UI', () => {
     expect(within(screen.getByText('Broken').closest('li')!).getByText('legacyRecovery.serverUnknown')).toBeInTheDocument();
   });
 
+  it('names each changed multiline row for readers who cannot use diff colors or signs', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Reading copy', note: 'Common line\nServer words' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([
+      rowCopy('c1', { id: 's1', userId: 'owner', title: 'Reading copy', note: 'Common line\nDevice words' }),
+    ]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(screen.getByText('Device words').closest('p')).toHaveTextContent('legacyRecovery.onDevice:');
+    expect(screen.getByText('Server words').closest('p')).toHaveTextContent('legacyRecovery.onServer:');
+  });
+
   it('shows what a copy without a visible difference holds and asks before removing it', async () => {
     jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([record]).mockResolvedValue([]);
     render(<LegacyQueryCopies owner="owner" />);

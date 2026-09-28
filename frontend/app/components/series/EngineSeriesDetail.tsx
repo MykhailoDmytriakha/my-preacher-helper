@@ -28,7 +28,7 @@ const SERIES_LABEL = 'navigation.series';
 type MembershipDialog = { mode: SeriesMembershipDialogMode; member?: Pick<SeriesItem, 'type' | 'refId'>; recoveryId?: string };
 
 export function EngineSeriesDetail({ seriesId }: { seriesId: string }) {
-  return <DataDocumentProvider resource={{ collection: 'series', id: seriesId }} options={{ slot: 'series', autoSave: false }}>
+  return <DataDocumentProvider resource={{ collection: 'series', id: seriesId }} options={{ slot: 'series', autoSave: false, readOnlyCopy: true }}>
     <SeriesWorkspace seriesId={seriesId} />
   </DataDocumentProvider>;
 }
@@ -66,16 +66,16 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const base = hydrateSeries({ ...document.data, id: seriesId } as unknown as Series);
   const projected = collection.series.find(series => series.id === seriesId);
   // Presentation only. Never feed a submitted collection projection into the metadata form's ancestor.
-  const series = projected ? { ...base, items: projected.items, sermonIds: projected.sermonIds, seriesKind: projected.seriesKind } : base;
+  const series = !document.readOnly && projected ? { ...base, items: projected.items, sermonIds: projected.sermonIds, seriesKind: projected.seriesKind } : base;
   const items = (series.items ?? []).map(item => ({ item,
     sermon: item.type === 'sermon' ? sermons.sermons.find(sermon => sermon.id === item.refId) : undefined,
     group: item.type === 'group' ? groups.groups.find(group => group.id === item.refId) : undefined }));
   const refresh = async () => { await Promise.all([document.retry(), collection.refreshSeries()]); };
-  return <SeriesDetailView series={series} items={items} onBack={() => router.push('/series')}
+  return <SeriesDetailView readOnly={document.readOnly} series={series} items={items} onBack={() => router.push('/series')}
     onAddSermons={() => setMembership({ mode: 'sermon' })} onAddGroups={() => setMembership({ mode: 'group' })}
     onEdit={() => setEditing(true)} onDelete={() => setDeleting(true)} onRefresh={() => { void refresh().catch(() => undefined); }}
-    feedback={<>{sync}
-      {!editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
+    feedback={<>{document.readOnly && <p role="status">{document.readOnlyReason}</p>}{sync}
+      {!document.readOnly && !editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
         <DataSyncStatus status={metadata.dirty ? metadata.status : null} error={metadata.error}
           recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
@@ -88,14 +88,14 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     reorderHint={<button type="button" className="underline" onClick={() => setMembership({ mode: 'reorder' })}>
       {t('workspaces.series.actions.reorder')}</button>}
     itemsContent={<div className="space-y-4">{items.map((entry, index) => <SeriesItemCard key={entry.item.id} id={entry.item.id}
-      position={index + 1} resolvedItem={entry} sortable={false} onRemove={(type, refId) => setMembership({ mode: 'remove', member: { type, refId } })} />)}</div>}>
-    {editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
-    {membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
+      position={index + 1} resolvedItem={entry} sortable={false} onRemove={document.readOnly ? undefined : (type, refId) => setMembership({ mode: 'remove', member: { type, refId } })} />)}</div>}>
+    {!document.readOnly && editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
+    {!document.readOnly && membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
       seriesId={seriesId} {...membership} onClose={() => setMembership(null)}
       onCreateSermon={isCollectionOnEngine('sermons') ? () => { setMembership(null); setCreatingSermon(true); } : undefined} />}
-    {creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
+    {!document.readOnly && creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
       onQueued={() => setCreatingSermon(false)} />}
-    {deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}
+    {!document.readOnly && deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}
   </SeriesDetailView>;
 }
 function DeleteSeries({ seriesId, onClose, onDeleted }: { seriesId: string; onClose: () => void; onDeleted: () => void }) {

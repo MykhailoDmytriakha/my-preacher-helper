@@ -36,6 +36,7 @@ import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
+import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -69,7 +70,7 @@ export default function GroupDetailPage() {
   const { user } = useAuth();
   const groupId = user?.uid && typeof id === 'string' ? id : '';
   return isCollectionOnEngine('groups')
-    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group' }}><EngineGroupPage groupId={groupId} /></DataDocumentProvider>
+    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group', readOnlyCopy: true }}><EngineGroupPage groupId={groupId} /></DataDocumentProvider>
     : <LegacyGroupPage groupId={groupId} />;
 }
 
@@ -77,7 +78,10 @@ function LegacyGroupPage({ groupId }: { groupId: string }) {
   return <GroupDetailView editor={useLegacyGroupPageEditor(groupId)} />;
 }
 function EngineGroupPage({ groupId }: { groupId: string }) {
-  return <GroupDetailView editor={useGroupPageEditor(groupId)} />;
+  const editor = useGroupPageEditor(groupId);
+  return editor.readOnly && editor.group
+    ? <GroupReadOnlyContent group={editor.group} reason={editor.readOnlyReason} />
+    : <GroupDetailView editor={editor} />;
 }
 function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const router = useRouter();

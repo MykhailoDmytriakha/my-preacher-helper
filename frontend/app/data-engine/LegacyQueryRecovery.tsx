@@ -430,15 +430,18 @@ export function lineDiff(device: string, server: string, context = 2): DiffRow[]
 
 /** A structured or multi-line difference, folded to the changed lines. */
 function DiffBlock({ device, server, gapLabel }: { device: string; server: string; gapLabel: (count: number) => string }) {
+  const { t } = useTranslation();
+  const rows = useMemo(() => lineDiff(device, server), [device, server]);
   return (
     <div className="max-h-72 overflow-auto rounded-md border border-amber-200 bg-white/70 py-1 font-mono text-xs dark:border-amber-500/20 dark:bg-black/20">
-      {lineDiff(device, server).map((row, index) => 'gap' in row
+      {rows.map((row, index) => 'gap' in row
         ? <p key={index} className="px-2 py-0.5 text-gray-500 dark:text-gray-400">{gapLabel(row.gap)}</p>
         : <p key={index} className={`flex gap-2 whitespace-pre-wrap break-words px-2 ${row.op === '-'
           ? 'bg-rose-50 text-rose-950 dark:bg-rose-500/10 dark:text-rose-100'
           : row.op === '+' ? 'bg-emerald-50 text-emerald-950 dark:bg-emerald-500/10 dark:text-emerald-100'
           : 'text-gray-600 dark:text-gray-400'}`}>
           <span aria-hidden="true" className="select-none">{row.op}</span>
+          {row.op !== ' ' && <span className="sr-only">{t(row.op === '-' ? 'legacyRecovery.onDevice' : 'legacyRecovery.onServer')}: </span>}
           <span className="min-w-0 flex-1">{row.text || ' '}</span>
         </p>)}
     </div>

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
+import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
@@ -25,7 +26,7 @@ export default function ConductPage() {
   const { id } = useParams();
   const groupId = typeof id === 'string' ? id : '';
   return isCollectionOnEngine('groups')
-    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group-conduct', autoSave: false }}><EngineConductPage groupId={groupId} /></DataDocumentProvider>
+    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group-conduct', autoSave: false, readOnlyCopy: true }}><EngineConductPage groupId={groupId} /></DataDocumentProvider>
     : <LegacyConductPage groupId={groupId} />;
 }
 function LegacyConductPage({ groupId }: { groupId: string }) {
@@ -35,6 +36,7 @@ function LegacyConductPage({ groupId }: { groupId: string }) {
 function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);
   const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId);
+  if (document.document.readOnly && document.group) return <GroupReadOnlyContent group={document.group} reason={document.document.readOnlyReason} />;
   const feedback = <div className="shrink-0 px-5 py-2">
     <DataSyncStatus status={document.status} error={document.error} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />

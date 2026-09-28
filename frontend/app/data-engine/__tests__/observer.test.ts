@@ -96,6 +96,43 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  it('renews a quiet live subscription after each successful HTTP check for an entire hour', async () => {
+    const h = harness(); h.watch(); h.next(snapshot());
+    await jest.advanceTimersByTimeAsync(3_600_000);
+    expect(h.read).toHaveBeenCalledTimes(30);
+    expect(h.state()).toMatchObject({ readiness: 'server', checking: false, error: false });
+    h.observer.dispose();
+  });
+
+  it('keeps checking a silent stream for remote updates and deletions after renewing its lease', async () => {
+    const h = harness(); h.watch(); h.next(snapshot());
+    await jest.advanceTimersByTimeAsync(120_000);
+    h.read.mockResolvedValue(snapshot(2, 'changed on another device'));
+    await jest.advanceTimersByTimeAsync(119_999);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(h.state().snapshot).toEqual(snapshot(2, 'changed on another device'));
+    const deleted = { ...snapshot(3), value: null, metadata: { ...snapshot(3).metadata!, deleted: true } };
+    h.read.mockResolvedValue(deleted);
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(h.read).toHaveBeenCalledTimes(3);
+    expect(h.state().snapshot).toEqual(deleted);
+    h.observer.dispose();
+  });
+
+  it('uses bounded fallback polling when a lease check cannot certify the retained revision', async () => {
+    const h = harness(); h.watch(); h.next(snapshot(2));
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(h.state().readiness).toBe('unknown');
+    await jest.advanceTimersByTimeAsync(14_999);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    h.read.mockResolvedValue(snapshot(2));
+    await jest.advanceTimersByTimeAsync(1);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.state().readiness).toBe('server');
+    h.observer.dispose();
+  });
+
   it('does not let repeated cache events postpone the initial silence deadline', async () => {
     const h = harness(); h.watch();
     h.next(snapshot(), 'cache');

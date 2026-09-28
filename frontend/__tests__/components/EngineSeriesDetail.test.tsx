@@ -102,3 +102,32 @@ it('opens creation from the series picker with a durable preset and submits only
   const id = (harness.read(series('b').resource).value!.sermonIds as string[])[0];
   expect(harness.read({ collection: 'sermons', id }).value).toMatchObject({ title: 'Born in this series' }); view.unmount();
 });
+
+it('reads a series during silent storage without mutation controls, then restores editing when opening finishes', async () => {
+  const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
+  jest.useFakeTimers(); resetDeviceStorageForTests();
+  const harness = membershipEngineHarness([series('a', true)]);
+  let finishOpening!: () => void;
+  jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+    const browser = harness.createBrowser();
+    const open = browser.engine.openEditor.bind(browser.engine);
+    jest.spyOn(browser.engine, 'openEditor').mockImplementation((...args) => new Promise(resolve => {
+      finishOpening = () => { void open(...args).then(resolve); };
+    }));
+    return browser;
+  });
+  const view = render(<DataEngineProvider><EngineSeriesDetail seriesId="a" /></DataEngineProvider>);
+  void trackStorage('engine-state', new Promise(() => undefined));
+  await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
+  await screen.findByRole('heading', { name: 'a', level: 1 });
+  expect(screen.getByRole('heading', { name: 'Meeting' })).toBeInTheDocument();
+  for (const name of ['workspaces.series.editSeries', 'workspaces.series.deleteSeries', 'workspaces.series.actions.addGroup', 'workspaces.series.actions.addSermon', 'workspaces.series.actions.reorder']) {
+    expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  }
+  expect(screen.queryByRole('button', { name: /remove/i })).not.toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  await act(async () => { finishOpening(); await settleEngine(); });
+  await screen.findByRole('button', { name: 'workspaces.series.editSeries' });
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+});

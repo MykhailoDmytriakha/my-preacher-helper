@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useDocumentFreshness } from "@/hooks/useDocumentFreshness";
@@ -264,7 +265,7 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
 export default function ManualConspectusPage() {
   const sermonId = useRouteId();
   return sermonId && isCollectionOnEngine('sermons')
-    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EngineManualConspectusPage sermonId={sermonId} /></DataDocumentProvider>
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EngineManualConspectusPage sermonId={sermonId} /></DataDocumentProvider>
     : <ManualConspectusContent />;
 }
 
@@ -273,6 +274,7 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const writer = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
+  if (document.readOnly && source.sermon) return <SermonReadOnlyContent sermon={source.sermon} reason={document.readOnlyReason} />;
   return <PlanWriterContext.Provider value={writer}>
     <div className="px-4 pt-4"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>

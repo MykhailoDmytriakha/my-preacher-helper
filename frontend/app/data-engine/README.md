@@ -17,6 +17,12 @@ The remaining debt is recorded in `docs/architecture/data-engine-implementation-
 at the repository root and the architecture test ledger. The ledger is a shrinking
 inventory, not permission to add another bypass.
 
+The engine was merged into `main` on 2026-09-25. The migration log records activation
+of ten production collections that day; verify live configuration before changing it.
+`users` remains outside those switches, and study-material server routes still use the
+guarded legacy bridge. Share links are server-owned capability tokens, not editable
+user documents. A registered schema alone does not prove a consumer has migrated.
+
 ## Public React interface
 
 Mount `DataEngineWorkspace` once around authenticated pages, including pages hiding
@@ -57,6 +63,11 @@ function NoteContent({ id }: { id: string }) {
 - **Read:** `data` is the editor draft; `confirmed` is the last accepted baseline;
   `remote` is a candidate held while there is local intent. Never seed confirmed
   state from an optimistic React Query value or an incomplete list projection.
+  If device storage does not answer, the facade can expose a readable copy before
+  the durable editor opens (`readOnly`, `copySource`, `readOnlyReason`). Display that
+  content and disable mutations; do not keep a skeleton merely because `editor` is
+  absent. The shared facade restores editing when storage answers. Do not copy the
+  fallback into a component-local editable draft or queue actions for later replay.
 - **Update:** `update(current => next)` uses the latest editor value. It persists
   locally immediately; default autosave delays delivery by 750 ms. Apply the user's
   patch to `current`; do not replace it with a render-time stale object.
@@ -104,6 +115,13 @@ function NoteContent({ id }: { id: string }) {
   list, on returning to the tab, on reconnecting and every five minutes while the
   list stays open (each sweep reads every row). Closure stops that sweep. Cost and retention constraints are in
   `docs/architecture/data-engine-operations.md` at the repository root.
+
+Healthy subscriptions receive a bounded HTTP freshness check after two quiet minutes.
+A valid response renews that lease; inactivity is not a reason to permanently switch
+to fifteen-second polling. A failed/missing subscription or rejected freshness proof
+uses the shorter fallback interval, with backoff for request failures. Hidden/offline
+views suspend checks. These are safety bounds, not a claim of zero idle reads or of a
+measured production daily budget.
 
 **One action on a document no screen has open** — a list-row menu, a link made from the other
 side of a relation, a sermon born from a note — uses `useDocumentActions()`: `commit(resource,

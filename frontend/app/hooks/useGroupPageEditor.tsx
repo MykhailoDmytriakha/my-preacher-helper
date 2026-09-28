@@ -39,6 +39,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   };
   const recovery = data.recovery;
   return {
+    readOnly: data.document.readOnly, readOnlyReason: data.document.readOnlyReason,
     group, loading: data.loading, title: group?.title ?? '', setTitle: field('title'),
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: field('status'), templates: group?.templates ?? [], setTemplates: field('templates'),

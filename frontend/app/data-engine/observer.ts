@@ -241,7 +241,8 @@ export class ResourceObserver {
     entry.timer = this.timers.setTimeout(() => {
       entry.timer = null;
       if (entry.healthy && entry.lastServerAt !== null && this.now() - entry.lastServerAt >= this.leaseMs) {
-        entry.healthy = false;
+        // Silence alone does not mean the subscription failed. A successful probe renews
+        // its lease; otherwise a quiet document would poll every 15 s forever afterwards.
         entry.state = { ...entry.state, readiness: 'unknown' };
         this.emit(entry);
       }
@@ -267,7 +268,12 @@ export class ResourceObserver {
       // An absent/unversioned HTTP answer cannot outvote a later listener event.
       if (sequence !== entry.snapshotSequence && (!snapshot.metadata ||
         snapshot.metadata.generation !== entry.state.snapshot?.metadata?.generation)) return;
-      if (!this.accept(entry, { snapshot, source: 'server' })) return;
+      if (!this.accept(entry, { snapshot, source: 'server' })) {
+        // Rejected evidence cannot renew the lease. Fall back at the bounded retry rate,
+        // rather than scheduling the already expired lease again with a zero delay.
+        entry.healthy = false;
+        return;
+      }
       entry.lastServerAt = this.now();
       entry.failures = 0;
     }).catch(() => {

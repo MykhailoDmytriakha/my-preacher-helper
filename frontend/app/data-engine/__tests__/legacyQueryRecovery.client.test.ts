@@ -93,6 +93,44 @@ it('preserves all known group cache shapes with ownership from the correct sourc
   expect(JSON.parse(copies[1].raw).unknown).toBe('keep');
 });
 
+it('keeps one archived intent when retry bookkeeping changes, without merging different submissions or baselines', async () => {
+  installStorageHarness();
+  const mutation = { mutationKey: ['groups', 'update'], state: {
+    variables: { id: 'g', userId: 'owner', updates: { title: 'Unsent words' } },
+    context: { previous: { title: 'Opening words' } }, submittedAt: 15,
+    status: 'pending', isPaused: true, failureCount: 0, error: null, failureReason: null,
+  } };
+  const archive = async (value: unknown) => {
+    jest.mocked(get).mockResolvedValue({ clientState: { mutations: [value] } });
+    await preserveLegacyQueryCache(() => true);
+  };
+  await archive(mutation);
+  await archive({ ...mutation, state: { ...mutation.state, status: 'error', isPaused: false,
+    failureCount: 2, error: { message: 'Migration required' }, failureReason: { code: 'data-engine-required' } } });
+  let copies = await listLegacyQueryCopies('owner');
+  expect(copies).toHaveLength(1);
+  expect(copies[0].raw).toBe(JSON.stringify(mutation, null, 2));
+  await archive({ ...mutation, state: { ...mutation.state, submittedAt: 16 } });
+  await archive({ ...mutation, state: { ...mutation.state, context: { previous: { title: 'Different opening' } } } });
+  await archive({ ...mutation, state: { ...mutation.state, variables: { ...mutation.state.variables, updates: { title: 'Later words' } } } });
+  copies = await listLegacyQueryCopies('owner');
+  expect(copies).toHaveLength(4);
+  expect(new Set(copies.map(copy => copy.id)).size).toBe(4);
+});
+
+it.each([undefined, null, 0])('does not infer a replay identity without a valid submission time (%s)', async submittedAt => {
+  installStorageHarness();
+  const mutation = { mutationKey: ['groups', 'create'], state: {
+    variables: { userId: 'owner', title: 'Separate copies may have identical words' }, submittedAt,
+    isPaused: true, failureCount: 0,
+  } };
+  for (const failureCount of [0, 1]) {
+    jest.mocked(get).mockResolvedValue({ clientState: { mutations: [{ ...mutation, state: { ...mutation.state, failureCount } }] } });
+    await preserveLegacyQueryCache(() => true);
+  }
+  expect(await listLegacyQueryCopies('owner')).toHaveLength(2);
+});
+
 it('archives paused and failed mutation variables even when queries have expired or rolled back', async () => {
   installStorageHarness();
   const mutation = (operation: string, variables: unknown) => ({ mutationKey: ['groups', operation], state: { variables, status: 'error', submittedAt: 15, isPaused: false } });

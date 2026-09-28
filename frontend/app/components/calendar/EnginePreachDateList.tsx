@@ -14,7 +14,7 @@ import type { PreachDateAction } from './preachDateForm';
 import type { Sermon } from '@/models/models';
 
 export function EnginePreachDateList({ sermonId }: { sermonId: string }) {
-  return <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ autoSave: false }}>
+  return <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ autoSave: false, readOnlyCopy: true }}>
     <DateHistory sermonId={sermonId} />
   </DataDocumentProvider>;
 }
@@ -23,8 +23,9 @@ function DateHistory({ sermonId }: { sermonId: string }) {
   const document = useDataDocument({ collection: 'sermons', id: sermonId }, { autoSave: false });
   const sermon = document.data as unknown as Sermon | null;
   const [action, setAction] = useState<PreachDateAction | null>(null);
-  const disabled = document.loading || !sermon || document.status?.phase === 'deleted';
+  const disabled = document.readOnly || document.loading || !sermon || document.status?.phase === 'deleted';
   return <div className="space-y-4">
+    {document.readOnly && <p role="status">{document.readOnlyReason}</p>}
     <DataSyncStatus status={document.status} error={document.error} onRetry={document.retry} />
     <div className="flex items-center justify-between">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -37,6 +38,6 @@ function DateHistory({ sermonId }: { sermonId: string }) {
     </div>
     <PreachDateRows preachDates={sermon?.preachDates ?? []} isPreached={Boolean(sermon?.isPreached)} disabled={disabled}
       onEdit={date => setAction({ kind: 'edit', dateId: date.id })} onDelete={dateId => setAction({ kind: 'delete', dateId })} />
-    {action && <EnginePreachDateModal key={`${action.kind}:${action.dateId ?? 'new'}`} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
+    {!document.readOnly && action && <EnginePreachDateModal key={`${action.kind}:${action.dateId ?? 'new'}`} sermonId={sermonId} action={action} onClose={() => setAction(null)} />}
   </div>;
 }

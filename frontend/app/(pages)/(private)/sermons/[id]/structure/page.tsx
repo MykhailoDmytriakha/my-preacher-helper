@@ -11,6 +11,7 @@ import Column from "@/components/Column";
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
+import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { StructureWriterContext, useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
@@ -92,7 +93,7 @@ function StructurePageContent() {
   const sermonIdFromQuery = searchParams?.get("sermonId");
   const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
   return sermonId && isCollectionOnEngine('sermons')
-    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EngineStructureBoard sermonId={sermonId} /></DataDocumentProvider>
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EngineStructureBoard sermonId={sermonId} /></DataDocumentProvider>
     : <StructureBoard sermonId={sermonId} />;
 }
 
@@ -110,6 +111,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
   }), [sermon, document.loading, document.error]);
+  if (document.readOnly && sermon) return <SermonReadOnlyContent sermon={sermon} reason={document.readOnlyReason} structure />;
   return <StructureWriterContext.Provider value={writer}>
     <StructureBoard sermonId={sermonId} engine={engine} holdingRef={holdingRef} syncStatus={<DataSyncStatus
       status={document.status} error={document.error} onRetry={document.retry}

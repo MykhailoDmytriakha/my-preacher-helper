@@ -84,3 +84,33 @@ it('starts with the final durable duration when Start precedes the React echo', 
   expect(harness.server.value?.flow).toEqual(flow(7));
   view.unmount();
 });
+
+
+it('reads prepared meeting blocks during silent storage and restores setup without sending a write', async () => {
+  const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
+  jest.useFakeTimers(); resetDeviceStorageForTests();
+  const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
+    metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {
+      userId: 'owner', title: 'Prepared meeting', status: 'draft', createdAt: 'created', updatedAt: 'old', flow: flow(),
+      templates: [{ id: 'template', type: 'notes', title: 'Reading', content: 'Read this during the meeting', status: 'draft', createdAt: 'created', updatedAt: 'old' }],
+    } });
+  let finishOpening!: () => void;
+  jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+    const browser = harness.createBrowser(); const open = browser.engine.openEditor.bind(browser.engine);
+    jest.spyOn(browser.engine, 'openEditor').mockImplementation((...args) => new Promise(resolve => {
+      finishOpening = () => { void open(...args).then(resolve); };
+    }));
+    return browser;
+  });
+  const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
+  void trackStorage('engine-state', new Promise(() => undefined));
+  await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
+  await screen.findByText('Read this during the meeting');
+  expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /conduct.preflight.startButton/ })).not.toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  await act(async () => { finishOpening(); await settleEngine(); });
+  await waitFor(() => expect(screen.getByRole('button', { name: /conduct.preflight.startButton/ })).toBeEnabled());
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+});

@@ -7,6 +7,7 @@ import { queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
+import { equalValues } from './protocol';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { Sermon, SeriesItem } from '@/models/models';
@@ -104,6 +105,25 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
   });
 }
 
+const RETRY_BOOKKEEPING = new Set(['status', 'isPaused', 'failureCount', 'failureReason', 'error']);
+
+/** Compare saved intent, never a retry's error counter. Keep the original export bytes. */
+function sameArchivedInput(stored: string, incoming: string): boolean {
+  if (stored === incoming) return true;
+  const intent = (raw: string) => {
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (!object(value) || !Array.isArray(value.mutationKey) || !object(value.state)
+        || !Object.prototype.hasOwnProperty.call(value.state, 'variables')
+        || typeof value.state.submittedAt !== 'number' || !Number.isFinite(value.state.submittedAt)
+        || value.state.submittedAt <= 0) return null;
+      return { ...value, state: Object.fromEntries(Object.entries(value.state).filter(([key]) => !RETRY_BOOKKEEPING.has(key))) };
+    } catch { return null; }
+  };
+  const before = intent(stored), after = intent(incoming);
+  return before !== null && after !== null && equalValues(before, after);
+}
+
 let archive: 'idle' | 'pending' | 'done' | 'failed' = 'idle';
 
 /**
@@ -150,7 +170,7 @@ async function archiveLegacyQueryCache(enabled: (collection: string) => boolean)
         const archive = stored ?? [];
         for (const candidate of candidates) {
           // Timestamp changes alone are not new content. A stale tab cannot replace a newer copy.
-          if (archive.some(copy => copy.raw === candidate.raw)) continue;
+          if (archive.some(copy => sameArchivedInput(copy.raw, candidate.raw))) continue;
           archive.push({ ...candidate, id: nextCopyId(identity, archive) });
         }
         store.put(archive, key);

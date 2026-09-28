@@ -138,3 +138,30 @@ it('opens history deletion as an explicit engine form and retains the sibling da
   expect(dates(harness)).toEqual([first]);
   expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
 });
+
+it('reads date history while storage is silent and enables changes only after editor recovery', async () => {
+  const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
+  jest.useFakeTimers(); resetDeviceStorageForTests();
+  const harness = membershipEngineHarness([original]);
+  let finishOpening!: () => void;
+  jest.mocked(createBrowserDataEngine).mockImplementation(() => {
+    const browser = harness.createBrowser(); const open = browser.engine.openEditor.bind(browser.engine);
+    jest.spyOn(browser.engine, 'openEditor').mockImplementation((...args) => new Promise(resolve => {
+      finishOpening = () => { void open(...args).then(resolve); };
+    }));
+    return browser;
+  });
+  const view = render(<DataEngineProvider><EnginePreachDateList sermonId="sermon" /></DataEngineProvider>);
+  void trackStorage('engine-state', new Promise(() => undefined));
+  await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
+  expect(await screen.findAllByText('Named church')).toHaveLength(2);
+  expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeDisabled();
+  for (const button of screen.getAllByRole('button', { name: /common.edit|common.delete/ })) {
+    expect(button).toBeDisabled(); fireEvent.click(button);
+  }
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await act(async () => { finishOpening(); await settleEngine(); });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'calendar.addPreachDate' })).toBeEnabled());
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+});
