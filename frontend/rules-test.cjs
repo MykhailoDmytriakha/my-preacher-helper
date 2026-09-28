@@ -32,9 +32,15 @@ const SERVER_MANAGED_USER_FIELDS = {
 };
 
 (async () => {
+  // These scenarios describe the protective rules while a collection is still OPEN to legacy
+  // writers (unmarked documents writable, marked ones not). The shipped closure list is proven
+  // separately, as it ships, by rules-test-closed.cjs; here it is emptied in a copy.
+  const shippedRules = fs.readFileSync('firestore.rules', 'utf8');
+  const closureList = /return name in \[[^\]]*\];/g;
+  if ((shippedRules.match(closureList) || []).length !== 1) throw new Error('closedToBrowserWrites list not found exactly once in firestore.rules');
   const testEnv = await initializeTestEnvironment({
     projectId: process.env.RULES_TEST_PROJECT || 'demo-preacher',
-    firestore: { rules: fs.readFileSync('firestore.rules', 'utf8') },
+    firestore: { rules: shippedRules.replace(closureList, 'return name in [];') },
   });
 
   // Seed userA-owned docs across every collection (rules bypassed for seeding).

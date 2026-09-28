@@ -9,11 +9,26 @@ migrated, in which order, what is already closed and with which evidence.
 The server list is a Secret: Vercel shows it as "Hidden" and never returns its value, so it
 cannot be copied from the dashboard. Write the WHOLE value every time you change it.
 
-| Variable (Production) | Value since 2026-09-28 00:40 PDT |
+| Variable (Production) | Value (2026-09-28, closure) |
 |---|---|
-| `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` | `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates` |
-| `DATA_ENGINE_COLLECTIONS` (Secret) | the same ten **plus `studyNoteShareLinks`** |
-| `DATA_ENGINE_CLOSED_COLLECTIONS` | not set — closure not done |
+| `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` | `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates,users` |
+| `DATA_ENGINE_COLLECTIONS` (Secret) | the same ten **plus `studyNoteShareLinks`** plus `users` |
+| `DATA_ENGINE_CLOSED_COLLECTIONS` | the ten: `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates` — not `users`, not `studyNoteShareLinks` |
+| `firestore.rules` `closedToBrowserWrites` | the same ten (pinned by `rules-test-closed.cjs`) |
+
+**Closure order.** Deploy the rules first, then set the server's closed list and redeploy. The
+reverse window is unsafe: once the server stops answering `legacyOpen`, readers trust the feed
+alone (`collections.ts`), while unmarked documents could still be written from a browser under
+the old rules and raise no feed event. **Rollback runs backwards:** empty the server's closed list
+and redeploy (mixed mode and its sweeps return), then empty the rules list and deploy the rules.
+
+**After closure nothing may write the ten outside the engine.** Admin maintenance scripts bypass
+both rules and the server switch (for example `frontend/scripts/reconcile-series-membership.mjs`
+updates `series` directly); such a write raises no feed event and stays invisible to every list
+until a full refresh. Route maintenance through engine commands or freeze the script. A
+previous-version outbox entry whose "Keep mine" is pressed after closure is refused by the rules
+and moves to the recovery notice with copy and export (`outboxReplay.client.ts`
+`recordOutboxRecoveryRefusal`); nothing is lost.
 
 The server list is one longer on purpose. Deleting a study note retires its share links in the
 same command (`serverRelations.ts:301`), and the server refuses any command that writes an

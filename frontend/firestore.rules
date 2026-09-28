@@ -47,10 +47,12 @@ service cloud.firestore {
     // Until a collection is listed, a bundle that has not updated may still write the documents
     // the engine has not touched; once listed, nothing reaches it from a browser at all — the
     // engine writes through the Admin SDK, which rules do not govern.
-    // To close a domain, add its collection here — every engine collection's create, update and
-    // delete already call this; rules-test-closed.cjs proves each one:  ↓ e.g. ['councils']
+    // Closed 2026-09-28: the ten collections production serves through the engine. Every one of
+    // them calls this in create, update and delete; rules-test-closed.cjs proves this exact list.
+    // Deploy order: these rules FIRST, then the server's DATA_ENGINE_CLOSED_COLLECTIONS. Roll back
+    // in reverse: reopen the server (mixed mode, sweeps) first, then empty this list.
     function closedToBrowserWrites(name) {
-      return name in [];
+      return name in ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates'];
     }
 
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----

@@ -1,10 +1,9 @@
 /**
- * A COLLECTION CLOSED TO BROWSER WRITES — the last step of a domain's rollout.
+ * COLLECTIONS CLOSED TO BROWSER WRITES — the last step of the rollout, shipped 2026-09-28.
  *
- * The shipped rules close nothing. Closing is a one-word edit of `closedToBrowserWrites` in
- * firestore.rules, made at rollout together with the server's DATA_ENGINE_CLOSED_COLLECTIONS.
- * This script applies that edit to a copy of the rules, listing every collection production serves
- * through the engine, and proves each one closes as the runbook says, before anyone has to trust it. Separate from rules-test.cjs because one process can start only
+ * `closedToBrowserWrites` in firestore.rules lists every collection production serves through the
+ * engine, deployed together with the server's DATA_ENGINE_CLOSED_COLLECTIONS. This script tests the
+ * shipped rules as they are: the list must be exactly the ten, and each one must be closed. Separate from rules-test.cjs because one process can start only
  * one rules environment.
  */
 const fs = require('fs');
@@ -18,11 +17,16 @@ async function check(name, promise) {
 }
 
 (async () => {
-  const openRules = fs.readFileSync('firestore.rules', 'utf8');
-  // The ten collections production serves through the engine (activation.ts, Vercel switches).
+  // The ten collections production serves through the engine and closes (activation.ts, Vercel
+  // DATA_ENGINE_CLOSED_COLLECTIONS). The shipped rules are tested as they ship: the list must be exactly these.
   const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates'];
-  const closedRules = openRules.replace('return name in [];', `return name in [${closed.map(name => `'${name}'`).join(', ')}];`);
-  if (closedRules === openRules) throw new Error('closedToBrowserWrites was not found in firestore.rules');
+  const closedRules = fs.readFileSync('firestore.rules', 'utf8');
+  const lists = [...closedRules.matchAll(/return name in \[([^\]]*)\];/g)];
+  if (lists.length !== 1) throw new Error('closedToBrowserWrites list not found exactly once in firestore.rules');
+  const shipped = lists[0][1].split(',').map(entry => entry.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  if (JSON.stringify([...shipped].sort()) !== JSON.stringify([...closed].sort())) {
+    throw new Error(`closedToBrowserWrites ships [${shipped.join(', ')}], expected exactly [${closed.join(', ')}]`);
+  }
   const testEnv = await initializeTestEnvironment({ projectId: process.env.RULES_TEST_PROJECT || 'demo-preacher', firestore: { rules: closedRules } });
   await testEnv.clearFirestore();
   await testEnv.withSecurityRulesDisabled(async ctx => {
