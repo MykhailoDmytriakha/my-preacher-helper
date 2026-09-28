@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
+import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
   getUserSettings,
@@ -24,7 +26,7 @@ const SETTINGS_PREFIX = ['user-settings'];
 const buildQueryKey = (userId: string | null | undefined) => ['user-settings', userId ?? null];
 
 /** Shared persisted settings read for both feature access and the settings editor. */
-export function useUserSettingsQuery(userId: string | null | undefined) {
+function useLegacySettingsQuery(userId: string | null | undefined) {
   return useServerFirstQuery<UserSettings | null>({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getUserSettings(userId) : Promise.resolve(null)),
@@ -32,11 +34,11 @@ export function useUserSettingsQuery(userId: string | null | undefined) {
   });
 }
 
-export function useUserSettings(userId: string | null | undefined) {
+function useLegacyUserSettings(userId: string | null | undefined) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  const settingsQuery = useUserSettingsQuery(userId);
+  const settingsQuery = useLegacySettingsQuery(userId);
 
   // Each toggle is offline-buffered: mutationKey ties it to its resumable default
   // (mutationDefaults.ts) so a toggle flipped offline survives reload + replays on
@@ -221,5 +223,53 @@ export function useUserSettings(userId: string | null | undefined) {
     updateFunctionModelPreference: (preference: FunctionModelPreference) =>
       guarded('settings:function-model-preference', (uid) => updateFunctionModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
     updatingFunctionModelPreference: updateFunctionModelPreferenceMutation.isPending,
+  };
+}
+
+
+/** Feature readers share the same engine draft as the settings controls. */
+export function useUserSettingsQuery(userId: string | null | undefined) {
+  const enabled = isCollectionOnEngine('users');
+  const source = useSettingsEngine();
+  const legacy = useLegacySettingsQuery(enabled ? null : userId);
+  if (!enabled) return legacy;
+  const document = source && source.owner === userId ? source.document : null;
+  return {
+    ...legacy,
+    data: document?.data ? { ...document.data, id: userId, userId } as UserSettings : null,
+    isLoading: Boolean(userId) && (!document || document.loading),
+    error: document?.error ? new Error(document.error) : null,
+    refetch: async () => { await document?.retry(); },
+  };
+}
+
+/** Keep the legacy branch inert while every enabled consumer uses one shared editor. */
+export function useUserSettings(userId: string | null | undefined) {
+  const enabled = isCollectionOnEngine('users');
+  const source = useSettingsEngine();
+  const legacy = useLegacyUserSettings(enabled ? null : userId);
+  if (!enabled) return { ...legacy, readOnly: false };
+  const document = source && source.owner === userId ? source.document : null;
+  const readOnly = !document?.state || document.readOnly;
+  const busy = readOnly || Boolean(document?.state?.preparing) || document?.state?.durable === false;
+  const patch = async (value: Partial<UserSettings>): Promise<void> => {
+    if (!document) throw new Error('The settings editor is not ready');
+    await document.commit(current => {
+      return { ...current, ...value };
+    });
+  };
+  return {
+    settings: document?.data ? { ...document.data, id: userId, userId } as UserSettings : null,
+    loading: Boolean(userId) && (!document || document.loading),
+    error: document?.error ? new Error(document.error) : null,
+    readOnly,
+    refresh: async () => { await document?.retry(); },
+    updatePrepModeAccess: (value: boolean) => patch({ enablePrepMode: value }), updatingPrepMode: busy,
+    updateAudioGenerationAccess: (value: boolean) => patch({ enableAudioGeneration: value }), updatingAudioGeneration: busy,
+    updateStructurePreviewAccess: (value: boolean) => patch({ enableStructurePreview: value }), updatingStructurePreview: busy,
+    updateFirstDayOfWeek: (value: FirstDayOfWeek) => patch({ firstDayOfWeek: value }), updatingFirstDayOfWeek: busy,
+    updateShowAppVersion: (value: boolean) => patch({ showAppVersion: value }), updatingShowAppVersion: busy,
+    updateModelPreference: (value: ModelPreference) => patch(value), updatingModelPreference: busy,
+    updateFunctionModelPreference: (value: FunctionModelPreference) => patch(value), updatingFunctionModelPreference: busy,
   };
 }

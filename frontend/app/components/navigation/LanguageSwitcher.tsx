@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
-import { updateUserLanguage } from '@/services/userSettings.service';
+import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
+import { setLanguageCookie, updateUserLanguage } from '@/services/userSettings.service';
 
 // List of supported languages
 const SUPPORTED_LANGUAGES = [
@@ -16,6 +17,7 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
+  const settingsEngine = useSettingsEngine();
 
   const currentLang = SUPPORTED_LANGUAGES.find((lang) =>
     lang.code === (i18n?.language || 'en')
@@ -31,12 +33,18 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
       i18n.changeLanguage(lang);
 
       // Update language in DB or cookie via service
-      await updateUserLanguage(user?.uid || '', lang);
+      if (settingsEngine && settingsEngine.owner === user?.uid) {
+        await settingsEngine.document.commit(current => {
+          return { ...current, language: lang };
+        });
+        setLanguageCookie(lang);
+      } else await updateUserLanguage(user?.uid || '', lang);
 
       setOpen(false);
     } catch (error) {
+      if (settingsEngine) void i18n.changeLanguage(currentLang.code);
       console.error('Failed to update language preference:', error);
-      // UI is already updated via i18n, so no need for explicit fallback
+      // The public selector keeps its cookie fallback; an editor failure restores the previous choice.
     }
   };
 
@@ -68,6 +76,7 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
               key={code}
               type="button"
               aria-pressed={currentLang.code === code}
+              disabled={Boolean(settingsEngine && (!settingsEngine.document.state || settingsEngine.document.readOnly))}
               onClick={() => { void changeLanguage(code); }}
               className={`min-h-12 min-w-0 flex-1 rounded-lg px-1 py-2 text-[13px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${currentLang.code === code
                 ? 'bg-blue-50 font-semibold text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
@@ -97,6 +106,7 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
             {SUPPORTED_LANGUAGES.map((lang) => (
               <button
                 key={lang.code}
+                disabled={Boolean(settingsEngine && (!settingsEngine.document.state || settingsEngine.document.readOnly))}
                 onClick={() => changeLanguage(lang.code)}
                 className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between
                   ${lang.code === i18n.language

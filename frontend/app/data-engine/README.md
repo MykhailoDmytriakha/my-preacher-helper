@@ -19,8 +19,8 @@ inventory, not permission to add another bypass.
 
 The engine was merged into `main` on 2026-09-25. The migration log records activation
 of ten production collections that day; verify live configuration before changing it.
-`users` remains outside those switches, and study-material server routes still use the
-guarded legacy bridge. Share links are server-owned capability tokens, not editable
+`users` has a completed consumer migration (2026-09-28), awaiting production activation.
+Study-material server routes still use the guarded legacy bridge. Share links are server-owned capability tokens, not editable
 user documents. A registered schema alone does not prove a consumer has migrated.
 
 ## Public React interface
@@ -157,10 +157,26 @@ writers too (service orders at the `serviceOrders.service.ts` facade and the see
 legacy read of an owner's tombstone answers 404, not 403 (`isOwnersTombstone`); routes that
 match on `userId` already do, because a tombstone names its owner only in `_dataEngineOwner`.
 
-`users` stays on the legacy road by decision: list collections explicitly in
-`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` / `DATA_ENGINE_COLLECTIONS` and leave `users` out
-(`docs/architecture/data-engine-migration-log.md`, Domains). The all-or-nothing
-`*_DATA_ENGINE_ENABLED=true` switches would include it and are not for rollout.
+User settings use one owner-scoped `UserSettingsProvider` inside the private workspace.
+`useUserSettings` shares its public `useDataDocument` editor across navigation and all
+feature consumers; nested document providers cannot replace the settings context.
+`commit` acceptance means durable local ownership, while `UserSettingsSyncStatus` shows
+pending delivery, conflicts, storage failure and recovery. The old query, mutations and
+freshness banner are disabled when `users` is on the engine. Settings remain readable
+through the engine's bounded read-only fallback when local storage cannot open.
+
+Public bootstrap, language and heartbeat use authenticated `/api/me/settings` through
+`serverEdit.server.ts`; the browser no longer opens Firestore for these operations.
+The server derives the document ID from the verified owner, restricts operation/patch
+fields and preserves server-managed fields. `lastSeenAt` follows the same revision/feed
+path; it does not need a Firestore rules bypass. The root language initializer leaves
+an enabled settings editor's draft alone. Public pages retain the cookie fallback.
+
+List collections explicitly in `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` and
+`DATA_ENGINE_COLLECTIONS`. Add `users` only with this migrated client/server bundle;
+production activation and old-device reload proof remain separate from local tests.
+Collection-wide legacy closure still happens last. Do not use the all-or-nothing switches
+for rollout. See `docs/architecture/data-engine-migration-log.md`, Domains.
 
 A domain hook that keeps its screens unchanged exposes the legacy hook's exact interface
 (`ServiceOrdersApi`, the prayer hook) and picks the road with `isCollectionOnEngine`, calling
@@ -290,13 +306,16 @@ an unsaved copy from the previous version.
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or
-replace its persisted cache. For councils, groups, series and sermons it archives
+replace its persisted cache. For councils, groups, series, sermons and users it archives
 owner-scoped copies of cached query rows and paused/error mutation payloads in the engine
 database, including fields no longer present in an optimistic query row. Rows are kept
 because they can hold text the server never received: a council's refused or unsent edit
 lived only in its cached row, and the previous version showed it again and sent it with the
 next edit. Operations without provable ownership stay in quarantine, never assigned to the
-next signed-in account. A failed archive keeps the original cache untouched and holds
+next signed-in account. Settings queries (`user-settings`) require the key owner to match
+the document ID; the optional legacy `userId` must agree too. All seven persisted settings
+mutation kinds retain their original payloads, keyed by their explicit `userId`, never replayed
+through the legacy writer while users is on the engine. A failed archive keeps the original cache untouched and holds
 workspace startup behind an explicit Retry.
 
 **A copy leaves the archive only when it is proven to be an echo of the server.**

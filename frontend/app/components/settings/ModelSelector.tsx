@@ -5,9 +5,10 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { aiFunctionIds, getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
 import type { User } from 'firebase/auth';
@@ -69,7 +70,7 @@ function MiniBar({ value, kind }: { value: 1 | 2 | 3 | 4 | 5; kind: 'quality' | 
 export default function ModelSelector({ user }: ModelSelectorProps) {
   const { t } = useTranslation();
   const { data: entitlement, isLoading: entitlementLoading, isError: entitlementError } = useUserEntitlement(user);
-  const { updateFunctionModelPreference, updatingFunctionModelPreference } = useUserSettings(user?.uid);
+  const { settings, updateFunctionModelPreference, updatingFunctionModelPreference } = useUserSettings(user?.uid);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!user) return null;
@@ -90,15 +91,20 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
   }
 
   const isFree = entitlement.effectiveTier === 'free';
+  const currentSelection = (fn: AiFunctionId) => {
+    const entry = entitlement.functions[fn];
+    const draft = isCollectionOnEngine('users') ? settings?.[preferenceField[fn]] : undefined;
+    return !isFree && draft && entry?.available.some(model => sameTarget(draft, model)) ? draft : entry?.current;
+  };
   const handleSelect = async (fn: AiFunctionId, model: FunctionCatalogEntry) => {
     const functionEntitlement = entitlement.functions[fn];
     if (!functionEntitlement) return;
-    const current = functionEntitlement.current;
+    const current = currentSelection(fn);
     if (isFree || sameTarget(current, model) || updatingFunctionModelPreference) return;
 
     setSaveError(null);
     try {
-      await awaitAcceptance(
+      await awaitSettingsWrite(
         updateFunctionModelPreference({
           [preferenceField[fn]]: { providerId: model.providerId, modelId: model.modelId },
         }),
@@ -129,7 +135,7 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
           // A cached entitlement can have `functions` but still miss one child key.
           // Skip that row until a fresh entitlement arrives instead of crashing Settings.
           if (!functionEntitlement) return null;
-          const current = functionEntitlement.current;
+          const current = currentSelection(fn);
           const allowed = functionEntitlement.available;
           const FunctionIcon = functionIcon[fn];
           return (

@@ -6,14 +6,14 @@ import { useTranslation } from 'react-i18next';
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 export default function PrepModeToggle() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, updatePrepModeAccess } = useUserSettings(user?.uid);
+  const { settings, loading, readOnly, updatePrepModeAccess } = useUserSettings(user?.uid);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -44,7 +44,7 @@ export default function PrepModeToggle() {
 
     try {
       const newValue = !enabled;
-      await awaitAcceptance(updatePrepModeAccess(newValue), reportFailure);
+      await awaitSettingsWrite(updatePrepModeAccess(newValue), reportFailure);
       setEnabled(newValue);
     } catch (error) {
       reportFailure(error);
@@ -56,6 +56,7 @@ export default function PrepModeToggle() {
       title={t('settings.prepMode.title', { defaultValue: 'Preparation Mode (Beta)' })}
       description={t('settings.prepMode.description', { defaultValue: 'Enable access to the new preparation mode workflow' })}
       enabled={enabled}
+      disabled={readOnly}
       onToggle={handleToggle}
       loading={loading && !hasLoaded}
       testId="prep-mode"

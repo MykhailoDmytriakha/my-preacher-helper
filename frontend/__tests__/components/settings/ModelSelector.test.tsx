@@ -33,13 +33,65 @@ const functionsForTier = (free: boolean) => Object.fromEntries(aiFunctionIds.map
 }));
 
 describe('ModelSelector', () => {
+  const previousEnabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  afterEach(() => {
+    if (previousEnabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = previousEnabled;
+    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
+  });
   beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     jest.clearAllMocks();
     mockUseUserSettings.mockReturnValue({
       settings: null,
       updateFunctionModelPreference,
       updatingFunctionModelPreference: false,
     } as unknown as ReturnType<typeof useUserSettings>);
+  });
+
+  it('shows the durable pending model and permits undo before the server accepts it', async () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+    const functions = functionsForTier(false);
+    const accepted = functions.text.current;
+    const pending = getFunctionCatalog('text').find(model => model.modelId !== accepted.modelId)!;
+    mockUseUserEntitlement.mockReturnValue({
+      data: { effectiveTier: 'tier2', functions, usage, paidTier: 'tier2' }, isLoading: false, isError: false,
+    } as unknown as ReturnType<typeof useUserEntitlement>);
+    mockUseUserSettings.mockReturnValue({
+      settings: { preferredText: { providerId: pending.providerId, modelId: pending.modelId } },
+      updateFunctionModelPreference, updatingFunctionModelPreference: false,
+    } as unknown as ReturnType<typeof useUserSettings>);
+    updateFunctionModelPreference.mockResolvedValue(undefined);
+    render(<ModelSelector user={user} />);
+
+    expect(screen.getByRole('radio', { name: name => name.includes(pending.modelId) })).toBeChecked();
+    const acceptedRadio = screen.getByRole('radio', { name: name => name.includes(accepted.modelId) });
+    expect(acceptedRadio).not.toBeChecked();
+    fireEvent.click(acceptedRadio);
+    await waitFor(() => expect(updateFunctionModelPreference).toHaveBeenCalledWith({ preferredText: accepted }));
+  });
+
+  it.each(['tier2', 'free'])('never selects a draft model outside the %s entitlement', tier => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+    const functions = functionsForTier(true);
+    const accepted = functions.text.current;
+    const forbidden = getFunctionCatalog('text').find(model => model.modelId !== accepted.modelId)!;
+    mockUseUserEntitlement.mockReturnValue({
+      data: { effectiveTier: tier, functions, usage, paidTier: tier }, isLoading: false, isError: false,
+    } as unknown as ReturnType<typeof useUserEntitlement>);
+    mockUseUserSettings.mockReturnValue({
+      settings: { preferredText: { providerId: forbidden.providerId, modelId: forbidden.modelId } },
+      updateFunctionModelPreference, updatingFunctionModelPreference: false,
+    } as unknown as ReturnType<typeof useUserSettings>);
+    render(<ModelSelector user={user} />);
+
+    expect(screen.getByRole('radio', { name: name => name.includes(accepted.modelId) })).toBeChecked();
+    const forbiddenRadio = screen.getByRole('radio', { name: name => name.includes(forbidden.modelId) });
+    expect(forbiddenRadio).not.toBeChecked();
+    expect(forbiddenRadio).toBeDisabled();
   });
 
   it('renders all three functions with provider tags and five-segment quality/cost bars', () => {

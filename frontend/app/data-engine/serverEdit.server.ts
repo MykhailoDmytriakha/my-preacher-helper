@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 
 import { isClosedToLegacyWriters, isCollectionServed } from './activation';
-import { assertLegacyWritable, isDataEngineRequired, listOwnedDocuments, mutateLegacyResource, updateLegacyResource } from './legacyBoundary.server';
-import { diffFields } from './protocol';
+import { assertLegacyWritable, DATA_ENGINE_REQUIRED, isDataEngineRequired, LEGACY_REFUSAL_STATUS, listOwnedDocuments, mutateLegacyResource, updateLegacyResource, upsertLegacySettings } from './legacyBoundary.server';
+import { diffFields, getResourcePolicy } from './protocol';
+import { validateResourceDocument } from './resourceSchemas';
 
 import type { DocumentData, ResourceRef } from './types';
 
@@ -26,11 +27,69 @@ import type { DocumentData, ResourceRef } from './types';
  */
 const ATTEMPTS = 3;
 const ENGINE_MARKER = '_dataEngine';
+const INVALID_SETTINGS = 'invalid-argument';
 
 export class ServerEditError extends Error {
   constructor(public readonly code: string, public readonly status: number) {
     super(code);
   }
+}
+
+/** Public sign-in bootstrap reads the same sanitized document as the engine. */
+export async function readOwnSettings(owner: string): Promise<DocumentData | null> {
+  const { readDocument } = await import('./server');
+  return (await readDocument(owner, { collection: 'users', id: owner })).value;
+}
+
+/**
+ * Sign-in happens before the workspace exists. This small server adapter owns only
+ * profile bootstrap and the public language selector; private edits use the browser editor.
+ * Legacy mutations are refused on every served user, including unmarked documents.
+ */
+export async function writeOwnSettings(owner: string, operation: 'bootstrap' | 'language' | 'legacy' | 'heartbeat', patch: DocumentData): Promise<void> {
+  if (typeof operation !== 'string' || !['bootstrap', 'language', 'legacy', 'heartbeat'].includes(operation)) {
+    throw new ServerEditError(INVALID_SETTINGS, 400);
+  }
+  if (operation === 'heartbeat') {
+    if (Object.keys(patch).length) throw new ServerEditError(INVALID_SETTINGS, 400);
+    patch = { lastSeenAt: new Date().toISOString() };
+  }
+  const allowed = operation === 'heartbeat' ? ['lastSeenAt'] : operation === 'bootstrap' ? ['email', 'displayName', 'language']
+    : operation === 'language' ? ['language']
+      : getResourcePolicy('users').writableFields.filter(field => !['createdAt', 'updatedAt', 'lastSeenAt'].includes(field));
+  if (Object.keys(patch).some(field => !allowed.includes(field))) throw new ServerEditError(INVALID_SETTINGS, 400);
+  try { validateResourceDocument('users', patch, { kind: 'update', changedFields: Object.keys(patch) }); }
+  catch { throw new ServerEditError(INVALID_SETTINGS, 400); }
+  const mutate = (current: DocumentData): DocumentData => {
+    const next = { ...current, ...patch };
+    // A remembered cookie is only a default, never authority over an existing choice.
+    if (operation === 'bootstrap' && typeof current.language === 'string' && current.language) next.language = current.language;
+    return next;
+  };
+  if (operation === 'legacy' && isCollectionServed('users')) throw new ServerEditError(DATA_ENGINE_REQUIRED, LEGACY_REFUSAL_STATUS);
+  if (!isCollectionServed('users')) {
+    await upsertLegacySettings(owner, current => mutate(current as DocumentData));
+    return;
+  }
+  const { processCommand, readDocument } = await import('./server');
+  const resource = { collection: 'users', id: owner };
+  const current = await readDocument(owner, resource);
+  if (current.value) {
+    await editOwnedDocument(owner, resource, mutate);
+    return;
+  }
+  // A simultaneous first sign-in may win creation. Re-read through the update
+  // adapter only for that definitive refusal; never replay an indeterminate write.
+  const result = await processCommand(owner, {
+    protocol: 1, operationId: randomUUID(), owner, resource,
+    generation: current.metadata?.generation ?? null, dependsOn: [], kind: 'create', value: mutate({}),
+  });
+  if (result.kind === 'acknowledged') return;
+  if (result.kind === 'refused' && ['already-exists', 'generation-mismatch'].includes(result.code)) {
+    await editOwnedDocument(owner, resource, mutate);
+    return;
+  }
+  throw new ServerEditError(result.kind === 'refused' ? result.code : 'conflict', 409);
 }
 
 const marked = (raw: DocumentData | Record<string, unknown> | undefined): boolean =>

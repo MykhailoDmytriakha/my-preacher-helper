@@ -34,9 +34,9 @@ describe('QueryProvider', () => {
     jest.clearAllMocks();
   });
 
-  it('does not mount the cache persister until engine migration input is durably preserved', async () => {
+  it.each(['councils', 'users'])('does not mount the cache persister until %s migration input is durably preserved', async collection => {
     const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'councils';
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = collection;
     let finish!: () => void;
     jest.mocked(preserveLegacyQueryCache).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     mockCreateIDBPersister.mockReturnValue({ persistClient: jest.fn(), restoreClient: jest.fn(), removeClient: jest.fn() });

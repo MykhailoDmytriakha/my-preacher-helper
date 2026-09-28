@@ -4,6 +4,47 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## User settings — 2026-09-28, local implementation
+
+Owner authorized moving `users` onto the common engine after
+`BUG-20260928-settings-freshness-silent-sdk`: the iPad report showed zero SDK snapshots
+and repeated 15-second initial/manual read timeouts. That evidence identifies a silent
+SDK read path; it does not prove the underlying Safari/storage failure.
+
+- One owner-scoped settings editor serves all private consumers, including language,
+  week start, beta flags, version display and model preferences. Nested document
+  providers cannot shadow it. Local acceptance, queued delivery and server confirmation
+  retain the common engine meanings; storage failure uses the existing read-only copy.
+- Sign-in/profile bootstrap, public language and best-effort heartbeat use the bounded,
+  authenticated `/api/me/settings` adapter. UID comes from the verified token; operation
+  names and writable fields are validated. Metering/referral/admin fields survive edits.
+  Public offline language is cookie-only until a later online choice; it has no second queue.
+- Old settings queries and paused mutations are archived before hydration, with exact
+  payloads and owner isolation. They are never silently reapplied through a legacy writer.
+- Integration review fixed a root language initializer overwriting an engine draft, a
+  model selector hiding a queued selection/undo, and non-string operation coercion at the
+  server boundary. Each has a regression; operation validation was observed red then green.
+
+Local Chrome proof used the existing test account: week start Monday → Sunday → reload,
+language Russian → English → reload, then restored Monday/Russian and verified a new tab.
+The shared pending status appeared during delivery, command/document endpoints answered
+200, and the old settings freshness banner stayed absent. The test account acquired an
+engine migration marker; ordinary preferences were restored. Production switches were
+not changed, and this is not physical iPad/PWA acceptance.
+
+Validation: the complete delivered-source snapshot passed **764 suites / 7659 tests**
+(15 skipped in two suites). The working-tree run initially found a stale direct-write
+ledger, now reduced by four calls, plus the already tracked ignored-dev-page boundary
+issue (`BUG-20260927-boundary-test-counts-ignored-dev-pages`). The delivered snapshot
+includes tracked files and the new migration files, excludes those ignored local probes,
+and passes both architecture gates. Final focused integration rerun: 25/25. TypeScript
+and ESLint on changed files passed (two inherited recovery UI warnings). Full repository
+ESLint also passed with 0 errors / 17 warnings.
+
+Production activation still needs the migrated client/server bundle plus `users` in both
+explicit collection lists. Already marked profiles reject old SDK settings writers, so
+verify/reload owner devices. Collection-wide legacy closure is a separate later step.
+
 ## Audit fixes — 2026-09-27, based on main `ecadddd8`
 
 These fixes are local to branch `data-engine` until explicitly released. They extend the
@@ -561,7 +602,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 | Prayers | 9 | Integrated 2026-09-23 (`usePrayerRequestsEngine`, `d047e319`): list/detail/create/edit/status/updates/delete, per-field baseline refusal with keep-mine/take-theirs; legacy writers guarded | Live update/answer propagation re-check after the quota reset; Preview pass |
 | Service orders | 13 | Integrated 2026-09-23 (`useServiceOrdersEngine`): list, seeding from a fresh list under new ids (a deleted catalog rite is never revived), custom create, rename with the title baseline, steps laid over the current rite, placement as one durable command per rite, delete with its baseline; the rite page follows the row when nothing is unsaved; legacy writers guarded at the facade | Live pass (blocked by the 2026-09-23 quota exhaustion); Preview pass |
 | Plan templates | 5 | Integrated 2026-09-23 (`e9f1102f`): list, create, edit with `rev.template` refusal, delete; legacy writers guarded | Preview pass |
-| User settings | 18 | **Stays legacy by decision, 2026-09-23** — `users` is left out of every switch list. Settings are toggles, not typed text; they are written from public pages and at sign-in where no engine is mounted (language switch, profile), co-written by server metering/referral/admin through the Admin SDK, and the browser heartbeat (`lastSeenAt`) is allowed by the prepared rules only on a non-engine document. Moving them would need three write roads for no protected content | Revisit only with a server settings route through `serverEdit.server.ts` and a rules carve-out for `lastSeenAt`; never set `NEXT_PUBLIC_DATA_ENGINE_ENABLED=true` (it would include `users`) |
+| User settings | 18 | **Consumer migration implemented locally, 2026-09-28** — one shared owner settings editor, engine recovery/read-only fallback, authenticated public bootstrap/language/heartbeat adapter; legacy SDK settings writers removed | Production `users` activation and physical-device/PWA reload verification pending; collection-wide legacy closure remains separate |
 | Tags | 4 | Integrated 2026-09-23 (`e9f1102f`): list, custom create/edit/delete, required tags stay protected; legacy writers guarded | Preview pass |
 | Prayer categories | — | No application code reads or writes a `prayerCategories` collection (only `categoryId` on a prayer); the engine registration exists but no switch is needed | Nothing until a screen uses it |
 | Calendar / care views | — | Read-only projections over the domains above | Follows whatever its underlying domains do |

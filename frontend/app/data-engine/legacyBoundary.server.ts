@@ -119,6 +119,18 @@ export async function updateLegacyResource(resource: { collection: string; id: s
   await updateLegacyDocument(adminDb.collection(resource.collection).doc(resource.id), patch);
 }
 
+/** Bootstrap an own settings document without racing its migration or first creation. */
+export async function upsertLegacySettings(owner: string, mutate: (current: DocumentData) => DocumentData): Promise<void> {
+  const { adminDb } = await import('@/config/firebaseAdminConfig');
+  const reference = adminDb.collection('users').doc(owner);
+  await runLegacyTransaction(async transaction => {
+    const snapshot = await transaction.get(reference);
+    const current = snapshot.exists ? snapshot.data() : undefined;
+    assertLegacyWritable(current, 'users');
+    transaction.set(reference, mutate(current ?? {}), { merge: true });
+  });
+}
+
 /**
  * A legacy read-modify-write addressed by collection and ID: `mutate` sees the document as read
  * inside the transaction and returns the patch, or null to leave it alone. An engine-owned

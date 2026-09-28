@@ -7,7 +7,7 @@ The canonical implementation is now `frontend/app/data-engine/` in `main`. Move 
 ## How
 
 - Screens read and edit through `useDataDocument` / `useDataForm` / `useDataCollection` (`.howto/use-data-engine-in-a-screen.md`). A domain hook that keeps its screens unchanged exposes the legacy hook's interface and picks the road with `isCollectionOnEngine`, calling both hooks with complementary `enabled` flags (`frontend/app/hooks/useServiceOrders.ts`).
-- The engine was merged into `main` on 2026-09-25; the log records ten activated production collections. Verify live switches before claiming present activation. `users` and server-only study-material routes remain explicit exceptions, and collection-wide legacy closure remains pending.
+- The engine was merged into `main` on 2026-09-25; the log records ten activated production collections. Verify live switches before claiming present activation. `users` consumers were migrated locally on 2026-09-28; verify production activation separately. Server-only study-material routes remain an explicit exception, and collection-wide legacy closure remains pending.
 - The collection is registered once: its writable fields in `getResourcePolicy` (`frontend/app/data-engine/protocol.ts`) and its shape in `frontend/app/data-engine/resourceSchemas.ts`.
 - Legacy writers of an engine collection refuse with the typed `data-engine-required` (`assertLegacyClientWriteAllowed`), so an unmigrated screen fails visibly instead of writing around the engine. Server-computed writes go through `writeOwnedDocument` (`frontend/app/data-engine/serverEdit.server.ts`).
 - The bypass ledger `frontend/__tests__/architecture/legacyFirestoreAccess.json` (checked by `dataEngineBoundary.test.ts`) only shrinks — never add an exception.

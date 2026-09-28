@@ -73,8 +73,10 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
 
 /** Fields whose name the person should read in their own words; any other field shows as stored. */
 const NAMED_FIELDS = new Set(['title', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
-  'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached']);
-const NAMED_COLLECTIONS = new Set(['councils', 'groups', 'series', 'sermons']);
+  'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
+  'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
+  'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts']);
+const NAMED_COLLECTIONS = new Set(['councils', 'groups', 'series', 'sermons', 'users']);
 
 /** Bookkeeping never differs in words the person wrote; sorted keys keep both sides line-aligned. */
 const HIDDEN_KEYS = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);

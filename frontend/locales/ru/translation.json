@@ -53,7 +53,8 @@
       "councils": "Братский совет",
       "groups": "Группа",
       "series": "Серия",
-      "sermons": "Проповедь"
+      "sermons": "Проповедь",
+      "users": "Настройки пользователя"
     },
     "field": {
       "title": "Название",
@@ -74,7 +75,21 @@
       "meetingDates": "Встречи",
       "preachDates": "Даты проповеди",
       "tags": "Теги",
-      "isPreached": "Проповедана"
+      "isPreached": "Проповедана",
+      "language": "Язык интерфейса",
+      "email": "Электронная почта",
+      "displayName": "Отображаемое имя",
+      "firstDayOfWeek": "Первый день недели",
+      "enablePrepMode": "Режим подготовки (Beta)",
+      "enableAudioGeneration": "Генерация аудио проповеди (Beta)",
+      "enableStructurePreview": "Предварительный просмотр структуры (Beta)",
+      "enableGroups": "Группы",
+      "showAppVersion": "Показывать версию",
+      "preferredProviderId": "Провайдер ИИ",
+      "preferredModelId": "Модель ИИ",
+      "preferredTranscription": "Модель распознавания речи",
+      "preferredText": "Модель для работы с текстом",
+      "preferredTts": "Модель озвучивания"
     },
     "unchangedLines": "⋯ {{count}} без изменений",
     "untitled": "Без названия",

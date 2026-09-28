@@ -82,7 +82,6 @@
     "services/groups.service.ts#getDocs": 1,
     "services/groups.service.ts#setDoc": 1,
     "services/groups.service.ts#updateDoc": 2,
-    "services/lastSeen.client.ts#setDoc": 1,
     "services/planTemplates.client.ts#deleteDoc": 1,
     "services/planTemplates.client.ts#getDocs": 1,
     "services/planTemplates.client.ts#setDoc": 1,
@@ -122,9 +121,7 @@
     "services/usageLimits.server.ts#get": 1,
     "services/usageLimits.server.ts#runTransaction": 1,
     "services/usageLimits.server.ts#set": 1,
-    "services/userEntitlement.server.ts#get": 1,
-    "services/userSettings.service.ts#getDoc": 1,
-    "services/userSettings.service.ts#setDoc": 1
+    "services/userEntitlement.server.ts#get": 1
   },
   "runtimeImports": {
     "(pages)/(private)/sermons/[id]/page.tsx#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
@@ -262,10 +259,6 @@
     "services/groups.service.ts#sdk-runtime:setDoc": 1,
     "services/groups.service.ts#sdk-runtime:updateDoc": 1,
     "services/groups.service.ts#sdk-runtime:where": 1,
-    "services/lastSeen.client.ts#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
-    "services/lastSeen.client.ts#sdk-runtime:*": 1,
-    "services/lastSeen.client.ts#sdk-runtime:doc": 1,
-    "services/lastSeen.client.ts#sdk-runtime:setDoc": 1,
     "services/outboxReplay.client.ts#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
     "services/outboxReplay.client.ts#sdk-runtime:*": 1,
     "services/outboxReplay.client.ts#sdk-runtime:doc": 1,
@@ -348,12 +341,7 @@
     "services/tag.service.ts#sdk-runtime:updateDoc": 1,
     "services/tag.service.ts#sdk-runtime:where": 1,
     "services/usageLimits.server.ts#database-runtime:config/firebaseAdminConfig.ts#adminDb": 1,
-    "services/userEntitlement.server.ts#database-runtime:config/firebaseAdminConfig.ts#adminDb": 1,
-    "services/userSettings.service.ts#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
-    "services/userSettings.service.ts#sdk-runtime:*": 1,
-    "services/userSettings.service.ts#sdk-runtime:doc": 1,
-    "services/userSettings.service.ts#sdk-runtime:getDoc": 1,
-    "services/userSettings.service.ts#sdk-runtime:setDoc": 1
+    "services/userEntitlement.server.ts#database-runtime:config/firebaseAdminConfig.ts#adminDb": 1
   },
   "legacyHttp": {
     "(pages)/(private)/sermons/[id]/plan/planApi.ts#POST /api/sermons/*/plan": 1,

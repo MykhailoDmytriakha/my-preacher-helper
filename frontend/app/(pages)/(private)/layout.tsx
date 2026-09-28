@@ -17,15 +17,18 @@ import { OutboxDrain } from '@/components/OutboxDrain';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { DataEngineWorkspace } from '@/data-engine/react.client';
+import { UserSettingsProvider, UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
       <DataEngineWorkspace>
+      <UserSettingsProvider>
       <TechnicalDetailsDialog />
       <Suspense fallback={null}>
         <PrivateLayoutContent>{children}</PrivateLayoutContent>
       </Suspense>
+      </UserSettingsProvider>
       </DataEngineWorkspace>
     </ProtectedRoute>
   );
@@ -66,7 +69,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
           </div>
         </>
       )}
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /></div>
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><UserSettingsSyncStatus /></div>
       <main
         id="main-content"
         tabIndex={-1}

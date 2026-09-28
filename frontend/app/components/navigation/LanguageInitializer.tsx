@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useAuth } from '@/providers/AuthProvider';
 import { getCookieLanguage } from '@/services/userSettings.service';
 import { initializeLanguageFromDB } from '@locales/getInitialLang';
@@ -16,6 +17,9 @@ export default function LanguageInitializer() {
   const { i18n } = useTranslation();
   
   useEffect(() => {
+    // The root initializer is outside the workspace: it must not race the engine's
+    // durable language draft with a second server read. Public pages keep the cookie.
+    if (user && isCollectionOnEngine('users')) return;
     if (!loading) {
       if (user) {
         // Initialize language from database for authenticated users

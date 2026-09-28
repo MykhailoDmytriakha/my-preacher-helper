@@ -146,6 +146,91 @@ it('archives paused and failed mutation variables even when queries have expired
   expect(await listLegacyQueryCopies('owner')).toHaveLength(2);
 });
 
+describe('settings migration input', () => {
+  const enabledUsers = (collection: string) => collection === 'users';
+  const settingsQuery = (data: unknown, owner: unknown = 'owner') => ({
+    queryKey: ['user-settings', owner], state: { data, dataUpdatedAt: 40 },
+  });
+
+  it('preserves settings by document ID even when the old row has no userId', async () => {
+    installStorageHarness();
+    const original = { id: 'owner', language: 'ru', enablePrepMode: false, extra: { keep: true } };
+    const optimistic = { ...original, userId: 'owner', enablePrepMode: true };
+    jest.mocked(get).mockResolvedValue({ clientState: { queries: [settingsQuery(original), settingsQuery(optimistic)] } });
+    await preserveLegacyQueryCache(enabledUsers);
+    const copies = await listLegacyQueryCopies('owner');
+    expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([original, optimistic]);
+    expect(copies.every(copy => copy.collection === 'users' && copy.documentId === 'owner' && copy.savedAt === 40)).toBe(true);
+    expect(await listLegacyQueryCopies('other')).toEqual([]);
+    await preserveLegacyQueryCache(enabledUsers);
+    expect(await listLegacyQueryCopies('owner')).toHaveLength(2);
+  });
+
+  it('does not attribute mismatched or ownerless settings rows to a signed-in user', async () => {
+    installStorageHarness();
+    jest.mocked(get).mockResolvedValue({ clientState: { queries: [
+      settingsQuery({ id: 'other', language: 'ru' }),
+      settingsQuery({ id: 'owner', userId: 'other', language: 'ru' }),
+      settingsQuery({ userId: 'owner', language: 'ru' }),
+      settingsQuery({ id: 'owner', language: 'ru' }, null),
+      { queryKey: ['user-settings'], state: { data: { id: 'owner' } } },
+    ] } });
+    await preserveLegacyQueryCache(enabledUsers);
+    expect(await listLegacyQueryCopies('owner')).toEqual([]);
+    expect(await listLegacyQueryCopies('other')).toEqual([]);
+  });
+
+  it('preserves every old toggle and model request without needing a cached row or inventing a baseline', async () => {
+    const disk = installStorageHarness();
+    const operations = ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'];
+    const mutations = operations.map((operation, index) => ({
+      mutationKey: ['user-settings', operation], state: {
+        variables: { userId: 'owner', ...(operation.includes('Preference')
+          ? { preference: { preferredText: { providerId: 'openai', modelId: 'saved-model' } } }
+          : { value: operation === 'firstDayOfWeek' ? 'monday' : false }) },
+        context: { previous: null }, isPaused: index % 2 === 0, status: index % 2 === 0 ? 'pending' : 'error', submittedAt: 25,
+      },
+    }));
+    const ownerless = { mutationKey: ['user-settings', 'prepMode'], state: { variables: { value: true }, isPaused: true } };
+    const anotherOwner = { ...ownerless, state: { ...ownerless.state, variables: { userId: 'other', value: true } } };
+    jest.mocked(get).mockResolvedValue({ clientState: { mutations: [...mutations, ownerless, anotherOwner] } });
+    await preserveLegacyQueryCache(enabledUsers);
+    const copies = await listLegacyQueryCopies('owner');
+    expect(copies.map(copy => JSON.parse(copy.raw))).toEqual(mutations);
+    expect(copies.every(copy => copy.collection === 'users' && copy.documentId === 'owner' && copy.savedAt === 25)).toBe(true);
+    expect((await listLegacyQueryCopies('other')).map(copy => JSON.parse(copy.raw))).toEqual([anotherOwner]);
+    expect(await listLegacyQueryCopies('')).toEqual([]);
+    expect(disk.rows.get(JSON.stringify(['legacy-query', '', 'users', 'unassigned-settings']))).toEqual([
+      expect.objectContaining({ owner: '', raw: JSON.stringify(ownerless, null, 2) }),
+    ]);
+    // A server echo never proves that a queued operation was accepted.
+    expect(await retireLegacyEchoes('owner', async () => ({ id: 'owner', enablePrepMode: false }))).toEqual({ retired: 0, undecided: 0 });
+    expect(await listLegacyQueryCopies('owner')).toHaveLength(7);
+  });
+
+  it('leaves settings input on the legacy road while users is disabled', async () => {
+    installStorageHarness();
+    jest.mocked(get).mockResolvedValue({ clientState: { queries: [settingsQuery({ id: 'owner' })], mutations: [
+      { mutationKey: ['user-settings', 'prepMode'], state: { variables: { userId: 'owner', value: true }, isPaused: true } },
+    ] } });
+    await preserveLegacyQueryCache(collection => collection === 'councils');
+    expect(await listLegacyQueryCopies('owner')).toEqual([]);
+  });
+
+  it('never infers an ownerless settings operation from a coincidentally matching cached ID', async () => {
+    const disk = installStorageHarness();
+    jest.mocked(get).mockResolvedValue({ clientState: {
+      queries: [settingsQuery({ id: 'unassigned-settings' }, 'unassigned-settings')],
+      mutations: [{ mutationKey: ['user-settings', 'prepMode'], state: { variables: { value: true }, isPaused: true } }],
+    } });
+    await preserveLegacyQueryCache(enabledUsers);
+    expect(await listLegacyQueryCopies('unassigned-settings')).toHaveLength(1);
+    expect(disk.rows.get(JSON.stringify(['legacy-query', '', 'users', 'unassigned-settings']))).toEqual([
+      expect.objectContaining({ owner: '', collection: 'users' }),
+    ]);
+  });
+});
+
 it('attributes old ownerless deletes only from a unique cached owner, quarantining ambiguous intent', async () => {
   const disk = installStorageHarness();
   const removed = (id: string) => ({ mutationKey: ['groups', 'delete'], state: { variables: id, isPaused: true } });
@@ -214,6 +299,12 @@ describe('which legacy queries the persisted cache may keep', () => {
   it('leaves collections still on the legacy road and unrelated queries persisted', () => {
     expect(isEngineOwnedLegacyQuery(['groups', 'owner'], onEngine)).toBe(false);
     expect(isEngineOwnedLegacyQuery(['userSettings', 'owner'], onEngine)).toBe(false);
+  });
+
+  it('recognizes only the actual settings key when users is enabled', () => {
+    expect(isEngineOwnedLegacyQuery(['user-settings', 'owner'], collection => collection === 'users')).toBe(true);
+    expect(isEngineOwnedLegacyQuery(['user-settings', 'owner'], onEngine)).toBe(false);
+    expect(isEngineOwnedLegacyQuery(['userSettings', 'owner'], collection => collection === 'users')).toBe(false);
   });
 });
 

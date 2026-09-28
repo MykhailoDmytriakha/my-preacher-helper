@@ -1,294 +1,81 @@
-import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@locales/constants';
+import { requestUserSettings } from '@/services/userSettingsTransport.client';
+import * as service from '@/services/userSettings.service';
+import { COOKIE_LANG_KEY } from '@locales/constants';
 
-const mockDb = { app: 'client-db' };
-const mockDoc = jest.fn((_db: unknown, path: string, id: string) => ({ path, id }));
-const mockGetDoc = jest.fn();
-const mockSetDoc = jest.fn();
-const mockGetClientDb = jest.fn(() => mockDb);
-const mockFetch = jest.fn();
+jest.mock('@/services/userSettingsTransport.client', () => ({ requestUserSettings: jest.fn() }));
+const request = jest.mocked(requestUserSettings);
+const online = (value: boolean) => Object.defineProperty(navigator, 'onLine', { value, configurable: true });
 
-async function importServiceWithClientMocks() {
-  jest.resetModules();
-  process.env.NEXT_PUBLIC_API_BASE = '';
+beforeEach(() => {
+  jest.clearAllMocks();
+  delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  document.cookie = `${COOKIE_LANG_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  online(true);
+  request.mockResolvedValue(null);
+});
+afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; online(true); });
 
-  jest.doMock('@/config/firebaseClientDb', () => ({
-    getClientDb: mockGetClientDb,
-  }));
-  jest.doMock('firebase/firestore', () => ({
-    doc: mockDoc,
-    getDoc: mockGetDoc,
-    setDoc: mockSetDoc,
-  }));
-
-  return import('@/services/userSettings.service');
-}
-
-const docSnap = (id: string, data: Record<string, unknown>, exists = true) => ({
-  id,
-  exists: () => exists,
-  data: () => data,
+it('reads settings without loading browser Firestore', async () => {
+  request.mockResolvedValue({ id: 'owner', userId: 'owner', language: 'en' });
+  await expect(service.getUserSettings('')).resolves.toBeNull();
+  await expect(service.getUserSettings('owner')).resolves.toEqual({ id: 'owner', userId: 'owner', language: 'en' });
+  expect(request).toHaveBeenCalledTimes(1);
 });
 
-describe('userSettings.service', () => {
-  const clearLanguageCookie = () => {
-    document.cookie = `${COOKIE_LANG_KEY}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
-  };
+it('uses cookie immediately for guests and offline language reads', async () => {
+  service.setLanguageCookie('uk');
+  await expect(service.getUserLanguage('')).resolves.toBe('uk');
+  online(false);
+  await expect(service.getUserLanguage('owner')).resolves.toBe('uk');
+  expect(request).not.toHaveBeenCalled();
+});
 
-  const setNavigatorOnline = (online: boolean) => {
-    Object.defineProperty(navigator, 'onLine', { value: online, configurable: true });
-  };
+it('updates the cookie from the server language and initializes a missing language', async () => {
+  request.mockResolvedValueOnce({ id: 'owner', userId: 'owner', language: 'ru' }).mockResolvedValueOnce(null);
+  await expect(service.getUserLanguage('owner')).resolves.toBe('ru');
+  await service.getUserLanguage('owner');
+  expect(request).toHaveBeenLastCalledWith('owner', { operation: 'bootstrap', patch: { language: 'ru' } });
+});
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    global.fetch = mockFetch as unknown as typeof fetch;
-    clearLanguageCookie();
-    setNavigatorOnline(true);
-    mockSetDoc.mockResolvedValue(undefined);
-  });
+it('routes authenticated public language changes through one bounded request', async () => {
+  await service.updateUserLanguage('owner', 'ru');
+  expect(service.getCookieLanguage()).toBe('ru');
+  expect(request).toHaveBeenCalledWith('owner', { operation: 'language', patch: { language: 'ru' } });
+});
 
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_API_BASE;
-    jest.dontMock('@/config/firebaseClientDb');
-    jest.dontMock('firebase/firestore');
-  });
+it('bootstraps only supplied profile fields without passing a body owner', async () => {
+  await service.updateUserProfile('owner', 'name@example.com', 'Name');
+  expect(request).toHaveBeenLastCalledWith('owner', { operation: 'bootstrap', patch: { email: 'name@example.com', displayName: 'Name' } });
+  await service.initializeUserSettings('owner', 'en');
+  expect(request).toHaveBeenLastCalledWith('owner', { operation: 'bootstrap', patch: { language: 'en' } });
+});
 
-  it('reads settings through the client SDK and returns null for empty or missing users', async () => {
-    mockGetDoc
-      .mockResolvedValueOnce(docSnap('user1', { language: 'en', enablePrepMode: true }))
-      .mockResolvedValueOnce(docSnap('missing', {}, false));
+it('never starts a second offline queue for public bootstrap', async () => {
+  online(false);
+  await service.initializeUserSettings('owner', 'uk');
+  await service.updateUserLanguage('owner', 'ru');
+  expect(service.getCookieLanguage()).toBe('ru');
+  expect(request).not.toHaveBeenCalled();
+});
 
-    const service = await importServiceWithClientMocks();
-    await expect(service.getUserSettings('')).resolves.toBeNull();
-    await expect(service.getUserSettings('user1')).resolves.toEqual({
-      id: 'user1',
-      language: 'en',
-      enablePrepMode: true,
-    });
-    await expect(service.getUserSettings('missing')).resolves.toBeNull();
+it('fails closed for every old persisted settings mutation after activation', async () => {
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+  const actions = [
+    () => service.updatePrepModeAccess('owner', true),
+    () => service.updateAudioGenerationAccess('owner', true),
+    () => service.updateStructurePreviewAccess('owner', true),
+    () => service.updateShowAppVersion('owner', true),
+    () => service.updateGroupsAccess('owner', true),
+    () => service.updateFirstDayOfWeek('owner', 'monday'),
+    () => service.updateModelPreference('owner', { preferredProviderId: 'openai', preferredModelId: 'model' }),
+    () => service.updateFunctionModelPreference('owner', { preferredText: { providerId: 'openai', modelId: 'model' } }),
+  ];
+  for (const action of actions) await expect(action()).rejects.toMatchObject({ code: 'data-engine-required' });
+  expect(request).not.toHaveBeenCalled();
+});
 
-    expect(mockGetDoc).toHaveBeenCalledTimes(2);
-    expect(mockDoc).toHaveBeenCalledWith(mockDb, 'users', 'user1');
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('keeps cookie fallback behavior for language reads', async () => {
-    const service = await importServiceWithClientMocks();
-    service.setLanguageCookie('uk');
-
-    await expect(service.getUserLanguage('')).resolves.toBe('uk');
-    expect(mockGetDoc).not.toHaveBeenCalled();
-
-    setNavigatorOnline(false);
-    await expect(service.getUserLanguage('user1')).resolves.toBe('uk');
-    expect(mockGetDoc).not.toHaveBeenCalled();
-  });
-
-  it('syncs language from the client settings doc into the cookie', async () => {
-    const service = await importServiceWithClientMocks();
-    service.setLanguageCookie('ru');
-    mockGetDoc.mockResolvedValueOnce(docSnap('user1', { language: 'en' }));
-
-    await expect(service.getUserLanguage('user1')).resolves.toBe('en');
-
-    expect(service.getCookieLanguage()).toBe('en');
-    expect(mockSetDoc).not.toHaveBeenCalled();
-  });
-
-  it('persists a non-default cookie when the settings doc has no language', async () => {
-    const service = await importServiceWithClientMocks();
-    service.setLanguageCookie('uk');
-    mockGetDoc.mockResolvedValueOnce(docSnap('user1', {}));
-
-    await expect(service.getUserLanguage('user1')).resolves.toBe('uk');
-
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { language: 'uk' },
-      { merge: true }
-    );
-  });
-
-  it('updates language cookie immediately and writes authenticated online users through client SDK', async () => {
-    const service = await importServiceWithClientMocks();
-    await expect(service.updateUserLanguage('', 'uk')).resolves.toBeUndefined();
-    expect(service.getCookieLanguage()).toBe('uk');
-    expect(mockSetDoc).not.toHaveBeenCalled();
-
-    await expect(service.updateUserLanguage('user1', 'ru')).resolves.toBeUndefined();
-    expect(service.getCookieLanguage()).toBe('ru');
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { language: 'ru' },
-      { merge: true }
-    );
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('updates profile and initialization fields through client SDK with whitelist filtering', async () => {
-    const service = await importServiceWithClientMocks();
-    await expect(service.updateUserProfile('user1', 'user@example.com', 'Test User')).resolves.toBeUndefined();
-    await expect(service.initializeUserSettings('user1', 'uk', 'user@example.com', 'Test User')).resolves.toBeUndefined();
-
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { email: 'user@example.com', displayName: 'Test User' },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { language: 'uk', email: 'user@example.com', displayName: 'Test User' },
-      { merge: true }
-    );
-    expect(service.getCookieLanguage()).toBe('uk');
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('writes nothing when there is nothing to write, or nobody to write for', async () => {
-    const service = await importServiceWithClientMocks();
-    await expect(service.updateUserProfile('', 'user@example.com')).resolves.toBeUndefined();
-    await expect(service.updateUserProfile('user1')).resolves.toBeUndefined();
-
-    expect(mockSetDoc).not.toHaveBeenCalled();
-  });
-
-  it('QUEUES an offline settings change instead of dropping it', async () => {
-    // It used to return early offline. The cookie made the new language look
-    // applied on this device while the server never heard about it, so picking up
-    // a phone the next day showed the old one back — a preference silently lost.
-    // The client SDK's own durable buffer replays an ordinary write on reconnect.
-    const service = await importServiceWithClientMocks();
-    setNavigatorOnline(false);
-
-    await expect(service.updateUserLanguage('user1', 'ru')).resolves.toBeUndefined();
-    await expect(service.updateUserProfile('user1', 'user@example.com')).resolves.toBeUndefined();
-    await expect(service.initializeUserSettings('user1', 'uk')).resolves.toBeUndefined();
-
-    const written = mockSetDoc.mock.calls.map((call) => call[1]);
-    expect(written).toEqual(
-      expect.arrayContaining([
-        { language: 'ru' },
-        { email: 'user@example.com' },
-        expect.objectContaining({ language: 'uk' }),
-      ])
-    );
-    // The cookie still gives this device the immediate effect.
-    expect(service.getCookieLanguage()).toBe('uk');
-  });
-
-  it('updates feature flags and calendar preferences through client SDK', async () => {
-    const service = await importServiceWithClientMocks();
-    await service.updatePrepModeAccess('user1', true);
-    await service.updateAudioGenerationAccess('user1', true);
-    await service.updateShowAppVersion('user1', false);
-    await service.updateGroupsAccess('user1', true);
-    await service.updateStructurePreviewAccess('user1', true);
-    await service.updateFirstDayOfWeek('user1', 'monday');
-    await service.updateModelPreference('user1', {
-      preferredProviderId: 'gemini',
-      preferredModelId: 'gemini-2.5-flash-lite',
-    });
-    await service.updateFunctionModelPreference('user1', {
-      preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
-      preferredTts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
-    });
-
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { enablePrepMode: true },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { enableAudioGeneration: true },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      3,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { showAppVersion: false },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      4,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { enableGroups: true },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      5,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { enableStructurePreview: true },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      6,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { firstDayOfWeek: 'monday' },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      7,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      { preferredProviderId: 'gemini', preferredModelId: 'gemini-2.5-flash-lite' },
-      { merge: true }
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      8,
-      expect.objectContaining({ path: 'users', id: 'user1' }),
-      {
-        preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
-        preferredTts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
-      },
-      { merge: true }
-    );
-    expect(mockFetch).not.toHaveBeenCalled();
-  });
-
-  it('surfaces client SDK write failures for throwing update helpers', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    mockSetDoc.mockRejectedValueOnce(new Error('write failed'));
-
-    const service = await importServiceWithClientMocks();
-    await expect(service.updatePrepModeAccess('user1', true)).rejects.toThrow('write failed');
-    expect(consoleSpy).toHaveBeenCalledWith('Error updating prep mode access:', expect.any(Error));
-
-    consoleSpy.mockRestore();
-  });
-
-  it('evaluates access helpers from client settings and preserves offline/guest behavior', async () => {
-    mockGetDoc
-      .mockResolvedValueOnce(docSnap('user1', { enablePrepMode: true }))
-      .mockResolvedValueOnce(docSnap('user1', { enableStructurePreview: true }));
-
-    const service = await importServiceWithClientMocks();
-    await expect(service.hasPrepModeAccess('')).resolves.toBe(true);
-    await expect(service.hasPrepModeAccess('user1')).resolves.toBe(true);
-    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
-    await expect(service.hasStructurePreviewAccess('user1')).resolves.toBe(true);
-
-    setNavigatorOnline(false);
-    await expect(service.hasPrepModeAccess('user1')).resolves.toBe(false);
-    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
-    await expect(service.hasStructurePreviewAccess('user1')).resolves.toBe(false);
-  });
-
-  it('allows released groups without reading legacy preferences, including offline', async () => {
-    const service = await importServiceWithClientMocks();
-    mockGetDoc.mockResolvedValue(docSnap('user1', { enableGroups: false }));
-    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
-    mockGetDoc.mockRejectedValue(new Error('settings unavailable'));
-    setNavigatorOnline(false);
-    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
-    await expect(service.hasGroupsAccess('')).resolves.toBe(false);
-    expect(mockGetDoc).not.toHaveBeenCalled();
-  });
-
-  it('falls back to the default language when no cookie is present', async () => {
-    const service = await importServiceWithClientMocks();
-    expect(service.getCookieLanguage()).toBe(DEFAULT_LANGUAGE);
-  });
+it('routes unconverted settings writes through the guarded server operation', async () => {
+  await service.updateFirstDayOfWeek('owner', 'monday');
+  expect(request).toHaveBeenCalledWith('owner', { operation: 'legacy', patch: { firstDayOfWeek: 'monday' } });
 });

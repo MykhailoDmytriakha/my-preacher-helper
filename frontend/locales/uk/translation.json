@@ -53,7 +53,8 @@
       "councils": "Братська рада",
       "groups": "Група",
       "series": "Серія",
-      "sermons": "Проповідь"
+      "sermons": "Проповідь",
+      "users": "Налаштування користувача"
     },
     "field": {
       "title": "Назва",
@@ -74,7 +75,21 @@
       "meetingDates": "Зустрічі",
       "preachDates": "Дати проповіді",
       "tags": "Теги",
-      "isPreached": "Проповідувано"
+      "isPreached": "Проповідувано",
+      "language": "Мова інтерфейсу",
+      "email": "Електронна пошта",
+      "displayName": "Ім'я користувача",
+      "firstDayOfWeek": "Перший день тижня",
+      "enablePrepMode": "Режим підготовки (Beta)",
+      "enableAudioGeneration": "Генерація аудіо проповіді (Beta)",
+      "enableStructurePreview": "Попередній перегляд структури (Beta)",
+      "enableGroups": "Групи",
+      "showAppVersion": "Показувати версію",
+      "preferredProviderId": "Провайдер ШІ",
+      "preferredModelId": "Модель ШІ",
+      "preferredTranscription": "Модель розпізнавання мовлення",
+      "preferredText": "Модель для роботи з текстом",
+      "preferredTts": "Модель озвучення"
     },
     "unchangedLines": "⋯ {{count}} без змін",
     "untitled": "Без назви",

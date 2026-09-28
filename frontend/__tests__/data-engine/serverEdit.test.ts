@@ -2,7 +2,7 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { isClosedToLegacyWriters, isCollectionServed } from '@/data-engine/activation';
 import { updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
-import { assertServerWritable, editOwnedDocument, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { assertServerWritable, editOwnedDocument, readOwnSettings, writeOwnedDocument, writeOwnSettings } from '@/data-engine/serverEdit.server';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { DocumentReference } from 'firebase-admin/firestore';
@@ -195,4 +195,73 @@ describe('a tag deleted through the engine', () => {
     expect(errors).toHaveBeenCalledWith(expect.stringContaining('sermon broken'), expect.anything());
     errors.mockRestore();
   });
+});
+
+
+describe('settings bootstrap through the shared server protocol', () => {
+  const userPath = 'users/owner-1';
+
+  it('creates a missing profile with a revision, receipt and change head', async () => {
+    await writeOwnSettings('owner-1', 'bootstrap', { language: 'ru', displayName: 'Name' });
+    expect(documents.get(userPath)).toMatchObject({ language: 'ru', displayName: 'Name', _dataEngine: { revision: 1 } });
+    expect([...documents.keys()].some(key => key.startsWith('_dataEngineReceipts/'))).toBe(true);
+    expect([...documents.keys()].some(key => key.startsWith('_dataEngineHeads/'))).toBe(true);
+    await expect(readOwnSettings('owner-1')).resolves.toEqual({ language: 'ru', displayName: 'Name' });
+  });
+
+  it('preserves entitlements and the saved language when bootstrap adopts an existing profile', async () => {
+    documents.set(userPath, { language: 'en', paidTier: 'tier2', usage: { ai: 7 }, role: 'admin' });
+    await writeOwnSettings('owner-1', 'bootstrap', { language: 'ru', email: 'name@example.com' });
+    expect(documents.get(userPath)).toMatchObject({ language: 'en', paidTier: 'tier2', usage: { ai: 7 }, role: 'admin', email: 'name@example.com', _dataEngine: { revision: 1 } });
+  });
+
+  it('handles a simultaneous first sign-in without replacing the winning profile', async () => {
+    interleave = () => documents.set(userPath, { language: 'en', paidTier: 'tier2', _dataEngine: marker });
+    await writeOwnSettings('owner-1', 'bootstrap', { language: 'ru', displayName: 'Name' });
+    expect(documents.get(userPath)).toMatchObject({ language: 'en', paidTier: 'tier2', displayName: 'Name', _dataEngine: { generation: 'g1', revision: 5 } });
+  });
+
+  it('changes public language through the command protocol', async () => {
+    documents.set(userPath, { language: 'en', _dataEngine: marker });
+    await writeOwnSettings('owner-1', 'language', { language: 'uk' });
+    expect(documents.get(userPath)).toMatchObject({ language: 'uk', _dataEngine: { revision: 5 } });
+  });
+
+  it.each(['paidTier', 'promotion', 'usage', 'role', 'referredBy', 'id', 'userId', '_dataEngine'])(
+    'rejects protected %s fields on bootstrap', async field => {
+      await expect(writeOwnSettings('owner-1', 'bootstrap', { [field]: 'forbidden' })).rejects.toMatchObject({ status: 400 });
+      expect(documents.size).toBe(0);
+    });
+
+  it('refuses old mutations on served users before any write', async () => {
+    await expect(writeOwnSettings('owner-1', 'legacy', { enablePrepMode: true })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    expect(documents.size).toBe(0);
+  });
+
+  it.each([{ operation: ['legacy'] }, { operation: ['bootstrap'] }, { operation: 'unknown' }, { operation: null }])('rejects an invalid runtime operation before changing settings (%j)', async ({ operation }) => {
+    documents.set(userPath, { language: 'en', enablePrepMode: false, _dataEngine: marker });
+    await expect(writeOwnSettings('owner-1', operation as never, { language: 'ru' })).rejects.toMatchObject({ status: 400 });
+    expect(documents.get(userPath)).toEqual({ language: 'en', enablePrepMode: false, _dataEngine: marker });
+    expect(documents.size).toBe(1);
+  });
+
+  it('keeps unserved bootstrap compatible and refuses a marked document on an unserved deployment', async () => {
+    jest.mocked(isCollectionServed).mockReturnValue(false);
+    await writeOwnSettings('owner-1', 'bootstrap', { language: 'en' });
+    expect(documents.get(userPath)).toEqual({ language: 'en' });
+    documents.set(userPath, { language: 'en', _dataEngine: marker });
+    await expect(writeOwnSettings('owner-1', 'language', { language: 'ru' })).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(documents.get(userPath)?.language).toBe('en');
+  });
+});
+
+
+it('records server heartbeat through the engine without disturbing entitlement fields', async () => {
+  documents.set('users/owner-1', { paidTier: 'tier2', usage: { ai: 7 }, _dataEngine: marker });
+  const before = Date.now();
+  await writeOwnSettings('owner-1', 'heartbeat', {});
+  const stored = documents.get('users/owner-1')!;
+  expect(stored).toMatchObject({ paidTier: 'tier2', usage: { ai: 7 }, _dataEngine: { revision: 5 } });
+  expect(Date.parse(stored.lastSeenAt as string)).toBeGreaterThanOrEqual(before);
+  await expect(writeOwnSettings('owner-1', 'heartbeat', { lastSeenAt: 'spoof' })).rejects.toMatchObject({ status: 400 });
 });

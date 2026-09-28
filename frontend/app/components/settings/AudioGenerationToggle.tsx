@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 /**
  * Toggle component for enabling/disabling the audio generation beta feature.
@@ -17,7 +17,7 @@ export default function AudioGenerationToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, updateAudioGenerationAccess } = useUserSettings(user?.uid);
+  const { settings, loading, readOnly, updateAudioGenerationAccess } = useUserSettings(user?.uid);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -44,7 +44,7 @@ export default function AudioGenerationToggle() {
 
     try {
       const newValue = !enabled;
-      await awaitAcceptance(updateAudioGenerationAccess(newValue), reportFailure);
+      await awaitSettingsWrite(updateAudioGenerationAccess(newValue), reportFailure);
       setEnabled(newValue);
     } catch (error) {
       reportFailure(error);
@@ -56,6 +56,7 @@ export default function AudioGenerationToggle() {
       title={t('settings.audioGeneration.title', { defaultValue: 'Sermon Audio Generation (Beta)' })}
       description={t('settings.audioGeneration.description', { defaultValue: 'Enable experimental audio generation for sermons' })}
       enabled={enabled}
+      disabled={readOnly}
       onToggle={handleToggle}
       loading={loading && !hasLoaded}
       testId="audio-generation"

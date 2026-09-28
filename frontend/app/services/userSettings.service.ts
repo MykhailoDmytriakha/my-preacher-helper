@@ -1,17 +1,11 @@
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-
-import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { UserSettings } from '@/models/models';
+import { requestUserSettings } from '@/services/userSettingsTransport.client';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@locales/constants';
 
 import type { FirstDayOfWeek } from '@/utils/weekStart';
-
-// Settings reads and writes go through the client Firestore SDK (the `users`
-// doc, keyed by doc-id == uid). The doc-id ownership rule
-// (request.auth.uid == uid) makes reads of a not-yet-existing own doc safe.
-const USERS_COLLECTION = 'users';
 
 export interface ModelPreference {
   preferredProviderId: NonNullable<UserSettings['preferredProviderId']>;
@@ -23,39 +17,11 @@ export type FunctionModelPreference = Pick<
   'preferredTranscription' | 'preferredText' | 'preferredTts'
 >;
 
-// UX / preference fields the client may write to its own settings doc. NEVER add
-// identity fields (`id`, `userId`) or server-managed fields (`paidTier`,
-// `promotion`, `usage`, `role`, `referredBy`): Firestore rules enforce the same boundary.
-// Model fields are preferences only; server resolution validates them against
-// the effective tier allowlist, so writing them never grants model privilege.
-const SETTINGS_WRITABLE_FIELDS = [
-  'language', 'email', 'displayName', 'firstDayOfWeek',
-  'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview', 'enableGroups', 'showAppVersion',
-  'preferredProviderId', 'preferredModelId',
-  'preferredTranscription', 'preferredText', 'preferredTts',
-];
-
-async function getUserSettingsViaClient(userId: string): Promise<UserSettings | null> {
-  const db = getClientDb();
-  const snap = await getDoc(doc(db, USERS_COLLECTION, userId));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...(snap.data() as Omit<UserSettings, 'id'>) } as UserSettings;
-}
-
-// setDoc(merge) = create-or-update, mirroring the server's createOrUpdate: a new
-// user gets a doc with just these fields; an existing doc keeps everything else.
-// Only whitelisted UX fields are ever written from the client.
+// Old persisted query mutations must never become a second writer after activation.
 async function updateUserSettingsViaClient(userId: string, updates: Record<string, unknown>): Promise<void> {
-  const db = getClientDb();
-  const allowed: Record<string, unknown> = {};
-  for (const field of SETTINGS_WRITABLE_FIELDS) {
-    if (updates[field] !== undefined) allowed[field] = updates[field];
-  }
-  if (Object.keys(allowed).length === 0) return;
-  await setDoc(doc(db, USERS_COLLECTION, userId), allowed, { merge: true });
+  assertLegacyClientWriteAllowed('users');
+  await requestUserSettings(userId, { operation: 'legacy', patch: updates });
 }
-
-// Read/language helpers below keep their graceful cookie fallback.
 
 /**
  * Get user language preference - optimized approach
@@ -79,7 +45,7 @@ export async function getUserLanguage(userId: string): Promise<string> {
     const cookieLang = getCookieLanguage();
 
     // 2. Then read from DB (source of truth)
-    const settings = await getUserSettingsViaClient(userId);
+    const settings = await requestUserSettings(userId);
 
     // 3. If DB has a value, use it (and update cookie if different)
     if (settings?.language) {
@@ -121,20 +87,10 @@ export async function updateUserLanguage(userId: string, language: string): Prom
       return;
     }
 
-    // NO early return offline. It used to bail out here, so a language chosen on a
-    // train never reached the server at all: the cookie made it look applied on this
-    // device, and picking up a phone the next day showed the old language back. The
-    // client SDK queues an ordinary write in its own durable buffer and replays it
-    // on reconnect — so we simply write, without awaiting a server that is not there.
-    if (isBrowserOffline()) {
-      void updateUserSettingsViaClient(userId, { language }).catch((error) => {
-        console.error('Queued language update failed', error);
-      });
-      return;
-    }
-
-    // For authenticated users, also update DB (source of truth)
-    await updateUserSettingsViaClient(userId, { language });
+    // Private settings use the engine journal. The public selector has no workspace:
+    // keep the cookie immediately, and make one bounded server attempt without replay.
+    if (isBrowserOffline()) return;
+    await requestUserSettings(userId, { operation: 'language', patch: { language } });
   } catch (error) {
     console.error('Error updating user language:', error);
     // Cookie is already updated, so user experience isn't affected
@@ -163,18 +119,8 @@ export async function updateUserProfile(
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
 
-    // Offline this used to return as if saved and drop the change entirely. The
-    // client SDK's own durable buffer replays an ordinary write on reconnect, so
-    // fire it without awaiting a server that is not there.
-    if (isBrowserOffline()) {
-      void updateUserSettingsViaClient(userId, updates).catch((error) => {
-        console.error('Queued profile update failed', error);
-      });
-      return;
-    }
-
-    // Update settings without specifying language
-    await updateUserSettingsViaClient(userId, updates);
+    if (isBrowserOffline()) return;
+    await requestUserSettings(userId, { operation: 'bootstrap', patch: updates });
   } catch (error) {
     console.error('Error updating user profile:', error);
   }
@@ -242,34 +188,13 @@ export async function initializeUserSettings(
   try {
     if (!userId) return;
 
-    // Build request payload with only provided fields
-    const payload: Record<string, unknown> = { userId };
+    const payload: Record<string, unknown> = {};
     if (language !== undefined) payload.language = language;
     if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
-
-    // Offline: queue the write rather than only setting the cookie. Cookie-only
-    // meant the choice existed on this device and nowhere else, so the next device
-    // showed the old value and the person had no idea why.
-    if (isBrowserOffline()) {
-      void updateUserSettingsViaClient(userId, payload).catch((error) => {
-        console.error('Queued settings initialization failed', error);
-      });
-      if (language) {
-        setLanguageCookie(language);
-      }
-      return;
-    }
-
-    // setDoc(merge) only writes the provided fields; we deliberately do NOT
-    // force a default language here, so a re-init can't clobber an existing
-    // preference.
-    await updateUserSettingsViaClient(userId, payload);
-
-    // Only set language cookie if language was provided
-    if (language) {
-      setLanguageCookie(language);
-    }
+    if (language) setLanguageCookie(language);
+    if (isBrowserOffline()) return;
+    await requestUserSettings(userId, { operation: 'bootstrap', patch: payload });
   } catch (error) {
     console.error('Error initializing user settings:', error);
     // Still set cookie even if DB update fails
@@ -308,7 +233,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     if (!userId) {
       return null;
     }
-    return getUserSettingsViaClient(userId);
+    return requestUserSettings(userId);
   } catch (error) {
     console.error('Error getting user settings:', error);
     throw error;

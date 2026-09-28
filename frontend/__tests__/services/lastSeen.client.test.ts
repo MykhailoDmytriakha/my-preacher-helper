@@ -1,20 +1,8 @@
-import { doc, setDoc } from 'firebase/firestore';
-
-import { getClientDb } from '@/config/firebaseClientDb';
 import { recordLastSeen } from '@/services/lastSeen.client';
+import { requestUserSettings } from '@/services/userSettingsTransport.client';
 
-jest.mock('firebase/firestore', () => ({
-  doc: jest.fn(() => 'user-document'),
-  setDoc: jest.fn(() => Promise.resolve()),
-}));
-
-jest.mock('@/config/firebaseClientDb', () => ({
-  getClientDb: jest.fn(() => 'client-db'),
-}));
-
-const mockDoc = doc as jest.MockedFunction<typeof doc>;
-const mockSetDoc = setDoc as jest.MockedFunction<typeof setDoc>;
-const mockGetClientDb = getClientDb as jest.MockedFunction<typeof getClientDb>;
+jest.mock('@/services/userSettingsTransport.client', () => ({ requestUserSettings: jest.fn(() => Promise.resolve(null)) }));
+const mockRequest = jest.mocked(requestUserSettings);
 
 describe('recordLastSeen', () => {
   let storage: Record<string, string>;
@@ -36,19 +24,13 @@ describe('recordLastSeen', () => {
     jest.restoreAllMocks();
   });
 
-  it('writes one merge heartbeat and records the per-user device timestamp', () => {
+  it('requests one server heartbeat and records the per-user device timestamp', () => {
     const now = Date.parse('2026-07-13T12:00:00.000Z');
     jest.spyOn(Date, 'now').mockReturnValue(now);
 
     recordLastSeen('user-1');
 
-    expect(mockGetClientDb).toHaveBeenCalledTimes(1);
-    expect(mockDoc).toHaveBeenCalledWith('client-db', 'users', 'user-1');
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      'user-document',
-      { lastSeenAt: '2026-07-13T12:00:00.000Z' },
-      { merge: true }
-    );
+    expect(mockRequest).toHaveBeenCalledWith('user-1', { operation: 'heartbeat', patch: {} });
     expect(mockLocalStorage.setItem).toHaveBeenCalledWith(
       'my-preacher-helper:last-seen-at:user-1',
       String(now)
@@ -64,7 +46,7 @@ describe('recordLastSeen', () => {
     recordLastSeen('user-1');
     recordLastSeen('user-1');
 
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
     expect(mockLocalStorage.setItem).toHaveBeenCalledTimes(1);
   });
 });

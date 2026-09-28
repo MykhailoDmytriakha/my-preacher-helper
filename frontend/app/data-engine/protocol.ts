@@ -41,7 +41,7 @@ const fields: Record<string, readonly string[]> = {
   councils: ['title', 'date', 'status', 'heldAt', 'topics'],
   planTemplates: ['name', 'structure'],
   tags: ['name', 'color', 'required'],
-  users: ['language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
+  users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
     'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
     'preferredTranscription', 'preferredText', 'preferredTts'],
 };

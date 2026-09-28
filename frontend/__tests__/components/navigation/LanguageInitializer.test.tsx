@@ -38,7 +38,17 @@ jest.mock('@/services/userSettings.service', () => ({
 }));
 
 describe('LanguageInitializer Component', () => {
+  const previousEnabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  afterEach(() => {
+    if (previousEnabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = previousEnabled;
+    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
+  });
   beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     jest.clearAllMocks();
     mockAuthState = {
       user: null,
@@ -48,6 +58,36 @@ describe('LanguageInitializer Component', () => {
     mockChangeLanguage.mockClear();
     mockInitializeLanguageFromDB.mockClear();
     mockGetCookieLanguage.mockReturnValue('en');
+  });
+
+  test('does not start a competing database language read outside the settings provider after migration', () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+    mockAuthState.user = { uid: 'owner-a' } as any;
+    mockAuthState.isAuthenticated = true;
+    // The root layout mounts this initializer outside UserSettingsProvider.
+    const view = render(<LanguageInitializer />);
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
+
+    mockAuthState.user = { uid: 'owner-b' } as any;
+    view.rerender(<LanguageInitializer />);
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
+
+    mockAuthState.user = null;
+    mockAuthState.isAuthenticated = false;
+    mockGetCookieLanguage.mockReturnValue('ru');
+    view.rerender(<LanguageInitializer />);
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
+    expect(mockChangeLanguage).toHaveBeenCalledWith('ru');
+  });
+
+  test('also defers signed-in initialization when the global engine switch is enabled', () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'true';
+    mockAuthState.user = { uid: 'owner' } as any;
+    mockAuthState.isAuthenticated = true;
+    render(<LanguageInitializer />);
+    expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
   });
 
   test('renders nothing', () => {

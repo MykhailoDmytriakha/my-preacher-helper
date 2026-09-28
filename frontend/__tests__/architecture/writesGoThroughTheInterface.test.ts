@@ -65,7 +65,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   'services/conflictSafeUpdate.client.ts': 5,
   'services/sermons.client.ts': 10,
   'services/groups.service.ts': 3,
-  'services/userSettings.service.ts': 3,
   'services/atomicUpdate.client.ts': 3,
   'services/planTemplates.client.ts': 2,
   'services/prayerRequests.client.ts': 2,
@@ -74,7 +73,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   // `writeBatch` was added to what it looks for.
   'services/seriesMembership.client.ts': 4,
   'services/studies.service.ts': 2,
-  'services/lastSeen.client.ts': 1,
   'services/tag.service.ts': 1,
   // Server-side counters, on documents no editor competes for.
   'services/rateLimit.server.ts': 2,

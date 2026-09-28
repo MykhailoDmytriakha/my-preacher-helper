@@ -103,7 +103,7 @@ const shapes: Record<string, z.ZodRawShape> = {
   councils: { ...owner, ...timestamps, title: text, date: text.optional(), status: z.enum(['preparing', 'held']), heldAt: text.optional(), topics: children(councilTopic) },
   planTemplates: { ...owner, ...timestamps, name: id, structure: outline },
   tags: { ...owner, name: id, color: text, required: boolean, createdAt: text.optional(), updatedAt: text.optional() },
-  users: { language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
+  users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
 };
 
 function invalid(message: string): never {

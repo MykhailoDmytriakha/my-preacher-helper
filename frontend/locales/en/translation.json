@@ -53,7 +53,8 @@
       "councils": "Council",
       "groups": "Group",
       "series": "Series",
-      "sermons": "Sermon"
+      "sermons": "Sermon",
+      "users": "User Settings"
     },
     "field": {
       "title": "Title",
@@ -74,7 +75,21 @@
       "meetingDates": "Meetings",
       "preachDates": "Preaching dates",
       "tags": "Tags",
-      "isPreached": "Preached"
+      "isPreached": "Preached",
+      "language": "Interface language",
+      "email": "Email",
+      "displayName": "Display Name",
+      "firstDayOfWeek": "First day of week",
+      "enablePrepMode": "Preparation Mode (Beta)",
+      "enableAudioGeneration": "Sermon Audio Generation (Beta)",
+      "enableStructurePreview": "Structure Preview (Beta)",
+      "enableGroups": "Groups",
+      "showAppVersion": "Show app version",
+      "preferredProviderId": "AI provider",
+      "preferredModelId": "AI model",
+      "preferredTranscription": "Speech transcription model",
+      "preferredText": "Text model",
+      "preferredTts": "Voice output model"
     },
     "unchangedLines": "⋯ {{count}} unchanged",
     "untitled": "Untitled",

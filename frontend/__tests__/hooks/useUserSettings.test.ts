@@ -28,7 +28,15 @@ const original: UserSettings = {
   showAppVersion: false, firstDayOfWeek: 'sunday',
 };
 const queryKey = ['user-settings', 'user1'];
-type Settings = ReturnType<typeof useUserSettings>;
+type Settings = Omit<ReturnType<typeof useUserSettings>, 'updatePrepModeAccess' | 'updateAudioGenerationAccess' | 'updateStructurePreviewAccess' | 'updateFirstDayOfWeek' | 'updateShowAppVersion' | 'updateModelPreference' | 'updateFunctionModelPreference'> & {
+  updatePrepModeAccess(value: boolean): WriteSubmission;
+  updateAudioGenerationAccess(value: boolean): WriteSubmission;
+  updateStructurePreviewAccess(value: boolean): WriteSubmission;
+  updateFirstDayOfWeek(value: 'sunday' | 'monday'): WriteSubmission;
+  updateShowAppVersion(value: boolean): WriteSubmission;
+  updateModelPreference(value: typeof model): WriteSubmission;
+  updateFunctionModelPreference(value: typeof functionModel): WriteSubmission;
+};
 const model = { preferredProviderId: 'gemini' as const, preferredModelId: 'gemini-2.5-flash-lite' };
 const functionModel = { preferredTts: { providerId: 'openai' as const, modelId: 'gpt-4o-mini-tts' } };
 const operations: {
@@ -59,7 +67,7 @@ const refetch = jest.fn();
 function mount(uid: string | undefined) {
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: queryClient }, children);
-  return renderHook(() => useUserSettings(uid), { wrapper });
+  return renderHook(() => useUserSettings(uid) as Settings, { wrapper });
 }
 
 beforeEach(() => {

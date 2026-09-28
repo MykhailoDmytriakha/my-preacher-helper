@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'dev';
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
@@ -20,7 +20,7 @@ export default function ShowVersionToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, updateShowAppVersion, updatingShowAppVersion } = useUserSettings(user?.uid);
+  const { settings, loading, readOnly, updateShowAppVersion, updatingShowAppVersion } = useUserSettings(user?.uid);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -47,7 +47,7 @@ export default function ShowVersionToggle() {
     };
 
     try {
-      await awaitAcceptance(updateShowAppVersion(newValue), reportFailure);
+      await awaitSettingsWrite(updateShowAppVersion(newValue), reportFailure);
     } catch (error) {
       reportFailure(error);
     }
@@ -62,6 +62,7 @@ export default function ShowVersionToggle() {
         defaultValue: 'Display the deployed build version in Settings (handy for confirming an update went live).',
       })}
       enabled={enabled}
+      disabled={readOnly}
       onToggle={handleToggle}
       loading={loading && !hasLoaded}
       testId="show-version"

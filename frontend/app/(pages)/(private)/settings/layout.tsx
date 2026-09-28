@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
 import SettingsLayout from '@/components/settings/SettingsLayout';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useAuth } from '@/providers/AuthProvider';
@@ -52,7 +53,7 @@ export default function SettingsSectionLayout({ children }: { children: ReactNod
     collection: 'users',
     docId: user?.uid ?? null,
     uid: settingsFreshnessUid,
-    enabled: Boolean(user?.uid),
+    enabled: Boolean(user?.uid) && !isCollectionOnEngine('users'),
     /**
      * This screen holds no copy of the settings document — each toggle fetches the
      * field it owns — so the FIRST server answer is what it opened with. Feeding the
@@ -143,7 +144,7 @@ export default function SettingsSectionLayout({ children }: { children: ReactNod
     <>
       <LanguageInitializer />
       <SettingsLayout title={pageTitle}>
-        {(settingsFreshness.state === 'stale' || settingsFreshness.state === 'unknown') &&
+        {!isCollectionOnEngine('users') && (settingsFreshness.state === 'stale' || settingsFreshness.state === 'unknown') &&
           !settingsFreshnessDismissed && (
             <DataFreshnessBanner
               entityKey="entitySettings"

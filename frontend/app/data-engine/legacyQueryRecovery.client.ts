@@ -37,6 +37,7 @@ const QUERY_SOURCES: Record<string, { collection: string; length: number; kind: 
   sermons: { collection: 'sermons', length: 2, kind: 'list' },
   sermon: { collection: 'sermons', length: 3, kind: OWNER_DETAIL },
   calendarSermons: { collection: 'sermons', length: 4, kind: 'list' },
+  'user-settings': { collection: 'users', length: 2, kind: 'detail' },
 };
 /**
  * A legacy query whose collection the engine now owns. Its rows are a session-only view, so the
@@ -64,6 +65,15 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
   const source = querySource(query, enabled);
   if (!source) return [];
   return source.rows.flatMap((document: unknown) => {
+    // Settings belong to their document ID; older profiles need not store userId.
+    // The owner-scoped query key must agree, and an explicit contradictory owner is refused.
+    if (source.collection === 'users') {
+      if (!object(document) || typeof document.id !== 'string' || !document.id
+        || document.id !== source.identity
+        || (document.userId !== undefined && document.userId !== document.id)) return [];
+      return [{ owner: document.id, collection: source.collection, documentId: document.id,
+        title: document.id, raw: JSON.stringify(document, null, 2), savedAt: source.savedAt }];
+    }
     if (!object(document) || typeof document.id !== 'string' || !document.id
       || typeof document.userId !== 'string' || !document.userId) return [];
     // Old detail keys omit owner; the complete document still names its owner.
@@ -78,10 +88,15 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
 const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   groups: ['create', 'update', 'delete'], series: ['create', 'update', 'delete'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
+  'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
 const textField = (value: unknown): string | null => typeof value === 'string' && value ? value : null;
 function mutationIdentity(collection: string, operation: string, variables: unknown) {
   const fields = object(variables) ? variables : {};
+  if (collection === 'users') {
+    const explicitOwner = textField(fields.userId);
+    return { documentId: explicitOwner ?? 'unassigned-settings', explicitOwner, title: `${operation}: ${explicitOwner ?? 'unassigned-settings'}` };
+  }
   const documentId = (operation === 'delete' ? textField(variables) : null)
     ?? textField(fields.sermonId) ?? textField(fields.id) ?? textField(fields.seriesId) ?? 'unassigned-create';
   const explicitOwner = textField(collection === 'sermons' ? fields.uid : fields.userId);
@@ -94,12 +109,12 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
   return mutations.flatMap((mutation): Candidate[] => {
     if (!object(mutation) || !Array.isArray(mutation.mutationKey) || !object(mutation.state)) return [];
     const [prefix, operation] = mutation.mutationKey;
-    const collection = prefix === 'dashboardSermons' ? 'sermons' : String(prefix);
+    const collection = prefix === 'dashboardSermons' ? 'sermons' : prefix === 'user-settings' ? 'users' : String(prefix);
     if (mutation.mutationKey.length !== 2 || !MUTATION_OPERATIONS[String(prefix)]?.includes(String(operation)) || !enabled(collection)) return [];
     const { documentId, explicitOwner, title } = mutationIdentity(collection, String(operation), mutation.state.variables);
     const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
     // Old deletes have only an ID. An ambiguous owner remains quarantined (owner='').
-    const owner = explicitOwner ?? (cachedOwners.size === 1 ? [...cachedOwners][0] : '');
+    const owner = explicitOwner ?? (collection !== 'users' && cachedOwners.size === 1 ? [...cachedOwners][0] : '');
     return [{ owner, collection, documentId, title, raw: JSON.stringify(mutation, null, 2),
       savedAt: typeof mutation.state.submittedAt === 'number' ? mutation.state.submittedAt : null }];
   });
@@ -149,7 +164,7 @@ export async function preserveLegacyQueryCache(enabled: (collection: string) => 
 }
 
 async function archiveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
-  if (!['councils', 'groups', 'series', 'sermons'].some(enabled)) return;
+  if (!['councils', 'groups', 'series', 'sermons', 'users'].some(enabled)) return;
   const persisted: unknown = await get('react-query-cache', queryCacheStore);
   if (!object(persisted) || !object(persisted.clientState)) return;
   const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));

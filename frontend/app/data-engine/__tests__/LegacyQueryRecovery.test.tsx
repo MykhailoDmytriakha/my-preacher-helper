@@ -120,6 +120,24 @@ describe('legacy cache preservation UI', () => {
     expect(within(row).queryByText('legacyRecovery.field.title')).not.toBeInTheDocument();
   });
 
+  it('names settings and every changed user preference with localized recovery labels', async () => {
+    const fields = ['language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
+      'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
+      'preferredTranscription', 'preferredText', 'preferredTts'];
+    mockServerCopies.set('users/owner', { id: 'owner', ...Object.fromEntries(fields.map(field => [field, 'server'])) });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([{
+      ...record, collection: 'users', documentId: 'owner', title: 'owner',
+      raw: JSON.stringify({ id: 'owner', ...Object.fromEntries(fields.map(field => [field, 'device'])) }),
+    }]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(screen.getByText('legacyRecovery.collection.users')).toBeInTheDocument();
+    for (const field of fields) {
+      expect(screen.getByText(`legacyRecovery.field.${field}`)).toBeInTheDocument();
+    }
+  });
+
   it('keeps the server version of one copy and reads the archive again', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Funerals', updatedAt: '2026-09-16T00:00:00.000Z' });
     const copy = rowCopy('c1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Old', updatedAt: '2026-09-03T00:00:00.000Z' });

@@ -4,7 +4,7 @@ import React from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
-import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
+import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
 import type { CollectionState } from '../collections';
 import type { EditorState, RecoveryCheckpoint } from '../controller';
@@ -14,6 +14,24 @@ import type { JournalEntry, ResourceRef, ResourceSnapshot } from '../types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('../browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+
+it('keeps legacy settings session-only exactly while users is on the engine', () => {
+  const enabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+  const collections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  try {
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
+    expect(shouldPersistLegacyQuery(['user-settings', 'owner'])).toBe(false);
+    expect(shouldPersistLegacyQuery(['me', 'entitlement'])).toBe(true);
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'councils';
+    expect(shouldPersistLegacyQuery(['user-settings', 'owner'])).toBe(true);
+  } finally {
+    if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
+    if (collections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = collections;
+  }
+});
 
 const resource = { collection: 'studyNotes', id: 'note' };
 const snapshot = (content = 'base', revision = 1): ResourceSnapshot => ({ resource, value: { content }, metadata: { protocol: 1, generation: 'gen', revision, deleted: false } });

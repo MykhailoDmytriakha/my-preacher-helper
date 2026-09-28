@@ -5,7 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { FirstDayOfWeek, normalizeFirstDayOfWeek } from '@/utils/weekStart';
 
 interface UserSettingsSectionProps {
@@ -39,7 +39,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
     };
 
     try {
-      await awaitAcceptance(updateFirstDayOfWeek(value), reportFailure);
+      await awaitSettingsWrite(updateFirstDayOfWeek(value), reportFailure);
     } catch (error) {
       reportFailure(error);
     }

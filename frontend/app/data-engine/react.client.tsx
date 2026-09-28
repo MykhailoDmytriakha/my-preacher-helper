@@ -97,13 +97,13 @@ export function shouldPersistLegacyQuery(queryKey: readonly unknown[]): boolean 
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return (['councils', 'groups', 'series', 'sermons'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  return (['councils', 'groups', 'series', 'sermons', 'users'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
 export function LegacyDataRecoveryNotice() {
   const { user } = useAuth();
-  return user?.uid && (['councils', 'groups', 'series', 'sermons'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
+  return user?.uid && (['councils', 'groups', 'series', 'sermons', 'users'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */
