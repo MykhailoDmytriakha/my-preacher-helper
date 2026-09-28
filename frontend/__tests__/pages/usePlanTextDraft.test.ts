@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import usePlanTextDraft from '@/(pages)/(private)/sermons/[id]/plan/usePlanTextDraft';
-import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, isDraftStorageRefused, readDraft, saveDraft } from '@/utils/durableDraft';
 
 /**
  * THE DRAFT IS THE LAST COPY, SO IT IS JUDGED BY WHETHER IT SURVIVES.
@@ -58,6 +58,57 @@ afterEach(() => {
 });
 
 describe('the plan draft', () => {
+  it('tries again to keep a cell the browser refused, instead of believing the copy landed', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    const view = render({ content: { p1: 'typed' }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    expect(storedCell('p1')).toBeUndefined();
+    setItem.mockRestore();
+    // Same text, room again: the copy is written now — it was never ours before.
+    view.rerender({ content: { p1: 'typed' }, modified: { p1: true }, pending: new Set(), live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    expect(storedCell('p1')).toBe('typed');
+    view.unmount();
+    jest.mocked(console.error).mockRestore();
+  });
+
+  it('stops warning about a refused copy once that cell is saved', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    const view = render({ content: { p1: 'typed' }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    expect(isDraftStorageRefused()).toBe(true);
+    // The server took the text; storage is still refusing, and no copy ever landed.
+    view.rerender({ content: { p1: 'typed' }, modified: {}, pending: new Set(), live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    setItem.mockRestore();
+    expect(isDraftStorageRefused()).toBe(false);
+    view.unmount();
+    jest.mocked(console.error).mockRestore();
+  });
+
+  it('shows the last copy of a card whose point is gone, keeps it after the offer is settled, and forgets only what was seen', () => {
+    storeCells({ p1: 'live card', gone: 'text of a removed point' });
+    const view = render({ live: new Set(['p1']) });
+    expect(view.result.current.recovered).toEqual({ p1: 'live card' });
+    expect(view.result.current.orphaned).toEqual([{ id: 'gone', text: 'text of a removed point' }]);
+
+    act(() => { view.result.current.accept(); });
+    expect(view.result.current.recovered).toBeNull();
+    expect(view.result.current.orphaned).toEqual([{ id: 'gone', text: 'text of a removed point' }]);
+
+    // Another tab has written newer text under the key meanwhile: letting go of what was seen leaves it.
+    saveDraft(cellKey('gone'), 'newer text from another tab');
+    act(() => { view.result.current.forget({ gone: 'text of a removed point' }); });
+    expect(storedCell('gone')).toBe('newer text from another tab');
+    expect(view.result.current.orphaned).toEqual([]);
+
+    saveDraft(cellKey('gone'), 'text of a removed point');
+    act(() => { view.result.current.forget({ gone: 'text of a removed point' }); });
+    expect(storedCell('gone')).toBeUndefined();
+  });
+
   it('offers what a previous session left unconfirmed', () => {
     storeCells({ p1: 'written last night' });
 

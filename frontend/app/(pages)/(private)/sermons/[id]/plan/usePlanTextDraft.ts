@@ -44,6 +44,10 @@ export interface PlanTextDraft {
   accept: () => void;
   /** The person does not want them. Deletes exactly the cells that were offered — no others. */
   discard: () => void;
+  /** Last-copy drafts of cells whose node is gone — shown, never offered back. */
+  orphaned: { id: string; text: string }[];
+  /** Remove the stored copies of cells the person let go after seeing them (compare-before-delete). */
+  forget: (cells: Record<string, string>) => void;
 }
 
 /** How long to coalesce keystrokes before touching storage. */
@@ -105,6 +109,8 @@ export default function usePlanTextDraft({
 
   /** What THIS screen last stored per cell, so it can retire its own writes and no one else's. */
   const oursRef = useRef<Record<string, string>>({});
+  /** Cells whose copy the browser refused, with the text that was refused. */
+  const owedRef = useRef<Record<string, string>>({});
   const unconfirmedRef = useRef(unconfirmed);
   unconfirmedRef.current = unconfirmed;
   const enabledRef = useRef(enabled);
@@ -119,8 +125,13 @@ export default function usePlanTextDraft({
     const cells = unconfirmedRef.current;
     Object.entries(cells).forEach(([nodeId, text]) => {
       if (oursRef.current[nodeId] === text) return;
-      saveDraft(cellKey(owner, docId, nodeId), text);
-      oursRef.current[nodeId] = text;
+      // Only a copy that landed is ours; a refused one is tried again on the next pass.
+      if (saveDraft(cellKey(owner, docId, nodeId), text)) {
+        oursRef.current[nodeId] = text;
+        delete owedRef.current[nodeId];
+      } else {
+        owedRef.current[nodeId] = text;
+      }
     });
 
     /**
@@ -132,6 +143,12 @@ export default function usePlanTextDraft({
       if (nodeId in cells) return;
       clearDraftIfMatches(cellKey(owner, docId, nodeId), oursRef.current[nodeId]);
       delete oursRef.current[nodeId];
+    });
+    // A cell confirmed while its copy was refused: the copy it was owed is no longer needed.
+    Object.keys(owedRef.current).forEach((nodeId) => {
+      if (nodeId in cells) return;
+      clearDraftIfMatches(cellKey(owner, docId, nodeId), owedRef.current[nodeId]);
+      delete owedRef.current[nodeId];
     });
   }, []);
 
@@ -193,19 +210,50 @@ export default function usePlanTextDraft({
   const offerRef = useRef(offer);
   offerRef.current = offer;
 
-  const accept = useCallback(() => setFound(null), []);
+  /** Last-copy drafts of cells whose node is gone: never offered back, shown instead (OrphanedPlanText). */
+  const orphaned = useMemo(() => Object.entries(found ?? {})
+    .filter(([nodeId, text]) => !liveNodeIds.has(nodeId) && text.trim() !== "")
+    .map(([id, text]) => ({ id, text })), [found, liveNodeIds]);
+  const foundRef = useRef(found);
+  foundRef.current = found;
+  const liveNodeIdsRef = useRef(liveNodeIds);
+  liveNodeIdsRef.current = liveNodeIds;
+
+  /** Settling the offer settles only what was offered; drafts of gone nodes stay to be shown. */
+  const keepOnlyOrphaned = useCallback(() => setFound((previous) => {
+    const rest = Object.fromEntries(Object.entries(previous ?? {}).filter(([nodeId]) => !liveNodeIdsRef.current.has(nodeId)));
+    return Object.keys(rest).length ? rest : null;
+  }), []);
+  const accept = keepOnlyOrphaned;
 
   const discard = useCallback(() => {
     const { uid: owner, sermonId: docId } = addressRef.current;
     const rejected = offerRef.current;
-    setFound(null);
+    keepOnlyOrphaned();
     if (!owner || !docId || !rejected) return;
     // Exactly what was on screen, compared before deleting: a cell someone has typed into since
     // the offer appeared belongs to them now, not to this dismissal.
     Object.entries(rejected).forEach(([nodeId, text]) => {
       clearDraftIfMatches(cellKey(owner, docId, nodeId), text);
     });
+  }, [keepOnlyOrphaned]);
+
+  /**
+   * The person let these cells go after seeing them. Only the copy they saw, or the one this screen
+   * stored, is removed — a newer text another tab has put under the key since stays.
+   */
+  const forget = useCallback((cells: Record<string, string>) => {
+    const { uid: owner, sermonId: docId } = addressRef.current;
+    if (!owner || !docId) return;
+    Object.entries(cells).forEach(([nodeId, text]) => {
+      const key = cellKey(owner, docId, nodeId);
+      new Set([text, oursRef.current[nodeId], foundRef.current?.[nodeId]]).forEach((seen) => {
+        if (seen !== undefined) clearDraftIfMatches(key, seen);
+      });
+      delete oursRef.current[nodeId];
+    });
+    setFound((previous) => previous && Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !(nodeId in cells))));
   }, []);
 
-  return useMemo(() => ({ recovered: offer, accept, discard }), [accept, discard, offer]);
+  return useMemo(() => ({ recovered: offer, accept, discard, orphaned, forget }), [accept, discard, offer, orphaned, forget]);
 }

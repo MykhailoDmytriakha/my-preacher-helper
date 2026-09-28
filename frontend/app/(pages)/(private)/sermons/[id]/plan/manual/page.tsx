@@ -27,7 +27,8 @@ import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
 import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
-import { PlanDraftRecoveryBar } from "../PlanDraftRecoveryBar";
+import { mergeOrphans, OrphanedPlanText, orphanedCells } from "../OrphanedPlanText";
+import { PlanDraftRecoveryBar, recoveredCells } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
 import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
@@ -328,6 +329,11 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
     pendingNodeIds: conspectus.pendingNodeIds,
     liveNodeIds: livePlanNodes,
   });
+  /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
+  const orphans = mergeOrphans(
+    orphanedCells(conspectus.contentByNodeId, conspectus.modifiedNodeIds, livePlanNodes),
+    draft.orphaned
+  );
 
   /**
    * DOES THE SERVER HOLD A NEWER PLAN?
@@ -546,7 +552,7 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
 
       {draft.recovered && (
         <PlanDraftRecoveryBar
-          count={Object.keys(draft.recovered).length}
+          cells={recoveredCells(draft.recovered, sermon)}
           onRestore={() => {
             conspectus.restoreCells(draft.recovered ?? {});
             draft.accept();
@@ -554,6 +560,14 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
           onDiscard={draft.discard}
         />
       )}
+
+      <OrphanedPlanText
+        cells={orphans}
+        onDiscard={(nodeIds) => {
+          draft.forget(Object.fromEntries(orphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
+          conspectus.discardCells(nodeIds);
+        }}
+      />
 
       {/* Like the paired screen: never in the preaching or immersive views, which return
           above — someone standing in front of a congregation must not be handed a decision. */}

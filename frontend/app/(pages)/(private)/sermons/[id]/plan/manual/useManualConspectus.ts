@@ -7,10 +7,11 @@ import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
-import { readPlanText } from "@/utils/planText";
+import { liveNodeIds, readPlanText } from "@/utils/planText";
 import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
+import { orphanedCells } from "../OrphanedPlanText";
 import { usePlanTextBaseline } from "../planTextBaseline";
 import { usePlanWriter } from "../planWriter";
 import { usePendingPlanCells } from "../usePendingPlanCells";
@@ -52,6 +53,8 @@ export interface ManualConspectus {
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
   restoreCells: (cells: Record<string, string>) => void;
+  /** Drop unsaved cells the person chose to let go (their node is gone and they have seen the text). */
+  discardCells: (nodeIds: string[]) => void;
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
   addPoint: (section: SermonSectionKey, title: string) => void;
   addSubPoint: (pointId: string, title: string) => void;
@@ -389,9 +392,33 @@ export function useManualConspectus({
     }
   }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
 
+  /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
+  const discardCells = useCallback((nodeIds: string[]) => {
+    const dropped = new Set(nodeIds);
+    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
+    setContentByNodeId(keep);
+    setModifiedNodeIds(keep);
+  }, []);
+
   const saveModified = useCallback(async (): Promise<boolean> => {
-    const dirty = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
-    if (dirty.length === 0) return true;
+    const unsaved = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
+    if (unsaved.length === 0) return true;
+    /**
+     * A cell whose node is gone is not written: under a dead id no screen would ever show it
+     * again. It stays in the OrphanedPlanText area, and the save reports "not everything" so a
+     * departure waits until the person copies it or lets it go. An EMPTY one holds nothing to
+     * decide about and no control to decide with — it is let go here, or leaving would wait
+     * for a choice the screen never offers.
+     */
+    const live = liveNodeIds(sermonRef.current?.outline);
+    const dirty = unsaved.filter((id) => live.has(id));
+    const held = orphanedCells(contentRef.current, modifiedNodeIds, live).map((cell) => cell.id);
+    const blank = unsaved.filter((id) => !live.has(id) && !held.includes(id));
+    if (blank.length > 0) discardCells(blank);
+    const orphaned = held.length > 0;
+    // Leaving waits for the person's decision about that text — say why, or the page just sits there.
+    if (orphaned) toast.warning(t("plan.orphanedBlocksLeaving"));
+    if (dirty.length === 0) return !orphaned;
 
     /**
      * ONE WRITE FIRST, AND CELL BY CELL ONLY IF THAT ONE IS REFUSED.
@@ -466,8 +493,8 @@ export function useManualConspectus({
     // One message for the whole departure, not one per cell.
     if (outcome.queued) toast.info(t("connection.offlineBanner"));
     if (outcome.refused) announceRefusal();
-    return outcome.saved;
-  }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
+    return outcome.saved && !orphaned;
+  }, [announceRefusal, discardCells, isConflict, modifiedNodeIds, settle, t, writeText]);
 
   // Wired after definition so the refusal message can re-enter it without a circular hook.
   saveModifiedRef.current = saveModified;
@@ -762,6 +789,7 @@ export function useManualConspectus({
     pendingNodeIds,
     setNodeContent,
     restoreCells,
+    discardCells,
     savePoint,
     addPoint,
     addSubPoint,

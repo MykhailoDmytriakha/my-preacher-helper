@@ -65,7 +65,38 @@ function storage(): Storage | null {
 }
 
 /**
- * Persist a draft. Never throws: losing the safety net must not break typing.
+ * WHETHER THIS DEVICE CAN KEEP DRAFTS AT ALL (BUG-20260815-durable-draft-fails-silently-when-storage-refuses).
+ *
+ * A refused save used to be silent, so every screen went on believing its safety net held. Which
+ * drafts are owed a copy the browser refused is kept here, once for the whole app: the app-wide
+ * DraftStorageNotice shows while any is owed, and a key leaves only when its own copy lands, the
+ * draft is retired, or the very text that was refused is confirmed by the server — a small draft
+ * that saves never hides another that did not, and a saved one never keeps the notice up.
+ */
+const refusedDraftKeys = new Map<string, string>();
+const draftStorageListeners = new Set<() => void>();
+
+function recordDraftStorage(key: string, refused: false): void;
+function recordDraftStorage(key: string, refused: true, value: unknown): void;
+function recordDraftStorage(key: string, refused: boolean, value?: unknown): void {
+  const before = refusedDraftKeys.size > 0;
+  if (refused) refusedDraftKeys.set(key, serializeContent(value)); else refusedDraftKeys.delete(key);
+  if (before === refusedDraftKeys.size > 0) return;
+  draftStorageListeners.forEach(listener => { try { listener(); } catch { /* a listener never breaks typing */ } });
+}
+
+export function isDraftStorageRefused(): boolean {
+  return refusedDraftKeys.size > 0;
+}
+
+export function subscribeDraftStorage(listener: () => void): () => void {
+  draftStorageListeners.add(listener);
+  return () => { draftStorageListeners.delete(listener); };
+}
+
+/**
+ * Persist a draft and say whether it landed. Never throws: losing the safety net must not break
+ * typing — but it must not go unnoticed either.
  *
  * On a quota error we evict the OLDEST ORDINARY drafts (never the one being
  * written, and never a `conflict:` record) and retry once.
@@ -76,9 +107,12 @@ function storage(): Storage | null {
  * backup for an original. Adversarial review found the old eviction sweeping
  * those away silently.
  */
-export function saveDraft<T>(key: string, value: T, protectKey?: string): void {
+export function saveDraft<T>(key: string, value: T, protectKey?: string): boolean {
   const store = storage();
-  if (!store) return;
+  if (!store) {
+    recordDraftStorage(key, true, value);
+    return false;
+  }
 
   const payload = JSON.stringify({ value, savedAt: Date.now() } satisfies DurableDraft<T>);
 
@@ -89,11 +123,15 @@ export function saveDraft<T>(key: string, value: T, protectKey?: string): void {
     try {
       store.setItem(key, payload);
     } catch {
-      // Out of room even after eviction. Say so once: for a conflict record this
-      // is the last copy of refused text, and silence would be the loss itself.
+      // Out of room even after eviction: for a conflict record this is the last copy of
+      // refused text, and silence would be the loss itself.
       console.error('durableDraft: no room to persist', key);
+      recordDraftStorage(key, true, value);
+      return false;
     }
   }
+  recordDraftStorage(key, false);
+  return true;
 }
 
 /** Read a draft, or null when absent/unparsable. Never throws. */
@@ -114,6 +152,8 @@ export function readDraft<T>(key: string): DurableDraft<T> | null {
 
 /** Drop a draft unconditionally (the user discarded it). Never throws. */
 export function clearDraft(key: string): void {
+  // A retired draft is no longer owed a copy.
+  recordDraftStorage(key, false);
   const store = storage();
   if (!store) return;
   try {
@@ -133,6 +173,8 @@ export function clearDraft(key: string): void {
  * first means A's success only ever retires A's own draft.
  */
 export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
+  // The text whose copy was refused is on the server now: that copy is no longer owed.
+  if (refusedDraftKeys.get(key) === serializeContent(confirmed)) recordDraftStorage(key, false);
   const stored = readDraft<T>(key);
   if (!stored) return;
   if (serializeContent(stored.value) !== serializeContent(confirmed)) return;
@@ -157,7 +199,16 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
 export function moveDraft(fromKey: string, toKey: string): void {
   if (fromKey === toKey) return;
   const stored = readDraft<unknown>(fromKey);
-  if (!stored) return;
+  if (!stored) {
+    // A copy the browser refused has nothing to move — but the debt moves with the document,
+    // or confirming the text under its new key would never retire it.
+    const owed = refusedDraftKeys.get(fromKey);
+    if (owed !== undefined) {
+      refusedDraftKeys.delete(fromKey);
+      refusedDraftKeys.set(toKey, owed);
+    }
+    return;
+  }
   // The source is protected from eviction: making room for the copy by deleting the
   // very thing being copied is how a move ends with the text nowhere at all.
   saveDraft(toKey, stored.value, fromKey);

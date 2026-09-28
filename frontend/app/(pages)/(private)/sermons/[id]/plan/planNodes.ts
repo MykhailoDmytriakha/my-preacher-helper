@@ -1,4 +1,4 @@
-import type { SermonPoint, SubPoint } from "@/models/models";
+import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
 
 /**
  * A PLAN NODE is one cell of the outline a preacher writes into.
@@ -60,4 +60,20 @@ export function pointHasContent(
   contentByNodeId: Record<string, string>
 ): boolean {
   return planNodesForPoint(outlinePoint).some((node) => Boolean(contentByNodeId[node.id]?.trim()));
+}
+
+/**
+ * Every cell's name as the preacher sees it — "2 · Point" for a point, "2.1 · Sub-point" for a
+ * sub-point — so text offered back from a draft can say which card it belongs to.
+ */
+export function planNodeNames(outline: SermonOutline | null | undefined): Record<string, string> {
+  const names: Record<string, string> = {};
+  (["introduction", "main", "conclusion"] as const).forEach((section) => {
+    (outline?.[section] ?? []).forEach((point, pointIndex) => {
+      planNodesForPoint(point, pointIndex).forEach((node) => {
+        names[node.id] = `${node.label} · ${node.kind === "point" ? point.text : node.heading}`;
+      });
+    });
+  });
+  return names;
 }

@@ -199,3 +199,63 @@ describe('moveDraft — a new note keeps a durable home while its id changes', (
     consoleError.mockRestore();
   });
 });
+
+describe('a device that refuses to keep drafts', () => {
+  afterEach(() => { jest.restoreAllMocks(); localStorage.clear(); });
+
+  it('says so instead of pretending the copy landed, and says it is fine again once one lands', () => {
+    // A fresh module: the refusal state is app-wide and would otherwise carry other tests' keys.
+    let fresh!: typeof import('../durableDraft');
+    jest.isolateModules(() => { fresh = jest.requireActual('../durableDraft'); });
+    const { saveDraft, isDraftStorageRefused, subscribeDraftStorage, clearDraft } = fresh;
+    const heard = jest.fn();
+    const stop = subscribeDraftStorage(heard);
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    expect(saveDraft('draft:v1:u:d:a', 'typed')).toBe(false);
+    expect(isDraftStorageRefused()).toBe(true);
+    expect(heard).toHaveBeenCalledTimes(1);
+    jest.mocked(Storage.prototype.setItem).mockRestore();
+    // Another draft landing does not hide the one still owed a copy.
+    expect(saveDraft('draft:v1:u:d:b', 'small')).toBe(true);
+    expect(isDraftStorageRefused()).toBe(true);
+    expect(saveDraft('draft:v1:u:d:a', 'typed')).toBe(true);
+    expect(isDraftStorageRefused()).toBe(false);
+    expect(heard).toHaveBeenCalledTimes(2);
+    // A retired draft is no longer owed a copy either.
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    saveDraft('draft:v1:u:d:c', 'refused');
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraft('draft:v1:u:d:c');
+    expect(isDraftStorageRefused()).toBe(false);
+    stop();
+  });
+
+  it('stops owing a copy once the server confirms the very text that was refused', () => {
+    let fresh!: typeof import('../durableDraft');
+    jest.isolateModules(() => { fresh = jest.requireActual('../durableDraft'); });
+    const { saveDraft, isDraftStorageRefused, clearDraftIfMatches } = fresh;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft('draft:v1:u:d:a', 'refused text');
+    // Confirming OTHER text says nothing about the refused one.
+    clearDraftIfMatches('draft:v1:u:d:a', 'older text');
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraftIfMatches('draft:v1:u:d:a', 'refused text');
+    expect(isDraftStorageRefused()).toBe(false);
+  });
+
+  it('carries a refused copy\'s debt to the key a new document is saved under', () => {
+    let fresh!: typeof import('../durableDraft');
+    jest.isolateModules(() => { fresh = jest.requireActual('../durableDraft'); });
+    const { saveDraft, isDraftStorageRefused, clearDraftIfMatches, moveDraft } = fresh;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft('draft:v1:u:new:note', 'first words');
+    // The note is created and adopts its real id; the server then confirms the text there.
+    moveDraft('draft:v1:u:new:note', 'draft:v1:u:n1:note');
+    clearDraftIfMatches('draft:v1:u:n1:note', 'first words');
+    expect(isDraftStorageRefused()).toBe(false);
+  });
+});
+

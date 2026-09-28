@@ -7,6 +7,7 @@ import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alia
 import { getSermonById } from '@/services/sermon.service';
 import { savePlanTextViaClient } from '@/services/sermons.client';
 import { updateThought } from '@/services/thought.service';
+import { draftKey, saveDraft } from '@/utils/durableDraft';
 import '@testing-library/jest-dom';
 
 jest.mock('sonner', () => ({
@@ -534,6 +535,35 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Write by hand' }));
     expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/plan/manual');
     expect(screen.queryByText('Main Point 1')).not.toBeInTheDocument();
+  }, 15000);
+
+  /**
+   * TEXT WHOSE POINT WAS REMOVED STAYS IN SIGHT ON THE WARNING SCREEN TOO.
+   *
+   * Removing the last written point turns this page into the readiness screen, which used to
+   * return before the orphaned-text area was ever reached: the paragraph was stored, and shown
+   * nowhere.
+   */
+  it('keeps text of a removed point visible on the readiness screen', async () => {
+    window.localStorage.clear();
+    saveDraft(draftKey('user-1', 'test-sermon-id', 'plan:gone-point'), 'A paragraph whose point was removed');
+    mockGetSermonById.mockResolvedValue({
+      id: 'test-sermon-id',
+      title: 'Test Sermon',
+      verse: 'Test Verse',
+      date: new Date().toISOString(),
+      userId: 'user-1',
+      thoughts: [],
+      plan: undefined,
+      outline: { introduction: [], main: [{ id: 'main-p1', text: 'Main Point 1' }], conclusion: [] },
+      structure: undefined,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    expect(await screen.findByText('The plan is not assembled yet')).toBeInTheDocument();
+    expect(screen.getByText('A paragraph whose point was removed')).toBeInTheDocument();
+    window.localStorage.clear();
   }, 15000);
 
   /**

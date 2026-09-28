@@ -240,6 +240,32 @@ describe('the save button on the hand-written screen', () => {
    * draft. The rich editor does not expose a text box in jsdom, and reaching past it into the
    * hook would prove the mock rather than the screen.
    */
+  it('shows the text a previous session left before offering it back', () => {
+    saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1'), 'текст, который сервер не принял');
+
+    render(<ManualConspectusPage />);
+    expect(screen.getByText('текст, который сервер не принял')).toBeInTheDocument();
+    expect(screen.getByText('plan.draftRecoveryFromDraft')).toBeInTheDocument();
+  });
+
+  it('keeps unsaved text in sight when its point is removed elsewhere', () => {
+    saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1'), 'абзац, набранный здесь');
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = () => <QueryClientProvider client={client}><ManualConspectusPage /></QueryClientProvider>;
+    const view = rtlRender(page());
+    fireEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+    expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument();
+
+    // Another device removes the point this card belonged to.
+    mockSermon = { ...mockSermon!, outline: { introduction: [], main: [], conclusion: [] } } as Sermon;
+    view.rerender(page());
+
+    expect(screen.getByText('plan.orphanedTitle')).toBeInTheDocument();
+    expect(screen.getByText('абзац, набранный здесь')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('plan.orphanedDiscard'));
+    expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument();
+  });
+
   it('lights up in the section colour the moment something is unsaved', () => {
     saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1'), 'текст, который сервер не принял');
 

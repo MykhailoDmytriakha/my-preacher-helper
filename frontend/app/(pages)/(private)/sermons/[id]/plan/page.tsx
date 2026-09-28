@@ -43,7 +43,8 @@ import {
   TRANSLATION_SECTIONS_MAIN,
 } from "./constants";
 import { copyFormattedFromElement } from "./copyFormattedFromElement";
-import { PlanDraftRecoveryBar } from "./PlanDraftRecoveryBar";
+import { mergeOrphans, OrphanedPlanText, orphanedCells } from "./OrphanedPlanText";
+import { PlanDraftRecoveryBar, recoveredCells } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
@@ -327,6 +328,15 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
     pendingNodeIds: pendingPlanCells.nodeIds,
     liveNodeIds: livePlanNodes,
   });
+  /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
+  const discardPlanCells = useCallback((nodeIds: string[]) => {
+    const dropped = new Set(nodeIds);
+    const keep = <T,>(previous: Record<string, T>) => Object.fromEntries(Object.entries(previous).filter(([nodeId]) => !dropped.has(nodeId)));
+    setGeneratedContent(keep);
+    setModifiedContent(keep);
+  }, []);
+  /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
+  const planOrphans = mergeOrphans(orphanedCells(generatedContent, modifiedContent, livePlanNodes), planDraft.orphaned);
   const restorePlanCells = useCallback((cells: Record<string, string>) => {
     // Recovered cells come back marked UNSAVED — they were never confirmed, so the screen must
     // keep saying so until a save actually succeeds.
@@ -1050,9 +1060,22 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
    * So the gate applies only while the plan is still empty. Once there is text, the text wins
    * and the banner does the telling.
    */
+  // Rendered on BOTH screens below: removing the last written point turns this page into the
+  // readiness screen, and text that has no point left must not vanish with it.
+  const orphanArea = (
+    <OrphanedPlanText
+      cells={planOrphans}
+      onDiscard={(nodeIds) => {
+        planDraft.forget(Object.fromEntries(planOrphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
+        discardPlanCells(nodeIds);
+      }}
+    />
+  );
+
   if (!readiness.ready && !hasPlan(sermon)) {
     return (
       <div className="p-8 text-center max-w-2xl mx-auto">
+        {orphanArea}
         <div className="mb-8">
           <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1177,9 +1200,11 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
         getPdfContent={getPdfContent}
       />
 
+      {orphanArea}
+
       {planDraft.recovered && (
         <PlanDraftRecoveryBar
-          count={Object.keys(planDraft.recovered).length}
+          cells={recoveredCells(planDraft.recovered, sermon)}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});
             planDraft.accept();

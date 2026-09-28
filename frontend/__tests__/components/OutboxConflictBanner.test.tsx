@@ -3,7 +3,8 @@ import { toast } from 'sonner';
 
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { conflictSafeUpdate } from '@/services/conflictSafeUpdate.client';
-import { enqueueWrite, listOutbox } from '@/services/writeOutbox.client';
+import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
+import { enqueueWrite, listOutbox, markOutboxConflicted } from '@/services/writeOutbox.client';
 import '@testing-library/jest-dom';
 
 /**
@@ -262,8 +263,64 @@ describe('the ordinary refusal panel shows everything and loads theirs', () => {
 
     fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
 
+    // The server's version is SHOWN first; the refused text is still kept.
+    expect(await screen.findByText('freshness.theirsNowTitle')).toBeInTheDocument();
+    expect(screen.getByText(/title: theirs/)).toBeInTheDocument();
+    expect(listOutbox('u1')).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('freshness.confirmTakeTheirs'));
     await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
     await waitFor(() => expect(listOutbox('u1')).toHaveLength(0));
+  });
+
+  /**
+   * The preview belongs to the refusal it was loaded for. With two queued, "Keep mine" on the
+   * first brings the second into view — confirming a preview loaded for the FIRST must not
+   * throw away the second's text, which the person never compared with anything.
+   */
+  it('never lets a preview loaded for one refusal discard another', async () => {
+    onEngine(); conflictedGroup();
+    enqueueWrite({
+      id: 'groups:g2:content:u1', uid: 'u1', collection: 'groups', docId: 'g2', aggregate: 'content',
+      patch: { title: 'the second text, never compared' }, baseRevision: 1, actualRevision: 3,
+      status: 'conflicted', savedAt: 2,
+    });
+    render(<OutboxConflictBanner />);
+    await screen.findByText('freshness.conflictTitle');
+    expect(screen.getByText(/the paragraph I wrote on the train/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(await screen.findByText('freshness.theirsNowTitle')).toBeInTheDocument();
+    // The first refusal is settled the other way while its preview is open.
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await waitFor(() => expect(listOutbox('u1').map((e) => e.docId)).toEqual(['g2']));
+
+    expect((await screen.findAllByText(/the second text, never compared/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText('freshness.theirsNowTitle')).not.toBeInTheDocument();
+    expect(screen.queryByText('freshness.confirmTakeTheirs')).not.toBeInTheDocument();
+    expect(listOutbox('u1')).toHaveLength(1);
+  });
+
+  /**
+   * The same refusal turned away AGAIN means the server moved after the preview was taken:
+   * what the person compared is no longer what "Keep the server's version" would keep.
+   */
+  it('drops a preview once the same entry is refused again at a newer revision', async () => {
+    onEngine(); conflictedGroup();
+    render(<OutboxConflictBanner />);
+    await screen.findByText('freshness.conflictTitle');
+
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(await screen.findByText('freshness.theirsNowTitle')).toBeInTheDocument();
+
+    act(() => {
+      markOutboxConflicted('groups:g1:content:u1', 9);
+      window.dispatchEvent(new Event(OUTBOX_CHANGED_EVENT));
+    });
+
+    await waitFor(() => expect(screen.queryByText('freshness.theirsNowTitle')).not.toBeInTheDocument());
+    expect(screen.queryByText('freshness.confirmTakeTheirs')).not.toBeInTheDocument();
+    expect(listOutbox('u1')).toHaveLength(1);
   });
 
   it('KEEPS the refused text when the server does not answer, even though invalidation "succeeds"', async () => {

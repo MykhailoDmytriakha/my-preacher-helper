@@ -32,6 +32,9 @@ const CONFLICT_PENDING_LABEL_KEY = 'freshness.conflictPendingLabel';
  * "Keep mine" is the ONLY path that overwrites, and only after the person chose
  * it: the replay itself never re-sends a refused intent with a fresh revision.
  */
+/** One refusal: this entry, turned away at this revision. */
+const refusalOf = (entry: OutboxEntry) => `${entry.id}@${entry.actualRevision ?? entry.baseRevision}`;
+
 function LegacyConflictBanner() {
   const { user } = useAuth();
   const { t } = useTranslation();
@@ -44,6 +47,15 @@ function LegacyConflictBanner() {
   const [conflicts, setConflicts] = useState<OutboxEntry[]>([]);
   const [stuck, setStuck] = useState(0);
   const [busy, setBusy] = useState(false);
+  /**
+   * The server's copy, once loaded — shown before the person lets their own text go.
+   * Bound to the refusal it was loaded FOR — the entry AND the revision it was refused at:
+   * with two refusals queued, resolving the first another way moves the second into view;
+   * and the same entry refused again means the server moved since the preview was taken.
+   * Either way an unbound preview would let "Keep the server's version" throw away text the
+   * person never compared with what the server now holds.
+   */
+  const [theirs, setTheirs] = useState<{ refusal: string; value: Record<string, unknown> } | null>(null);
 
   const refresh = useCallback(() => {
     if (!user?.uid) {
@@ -125,8 +137,11 @@ function LegacyConflictBanner() {
     try {
       if (isCollectionOnEngine(entry.collection)) {
         if (!peekRemote) throw new Error('The engine is not ready; the refused text stays');
-        const theirs = await peekRemote({ collection: entry.collection, id: entry.docId });
-        if (theirs.value === null || theirs.metadata?.deleted) throw new Error('The other version is gone; the refused text stays');
+        const snapshot = await peekRemote({ collection: entry.collection, id: entry.docId });
+        if (snapshot.value === null || snapshot.metadata?.deleted) throw new Error('The other version is gone; the refused text stays');
+        // Shown first; only "Keep the server's version" below lets the refused text go.
+        setTheirs({ refusal: refusalOf(entry), value: snapshot.value });
+        return;
       }
       await queryClient.invalidateQueries();
       removeFromOutbox(entry.id);
@@ -138,6 +153,35 @@ function LegacyConflictBanner() {
       refresh();
     }
   };
+
+  /** Only a preview loaded for the entry now in view counts as seen. */
+  const shownTheirs = theirs?.refusal === refusalOf(entry) ? theirs.value : null;
+
+  /** The person has seen the server's version and keeps it: now the refused text may go. */
+  const confirmTheirs = async () => {
+    if (busy || !shownTheirs) return;
+    setBusy(true);
+    try {
+      await queryClient.invalidateQueries();
+      removeFromOutbox(entry.id);
+      setTheirs(null);
+    } catch (error) {
+      console.error('outbox: could not settle on the other version', error);
+      toast.error(t(SAVE_ERROR_KEY));
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  /** The server's values for exactly the fields the refused change touched. */
+  const theirsText = shownTheirs ? Object.keys(entry.patch)
+    .filter((field) => !field.startsWith('rev.') && field !== 'updatedAt')
+    .map((field) => {
+      const value = field.split('.').reduce<unknown>((node, part) => (node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined), shownTheirs);
+      return typeof value === 'string' ? `${field}: ${value}` : `${field}: ${JSON.stringify(value ?? null, null, 2)}`;
+    })
+    .join('\n\n') : '';
 
   /** Discard without loading anything — the document is GONE, so there is nothing to load. */
   const discardMissingTarget = () => {
@@ -232,6 +276,20 @@ function LegacyConflictBanner() {
         busy={busy}
         className="mb-3"
       />
+      {shownTheirs && (
+        <div role="region" aria-label={t('freshness.theirsNowTitle')} className="mb-3 rounded-xl border border-amber-300 bg-white/70 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-black/20">
+          <p className="font-medium text-amber-900 dark:text-amber-200">{t('freshness.theirsNowTitle')}</p>
+          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-gray-900 dark:text-gray-100">{theirsText}</pre>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" disabled={busy} onClick={() => { void confirmTheirs(); }} className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-60">
+              {t('freshness.confirmTakeTheirs')}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setTheirs(null)} className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20">
+              {t('common.back')}
+            </button>
+          </div>
+        </div>
+      )}
       {/* EVERYTHING that was refused, not just the one-line preview. A group's block
           text lives inside `flow`/`templates` arrays, so the summary above showed a
           title while the paragraphs stayed invisible — the person was choosing between

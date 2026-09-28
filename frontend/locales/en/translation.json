@@ -241,7 +241,9 @@
     "conflictKeepMine": "Keep my text",
     "conflictTakeTheirs": "Take the other version",
     "staleSaveToast": "Not saved — this was changed on another device. Your text is still here; reload the newer version, then re-apply it.",
-    "conflictPendingLabel": "Your text:"
+    "conflictPendingLabel": "Your text:",
+    "theirsNowTitle": "On the server now",
+    "confirmTakeTheirs": "Keep the server's version"
   },
   "unsavedDraft": {
     "title": "Unsaved text found",
@@ -1849,7 +1851,7 @@
     "saveRefusedByOtherDevice": "This point was edited somewhere else. Nothing was overwritten — your text is still here.",
     "saveRefusedKeepMine": "Keep mine",
     "draftRecoveryTitle": "Unsaved plan text from last time",
-    "draftRecoveryDescription": "{{count}} card(s) were never confirmed by the server. Bring them back?",
+    "draftRecoveryDescription": "Cards whose text never reached the server: {{count}}. Below is what would come back and what the plan holds now.",
     "draftRecoveryRestore": "Bring it back",
     "draftRecoveryDiscard": "Discard it",
     "sectionSaved": "{{section}} section saved",
@@ -1937,7 +1939,16 @@
     "progressMap": {
       "filled": "filled in",
       "empty": "still empty"
-    }
+    },
+    "draftRecoveryFromDraft": "From the draft",
+    "draftRecoveryOnServer": "In the plan now",
+    "draftRecoverySameOnServer": "The plan already holds the same text",
+    "draftRecoveryEmpty": "(empty)",
+    "orphanedTitle": "Text of points no longer in the plan",
+    "orphanedBody": "While you were writing, these points were removed elsewhere. The text is not saved — copy it if you need it.",
+    "orphanedCopy": "Copy",
+    "orphanedDiscard": "Let it go",
+    "orphanedBlocksLeaving": "First decide about the text of removed points shown above: copy it or let it go."
   },
   "calendar": {
     "title": "Preaching Calendar",
@@ -3768,5 +3779,9 @@
   "deviceStorage": {
     "title": "This device's storage is not responding",
     "body": "Records open for reading only — from the server or from this device's copy; the rest will wait. Editing comes back by itself once storage responds; reloading will not help. Edits from this device that were not sent yet will appear then too."
+  },
+  "draftStorage": {
+    "title": "Unsaved text is not kept on this device",
+    "body": "The browser refuses to keep a copy of unsaved text in case the page closes (private mode or no room left). Save your changes before closing the page."
   }
 }

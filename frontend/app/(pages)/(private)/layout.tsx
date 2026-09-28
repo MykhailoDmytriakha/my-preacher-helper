@@ -6,6 +6,7 @@ import { ReactNode, Suspense } from 'react';
 import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
+import { DraftStorageNotice } from '@/components/DraftStorageNotice';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
@@ -65,6 +66,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
             <EngineConflictBanner />
             {/* Device storage that stopped answering: records are copies for reading until it does. */}
             <DeviceStorageNotice />
+            <DraftStorageNotice />
             <Breadcrumbs />
           </div>
         </>
