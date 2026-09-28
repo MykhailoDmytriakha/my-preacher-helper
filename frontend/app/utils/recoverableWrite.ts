@@ -226,7 +226,7 @@ export function replicaAcceptedWrite(
    * the person their edit:
    *
    *   1. OFFLINE THE REPLICA NEVER SPEAKS. `conflictSafeUpdate` stores an offline edit
-   *      in its OWN outbox (IndexedDB) and throws `OfflineQueuedError` — Firestore is
+   *      in its OWN outbox (localStorage) and throws `OfflineQueuedError` — Firestore is
    *      never written, so the local replica has nothing to show. The race then saw a
    *      rejection, called a successfully stored edit a refusal, and rolled it back.
    *   2. A FAILING OBSERVER IS NOT A FAILING WRITE. If `onSnapshot` errors (a denied

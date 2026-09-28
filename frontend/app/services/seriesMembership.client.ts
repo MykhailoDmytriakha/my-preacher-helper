@@ -292,9 +292,11 @@ export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<
   };
 
   // OFFLINE: a transaction cannot run without the server, and this writer must
-  // keep working offline (the whole point of firing it without awaiting). Fall
-  // back to the pre-existing read + batch, exactly as before — see the note in
-  // conflictSafeUpdate.client.ts about degrading openly rather than pretending.
+  // keep working offline (the whole point of firing it without awaiting). First
+  // queue the semantic transforms for a transactional replay; only when that
+  // storage refuses, or no one is signed in, fall back to the old read + batch of
+  // computed arrays — see the note in conflictSafeUpdate.client.ts about
+  // degrading openly rather than pretending.
   if (isBrowserOffline()) {
     // Queue the OPERATION, never a computed array.
     //

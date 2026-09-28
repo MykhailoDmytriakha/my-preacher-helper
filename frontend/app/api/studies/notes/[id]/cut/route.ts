@@ -69,7 +69,7 @@ export interface CutNoteResponseBody {
   limit: number;
 }
 
-/** The model reads English book names (`MEMORY.md` → AI Integration): the canonical face. */
+/** The model reads English book names (`.howto/format-scripture-reference.md`): the canonical face. */
 function formatRefForPrompt(ref: ScriptureReference): string {
   return formatScriptureReference(ref, { style: 'canonical' });
 }

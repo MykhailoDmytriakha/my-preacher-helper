@@ -34,12 +34,15 @@ import { getSermons } from '@services/sermon.service';
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
 import type { QueryClient } from '@tanstack/react-query';
 
-// The ONE writer of series.items — a keyed, fire-and-forget mutation. Its only
-// job online is onError -> refetch (offline that refetch is a no-op, but the
-// write is durably queued in Firestore's offline buffer and the optimistic cache
-// writes below keep the UI truthful). We never `await` the commit on the
-// interactive path, because offline it never resolves (it waits on the server
-// ack) — awaiting would hang the UI. Durability lives in Firestore's queue, not
+// The ONE writer of series.items — a keyed, fire-and-forget mutation. Its only job
+// online is onError -> refetch (offline that refetch is a no-op). Offline,
+// commitSeriesBatch first queues the semantic transforms in localStorage for a
+// transactional replay; only if that storage refuses (or no one is signed in) does
+// it fall back to a Firestore batch of computed arrays, which can overwrite a
+// concurrent change. The optimistic cache writes below keep the UI truthful. We
+// never `await` the commit on the interactive path, because offline it never
+// resolves (it waits on the server ack) — awaiting would hang the UI. Durability
+// lives in the membership outbox (Firestore's queue only on its fallback), not
 // React Query, so this mutation is deliberately NOT registered as a persisted
 // default.
 export const SERIES_MEMBERSHIP_MUTATION_KEY = ['series', 'membership', 'sweep'] as const;

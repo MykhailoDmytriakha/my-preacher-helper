@@ -1,0 +1,30 @@
+when: data-engine · use the engine in a screen · useDataDocument · useDataForm · DataDocumentProvider · useDataCollection · DataCollectionStatus · DataSyncStatus · useRecoveryDiscovery · Save button form · keepLocal · acceptRemote · InactiveEditorError · Editor is no longer active · offline edits vanish after navigation · reopen and save fails · recovery lists delivered requests · AI proposal while editing · propose · withScratch · preach date mark unmark · getEffectiveIsPreached · focused field hides remote change · useBufferedText · editor baseline from a list · движок данных · экран на движке · форма с кнопкой Сохранить · автосохранение документа · конфликт правок · оставить своё или принять чужое · офлайн-правки пропали после перехода · восстановление правок · предложение ИИ во время правки · source note deleted · late AI output · набросок · поздний ответ AI · исходная заметка удалена
+
+# Use the data engine in a screen
+
+A screen on an engine collection reads and edits only through `frontend/app/data-engine/react.client.tsx`: `useDataDocument` for an autosaving document, `useDataForm` for a Save-button form, `useDataCollection` for a list. Transport, revisions, outbox, conflicts and recovery belong to the engine; the full contract is `frontend/app/data-engine/README.md`.
+
+## How
+
+- One editor per document per page: wrap the page in `DataDocumentProvider`; matching `useDataDocument` / `useDataForm` calls inside share it. Each opening gets a fresh editor identity; old work comes back only by explicit recovery (`useRecoveryDiscovery`, then `recover(id)`).
+- Lists render `documents` from `useDataCollection` with `DataCollectionStatus`: submitted local work included, flags `pending` / `needsAttention` / `deleting`, a pending deletion addressable until ACK. They are presentation built by the editors' `DataSession` rule (`frontend/app/data-engine/collectionView.ts`) — never seed an editor baseline from them or any list projection.
+- After navigation or restart the engine continues one unambiguous submitted chain in the new editor, keeping each request's identity (`frontend/app/data-engine/submittedWork.ts`). Unsent typing and competing branches stay explicit recovery choices.
+- Save-button form = `useDataForm(resource, slot, selection)` in the same provider: `begin()` pins the opening ancestor of the selected fields, `update()` stages durably unsent, `save()` submits, `cancel()` retires only unsaved typing. Never apply component-local text to the newest document at Save. Examples: `CouncilOutcomeForm`; `EngineEditSermonModal` (metadata + dates); `EngineOutlineModal` (outline + dependent thoughts and placement; `OutlineBoard` `directText` stages each keystroke, one outer Save submits).
+- Show the form's own `status` / `error`; resolve with its `keepLocal` / `acceptRemote`. A clean form keeps the document's queued / conflict / refused status. Keep local may carry corrections staged after a known failed Save, suspended on disk until the replacement request is durable; resolution refuses while unsent input exists in or outside the form's fields.
+- Slot + selection name the action; discovery and direct recovery both match resource, slot and selection, so opposite actions over the same fields never exchange drafts. `EnginePreachDateModal` uses one slot per action kind over `preachDates` + `isPreached` (pure transforms in `frontend/app/components/calendar/preachDateForm.ts`); `PreachDateModal` requires `sermonId` and routes there, the dashboard menu skips legacy optimistic writers, history (`EnginePreachDateList`) reads the shared document. A recovered mark follows the changed row's durable ID, never a nearest date or the clock; unmark touches only opening rows and keeps remotely added dates. Read status with `getEffectiveIsPreached`, not the legacy flag.
+- An acknowledged or cancelled Save is terminal for reopening and compaction; a cancelled one is never adopted as the value.
+- AI output: `form.propose(async source => next)` gets a durable frozen source; output after another edit, cancel, owner change or close is rejected; accepted output only stages. `EngineOutlineModal` with `withScratch`: `scratchComposeSource` binds the AI inputs; Apply submits outline, thought links and scratch consumption as one action, and `scratchConsumptionConflicts` (`frontend/app/data-engine/sermonIntegrity.ts`) checks consumed notes in the same server transaction — a changed or deleted source conflicts the whole action. Close and restart keep it unsent; conflicts use the same Keep local / Accept remote.
+- Text controls over an engine draft use `useBufferedText` (`frontend/app/components/ui/useBufferedText.ts`): it protects only keystrokes not yet echoed; focus never gives a field its own baseline. TipTap programmatic replacement passes `emitUpdate: false`.
+
+## When it goes wrong
+
+- Save after reopening is lost → an editor identity was reused → fresh identity per opening, shared through the provider.
+- Recovery offers requests already delivered → mounted editors and recovery must project ACKs by the same `DataSession.applyCommit` rule before listing.
+- Closing a form leaves an error in the next editor → retirement rejects queued work with `InactiveEditorError`, and `DataEngine.background` suppresses only that type. Never silence every failure of a closed editor: a real `Disk full` after close must still reach the facade's error.
+
+## Why
+
+- 2026-09-19: a green suite missed it — a checkpoint compacted after ACK, the reopened editor reused its ID and restarted its edit counter behind the dedupe watermark. The regression saves, compacts, closes, reopens and saves again on the real storage adapter (`frontend/app/data-engine/__tests__/browser.client.test.ts`); a memory map that keeps clean records forever hides it.
+- 2026-09-22: live date mark/unmark showed a closed form's cancellation poisoning the next editor's status; hence the typed error, with a negative control in `frontend/app/data-engine/__tests__/engine.test.ts`.
+
+See also: .howto/save-several-documents-atomically.md · .howto/migrate-domain-to-data-engine.md · .howto/write-a-document-field.md

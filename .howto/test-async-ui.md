@@ -1,0 +1,23 @@
+when: waitFor · findBy · findByRole · test passes locally but fails on the build machine · flaky test · Unable to find an element · element not found after state update · stale element after rerender · button disabled when clicked in test · click does nothing in test · handler not called · toBeEnabled · i18n mock returns key · translation key instead of text · defaultValue in t mock · getAllByText · Found multiple elements with the text · label rendered twice · className assertion · toHaveClass · data-testid anchor · fireEvent.change · asyncUtilTimeout · gcTime 0 · optimistic rollback test · seeded cache evicted · setQueryData in tests · label appears after mount · асинхронный тест · ожидание в тесте · нестабильный тест · тест падает на сборке · элемент не найден · кнопка неактивна в тесте · несколько элементов с текстом · ключ вместо текста в тесте
+
+# Test UI that updates asynchronously
+
+Wait for what the person would see: `await screen.findBy…` for something that appears, and `await waitFor(() => expect(…))` for a change to something already there, querying again inside the callback. `frontend/jest.setup.js` lets each async wait run 4 s (`configure({ asyncUtilTimeout: 4000 })`) under the 15 s `testTimeout` in `frontend/jest.config.ts`.
+
+## How
+
+- Something appears → `await screen.findByRole(…)` / `findByText`, not `waitFor(() => getBy…)`. Labels of mount-gated components (a `mounted` flag set in an effect, e.g. `frontend/app/components/navigation/FeedbackModal.tsx`) exist only after the first effect, so wait for them too.
+- Something changes → query inside `waitFor`: `await waitFor(() => expect(screen.getByTestId('x')).toHaveClass('…'))`. A node found before the update may be one React has since replaced, so query again after every state change. Anchor dynamic-class assertions on a `data-testid` or an ARIA label.
+- Conditional visual states: test both branches. Find the element by its ARIA label and assert the class present when the state is true and absent when it is false.
+- Buttons enabled by async work: `await waitFor(() => expect(button).toBeEnabled())` before the click. A click on a disabled button is dropped silently, and the test fails later as "not called".
+- Inputs: `fireEvent.change(input, { target: { value } })` sets a controlled input in one step. That is the repo's main pattern (~220 test files use `fireEvent`, ~20 use user-event).
+- Text: assert what the active `t` mock renders. The global mock in `jest.setup.js` returns the key (except a few fixed export and text-size strings) and ignores `defaultValue`. Many local mocks return `options?.defaultValue ?? key`; with those, the fallback text is on screen, not the key.
+- Labels shown twice (mobile and desktop copies, a tooltip beside its button) make `getBy…` throw "Found multiple elements". Use `getAllByText` / `getAllByRole` and pick one, or scope the query with `within(container)`.
+- Type mocks from the real signature (`jest.mocked(fn)`), so a changed signature fails `tsc` instead of letting a wrong shape through.
+- React Query cache seeded with `setQueryData` and no active observer: `gcTime: 0` schedules an immediate garbage collection that races the optimistic update and its rollback, so the test flakes under load. Build the client with `gcTime: Infinity` (`frontend/__tests__/hooks/useGroupDetail.offline.test.tsx`). `TestProviders` and `createQueryWrapper()` in `frontend/test-utils/test-providers.tsx` use `gcTime: 0`, so don't use them for seeded-cache tests.
+
+## Why
+
+- BUG-20260905 (2026-09-05): waits at the 1 s default failed on the build machine, which runs the suite on two cores, and passed on rerun. 4 s separates "the app never did it" from "the machine was busy" (comment in `jest.setup.js`).
+
+See also: `.howto/mock-in-jest.md` · `.howto/test-with-fake-timers.md`
