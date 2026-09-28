@@ -44,7 +44,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
   });
   const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
-    recoveryIdentity: {},
+    recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
     data: session.checkpoint().draft,
     confirmed: session.checkpoint().confirmed,
     remote: null, state, status: { phase } as SyncStatus,

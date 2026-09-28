@@ -3,6 +3,8 @@ import { createIndexedDbSnapshots } from '../snapshots.client';
 import type { ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'snapshots'), entries: jest.fn(), get: jest.fn(), update: jest.fn() }));
+// The watch is proven in deviceStorage.test.ts; here the store contract is what matters.
+jest.mock('@/utils/deviceStorage', () => ({ watchedStore: (database: string, store: string) => jest.requireMock('idb-keyval').createStore(database, store) }));
 jest.mock('@/services/ownerHttpTransport.client', () => ({ requestOwnerJson: jest.fn() }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: jest.fn() }));
 const resource = { collection: 'studyNotes', id: 'note' };

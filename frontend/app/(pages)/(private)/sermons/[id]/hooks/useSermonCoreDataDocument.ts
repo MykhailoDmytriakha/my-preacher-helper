@@ -33,7 +33,10 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     update: value => form.update(current => ({ ...current, [field]: value })),
     save: value => form.save(current => ({ ...current, [field]: value })),
   });
-  const isReadOnly = !owner || !document.data || document.data.userId !== owner
+  // A copy shown while device storage is silent is for reading: the page disables every editor,
+  // the recorder first — a dictated thought must never meet a refusal after the fact
+  // (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+  const isReadOnly = document.readOnly || !owner || !document.data || document.data.userId !== owner
     || Boolean(document.confirmed?.metadata?.deleted || (document.confirmed && document.confirmed.value === null)
       || (document.remote && document.remote.value === null) || document.remote?.metadata?.deleted);
   const commit = async (update: (current: DocumentData) => DocumentData): Promise<QueuedCoreDelivery> => {

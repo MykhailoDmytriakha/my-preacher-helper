@@ -2,7 +2,7 @@ import type { PersistedClient } from '@tanstack/react-query-persist-client';
 
 import { isStaleWriteError, isWriteRefusedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 
-import { createIDBPersister } from '../queryPersister';
+import { createIDBPersister, queryCacheStore } from '../queryPersister';
 
 // Mock idb-keyval
 jest.mock('idb-keyval', () => ({
@@ -55,7 +55,7 @@ describe('createIDBPersister', () => {
 
             await persister.persistClient(client);
 
-            expect(mockSet).toHaveBeenCalledWith('react-query-cache', client);
+            expect(mockSet).toHaveBeenCalledWith('react-query-cache', client, queryCacheStore);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache persisted',
                 { key: 'react-query-cache', queries: 3 }
@@ -69,7 +69,7 @@ describe('createIDBPersister', () => {
 
             await persister.persistClient(client);
 
-            expect(mockSet).toHaveBeenCalledWith('custom-key', client);
+            expect(mockSet).toHaveBeenCalledWith('custom-key', client, queryCacheStore);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache persisted',
                 { key: 'custom-key', queries: 1 }
@@ -99,7 +99,7 @@ describe('createIDBPersister', () => {
 
             const result = await persister.restoreClient();
 
-            expect(mockGet).toHaveBeenCalledWith('react-query-cache');
+            expect(mockGet).toHaveBeenCalledWith('react-query-cache', queryCacheStore);
             expect(result).toBe(stored);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache restored',
@@ -126,7 +126,7 @@ describe('createIDBPersister', () => {
 
             await persister.restoreClient();
 
-            expect(mockGet).toHaveBeenCalledWith('my-key');
+            expect(mockGet).toHaveBeenCalledWith('my-key', queryCacheStore);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache restored',
                 { key: 'my-key', queries: 0 }
@@ -204,7 +204,7 @@ describe('createIDBPersister', () => {
 
             await persister.removeClient();
 
-            expect(mockDel).toHaveBeenCalledWith('react-query-cache');
+            expect(mockDel).toHaveBeenCalledWith('react-query-cache', queryCacheStore);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache removed',
                 { key: 'react-query-cache' }
@@ -217,11 +217,72 @@ describe('createIDBPersister', () => {
 
             await persister.removeClient();
 
-            expect(mockDel).toHaveBeenCalledWith('custom-remove-key');
+            expect(mockDel).toHaveBeenCalledWith('custom-remove-key', queryCacheStore);
             expect(mockDebugLog).toHaveBeenCalledWith(
                 'ReactQuery cache removed',
                 { key: 'custom-remove-key' }
             );
+        });
+    });
+
+    describe('when device storage never answers (BUG-20260927-engine-open-hangs-on-silent-device-storage)', () => {
+        beforeEach(() => { jest.useFakeTimers(); });
+        afterEach(() => { jest.useRealTimers(); });
+
+        it('stops waiting after the silence threshold so queries are not held in restoring', async () => {
+            mockGet.mockReturnValueOnce(new Promise(() => undefined));
+            const persister = createIDBPersister();
+
+            const restoring = persister.restoreClient();
+            await jest.advanceTimersByTimeAsync(3001);
+
+            await expect(restoring).resolves.toBeUndefined();
+        });
+
+        it('skips writes while the old cache still has to be archived, and writes once it may', async () => {
+            let may = false;
+            const persister = createIDBPersister(undefined, { mayOverwrite: () => may });
+
+            await persister.persistClient(makeClient(1));
+            expect(mockSet).not.toHaveBeenCalled();
+
+            may = true;
+            await persister.persistClient(makeClient(1));
+            expect(mockSet).toHaveBeenCalledTimes(1);
+        });
+
+        it('hands a late answer to the app and resumes writing only after it has been taken in', async () => {
+            let answer!: (value: PersistedClient) => void;
+            mockGet.mockReturnValueOnce(new Promise(resolve => { answer = resolve as typeof answer; }));
+            const taken: PersistedClient[] = [];
+            const persister = createIDBPersister(undefined, { onLateRestore: client => { taken.push(client); expect(mockSet).not.toHaveBeenCalled(); } });
+            const restoring = persister.restoreClient();
+            await jest.advanceTimersByTimeAsync(3001);
+            await expect(restoring).resolves.toBeUndefined();
+            await persister.persistClient(makeClient(1));
+            expect(mockSet).not.toHaveBeenCalled();
+
+            const late = makeClient(4);
+            answer(late);
+            await jest.advanceTimersByTimeAsync(0);
+
+            expect(taken).toEqual([late]);
+            await persister.persistClient(makeClient(2));
+            expect(mockSet).toHaveBeenCalledTimes(1);
+        });
+
+        it('never writes over, or removes, a cache it could not read', async () => {
+            mockGet.mockReturnValueOnce(new Promise(() => undefined));
+            const persister = createIDBPersister();
+            const restoring = persister.restoreClient();
+            await jest.advanceTimersByTimeAsync(3001);
+            await restoring;
+
+            await persister.persistClient(makeClient(1));
+            await persister.removeClient();
+
+            expect(mockSet).not.toHaveBeenCalled();
+            expect(mockDel).not.toHaveBeenCalled();
         });
     });
 });

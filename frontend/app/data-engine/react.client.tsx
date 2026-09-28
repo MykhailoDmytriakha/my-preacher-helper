@@ -1,14 +1,16 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
+import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
-import { isEngineOwnedLegacyQuery } from './legacyQueryRecovery.client';
+import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -19,7 +21,7 @@ import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
-import type { DocumentData, JournalEntry, ResourceRef } from './types';
+import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
@@ -31,10 +33,60 @@ interface EngineContextValue {
 const EngineContext = createContext<EngineContextValue | null>(null);
 const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
 const EDITOR_CHANGED = 'The active editor changed';
+const ENGINE_NOT_READY = 'The data engine is not ready';
+
+/**
+ * Why a copy shown for reading cannot take this change, in the person's words: when the device's
+ * storage is silent, editing returns by itself once it answers; otherwise the editor is still opening.
+ */
+function useReadOnlyReason() {
+  const { t } = useTranslation();
+  // Re-render when storage goes silent or answers, so a reason already on the screen stays true.
+  useSyncExternalStore(subscribeDeviceStorage, getDeviceStorageHealth, getDeviceStorageHealth);
+  // Stable on purpose: editor callbacks and form identities depend on it, and a `t` that changes
+  // between renders would reopen forms in a loop.
+  const translate = useRef(t);
+  translate.current = t;
+  return useCallback((storage = isStorageSilent()) => translate.current(storage ? 'dataSync.readOnly.storage' : 'dataSync.readOnly.opening'), []);
+}
+
+const COPY_RETRY_MS = 5000;
+
+/**
+ * LOOK FOR A COPY ONLY WHILE THE STORAGE THIS WAIT NEEDS IS SILENT
+ * (BUG-20260927-engine-open-hangs-on-silent-device-storage). Time alone is not evidence: a slow
+ * but healthy opening must stay the editor it is about to become. While the silence lasts, the
+ * look is repeated whenever it may now succeed — network back, page shown, storage state changed —
+ * and every few seconds, until the caller has what it needs.
+ */
+function useLookWhileSilent(active: boolean, databases: readonly string[], look: () => void) {
+  const latest = useRef(look);
+  latest.current = look;
+  useEffect(() => {
+    if (!active) return;
+    const attempt = () => { if (isStorageSilent(databases)) latest.current(); };
+    const stop = subscribeDeviceStorage(attempt);
+    const retry = setInterval(attempt, COPY_RETRY_MS);
+    window.addEventListener('online', attempt);
+    document.addEventListener('visibilitychange', attempt);
+    attempt();
+    return () => {
+      stop(); clearInterval(retry);
+      window.removeEventListener('online', attempt);
+      document.removeEventListener('visibilitychange', attempt);
+    };
+  }, [active, databases]);
+}
+const readOnlyRefusal = (reason: string) => Object.assign(new Error(reason), { code: 'read-only' });
 
 /** Public recovery UI seam; storage and owner fencing remain inside the engine. */
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
   return useDiscovery(options);
+}
+
+/** Whether the query persister may write over the old cache yet: never before its copies are archived. */
+export function queryCacheMayBeOverwritten(): boolean {
+  return legacyCacheMayBeOverwritten();
 }
 
 /** Whether the persisted query cache may keep this query; engine-owned collections are session-only. */
@@ -109,21 +161,37 @@ const remoteDeleted = (record: EditorRecord) => {
 export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const readOnlyReason = useReadOnlyReason();
+  /*
+   * Opening an editor for one action changes nothing yet, so it may be abandoned; once the action
+   * has run, its outcome must stay knowable and it is never raced. When the engine's storage goes
+   * silent before the editor opens, the opening is cancelled — the action can never land later,
+   * behind the person's back — and the menu hears why (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+   */
+  const openFor = useCallback((resource: ResourceRef, editorId: string, creating = false) => {
+    if (!browser) throw new Error(ENGINE_NOT_READY);
+    const cancellation = new AbortController();
+    const opening = creating
+      ? browser.engine.createEditor(resource, editorId, { signal: cancellation.signal })
+      : browser.engine.openEditor(resource, editorId, { signal: cancellation.signal });
+    let abandoned = false;
+    void opening.then(editor => { if (abandoned) editor.close({ flush: false }); }, () => undefined);
+    return untilStorageSilent(opening, () => { abandoned = true; cancellation.abort(); }, readOnlyReason(true));
+  }, [browser, readOnlyReason]);
   /** The closed checkpoints of a document that wait for the person, if any. */
   const waitingFor = useCallback(async (resource: ResourceRef) => {
     if (!browser) return [];
-    const [records, journal] = await Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]);
+    const [records, journal] = await untilStorageSilent(Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]), () => undefined, readOnlyReason(true));
     return records.filter(({ record }) => waitsForDecision(record, journal));
-  }, [browser]);
+  }, [browser, readOnlyReason]);
   const withEditor = useCallback(async (resource: ResourceRef, action: (editor: ManagedEditor) => Promise<void>, creating = false) => {
-    if (!browser || !owner) throw new Error('The data engine is not ready');
+    if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
     // A document that waits for a decision takes no further one-shot change: each attempt
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
     if (!creating && (await waitingFor(resource)).length) throw decisionRequired();
-    const editorId = browser.editorId(resource, 'action');
-    const editor = await (creating ? browser.engine.createEditor(resource, editorId) : browser.engine.openEditor(resource, editorId));
+    const editor = await openFor(resource, browser.editorId(resource, 'action'), creating);
     try { await action(editor); } finally { editor.close({ flush: false }); }
-  }, [browser, owner, waitingFor]);
+  }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
     ready: Boolean(browser && owner),
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
@@ -143,14 +211,14 @@ export function useDocumentActions() {
      * recoverable. Resolves to the number of settled checkpoints.
      */
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
-      if (!browser || !owner) throw new Error('The data engine is not ready');
+      if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       const waiting = await waitingFor(resource);
       if (!waiting.length) return 0;
       if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
         throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
       }
       for (const { record } of waiting) {
-        const editor = await browser.engine.openEditor(resource, record.editorId);
+        const editor = await openFor(resource, record.editorId);
         try {
           if (choice === 'mine') { await editor.keepLocal(); await editor.save(); continue; }
           await editor.acceptRemote();
@@ -160,7 +228,7 @@ export function useDocumentActions() {
       }
       return waiting.length;
     },
-  }), [browser, owner, withEditor, waitingFor]);
+  }), [browser, owner, withEditor, waitingFor, openFor]);
 }
 
 /**
@@ -173,6 +241,7 @@ const idleEngine: EngineContextValue = { browser: null, owner: null, error: null
 /** Explicit semantic actions over an engine-owned pinned stage; no feature queue or ancestry. */
 export function useDataMembership() {
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
+  const readOnlyReason = useReadOnlyReason();
   const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
   const latest = useRef<object>(identity); latest.current = identity;
   const current = useRef<{ identity: object; scope: MembershipScope; scopeId: string; stop: () => void } | null>(null);
@@ -209,15 +278,24 @@ export function useDataMembership() {
     if (current.current?.identity === identity) return Promise.reject(new Error('Close the current membership stage first'));
     const engine = active();
     const promise = run(async () => {
-      const scope = sourceId ? await engine.recoverMembership(sourceId, { exclusive: true })
-        : creation ? await engine.beginMemberCreation(creation.collection, creation.value, creation.requestedSeriesId) : await engine.beginMembership();
+      // Opening a stage reads the engine's storage; when it is silent the dialog says so instead of
+      // spinning, and a stage that opens later is released at once rather than held behind the
+      // person's back (BUG-20260927-engine-open-hangs-on-silent-device-storage). A creation stage
+      // keeps waiting: releasing it keeps its record, so an abandoned one would come back later
+      // as unfinished work the person was told had been refused.
+      let abandoned = false;
+      const acquiring = sourceId ? engine.recoverMembership(sourceId, { exclusive: true })
+        : creation ? null : engine.beginMembership();
+      if (acquiring) void acquiring.then(opened => { if (abandoned) engine.releaseMembership(opened.getState().record.scopeId); }, () => undefined);
+      const scope = acquiring ? await untilStorageSilent(acquiring, () => { abandoned = true; }, readOnlyReason(true))
+        : await engine.beginMemberCreation(creation!.collection, creation!.value, creation!.requestedSeriesId);
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
       current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) }; refresh();
     });
     opening.current = { identity, promise };
     void promise.finally(() => { if (opening.current?.promise === promise) opening.current = null; }).catch(() => undefined);
     return promise;
-  }, [active, identity, refresh, run]);
+  }, [active, identity, refresh, run, readOnlyReason]);
   const required = useCallback(() => {
     active(); if (current.current?.identity !== identity) throw new Error('Open membership editing first'); return current.current.scope;
   }, [active, identity]);
@@ -272,6 +350,13 @@ interface DocumentOptions {
   slot?: string;
   create?: boolean;
   autoSave?: boolean;
+  /**
+   * The screen can show this document for reading only: while device storage is silent it gets a
+   * copy in `data` with `readOnly` set, and must offer no edit it could not keep. Screens without
+   * a read-only form keep waiting, as they always did — an editable page over a copy that cannot
+   * be saved would lose what the person types.
+   */
+  readOnlyCopy?: boolean;
   /** Only delivery is delayed; editor.edit persists each draft immediately. */
   autoSaveDelayMs?: number;
 }
@@ -320,8 +405,9 @@ interface RecoveryRequest {
 const aborted = () => Object.assign(new Error('Editor recovery was cancelled'), { name: 'AbortError' });
 
 /** One UI contract: durable draft, observed value, delivery and conflict choices. */
-function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750 }: DocumentOptions = {}) {
+function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750, readOnlyCopy = false }: DocumentOptions = {}) {
   const { browser, owner, error: engineError } = useDataEngine();
+  const readOnlyReason = useReadOnlyReason();
   const collection = resource?.collection ?? null, id = resource?.id ?? null;
   const key = JSON.stringify([collection, id, slot, create]);
   const [opened, setOpened] = useState<OpenEditor | null>(null);
@@ -377,10 +463,61 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   // Owner and resource identity gate rendering before effect cleanup can run.
   const current = opened?.identity === identity ? opened : null;
+
+  /*
+   * AN OPENING THAT DOES NOT ANSWER IS NOT WAITED ON IN FRONT OF THE PERSON
+   * (BUG-20260927-engine-open-hangs-on-silent-device-storage). Opening reads the editor's storage
+   * first; when that storage is silent the opening hangs with neither result nor error, and the
+   * council stayed a skeleton for half an hour at the meeting it was prepared for. A screen that
+   * can show the document read-only (`readOnlyCopy`) gets, while that storage is silent, a copy
+   * that needs no editor storage — the server's, or this device's confirmed one when the server
+   * cannot be asked. The opening keeps running: when storage answers, the editor replaces the
+   * copy and editing comes back by itself. The copy is keyed by the document, not the attempt, so
+   * "retry" does not blank the screen, and it is forgotten once an editor opens.
+   */
+  const [copied, setCopied] = useState<{ base: object; snapshot: ResourceSnapshot; source: 'device' | 'server' } | null>(null);
+  // The two looks are independent: the device copy lives in a store that may itself be silent,
+  // and a device look that never answers must not stop the server from being asked again.
+  // Both are stamped with the document they look for, so moving to another document neither waits
+  // behind the previous one's look nor lets its late answer through.
+  const lookingDevice = useRef<object | null>(null), lookingServer = useRef<object | null>(null);
+  const editorOpen = useRef(false), latestBase = useRef(base);
+  editorOpen.current = Boolean(current);
+  latestBase.current = base;
+  const waitingForEditor = Boolean(readOnlyCopy && browser && owner && collection && id && !create && !current && !error);
+  const hasCopy = copied?.base === base;
+  const hasServerCopy = hasCopy && copied!.source === 'server';
+  useLookWhileSilent(waitingForEditor && !hasServerCopy, OPENING_STORAGE, () => {
+    if (!browser || !collection || !id) return;
+    const ref = { collection, id }, forBase = base;
+    const offer = (snapshot: ResourceSnapshot | undefined, source: 'device' | 'server') => {
+      // A look that answers after the editor opened, or for a document no longer on the screen, is old news.
+      if (editorOpen.current || latestBase.current !== forBase) return;
+      // An empty copy tells a reader nothing true: the document may exist only in this device's
+      // silent storage, not yet delivered. Waiting is honest; "not found" would not be.
+      if (!snapshot || snapshot.value === null) return;
+      // The server's copy is the newest truth; the device's only fills the gap until it answers.
+      setCopied(previous => previous?.base === forBase && previous.source === 'server' && source === 'device' ? previous : { base: forBase, snapshot, source });
+    };
+    // The device copy does not change while its store is silent: once one is on the screen, only the server is asked.
+    if (!hasCopy && lookingDevice.current !== forBase) {
+      lookingDevice.current = forBase;
+      void browser.engine.peekCached(ref).then(snapshot => offer(snapshot, 'device'), () => undefined)
+        .finally(() => { if (lookingDevice.current === forBase) lookingDevice.current = null; });
+    }
+    if (lookingServer.current !== forBase) {
+      lookingServer.current = forBase;
+      void browser.engine.peekRemote(ref).then(snapshot => offer(snapshot, 'server'), () => undefined)
+        .finally(() => { if (lookingServer.current === forBase) lookingServer.current = null; });
+    }
+  });
+  useEffect(() => { if (current) setCopied(null); }, [current]);
+  // Only while the screen still asks for it: a view that switches to editing must not inherit it.
+  const copy = readOnlyCopy && !current && copied?.base === base ? copied : null;
   const isCurrent = useCallback(() => mounted.current && scope.current === identity, [identity]);
   const run = useCallback(async (action: (editor: ManagedEditor) => Promise<void>) => {
     if (!isCurrent()) throw new Error(EDITOR_CHANGED);
-    if (!current) throw new Error('The editor is not ready');
+    if (!current) throw copy ? readOnlyRefusal(readOnlyReason()) : new Error('The editor is not ready');
     try {
       await action(current.editor);
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
@@ -389,7 +526,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       if (isCurrent()) setError(message(failure));
       throw failure;
     }
-  }, [current, isCurrent, setError]);
+  }, [current, copy, readOnlyReason, isCurrent, setError]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelScheduledSave = useCallback(() => {
     if (saveTimer.current !== null) clearTimeout(saveTimer.current);
@@ -442,20 +579,28 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   const manualEditor = current?.editor;
   const getManualForm = useCallback((formSlot: string, fields: readonly ManualPath[], recovery?: ManualRecoveryPolicy) => {
+    if (!manualEditor && copy) throw readOnlyRefusal(readOnlyReason());
     if (!manualEditor || !isCurrent()) throw new Error(EDITOR_CHANGED);
     return manualEditor.form(formSlot, fields, recovery);
-  }, [manualEditor, isCurrent]);
+  }, [manualEditor, copy, readOnlyReason, isCurrent]);
 
   return {
     getManualForm,
     recoveryIdentity: identity as object,
-    data: current?.state.checkpoint.draft ?? null,
+    data: current ? current.state.checkpoint.draft : copy?.snapshot.value ?? null,
     confirmed: current?.state.checkpoint.confirmed ?? null,
     remote: current?.state.checkpoint.remoteCandidate ?? null,
     state: current?.state ?? null,
     status: current?.status ?? null,
-    loading: Boolean(resource && owner && !current && !error),
-    error: error ?? current?.state.error ?? engineError,
+    loading: Boolean(resource && owner && !current && !error && !copy),
+    /** A copy is on the screen for reading; every change is refused with `readOnlyReason`. */
+    readOnly: Boolean(copy),
+    copySource: copy?.source ?? null,
+    readOnlyReason: copy ? readOnlyReason() : null,
+    // A background failure elsewhere in the engine never replaces a copy shown for reading: pages
+    // treat `error` as "could not load", and it once turned the preaching view of a sermon the
+    // screen already held into an error page (BUG-20260927-engine-background-error-sticks-on-every-screen).
+    error: error ?? current?.state.error ?? (copy ? null : engineError),
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
       return run(editor => editor.edit(value));
@@ -476,11 +621,16 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     listRecoverable: async () => {
       if (!isCurrent() || !browser || !owner || !collection || !id) throw new Error(EDITOR_CHANGED);
       try {
-        const records = await browser.engine.listRecoverable({ collection, id });
+        // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
+        const records = await untilStorageSilent(browser.engine.listRecoverable({ collection, id }), () => undefined, readOnlyReason(true));
         if (!isCurrent()) throw new Error(EDITOR_CHANGED);
         setError(null);
         return records;
-      } catch (failure) { if (isCurrent()) setError(message(failure)); throw failure; }
+      } catch (failure) {
+        // Silent storage is not a failure of this document: the search reports it, the editor stays as it is.
+        if (isCurrent() && (failure as { code?: string }).code !== 'storage-silent') setError(message(failure));
+        throw failure;
+      }
     },
     recover,
     retry: async () => {
@@ -519,10 +669,50 @@ export function useDataCollection(collection: string | null) {
     return () => { active = false; stop?.(); };
   }, [browser, owner, collection, identity, current]);
   const state = observed?.identity === identity ? observed.state : null;
-  const error = (failure?.identity === identity ? failure.message : null) ?? state?.error ?? engineError;
+  const ownError = (failure?.identity === identity ? failure.message : null) ?? state?.error ?? null;
+  const waiting = Boolean(owner && collection && !ownError && (!state || (state.freshness === 'unknown' && !state.documents?.some(document => document.value !== null))));
+  /*
+   * A LIST WHOSE CACHE DOES NOT ANSWER (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+   * The live list reads its rows and cursor from device storage before it asks the server, so a
+   * silent store held every list — prayers, notes, councils — on its placeholder. While the list's
+   * storage is silent it shows a copy for reading: the server's whole list, or the rows this device
+   * confirmed when the server cannot be asked. Rows lead only to documents and to actions that
+   * refuse in words while storage is silent, so no list needs to opt in. The live list replaces
+   * the copy as soon as it answers.
+   */
+  const [copied, setCopied] = useState<{ identity: object; state: CollectionState; source: 'device' | 'server' } | null>(null);
+  // Independent looks, as for a document: a silent row store must not stop the server being asked.
+  const lookingDevice = useRef<object | null>(null), lookingServer = useRef<object | null>(null);
+  const latestIdentity = useRef(identity);
+  latestIdentity.current = identity;
+  const listHasCopy = copied?.identity === identity;
+  useLookWhileSilent(waiting && !(listHasCopy && copied!.source === 'server'), LIST_STORAGE, () => {
+    if (!browser || !collection) return;
+    const forIdentity = identity;
+    const offer = (next: CollectionState, source: 'device' | 'server') => {
+      if (latestIdentity.current !== forIdentity) return;
+      setCopied(previous => previous?.identity === forIdentity && previous.source === 'server' && source === 'device' ? previous : { identity: forIdentity, state: next, source });
+    };
+    // A device scan of the whole row store is not repeated once its rows are on the screen.
+    if (!listHasCopy && lookingDevice.current !== forIdentity) {
+      lookingDevice.current = forIdentity;
+      void browser.engine.peekCollectionCached(collection).then(next => offer(next, 'device'), () => undefined)
+        .finally(() => { if (lookingDevice.current === forIdentity) lookingDevice.current = null; });
+    }
+    if (lookingServer.current !== forIdentity) {
+      lookingServer.current = forIdentity;
+      void browser.engine.peekCollectionRemote(collection).then(next => offer(next, 'server'), () => undefined)
+        .finally(() => { if (lookingServer.current === forIdentity) lookingServer.current = null; });
+    }
+  });
+  const copy = waiting && copied?.identity === identity ? copied : null;
+  // The engine's background failure neither stops a waiting list from being offered a copy nor hides one.
+  const error = ownError ?? (copy ? null : engineError);
   return {
-    state,
-    loading: Boolean(owner && collection && !error && (!state || (state.freshness === 'unknown' && !state.documents?.some(document => document.value !== null)))),
+    state: copy ? copy.state : state,
+    loading: waiting && !copy && !error,
+    /** The rows are a copy for reading while the list's own storage is silent. */
+    readOnly: Boolean(copy),
     error,
     refresh: async () => {
       if (!current() || !browser || !owner || !collection) throw new Error('The active collection changed');
@@ -571,8 +761,10 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   }, [identity, owner, browser, hasResource, documentReady, getManualForm, slot, fields, recovery, current]);
   const target = opened?.identity === identity ? opened : null;
   const targetForm = target?.form;
+  const readOnly = !targetForm && document.readOnly;
   const run = useCallback(async (action: (form: ManagedManualForm) => Promise<void>, busy = true) => {
-    if (!current() || !targetForm) throw new Error('The manual form is not ready');
+    // A form over a copy shown for reading cannot stage anything; say why instead of "not ready".
+    if (!current() || !targetForm) throw readOnly ? readOnlyRefusal(document.readOnlyReason ?? '') : new Error('The manual form is not ready');
     if (busy) setWorking(value => ({ identity, count: value.identity === identity ? value.count + 1 : 1 }));
     try {
       await action(targetForm);
@@ -584,12 +776,13 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     } finally {
       if (busy && current()) setWorking(value => ({ identity, count: Math.max(0, value.identity === identity ? value.count - 1 : 0) }));
     }
-  }, [targetForm, current, identity]);
+  }, [targetForm, readOnly, document.readOnlyReason, current, identity]);
   const begin = useCallback(() => run(form => form.begin()), [run]);
   const proposals = useMemo(() => ({ identity, pending: new Set<AbortController>() }), [identity]);
   useEffect(() => () => { proposals.pending.forEach(controller => controller.abort()); }, [proposals]);
-  const error = failure?.identity === identity ? failure.message : document.error;
+  const error = failure?.identity === identity ? failure.message : readOnly ? document.readOnlyReason : document.error;
   return {
+    readOnly,
     active: target?.state?.record.active ?? false,
     data: target?.state?.value ?? document.data,
     // The opening may include submitted predecessors; it is never a confirmed snapshot.
@@ -614,7 +807,12 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     keepLocal: () => run(form => form.resolve('local')),
     acceptRemote: () => run(form => form.resolve('remote')),
     retry: () => run(form => form.retry()),
-    listRecoverable: async () => { if (!target || !current()) throw new Error(EDITOR_CHANGED); const records = await target.form.listRecoverable(); if (!current()) throw new Error(EDITOR_CHANGED); return records; },
+    listRecoverable: async () => {
+      // Over a copy for reading there is no form storage to search; the app-wide notice says why.
+      if (readOnly) return [];
+      if (!target || !current()) throw new Error(EDITOR_CHANGED);
+      const records = await target.form.listRecoverable(); if (!current()) throw new Error(EDITOR_CHANGED); return records;
+    },
     recover: (scopeId: string) => run(form => form.recover(scopeId)),
   };
 }

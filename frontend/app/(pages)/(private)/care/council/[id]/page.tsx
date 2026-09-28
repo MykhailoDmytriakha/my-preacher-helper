@@ -99,7 +99,8 @@ function LegacyCouncilDetailPage({ councilId }: { councilId: string }) {
  * business — so the screen keeps its own contract and loses its second write.
  */
 function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
-  return <DataDocumentProvider resource={{ collection: 'councils', id: councilId }}>
+  // The page has a read-only form, so it may show a copy while device storage is silent.
+  return <DataDocumentProvider resource={{ collection: 'councils', id: councilId }} options={{ readOnlyCopy: true }}>
     <EngineCouncilDetailWorkspace councilId={councilId} />
   </DataDocumentProvider>;
 }
@@ -134,6 +135,8 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   };
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
+    // A copy shown while device storage is silent is for reading only (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+    readOnly: document.readOnly,
     error: document.error ?? list.error, refresh: document.refresh,
     updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
     deleteCouncil: (id: string) => { void document.deleteCouncil(id).catch(report); },
@@ -162,12 +165,14 @@ interface CouncilDetailSource {
   carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Council | undefined;
   /** Absent means yes: the legacy road creates the next council on the way. */
   canCarryToNew?: boolean;
+  /** The council is a copy for reading: nothing on the page offers a change it could not keep. */
+  readOnly?: boolean;
 }
 
 function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, canCarryToNew = true } = source;
+  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, canCarryToNew = true, readOnly = false } = source;
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
@@ -206,6 +211,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   }
 
   const held = council.status === 'held';
+  /** Preparing, and the editor is open — a held council or a copy for reading offers no edits. */
+  const editable = !held && !readOnly;
   const councilsById = Object.fromEntries(councils.map((item) => [item.id, item])) as Record<string, Council | undefined>;
   const patch = (updater: (current: Council) => Council) => updateCouncil(council.id, updater);
   const patchTopic = (topicId: string, updater: TopicUpdater) =>
@@ -288,7 +295,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
       <header className="mt-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            {held ? (
+            {held || readOnly ? (
               <h1 className={`text-2xl font-extrabold tracking-tight sm:text-3xl ${tone.title}`}>{council.title}</h1>
             ) : (
               <LiveTextInput
@@ -305,6 +312,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
               </Chip>
               {held ? (
                 <span>{t('council.heldOn', { date: council.heldAt ? formatDate(council.heldAt) : '' })}</span>
+              ) : readOnly ? (
+                council.date ? <span>{formatDateOnly(council.date)}</span> : null
               ) : (
                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
                   {t('council.detail.dateLabel')}
@@ -326,7 +335,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {!readOnly && <div className="flex shrink-0 flex-wrap items-center gap-2">
             {reordering ? (
               <button type="button" onClick={() => setReordering(false)} className={buttonPrimary} data-testid="council-reorder-done">
                 <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
@@ -377,9 +386,9 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 </button>
               </>
             )}
-          </div>
+          </div>}
         </div>
-        {!held && (
+        {editable && (
           <p className="mt-3 max-w-2xl px-1 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
             {reordering ? t('council.detail.reorderHint') : t('council.detail.conductHint')}
           </p>
@@ -391,7 +400,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             {held ? t('council.detail.outcomes') : t('council.detail.sections')}
           </h2>
-          {!held && (
+          {editable && (
             <button
               type="button"
               onClick={() => addTopic('top')}
@@ -438,7 +447,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 index={index + 1}
                 topic={topic}
                 held={held}
-                editing={editingTopicId === topic.id}
+                readOnly={readOnly}
+                editing={!readOnly && editingTopicId === topic.id}
                 onEdit={() => setEditingTopicId(topic.id)}
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
@@ -462,7 +472,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
           person is at the end of it when the next section comes to mind, and the new section
           belongs right there, under the last one — not behind a scroll to the top and back.
         */}
-        {!held && !reordering && council.topics.length > 0 && (
+        {editable && !reordering && council.topics.length > 0 && (
           <div className="mt-3 flex justify-end">
             <button type="button" onClick={() => addTopic('bottom')} className={buttonQuiet} data-testid="council-add-topic-bottom">
               <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
@@ -509,6 +519,7 @@ function TopicCard({
   index,
   topic,
   held,
+  readOnly,
   editing,
   onEdit,
   onDone,
@@ -523,6 +534,7 @@ function TopicCard({
   index: number;
   topic: CouncilTopic;
   held: boolean;
+  readOnly: boolean;
   editing: boolean;
   onEdit: () => void;
   onDone: () => void;
@@ -537,6 +549,7 @@ function TopicCard({
 }) {
   const { t } = useTranslation();
   const outcomeLine = useOutcomeLine();
+  const editable = !held && !readOnly;
   const stateLine = useTopicStateLine();
   const recordedLabel = useRecordedOutcomeLabel();
   const [editingOutcome, setEditingOutcome] = useState(false);
@@ -603,7 +616,7 @@ function TopicCard({
                 </div>
               )}
               {!held && isBare && (
-                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">{t('council.topic.empty')}</p>
+                <p className="mt-1 text-sm text-gray-400 dark:text-gray-500">{t(readOnly ? 'council.topic.emptyReadOnly' : 'council.topic.empty')}</p>
               )}
 
               {topic.questions.length > 0 && (
@@ -698,7 +711,7 @@ function TopicCard({
                       * the row for either kind, so nothing that changes a record is ever one stray
                       * tap away, and the two kinds of section behave the same way.
                       */}
-                    <button
+                    {!readOnly && <button
                       type="button"
                       onClick={() => setEnteringOutcome((value) => !value)}
                       className={`${buttonText} shrink-0 ${enteringOutcome ? '' : 'text-indigo-700 dark:text-indigo-300'}`}
@@ -707,9 +720,9 @@ function TopicCard({
                     >
                       <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                       {enteringOutcome ? t('council.topic.hideOutcome') : handled ? t('council.topic.editOutcome') : t('council.topic.enterOutcome')}
-                    </button>
+                    </button>}
                   </div>
-                  {enteringOutcome && (
+                  {enteringOutcome && !readOnly && (
                     <div className="mt-3 border-t border-indigo-200/80 pt-3 dark:border-indigo-900/50">
                       <CouncilOutcomePanel
                         topic={topic}
@@ -802,7 +815,7 @@ function TopicCard({
                           </ul>
                         )}
                       </div>
-                      <div className="flex shrink-0 flex-col items-end gap-1">
+                      {!readOnly && <div className="flex shrink-0 flex-col items-end gap-1">
                         <button type="button" onClick={startOutcomeEdit} className={buttonText}>
                           <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                           {t('council.topic.editOutcome')}
@@ -828,7 +841,7 @@ function TopicCard({
                             {t('council.topic.toNextCouncil')}
                           </button>
                         ) : null}
-                      </div>
+                      </div>}
                     </div>
                   )}
                   {choosingTarget && canCarry && !topic.carriedToCouncilId && (
@@ -865,7 +878,7 @@ function TopicCard({
                 </div>
               )}
 
-              {!held && (
+              {editable && (
                 <div className="mt-3 flex justify-end">
                   <button type="button" onClick={onEdit} className={buttonText} data-testid={`council-topic-edit-${topic.id}`}>
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />

@@ -15,7 +15,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   const session = new DataSession({ resource: { collection: 'sermons', id: 'sermon' }, value, metadata: null });
   let durable = Promise.resolve();
   const api = {
-    recoveryIdentity: {},
+    recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
     data: value, confirmed: session.checkpoint().confirmed, remote: null,
     state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
@@ -35,7 +35,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   jest.mocked(useDataDocument).mockImplementation(() => api);
   jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null });
   jest.mocked(useDataForm).mockImplementation(() => ({
-    data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
+    data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, readOnly: false, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
     propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
   }));
   return { api, session, defer: (promise: Promise<void>) => { durable = promise; } };
@@ -127,6 +127,14 @@ describe('useSermonCoreDataDocument', () => {
     const { result } = renderHook(() => useSermonCoreDataDocument('sermon'));
     await expect(result.current.patchCore({ title: 'Still mine' })).rejects.toThrow('Journal failed');
     expect(s.session.checkpoint().draft?.title).toBe('Still mine');
+  });
+
+  it('locks a copy shown for reading while device storage is silent, so the recorder and editors stay off', async () => {
+    const s = setup(); const { result, rerender } = renderHook(() => useSermonCoreDataDocument('sermon'));
+    expect(result.current.isReadOnly).toBe(false);
+    s.api.readOnly = true; rerender();
+    expect(result.current.isReadOnly).toBe(true);
+    await expect(result.current.patchCore({ title: 'Typed into a copy' })).rejects.toThrow('not available');
   });
 
   it('locks absent, foreign-owner and confirmed or candidate deleted documents', async () => {

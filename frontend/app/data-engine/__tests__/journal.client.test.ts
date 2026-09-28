@@ -2,6 +2,8 @@ import { createStore, del, entries, update } from 'idb-keyval';
 import { createIndexedDbJournal } from '../journal.client';
 import type { JournalEntry } from '../types';
 jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'store'), del: jest.fn(), entries: jest.fn(), update: jest.fn() }));
+// The watch is proven in deviceStorage.test.ts; here the store contract is what matters.
+jest.mock('@/utils/deviceStorage', () => ({ watchedStore: (database: string, store: string) => jest.requireMock('idb-keyval').createStore(database, store) }));
 const entry = (owner = 'owner'): JournalEntry => ({ command: { protocol: 1, operationId: 'op', owner, resource: { collection: 'studies', id: 'one' }, generation: null, dependsOn: [], kind: 'create', value: { text: 'mine' } }, state: 'queued', attempts: 0, createdAt: 1 });
 describe('IndexedDB journal boundary', () => {
   beforeEach(() => { jest.clearAllMocks(); });

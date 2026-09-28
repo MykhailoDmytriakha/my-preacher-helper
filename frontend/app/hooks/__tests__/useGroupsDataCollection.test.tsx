@@ -10,7 +10,7 @@ jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }
 jest.mock('@/hooks/useServerFirstQuery', () => ({ useServerFirstQuery: jest.fn(() => ({ data: [], isLoading: false })) }));
 beforeEach(() => {
   jest.clearAllMocks(); jest.mocked(isCollectionOnEngine).mockReturnValue(true);
-  jest.mocked(useDataCollection).mockReturnValue({ loading: false, error: null, refresh: jest.fn(), state: {
+  jest.mocked(useDataCollection).mockReturnValue({ loading: false, readOnly: false, error: null, refresh: jest.fn(), state: {
     complete: true, freshness: 'server', checking: false, error: null, version: 5, snapshots: [
       { resource: { collection: 'groups', id: 'a' }, metadata: null, value: { userId: 'owner', title: 'Updated', updatedAt: '2', meetingDates: [{ id: 'm', date: '2026-09-19', createdAt: '1' }] } },
       { resource: { collection: 'groups', id: 'gone' }, value: null, metadata: { protocol: 1, generation: 'g', revision: 2, deleted: true } },

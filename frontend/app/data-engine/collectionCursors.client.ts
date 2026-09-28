@@ -1,6 +1,8 @@
 'use client';
 
-import { createStore, get, update } from 'idb-keyval';
+import { get, update } from 'idb-keyval';
+
+import { watchedStore } from '@/utils/deviceStorage';
 
 import { collectionHeadRef } from './feed';
 
@@ -18,8 +20,8 @@ function validate(value: unknown): CollectionCursor {
 
 /** A local CAS generation prevents a stale tab from undoing another tab's reset. */
 export function createIndexedDbCollectionCursors(): CollectionCursorStore {
-  let store: ReturnType<typeof createStore> | undefined;
-  const database = () => (store ??= createStore('preacher-data-engine-cursors-v1', 'cursors'));
+  let store: ReturnType<typeof watchedStore> | undefined;
+  const database = () => (store ??= watchedStore('preacher-data-engine-cursors-v1', 'cursors', 'engine-cursors'));
   const key = (owner: string, collection: string) => collectionHeadRef(owner, collection).id;
   return {
     async read(owner, collection) {

@@ -3,6 +3,8 @@ import { createIndexedDbCollectionCursors } from '../collectionCursors.client';
 import type { CollectionCursor } from '../collections';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'cursors'), get: jest.fn(), update: jest.fn() }));
+// The watch is proven in deviceStorage.test.ts; here the store contract is what matters.
+jest.mock('@/utils/deviceStorage', () => ({ watchedStore: (database: string, store: string) => jest.requireMock('idb-keyval').createStore(database, store) }));
 
 describe('Collection cursor persistence', () => {
   let current: CollectionCursor | undefined;

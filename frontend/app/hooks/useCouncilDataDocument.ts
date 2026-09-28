@@ -22,7 +22,8 @@ const missing = () => new Error('The council is not available for editing');
  * claim "carried to…" for a section that arrived nowhere.
  */
 export function useCouncilDataDocument(councilId: string) {
-  const document = useDataDocument({ collection: 'councils', id: councilId }, { slot: 'council' });
+  // Both council screens render read-only when handed a copy (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+  const document = useDataDocument({ collection: 'councils', id: councilId }, { slot: 'council', readOnlyCopy: true });
   const data = document.data;
   const council = useMemo<Council | null>(
     () => (data ? hydrateCouncil(data as Record<string, unknown>, councilId) : null),
@@ -103,6 +104,8 @@ export function useCouncilDataDocument(councilId: string) {
   return {
     council,
     loading: document.loading,
+    /** A copy for reading while device storage is silent; every change is refused with a reason. */
+    readOnly: document.readOnly,
     error: document.error,
     status: document.status,
     confirmed: document.confirmed,

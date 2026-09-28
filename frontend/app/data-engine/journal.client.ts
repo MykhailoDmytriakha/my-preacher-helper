@@ -1,6 +1,8 @@
 'use client';
 
-import { createStore, del, entries, update } from 'idb-keyval';
+import { del, entries, update } from 'idb-keyval';
+
+import { watchedStore } from '@/utils/deviceStorage';
 
 import { commandFingerprint } from './protocol';
 
@@ -8,8 +10,8 @@ import type { JournalEntry, JournalStore } from './types';
 
 /** Resolves only after the IndexedDB transaction commits, never at request success. */
 export function createIndexedDbJournal(): JournalStore {
-  let store: ReturnType<typeof createStore> | undefined;
-  const database = () => (store ??= createStore('preacher-data-engine-v1', 'commands'));
+  let store: ReturnType<typeof watchedStore> | undefined;
+  const database = () => (store ??= watchedStore('preacher-data-engine-v1', 'commands', 'engine-journal'));
   const key = (owner: string, operationId: string) => JSON.stringify([owner, operationId]);
   return {
     async put(entry) {

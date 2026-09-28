@@ -1,3 +1,5 @@
+import { getDeviceStorageHealth, subscribeDeviceStorage, type SilentStorage } from '@/utils/deviceStorage';
+
 /** Bounded, content-free device diagnostics. Never store raw errors, URLs or documents. */
 const STORAGE_KEY = 'preacher:diagnostics:v1';
 const MAX_EVENTS = 80;
@@ -9,7 +11,7 @@ const EVENTS = [
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
   'freshness-check', 'freshness-error', 'freshness-timeout', 'freshness-late-response', 'freshness-late-error',
-  'freshness-deferred',
+  'freshness-deferred', 'storage-silent', 'storage-answered',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData {
@@ -83,6 +85,25 @@ export function recordDiagnostic(name: EventName, data: EventData = {}) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(memory)); } catch { /* Best effort, never block editing. */ }
 }
 
+/*
+ * DEVICE STORAGE IN THE REPORT (BUG-20260927-engine-open-hangs-on-silent-device-storage). The owner's
+ * report of a blank council said where he went and when he was offline, but not what the screen was
+ * waiting for; that took reading the code. Now the log keeps when a database went silent and how long
+ * it stayed so, and the report says which one is silent at the moment it is sent.
+ */
+let silentBefore: SilentStorage[] = [];
+subscribeDeviceStorage(() => {
+  const { silent } = getDeviceStorageHealth();
+  const now = Date.now();
+  for (const entry of silent) {
+    if (!silentBefore.some(previous => previous.database === entry.database)) recordDiagnostic('storage-silent', { source: entry.database });
+  }
+  for (const entry of silentBefore) {
+    if (!silent.some(current => current.database === entry.database)) recordDiagnostic('storage-answered', { source: entry.database, elapsedMs: now - entry.since });
+  }
+  silentBefore = silent;
+});
+
 export function diagnosticErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== 'object' || !('code' in error)) return undefined;
   const code = typeof error.code === 'string' ? error.code.replace(/^firestore\//, '') : '';
@@ -107,6 +128,7 @@ export function buildDiagnosticReport() {
       serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker.controller?.state ?? 'uncontrolled' : 'unsupported',
     },
     retention: { maxEvents: MAX_EVENTS, hours: 24 },
+    storage: { silent: getDeviceStorageHealth().silent.map(({ database, since }) => ({ database, silentForMs: Math.max(0, Date.now() - since) })) },
     events: diagnosticEvents(),
   };
 }

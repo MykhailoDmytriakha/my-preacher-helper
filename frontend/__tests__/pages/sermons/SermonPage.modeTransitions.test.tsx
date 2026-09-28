@@ -223,7 +223,7 @@ describe('SermonPage mode transitions', () => {
     expect(mockSetSermon).not.toHaveBeenCalled();
     expect(mockCore.patchCore).not.toHaveBeenCalled();
     expect(useSermon).not.toHaveBeenCalled();
-    expect(DataDocumentProvider).toHaveBeenLastCalledWith(expect.objectContaining({ resource: { collection: 'sermons', id: 'abc' }, options: { slot: 'sermon' } }), undefined);
+    expect(DataDocumentProvider).toHaveBeenLastCalledWith(expect.objectContaining({ resource: { collection: 'sermons', id: 'abc' }, options: { slot: 'sermon', readOnlyCopy: true } }), undefined);
   });
 
   test('preserves the mounted scratch pane while the page displays preparation mode', async () => {

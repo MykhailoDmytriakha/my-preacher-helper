@@ -1,6 +1,7 @@
 import { del, get, set } from 'idb-keyval';
 
 import { debugLog } from '@/utils/debugMode';
+import { answerWithin, watchedStore } from '@/utils/deviceStorage';
 
 import type { PersistedClient, Persister } from '@tanstack/react-query-persist-client';
 
@@ -110,17 +111,48 @@ function restorePersistedClient(client: PersistedClient | undefined): PersistedC
   } as PersistedClient;
 }
 
-export function createIDBPersister(key: IDBValidKey = 'react-query-cache'): Persister {
+/** idb-keyval's default database — where the query cache has always lived — watched like every other store. */
+export const queryCacheStore = watchedStore('keyval-store', 'keyval', 'query-cache');
+
+export function createIDBPersister(key: IDBValidKey = 'react-query-cache', { mayOverwrite = () => true, onLateRestore }: {
+  /** False while something still has to read the old cache first; the write is skipped, the next one retries. */
+  mayOverwrite?: () => boolean;
+  /** A restore that answered after the app stopped waiting: hydrate it; writing resumes right after. */
+  onLateRestore?: (client: PersistedClient) => void;
+} = {}): Persister {
+  /*
+   * A CACHE THAT COULD NOT BE READ IS NEVER WRITTEN OVER (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+   * Restoring waits for device storage no longer than the silence threshold, so a silent store no
+   * longer holds every query in "restoring". But the unread cache may carry paused mutations —
+   * offline edits not yet sent — so nothing is written over it until the read answers; then it is
+   * handed to the app to take in, and only after that does writing resume. A read that fails
+   * leaves the cache exactly as it is for this session.
+   */
+  let unread = false;
   return {
     persistClient: async (client: PersistedClient) => {
-      await set(key, serializePersistedClient(client));
+      if (unread || !mayOverwrite()) return;
+      await set(key, serializePersistedClient(client), queryCacheStore);
       debugLog('ReactQuery cache persisted', {
         key,
         queries: client?.clientState?.queries?.length ?? 0,
       });
     },
     restoreClient: async () => {
-      const restored = restorePersistedClient(await get<PersistedClient>(key));
+      const reading = get<PersistedClient>(key, queryCacheStore);
+      const read = await answerWithin(reading);
+      if (!read.answered) {
+        unread = true;
+        debugLog('ReactQuery cache left unread: device storage is silent', { key });
+        void reading.then(value => {
+          const late = restorePersistedClient(value);
+          if (late) onLateRestore?.(late);
+          unread = false;
+          debugLog('ReactQuery cache restored late', { key, queries: late?.clientState?.queries?.length ?? 0 });
+        }, () => undefined);
+        return undefined;
+      }
+      const restored = restorePersistedClient(read.value);
       debugLog('ReactQuery cache restored', {
         key,
         queries: restored?.clientState?.queries?.length ?? 0,
@@ -128,7 +160,8 @@ export function createIDBPersister(key: IDBValidKey = 'react-query-cache'): Pers
       return restored;
     },
     removeClient: async () => {
-      await del(key);
+      if (unread || !mayOverwrite()) return;
+      await del(key, queryCacheStore);
       debugLog('ReactQuery cache removed', { key });
     },
   };

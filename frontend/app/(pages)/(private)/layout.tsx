@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ReactNode, Suspense } from 'react';
 
+import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
@@ -57,6 +58,8 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
             <OutboxConflictBanner />
             {/* The same door for engine writes the server refused after this device kept them. */}
             <EngineConflictBanner />
+            {/* Device storage that stopped answering: records are copies for reading until it does. */}
+            <DeviceStorageNotice />
             <Breadcrumbs />
           </div>
         </>

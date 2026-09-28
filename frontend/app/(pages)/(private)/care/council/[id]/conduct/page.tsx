@@ -76,6 +76,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
     <CouncilConductContent councilId={councilId} source={{
       council: document.council, loading: document.loading,
       updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
+      readOnly: document.readOnly,
     }} />
   </>;
 }
@@ -84,12 +85,19 @@ interface CouncilConductSource {
   council: Council | null | undefined;
   loading: boolean;
   updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+  /**
+   * A copy shown while device storage is silent (BUG-20260927-engine-open-hangs-on-silent-device-storage):
+   * every section, question and prepared answer is here to read, but nothing is marked or finished —
+   * a "council finished" over a copy that cannot be saved would be a false report at the meeting.
+   */
+  readOnly?: boolean;
 }
 
 function CouncilConductContent({ councilId, source }: { councilId: string; source: CouncilConductSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, loading, updateCouncil } = source;
+  const { council, loading, updateCouncil, readOnly = false } = source;
+  const outcomeLine = useOutcomeLine();
 
   // `null` until the person moves: the first open section is where the meeting resumes.
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
@@ -154,6 +162,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
    * undo on the toast is the safety net instead, and it costs nothing when it is not needed.
    */
   const finish = () => {
+    if (readOnly) return;
     const at = new Date().toISOString();
     updateCouncil(council.id, (current) => holdCouncil(current, at));
     router.push(`/care/council/${council.id}`);
@@ -174,7 +183,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
   };
 
   const sectionList = (
-    <SectionList council={council} currentIndex={index} onSelect={goTo} onFinish={finish} />
+    <SectionList council={council} currentIndex={index} onSelect={goTo} onFinish={readOnly ? undefined : finish} />
   );
 
   return (
@@ -310,7 +319,11 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
                 )}
 
                 <section className="mt-5">
-                  <CouncilOutcomePanel key={topic.id} topic={topic} onWrite={(outcome) => write(topic.id, outcome)} size="lg" />
+                  {readOnly ? (
+                    outcomeLine(topic, outcomeText(topic)) && <p className="text-lg text-indigo-700 dark:text-indigo-300">{outcomeLine(topic, outcomeText(topic))}</p>
+                  ) : (
+                    <CouncilOutcomePanel key={topic.id} topic={topic} onWrite={(outcome) => write(topic.id, outcome)} size="lg" />
+                  )}
                 </section>
               </div>
             </main>
@@ -333,12 +346,12 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
         <span className="flex-1 text-center text-xs text-gray-600 dark:text-gray-400">
           {t('council.discussedCount', { done: progress.done, total: progress.total })}
         </span>
-        {isLast ? (
+        {isLast ? (!readOnly && (
           <button type="button" onClick={finish} className={buttonPrimary} data-testid="council-finish">
             <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
             {t('council.conduct.finish')}
           </button>
-        ) : (
+        )) : (
           <button type="button" onClick={() => goTo(index + 1)} className={buttonPrimary} data-testid="council-next">
             {t('council.conduct.next')}
             <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
@@ -372,7 +385,8 @@ function SectionList({
   council: Council;
   currentIndex: number;
   onSelect: (index: number) => void;
-  onFinish: () => void;
+  /** Absent while the council is a copy for reading: ending it could not be kept. */
+  onFinish?: () => void;
 }) {
   const { t } = useTranslation();
   const outcomeLine = useOutcomeLine();
@@ -418,12 +432,12 @@ function SectionList({
         through the list — one slip and the meeting is over. Distance is the guard here: the undo
         in the toast is the second one, and neither should have to be used.
       */}
-      <div className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
+      {onFinish && <div className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
         <button type="button" onClick={onFinish} className={`${buttonPrimary} w-full justify-center`}>
           <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
           {t('council.conduct.finish')}
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

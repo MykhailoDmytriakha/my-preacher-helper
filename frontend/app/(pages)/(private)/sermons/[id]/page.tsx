@@ -344,7 +344,7 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
 export default function SermonPage() {
   const id = useRouteId();
   return isCollectionOnEngine('sermons') ? (
-    <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon' }}>
+    <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon', readOnlyCopy: true }}>
       <EngineSermonPageContent id={id} />
     </DataDocumentProvider>
   ) : <LegacySermonPageContent id={id} />;

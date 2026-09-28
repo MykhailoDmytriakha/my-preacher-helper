@@ -3,6 +3,7 @@
 import { get } from 'idb-keyval';
 
 import { extractIsoString } from '@/utils/dateFormatter';
+import { queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
@@ -103,10 +104,33 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
   });
 }
 
+let archive: 'idle' | 'pending' | 'done' | 'failed' = 'idle';
+
+/**
+ * Whether the old query cache may be written over. The migration gate no longer holds the whole
+ * app while device storage is silent (BUG-20260927-engine-open-hangs-on-silent-device-storage), so
+ * the gate's promise — "nothing overwrites the old cache before its copies are archived" — is kept
+ * by the query persister instead: it skips writes while an archive is pending or has failed.
+ */
+export function legacyCacheMayBeOverwritten(): boolean {
+  return archive === 'idle' || archive === 'done';
+}
+
 /** Cache state has no provable opening ancestor or delivery status. Archive, never import. */
 export async function preserveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
+  archive = 'pending';
+  try {
+    await archiveLegacyQueryCache(enabled);
+    archive = 'done';
+  } catch (error) {
+    archive = 'failed';
+    throw error;
+  }
+}
+
+async function archiveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
   if (!['councils', 'groups', 'series', 'sermons'].some(enabled)) return;
-  const persisted: unknown = await get('react-query-cache');
+  const persisted: unknown = await get('react-query-cache', queryCacheStore);
   if (!object(persisted) || !object(persisted.clientState)) return;
   const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));
   const mutations = mutationCopies(Array.isArray(persisted.clientState.mutations) ? persisted.clientState.mutations : [], queries, enabled);

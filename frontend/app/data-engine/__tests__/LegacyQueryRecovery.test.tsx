@@ -56,6 +56,39 @@ describe('legacy cache preservation UI', () => {
     expect(mounted).toHaveBeenCalledTimes(1);
   });
 
+  it('says so above the app, with Retry, when the archive fails after the app went on', async () => {
+    jest.useFakeTimers();
+    try {
+      let fail!: (error: Error) => void;
+      jest.mocked(preserveLegacyQueryCache).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; })).mockResolvedValue(undefined);
+      render(<LegacyQueryMigrationGate enabled={enabled}><p>Workspace</p></LegacyQueryMigrationGate>);
+      await act(async () => { await jest.advanceTimersByTimeAsync(3001); });
+      expect(screen.getByText('Workspace')).toBeVisible();
+
+      await act(async () => { fail(new Error('disk full')); await Promise.resolve(); });
+
+      expect(screen.getByRole('alert')).toHaveTextContent('legacyRecovery.preservationFailed');
+      expect(screen.getByText('Workspace')).toBeVisible();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'dataSync.retry' })); await Promise.resolve(); });
+      expect(preserveLegacyQueryCache).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('does not hold the whole app when device storage never answers; the archive keeps running (BUG-20260927-engine-open-hangs-on-silent-device-storage)', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(preserveLegacyQueryCache).mockImplementation(() => new Promise(() => undefined));
+      render(<LegacyQueryMigrationGate enabled={enabled}><p>Workspace</p></LegacyQueryMigrationGate>);
+      expect(screen.queryByText('Workspace')).toBeNull();
+
+      await act(async () => { await jest.advanceTimersByTimeAsync(3001); });
+
+      expect(screen.getByText('Workspace')).toBeVisible();
+      expect(preserveLegacyQueryCache).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
+  });
+
   it('fences a late read from the previous account and keeps the raw copy available', async () => {
     let previous!: (value: typeof record[]) => void;
     jest.mocked(listLegacyQueryCopies).mockImplementationOnce(() => new Promise(resolve => { previous = resolve; })).mockResolvedValue([]);

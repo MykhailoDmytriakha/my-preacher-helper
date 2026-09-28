@@ -1,6 +1,8 @@
 'use client';
 
-import { createStore, entries, get, update } from 'idb-keyval';
+import { entries, get, update } from 'idb-keyval';
+
+import { watchedStore } from '@/utils/deviceStorage';
 
 import { canReplaceSnapshot } from './engine';
 import { getResourcePolicy } from './protocol';
@@ -22,8 +24,8 @@ function validate(owner: string, resource: ResourceRef, value: unknown): Resourc
 
 /** A shared confirmed cache; editor drafts always live in the separate checkpoint store. */
 export function createIndexedDbSnapshots(): CollectionSnapshotStore {
-  let store: ReturnType<typeof createStore> | undefined;
-  const database = () => (store ??= createStore('preacher-data-engine-snapshots-v1', 'snapshots'));
+  let store: ReturnType<typeof watchedStore> | undefined;
+  const database = () => (store ??= watchedStore('preacher-data-engine-snapshots-v1', 'snapshots', 'engine-snapshots'));
   const key = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
   return {
     async read(owner, resource) {

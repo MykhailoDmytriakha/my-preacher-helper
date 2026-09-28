@@ -113,3 +113,22 @@ it('ignores stale delivery responses and old-account subscriptions', async () =>
   await act(async () => { resolve({ phase: 'refused', canDiscard: true, code: 'private-error' }); });
   expect(result.current.delivery).toBeNull(); expect(result.current.error).toBeNull();
 });
+it('says why a stage cannot open while engine storage is silent, and releases one that opens later (BUG-20260927-engine-open-hangs-on-silent-device-storage)', async () => {
+  const { STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS, resetDeviceStorageForTests, trackStorage } = jest.requireActual<typeof import('@/utils/deviceStorage')>('@/utils/deviceStorage');
+  resetDeviceStorageForTests();
+  const t = fixture(); let resolve!: (scope: MembershipScope) => void;
+  t.engine.beginMembership.mockReturnValue(new Promise(done => { resolve = done; }));
+  const { result } = renderHook(useDataMembership, { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  jest.useFakeTimers();
+  try {
+    let outcome!: Promise<unknown>;
+    act(() => { outcome = result.current.begin().then(() => 'opened', (error: unknown) => error); });
+    void trackStorage('engine-state', new Promise(() => undefined));
+    await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
+
+    expect(await outcome).toMatchObject({ code: 'storage-silent' });
+    await act(async () => { resolve(t.scope); await Promise.resolve(); });
+    expect(t.engine.releaseMembership).toHaveBeenCalledWith('scope');
+  } finally { jest.useRealTimers(); resetDeviceStorageForTests(); }
+});

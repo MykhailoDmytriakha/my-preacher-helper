@@ -89,6 +89,7 @@ interface CollectionEntry {
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const initialState = (): CollectionState => ({ snapshots: [], complete: false, freshness: 'unknown', checking: false, version: 0, error: null });
 const failure = (message: string, code = 'data-loss') => Object.assign(new Error(message), { code });
+const READER_CHANGED = 'Collection reader changed during the request';
 const errorCode = (error: unknown) => error && typeof error === 'object' && 'code' in error ? error.code : undefined;
 
 /** Firestore document IDs sort by UTF-8, equivalently by Unicode scalar value. */
@@ -195,6 +196,37 @@ export class CollectionReader {
         entry.stopHead = null;
       }
     };
+  }
+
+  /**
+   * READ-ONLY LOOKS FOR A LIST WHOSE CACHE DOES NOT ANSWER (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+   * Neither persists nor moves a cursor: the rows are only for showing while the list's own
+   * storage is silent, and the next answer from that storage replaces them.
+   */
+  async peekCached(collection: string): Promise<ResourceSnapshot[]> {
+    const owner = this.requireOwner();
+    const snapshots = await this.options.snapshots.list(owner, collection);
+    if (this.owner !== owner) throw failure(READER_CHANGED, 'inactive');
+    this.validateSnapshots({ owner, collection }, snapshots);
+    return copy(snapshots);
+  }
+
+  async peekRemote(collection: string): Promise<{ snapshots: ResourceSnapshot[]; version: number }> {
+    const owner = this.requireOwner();
+    if (!this.online || !this.visible) throw failure('The server cannot be asked right now', 'unavailable');
+    const scope = { owner, collection }, snapshots: ResourceSnapshot[] = [], cursors = new Set<string>();
+    let cursor: string | undefined, version = 0;
+    for (let pageNumber = 0; pageNumber < this.maxPages; pageNumber += 1) {
+      const page = await this.options.transport.list(owner, collection, { limit: this.pageSize, ...(cursor === undefined ? {} : { cursor }) });
+      if (this.owner !== owner) throw failure(READER_CHANGED, 'inactive');
+      this.validatePage(scope, page, cursor, cursors);
+      snapshots.push(...page.snapshots);
+      version = Math.max(version, page.version);
+      if (page.nextCursor === null) return { snapshots, version };
+      cursor = page.nextCursor;
+      cursors.add(cursor);
+    }
+    throw failure('Collection pagination exceeded its request budget');
   }
 
   refresh(collection: string): Promise<CollectionState> {
@@ -435,7 +467,7 @@ export class CollectionReader {
     this.emit(entry);
   }
 
-  private validateSnapshots(entry: CollectionEntry, snapshots: ResourceSnapshot[]): void {
+  private validateSnapshots(entry: Pick<CollectionEntry, 'owner' | 'collection'>, snapshots: ResourceSnapshot[]): void {
     const policy = getResourcePolicy(entry.collection);
     const seen = new Set<string>();
     for (const snapshot of snapshots) {
@@ -447,7 +479,7 @@ export class CollectionReader {
     }
   }
 
-  private validatePage(entry: CollectionEntry, page: CollectionPage, cursor: string | undefined, cursors: Set<string>): void {
+  private validatePage(entry: Pick<CollectionEntry, 'owner' | 'collection'>, page: CollectionPage, cursor: string | undefined, cursors: Set<string>): void {
     feedVersion(page.version);
     this.validateSnapshots(entry, page.snapshots);
     if (page.snapshots.length > this.pageSize) throw failure('Collection page exceeded its requested limit');
@@ -535,6 +567,12 @@ export class CollectionReader {
     if (!entry.state.complete && !entry.state.snapshots.length) throw failure('Collection cache is unavailable', 'cache-unavailable');
   }
 
+  private requireOwner(): string {
+    if (this.disposed) throw failure('Collection reader has been disposed', 'inactive');
+    if (!this.owner) throw failure('Authentication required', 'unauthenticated');
+    return this.owner;
+  }
+
   private current(entry: CollectionEntry, generation: number): boolean {
     return !this.disposed && !entry.closed && entry.owner === this.owner && this.generation === generation;
   }
@@ -542,7 +580,7 @@ export class CollectionReader {
   private assertCurrent(entry: CollectionEntry, generation: number, network = false): void {
     if (!this.current(entry, generation) || (network && (!this.online || !this.visible
       || (!entry.listeners.size && !entry.inFlight?.explicit)))) {
-      throw Object.assign(new Error('Collection reader changed during the request'), { name: 'AbortError' });
+      throw Object.assign(new Error(READER_CHANGED), { name: 'AbortError' });
     }
   }
 

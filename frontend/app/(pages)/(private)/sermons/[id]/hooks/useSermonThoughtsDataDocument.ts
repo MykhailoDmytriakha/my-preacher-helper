@@ -14,7 +14,7 @@ const json = (sermon: Sermon): DocumentData => deepCleanUndefined(sermon) as unk
 export function useSermonThoughtsDataDocument(sermonId: string | null) {
   const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: 'thoughts' });
   const { owner } = useDataEngine();
-  const isReadOnly = !owner || !document.data || document.data.userId !== owner
+  const isReadOnly = document.readOnly || !owner || !document.data || document.data.userId !== owner
     || Boolean(document.confirmed?.metadata?.deleted || (document.remote && document.remote.value === null));
   const commit = async (mutate: (current: Sermon) => Sermon): Promise<{ delivery: 'queued' }> => {
     if (isReadOnly) throw unavailable();

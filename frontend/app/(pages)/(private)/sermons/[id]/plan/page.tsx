@@ -141,8 +141,12 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
  */
 export default function PlanPage() {
   const sermonId = useRouteId();
+  // Preaching is a view with nothing to edit, so it may read a copy while device storage is
+  // silent — the pulpit is the worst place for a skeleton. The editable plan keeps waiting
+  // (BUG-20260927-plan-structure-group-wait-on-silent-storage).
+  const preaching = useSearchParams()?.get('planView') === 'preaching';
   return sermonId && isCollectionOnEngine('sermons')
-    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
+    ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: preaching }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
     : <PlanPageContent />;
 }
 

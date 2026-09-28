@@ -1,13 +1,13 @@
 'use client';
 
-import { QueryClient, MutationCache } from '@tanstack/react-query';
-import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { QueryClient, MutationCache, hydrate } from '@tanstack/react-query';
+import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
-import { DataEngineMigrationGate, shouldPersistLegacyQuery } from '@/data-engine/react.client';
+import { DataEngineMigrationGate, queryCacheMayBeOverwritten, shouldPersistLegacyQuery } from '@/data-engine/react.client';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
@@ -28,6 +28,27 @@ const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 export const shouldDehydrateMutation = (mutation: {
   state: { isPaused: boolean; status: string };
 }): boolean => mutation.state.isPaused || mutation.state.status === 'error';
+
+/**
+ * A RESTORE SLOWER THAN THE SILENCE THRESHOLD (BUG-20260927-engine-open-hangs-on-silent-device-storage)
+ * is taken in when it answers, under the rules the provider applies to a timely one (age, default
+ * buster) — a slow disk must not cost the offline edits of the last session. But they are not
+ * replayed by themselves: by now this session may hold newer changes, and React Query resumes paused
+ * mutations on every focus and reconnect, so an old edit would land over a newer one behind the
+ * person's back. They come in as saves that did not go through — shown with Retry, kept, applied
+ * only when the person chooses.
+ */
+export const HELD_AFTER_LATE_RESTORE = 'held-after-late-restore';
+export function takeInLateRestore(queryClient: QueryClient, restored: PersistedClient): void {
+  if (Date.now() - restored.timestamp > ONE_WEEK_MS || (restored.buster ?? '') !== '') return;
+  const held = Object.assign(new Error('Saved offline in an earlier session; retry to send it'), { code: HELD_AFTER_LATE_RESTORE });
+  hydrate(queryClient, {
+    ...restored.clientState,
+    mutations: restored.clientState.mutations.map(mutation => mutation.state.isPaused
+      ? { ...mutation, state: { ...mutation.state, isPaused: false, status: 'error' as const, error: held } }
+      : mutation),
+  });
+}
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
   return <DataEngineMigrationGate><QueryRuntimeProvider>{children}</QueryRuntimeProvider></DataEngineMigrationGate>;
@@ -108,7 +129,10 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     return client;
   });
 
-  const [persister] = useState(() => createIDBPersister());
+  const [persister] = useState(() => createIDBPersister(undefined, {
+    mayOverwrite: queryCacheMayBeOverwritten,
+    onLateRestore: (restored) => takeInLateRestore(queryClient, restored),
+  }));
 
   return (
     <PersistQueryClientProvider

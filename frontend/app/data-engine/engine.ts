@@ -99,6 +99,7 @@ interface EditorEntry {
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
+const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 
@@ -212,6 +213,51 @@ export class DataEngine {
       if (this.reads.get(key) === operation) this.reads.delete(key);
     }).catch(() => undefined);
     return operation.then(copy);
+  }
+
+  /**
+   * A LOOK THAT NEEDS NO EDITOR STORAGE (BUG-20260927-engine-open-hangs-on-silent-device-storage).
+   * When the editor's own storage does not answer, the screen can still show what this device
+   * confirmed earlier (`peekCached`) or what the server holds now (`peekRemote`). Neither writes
+   * anything or touches commits and checkpoints, so a copy shown this way cannot become a draft.
+   */
+  async peekCached(resource: ResourceRef): Promise<ResourceSnapshot | undefined> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    const cached = await this.options.snapshots.read(owner, copy(resource));
+    this.assertCurrent(owner, generation);
+    if (cached && !sameResource(cached.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
+    return cached;
+  }
+
+  async peekRemote(resource: ResourceRef): Promise<ResourceSnapshot> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    if (!this.online || !this.visible) throw new Error('The server cannot be asked right now');
+    const server = await this.options.transport.read(owner, copy(resource));
+    this.assertCurrent(owner, generation);
+    if (!sameResource(server.resource, resource)) throw new Error('Server snapshot identity mismatch');
+    return server;
+  }
+
+  /** The list counterparts: the rows this device confirmed, or the whole list from the server. */
+  async peekCollectionCached(collection: string): Promise<CollectionState> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const snapshots = await this.collectionReader().peekCached(collection);
+    this.assertCurrent(owner, generation);
+    return this.peekedCollection(owner, collection, { snapshots, complete: false, freshness: 'cache', version: 0 });
+  }
+
+  async peekCollectionRemote(collection: string): Promise<CollectionState> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const { snapshots, version } = await this.collectionReader().peekRemote(collection);
+    this.assertCurrent(owner, generation);
+    return this.peekedCollection(owner, collection, { snapshots, complete: true, freshness: 'server', version });
+  }
+
+  private peekedCollection(owner: string, collection: string, view: Pick<CollectionState, 'snapshots' | 'complete' | 'freshness' | 'version'>): CollectionState {
+    return { ...view, checking: false, error: null,
+      documents: collectionDocumentViews(owner, collection, view.snapshots, [...this.commitRecords.values()]) };
   }
 
   readCollection(collection: string): Promise<CollectionState> {
@@ -549,7 +595,7 @@ export class DataEngine {
     const cached = await this.options.snapshots.read(owner, resource);
     this.assertCurrent(owner, generation);
     if (cached) {
-      if (!sameResource(cached.resource, resource)) throw new Error('Cached snapshot identity mismatch');
+      if (!sameResource(cached.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
       return cached;
     }
     if (!this.online || !this.visible) throw new Error('The document is not available in the local cache');
@@ -981,7 +1027,7 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       const current = await this.options.snapshots.read(owner, frozen.resource);
       this.assertCurrent(owner, generation);
-      if (current && !sameResource(current.resource, frozen.resource)) throw new Error('Cached snapshot identity mismatch');
+      if (current && !sameResource(current.resource, frozen.resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
       if (!canReplaceSnapshot(current, frozen)) return current!;
       if (!equalValues(current, frozen)) await this.options.snapshots.put(owner, frozen);
       this.assertCurrent(owner, generation);

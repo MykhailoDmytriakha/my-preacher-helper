@@ -121,7 +121,11 @@
     "deleteConflictBody": "Another device changed it before the deletion arrived. This is what it holds now.",
     "deleteAnyway": "Delete anyway",
     "keepRecord": "Keep it",
-    "severalDrafts": "Several changes to this record were not accepted. All of them are below: copy what you need, then use the version on the server."
+    "severalDrafts": "Several changes to this record were not accepted. All of them are below: copy what you need, then use the version on the server.",
+    "readOnly": {
+      "storage": "View only right now: this device's storage is not responding. Editing comes back by itself once it does.",
+      "opening": "This record is still opening — try again in a few seconds."
+    }
   },
   "diagnostics": {
     "collecting": "Collecting technical information…",
@@ -3407,6 +3411,7 @@
       "delete": "Delete section",
       "remove": "Remove",
       "empty": "No explanation, questions or options yet — press \"Edit\".",
+      "emptyReadOnly": "No explanation, questions or options yet.",
       "accepted": "accepted",
       "decision": "Decision",
       "decisionPlaceholder": "in one line",
@@ -3712,5 +3717,9 @@
     "draftFound": "There are edits from last time that were never saved.",
     "draftRestore": "Restore",
     "draftDiscard": "Discard"
+  },
+  "deviceStorage": {
+    "title": "This device's storage is not responding",
+    "body": "Records open for reading only — from the server or from this device's copy; the rest will wait. Editing comes back by itself once storage responds; reloading will not help. Edits from this device that were not sent yet will appear then too."
   }
 }

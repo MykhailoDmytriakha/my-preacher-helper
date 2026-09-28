@@ -1,6 +1,6 @@
 import { createStore, get } from 'idb-keyval';
 
-import { compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
+import { compareLegacyCopy, legacyCacheMayBeOverwritten, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 
@@ -17,6 +17,22 @@ const enabled = (collection: string) => collection === 'councils';
 describe('legacy query input preservation', () => {
   let disk: ReturnType<typeof installStorageHarness>;
   beforeEach(() => { disk = installStorageHarness(); jest.mocked(get).mockResolvedValue(cached()); });
+
+  it('lets the old cache be overwritten only after its copies are archived', async () => {
+    let release!: (value: unknown) => void;
+    jest.mocked(get).mockReturnValueOnce(new Promise(resolve => { release = resolve; }) as never);
+    const archiving = preserveLegacyQueryCache(() => true);
+    expect(legacyCacheMayBeOverwritten()).toBe(false);
+    release(cached());
+    await archiving;
+    expect(legacyCacheMayBeOverwritten()).toBe(true);
+  });
+
+  it('keeps the old cache untouched when archiving failed', async () => {
+    jest.mocked(get).mockRejectedValueOnce(new Error('disk'));
+    await expect(preserveLegacyQueryCache(() => true)).rejects.toThrow('disk');
+    expect(legacyCacheMayBeOverwritten()).toBe(false);
+  });
   it('archives even expired cache before any query hydration, preserving full unknown fields', async () => {
     await preserveLegacyQueryCache(enabled);
     const [copy] = await listLegacyQueryCopies('owner');

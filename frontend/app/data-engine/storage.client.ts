@@ -1,6 +1,6 @@
 'use client';
 
-import { createStore } from 'idb-keyval';
+import { watchedStore } from '@/utils/deviceStorage';
 
 export type StorageRead = <V>(request: IDBRequest<V>, success: (value: V) => void) => void;
 export type StorageTransaction = <T>(mode: IDBTransactionMode, action: (store: IDBObjectStore, read: StorageRead, done: (value: T) => void) => void) => Promise<T>;
@@ -9,9 +9,9 @@ export const engineOwnerRange = (kind: string, owner: string): IDBKeyRange => ID
 
 /** Shared transactions make checkpoint/recovery references atomic with request retention. */
 export function createEngineStorageTransaction(): StorageTransaction {
-  let database: ReturnType<typeof createStore> | undefined;
+  let database: ReturnType<typeof watchedStore> | undefined;
   return <T,>(mode: IDBTransactionMode, action: (store: IDBObjectStore, read: StorageRead, done: (value: T) => void) => void): Promise<T> => {
-    database ??= createStore('preacher-data-engine-state-v1', 'records');
+    database ??= watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state');
     return database(mode, store => new Promise<T>((resolve, reject) => {
       let result: T;
       const fail = (error: unknown) => { reject(error); try { store.transaction.abort(); } catch { /* Already aborted. */ } };

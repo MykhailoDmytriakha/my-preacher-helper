@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Chip } from '@/components/ui/Chip';
 import { useClipboard } from '@/hooks/useClipboard';
+import { answerWithin } from '@/utils/deviceStorage';
 
 import {
   compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
@@ -32,13 +33,37 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   const { t } = useTranslation();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'pending' | 'ready' | 'failed'>('pending');
+  const [lateFailure, setLateFailure] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => {
     let active = true;
     setState('pending');
-    void preserveLegacyQueryCache(enabled).then(() => { if (active) setState('ready'); }, () => { if (active) setState('failed'); });
+    setLateFailure(false);
+    // Silent device storage must not hold the whole app on this notice
+    // (BUG-20260927-engine-open-hangs-on-silent-device-storage). After the threshold the app goes
+    // on while the archive keeps running: its read of the old cache was issued first, and the
+    // query persister writes nothing over the old cache until the archive is done. An archive that
+    // fails after that is said above the app, with Retry, instead of silently keeping writes off.
+    const preserving = preserveLegacyQueryCache(enabled);
+    void answerWithin(preserving).then(result => {
+      if (!active) return;
+      setState('ready');
+      if (!result.answered) preserving.catch(() => { if (active) setLateFailure(true); });
+    }, () => { if (active) setState('failed'); });
     return () => { active = false; };
   }, [enabled, attempt]);
-  if (state === 'ready') return <>{children}</>;
+  const retryLate = () => {
+    setLateFailure(false);
+    preserveLegacyQueryCache(enabled).catch(() => { if (mounted.current) setLateFailure(true); });
+  };
+  if (state === 'ready') return <>
+    {lateFailure && <div role="alert" className="m-4 rounded-xl border p-4">
+      <p>{t('legacyRecovery.preservationFailed')}</p>
+      <button type="button" className="mt-3 rounded border px-3 py-2" onClick={retryLate}>{t('dataSync.retry')}</button>
+    </div>}
+    {children}
+  </>;
   return <div role={state === 'failed' ? 'alert' : 'status'} className="m-4 rounded-xl border p-4">
     {/* Rendered before the language is detected on the server, so the text differs by design. */}
     <p suppressHydrationWarning>{t(state === 'failed' ? 'legacyRecovery.preservationFailed' : 'legacyRecovery.preserving')}</p>
