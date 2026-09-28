@@ -10,6 +10,11 @@ import type { CollectionChanges, CollectionPage, CollectionTransport, ResourceSn
 export interface CollectionCursor {
   version: number;
   initialized: boolean;
+  /**
+   * A complete listing finished while every answer said the collection is closed to legacy
+   * writers. Present only when true; any answer saying the collection is open clears it.
+   */
+  listedWhileClosed?: boolean;
   /** Local storage CAS revision, independent of the server's change sequence. */
   revision: number;
 }
@@ -17,7 +22,7 @@ export interface CollectionCursor {
 export interface CollectionCursorStore {
   read(owner: string, collection: string): Promise<CollectionCursor | undefined>;
   put(owner: string, collection: string, expected: CollectionCursor | undefined,
-    next: Pick<CollectionCursor, 'version' | 'initialized'>): Promise<CollectionCursor>;
+    next: Pick<CollectionCursor, 'version' | 'initialized' | 'listedWhileClosed'>): Promise<CollectionCursor>;
 }
 
 export interface CollectionSnapshotStore extends SnapshotStore {
@@ -180,7 +185,7 @@ export class CollectionReader {
     this.background(this.load(entry, generation).then(() => {
       this.assertCurrent(entry, generation);
       if (!entry.listeners.size) return;
-      if (!this.online || !this.visible) this.requireAvailableCache(entry);
+      if (this.cannotReadNow(entry)) return;
       // Every opening of a list asks again while legacy writers share the collection: their
       // writes never move the head, so an unchanged head proves nothing about them.
       else if (entry.listeners.size && (this.needsRefresh(entry) || entry.legacyOpen)) return this.requestRefresh(collection, false).then(() => undefined);
@@ -313,14 +318,21 @@ export class CollectionReader {
     try { await promise; } finally { if (entry.loading?.promise === promise) entry.loading = null; }
   }
 
+  /**
+   * No request while offline or hidden. A hidden page is not a failure: the reader sleeps on
+   * purpose and restarts watched lists once shown. Only "offline with nothing stored" is a state
+   * the person has to be told about.
+   */
+  private cannotReadNow(entry: CollectionEntry): boolean {
+    if (!this.online) this.requireAvailableCache(entry);
+    return !this.online || !this.visible;
+  }
+
   private async synchronize(entry: CollectionEntry, generation: number): Promise<CollectionState> {
     try {
       await this.load(entry, generation, true);
       this.assertCurrent(entry, generation);
-      if (!this.online || !this.visible) {
-        this.requireAvailableCache(entry);
-        return copy(entry.state);
-      }
+      if (this.cannotReadNow(entry)) return copy(entry.state);
       entry.state = { ...entry.state, checking: true, freshness: entry.state.snapshots.length ? 'cache' : 'unknown', error: null };
       this.emit(entry);
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -368,6 +380,12 @@ export class CollectionReader {
     // The listing is owed only when a sweep is due (sweepDue); an engine write in between is read
     // from the feed above. It lasts only while the server says so.
     if (entry.legacyOpen && entry.sweepDue) await this.hydrate(entry, generation);
+    // CLOSED. A legacy write made shortly before closure raised no feed event, and a device that
+    // never swept after it would miss it for as long as its cursor stays valid. One complete
+    // listing per device after closure, remembered in the cursor, closes that window. A feed
+    // answer saying the collection is open clears the mark at once (changes), and every listing
+    // starts without it, so a later closure lists once more even if no sweep ran in between.
+    else if (!entry.legacyOpen && !entry.cursor?.listedWhileClosed) await this.hydrate(entry, generation);
   }
 
   private async hydrate(entry: CollectionEntry, generation: number): Promise<void> {
@@ -375,8 +393,10 @@ export class CollectionReader {
     // A different tab may confirm a new row after our final feed response.
     const candidates = copy(entry.state.snapshots);
     if (!entry.cursor || entry.cursor.initialized) {
-      await this.commitCursor(entry, generation, { version: entry.cursor?.version ?? 0, initialized: false });
+      await this.commitCursor(entry, generation, { version: entry.cursor?.version ?? 0, initialized: false, listedWhileClosed: false });
     }
+    // The listing counts as the post-closure one only if no page and no catch-up page said "open".
+    const opened = { value: false };
     entry.state = { ...entry.state, complete: false };
     this.emit(entry);
     const seen = new Set<string>();
@@ -391,6 +411,7 @@ export class CollectionReader {
       this.assertCurrent(entry, generation, true);
       this.validatePage(entry, page, cursor, cursors);
       entry.legacyOpen = page.legacyOpen === true;
+      opened.value ||= entry.legacyOpen;
       if (page.version < latestPageVersion) throw failure('Collection page moved backwards');
       anchor ??= page.version;
       latestPageVersion = page.version;
@@ -401,21 +422,27 @@ export class CollectionReader {
       cursor = page.nextCursor;
       cursors.add(cursor);
     }
-    const version = await this.changes(entry, generation, anchor!, false, seen, latestPageVersion);
+    const version = await this.changes(entry, generation, anchor!, false, seen, latestPageVersion, opened);
     await this.reconcileAbsence(entry, generation, seen, candidates);
-    await this.commitCursor(entry, generation, { version, initialized: true });
+    await this.commitCursor(entry, generation, { version, initialized: true, listedWhileClosed: !opened.value });
     entry.sweepDue = false;
     entry.sweptAt = Date.now();
   }
 
   private async changes(entry: CollectionEntry, generation: number, after: number, commit: boolean,
-    seen?: Set<string>, minimumVersion = after): Promise<number> {
+    seen?: Set<string>, minimumVersion = after, opened?: { value: boolean }): Promise<number> {
     for (let pageNumber = 0; pageNumber < this.maxPages; pageNumber += 1) {
       this.assertCurrent(entry, generation, true);
       const page = await this.options.transport.changes(entry.owner, entry.collection, after, { limit: this.pageSize });
       this.assertCurrent(entry, generation, true);
       this.validateChanges(entry, page, after, minimumVersion);
       entry.legacyOpen = page.legacyOpen === true;
+      if (opened) opened.value ||= entry.legacyOpen;
+      // "Open" must reach the cursor before anything else can fail, or a mark kept on disk would
+      // suppress the listing owed after a later re-closure.
+      if (entry.legacyOpen && entry.cursor?.listedWhileClosed) {
+        await this.commitCursor(entry, generation, { version: entry.cursor.version, initialized: entry.cursor.initialized, listedWhileClosed: false });
+      }
       if (page.resetRequired) throw failure('Collection change history requires a full refresh', 'feed-reset');
       await this.persistPage(entry, generation, page.snapshots);
       page.snapshots.forEach(snapshot => seen?.add(snapshot.resource.id));
@@ -451,9 +478,12 @@ export class CollectionReader {
     }
   }
 
-  private async commitCursor(entry: CollectionEntry, generation: number, next: Pick<CollectionCursor, 'version' | 'initialized'>): Promise<void> {
+  /** The one cursor writer: it carries listedWhileClosed forward unless the caller says otherwise. */
+  private async commitCursor(entry: CollectionEntry, generation: number, next: Pick<CollectionCursor, 'version' | 'initialized' | 'listedWhileClosed'>): Promise<void> {
     this.assertCurrent(entry, generation, true);
-    const committed = await this.options.cursors.put(entry.owner, entry.collection, entry.cursor, next);
+    const listed = next.listedWhileClosed ?? entry.cursor?.listedWhileClosed === true;
+    const committed = await this.options.cursors.put(entry.owner, entry.collection, entry.cursor,
+      { version: next.version, initialized: next.initialized, ...(listed ? { listedWhileClosed: true } : {}) });
     this.assertCurrent(entry, generation, true);
     entry.cursor = committed;
     entry.state = { ...entry.state, complete: committed.initialized, version: committed.version };

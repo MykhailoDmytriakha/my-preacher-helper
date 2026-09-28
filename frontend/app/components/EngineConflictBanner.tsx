@@ -24,9 +24,10 @@ const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft
  * conflict — another device changed the same field, one draft waits · refused — the server will
  * not take it · refusedCreate — a new record the server would not create · deletedThere — deleted
  * on another device, edited here · deletedHere — deleted here after another device changed it ·
+ * refusedDelete — the server refused a deletion made here (another device may also have changed it) ·
  * several — more than one draft waits, and the engine cannot say which is newest.
  */
-type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deletedHere' | 'several';
+type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deletedHere' | 'refusedDelete' | 'several';
 interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string }
 
 const show = (value: unknown) => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -45,8 +46,10 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
   const candidate = checkpoint.remoteCandidate;
   if (checkpoint.confirmed.value === null) return 'refusedCreate';
   if (candidate && (candidate.value === null || candidate.metadata?.deleted)) return 'deletedThere';
-  if (checkpoint.draft === null) return 'deletedHere';
-  return Object.keys(checkpoint.pending).some(id => refused.has(id)) ? 'refused' : 'conflict';
+  const wasRefused = Object.keys(checkpoint.pending).some(id => refused.has(id));
+  // A refusal is not proof of a conflict: naming "another device" as its reason may be false.
+  if (checkpoint.draft === null) return wasRefused ? 'refusedDelete' : 'deletedHere';
+  return wasRefused ? 'refused' : 'conflict';
 }
 
 /** One entry per document of the one-shot collections that waits for the person. */
@@ -154,10 +157,12 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     refusedCreate: [t('dataSync.phase.refused'), null],
     deletedThere: [t('freshness.deletedElsewhereTitle'), t('freshness.deletedElsewhereBody')],
     deletedHere: [t('dataSync.deleteConflictTitle'), t('dataSync.deleteConflictBody')],
+    refusedDelete: [t('dataSync.deleteRefusedTitle'), t('dataSync.deleteRefusedBody')],
     several: [t('freshness.conflictTitle'), t('dataSync.severalDrafts')],
   };
   const [title, body] = heading[entry.kind];
-  const shown = entry.kind === 'deletedHere' ? entry.theirs : mine;
+  const deletion = entry.kind === 'deletedHere' || entry.kind === 'refusedDelete';
+  const shown = deletion ? entry.theirs : mine;
   const buttonClass = 'rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-60';
   const primary = `${buttonClass} bg-amber-600 text-white hover:bg-amber-700`;
   const secondary = `${buttonClass} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`;
@@ -169,10 +174,12 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
         <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-white/70 px-3 py-2 text-gray-900 dark:bg-gray-900/40 dark:text-gray-100">{shown}</pre>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {entry.kind === 'deletedHere' ? (
+        {deletion ? (
           <>
             <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={primary}>{t('dataSync.keepRecord')}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle('mine'); }} className={secondary}>{t('dataSync.deleteAnyway')}</button>
+            <button type="button" disabled={busy} onClick={() => { void settle('mine'); }} className={secondary}>
+              {entry.kind === 'refusedDelete' ? t('dataSync.retryDelete') : t('dataSync.deleteAnyway')}
+            </button>
           </>
         ) : (
           <>

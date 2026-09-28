@@ -148,7 +148,10 @@
     "readOnly": {
       "storage": "View only right now: this device's storage is not responding. Editing comes back by itself once it does.",
       "opening": "This record is still opening — try again in a few seconds."
-    }
+    },
+    "deleteRefusedTitle": "The server did not accept the deletion",
+    "deleteRefusedBody": "Here is what the record holds now. You can keep it or try deleting again.",
+    "retryDelete": "Try deleting again"
   },
   "diagnostics": {
     "collecting": "Collecting technical information…",
@@ -3126,7 +3129,9 @@
       "dragToResize": "Drag to resize"
     },
     "removeReference": "Remove reference {{reference}}",
-    "removeTag": "Remove tag {{tag}}"
+    "removeTag": "Remove tag {{tag}}",
+    "loadError": "Could not load the notes.",
+    "loadOffline": "No connection to the server. If the notes were never loaded on this device, they will appear when the connection returns."
   },
   "groupFlow": {
     "title": "Group Flow",

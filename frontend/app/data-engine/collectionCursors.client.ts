@@ -15,7 +15,8 @@ function validate(value: unknown): CollectionCursor {
     || typeof cursor.initialized !== 'boolean') {
     throw new Error('Invalid collection cursor');
   }
-  return { version: cursor.version, revision: cursor.revision, initialized: cursor.initialized };
+  return { version: cursor.version, revision: cursor.revision, initialized: cursor.initialized,
+    ...(cursor.listedWhileClosed === true ? { listedWhileClosed: true } : {}) };
 }
 
 /** A local CAS generation prevents a stale tab from undoing another tab's reset. */

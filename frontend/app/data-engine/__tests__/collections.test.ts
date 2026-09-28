@@ -126,13 +126,13 @@ describe('CollectionReader durable read lifecycle', () => {
     expect(state.snapshots.map(snapshot => snapshot.resource.id).sort()).toEqual(['0', 'a', 'z']);
     expect(s.transport.list).toHaveBeenNthCalledWith(2, 'owner', collection, { limit: 1, cursor: 'a' });
     expect(s.transport.changes).toHaveBeenCalledWith('owner', collection, 1, { limit: 1 });
-    expect(s.cursorRecords.get(cursorKey('owner'))).toEqual({ version: 2, initialized: true, revision: 2 });
+    expect(s.cursorRecords.get(cursorKey('owner'))).toEqual({ version: 2, initialized: true, listedWhileClosed: true, revision: 2 });
     s.reader.dispose();
   });
 
   it('persists all snapshots before each cursor advance across incremental change pages', async () => {
     const s = setup({ pageSize: 1 }); s.seed(row('a'), true);
-    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, revision: 1 });
+    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, listedWhileClosed: true, revision: 1 });
     jest.mocked(s.transport.changes)
       .mockResolvedValueOnce({ snapshots: [row('a', 2, 'latest')], cursor: 2, version: 3, hasMore: true })
       .mockResolvedValueOnce({ snapshots: [deleted('b')], cursor: 3, version: 3, hasMore: false });
@@ -308,7 +308,7 @@ describe('CollectionReader durable read lifecycle', () => {
     jest.mocked(s.cursors.put).mockImplementation(async (owner, name, expected, next) => {
       if (next.initialized && !raced) {
         raced = true; s.setVersion(3);
-        s.cursorRecords.set(cursorKey(owner, name), { version: 3, initialized: true, revision: 8 });
+        s.cursorRecords.set(cursorKey(owner, name), { version: 3, initialized: true, listedWhileClosed: true, revision: 8 });
         throw Object.assign(new Error('Another tab advanced'), { code: 'cursor-changed' });
       }
       return put(owner, name, expected, next);
@@ -362,7 +362,7 @@ describe('CollectionReader durable read lifecycle', () => {
 
   it('rejects older feed responses and never replaces a newer cached document revision', async () => {
     const s = setup(); s.seed(row('a', 5, 'newest'), true);
-    s.cursorRecords.set(cursorKey('owner'), { version: 4, initialized: true, revision: 1 });
+    s.cursorRecords.set(cursorKey('owner'), { version: 4, initialized: true, listedWhileClosed: true, revision: 1 });
     jest.mocked(s.transport.changes).mockResolvedValueOnce({ snapshots: [], cursor: 4, version: 3, hasMore: false, resetRequired: true });
     await expect(s.reader.refresh(collection)).rejects.toThrow('moved backwards');
     jest.mocked(s.transport.changes).mockResolvedValueOnce({ snapshots: [row('a', 2, 'old')], cursor: 5, version: 5, hasMore: false });
@@ -398,6 +398,22 @@ describe('CollectionReader durable read lifecycle', () => {
     s.reader.setOnline(false); s.reader.setOnline(false); s.change(row('c'));
     await s.reader.refresh(collection); s.reader.setOnline(true); await settle();
     expect((await s.reader.read(collection)).snapshots).toContainEqual(row('c'));
+    stop(); s.reader.dispose();
+  });
+
+  it('waits without an error while a page is hidden before anything is stored, and loads once shown', async () => {
+    const s = setup(); s.seed(row('a'));
+    s.reader.setVisible(false);
+    const states: CollectionState[] = [];
+    const stop = s.reader.watch(collection, state => { states.push(state); }); await settle();
+    expect(states.every(state => state.error === null)).toBe(true);
+    // An explicit refresh while hidden waits too: nothing stored is not an error the page caused.
+    await expect(s.reader.refresh(collection)).resolves.toMatchObject({ error: null, complete: false });
+    expect(states.every(state => state.error === null)).toBe(true);
+    expect(s.transport.list).not.toHaveBeenCalled();
+    s.reader.setVisible(true); await settle();
+    expect(states.at(-1)).toMatchObject({ complete: true, error: null });
+    expect(states.at(-1)!.snapshots.map(snapshot => snapshot.resource.id)).toEqual(['a']);
     stop(); s.reader.dispose();
   });
 
@@ -628,5 +644,123 @@ describe('independent review race probes', () => {
     response.resolve({ snapshots: [], cursor: 0, version: 0, hasMore: false });
     try { await expect(refreshing).resolves.toMatchObject({ complete: true }); }
     finally { s.reader.dispose(); s.observer.dispose(); }
+  });
+});
+
+describe('a collection closed to legacy writers', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+  /** The server's answer for this collection: open to legacy writers (mixed mode) or closed. */
+  const serverMode = (s: ReturnType<typeof setup>) => {
+    const baseList = jest.mocked(s.transport.list).getMockImplementation()!;
+    const baseChanges = jest.mocked(s.transport.changes).getMockImplementation()!;
+    return (open: boolean) => {
+      jest.mocked(s.transport.list).mockImplementation(async (...args) => ({ ...(await baseList(...args)), ...(open ? { legacyOpen: true } : {}) }));
+      jest.mocked(s.transport.changes).mockImplementation(async (...args) => ({ ...(await baseChanges(...args)), ...(open ? { legacyOpen: true } : {}) }));
+    };
+  };
+
+  it('lists once per device after closure to find a legacy write the feed never announced, then follows the feed only', async () => {
+    const s = setup(); s.seed(row('a'), true);
+    // Written the legacy way just before closure: on the server, never in the feed, never swept here.
+    s.seed(legacy('missed'));
+    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, revision: 1 });
+    const state = await s.reader.refresh(collection);
+    expect(state.snapshots.map(snapshot => snapshot.resource.id).sort()).toEqual(['a', 'missed']);
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBe(true);
+    s.reader.dispose();
+    // The mark survives a reload: a new reader over the same stores reads the feed only.
+    const again = new CollectionReader(s.options); again.setOnline(true); again.setOwner('owner');
+    await again.refresh(collection);
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    again.dispose();
+  });
+
+  it('does not mark a listing while the server says open, and lists once when the collection closes', async () => {
+    const s = setup(); s.seed(row('a')); const mode = serverMode(s);
+    mode(true);
+    await s.reader.refresh(collection);
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    const listed = jest.mocked(s.transport.list).mock.calls.length;
+    mode(false);
+    await s.reader.refresh(collection);
+    expect(s.transport.list).toHaveBeenCalledTimes(listed + 1);
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBe(true);
+    await s.reader.refresh(collection);
+    expect(s.transport.list).toHaveBeenCalledTimes(listed + 1);
+    s.reader.dispose();
+  });
+
+  it('does not count a listing that began while the collection was still open', async () => {
+    const s = setup({ pageSize: 1 }); s.seed(row('a')); s.seed(row('b'));
+    const list = jest.mocked(s.transport.list).getMockImplementation()!;
+    // Closure lands between the first and the second page: a legacy write could still slip past the first.
+    jest.mocked(s.transport.list).mockImplementationOnce(async (...args) => ({ ...(await list(...args)), legacyOpen: true }));
+    await s.reader.refresh(collection);
+    expect(s.cursorRecords.get(cursorKey('owner'))).toMatchObject({ initialized: true });
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    s.reader.dispose();
+  });
+
+  it('forgets the mark when the feed of an open watch says "open" between sweeps', async () => {
+    const s = setup(); s.seed(row('a'));
+    const mode = serverMode(s);
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBe(true);
+    // Reopened: the next head event reads the feed only (no sweep is due yet on this reader).
+    mode(true); const listed = jest.mocked(s.transport.list).mock.calls.length;
+    s.change(row('a', 2, 'edited')); s.head(); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(listed);
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    stop(); s.reader.dispose();
+  });
+
+  it('does not count a listing whose catch-up feed said "open" on an earlier page', async () => {
+    const s = setup({ pageSize: 1 }); s.seed(row('a'));
+    // Two engine changes land behind the listing anchor, so the catch-up reads two feed pages.
+    const list = jest.mocked(s.transport.list).getMockImplementation()!;
+    jest.mocked(s.transport.list).mockImplementationOnce(async (...args) => { const page = await list(...args); s.change(row('b')); s.change(row('c')); return page; });
+    const changes = jest.mocked(s.transport.changes).getMockImplementation()!;
+    jest.mocked(s.transport.changes).mockImplementationOnce(async (...args) => ({ ...(await changes(...args)), legacyOpen: true }));
+    await s.reader.refresh(collection);
+    expect(jest.mocked(s.transport.changes).mock.calls.length).toBeGreaterThan(1);
+    expect(s.cursorRecords.get(cursorKey('owner'))).toMatchObject({ initialized: true });
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    s.reader.dispose();
+  });
+
+  it('forgets the mark on an "open" feed answer even when saving that page fails', async () => {
+    const s = setup(); s.seed(row('a'), true);
+    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, listedWhileClosed: true, revision: 1 });
+    serverMode(s)(true);
+    s.change(row('b'));
+    jest.mocked(s.snapshots.put).mockRejectedValueOnce(new Error('disk full'));
+    await expect(s.reader.refresh(collection)).rejects.toThrow('disk full');
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    s.reader.dispose();
+  });
+
+  it('drops the mark while a relisting of a closed collection is interrupted', async () => {
+    const s = setup(); s.seed(row('a'), true);
+    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, listedWhileClosed: true, revision: 1 });
+    // The feed asks for a full refresh; the listing then fails half-way.
+    jest.mocked(s.transport.changes).mockResolvedValueOnce({ snapshots: [], cursor: 0, version: 0, hasMore: false, resetRequired: true });
+    jest.mocked(s.transport.list).mockRejectedValueOnce(new Error('quota unavailable'));
+    await expect(s.reader.refresh(collection)).rejects.toThrow('quota unavailable');
+    expect(s.cursorRecords.get(cursorKey('owner'))).toMatchObject({ initialized: false });
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    s.reader.dispose();
+  });
+
+  it('forgets the mark once a feed answer says "open", even if the following sweep fails', async () => {
+    const s = setup(); s.seed(row('a'), true);
+    s.cursorRecords.set(cursorKey('owner'), { version: 0, initialized: true, listedWhileClosed: true, revision: 1 });
+    serverMode(s)(true);
+    // The sweep fails after its start: the mark must already be gone, or a later closure would not list again.
+    jest.mocked(s.transport.list).mockRejectedValue(new Error('quota unavailable'));
+    await expect(s.reader.refresh(collection)).rejects.toThrow('quota unavailable');
+    expect(s.cursorRecords.get(cursorKey('owner'))?.listedWhileClosed).toBeUndefined();
+    s.reader.dispose();
   });
 });

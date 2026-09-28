@@ -90,6 +90,19 @@ describe('a late conflict on a document no screen has open', () => {
     expect(harness.server.value?.content).toBe('Three new paragraphs from the phone');
   });
 
+  it('names a refused deletion as a refusal, not as another device, and deletes when retried', async () => {
+    const harness = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    jest.mocked(harness.transport.send).mockImplementationOnce(async command => ({ kind: 'refused', operationId: command.operationId, code: 'related-collection-not-enabled' }));
+    await act(async () => { await actions!.remove(resource); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.deleteRefusedTitle')).toBeInTheDocument());
+    expect(screen.queryByText('dataSync.deleteConflictTitle')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.keepRecord')).toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.retryDelete')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.deleteRefusedTitle')).not.toBeInTheDocument());
+    expect(harness.server.metadata?.deleted).toBe(true);
+  });
+
   it('shows every draft when several wait, and offers no pick among them', async () => {
     const harness = setup();
     await waitFor(() => expect(actions?.ready).toBe(true));

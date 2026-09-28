@@ -455,7 +455,7 @@ export default function StudiesPage() {
       {/* Notes list */}
       {notesError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
-          {notesError.message}
+          {t(typeof navigator !== 'undefined' && !navigator.onLine ? 'studiesWorkspace.loadOffline' : 'studiesWorkspace.loadError')}
         </div>
       )}
 

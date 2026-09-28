@@ -30,6 +30,16 @@ previous-version outbox entry whose "Keep mine" is pressed after closure is refu
 and moves to the recovery notice with copy and export (`outboxReplay.client.ts`
 `recordOutboxRecoveryRefusal`); nothing is lost.
 
+**One listing per device after closure.** With `legacyOpen` false, lists follow the feed only, so a
+document a legacy path wrote just before closure — never in the feed, never swept on a given device —
+would stay invisible there while its cursor is valid. Each device therefore lists every closed
+collection once, and remembers it as `listedWhileClosed` in the persisted cursor (IndexedDB
+`preacher-data-engine-cursors-v1`). The mark is set only by a complete listing whose pages and
+catch-up all said "closed"; any feed answer saying "open" clears it before anything else, and every
+listing starts without it, so a re-closure after a rollback lists again. Known limit (duet review,
+round 3): a listing that straddles the closure moment leaves the mark unset, and the debt is paid at
+the next feed read of that collection or the next app load, not immediately in the same reader.
+
 The server list is one longer on purpose. Deleting a study note retires its share links in the
 same command (`serverRelations.ts:301`), and the server refuses any command that writes an
 unserved collection (`server.ts:340`). Without `studyNoteShareLinks` every shared note failed
