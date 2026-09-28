@@ -1,46 +1,37 @@
 # Page gestures
 
-summary: iPad PWA touch refresh and back navigation, with existing data reconciliation and input protection.
+summary: Familiar document reload and back navigation across the full iPad PWA page.
 
-`PageGestures` is mounted once in the private layout. It does not transform or
-remount page content: fixed navigation, dialogs, scroll roots and editor focus
-keep their existing layout and lifetime.
+`PageGestures` is mounted once in the private layout. Both gestures are enabled
+only on iPad in installed standalone PWA mode through `isIPadStandalonePwa`.
+Regular browser tabs, iPhone, Android and desktop apps install no gesture listeners.
 
-Both gestures are enabled only on iPad in installed standalone PWA mode, using
-the shared `isIPadStandalonePwa` detector. Regular browser tabs, iPhone, Android
-and desktop apps install no gesture listeners. Desktop-class iPad user agents
-are recognized through Macintosh identification plus multiple touch points.
+- At the document top, pull down anywhere across its width: left, middle or right.
+  The indicator follows the finger with resistance, arms at 72 visual pixels,
+  and triggers on release. Pulling back below the threshold cancels it.
+- Release invokes `reloadPage`, the SAME document reload as `AppUpdateButton`.
+  No data-reader promises, query refetches or editor reconciliation delay it.
+  Existing page lifecycle and durable-draft behavior are identical to the button.
+- A right swipe starts anywhere across the page, even after scrolling down.
+  It navigates back after 90 pixels when history exists. Short, reversed or
+  diagonal gestures cancel. Back remains available while reload is starting.
+- Buttons, links and SVG icons are valid starting points. Ordinary taps still
+  activate them; a recognized swipe suppresses its trailing compatibility click.
+- Text editing, dialogs, selected text, sliders, drag handles, zoom and nested
+  scrollers keep their own gestures. A page scroll cannot turn into pull-to-reload
+  halfway up: the gesture must START at the document top.
+- The free left edge is claimed at touchstart to avoid duplicate WebKit navigation.
+  Elsewhere, direction is established before claiming the movement.
+- Page departure, return from the back-forward cache and route changes clear the
+  indicator. If a requested reload has not departed after five seconds, the
+  indicator reports that the page could not reload and permits a new attempt.
+- Motion respects reduced-motion preferences; text is translated in all locales.
 
-- Pull starts only at the top of the document, outside controls and nested
-  scrollers. It follows the finger with resistance, arms at 72 visual pixels,
-  and runs only on release. Pulling back below the threshold cancels it.
-- `useDataRefresh` is the public data boundary. It refreshes mounted engine
-  collections and observed documents through their existing readers. Active
-  non-engine queries use their existing query functions. It never calls reload,
-  router refresh, retry/save, or a direct transport from the UI.
-- Engine reconciliation keeps unsent typing and manual forms pinned to their
-  opening versions. A refresh is not a request to accept a remote conflict.
-- One refresh runs at a time. Offline, failed reads and a 15-second timeout show
-  a translated message. A timed-out read is not a failed write: its eventual
-  response still follows the normal reconciliation rules.
-- In the iPad PWA, a right swipe beginning within 28 pixels
-  of the left edge navigates back after 90 pixels and only if history exists.
-  That edge touch is claimed at touchstart to prevent double navigation.
-  Browsers retain their own back gesture; the app adds no second handler there.
-- Dialogs, focused fields, selected text, controls, drag handles, zoom and
-  multi-touch keep their gestures. A route change or touch cancellation cancels
-  an unfinished pull. Ordinary scrolling never changes into refresh halfway up.
-- Motion respects reduced-motion preferences; status text is localized in all
-  three languages and announced through a polite live region.
+The bounded, content-free diagnostics record recognized gestures, exclusions,
+cancellations and reload requests. Reports include touch capability and viewport
+scale. No document text, identifiers or touch coordinates are recorded.
 
-References used for the interaction contract:
-[Apple gestures](https://developer.apple.com/design/human-interface-guidelines/gestures/),
-[Ionic refresher](https://ionicframework.com/docs/api/refresher),
-[WebKit overscroll limitation](https://bugs.webkit.org/show_bug.cgi?id=275947).
-CSS overscroll alone is not treated as proof that native refresh is suppressed.
-
-Verification: gesture state and exclusion tests; real engine tests for clean
-refresh, unsent draft preservation, read failure and closed subscriptions;
-collection insertion discovery; facade tests for active versus inactive readers.
-Browser touch emulation checks the rendered control and route changes. Physical
-iPad Safari/Home Screen behavior remains a separate device acceptance check.
+Verification covers full-width pulls, control taps versus swipes, back navigation
+from the center and after scrolling, reload delegation, cancellation and device
+exclusions. Browser checks must prove a new document boot, not merely a successful
+API read. Physical iPad PWA behavior remains a separate device acceptance check.

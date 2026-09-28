@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 
 import { usePageGestures } from '@/components/navigation/gestures/usePageGestures';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
+
+jest.mock('@/utils/appDiagnostics', () => ({ recordDiagnostic: jest.fn() }));
 
 const touch = (x: number, y: number, identifier = 1) => ({ clientX: x, clientY: y, identifier });
 function start(x = 200, y = 100, target: Element = screen.getByTestId('page')) {
@@ -13,13 +16,13 @@ function end(x = 200, y = 270) {
   fireEvent.touchEnd(screen.getByTestId('page'), { touches: [], changedTouches: [touch(x, y)] });
 }
 function Harness({ refresh, back, routeKey = '/studies', enabled = true }: {
-  refresh: () => Promise<void>; back: () => void; routeKey?: string; enabled?: boolean;
+  refresh: () => void; back: () => void; routeKey?: string; enabled?: boolean;
 }) {
   const view = usePageGestures({ routeKey, enabled, onRefresh: refresh, onBack: back });
   return <div data-testid="page"><output data-testid="state">{view.kind}:{view.distance}</output><textarea aria-label="Draft" defaultValue="Keep my words" /></div>;
 }
 function setup() {
-  const refresh = jest.fn(async () => undefined), back = jest.fn();
+  const refresh = jest.fn(), back = jest.fn();
   const rendered = render(<Harness refresh={refresh} back={back} />);
   return { refresh, back, ...rendered };
 }
@@ -28,6 +31,7 @@ const flush = async () => { await act(async () => { await Promise.resolve(); });
 describe('Page touch gestures', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.mocked(recordDiagnostic).mockClear();
     Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
     Object.defineProperty(window.history, 'length', { configurable: true, value: 2 });
     window.matchMedia = jest.fn().mockImplementation(query => ({ matches: query === '(display-mode: standalone)' }));
@@ -37,22 +41,19 @@ describe('Page touch gestures', () => {
   });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); document.body.style.overflow = ''; });
 
-  it('follows the pull, arms after the threshold and refreshes only on release', async () => {
-    let complete!: () => void;
-    const refresh = jest.fn(() => new Promise<void>(resolve => { complete = resolve; }));
-    render(<Harness refresh={refresh} back={jest.fn()} />);
+  it('follows the pull and requests one document reload only on release', () => {
+    const { refresh } = setup();
     start(); move(200, 160);
     expect(screen.getByTestId('state')).toHaveTextContent('pull:30');
     move(); expect(screen.getByTestId('state')).toHaveTextContent('pull:85');
     expect(refresh).not.toHaveBeenCalled();
-    end(); await flush();
+    end();
     expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
     expect(refresh).toHaveBeenCalledTimes(1);
-    start(); move(); end(); await flush();
+    start(); move(); end();
     expect(refresh).toHaveBeenCalledTimes(1);
-    await act(async () => complete());
+    fireEvent(window, new Event('pagehide'));
     expect(screen.getByTestId('state')).toHaveTextContent('idle');
-    expect(screen.getByLabelText('Draft')).toHaveValue('Keep my words');
   });
 
   it('cancels a short pull, a reversed pull and an interrupted touch', () => {
@@ -62,6 +63,20 @@ describe('Page touch gestures', () => {
     start(); move(); fireEvent.touchCancel(screen.getByTestId('page')); end();
     expect(screen.getByTestId('state')).toHaveTextContent('idle');
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('allows back navigation while a requested reload has not left the document', async () => {
+    const refresh = jest.fn(), back = jest.fn();
+    render(<Harness refresh={refresh} back={back} />);
+    start(); move(); end(); await flush();
+    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
+    start(); move(); end(); await flush();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    start(10); move(40, 105); end(40, 105);
+    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
+    start(10); move(130, 105); end(130, 105);
+    expect(back).toHaveBeenCalledTimes(1);
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'back', result: 'released' });
   });
 
   it('does not turn ordinary scrolling or a diagonal movement into refresh', () => {
@@ -86,6 +101,9 @@ describe('Page touch gestures', () => {
     start(); move(); end(); page.style.overflowY = '';
     document.body.style.overflow = 'hidden'; start(); move(); end();
     expect(refresh).not.toHaveBeenCalled();
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'focused-editor' });
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'open-layer' });
   });
 
   it('cancels when a second finger joins or the browser owns a noncancelable move', () => {
@@ -97,25 +115,50 @@ describe('Page touch gestures', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it('uses the installed-app left edge and cancels short swipes or missing history', () => {
+  it('goes back from any free area, including after scrolling, but cancels short swipes and missing history', () => {
     const { back } = setup();
-    start(200); move(360, 105); end(360, 105); expect(back).not.toHaveBeenCalled();
-    start(10); move(40, 105); end(40, 105); expect(back).not.toHaveBeenCalled();
-    start(10); move(130, 105); end(130, 105); expect(back).toHaveBeenCalledTimes(1);
+    start(200); move(360, 105); end(360, 105); expect(back).toHaveBeenCalledTimes(1);
+    Object.defineProperty(window, 'scrollY', { value: 400 });
+    start(500); move(650, 105); end(650, 105); expect(back).toHaveBeenCalledTimes(2);
+    start(500); move(540, 105); end(540, 105); expect(back).toHaveBeenCalledTimes(2);
+    start(10); move(130, 105); end(130, 105); expect(back).toHaveBeenCalledTimes(3);
     Object.defineProperty(window.history, 'length', { value: 1 });
-    start(10); move(130, 105); end(130, 105); expect(back).toHaveBeenCalledTimes(1);
+    start(10); move(130, 105); end(130, 105); expect(back).toHaveBeenCalledTimes(3);
   });
 
-  it('reports read failure and times out silence without clearing the editor', async () => {
+  it.each(['pagehide', 'pageshow'])('clears reload feedback on %s even during another touch', event => {
+    setup();
+    start(); move(); end();
+    start(10);
+    fireEvent(window, new Event(event));
+    expect(screen.getByTestId('state')).toHaveTextContent('idle');
+    end(10, 100);
+  });
+
+  it('does not resurrect a departed page refresh on the next page', async () => {
+    const refresh = jest.fn(), back = jest.fn();
+    const { rerender } = render(<Harness refresh={refresh} back={back} />);
+    start(); move(); end(); await flush();
+    rerender(<Harness refresh={refresh} back={back} routeKey="/series" />);
+    start(10); end(10, 100);
+    expect(screen.getByTestId('state')).toHaveTextContent('idle');
+    await act(async () => { await jest.advanceTimersByTimeAsync(20_000); });
+    expect(screen.getByTestId('state')).toHaveTextContent('idle');
+  });
+
+  it('recovers from a refused reload instead of keeping the spinner forever', async () => {
     const { refresh } = setup();
-    refresh.mockRejectedValueOnce(new Error('Network failed'));
-    start(); move(); end(); await flush();
+    refresh.mockImplementationOnce(() => { throw new Error('Reload refused'); });
+    start(); move(); end();
     expect(screen.getByTestId('state')).toHaveTextContent('error');
-    refresh.mockImplementationOnce(() => new Promise(() => undefined));
-    start(); move(); end(); await flush();
-    await act(async () => { await jest.advanceTimersByTimeAsync(15_000); });
+    start(); move(); end();
+    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
+    await act(async () => { await jest.advanceTimersByTimeAsync(5000); });
     expect(screen.getByTestId('state')).toHaveTextContent('error');
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'reload', result: 'failed', code: 'navigation-not-started' });
     expect(screen.getByLabelText('Draft')).toHaveValue('Keep my words');
+    start(); move(); end();
+    expect(refresh).toHaveBeenCalledTimes(3);
   });
 
   it('cancels on navigation and stays silent when disabled', () => {

@@ -3,8 +3,7 @@
     "pullRefresh": "Pull to refresh",
     "releaseRefresh": "Release to refresh",
     "refreshing": "Refreshing…",
-    "failed": "Could not refresh. Pull to try again.",
-    "offline": "You’re offline. Your work is still here.",
+    "failed": "Could not reload the page. Pull to try again.",
     "back": "Back",
     "releaseBack": "Release to go back"
   },

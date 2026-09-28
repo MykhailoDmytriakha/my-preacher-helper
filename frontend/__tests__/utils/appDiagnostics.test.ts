@@ -71,6 +71,17 @@ it('builds a copyable content-free environment report', () => {
   expect(report.environment).toEqual(expect.objectContaining({ online: navigator.onLine, visibility: document.visibilityState }));
   expect(report.events[0].name).toBe('freshness-timeout');
   expect(JSON.parse(JSON.stringify(report)).runningVersion).toBeTruthy();
+  expect(report.environment.maxTouchPoints).toBe(navigator.maxTouchPoints);
+  expect(report.environment.viewportScale).toBe(window.visualViewport?.scale ?? 1);
+});
+
+it('retains gesture and reload outcomes without raw target or document data', () => {
+  diagnostics.recordDiagnostic('gesture', { source: 'start', result: 'blocked', code: 'focused-editor', text: 'private words' } as never);
+  diagnostics.recordDiagnostic('gesture', { source: 'reload', result: 'requested' });
+  const report = diagnostics.buildDiagnosticReport();
+  expect(report.events.map(event => event.name)).toEqual(['gesture', 'gesture']);
+  expect(report.events[0].data).toEqual({ source: 'start', result: 'blocked', code: 'focused-editor' });
+  expect(JSON.stringify(report)).not.toContain('private words');
 });
 
 it.each([

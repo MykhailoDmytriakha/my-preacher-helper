@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Tooltip from '@/components/ui/Tooltip';
+import { reloadPage } from '@/utils/reloadPage';
 import { isIPadStandalonePwa } from '@utils/pwaEnv';
 
 /**
@@ -108,7 +109,7 @@ export function AppUpdateButton() {
     <Tooltip content={tooltipText}>
       <button
         type="button"
-        onClick={() => window.location.reload()}
+        onClick={reloadPage}
         aria-label={actionLabel}
         data-testid="app-update-button"
         /* Same round pad as the offline indicator beside it, in the dark-on-light

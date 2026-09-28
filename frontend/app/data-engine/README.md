@@ -31,12 +31,6 @@ several editors for the same document uses `DataDocumentProvider`; all matching
 `useDataDocument` calls inside it share one editor. The provider owns autosave timing.
 Different documents remain independent.
 
-`useDataRefresh()` refreshes the currently observed documents and mounted lists,
-plus active legacy queries outside engine-owned projections. It uses the existing
-read/reconciliation paths without reopening editors, submitting typing, retrying
-writes or accepting conflicts. Read failures reject so a pull-to-refresh control
-can report them; offline is never presented as a completed server refresh.
-
 Every opening allocates a new editor identity. A closed, acknowledged checkpoint may
 already be compacted; reusing its identity would restart the edit counter behind the
 durable deduplication watermark. Share a mounted editor through the provider, and

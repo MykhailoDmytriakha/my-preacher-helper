@@ -1,6 +1,5 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -135,23 +134,6 @@ export function useDataEngine(): EngineContextValue {
   const context = useContext(EngineContext);
   if (!context) throw new Error('Mount DataEngineProvider before using data');
   return context;
-}
-
-/** Refresh displayed engine data without remounting the page, replaying writes or clearing drafts. */
-export function useDataRefresh() {
-  const context = useContext(EngineContext);
-  const browser = context?.browser;
-  const queries = useQueryClient();
-  return useCallback(async () => {
-    if (!navigator.onLine) throw new Error('Offline');
-    if (isDataEngineEnabled() && !browser) throw new Error(ENGINE_NOT_READY);
-    await Promise.all([
-      browser?.engine.refreshActive(),
-      queries.refetchQueries({ type: 'active', predicate: query => !isEngineOwnedLegacyQuery(query.queryKey, isCollectionOnEngine) },
-        { throwOnError: true, cancelRefetch: false }),
-    ]);
-    if (!navigator.onLine) throw new Error('Offline');
-  }, [browser, queries]);
 }
 
 /**

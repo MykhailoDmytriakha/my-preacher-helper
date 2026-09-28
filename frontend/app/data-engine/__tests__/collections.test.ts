@@ -86,20 +86,6 @@ describe('CollectionReader durable read lifecycle', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('refreshes mounted lists to discover new rows and stops after the list is closed', async () => {
-    const s = setup(); s.seed(row('a'));
-    const listener = jest.fn(); const stop = s.reader.watch(collection, listener); await settle();
-    s.change(row('b'));
-    await s.reader.refreshActive();
-    expect(listener.mock.calls.at(-1)![0].snapshots.map((snapshot: ResourceSnapshot) => snapshot.resource.id)).toEqual(['a', 'b']);
-    stop(); jest.mocked(s.transport.changes).mockClear(); jest.mocked(s.transport.list).mockClear();
-    await s.reader.refreshActive();
-    expect(s.transport.changes).not.toHaveBeenCalled(); expect(s.transport.list).not.toHaveBeenCalled();
-    s.reader.setOnline(false);
-    await expect(s.reader.refreshActive()).rejects.toThrow('cannot be asked');
-    s.reader.dispose();
-  });
-
   it('backs off an initial failure before the server can report its legacy mode', async () => {
     const s = setup();
     jest.mocked(s.transport.list).mockRejectedValue(new Error('quota unavailable'));

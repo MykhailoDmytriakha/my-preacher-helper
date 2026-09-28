@@ -80,33 +80,6 @@ describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('refreshes a displayed document without saving or replacing unsent text', async () => {
-    const s = setup();
-    const editor = await s.engine.openEditor(resource, 'gesture');
-    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'My unfinished paragraph' });
-    s.server.set(keyOf('owner', resource), initial(2, 'Changed on another device'));
-    await s.engine.refreshActive();
-    expect(editor.getState().checkpoint.draft?.content).toBe('My unfinished paragraph');
-    expect(editor.getObservation().snapshot?.value?.content).toBe('Changed on another device');
-    expect(s.transport.send).not.toHaveBeenCalled();
-    expect(await s.commits.list('owner')).toEqual([]);
-    s.engine.dispose();
-  });
-
-  it('refreshes a clean editor, reports failed reads and never reads a closed editor', async () => {
-    const s = setup(); const editor = await s.engine.openEditor(resource, 'gesture');
-    s.server.set(keyOf('owner', resource), initial(2, 'New content'));
-    await s.engine.refreshActive();
-    expect(editor.getState().checkpoint.draft?.content).toBe('New content');
-    jest.mocked(s.transport.read).mockRejectedValueOnce(new Error('Network failed'));
-    await expect(s.engine.refreshActive()).rejects.toThrow('could not be refreshed');
-    editor.dispose(); jest.mocked(s.transport.read).mockClear();
-    await s.engine.refreshActive(); expect(s.transport.read).not.toHaveBeenCalled();
-    s.engine.setOnline(false);
-    await expect(s.engine.refreshActive()).rejects.toThrow('cannot be asked');
-    s.engine.dispose();
-  });
-
   it('pins pristine manual baseline and preserves the conflict when remote changes before typing', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     const form = editor.form('title', [['title']]); await form.begin();

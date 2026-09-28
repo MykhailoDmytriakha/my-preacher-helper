@@ -4,8 +4,8 @@ import { ArrowDown, ArrowLeft, LoaderCircle } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 
-import { useDataRefresh } from '@/data-engine/react.client';
 import { useShellPathname } from '@/hooks/useShellPathname';
+import { reloadPage } from '@/utils/reloadPage';
 
 import { BACK_THRESHOLD, PULL_THRESHOLD, usePageGestures } from './gestures/usePageGestures';
 
@@ -14,7 +14,7 @@ import type { GestureView } from './gestures/usePageGestures';
 function feedbackKey(view: GestureView): string {
   if (view.kind === 'back') return view.distance >= BACK_THRESHOLD ? 'gestures.releaseBack' : 'gestures.back';
   if (view.kind === 'refreshing') return 'gestures.refreshing';
-  if (view.kind === 'error') return navigator.onLine ? 'gestures.failed' : 'gestures.offline';
+  if (view.kind === 'error') return 'gestures.failed';
   return view.distance >= PULL_THRESHOLD ? 'gestures.releaseRefresh' : 'gestures.pullRefresh';
 }
 
@@ -23,12 +23,11 @@ export default function PageGestures({ enabled = true }: { enabled?: boolean }) 
   const pathname = useShellPathname();
   const search = useSearchParams();
   const router = useRouter();
-  const refreshData = useDataRefresh();
   const view = usePageGestures({
     routeKey: `${pathname}?${search?.toString() ?? ''}`,
     enabled,
     onBack: () => router.back(),
-    onRefresh: refreshData,
+    onRefresh: reloadPage,
   });
   const back = view.kind === 'back';
   const ready = view.distance >= (back ? BACK_THRESHOLD : PULL_THRESHOLD);

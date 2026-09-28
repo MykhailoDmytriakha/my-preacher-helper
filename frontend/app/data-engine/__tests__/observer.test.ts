@@ -40,14 +40,6 @@ describe('ResourceObserver', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.setSystemTime(1_000_000); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('does not report a user refresh as successful when the server returns rejected older evidence', async () => {
-    const h = harness(); h.watch(); h.next(snapshot(5, 'latest'));
-    h.read.mockResolvedValue(snapshot(2, 'older'));
-    await expect(h.observer.refreshActive()).rejects.toThrow('could not be refreshed');
-    expect(h.state().snapshot?.value?.content).toBe('latest');
-    h.observer.dispose();
-  });
-
   it('shares a listener per document and releases it only after the last watch', async () => {
     const h = harness();
     const first = h.watch();

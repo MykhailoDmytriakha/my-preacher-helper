@@ -6,7 +6,7 @@ const MAX_EVENTS = 80;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION = Date.now();
 const EVENTS = [
-  'sermon-read', 'structure-load', 'service-orders-read', 'owner-list-read',
+  'sermon-read', 'structure-load', 'service-orders-read', 'owner-list-read', 'gesture',
   'boot', 'route', 'route-check', 'visibility', 'focus', 'online', 'offline', 'pageshow', 'pagehide',
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
@@ -124,6 +124,8 @@ export function buildDiagnosticReport() {
       online: navigator.onLine,
       visibility: document.visibilityState,
       standalone: window.matchMedia('(display-mode: standalone)').matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone),
+      maxTouchPoints: navigator.maxTouchPoints,
+      viewportScale: window.visualViewport?.scale ?? 1,
       viewport: { width: window.innerWidth, height: window.innerHeight, pixelRatio: window.devicePixelRatio },
       serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker.controller?.state ?? 'uncontrolled' : 'unsupported',
     },
