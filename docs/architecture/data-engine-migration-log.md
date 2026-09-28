@@ -4,6 +4,27 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## Production switch lists — read before changing any of them (2026-09-28)
+
+The server list is a Secret: Vercel shows it as "Hidden" and never returns its value, so it
+cannot be copied from the dashboard. Write the WHOLE value every time you change it.
+
+| Variable (Production) | Value since 2026-09-28 00:40 PDT |
+|---|---|
+| `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` | `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates` |
+| `DATA_ENGINE_COLLECTIONS` (Secret) | the same ten **plus `studyNoteShareLinks`** |
+| `DATA_ENGINE_CLOSED_COLLECTIONS` | not set — closure not done |
+
+The server list is one longer on purpose. Deleting a study note retires its share links in the
+same command (`serverRelations.ts:301`), and the server refuses any command that writes an
+unserved collection (`server.ts:340`). Without `studyNoteShareLinks` every shared note failed
+to delete: the screen showed a false "changed on another device" banner and the link was
+already gone (found and fixed 2026-09-28, verified in production: one command retired the note
+and its link, the public link answered 404). Share links stay server-owned; they are not in
+the client list and must not be closed. **Rebuilding the server value from the client list
+silently drops `studyNoteShareLinks` and brings that failure back** — for example when adding
+`users`.
+
 ## User settings — 2026-09-28, local implementation
 
 Owner authorized moving `users` onto the common engine after
