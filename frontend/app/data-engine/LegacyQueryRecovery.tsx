@@ -75,7 +75,10 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
 const NAMED_FIELDS = new Set(['title', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
   'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
-  'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts']);
+  'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
+  // Every other field the person writes in councils, groups, series and sermons (models.ts).
+  'scratch', 'insights', 'planText', 'planMode', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church',
+  'audioChunks', 'audioMetadata', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt']);
 const NAMED_COLLECTIONS = new Set(['councils', 'groups', 'series', 'sermons', 'users']);
 
 /** Bookkeeping never differs in words the person wrote; sorted keys keep both sides line-aligned. */

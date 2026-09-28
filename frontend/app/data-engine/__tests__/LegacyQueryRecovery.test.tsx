@@ -300,6 +300,25 @@ describe('legacy cache preservation UI', () => {
     expect(screen.queryByRole('button', { name: 'legacyRecovery.keepServer' })).not.toBeInTheDocument();
   });
 
+  it('names every field a person writes in the four archived collections', async () => {
+    const locales = ['en', 'ru', 'uk'].map(lang => jest.requireActual(`../../../locales/${lang}/translation.json`) as { legacyRecovery: { field: Record<string, string> } });
+    const written = ['title', 'verse', 'description', 'date', 'thoughts', 'scratch', 'outline', 'structure', 'insights', 'plan', 'planText', 'planMode',
+      'isPreached', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church', 'preachDates', 'audioChunks', 'audioMetadata',
+      'theme', 'bookOrTopic', 'sermonIds', 'items', 'seriesKind', 'startDate', 'duration', 'color', 'status', 'templates', 'flow', 'meetingDates',
+      'heldAt', 'topics'];
+    for (const locale of locales) expect(written.filter(field => !locale.legacyRecovery.field[field])).toEqual([]);
+  });
+
+  it('shows a series field by its name, not by its code', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', bookOrTopic: 'Romans', updatedAt: '2026-09-16T00:00:00.000Z' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', bookOrTopic: 'Galatians', updatedAt: '2026-09-01T00:00:00.000Z' })]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(screen.getByText('legacyRecovery.field.bookOrTopic')).toBeInTheDocument();
+    expect(screen.queryByText('bookOrTopic')).not.toBeInTheDocument();
+  });
+
   it('copies the device side of each difference, named by field', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', description: 'Server', updatedAt: '2026-09-16T00:00:00.000Z' });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', description: 'Phone', updatedAt: '2026-09-01T00:00:00.000Z' })]);
