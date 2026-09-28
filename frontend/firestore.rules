@@ -47,7 +47,8 @@ service cloud.firestore {
     // Until a collection is listed, a bundle that has not updated may still write the documents
     // the engine has not touched; once listed, nothing reaches it from a browser at all — the
     // engine writes through the Admin SDK, which rules do not govern.
-    // To close a domain, add its collection here:        ↓ e.g. ['councils']
+    // To close a domain, add its collection here — every engine collection's create, update and
+    // delete already call this; rules-test-closed.cjs proves each one:  ↓ e.g. ['councils']
     function closedToBrowserWrites(name) {
       return name in [];
     }
@@ -115,21 +116,21 @@ service cloud.firestore {
     // ---- Collections owned via a `userId` field ----
     match /sermons/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('sermons');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('sermons');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('sermons');
     }
     match /studyNotes/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('studyNotes');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('studyNotes');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('studyNotes');
     }
     match /studyMaterials/{id} {
       allow read: if ownsExisting('userId');
-      allow create: if ownsIncoming('userId') && legacyIncoming();
-      allow update: if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
-      allow delete: if ownsExisting('userId') && legacyExisting();
+      allow create: if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('studyMaterials');
+      allow update: if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('studyMaterials');
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('studyMaterials');
     }
     match /studyNoteBranchStates/{id} {
       allow read: if ownsExisting('userId');
@@ -139,28 +140,28 @@ service cloud.firestore {
     }
     match /series/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('series');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('series');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('series');
     }
     match /groups/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('groups');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('groups');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('groups');
     }
     match /prayerRequests/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('prayerRequests');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('prayerRequests');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('prayerRequests');
     }
     // Orders of service — the pastor's own reference book, one document per rite.
     match /serviceOrders/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('serviceOrders');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('serviceOrders');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('serviceOrders');
     }
     // Brothers' council — one document per council, sections inside, the pastor's own.
     match /councils/{id} {
@@ -177,15 +178,15 @@ service cloud.firestore {
     }
     match /tags/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('tags');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('tags');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('tags');
     }
     match /planTemplates/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('planTemplates');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('planTemplates');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('planTemplates');
     }
     match /feedback/{id} {
       allow read: if ownsExisting('userId');
