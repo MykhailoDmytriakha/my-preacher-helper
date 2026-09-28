@@ -18,6 +18,7 @@ jest.mock('@/components/ProtectedRoute', () => ({ children }: { children: ReactN
 jest.mock('@/components/navigation/DashboardNav', () => () => <nav>Navigation</nav>);
 jest.mock('@/components/navigation/Breadcrumbs', () => () => <div>Breadcrumbs</div>);
 jest.mock('@/components/navigation/DevQuickNav', () => () => null);
+jest.mock('@/components/navigation/PageGestures', () => () => null);
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => <div>Guest notice</div> }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => <div>Unsent changes</div> }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => <div data-testid="outbox-drain" /> }));

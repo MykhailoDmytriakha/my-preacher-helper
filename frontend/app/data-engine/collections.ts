@@ -234,6 +234,16 @@ export class CollectionReader {
     return this.requestRefresh(collection, true);
   }
 
+  /** Explicitly refresh mounted lists, including additions that have no document observer yet. */
+  async refreshActive(): Promise<void> {
+    if (!this.owner || !this.online || !this.visible || this.disposed) throw failure('The server cannot be asked right now', 'unavailable');
+    await Promise.all([...this.entries.values()].filter(entry => entry.listeners.size > 0)
+      .map(async entry => {
+        const state = await this.refresh(entry.collection);
+        if (state.error || state.freshness !== 'server') throw failure('The displayed list could not be refreshed', 'unavailable');
+      }));
+  }
+
   private requestRefresh(collection: string, explicit: boolean): Promise<CollectionState> {
     const entry = this.entry(collection);
     const generation = this.generation;

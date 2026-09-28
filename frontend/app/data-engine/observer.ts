@@ -160,6 +160,19 @@ export class ResourceObserver {
     return entry ? this.read(entry) : Promise.resolve();
   }
 
+  /** A user refresh reads existing interests; it never replaces an editor's draft. */
+  async refreshActive(): Promise<void> {
+    if (!this.owner || !this.online || !this.visible || this.disposed) throw new Error('The server cannot be asked right now');
+    const entries = [...this.entries.values()].filter(entry => this.eligible(entry));
+    await Promise.all(entries.map(async entry => {
+      const sequence = entry.snapshotSequence;
+      await this.read(entry);
+      if (!this.eligible(entry) || entry.snapshotSequence === sequence || entry.state.error || entry.state.readiness !== 'server') {
+        throw new Error('The displayed document could not be refreshed');
+      }
+    }));
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

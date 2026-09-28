@@ -1,4 +1,13 @@
 {
+  "gestures": {
+    "pullRefresh": "Pull to refresh",
+    "releaseRefresh": "Release to refresh",
+    "refreshing": "Refreshing…",
+    "failed": "Could not refresh. Pull to try again.",
+    "offline": "You’re offline. Your work is still here.",
+    "back": "Back",
+    "releaseBack": "Release to go back"
+  },
   "legacyRecovery": {
     "preserving": "Preserving local copies from the previous version…",
     "preservationFailed": "Could not preserve previous local copies. The original cache has been kept. Retry before opening the workspace.",

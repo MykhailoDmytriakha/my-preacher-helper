@@ -530,6 +530,16 @@ export class DataEngine {
     return store as CheckpointRecoveryStore;
   }
 
+  /** Read what is on screen through the existing reconciliation rules, without submitting typing. */
+  async refreshActive(): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    if (!this.canDeliver()) throw new Error('The server cannot be asked right now');
+    await Promise.all([this.options.observer.refreshActive(), this.options.collections?.refreshActive()]);
+    this.assertCurrent(owner, generation);
+    await Promise.all([...this.editors.values()].map(entry => entry.controller?.settled()));
+    this.assertCurrent(owner, generation);
+  }
+
   async retry(resource?: ResourceRef): Promise<void> {
     if (this.disposed || !this.owner) return;
     const owner = this.requireOwner();

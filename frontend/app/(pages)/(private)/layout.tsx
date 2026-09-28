@@ -11,6 +11,7 @@ import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
+import PageGestures from '@/components/navigation/PageGestures';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -46,6 +47,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
           the chrome, and while the queue worker lived inside the banner that screen
           — the one a preacher keeps open for an hour — drained nothing at all. */}
       <DiagnosticsRecorder pathname={pathname ?? '/'} />
+      <PageGestures />
       <OutboxDrain />
       {!isPreachingPlan && (
         <>
