@@ -20,6 +20,19 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => {
 } }));
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+const mockServerRead = jest.fn();
+// The server answers with the other version unless a test says otherwise; groups run on the engine.
+beforeEach(() => {
+  mockServerRead.mockReset();
+  mockServerRead.mockResolvedValue({ resource: { collection: 'groups', id: 'g1' }, value: { title: 'theirs' }, metadata: null });
+});
+/** "Take theirs" on a collection that runs on the engine (production): the server copy is read through it. */
+const onEngine = () => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups'; };
+afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useRemotePeek: () => (...args: unknown[]) => mockServerRead(...args),
+}));
 jest.mock('firebase/firestore', () => ({ doc: (_db: unknown, c: string, id: string) => ({ __p: `${c}/${id}` }) }));
 jest.mock('@/services/conflictSafeUpdate.client', () => ({
   conflictSafeUpdate: jest.fn(),
@@ -243,7 +256,7 @@ describe('the ordinary refusal panel shows everything and loads theirs', () => {
   });
 
   it('loads the other version before discarding the refused text', async () => {
-    conflictedGroup();
+    onEngine(); conflictedGroup();
     render(<OutboxConflictBanner />);
     await screen.findByText('freshness.conflictTitle');
 
@@ -253,17 +266,31 @@ describe('the ordinary refusal panel shows everything and loads theirs', () => {
     await waitFor(() => expect(listOutbox('u1')).toHaveLength(0));
   });
 
-  it('KEEPS the refused text when loading the other version fails', async () => {
-    // Otherwise "take theirs" throws away the only copy and shows the person their own
-    // stale value, with nothing left to recover.
-    conflictedGroup();
-    mockInvalidate.mockRejectedValueOnce(new Error('offline again'));
+  it('KEEPS the refused text when the server does not answer, even though invalidation "succeeds"', async () => {
+    // React Query resolves invalidateQueries() for a failed or offline-paused refetch; only a
+    // server answer may let "take theirs" throw away the only copy of the refused text.
+    onEngine(); conflictedGroup();
+    mockInvalidate.mockResolvedValue(undefined);
+    mockServerRead.mockRejectedValueOnce(Object.assign(new Error('offline again'), { code: 'unavailable' }));
     render(<OutboxConflictBanner />);
     await screen.findByText('freshness.conflictTitle');
 
     fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
 
-    await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
+    await waitFor(() => expect(mockServerRead).toHaveBeenCalled());
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(listOutbox('u1')).toHaveLength(1);
+  });
+
+  it('KEEPS the refused text when the other version no longer exists', async () => {
+    onEngine(); conflictedGroup();
+    mockServerRead.mockResolvedValueOnce({ resource: { collection: 'groups', id: 'g1' }, value: null, metadata: { protocol: 1, generation: 'g', revision: 3, deleted: true } });
+    render(<OutboxConflictBanner />);
+    await screen.findByText('freshness.conflictTitle');
+
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(listOutbox('u1')).toHaveLength(1);
   });
 });

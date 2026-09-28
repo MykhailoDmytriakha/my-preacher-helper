@@ -158,6 +158,16 @@ const remoteDeleted = (record: EditorRecord) => {
   return Boolean(candidate && (candidate.value === null || candidate.metadata?.deleted));
 };
 
+/**
+ * The server's copy of one document, read now through the engine's transport — for a screen that
+ * must see proof from the server before it gives something up. Null without an engine; the read
+ * refuses offline or on a hidden page rather than answering from this device.
+ */
+export function useRemotePeek(): ((resource: ResourceRef) => Promise<ResourceSnapshot>) | null {
+  const { browser } = useContext(EngineContext) ?? idleEngine;
+  return useMemo(() => browser ? (resource: ResourceRef) => browser.engine.peekRemote(resource) : null, [browser]);
+}
+
 export function useDocumentActions() {
   // Menus that offer these actions render in both deployments; without an engine they are not ready.
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;

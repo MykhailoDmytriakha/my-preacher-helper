@@ -9,8 +9,9 @@ import { toast } from 'sonner';
 import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { getClientDb } from '@/config/firebaseClientDb';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { discoverLegacyRecovery, exportLegacyRecovery, type LegacyRecoverySource } from '@/data-engine/legacyRecovery.client';
-import { LegacyDataRecoveryNotice } from '@/data-engine/react.client';
+import { LegacyDataRecoveryNotice, useRemotePeek } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -39,6 +40,7 @@ function LegacyConflictBanner() {
     onError: () => { toast.error(t(SAVE_ERROR_KEY)); },
   });
   const queryClient = useQueryClient();
+  const peekRemote = useRemotePeek();
   const [conflicts, setConflicts] = useState<OutboxEntry[]>([]);
   const [stuck, setStuck] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -111,12 +113,21 @@ function LegacyConflictBanner() {
    * "Take theirs" used to only delete the queued intent, so the screen went on showing
    * the value that had just been thrown away — the person had neither version. And the
    * load must be judged: if it fails, discarding would destroy the only copy of the
-   * refused text while promising a version that never arrived.
+   * refused text while promising a version that never arrived. A resolved
+   * invalidateQueries() proves nothing — React Query resolves it when a refetch fails or
+   * waits offline — so for a collection on the engine only the server's own copy, read
+   * through the engine, allows the discard (a deployment with the engine off keeps the
+   * previous behaviour).
    */
   const takeTheirs = async () => {
     if (busy) return;
     setBusy(true);
     try {
+      if (isCollectionOnEngine(entry.collection)) {
+        if (!peekRemote) throw new Error('The engine is not ready; the refused text stays');
+        const theirs = await peekRemote({ collection: entry.collection, id: entry.docId });
+        if (theirs.value === null || theirs.metadata?.deleted) throw new Error('The other version is gone; the refused text stays');
+      }
       await queryClient.invalidateQueries();
       removeFromOutbox(entry.id);
     } catch (error) {
