@@ -1,4 +1,4 @@
-when: firestore.rules · security rules · client can write a server field · server-managed field · privilege field · paidTier · role · usage · promotion · referredBy · affectedKeys · diff · hasAny · keys() · client whitelist is not authorization · rules test · emulator · test:rules · rules-test.cjs · assertFails · _dataEngine marker · legacyExisting · permission-denied after a rules change · правила безопасности · правила Firestore · защитить поле · клиент пишет серверное поле · тариф · роль · запрет записи · тест правил · эмулятор · отказ в доступе после правки правил
+when: firestore.rules · security rules · client can write a server field · server-managed field · privilege field · paidTier · role · usage · promotion · referredBy · affectedKeys · diff · hasAny · keys() · client whitelist is not authorization · rules test · emulator · test:rules · rules-test.cjs · assertFails · _dataEngine marker · legacyExisting · permission-denied after a rules change · правила безопасности · правила Firestore · защитить поле · клиент пишет серверное поле · тариф · роль · запрет записи · тест правил · эмулятор · отказ в доступе после правки правил · выкатить правила · deploy rules · closure · closedToBrowserWrites · закрытие разделов
 
 # Protect server-managed fields in Firestore rules
 
@@ -17,6 +17,7 @@ A field the browser must never set (tier, role, usage, referral, the engine mark
 
 ## Traps
 
+- **Deploy rules only from an up-to-date `main`.** Since 2026-09-28 the rules close the ten engine collections to browser writes (`closedToBrowserWrites`). A deploy from a checkout older than `8a7d779c` ships an empty list and silently reopens all ten. Pull first; `npm run test:rules` must pass — `rules-test-closed.cjs` pins the shipped list to exactly the ten. After the deploy, compare the released ruleset with the file (Firebase Rules API `projects/my-preacher-helper/releases/cloud.firestore` → ruleset source; the 2026-09-28 check matched byte for byte).
 - The commented `advancesRevision` draft in `firestore.rules` is not a switch. Checking one aggregate's counter on every update refuses most of today's saves (a sermon has four counters and a save moves one). Read the comment block first: the working form is driven by `affectedKeys()`, wired per collection, `users` left out, proven on the emulator.
 
 ## Why
