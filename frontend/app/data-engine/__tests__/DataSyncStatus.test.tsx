@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import en from '../../../locales/en/translation.json';
 import ru from '../../../locales/ru/translation.json';
 import uk from '../../../locales/uk/translation.json';
-import { DataSyncStatus } from '../DataSyncStatus';
+import { DataSyncStatus, STATUS_SETTLE_MS } from '../DataSyncStatus';
 
 import type { SyncPhase, SyncStatus } from '../status';
 
@@ -62,11 +62,15 @@ describe('DataSyncStatus', () => {
   });
 
   it('reports local storage and read failures, and surfaces a failed retry without claiming a save', async () => {
+    jest.useFakeTimers();
     const retry = jest.fn().mockRejectedValue(new Error('Storage full'));
     render(<DataSyncStatus status={status('localFailure', { freshness: 'cache', checking: true, readFailed: true })} error="Draft not durable" onRetry={retry} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Draft not durable');
+    // Freshness and read trouble are said once they last, not on every passing check.
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+    jest.useRealTimers();
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.freshness.cache);
-    expect(screen.getByText(en.dataSync.checking)).toBeInTheDocument(); expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();
+    expect(screen.queryByText(en.dataSync.checking)).not.toBeInTheDocument(); expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry }));
     await act(async () => { await Promise.resolve(); }); expect(retry).toHaveBeenCalledTimes(1);
   });
@@ -100,3 +104,42 @@ describe('DataSyncStatus', () => {
     unmount();
   });
 });
+
+/*
+ * THE PAGE DOES NOT JUMP ON A BACKGROUND CHECK. Measured live on a council 2026-09-27: after two
+ * quiet minutes the engine checks the server every ~16 s, and every check inserted "Checking for
+ * updates…" under "Saved." for a tenth of a second — the whole council moved down 20 px and back.
+ * The owner read it as the page jumping every thirty seconds while he was only reading.
+ */
+describe('background checks leave the page still', () => {
+  beforeEach(() => { jest.useFakeTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('says nothing about a routine check', () => {
+    const { container, rerender } = render(<DataSyncStatus status={status('saved')} />);
+    const still = container.textContent;
+    rerender(<DataSyncStatus status={status('saved', { checking: true })} />);
+    expect(container.textContent).toBe(still);
+  });
+
+  it('does not flash freshness or read trouble that passes within the check', () => {
+    const { container, rerender } = render(<DataSyncStatus status={status('saved')} onRetry={jest.fn()} />);
+    const still = container.textContent;
+    rerender(<DataSyncStatus status={status('saved', { freshness: 'unknown', checking: true, readFailed: true })} onRetry={jest.fn()} />);
+    expect(container.textContent).toBe(still);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS - 1); });
+    rerender(<DataSyncStatus status={status('saved')} onRetry={jest.fn()} />);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+    expect(container.textContent).toBe(still);
+  });
+
+  it('says so once the device copy or a failed check lasts', () => {
+    const retry = jest.fn();
+    render(<DataSyncStatus status={status('saved', { freshness: 'cache', readFailed: true })} onRetry={retry} />);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+    expect(screen.getByText(en.dataSync.freshness.cache)).toBeInTheDocument();
+    expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeInTheDocument();
+  });
+});
+

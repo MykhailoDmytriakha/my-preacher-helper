@@ -5,7 +5,11 @@ import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 
+import { useLasting } from './useLasting';
+
 import type { SyncStatus } from './status';
+
+export { STATUS_SETTLE_MS } from './useLasting';
 
 export interface RecoveryChoice {
   id: string;
@@ -26,6 +30,7 @@ export interface DataSyncStatusProps {
   className?: string;
 }
 
+
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
 export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onListRecovery, onRecover, recoveryLoading = false, recoveryError, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
@@ -35,6 +40,8 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   const [action, setAction] = useState<{ scope: object; busy: boolean; error: string | null } | null>(null);
   const running = useRef<object | null>(null);
   const [selectedId, setSelectedId] = useState('');
+  const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server'));
+  const readTrouble = useLasting(Boolean(status?.readFailed));
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
   const busy = action?.scope === scope && action.busy;
   const failure = error ?? (action?.scope === scope ? action.error : null);
@@ -56,15 +63,14 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   return <div className={`space-y-3 text-sm ${className}`}>
     {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       <p>{t(status.phase === 'saved' && recoveryChoices.length ? 'dataSync.unfinishedWork' : `dataSync.phase.${status.phase}`)}</p>
-      {status.freshness !== 'server' && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
-      {status.checking && <p className="mt-1 text-xs">{t('dataSync.checking')}</p>}
-      {status.readFailed && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
+      {unconfirmedCopy && status.freshness !== 'server' && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
+      {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
     </div>}
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
     <div className="flex flex-wrap gap-2">
       {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(keep)}>{t('dataSync.keepLocal')}</button>}
       {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(accept)}>{t('dataSync.acceptRemote')}</button>}
-      {onRetry && (failure || status?.readFailed || (status && status.phase !== 'saved')) && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
+      {onRetry && (failure || readTrouble || (status && status.phase !== 'saved')) && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
       {onListRecovery && <button type="button" className={buttonClass} disabled={busy || recoveryLoading} onClick={() => run(onListRecovery)}>{t(recoveryLoading ? 'dataSync.recoveryLoading' : 'dataSync.findRecovery')}</button>}
     </div>
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}
