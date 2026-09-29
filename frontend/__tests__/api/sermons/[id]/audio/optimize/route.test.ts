@@ -46,6 +46,21 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
     },
 }));
 
+// The engine road on demand: a test sets what the engine reads at write time; otherwise the real bridge runs.
+let mockEngineCurrent: Record<string, unknown> | null = null;
+let mockEngineWritten: Record<string, unknown> | null = null;
+jest.mock('@/data-engine/serverEdit.server', () => {
+    const actual = jest.requireActual('@/data-engine/serverEdit.server');
+    return {
+        ...actual,
+        writeOwnedDocument: jest.fn(async (options: { engine: (current: Record<string, unknown>) => Record<string, unknown> }) => {
+            if (!mockEngineCurrent) return actual.writeOwnedDocument(options);
+            mockEngineWritten = options.engine(JSON.parse(JSON.stringify(mockEngineCurrent)));
+            return mockEngineWritten;
+        }),
+    };
+});
+
 jest.mock('@/api/clients/speechOptimization.client', () => ({
     optimizeTextForSpeech: jest.fn(),
 }));
@@ -318,6 +333,41 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
                 expect.objectContaining({ sectionId: 'conclusion', text: 'Old Conclusion' })
             ])
         }));
+    });
+
+    /**
+     * A partial run keeps the other sections AS STORED WHEN WRITTEN (BUG-20260810-audio-chunks-whole-array).
+     * They used to come from the read made before the AI calls, so a chunk corrected on another
+     * device meanwhile was written over.
+     */
+    it('keeps a correction made in another section while the AI was working', async () => {
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                userId: mockUserId,
+                audioChunks: [{ index: 0, sectionId: 'conclusion', text: 'Old Conclusion', createdAt: 'then' }],
+                thoughts: [{ id: 't1', text: 'New Intro', tags: ['introduction'] }],
+            }),
+        });
+        mockEngineCurrent = {
+            userId: mockUserId,
+            audioChunks: [{ index: 0, sectionId: 'conclusion', text: 'Conclusion corrected on the phone', createdAt: 'then' }],
+        };
+        try {
+            const req = new NextRequest('http://localhost:3000/api/optimize', {
+                method: 'POST',
+                body: JSON.stringify({ userId: mockUserId, sections: 'introduction' }),
+            });
+            const json = await (await POST(req, { params: Promise.resolve({ id: mockSermonId }) })).json();
+
+            const stored = mockEngineWritten?.audioChunks as Array<{ sectionId: string; text: string }>;
+            expect(stored.find(chunk => chunk.sectionId === 'conclusion')?.text).toBe('Conclusion corrected on the phone');
+            expect(json.chunks.find((chunk: { sectionId: string }) => chunk.sectionId === 'conclusion').text).toBe('Conclusion corrected on the phone');
+        } finally {
+            mockEngineCurrent = null;
+            mockEngineWritten = null;
+        }
     });
 
     it('should prioritize outline points if they exist', async () => {

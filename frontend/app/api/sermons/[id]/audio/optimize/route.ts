@@ -33,8 +33,8 @@ import {
 } from '@/api/services/sermonTransitions';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
+import { legacyBoundaryResponse, updateLegacyResource } from '@/data-engine/legacyBoundary.server';
+import { applyLegacyPatch, assertServerWritable, serverEditResponse, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
@@ -107,13 +107,7 @@ export async function POST(
         const usageAdmission = createUsageAdmission(uid, entitlement, ['ai'], usageNow);
 
         // 3. Sequential Generation Loop with Context
-        // If filtering, preserve chunks from sections we are NOT re-processing this run.
-        const existingChunks = (sermon.audioChunks || []) as AudioChunk[];
-        let allChunks: AudioChunk[] = [];
-        if (!isAllSections) {
-            const processing = new Set<string>(sectionsToProcess);
-            allChunks = existingChunks.filter(c => !processing.has(c.sectionId));
-        }
+        const processing = new Set<string>(sectionsToProcess);
 
         console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
 
@@ -147,34 +141,41 @@ export async function POST(
             includeOutro: sectionsToProcess.includes('conclusion'),
         });
 
-        allChunks.push(...woven);
         const totalOriginalLength = built.originalLength;
         const totalOptimizedLength = built.optimizedLength;
 
-        // 4. Global Re-indexing
-        // Sort by section order first, then by existing sequence
+        // 4. The stored set: the sections prepared now plus, on a partial run, every other section
+        //    AS STORED WHEN WRITTEN. Those used to come from the read made before the AI calls —
+        //    tens of seconds earlier — so a chunk corrected meanwhile in another section was written
+        //    over (BUG-20260810-audio-chunks-whole-array). Sorted by section, then re-indexed 0..n.
         const sectionOrder: Record<string, number> = { introduction: 0, mainPart: 1, conclusion: 2 };
-
-        allChunks.sort((a, b) => {
-            const secDiff = (sectionOrder[a.sectionId] || 0) - (sectionOrder[b.sectionId] || 0);
-            if (secDiff !== 0) return secDiff;
-            // Within same section, trust the push order (stable sort usually) 
-            // Since we reconstructed the list sequentially, this should be fine.
-            return 0;
-        });
-
-        // Assign clean 0-based index
-        allChunks = allChunks.map((chunk, idx) => ({ ...chunk, index: idx }));
+        const assemble = (stored: unknown): AudioChunk[] => {
+            const kept = isAllSections ? [] : ((Array.isArray(stored) ? stored : []) as AudioChunk[]).filter(c => !processing.has(c.sectionId));
+            return [...kept, ...woven]
+                .sort((a, b) => (sectionOrder[a.sectionId] || 0) - (sectionOrder[b.sectionId] || 0))
+                .map((chunk, idx) => ({ ...chunk, index: idx }));
+        };
+        let allChunks = assemble(sermon.audioChunks);
 
         // 5. Save to DB
         // Use dot-path updates so we record the source mode and refresh chunk/optimize
         // metadata WITHOUT clobbering voice/model/lastGenerated from a previous render.
         if (saveToDb) {
-            await updateOwnedDocument(uid, { collection: 'sermons', id: sermonId }, {
-                audioChunks: allChunks,
+            const patchFor = (chunks: AudioChunk[]) => ({
+                audioChunks: chunks,
                 'audioMetadata.mode': useRawText ? 'raw' : 'ai',
-                'audioMetadata.chunksCount': allChunks.length,
+                'audioMetadata.chunksCount': chunks.length,
                 'audioMetadata.lastOptimized': new Date().toISOString(),
+            });
+            await writeOwnedDocument({
+                owner: uid,
+                resource: { collection: 'sermons', id: sermonId },
+                legacy: () => updateLegacyResource({ collection: 'sermons', id: sermonId }, patchFor(allChunks)),
+                // Inside the engine's read-apply-retry loop: the other sections as stored right now.
+                engine: current => {
+                    allChunks = assemble(current.audioChunks);
+                    return applyLegacyPatch(current, patchFor(allChunks));
+                },
             });
         }
 
