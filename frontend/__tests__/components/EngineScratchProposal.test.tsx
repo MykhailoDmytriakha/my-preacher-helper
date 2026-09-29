@@ -140,7 +140,8 @@ it.each(['local', 'remote'] as const)('resolves a changed source with the explic
   fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' })); await deliver(harness);
   if (choice === 'remote') {
     expect(harness.read(resource).value).toMatchObject({ scratch, outline: original.value!.outline });
-    expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument();
+    // The store settles before React commits the discarded stage; on a busy machine the render lags.
+    await waitFor(() => expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument());
   } else {
     expect(harness.read(resource).value?.scratch).toEqual([]);
     expect(JSON.stringify(harness.read(resource).value?.outline)).toContain('Generated heading');
