@@ -47,6 +47,7 @@ import {
     SermonSection,
 } from '@/types/audioGeneration.types';
 import { apiClient } from '@/utils/apiClient';
+import { CHUNKS_CHANGED, heardChunks } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
@@ -57,6 +58,13 @@ import ChunkEditorModal from './ChunkEditorModal';
 // ============================================================================
 // Types
 // ============================================================================
+
+/** Generation found the stored set different from the one on screen (409 `chunks-changed`). */
+class ChunksChangedError extends Error {
+    constructor(readonly data: { chunks?: unknown; mode?: unknown }) {
+        super(CHUNKS_CHANGED);
+    }
+}
 
 interface ChunkPreview extends AudioChunk {
     preview?: string;
@@ -197,6 +205,15 @@ export default function StepByStepWizard({
     // Source mode + per-mode cache so flipping back and forth is instant
     const [mode, setMode] = useState<AudioSourceMode>('ai');
     const chunksByMode = useRef<Partial<Record<AudioSourceMode, ChunkPreview[]>>>({});
+    /**
+     * The chunk set this wizard last saw STORED — loaded, prepared, switched to or corrected. A
+     * source switch writes a whole cached array, and the server takes it only while the database
+     * still holds this set (BUG-20260810-audio-chunks-whole-array).
+     */
+    const storedChunks = useRef<ChunkPreview[]>([]);
+    /** The set and source on screen when the chunk editor opened: a save lands only while both are stored. */
+    const editingSet = useRef<{ chunks: ChunkPreview[]; mode: AudioSourceMode }>({ chunks: [], mode: 'ai' });
+
 
     // Content
     const [chunks, setChunks] = useState<ChunkPreview[]>([]);
@@ -295,6 +312,7 @@ export default function StepByStepWizard({
             // The true source label of the persisted chunks.
             const trueMode: AudioSourceMode = sermon.audioMetadata?.mode === 'raw' ? 'raw' : 'ai';
             chunksByMode.current[trueMode] = loaded;
+            storedChunks.current = loaded;
             if (ttsProvider === 'google') {
                 // Google only supports raw. If the persisted chunks are AI-optimized,
                 // do NOT present them as raw — leave raw empty so the user re-prepares.
@@ -368,6 +386,7 @@ export default function StepByStepWizard({
         });
         if (!response.ok || !response.body) {
             const data = await response.json().catch(() => ({}));
+            if (response.status === 409 && data.code === CHUNKS_CHANGED) throw new ChunksChangedError(data);
             throw new Error(data.error || 'Generation failed');
         }
 
@@ -407,27 +426,73 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     // Persist a cached chunk set so /generate (which reads the DB) stays in sync
     // ------------------------------------------------------------------
-    const syncChunksToDb = useCallback(async (cached: ChunkPreview[], targetMode: AudioSourceMode) => {
+    /**
+     * SHOW WHAT IS STORED — the answer every chunk route gives when the database does not hold
+     * what this wizard showed (409 `chunks-changed`). Only the stored source's cache is replaced:
+     * the other one may hold corrections that exist nowhere else.
+     */
+    const showStoredSet = useCallback((data: { chunks?: unknown; mode?: unknown }) => {
+        const current: ChunkPreview[] = (Array.isArray(data.chunks) ? data.chunks as AudioChunk[] : [])
+            .map(c => ({ ...c, sectionId: c.sectionId as SermonSection, preview: c.text }));
+        const storedMode: AudioSourceMode = data.mode === 'raw' ? 'raw' : 'ai';
+        storedChunks.current = current;
+        chunksByMode.current[storedMode] = current;
+        const present = SERMON_SECTIONS.filter(k => current.some(c => c.sectionId === k));
+        if (present.length > 0) setSections(present);
+        setMode(storedMode);
+        setChunks(current);
+        return current;
+    }, []);
+
+    /**
+     * Whether the database now holds `cached` ('stored'), holds another set this wizard now shows
+     * ('replaced'), or the switch failed ('failed'). The old code ignored the answer, and the
+     * screen showed one source while the audio was made from the other. A failed switch shows the
+     * previous source again; should the write have landed after all, generation — which checks the
+     * shown set against the database — finds out before any audio is made.
+     */
+    const syncChunksToDb = useCallback(async (cached: ChunkPreview[], targetMode: AudioSourceMode): Promise<'stored' | 'replaced' | 'failed'> => {
         setIsLoading(true);
         try {
             const authHeaders = await getAuthenticatedRequestHeaders();
-            await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
+            const response = await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', ...authHeaders },
-                body: JSON.stringify({ chunks: cached, mode: targetMode }),
+                body: JSON.stringify({ chunks: cached, mode: targetMode, expected: storedChunks.current }),
             });
+            if (response.ok) {
+                storedChunks.current = cached;
+                return 'stored';
+            }
+            const data = await response.json().catch(() => ({}));
+            if (response.status === 409 && data.code === CHUNKS_CHANGED) {
+                // Our own earlier switch, whose answer was lost: the database already holds it — this
+                // source, these words. The same words stored as the other source are not our switch.
+                if (data.mode === targetMode && heardChunks(data.chunks) === heardChunks(cached)) {
+                    storedChunks.current = cached;
+                    return 'stored';
+                }
+                showStoredSet(data);
+                setError(t('audioExport.chunksChangedElsewhere'));
+                return 'replaced';
+            }
+            throw new Error(data.error || `HTTP ${response.status}`);
         } catch (err) {
             console.error('Mode sync failed:', err);
+            setError(t('audioExport.sourceSwitchFailed'));
+            return 'failed';
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId]);
+    }, [sermonId, showStoredSet, t]);
 
     // ------------------------------------------------------------------
     // Prepare text for a given source (AI optimize OR raw split)
     // ------------------------------------------------------------------
     const prepareSource = useCallback(async (targetMode: AudioSourceMode) => {
         if (aiBlocked) return;
+        const previousMode = mode;
+        const previousChunks = chunks;
         setIsLoading(true);
         setError(null);
         setMode(targetMode); // switch the layout to the target source now so loading shows in place
@@ -452,6 +517,8 @@ export default function StepByStepWizard({
             const newChunks: ChunkPreview[] = data.chunks;
 
             chunksByMode.current[targetMode] = newChunks;
+            // Prepared with saveToDb: this is now what the database holds.
+            storedChunks.current = newChunks;
             setMode(targetMode);
             setChunks(newChunks);
             if (targetMode === 'ai') {
@@ -460,10 +527,14 @@ export default function StepByStepWizard({
         } catch (err: unknown) {
             console.error('Prepare error:', err);
             setError(err instanceof Error ? err.message : 'Optimization failed');
+            // Show the previous source again. Should the preparation have been saved without an
+            // answer, generation's check against the database finds out before any audio is made.
+            setMode(previousMode);
+            setChunks(previousChunks);
         } finally {
             setIsLoading(false);
         }
-    }, [aiBlocked, refreshAiUsage, sermonId, sections, ttsProvider]);
+    }, [aiBlocked, chunks, mode, refreshAiUsage, sermonId, sections, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -475,11 +546,18 @@ export default function StepByStepWizard({
         const cached = chunksByMode.current[targetMode];
 
         if (targetMode === 'ai') {
-            setMode('ai');
             if (cached && cached.length > 0) {
+                const previousMode = mode;
+                const previousChunks = chunksByMode.current[previousMode] ?? [];
+                setMode('ai');
                 setChunks(cached);
-                await syncChunksToDb(cached, 'ai');
+                // Not switched: show the previous source again.
+                if (await syncChunksToDb(cached, 'ai') === 'failed') {
+                    setMode(previousMode);
+                    setChunks(previousChunks);
+                }
             } else {
+                setMode('ai');
                 setChunks([]);
             }
             return;
@@ -498,21 +576,30 @@ export default function StepByStepWizard({
         const response = await fetch(`/api/sermons/${sermonId}/audio/chunks/${index}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify({ text: newText }),
+            // The index names a position; the set the editor opened on names the chunk.
+            body: JSON.stringify({ text: newText, expected: editingSet.current.chunks, mode: editingSet.current.mode }),
         });
         if (!response.ok) {
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
+            if (response.status === 409 && data.code === CHUNKS_CHANGED) {
+                // The stored set is shown behind the editor, which keeps the person's text to copy;
+                // saving again is refused again, never aimed at whatever chunk now sits there.
+                showStoredSet(data);
+                throw new Error(t('audioExport.chunksChangedElsewhere'));
+            }
             throw new Error(data.error || 'Save failed');
         }
         await response.json();
         const updater = (c: ChunkPreview) => (c.index === index ? { ...c, text: newText, preview: newText } : c);
+        // The server corrected this chunk in the stored set too.
+        storedChunks.current = storedChunks.current.map(updater);
         setChunks(prev => {
             const next = prev.map(updater);
             chunksByMode.current[mode] = next;
             return next;
         });
         setEditingChunk(null);
-    }, [sermonId, mode]);
+    }, [sermonId, mode, showStoredSet, t]);
 
     // ------------------------------------------------------------------
     // Generate audio (TTS)
@@ -603,6 +690,9 @@ export default function StepByStepWizard({
             quality,
             model: isGoogle ? googleModel : OPENAI_TTS_MODEL,
             sections,
+            // The text on screen for these sections: generation reads the database and makes audio
+            // only while it holds exactly this (BUG-20260810-audio-chunks-whole-array).
+            expected: chunks.filter(c => sections.includes(c.sectionId)),
         };
 
         try {
@@ -629,7 +719,10 @@ export default function StepByStepWizard({
             setView('success');
             await refreshAiUsage();
         } catch (err) {
-            if (err instanceof Error && err.name === 'AbortError') {
+            if (err instanceof ChunksChangedError) {
+                showStoredSet(err.data);
+                setError(t('audioExport.chunksChangedBeforeAudio'));
+            } else if (err instanceof Error && err.name === 'AbortError') {
                 setError(t('audioExport.generationCancelled', { defaultValue: 'Generation cancelled' }));
             } else {
                 setError(err instanceof Error ? err.message : 'Unknown error');
@@ -638,7 +731,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, t]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
@@ -941,7 +1034,7 @@ export default function StepByStepWizard({
                     <div
                         key={chunk.index}
                         className={`group relative flex gap-3 rounded-xl border p-4 shadow-sm transition ${isTransition ? 'border-orange-200 bg-orange-50 dark:border-orange-900/50 dark:bg-orange-900/20' : 'border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900'} ${editable ? 'cursor-pointer hover:border-orange-300 hover:shadow-md dark:hover:border-orange-700' : ''}`}
-                        onClick={editable ? () => setEditingChunk(chunk) : undefined}
+                        onClick={editable ? () => { editingSet.current = { chunks, mode }; setEditingChunk(chunk); } : undefined}
                     >
                         <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl" style={{ background: isTransition ? '#ea580c' : theme.base }} />
                         <div className="min-w-0 flex-1">
@@ -1001,6 +1094,7 @@ export default function StepByStepWizard({
                             return (
                                 <button
                                     key={s.id}
+                                    aria-pressed={sel}
                                     onClick={() => selectSource(s.id)}
                                     disabled={isLoading}
                                     className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
@@ -1239,6 +1333,7 @@ export default function StepByStepWizard({
         // step 3
         return (
             <div className="flex flex-wrap items-center justify-between gap-3">
+
                 <button onClick={() => setStep(2)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
                     <ArrowLeft className="h-4 w-4" />{t('buttons.back', { defaultValue: 'Назад' })}
                 </button>

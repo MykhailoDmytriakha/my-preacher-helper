@@ -23,8 +23,10 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
+import { heardChunks } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
+import { chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 import { getMeteredAudioDurationSeconds } from '@/utils/server/audioDurationMetering.server';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
@@ -219,6 +221,32 @@ function resolveBatchWindow(body: { offset?: unknown; limit?: unknown }): { offs
 // Route Handler
 // ============================================================================
 
+/**
+ * The saved chunks of the selected sections, in stored order — or the answer that stops generation.
+ *
+ * THE CHUNK SET ON SCREEN IS THE SET VOICED (BUG-20260810-audio-chunks-whole-array). Generation
+ * reads the database, and the wizard's idea of what is stored can be wrong — a switch whose answer
+ * was lost, a correction made on another device, a stale first read. The wizard sends the set it
+ * shows for these sections; a different stored set is answered with that set instead of audio.
+ * Every batch checks, so a change between two batches is caught too. What happens to the text
+ * after this point is deliberate and the same for every set: Scripture references are read out
+ * in words, and Google groups the chunks of a section. A client that sends no `expected` keeps
+ * the old behaviour.
+ */
+function chunksToVoice(sermon: Sermon, saved: AudioChunk[], sectionList: string[], expected: unknown):
+    { chunks: AudioChunk[] } | { response: NextResponse } {
+    const selected = new Set<string>(sectionList);
+    const chunks = saved.filter(chunk => selected.has(chunk.sectionId));
+    console.log(`[TTS] Filtered chunks: ${saved.length} → ${chunks.length} (sections: ${sectionList.join(', ')})`);
+    if (chunks.length === 0) {
+        return { response: NextResponse.json({ error: `No chunks found for sections: ${sectionList.join(', ')}` }, { status: 400 }) };
+    }
+    if (Array.isArray(expected) && heardChunks(chunks) !== heardChunks(expected)) {
+        return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>) };
+    }
+    return { chunks };
+}
+
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -293,18 +321,9 @@ export async function POST(
         if (sectionList.length === 0) {
             return NextResponse.json({ error: 'No valid sections selected' }, { status: 400 });
         }
-        {
-            const selected = new Set<string>(sectionList);
-            const originalCount = chunks.length;
-            chunks = chunks.filter(chunk => selected.has(chunk.sectionId));
-            console.log(`[TTS] Filtered chunks: ${originalCount} → ${chunks.length} (sections: ${sectionList.join(', ')})`);
-            if (chunks.length === 0) {
-                return NextResponse.json(
-                    { error: `No chunks found for sections: ${sectionList.join(', ')}` },
-                    { status: 400 }
-                );
-            }
-        }
+        const picked = chunksToVoice(sermon, chunks, sectionList, body.expected);
+        if ('response' in picked) return picked.response;
+        chunks = picked.chunks;
 
         chunks = chunks.map(chunk => ({
             ...chunk,

@@ -12,6 +12,8 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { heardChunks, storedSource } from '@/utils/audioChunkIdentity';
+import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk } from '@/types/audioGeneration.types';
@@ -24,6 +26,8 @@ export async function PUT(
     request: NextRequest,
     { params }: { params: Promise<{ id: string; index: string }> }
 ): Promise<NextResponse> {
+    // What the engine road read when the chunk was not the one the screen showed.
+    let changedTo: Record<string, unknown> | undefined;
     try {
         const uid = await getRequiredAuthenticatedUid(request);
         if (!uid) {
@@ -61,22 +65,33 @@ export async function PUT(
         if (chunkIndex >= chunks.length) {
             return NextResponse.json({ error: 'Chunk index out of range' }, { status: 400 });
         }
+        // The index names a position, not a chunk: the correction lands only while the database holds
+        // the very set the editor opened on — the same text at the same position in another source's
+        // set is not the chunk the person was correcting (BUG-20260810-audio-chunks-whole-array).
+        // The same words stored as the other source are not the set the editor opened on either.
+        const expected: unknown[] | null = Array.isArray(body.expected) ? body.expected : null;
+        const expectedSource = body.mode === 'ai' || body.mode === 'raw' ? body.mode : null;
+        const opened = (doc: Record<string, unknown> | undefined) => (!expected || heardChunks(doc?.audioChunks) === heardChunks(expected))
+            && (!expectedSource || storedSource(doc) === expectedSource);
+        if (!opened(sermonDoc.data())) return chunksChangedResponse(sermonDoc.data());
 
         // 3. Update chunk
-        chunks[chunkIndex] = {
-            ...chunks[chunkIndex],
-            text: newText,
-        };
+        // A new array, not an edit of the one just read: that read is also what the checks compare.
+        const updated = chunks.map((chunk, position) => (position === chunkIndex ? { ...chunk, text: newText } : chunk));
 
         // 4. Save back. On an engine document only this chunk's text changes, on the copy
         // current at write time.
         await writeOwnedDocument({
             owner: uid,
             resource: { collection: 'sermons', id: sermonId },
-            legacy: () => updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), { audioChunks: chunks }),
+            legacy: () => updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), { audioChunks: updated }),
             engine: current => {
                 const stored = Array.isArray(current.audioChunks) ? [...current.audioChunks] : [];
                 if (chunkIndex >= stored.length) throw new ServerEditError('chunk-out-of-range', 409);
+                if (!opened(current)) {
+                    changedTo = current;
+                    throw new ServerEditError(CHUNKS_CHANGED, 409);
+                }
                 stored[chunkIndex] = { ...(stored[chunkIndex] as Record<string, never>), text: newText };
                 return { ...current, audioChunks: stored };
             },
@@ -91,6 +106,7 @@ export async function PUT(
             },
         });
     } catch (error) {
+        if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
         console.error('Chunk update error:', error);

@@ -70,13 +70,19 @@ jest.mock('lucide-react', () => {
     };
 });
 
-jest.mock('@/components/audio/ChunkEditorModal', () => (props: any) => (
-    <div data-testid="chunk-editor-modal">
-        <div>{props.chunk?.text}</div>
-        <button type="button" onClick={() => props.onSave(props.chunk.index, 'Edited chunk text')}>Save chunk</button>
-        <button type="button" onClick={props.onClose}>Close editor</button>
-    </div>
-));
+// Mirrors the real window: a refused save is shown inside it, and it stays open with the text.
+jest.mock('@/components/audio/ChunkEditorModal', () => function MockChunkEditor(props: any) {
+    const React = jest.requireActual('react');
+    const [error, setError] = React.useState(null);
+    return (
+        <div data-testid="chunk-editor-modal">
+            <div>{props.chunk?.text}</div>
+            <button type="button" onClick={() => { props.onSave(props.chunk.index, 'Edited chunk text').catch((err: Error) => setError(err.message)); }}>Save chunk</button>
+            <button type="button" onClick={props.onClose}>Close editor</button>
+            {error && <p>{error}</p>}
+        </div>
+    );
+});
 
 window.HTMLAnchorElement.prototype.click = jest.fn();
 
@@ -355,6 +361,156 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
                 expect.objectContaining({ method: 'PUT' }),
             );
         });
+    });
+
+    /**
+     * A source switch writes the chunk set cached for that source. The cache can be older than
+     * the database (BUG-20260810-audio-chunks-whole-array): the write names the set it last saw
+     * stored, and a set changed elsewhere comes back instead of being written over.
+     */
+    describe('switching back to a cached source', () => {
+        const aiChunks = [{ index: 0, text: 'Polished opening', sectionId: 'introduction' }];
+        const rawChunks = [{ index: 0, text: 'Raw opening', sectionId: 'introduction' }];
+        const switchToRawThenBack = async (...putAnswers: unknown[]) => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(aiChunks, { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+            const fetchMock = (global.fetch as jest.Mock)
+                .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: rawChunks, originalLength: 11, optimizedLength: 11 }) });
+            putAnswers.forEach(answer => answer instanceof Error ? fetchMock.mockRejectedValueOnce(answer) : fetchMock.mockResolvedValueOnce(answer));
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('Original as-is'));
+            await waitFor(() => expect(screen.getByText('Raw opening')).toBeInTheDocument());
+            fireEvent.click(screen.getByText('AI-optimized'));
+        };
+        const putCalls = () => (global.fetch as jest.Mock).mock.calls.filter(([url, init]) => url === '/api/sermons/sermon-123/audio/chunks' && init?.method === 'PUT');
+        const putCall = () => putCalls()[0];
+        const changedTo = (mode: string, chunks: unknown[]) => ({ ok: false, status: 409, json: async () => ({ code: 'chunks-changed', mode, chunks }) });
+
+        it('names the set it last saw stored and shows the newer one when that changed', async () => {
+            await switchToRawThenBack({ ok: false, status: 409, json: async () => ({
+                code: 'chunks-changed', mode: 'ai', chunks: [{ index: 0, text: 'Corrected on the phone', sectionId: 'introduction' }],
+            }) });
+
+            await waitFor(() => expect(screen.getByText('Corrected on the phone')).toBeInTheDocument());
+            expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument();
+            expect(JSON.parse(putCall()![1].body).expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Raw opening']);
+        });
+
+        it('keeps the other source\'s corrections when the stored one changed elsewhere', async () => {
+            await switchToRawThenBack(
+                changedTo('raw', [{ index: 0, text: 'Original changed on the phone', sectionId: 'introduction' }]),
+                { ok: true, json: async () => ({ success: true }) },
+            );
+            await waitFor(() => expect(screen.getByText('Original changed on the phone')).toBeInTheDocument());
+
+            // The AI set cached here is still offered, and now names the newer stored set.
+            fireEvent.click(screen.getByText('AI-optimized'));
+            await waitFor(() => expect(screen.getByText('Polished opening')).toBeInTheDocument());
+            const second = JSON.parse(putCalls()[1][1].body);
+            expect(second.chunks.map((chunk: { text: string }) => chunk.text)).toEqual(['Polished opening']);
+            expect(second.expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Original changed on the phone']);
+        });
+
+        it('takes a switch whose earlier answer was lost as done when the server shows it landed', async () => {
+            await switchToRawThenBack(new TypeError('Failed to fetch'), changedTo('ai', aiChunks));
+            // The lost answer shows the previous source again...
+            await waitFor(() => expect(screen.getByText('audioExport.sourceSwitchFailed')).toBeInTheDocument());
+            expect(screen.getByText('Raw opening')).toBeInTheDocument();
+            // ...and picking AI again finds its own earlier write stored: no "changed elsewhere".
+            fireEvent.click(screen.getByRole('button', { name: /AI-optimized/ }));
+            await waitFor(() => expect(putCalls()).toHaveLength(2));
+            await waitFor(() => expect(screen.getByText('Polished opening')).toBeInTheDocument());
+            expect(screen.queryByText('audioExport.chunksChangedElsewhere')).not.toBeInTheDocument();
+        });
+
+        it('does not take the same words stored as the other source for its own switch', async () => {
+            await switchToRawThenBack(changedTo('raw', aiChunks));
+            await waitFor(() => expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument());
+            expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'true');
+        });
+
+        it('shows the sections of a stored set that changed elsewhere', async () => {
+            await switchToRawThenBack(changedTo('ai', [{ index: 0, text: 'Rewritten main part', sectionId: 'mainPart' }]));
+            await waitFor(() => expect(screen.getByText('Rewritten main part')).toBeInTheDocument());
+        });
+
+        it('stays on the source the database holds when the switch was not stored', async () => {
+            await switchToRawThenBack({ ok: false, status: 500, json: async () => ({ error: 'boom' }) });
+
+            await waitFor(() => expect(screen.getByText('audioExport.sourceSwitchFailed')).toBeInTheDocument());
+            expect(screen.getByText('Raw opening')).toBeInTheDocument();
+            expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
+        });
+
+    });
+
+    it('returns to the stored source when a preparation is turned away', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Optimize failed' }) });
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('Original as-is'));
+        await waitFor(() => expect(screen.getByText('Optimize failed')).toBeInTheDocument());
+        // Nothing was saved, so the AI text is still what the database holds — and the source shown.
+        expect(screen.getByText('Polished opening')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('shows the previous source again when a preparation goes unanswered', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+        (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('Original as-is'));
+        await waitFor(() => expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.getByText('Polished opening')).toBeInTheDocument();
+    });
+
+    /**
+     * THE TEXT ON SCREEN IS THE TEXT VOICED. Generation reads the database; whatever made the
+     * wizard's view stale, the stored set comes back instead of audio made from other text.
+     */
+    it('shows the stored set instead of making audio from text other than the one shown', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({
+            code: 'chunks-changed', mode: 'raw', chunks: [{ index: 0, text: 'Raw opening actually stored', sectionId: 'introduction' }],
+        }) });
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        await waitFor(() => expect(screen.getByText('audioExport.chunksChangedBeforeAudio')).toBeInTheDocument());
+        const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+        expect(JSON.parse(generateCall[1].body).expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Polished opening']);
+        expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+    });
+
+    it('keeps the typed correction when its chunk changed elsewhere, and never aims it at another', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks(
+            [{ index: 0, text: 'Editable chunk', sectionId: 'introduction' }],
+            { audioMetadata: { mode: 'ai', voice: 'onyx' } },
+        ));
+        (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 409, json: async () => ({
+            code: 'chunks-changed', mode: 'ai', chunks: [{ index: 0, text: 'Changed on the phone', sectionId: 'introduction' }],
+        }) });
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        fireEvent.click(await screen.findByText('Editable chunk'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save chunk' }));
+
+        await waitFor(() => expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument());
+        expect(screen.getByTestId('chunk-editor-modal')).toBeInTheDocument();
+        // A second save still names the set the window opened on — refused again, not re-aimed.
+        fireEvent.click(screen.getByRole('button', { name: 'Save chunk' }));
+        await waitFor(() => expect((global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/chunks/0'))).toHaveLength(2));
+        const bodies = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/chunks/0')).map(([, init]) => JSON.parse(init.body));
+        expect(bodies.map(body => body.expected.map((chunk: { text: string }) => chunk.text))).toEqual([['Editable chunk'], ['Editable chunk']]);
     });
 
     it('surfaces preparation errors', async () => {

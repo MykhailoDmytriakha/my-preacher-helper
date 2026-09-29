@@ -381,6 +381,48 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(events.some(event => event.type === 'download_complete')).toBe(false);
   });
 
+  /**
+   * THE TEXT ON SCREEN IS THE TEXT VOICED (BUG-20260810-audio-chunks-whole-array). The wizard
+   * sends the set it shows; a different stored set comes back instead of audio — before any
+   * allowance is admitted.
+   */
+  it('answers with the stored set instead of audio when the shown set differs', async () => {
+    const response = await POST(
+      createRequest({
+        userId: 'user-1', voice: 'ash', quality: 'hd', sections: 'all',
+        expected: [
+          { text: 'Introduction as the screen showed it.', sectionId: 'introduction', index: 0 },
+          { text: 'Main part chunk text.', sectionId: 'mainPart', index: 1 },
+        ],
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.code).toBe('chunks-changed');
+    expect(body.chunks[0].text).toBe('Introduction chunk text.');
+    expect(createUsageAdmission).not.toHaveBeenCalled();
+    expect(generateChunkAudio).not.toHaveBeenCalled();
+  });
+
+  it('makes audio when the shown set is the stored one', async () => {
+    (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(8)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
+    const response = await POST(
+      createRequest({
+        userId: 'user-1', voice: 'ash', quality: 'hd', sections: 'all',
+        // As the wizard holds it: a preview field and no createdAt are bookkeeping, not text.
+        expected: [
+          { text: 'Introduction chunk text.', sectionId: 'introduction', index: 0, preview: 'Introduction…' },
+          { text: 'Main part chunk text.', sectionId: 'mainPart', index: 1, kind: 'body' },
+        ],
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    expect(response.status).toBe(200);
+  });
+
   it('streams progress, chunk data, and completion for a successful generation', async () => {
     (generateChunkAudio as jest.Mock)
       .mockResolvedValueOnce({

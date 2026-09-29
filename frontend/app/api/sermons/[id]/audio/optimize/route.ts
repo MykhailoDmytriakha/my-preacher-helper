@@ -184,6 +184,8 @@ export async function POST(
                 index: i,
                 sectionId: c.sectionId,
                 text: c.text,
+                // The stored chunk's own stamp: a wizard that writes this set back must send what is stored.
+                createdAt: c.createdAt,
                 kind: c.kind ?? 'body',
                 role: c.role,
                 preview: c.text.slice(0, 150) + '...',

@@ -800,7 +800,10 @@
     "processingFragments": "Processing fragments",
     "prepareSubtitle": "Pick a source above, then prepare the text for narration.",
     "switchingSource": "Switching source...",
-    "previewVoice": "Preview voice"
+    "previewVoice": "Preview voice",
+    "chunksChangedElsewhere": "The text fragments were changed on another device. The stored version is shown; switch the source again if you still need to.",
+    "sourceSwitchFailed": "Could not switch the source; the previous one is shown. Try again.",
+    "chunksChangedBeforeAudio": "The stored text differs from what was shown, so no audio was made. The stored version is shown now — review it and generate again."
   },
   "tags": {
     "introduction": "Introduction",
