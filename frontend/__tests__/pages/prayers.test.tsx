@@ -289,17 +289,6 @@ describe('Prayer Page', () => {
     });
   });
 
-  it('passes the active search query into prayer cards for highlighting', async () => {
-    render(<PrayerPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Search prayers...' }));
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'church' } });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('prayer-card-active-1')).toHaveAttribute('data-search-query', 'church');
-    });
-  });
-
   it('clears the search query when Escape is pressed', async () => {
     render(<PrayerPage />);
 

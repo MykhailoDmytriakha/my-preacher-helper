@@ -15,10 +15,6 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-jest.mock('date-fns', () => ({
-  format: jest.fn((date: Date) => `formatted-${date.toISOString().slice(0, 10)}`),
-}));
-
 jest.mock('@/components/calendar/PreachDateModal', () => {
   return function MockPreachDateModal({
     isOpen,

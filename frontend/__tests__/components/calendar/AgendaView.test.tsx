@@ -46,13 +46,15 @@ jest.mock('@heroicons/react/24/outline', () => ({
 }));
 
 // Mock format from date-fns
-jest.mock('date-fns', () => ({
+jest.mock('date-fns/format', () => ({
     format: (date: Date, formatStr: string) => {
         if (formatStr === 'MMM') return 'Jan';
         if (formatStr === 'd') return '15';
         if (formatStr === 'yyyy') return '2024';
         return date.toISOString();
     },
+}));
+jest.mock('date-fns/parseISO', () => ({
     parseISO: (dateStr: string) => new Date(dateStr),
 }));
 

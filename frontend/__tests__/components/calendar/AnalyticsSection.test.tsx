@@ -181,9 +181,13 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock date-fns
-jest.mock('date-fns', () => ({
+jest.mock('date-fns/format', () => ({
     format: jest.fn((_date, _fmt) => 'January 2024'),
+}));
+jest.mock('date-fns/parseISO', () => ({
     parseISO: (value: string) => new Date(value),
+}));
+jest.mock('date-fns/isValid', () => ({
     isValid: (value: Date) => !Number.isNaN(value.getTime()),
 }));
 

@@ -142,5 +142,53 @@ const config: Config = {
   },
 }
 
-// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
-export default createJestConfig(config) 
+/*
+ * `import { format } from 'date-fns'` loads the whole package, and `date-fns/locale` loads every
+ * locale in the world (532 modules) for our three. The production build already rewrites these
+ * imports to per-function modules (date-fns is in Next's default optimizePackageImports); Jest's
+ * SWC transform does the same only when told. A test that mocks date-fns mocks the deep path it
+ * uses, e.g. jest.mock('date-fns/format').
+ *
+ * The first matching pattern wins. Names without a module of their own go back to the package:
+ * five aliases that live inside format/lightFormat/parse, and every region locale except enUS
+ * (files are `pt-BR.js`, `be-tarask.js`; this SWC fills no capture groups, and `kebabCase` gives
+ * `en-us`, which a case-sensitive build machine does not find). Checked for date-fns 4.1.0 against
+ * every export with exact-case file names; an upgrade that adds such a name fails as
+ * "Cannot find module 'date-fns/<name>'" — add it to the first `date-fns` pattern.
+ */
+const MODULARIZED_IMPORTS = {
+  'date-fns': {
+    transform: {
+      '^(formatDate|formatters|longFormatters|lightFormatters|parsers)$': 'date-fns',
+      '.*': 'date-fns/{{member}}',
+    },
+    skipDefaultConversion: true,
+  },
+  'date-fns/locale': {
+    transform: {
+      '^enUS$': 'date-fns/locale/en-US',
+      '^[a-z]+$': 'date-fns/locale/{{member}}',
+      '.*': 'date-fns/locale',
+    },
+    skipDefaultConversion: true,
+  },
+}
+
+const nextJestConfig = createJestConfig(config)
+
+// createJestConfig resolves asynchronously so next/jest can load the Next.js config first.
+const jestConfig = async (): Promise<Config> => {
+  const resolved = await nextJestConfig()
+  const swc = Object.values(resolved.transform ?? {}).find(
+    (entry) => Array.isArray(entry) && String(entry[0]).includes('swc/jest-transformer'),
+  )
+  if (!Array.isArray(swc)) {
+    throw new Error('jest.config.ts: next/jest no longer uses swc/jest-transformer; move MODULARIZED_IMPORTS to its transformer')
+  }
+  // Next passes its own rules here (lodash, @mui/icons-material); add ours, keep theirs.
+  const nextRules = swc[1]?.modularizeImports as Record<string, unknown> | undefined
+  swc[1] = { ...swc[1], modularizeImports: { ...nextRules, ...MODULARIZED_IMPORTS } }
+  return resolved
+}
+
+export default jestConfig

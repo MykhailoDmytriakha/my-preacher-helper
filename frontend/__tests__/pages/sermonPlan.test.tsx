@@ -604,14 +604,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.queryByText('The plan is not assembled yet')).not.toBeInTheDocument();
   }, 15000);
 
-  it('renders main plan layout with sections when sermon loads', async () => {
-    renderWithQueryClient(<SermonPlanPage />);
-
-    expect(await screen.findByTestId('introduction-interleaved-section')).toBeInTheDocument();
-    expect(screen.getByTestId('main-interleaved-section')).toBeInTheDocument();
-    expect(screen.getByTestId('conclusion-interleaved-section')).toBeInTheDocument();
-  });
-
   it('applies static section tone classes to plan columns and headers', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 

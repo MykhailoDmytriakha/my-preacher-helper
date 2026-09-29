@@ -9,11 +9,11 @@ import {
 } from '@utils/dateFormatter';
 
 // Mock date-fns to control its behavior
-jest.mock('date-fns', () => ({
+jest.mock('date-fns/format', () => ({
   format: jest.fn(),
 }));
 
-jest.mock('date-fns/locale', () => ({
+jest.mock('date-fns/locale/ru', () => ({
   ru: 'ru-locale-mock',
 }));
 
