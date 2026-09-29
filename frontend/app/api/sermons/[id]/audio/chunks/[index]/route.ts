@@ -62,9 +62,6 @@ export async function PUT(
 
         // 2. Get chunks
         const chunks = (sermon.audioChunks || []) as AudioChunk[];
-        if (chunkIndex >= chunks.length) {
-            return NextResponse.json({ error: 'Chunk index out of range' }, { status: 400 });
-        }
         // The index names a position, not a chunk: the correction lands only while the database holds
         // the very set the editor opened on — the same text at the same position in another source's
         // set is not the chunk the person was correcting (BUG-20260810-audio-chunks-whole-array).
@@ -73,7 +70,12 @@ export async function PUT(
         const expectedSource = body.mode === 'ai' || body.mode === 'raw' ? body.mode : null;
         const opened = (doc: Record<string, unknown> | undefined) => (!expected || heardChunks(doc?.audioChunks) === heardChunks(expected))
             && (!expectedSource || storedSource(doc) === expectedSource);
+        // Checked before the range: a set that shrank since the editor opened is a changed set, and
+        // the answer carries what is stored instead of a bare "out of range".
         if (!opened(sermonDoc.data())) return chunksChangedResponse(sermonDoc.data());
+        if (chunkIndex >= chunks.length) {
+            return NextResponse.json({ error: 'Chunk index out of range' }, { status: 400 });
+        }
 
         // 3. Update chunk
         // A new array, not an edit of the one just read: that read is also what the checks compare.
@@ -87,11 +89,11 @@ export async function PUT(
             legacy: () => updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), { audioChunks: updated }),
             engine: current => {
                 const stored = Array.isArray(current.audioChunks) ? [...current.audioChunks] : [];
-                if (chunkIndex >= stored.length) throw new ServerEditError('chunk-out-of-range', 409);
                 if (!opened(current)) {
                     changedTo = current;
                     throw new ServerEditError(CHUNKS_CHANGED, 409);
                 }
+                if (chunkIndex >= stored.length) throw new ServerEditError('chunk-out-of-range', 409);
                 stored[chunkIndex] = { ...(stored[chunkIndex] as Record<string, never>), text: newText };
                 return { ...current, audioChunks: stored };
             },

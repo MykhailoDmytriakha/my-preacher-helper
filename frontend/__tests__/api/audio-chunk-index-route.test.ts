@@ -85,3 +85,11 @@ it('refuses when the very same words are stored as the other source', async () =
   expect(response.status).toBe(409);
   expect(writeOwnedDocument).not.toHaveBeenCalled();
 });
+
+it('answers a set that shrank since the editor opened with what is stored, not a bare out-of-range', async () => {
+  stored = { userId: 'owner-1', audioChunks: [], audioMetadata: { mode: 'ai' } };
+  engineCurrent = stored;
+  const response = await put({ text: 'Polished, corrected', expected: [chunk('Polished opening')], mode: 'ai' });
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ code: 'chunks-changed', chunks: [] });
+});
