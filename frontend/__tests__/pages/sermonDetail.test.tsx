@@ -343,6 +343,12 @@ Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
 });
 
+// The sermon page shows its three modes as panes on one 300%-wide track and slides it:
+// prep x = 0% (no transform), classic x = -33.333333%, raw x = -66.666667%.
+const PREP_PANE_OFFSET = 'none';
+const CLASSIC_PANE_OFFSET = 'translateX(-33.333333%)';
+const paneTrack = () => Array.from(document.querySelectorAll<HTMLElement>('div')).find(el => el.style.width === '300%');
+
 const defaultUseSermonReturn = {
   sermon: {
     id: 'sermon-123',
@@ -710,17 +716,9 @@ describe('Sermon Detail Page', () => {
     });
 
     it('starts in classic mode by default', async () => {
-      await waitFor(() => {
-        const outline = screen.getByTestId('sermon-outline');
-        const knowledge = screen.getByTestId('knowledge-section');
-
-        // BrainstormModule button is visible in classic mode
-        const brainstormButton = screen.getByLabelText('brainstorm.title');
-
-        expect(outline).toHaveAttribute('data-mode', 'classic');
-        expect(knowledge).toHaveAttribute('data-mode', 'classic');
-        expect(brainstormButton).toBeInTheDocument();
-      });
+      // The page slides one 300%-wide track across its three panes; classic is the middle one.
+      await waitFor(() => expect(paneTrack()?.style.transform).toBe(CLASSIC_PANE_OFFSET));
+      expect(screen.getByLabelText('brainstorm.title')).toBeInTheDocument();
     });
 
     it('renders mode toggle button', async () => {
@@ -732,14 +730,8 @@ describe('Sermon Detail Page', () => {
   });
 
   describe('localStorage Persistence', () => {
-    it('restores mode from localStorage on mount', async () => {
-      // Mock the correct localStorage key for sermon mode
-      mockLocalStorage.getItem.mockImplementation((key) => {
-        if (key === 'sermon-test-sermon-mode') {
-          return 'prep';
-        }
-        return null;
-      });
+    it('restores the mode saved for this sermon when the URL names none', async () => {
+      mockLocalStorage.getItem.mockImplementation((key: string) => (key === 'sermon-sermon-123-mode' ? 'prep' : null));
 
       render(
         <TestProviders>
@@ -747,11 +739,8 @@ describe('Sermon Detail Page', () => {
         </TestProviders>
       );
 
-      // The localStorage restoration logic is complex and depends on URL params
-      // This test verifies the component renders without crashing
-      await waitFor(() => {
-        expect(screen.getByTestId('sermon-outline')).toBeInTheDocument();
-      });
+      // Prep is the first pane: the track is not shifted at all.
+      await waitFor(() => expect(paneTrack()?.style.transform).toBe(PREP_PANE_OFFSET));
     });
   });
 
@@ -858,18 +847,6 @@ describe('Sermon Detail Page', () => {
 
       // Since we mocked the hook, we can checks if it was called
       expect(useSermonMock).toHaveBeenCalledWith('sermon-123');
-
-      await waitFor(() => {
-        expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-      });
-    });
-
-    it('passes sermon data to child components', async () => {
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
 
       await waitFor(() => {
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
@@ -1859,5 +1836,31 @@ describe('Sermon Detail Page', () => {
       await user.click(restore);
       expect(screen.queryByTestId('restore-prep-draft')).not.toBeInTheDocument();
     }, 15_000);
+  });
+
+  describe('Open thought editor outline freshness', () => {
+    it('hands the open editor the new outline when the sermon outline changes', async () => {
+      const useSermon = require('@/hooks/useSermon').default;
+      const withOutline = (title: string) => ({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
+          outline: { introduction: [], main: [{ id: 'point-1', text: title }], conclusion: [] },
+        },
+      });
+      useSermon.mockReturnValue(withOutline('Old point'));
+
+      const { rerender } = render(<TestProviders><SermonDetailPage /></TestProviders>);
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
+      expect(mockEditThoughtModalProps.sermonOutline.main[0].text).toBe('Old point');
+
+      useSermon.mockReturnValue(withOutline('New point'));
+      rerender(<TestProviders><SermonDetailPage /></TestProviders>);
+
+      expect(screen.getByTestId('edit-thought-modal')).toBeInTheDocument();
+      await waitFor(() => expect(mockEditThoughtModalProps.sermonOutline.main[0].text).toBe('New point'));
+    });
   });
 });

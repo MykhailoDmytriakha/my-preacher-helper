@@ -18,7 +18,6 @@ let mockScratchOnDragEnd: ((event: {
   over: { id: string } | null;
 }) => void) | undefined;
 let scratchRecordingComplete: ((audioBlob: Blob) => void | Promise<void>) | undefined;
-let scratchRetryVoice: (() => void) | undefined;
 
 jest.mock('framer-motion', () => ({
   motion: {
@@ -145,7 +144,6 @@ jest.mock('@/components/sermon/AudioRecorderPortalBridge', () => ({
     recorderTitle?: string;
   }) => {
     scratchRecordingComplete = onRecordingComplete;
-    scratchRetryVoice = onRetry;
 
     return (
       <div data-testid="scratch-capture-bridge" data-placement={manualButtonPlacement}>
@@ -343,7 +341,6 @@ describe('ScratchPanel', () => {
     });
     mockScratchOnDragEnd = undefined;
     scratchRecordingComplete = undefined;
-    scratchRetryVoice = undefined;
     let idCounter = 0;
     newClientIdMock().mockImplementation(() => `fresh-id-${++idCounter}`);
   });
@@ -896,7 +893,6 @@ describe('ScratchPanel', () => {
     await waitFor(() => expect(transcribeThoughtAudioMock()).toHaveBeenCalledTimes(1));
     expect(transcribeThoughtAudioMock()).toHaveBeenCalledWith(expect.any(Blob));
     await waitFor(() => expect(addScratchNote).toHaveBeenCalledWith('Voice thought after apply'));
-    expect(scratchRetryVoice).toBeDefined();
   });
 
   it('sends only pooled scratch notes to compose when another note is manually placed', async () => {

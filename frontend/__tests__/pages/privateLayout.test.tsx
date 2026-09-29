@@ -4,18 +4,6 @@ import '@testing-library/jest-dom';
 import PrivateLayout from '../../app/(pages)/(private)/layout';
 
 describe('Private Layout', () => {
-  // Basic functionality tests
-  it('should have PrivateLayout imported correctly', () => {
-    expect(PrivateLayout).toBeDefined();
-    expect(typeof PrivateLayout).toBe('function');
-  });
-
-  it('should be able to use PrivateLayout in JSX', () => {
-    const element = <PrivateLayout>Test</PrivateLayout>;
-    expect(element).toBeDefined();
-    expect(element.type).toBe(PrivateLayout);
-  });
-
   it('should render without crashing when wrapped in error boundary', () => {
     // This test verifies that the component can be rendered
     // even if there are issues with child components

@@ -604,11 +604,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.queryByText('The plan is not assembled yet')).not.toBeInTheDocument();
   }, 15000);
 
-  it('can render without crashing', () => {
-    // This test just checks if the component can be rendered without throwing an error
-    expect(() => renderWithQueryClient(<SermonPlanPage />)).not.toThrow();
-  });
-
   it('renders main plan layout with sections when sermon loads', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 

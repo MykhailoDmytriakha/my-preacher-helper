@@ -1,11 +1,9 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
-import { toast } from 'sonner';
 
 import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
-import { updateSermonOutline } from '@/services/outline.service';
 
 // Import necessary hooks for mocking
 import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
@@ -23,6 +21,12 @@ jest.mock('next/navigation', () => ({
 }));
 
 // Mock feature hooks
+// dnd-kit draws DragOverlay children only during a real pointer drag. Render them always,
+// so the test sees what the page puts into the overlay for the active item.
+jest.mock('@dnd-kit/core', () => ({
+  ...jest.requireActual('@dnd-kit/core'),
+  DragOverlay: ({ children }: { children: React.ReactNode }) => <div data-testid="drag-overlay">{children}</div>,
+}));
 jest.mock('@/hooks/useSermonStructureData');
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd');
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions');
@@ -30,8 +34,6 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions');
 const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
 const mockedUseStructureDnd = useStructureDnd as jest.Mock;
 const mockedUseSermonActions = useSermonActions as jest.Mock;
-const mockUpdateSermonOutline = updateSermonOutline as jest.MockedFunction<typeof updateSermonOutline>;
-const mockToast = toast as jest.Mocked<typeof toast>;
 
 jest.mock('@/services/structure.service', () => ({
   updateStructure: jest.fn().mockResolvedValue({}),
@@ -286,203 +288,76 @@ describe('Structure Page', () => {
     });
   });
 
-  describe('handleToggleReviewed', () => {
-
-    let mockSermon: ReturnType<typeof createMockSermon>;
-    let mockSetSermon: jest.Mock;
-
-    const runHandleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
-      if (!mockSermon) return;
-
-      const mapSection = (section?: any[]) =>
-        section?.map((point: any) =>
-          point.id === outlinePointId ? { ...point, isReviewed } : point
-        ) || [];
-
-      try {
-        const updatedOutline = {
-          introduction: mapSection(mockSermon.outline?.introduction),
-          main: mapSection(mockSermon.outline?.main),
-          conclusion: mapSection(mockSermon.outline?.conclusion),
-        };
-
-        mockSetSermon({ ...mockSermon, outline: updatedOutline });
-        await updateSermonOutline(mockSermon.id, updatedOutline);
-        toast.success(isReviewed ? 'Marked as reviewed' : 'Marked as unreviewed');
-      } catch {
-        toast.error('Error saving');
-      }
-    };
-
-    beforeEach(() => {
-      mockSermon = createMockSermon({
-        id: 'test-sermon',
-        outline: {
-          introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
-          main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-          conclusion: [{ id: 'op3', text: 'Conclusion point' }],
-        },
+  describe('Interactions', () => {
+    it('renders DragOverlay when an item is being dragged', async () => {
+      const mockSermon = createMockSermon({
+        thoughts: [createMockThought({ id: 't1', text: 'Dragging Thought', tags: ['intro'] })],
       });
-      mockSetSermon = jest.fn();
+      const containers = {
+        introduction: [createMockItem({ id: 't1', content: 'Dragging Thought', requiredTags: ['intro'] })],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      };
 
-      mockUpdateSermonOutline.mockClear();
-      mockUpdateSermonOutline.mockResolvedValue({ introduction: [], main: [], conclusion: [] });
-      mockToast.success.mockClear();
-      mockToast.error.mockClear();
+      mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
+
+      // Mock active DnD state
+      mockedUseStructureDnd.mockReturnValue({
+        sensors: [],
+        activeId: 't1',
+        handleDragStart: jest.fn(),
+        handleDragOver: jest.fn(),
+        handleDragEnd: jest.fn(),
+      });
+
+      render(
+    <TestProviders>
+      <StructurePage />
+    </TestProviders>
+  );
+
+      // The dragged thought shows in its column and again in the drag overlay.
+      await waitFor(() => expect(within(screen.getByTestId('drag-overlay')).getByText('Dragging Thought')).toBeInTheDocument());
     });
 
-    describe('Interactions', () => {
-      it('renders DragOverlay when an item is being dragged', async () => {
-        const mockSermon = createMockSermon({
-          thoughts: [createMockThought({ id: 't1', text: 'Dragging Thought', tags: ['intro'] })],
-        });
-        const containers = {
-          introduction: [createMockItem({ id: 't1', content: 'Dragging Thought', requiredTags: ['intro'] })],
-          main: [],
-          conclusion: [],
-          ambiguous: [],
-        };
+    it('renders EditThoughtModal when editingItem is set', async () => {
+      const mockSermon = createMockSermon();
+      const containers = {
+        introduction: [],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      };
 
-        mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
+      mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
 
-        // Mock active DnD state
-        mockedUseStructureDnd.mockReturnValue({
-          sensors: [],
-          activeId: 't1',
-          handleDragStart: jest.fn(),
-          handleDragOver: jest.fn(),
-          handleDragEnd: jest.fn(),
-        });
-
-        render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
-    );
-
-        // Should find the active item in the overlay
-        await waitFor(() => {
-          const thoughts = screen.getAllByText('Dragging Thought');
-          // The item appears in the list AND in the overlay (2 instances)
-          // or just once if the overlay clones it. Usually 2.
-          expect(thoughts.length).toBeGreaterThanOrEqual(1);
-        });
+      // Mock editing state
+      mockedUseSermonActions.mockReturnValue({
+        editingItem: createMockItem({ id: 't1', content: 'Editing Content' }),
+        addingThoughtToSection: null,
+        handleEdit: jest.fn(),
+        handleCloseEdit: jest.fn(),
+        handleAddThoughtToSection: jest.fn(),
+        handleSaveEdit: jest.fn(),
+        handleMoveToAmbiguous: jest.fn(),
+        handleRetryPendingThought: jest.fn(),
       });
 
-      it('renders EditThoughtModal when editingItem is set', async () => {
-        const mockSermon = createMockSermon();
-        const containers = {
-          introduction: [],
-          main: [],
-          conclusion: [],
-          ambiguous: [],
-        };
+      render(
+    <TestProviders>
+      <StructurePage />
+    </TestProviders>
+  );
 
-        mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
-
-        // Mock editing state
-        mockedUseSermonActions.mockReturnValue({
-          editingItem: createMockItem({ id: 't1', content: 'Editing Content' }),
-          addingThoughtToSection: null,
-          handleEdit: jest.fn(),
-          handleCloseEdit: jest.fn(),
-          handleAddThoughtToSection: jest.fn(),
-          handleSaveEdit: jest.fn(),
-          handleMoveToAmbiguous: jest.fn(),
-          handleRetryPendingThought: jest.fn(),
-        });
-
-        render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
-    );
-
-        await waitFor(() => {
-          // EditThoughtModal should be present (mocking usually renders it but we check for content or Role)
-          // CardContent/EditModal uses portals or simple divs. 
-          // We check for "Editing Content" if it's passed as initialText.
-          // Or check for a specific testid if the modal has one.
-          // Or check for the text inside the modal inputs.
-          expect(screen.getByDisplayValue('Editing Content')).toBeInTheDocument();
-        });
+      await waitFor(() => {
+        // EditThoughtModal should be present (mocking usually renders it but we check for content or Role)
+        // CardContent/EditModal uses portals or simple divs.
+        // We check for "Editing Content" if it's passed as initialText.
+        // Or check for a specific testid if the modal has one.
+        // Or check for the text inside the modal inputs.
+        expect(screen.getByDisplayValue('Editing Content')).toBeInTheDocument();
       });
-    });
-
-    it('covers all toggle transitions and failures in a single table-driven test', async () => {
-      const scenarios = [
-        {
-          name: 'marks introduction point as reviewed',
-          outlinePointId: 'op1',
-          isReviewed: true,
-          expectedOutline: {
-            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: true }],
-            main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-            conclusion: [{ id: 'op3', text: 'Conclusion point' }],
-          },
-          expectedToast: { success: 'Marked as reviewed' },
-        },
-        {
-          name: 'marks main point as unreviewed',
-          outlinePointId: 'op2',
-          isReviewed: false,
-          expectedOutline: {
-            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
-            main: [{ id: 'op2', text: 'Main point', isReviewed: false }],
-            conclusion: [{ id: 'op3', text: 'Conclusion point' }],
-          },
-          expectedToast: { success: 'Marked as unreviewed' },
-        },
-        {
-          name: 'adds isReviewed to conclusion point',
-          outlinePointId: 'op3',
-          isReviewed: true,
-          expectedOutline: {
-            introduction: [{ id: 'op1', text: 'Intro point', isReviewed: false }],
-            main: [{ id: 'op2', text: 'Main point', isReviewed: true }],
-            conclusion: [{ id: 'op3', text: 'Conclusion point', isReviewed: true }],
-          },
-          expectedToast: { success: 'Marked as reviewed' },
-        },
-        {
-          name: 'handles persistence errors gracefully',
-          outlinePointId: 'op1',
-          isReviewed: true,
-          configureMock: () => mockUpdateSermonOutline.mockRejectedValueOnce(new Error('Network error')),
-          expectedToast: { error: 'Error saving' },
-        },
-      ];
-
-      for (const scenario of scenarios) {
-        mockSetSermon.mockClear();
-        mockToast.success.mockClear();
-        mockToast.error.mockClear();
-        mockUpdateSermonOutline.mockClear();
-
-        scenario.configureMock?.();
-
-        await runHandleToggleReviewed(scenario.outlinePointId, scenario.isReviewed);
-
-        if (scenario.expectedOutline) {
-          expect(mockSetSermon).toHaveBeenCalledWith({
-            ...mockSermon,
-            outline: scenario.expectedOutline,
-          });
-          expect(mockUpdateSermonOutline).toHaveBeenCalledWith('test-sermon', scenario.expectedOutline);
-        }
-
-        if (scenario.expectedToast?.success) {
-          expect(mockToast.success).toHaveBeenCalledWith(scenario.expectedToast.success);
-        } else {
-          expect(mockToast.success).not.toHaveBeenCalled();
-        }
-
-        if (scenario.expectedToast?.error) {
-          expect(mockToast.error).toHaveBeenCalledWith(scenario.expectedToast.error);
-        } else {
-          expect(mockToast.error).not.toHaveBeenCalled();
-        }
-      }
     });
   });
 });

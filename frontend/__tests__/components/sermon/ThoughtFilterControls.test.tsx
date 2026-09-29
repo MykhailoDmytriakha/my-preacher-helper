@@ -122,5 +122,24 @@ describe('ThoughtFilterControls', () => {
     fireEvent.click(within(firstSection!).getByText('filters.reset'));
     expect(resetFilters).toHaveBeenCalled();
   });
+
+  it('selects the missing-tags view filter when its radio option is clicked', () => {
+    const setViewFilter = jest.fn();
+    render(<ThoughtFilterControls {...makeProps({ setViewFilter })} />);
+
+    const option = screen.getByRole('radio', { name: 'filters.missingTags' });
+    expect(option).not.toBeChecked();
+    fireEvent.click(option);
+
+    expect(setViewFilter).toHaveBeenCalledTimes(1);
+    expect(setViewFilter).toHaveBeenCalledWith('missingTags');
+  });
+
+  it('shows the missing-tags option as selected when it is the active view filter', () => {
+    render(<ThoughtFilterControls {...makeProps({ viewFilter: 'missingTags' })} />);
+
+    expect(screen.getByRole('radio', { name: 'filters.missingTags' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'filters.all' })).not.toBeChecked();
+  });
 });
 

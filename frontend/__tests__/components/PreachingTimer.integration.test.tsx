@@ -374,6 +374,148 @@ describe('PreachingTimer Integration', () => {
     expect(() => renderWithClient(<PreachingTimer />)).not.toThrow();
   });
 
+  describe('real timer driven through the real buttons', () => {
+    // These tests swap the stubbed hook for the REAL one, so a button press has to travel
+    // through TimerControls -> PreachingTimer -> usePreachingTimer to change what is shown.
+    beforeEach(() => {
+      const actualHook = jest.requireActual('@/hooks/usePreachingTimer') as typeof import('@/hooks/usePreachingTimer');
+      mockUsePreachingTimer.mockImplementation(
+        ((...args: Parameters<typeof actualHook.usePreachingTimer>) =>
+          actualHook.usePreachingTimer(...args)) as never
+      );
+    });
+
+    // Desktop and mobile layouts both render the controls; both drive the same timer.
+    const press = (name: RegExp) => {
+      act(() => {
+        fireEvent.click(screen.getAllByRole('button', { name })[0]);
+      });
+    };
+    const tick = (seconds: number) => {
+      act(() => {
+        jest.advanceTimersByTime(seconds * 1000);
+      });
+    };
+    const shownTime = () => {
+      const label = screen.getAllByRole('timer')[0].getAttribute('aria-label') ?? '';
+      return /: (-?\d+:\d\d) remaining/.exec(label)?.[1];
+    };
+    const shownPhase = () => screen.getAllByRole('timer')[0].getAttribute('aria-label') ?? '';
+
+    const START = /actions\.start/i;
+    const PAUSE = /plan\.timer\.pause/i;
+    const RESUME = /plan\.timer\.resume/i;
+    const STOP = /plan\.timer\.stop/i;
+    const SKIP = /plan\.timer\.skip/i;
+
+    it('start makes the countdown run', () => {
+      jest.useFakeTimers();
+      try {
+        renderWithClient(<PreachingTimer />);
+        expect(shownTime()).toBe('20:00');
+
+        press(START);
+        tick(5);
+
+        expect(shownTime()).toBe('19:55');
+        expect(screen.getAllByRole('button', { name: PAUSE }).length).toBeGreaterThan(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('pause freezes the countdown and resume continues it', () => {
+      jest.useFakeTimers();
+      try {
+        renderWithClient(<PreachingTimer />);
+        press(START);
+        tick(10);
+        expect(shownTime()).toBe('19:50');
+
+        press(PAUSE);
+        const frozen = shownTime();
+        tick(30);
+        expect(shownTime()).toBe(frozen);
+        expect(screen.getAllByRole('button', { name: RESUME }).length).toBeGreaterThan(0);
+
+        press(RESUME);
+        tick(5);
+        // The 30 paused seconds are not counted: 10s before + 5s after the pause.
+        expect(shownTime()).toBe('19:45');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('skip moves from introduction to main to conclusion and then becomes unavailable', () => {
+      jest.useFakeTimers();
+      try {
+        renderWithClient(<PreachingTimer />);
+        press(START);
+        tick(3);
+        expect(shownPhase()).toContain('sections.introduction');
+
+        press(SKIP);
+        expect(shownPhase()).toContain('sections.main');
+        // Introduction is 20% of 20:00 = 4:00, so main starts with 16:00 left.
+        expect(shownTime()).toBe('16:00');
+
+        press(SKIP);
+        expect(shownPhase()).toContain('sections.conclusion');
+        expect(shownTime()).toBe('04:00');
+
+        // There is no next section after the conclusion, so the button is disabled.
+        screen.getAllByRole('button', { name: SKIP }).forEach((button) => {
+          expect(button).toBeDisabled();
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('stop returns to the idle state with the full selected time', () => {
+      jest.useFakeTimers();
+      try {
+        renderWithClient(<PreachingTimer />);
+        press(START);
+        tick(3);
+        press(SKIP);
+        tick(7);
+        expect(shownPhase()).toContain('sections.main');
+
+        press(STOP);
+        expect(shownTime()).toBe('20:00');
+        expect(shownPhase()).toContain('sections.introduction');
+        expect(screen.getAllByRole('button', { name: START }).length).toBeGreaterThan(0);
+        screen.getAllByRole('button', { name: STOP }).forEach((button) => {
+          expect(button).toBeDisabled();
+        });
+
+        // Time no longer advances after stop.
+        tick(30);
+        expect(shownTime()).toBe('20:00');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('stop also works while paused', () => {
+      jest.useFakeTimers();
+      try {
+        renderWithClient(<PreachingTimer />);
+        press(START);
+        tick(10);
+        press(PAUSE);
+
+        press(STOP);
+        expect(shownTime()).toBe('20:00');
+        expect(screen.getAllByRole('button', { name: START }).length).toBeGreaterThan(0);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   describe('exit preaching button', () => {
     const getExitButton = () => screen.getAllByTestId('exit-preaching')[0];
 

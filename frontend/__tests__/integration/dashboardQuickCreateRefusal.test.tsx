@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
@@ -192,6 +192,9 @@ describe('dashboard quick-create — a refused sermon is reported ON the dashboa
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(mockCreateSermon).toHaveBeenCalled());
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    // Absence means something only after the write has answered: let the accepted create
+    // settle and its handlers run, then look for a report.
+    await act(async () => { await mockCreateSermon.mock.results[0].value; });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

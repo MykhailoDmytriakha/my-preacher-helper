@@ -235,30 +235,15 @@ describe('EditSermonModal Component', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
-  test('handles API errors gracefully', async () => {
-    // Mock console.error
-    jest.spyOn(console, 'error').mockImplementation();
-    
-    // Mock implementation for error case
+  test('says why a failed save did not go through and stays open', async () => {
     (updateSermon as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
-    
     render(<EditSermonModal {...mockProps} />);
-    
-    // Make a change to enable the save button
-    const titleInput = screen.getByPlaceholderText('Enter sermon title');
-    fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-    
-    // Click save button to submit the form
-    const saveButton = screen.getByRole('button', { name: 'Save' });
-    fireEvent.click(saveButton);
-    
-    // Verify that the error was handled (without checking for specific error message)
-    await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalled();
-    });
-    
-    // Restore mock
-    (console.error as jest.Mock).mockRestore();
+
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), { target: { value: 'Updated Title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to update sermon');
+    expect(mockProps.onClose).not.toHaveBeenCalled();
   });
 
   test('names a rules refusal and keeps the exact sermon edit retrievable', async () => {
@@ -272,6 +257,10 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
     fireEvent.change(verse, { target: { value: 'Exact refused sermon verse' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // Let the refusal land before judging: checked right after the click, the dialog is
+    // open whatever the refusal later does to it.
+    await waitFor(() => expect(updateSermon).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
 
     expect(screen.getByRole('dialog', { name: 'Edit Sermon' })).toBeInTheDocument();
     // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.

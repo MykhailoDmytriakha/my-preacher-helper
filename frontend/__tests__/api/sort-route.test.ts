@@ -1,257 +1,159 @@
-// We'll use a simpler approach without importing from Next.js
-// This avoids the 'Request is not defined' error
-
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { sortItemsWithAI } from '@/api/clients/openAI.client';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
+import { POST } from '@/api/sort/route';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
-// Mock type for NextRequest
-interface MockNextRequest {
-  json: () => Promise<any>;
-}
-
-// Mock the sermonsRepository so we don't need the actual implementation
-jest.mock('@/api/repositories/sermons.repository', () => ({
-  sermonsRepository: {
-    fetchSermonById: jest.fn(),
+jest.mock('next/server', () => ({
+  NextResponse: {
+    json: jest.fn((data, init: { status?: number } = {}) => ({
+      status: init.status ?? 200,
+      json: async () => data,
+    })),
   },
 }));
 
-// Mock the POST handler directly instead of importing it
-const mockPostHandler = {
-  POST: jest.fn()
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn(),
+}));
+
+jest.mock('@/api/repositories/sermons.repository', () => ({
+  sermonsRepository: { fetchSermonById: jest.fn() },
+}));
+
+jest.mock('@/api/clients/openAI.client', () => ({
+  sortItemsWithAI: jest.fn(),
+}));
+
+const mockAuth = getRequiredAuthenticatedUid as jest.Mock;
+const mockFetchSermon = sermonsRepository.fetchSermonById as jest.Mock;
+const mockSort = sortItemsWithAI as jest.Mock;
+
+const SERMON = { id: 'sermon-1', userId: 'user-1', title: 'Sermon', verse: 'John 3:16' };
+const OUTLINE_POINTS = [{ id: 'outline-1', text: 'Point' }];
+
+const makeItems = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({ id: `item-${i}-abcdef`, content: `Thought ${i}` }));
+
+const validBody = (overrides: Record<string, unknown> = {}) => ({
+  columnId: 'introduction',
+  items: makeItems(3),
+  sermonId: 'sermon-1',
+  outlinePoints: OUTLINE_POINTS,
+  ...overrides,
+});
+
+const makeRequest = (body: unknown) => ({ json: jest.fn().mockResolvedValue(body) }) as unknown as Request;
+const makeMalformedRequest = () =>
+  ({ json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected token')) }) as unknown as Request;
+
+const call = async (body: unknown) => {
+  const response = await POST(makeRequest(body));
+  return { status: response.status, data: await response.json() };
 };
 
-// Set up environment variables
-process.env.OPENAI_API_KEY = 'mock-api-key';
-process.env.OPENAI_GPT_MODEL = 'gpt-4';
-process.env.DEBUG_MODE = 'true';
+describe('POST /api/sort', () => {
+  let consoleSpies: jest.SpyInstance[];
 
-describe('Sort API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Default mock repository behavior
-    const mockSermonRepo = sermonsRepository as jest.Mocked<typeof sermonsRepository>;
-    mockSermonRepo.fetchSermonById.mockResolvedValue({
-      id: 'sermon123',
-      title: 'Test Sermon',
-      verse: 'John 3:16',
-      date: '2024-01-01',
-      thoughts: [],
-      outline: {
-        introduction: [
-          { id: 'outline1', text: 'Introduction point 1' },
-        ],
-        main: [],
-        conclusion: [],
-      },
-      userId: 'user-123',
-    });
-    
-    // Default POST handler behavior
-    mockPostHandler.POST.mockImplementation(async (request) => {
-      const data = await request.json();
-      
-      // Check for required parameters
-      if (!data.columnId || !data.items || !data.sermonId) {
-        return {
-          status: 400,
-          json: async () => ({ error: 'Missing required parameters' }),
-        };
-      }
-      
-      // Check if sermon exists
-      const sermon = await mockSermonRepo.fetchSermonById(data.sermonId);
-      if (!sermon) {
-        return {
-          status: 404,
-          json: async () => ({ error: 'Sermon not found' }),
-        };
-      }
-      
-      // Default successful response
-      const sortedItems = [
-        data.items[2], // Third item
-        data.items[0], // First item
-        data.items[1], // Second item
-      ];
-      
-      return {
-        status: 200,
-        json: async () => ({ sortedItems }),
-      };
-    });
+    consoleSpies = [
+      jest.spyOn(console, 'log').mockImplementation(() => undefined),
+      jest.spyOn(console, 'error').mockImplementation(() => undefined),
+    ];
+    mockAuth.mockResolvedValue('user-1');
+    mockFetchSermon.mockResolvedValue(SERMON);
+    mockSort.mockImplementation(async (_column, items) => [...items].reverse());
   });
-  
-  test('returns sorted list of items when valid input is provided', async () => {
-    // Setup
-    const mockRequest = {
-      json: jest.fn().mockResolvedValue({
-        columnId: 'introduction',
-        items: [
-          { id: 'item1', content: 'First item content' },
-          { id: 'item2', content: 'Second item content' },
-          { id: 'item3', content: 'Third item content' },
-        ],
-        sermonId: 'sermon123',
-        outlinePoints: [
-          { id: 'outline1', text: 'First outline point' },
-        ],
-      }),
-    } as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(mockRequest);
-    const responseData = await response.json();
-    
-    // Assert
-    expect(response.status).toBe(200);
-    expect(responseData).toHaveProperty('sortedItems');
-    expect(responseData.sortedItems).toHaveLength(3);
-    // Verify the items are sorted according to the mock implementation
-    expect(responseData.sortedItems[0].id).toBe('item3');
-    expect(responseData.sortedItems[1].id).toBe('item1');
-    expect(responseData.sortedItems[2].id).toBe('item2');
+
+  afterEach(() => {
+    consoleSpies.forEach((spy) => spy.mockRestore());
   });
-  
-  test('returns 400 when required parameters are missing', async () => {
-    // Setup - create request with missing columnId
-    const requestWithMissingParams = {
-      json: jest.fn().mockResolvedValue({
-        // columnId is missing
-        items: [{ id: 'item1', content: 'First item content' }],
-        sermonId: 'sermon123',
-        outlinePoints: [],
-      }),
-    } as unknown as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(requestWithMissingParams);
-    
-    // Assert
-    expect(response.status).toBe(400);
-    const responseData = await response.json();
-    expect(responseData).toHaveProperty('error');
+
+  it('sorts the items with AI and returns them with the caller uid passed for metering', async () => {
+    const body = validBody();
+
+    const { status, data } = await call(body);
+
+    expect(status).toBe(200);
+    expect(data).toEqual({ sortedItems: [...body.items].reverse() });
+    expect(mockFetchSermon).toHaveBeenCalledWith('sermon-1');
+    expect(mockSort).toHaveBeenCalledWith('introduction', body.items, SERMON, OUTLINE_POINTS, 'user-1');
   });
-  
-  test('returns 404 when sermon is not found', async () => {
-    // Setup
-    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce(null);
-    
-    const request = {
-      json: jest.fn().mockResolvedValue({
-        columnId: 'introduction',
-        items: [{ id: 'item1', content: 'First item content' }],
-        sermonId: 'nonexistent-id',
-        outlinePoints: [],
-      }),
-    } as unknown as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(request);
-    
-    // Assert
-    expect(response.status).toBe(404);
-    const responseData = await response.json();
-    expect(responseData).toHaveProperty('error');
-    expect(responseData.error).toContain('not found');
+
+  it('sorts only the first 25 items when more are sent', async () => {
+    const items = makeItems(30);
+
+    const { status, data } = await call(validBody({ items }));
+
+    expect(status).toBe(200);
+    expect(mockSort.mock.calls[0][1]).toEqual(items.slice(0, 25));
+    expect(data.sortedItems).toHaveLength(25);
   });
-  
-  test('handles API errors gracefully', async () => {
-    // Setup - make the handler throw an error
-    mockPostHandler.POST.mockImplementationOnce(async () => {
-      return {
-        status: 500,
-        json: async () => ({ error: 'API error' }),
-      };
-    });
-    
-    const request = {
-      json: jest.fn().mockResolvedValue({
-        columnId: 'introduction',
-        items: [{ id: 'item1', content: 'First item content' }],
-        sermonId: 'sermon123',
-        outlinePoints: [],
-      }),
-    } as unknown as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(request);
-    
-    // Assert
+
+  it.each([
+    ['columnId is missing', { columnId: undefined }],
+    ['columnId is empty', { columnId: '' }],
+    ['items is missing', { items: undefined }],
+    ['items is not an array', { items: 'not-an-array' }],
+    ['sermonId is missing', { sermonId: undefined }],
+  ])('returns 400 when %s', async (_name, overrides) => {
+    const { status, data } = await call(validBody(overrides));
+
+    expect(status).toBe(400);
+    expect(data).toEqual({ error: 'Missing required parameters' });
+    expect(mockFetchSermon).not.toHaveBeenCalled();
+    expect(mockSort).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the request body is malformed JSON', async () => {
+    const response = await POST(makeMalformedRequest());
+
     expect(response.status).toBe(500);
-    const responseData = await response.json();
-    expect(responseData).toHaveProperty('error');
+    expect(await response.json()).toEqual({ error: 'Failed to sort items' });
+    expect(mockSort).not.toHaveBeenCalled();
   });
-  
-  test('handles invalid JSON responses', async () => {
-    // Setup - mock a handler that returns malformed items
-    mockPostHandler.POST.mockImplementationOnce(async (request) => {
-      const data = await request.json();
-      // Return the original items in original order
-      return {
-        status: 200,
-        json: async () => ({ sortedItems: data.items }),
-      };
+
+  it('returns 404 when the sermon does not exist', async () => {
+    mockFetchSermon.mockResolvedValue(null);
+
+    const { status, data } = await call(validBody({ sermonId: 'missing' }));
+
+    expect(status).toBe(404);
+    expect(data).toEqual({ error: 'Sermon not found' });
+    expect(mockSort).not.toHaveBeenCalled();
+  });
+
+  it('returns the items unchanged without calling AI when the items list is empty', async () => {
+    const { status, data } = await call(validBody({ items: [] }));
+
+    expect(status).toBe(200);
+    expect(data).toEqual({ sortedItems: [] });
+    expect(mockSort).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the AI client fails', async () => {
+    mockSort.mockRejectedValue(new Error('OpenAI down'));
+
+    const { status, data } = await call(validBody());
+
+    expect(status).toBe(500);
+    expect(data).toEqual({ error: 'Failed to sort items' });
+  });
+
+  it('returns 429 with the usage cap payload when the AI usage cap is reached', async () => {
+    mockSort.mockRejectedValue(new UsageCapReachedError('ai', 10, 10, 12, '2026-10-01T00:00:00.000Z'));
+
+    const { status, data } = await call(validBody());
+
+    expect(status).toBe(429);
+    expect(data).toEqual({
+      code: 'USAGE_CAP_REACHED',
+      resource: 'ai',
+      used: 10,
+      baseLimit: 10,
+      hardCap: 12,
+      resetsAt: '2026-10-01T00:00:00.000Z',
     });
-    
-    const request = {
-      json: jest.fn().mockResolvedValue({
-        columnId: 'introduction',
-        items: [
-          { id: 'item1', content: 'First item content' },
-          { id: 'item2', content: 'Second item content' },
-        ],
-        sermonId: 'sermon123',
-        outlinePoints: [],
-      }),
-    } as unknown as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(request);
-    
-    // Assert
-    expect(response.status).toBe(200);
-    const responseData = await response.json();
-    expect(responseData).toHaveProperty('sortedItems');
-    expect(responseData.sortedItems[0].id).toBe('item1');
   });
-  
-  test('handles missing or duplicate indices in the response', async () => {
-    // Setup - mock a handler that returns custom items
-    mockPostHandler.POST.mockImplementationOnce(async (request) => {
-      const data = await request.json();
-      // Return modified set of items with duplicate IDs
-      return {
-        status: 200,
-        json: async () => ({
-          sortedItems: [
-            { ...data.items[0], duplicate: true },
-            { ...data.items[0], duplicate: false }, // Duplicate ID
-            { ...data.items[1] },
-          ]
-        }),
-      };
-    });
-    
-    const request = {
-      json: jest.fn().mockResolvedValue({
-        columnId: 'introduction',
-        items: [
-          { id: 'item1', content: 'First item content' },
-          { id: 'item2', content: 'Second item content' },
-        ],
-        sermonId: 'sermon123',
-        outlinePoints: [],
-      }),
-    } as unknown as MockNextRequest;
-    
-    // Act
-    const response = await mockPostHandler.POST(request);
-    
-    // Assert
-    expect(response.status).toBe(200);
-    const responseData = await response.json();
-    expect(responseData).toHaveProperty('sortedItems');
-    expect(responseData.sortedItems.length).toBeGreaterThanOrEqual(2);
-  });
-}); 
+});

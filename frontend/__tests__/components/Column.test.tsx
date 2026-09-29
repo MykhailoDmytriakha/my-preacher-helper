@@ -1676,10 +1676,6 @@ describe('Column Component', () => {
     expect(screen.queryByDisplayValue('Locked point')).not.toBeInTheDocument();
   });
 
-  it('AudioRecorder integration available (popover tested elsewhere)', () => {
-    expect(true).toBe(true);
-  });
-
   // Tests for Focus Mode Navigation Arrows and Header Styling
   describe('Focus Mode Navigation and Header Styling', () => {
     const mockNavigate = jest.fn();

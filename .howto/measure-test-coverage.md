@@ -1,4 +1,4 @@
-when: coverage below 80% · 80% per file · 3-rule coverage protocol · raise coverage · measure coverage of one file · test:coverage · lcov.info · coverage-summary.json · collectCoverageFrom · coveragePathIgnorePatterns · coverageThreshold · Jest: "global" coverage threshold for lines (89.57%) not met · diff coverage · uncovered lines that tests do run · types-only file in coverage · 0% file · istanbul ignore · jest --no-cache · jest --clearCache · test:summary broken · покрытие тестами · покрытие ниже 80 · поднять покрытие · замерить покрытие файла · непокрытые строки · порог покрытия · отчёт о покрытии
+when: coverage below 80% · 80% per file · 3-rule coverage protocol · raise coverage · measure coverage of one file · test:coverage · lcov.info · coverage-summary.json · collectCoverageFrom · coveragePathIgnorePatterns · coverageThreshold · Jest: "global" coverage threshold for lines (89.57%) not met · diff coverage · uncovered lines that tests do run · types-only file in coverage · 0% file · istanbul ignore · jest --no-cache · jest --clearCache · test:summary broken · coverage differs between runs · V8 coverage noise · coverageProvider babel · покрытие тестами · покрытие ниже 80 · поднять покрытие · замерить покрытие файла · непокрытые строки · порог покрытия · отчёт о покрытии
 
 # Measure and raise test coverage
 
@@ -28,10 +28,12 @@ From the repository root run `npm run test:coverage && npm run lint:full` until 
 - IndexedDB branches: cover them with isolated module imports (`jest.isolateModules`) plus a `jest.mock('idb-keyval', ...)` mock, never by bending runtime code to satisfy the metric.
 - Some branches are unreachable with valid input (drag and drop tops out near 95%). Accept the ceiling instead of feeding invalid inputs to reach 100%.
 - `npm run test:summary` is broken: it runs `show-total-coverage.js`, which does not exist.
+- The configured V8 provider is not repeatable here: two identical full runs of the same commit differed in 212 files (branches 83.89 % vs 84.31 %, 2026-09-29). Never judge "did this change lose coverage" by V8 totals. Compare two runs of `--coverageProvider=babel` (instrumented counters, deterministic) on clean copies of the base and of the change.
 
 ## Why
 
 - 2026-02-02: a high project-wide number hid files with zero coverage, so the bar is 80% per file.
+- 2026-09-29: a test cleanup looked like it lost 0.8 % of branches; a second run of the untouched base moved by 0.4 % on its own.
 - 2026-03-18: strict diff coverage reported "uncovered" lines that the tests ran; a stale Jest cache had survived a helper refactor.
 
 See also: `.howto/run-jest-tests.md` · `.howto/mock-browser-apis-in-jest.md` · `.howto/remove-code-or-feature.md`

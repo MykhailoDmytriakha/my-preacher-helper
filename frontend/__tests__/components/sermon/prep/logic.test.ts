@@ -234,6 +234,31 @@ describe('prep logic: getActiveStepId', () => {
       }
     } as any)).toBe('textContext');
   });
+
+  describe('main idea step completion', () => {
+    const filledMainIdea = { contextIdea: 'Context', textIdea: 'Text', argumentation: 'Argument' };
+    const prepWithMainIdea = (mainIdea: Record<string, string>) => ({
+      spiritual: { readAndPrayedConfirmed: true },
+      textContext: { readWholeBookOnceConfirmed: true, contextNotes: 'Some context', repeatedWords: ['love'] },
+      exegeticalPlan: [{ id: '1', title: 'Main Point', children: [] }],
+      authorIntent: 'Author intent',
+      mainIdea,
+    });
+
+    it.each(['contextIdea', 'textIdea', 'argumentation'])('stays on mainIdea when %s is missing', (field) => {
+      const mainIdea: Record<string, string> = { ...filledMainIdea };
+      delete mainIdea[field];
+      expect(getActiveStepId(prepWithMainIdea(mainIdea) as any)).toBe('mainIdea');
+    });
+
+    it.each(['contextIdea', 'textIdea', 'argumentation'])('stays on mainIdea when %s is whitespace-only', (field) => {
+      expect(getActiveStepId(prepWithMainIdea({ ...filledMainIdea, [field]: '   \n\t ' }) as any)).toBe('mainIdea');
+    });
+
+    it('moves on to goals when all three main idea fields are filled', () => {
+      expect(getActiveStepId(prepWithMainIdea(filledMainIdea) as any)).toBe('goals');
+    });
+  });
 });
 
 

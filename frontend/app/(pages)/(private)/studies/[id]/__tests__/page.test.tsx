@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
+import { toast } from 'sonner';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
@@ -506,36 +507,41 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         it('shows error if new note creation fails', async () => {
             jest.useFakeTimers();
-            const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
-                code: 'permission-denied',
-                name: 'FirebaseError',
-            });
-            const mockCreateNote = jest.fn(() => ({
-                ...persistedWrite(Promise.reject(refusal)),
-                note: { id: 'new-note-id' },
-            }));
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: mockCreateNote,
-                updateNote: jest.fn(),
-                deleteNote: jest.fn(),
-            });
-            (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+            try {
+                const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+                    code: 'permission-denied',
+                    name: 'FirebaseError',
+                });
+                const mockCreateNote = jest.fn(() => ({
+                    ...persistedWrite(Promise.reject(refusal)),
+                    note: { id: 'new-note-id' },
+                }));
+                (useStudyNotes as jest.Mock).mockReturnValue({
+                    uid: 'user-1',
+                    notes: mockNotes,
+                    loading: false,
+                    createNote: mockCreateNote,
+                    updateNote: jest.fn(),
+                    deleteNote: jest.fn(),
+                });
+                (useParams as jest.Mock).mockReturnValue({ id: 'new' });
 
-            render(<StudyNoteEditorPage />);
+                render(<StudyNoteEditorPage />);
 
-            const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
-            fireEvent.change(titleInput, { target: { value: 'New Note' } });
+                const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+                fireEvent.change(titleInput, { target: { value: 'New Note' } });
 
-            jest.advanceTimersByTime(2000);
+                jest.advanceTimersByTime(2000);
 
-            await waitFor(() => {
-                expect(mockCreateNote).toHaveBeenCalled();
-            });
-
-            jest.useRealTimers();
+                await waitFor(() => {
+                    expect(mockCreateNote).toHaveBeenCalled();
+                });
+                // The person sees that the save did not go through, and the typed title stays.
+                expect(await screen.findByText('common.saveError')).toBeInTheDocument();
+                expect(titleInput).toHaveValue('New Note');
+            } finally {
+                jest.useRealTimers();
+            }
         });
 
         it('handles delete note click correctly', async () => {
@@ -588,34 +594,44 @@ describe('StudyNoteEditorPage Pagination', () => {
             fireEvent.change(contentInput, { target: { value: '   ' } });
             fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
             expect(screen.getByTitle('studiesWorkspace.aiAnalyze.button')).toBeDisabled();
-            // Button click is just a no-op that shows a toast.
+            // Whitespace-only content leaves nothing to analyze, so the button stays off.
         });
 
         it('handles AI analysis API failure response', async () => {
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Something' } });
-            (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-                ok: true,
-                json: jest.fn().mockResolvedValue({ success: false, error: 'AI Error' })
-            });
-            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
-            fireEvent.click(fullOption);
-            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+            const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast');
+            try {
+                render(<StudyNoteEditorPage />);
+                fireEvent.click(screen.getByTitle('common.edit'));
+                const contentInput = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInput, { target: { value: 'Something' } });
+                (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+                    ok: true,
+                    json: jest.fn().mockResolvedValue({ success: false, error: 'AI Error' })
+                });
+                fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+                const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
+                fireEvent.click(fullOption);
+                await waitFor(() => expect(toastError).toHaveBeenCalledWith('studiesWorkspace.aiAnalyze.error'));
+            } finally {
+                toastError.mockRestore();
+            }
         });
 
         it('handles AI analysis network exception', async () => {
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Something' } });
-            (global.fetch as jest.Mock) = jest.fn().mockRejectedValue(new Error('Network error'));
-            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
-            fireEvent.click(fullOption);
-            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+            const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast');
+            try {
+                render(<StudyNoteEditorPage />);
+                fireEvent.click(screen.getByTitle('common.edit'));
+                const contentInput = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInput, { target: { value: 'Something' } });
+                (global.fetch as jest.Mock) = jest.fn().mockRejectedValue(new Error('Network error'));
+                fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+                const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
+                fireEvent.click(fullOption);
+                await waitFor(() => expect(toastError).toHaveBeenCalledWith('studiesWorkspace.aiAnalyze.error'));
+            } finally {
+                toastError.mockRestore();
+            }
         });
 
         it('triggers auto-save when content changes', async () => {
@@ -649,28 +665,32 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         it('handles auto-save error', async () => {
             jest.useFakeTimers();
-            const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
-                code: 'permission-denied',
-                name: 'FirebaseError',
-            });
-            const mockUpdateNote = jest.fn(() => {
-                const result = Promise.reject(refusal);
-                return { ...persistedWrite(result), result };
-            });
-            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
+            try {
+                const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+                    code: 'permission-denied',
+                    name: 'FirebaseError',
+                });
+                const mockUpdateNote = jest.fn(() => {
+                    const result = Promise.reject(refusal);
+                    return { ...persistedWrite(result), result };
+                });
+                (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
 
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
+                render(<StudyNoteEditorPage />);
+                fireEvent.click(screen.getByTitle('common.edit'));
 
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Changed for error' } });
+                const contentInput = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInput, { target: { value: 'Changed for error' } });
 
-            jest.advanceTimersByTime(2000);
+                jest.advanceTimersByTime(2000);
 
-            await waitFor(() => {
-                expect(mockUpdateNote).toHaveBeenCalled();
-            });
-            jest.useRealTimers();
+                await waitFor(() => {
+                    expect(mockUpdateNote).toHaveBeenCalled();
+                });
+                expect(await screen.findByText('common.saveError')).toBeInTheDocument();
+            } finally {
+                jest.useRealTimers();
+            }
         });
     });
 });
