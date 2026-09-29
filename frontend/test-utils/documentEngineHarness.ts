@@ -1,3 +1,4 @@
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { createIndexedDbCheckpoints } from '@/data-engine/checkpoint.client';
 import { createIndexedDbCommitStore } from '@/data-engine/commits.client';
 import { CollectionReader, type CollectionCursor } from '@/data-engine/collections';
@@ -54,7 +55,7 @@ export function documentEngineHarness(initial: ResourceSnapshot) {
     const instance = new DataEngine({ runtime, observer, transport, commits, checkpoints,
       manualScopes: createIndexedDbManualScopes(), snapshots, collections, operationId: () => `operation-${++sequence}` });
     engine = instance;
-    return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
+    return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
   return { createBrowser, transport, commits, checkpoints, get engine() { return engine; }, get server() { return copy(server); },
     /** Another device's deletion the engine has not heard about yet. */

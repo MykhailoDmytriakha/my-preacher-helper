@@ -48,12 +48,24 @@ jest.mock('next/navigation', () => ({
 
 // Mock child components with simpler implementations
 
+const mockSaveRecordingDraft = jest.fn();
+const mockDeleteRecordingDraft = jest.fn();
+jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
+  saveRecordingDraft: (...args: unknown[]) => mockSaveRecordingDraft(...args),
+  deleteRecordingDraft: (...args: unknown[]) => mockDeleteRecordingDraft(...args),
+}));
+
 jest.mock('@components/AudioRecorder', () => ({
-  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, splitLeft }: any) => (
+  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, onDiscardRecording, splitLeft }: any) => (
     <div data-testid={splitLeft ? "classic-audio-recorder" : "scratch-audio-recorder"}>
       <button onClick={() => onRecordingComplete?.(new Blob(['test']))}>Mock Record</button>
       <button onClick={() => onRetry?.()}>Mock Retry</button>
       <button onClick={() => onClearError?.()}>Mock Clear</button>
+      {/* The real recorder clears the error itself before every retry. */}
+      <button onClick={() => { onClearError?.(); onRetry?.(); }}>Mock Clear Then Retry</button>
+      {/* "Delete recording": the recorder clears, then says the deletion was deliberate. */}
+      <button onClick={() => { onClearError?.(); onDiscardRecording?.(); }}>Mock Delete Recording</button>
     </div>
   ),
 }));
@@ -970,6 +982,100 @@ describe('Sermon Detail Page', () => {
       });
 
       fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
+    });
+
+    /**
+     * The answer to a dictation can come back after the person has moved on. The request keeps
+     * running, the page does not — and the recording used to live only in the page.
+     */
+    it('parks a failed recording even when the answer arrives after the page is gone', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue('draft-1');
+      let fail!: (error: Error) => void;
+      (createAudioThought as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+      const view = render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalled());
+
+      view.unmount();
+      await act(async () => { fail(new Error('Transcription failed')); });
+
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledWith(expect.objectContaining({ context: 'sermon', contextId: 'sermon-123' })));
+    });
+
+    it('lets the parked copy go only once the retry has made it a thought', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+      mockDeleteRecordingDraft.mockReset().mockResolvedValue(undefined);
+      let succeed!: (value: unknown) => void;
+      (createAudioThought as jest.Mock)
+        .mockRejectedValueOnce(new Error('Transcription failed'))
+        .mockImplementationOnce(() => new Promise(resolve => { succeed = resolve; }));
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
+      const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+
+      // The recorder clears the error first; the parked copy must outlive that until the answer.
+      fireEvent.click(within(classicRecorder).getByText('Mock Clear Then Retry'));
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(2));
+      expect(mockDeleteRecordingDraft).not.toHaveBeenCalled();
+
+      await act(async () => { succeed({ id: 'thought-1', text: 'Hello', tags: [] }); });
+      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId));
+    });
+
+    it('sends a retry to the sermon the recording was spoken for, not the one now on screen', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+      (createAudioThought as jest.Mock)
+        .mockRejectedValueOnce(new Error('Transcription failed'))
+        .mockResolvedValueOnce({ id: 'thought-1', text: 'Hello', tags: [] });
+      const view = render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
+
+      // The same page component now shows another sermon.
+      require('@/hooks/useSermon').default.mockReturnValue({ ...defaultUseSermonReturn, sermon: { ...defaultUseSermonReturn.sermon, id: 'sermon-456' } });
+      view.rerender(<TestProviders><SermonDetailPage /></TestProviders>);
+      fireEvent.click(within(await screen.findByTestId('classic-audio-recorder')).getByText('Mock Retry'));
+
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(2));
+      expect((createAudioThought as jest.Mock).mock.calls[1][1]).toBe('sermon-123');
+    });
+
+    it('lets the parked copy go when the person deletes the recording', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+      mockDeleteRecordingDraft.mockReset().mockResolvedValue(undefined);
+      (createAudioThought as jest.Mock).mockRejectedValueOnce(new Error('Transcription failed'));
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
+      const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+
+      fireEvent.click(within(classicRecorder).getByText('Mock Delete Recording'));
+      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId));
+    });
+
+    it('keeps a failed recording parked when a new one is started', async () => {
+      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+      mockDeleteRecordingDraft.mockReset().mockResolvedValue(undefined);
+      (createAudioThought as jest.Mock)
+        .mockRejectedValueOnce(new Error('Transcription failed'))
+        .mockResolvedValueOnce({ id: 'thought-2', text: 'Second', tags: [] });
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
+      const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+
+      // Starting a new recording clears the error, then records again.
+      fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalled());
+      expect(mockDeleteRecordingDraft).not.toHaveBeenCalledWith(parkedId);
     });
   });
 

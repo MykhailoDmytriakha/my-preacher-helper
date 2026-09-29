@@ -34,6 +34,7 @@ export const AudioRecorder = ({
   transcriptionError,
   transcriptionLimitReached = false,
   onClearError,
+  onDiscardRecording,
   variant = "standard",
   autoStart = false,
   hideKeyboardShortcuts = false,
@@ -171,7 +172,7 @@ export const AudioRecorder = ({
         isProcessing={isProcessing || disabled}
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
-        onDiscard={discardStoredAudio}
+        onDiscard={() => { discardStoredAudio(); onDiscardRecording?.(); }}
         onDownload={downloadStoredAudio}
         t={t}
       />

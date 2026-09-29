@@ -9,6 +9,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+import { editorSlot } from './editorIdentity';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -152,6 +153,19 @@ export function waitsForDecision(record: EditorRecord, journal: readonly Journal
   return record.checkpoint.conflicts.length > 0 || Object.keys(record.checkpoint.pending).some(id => failed.has(id));
 }
 
+/** The slot one-shot actions open their editor under. */
+const ACTION_SLOT = 'action';
+
+/**
+ * Whether a checkpoint was left by a one-shot action (useDocumentActions) rather than by a
+ * screen's editor. Only these are answered from the app-wide banner: a screen's editor offers
+ * its own recovery when it is opened again, and settling it from elsewhere would retire the
+ * very text that screen is there to show.
+ */
+export function isOneShotRecord(record: EditorRecord): boolean {
+  return editorSlot(record.editorId) === ACTION_SLOT;
+}
+
 const decisionRequired = () => Object.assign(new Error('An earlier change to this document waits for a decision'), { code: 'decision-required' });
 const remoteDeleted = (record: EditorRecord) => {
   const candidate = record.checkpoint.remoteCandidate;
@@ -189,6 +203,11 @@ export function useDocumentActions() {
     return untilStorageSilent(opening, () => { abandoned = true; cancellation.abort(); }, readOnlyReason(true));
   }, [browser, readOnlyReason]);
   /** The closed checkpoints of a document that wait for the person, if any. */
+  /**
+   * Every draft of a document that waits for the person — a screen editor's too. A one-shot
+   * change opens on the document's local head, which still carries a refused draft; letting it
+   * through would only build on the refused text and be refused in turn.
+   */
   const waitingFor = useCallback(async (resource: ResourceRef) => {
     if (!browser) return [];
     const [records, journal] = await untilStorageSilent(Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]), () => undefined, readOnlyReason(true));
@@ -199,7 +218,7 @@ export function useDocumentActions() {
     // A document that waits for a decision takes no further one-shot change: each attempt
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
     if (!creating && (await waitingFor(resource)).length) throw decisionRequired();
-    const editor = await openFor(resource, browser.editorId(resource, 'action'), creating);
+    const editor = await openFor(resource, browser.editorId(resource, ACTION_SLOT), creating);
     try { await action(editor); } finally { editor.close({ flush: false }); }
   }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
@@ -222,7 +241,8 @@ export function useDocumentActions() {
      */
     resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
-      const waiting = await waitingFor(resource);
+      // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
+      const waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
       if (!waiting.length) return 0;
       if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
         throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
@@ -416,6 +436,8 @@ const aborted = () => Object.assign(new Error('Editor recovery was cancelled'), 
 
 /** One UI contract: durable draft, observed value, delivery and conflict choices. */
 function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750, readOnlyCopy = false }: DocumentOptions = {}) {
+  // The app-wide banner answers drafts under this slot; a screen editor there would be settled behind its back.
+  if (slot === ACTION_SLOT) throw new Error(`The "${ACTION_SLOT}" slot is reserved for one-shot actions`);
   const { browser, owner, error: engineError } = useDataEngine();
   const readOnlyReason = useReadOnlyReason();
   const collection = resource?.collection ?? null, id = resource?.id ?? null;

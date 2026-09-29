@@ -17,6 +17,7 @@ interface RecorderLikeProps {
   maxRetries?: number;
   transcriptionError?: string | null;
   onClearError?: () => void;
+  onDiscardRecording?: () => void;
   hideKeyboardShortcuts?: boolean;
   splitLeft?: ReactNode;
   splitRight?: ReactNode;
@@ -35,6 +36,7 @@ interface AudioRecorderPortalBridgeProps {
   maxRetries?: number;
   transcriptionError: string | null;
   onClearError: () => void;
+  onDiscardRecording?: () => void;
   hideKeyboardShortcuts: boolean;
   isReadOnly: boolean;
   isRecorderDisabled?: boolean;
@@ -102,6 +104,7 @@ export default function AudioRecorderPortalBridge({
   maxRetries = 3,
   transcriptionError,
   onClearError,
+  onDiscardRecording,
   hideKeyboardShortcuts,
   isReadOnly,
   isRecorderDisabled,
@@ -148,6 +151,7 @@ export default function AudioRecorderPortalBridge({
       maxRetries={maxRetries}
       transcriptionError={transcriptionError}
       onClearError={onClearError}
+      onDiscardRecording={onDiscardRecording}
       hideKeyboardShortcuts={hideKeyboardShortcuts}
       splitLeft={manualButtonPlacement === "left" ? splitLeft : undefined}
       splitRight={manualButtonPlacement === "right" ? splitLeft : undefined}

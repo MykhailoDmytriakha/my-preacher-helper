@@ -5,18 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { isCollectionOnEngine, useDataEngine, useDocumentActions, waitsForDecision } from '@/data-engine/react.client';
+import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, waitsForDecision } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 
 import type { EditorRecord } from '@/data-engine/controller';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
-/**
- * Collections whose screens write through one-shot engine actions (useDocumentActions) and so
- * have no open editor to show a late answer. Councils, groups, series and sermons resolve in
- * their own pinned editors and are deliberately not listed here.
- */
-const ONE_SHOT_COLLECTIONS = ['prayerRequests', 'serviceOrders', 'studyNotes', 'tags', 'planTemplates'];
 /** Bookkeeping the person never typed: never shown as "your change". */
 const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft', '_dataEngine', '_dataEngineOwner']);
 
@@ -52,10 +46,17 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
   return wasRefused ? 'refused' : 'conflict';
 }
 
-/** One entry per document of the one-shot collections that waits for the person. */
+/**
+ * One entry per document whose ONE-SHOT change waits for the person, in any engine collection.
+ *
+ * Chosen by what left the draft, not by collection: a list-row menu, a link made from the other
+ * side of a relation or a sermon born from a note has no open editor to show a late answer — a
+ * sermon's one-shot actions used to fall outside a fixed list of collections and were answered
+ * nowhere. A screen editor's draft is left to that screen, which offers it when opened again.
+ */
 function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[]): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
-  const decided = records.map(entry => entry.record).filter(record => ONE_SHOT_COLLECTIONS.includes(record.checkpoint.confirmed.resource.collection)
+  const decided = records.map(entry => entry.record).filter(record => isOneShotRecord(record)
     && isCollectionOnEngine(record.checkpoint.confirmed.resource.collection) && waitsForDecision(record, journal));
   const documents: Waiting[] = [];
   for (const record of decided) {
@@ -82,7 +83,7 @@ function waitingDocuments(records: readonly { record: EditorRecord }[], journal:
  * OutboxConflictBanner.
  */
 export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
-  return ONE_SHOT_COLLECTIONS.some(isCollectionOnEngine) ? <EngineConflicts pollMs={pollMs} /> : null;
+  return isDataEngineEnabled() ? <EngineConflicts pollMs={pollMs} /> : null;
 }
 
 function EngineConflicts({ pollMs }: { pollMs: number }) {
@@ -142,7 +143,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   if (entry.kind === 'conflict') {
     return (
       <SaveConflictBanner
-        entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : 'entityRecord'}
+        entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
         pendingText={mine || undefined}
         onKeepMine={() => { void settle('mine'); }}
         onTakeTheirs={() => { void settle('theirs'); }}

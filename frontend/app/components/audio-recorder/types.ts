@@ -19,6 +19,8 @@ export interface AudioRecorderProps {
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
+  /** The person deleted the failed recording on purpose — unlike a clear, which also precedes every retry. */
+  onDiscardRecording?: () => void;
   variant?: RecorderVariant;
   autoStart?: boolean;
   hideKeyboardShortcuts?: boolean;

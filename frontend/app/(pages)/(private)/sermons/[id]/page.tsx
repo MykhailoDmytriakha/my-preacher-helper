@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from 'sonner';
 import "@locales/i18n";
 
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
@@ -53,6 +54,7 @@ import { updateSermonPreparation, updateSermon } from '@/services/sermon.service
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance, queuedMutation, refusedWrite, replicaAcceptedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
   sermonFreshnessProjection,
@@ -685,7 +687,6 @@ useEffect(() => {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [editingModalData, setEditingModalData] = useState<EditingModalData | null>(null);
   const rejectedEditQueueRef = useRef<EditingModalData[]>([]);
@@ -1530,43 +1531,74 @@ useEffect(() => {
     await appendNewThoughtWithStructure(newThought);
   };
 
+  /**
+   * A DICTATED THOUGHT OUTLIVES THE PAGE (BUG-20260813-late-refusal-silent-after-navigation).
+   *
+   * The recording lived only in this page's state, so an answer that came back as a failure
+   * after the person had moved on — the request keeps running, the page does not — took the
+   * spoken words with it. A failed recording is parked in the same durable store the study
+   * notes use; the code after `await` still runs once the page is gone, so it is parked even
+   * then, and the banner below offers it the next time this sermon is opened.
+   *
+   * The parked copy goes when the recording has become a thought, when the person deletes it
+   * ("Delete recording" here, "Delete" in the banner), or when the store's seven-day limit
+   * expires it (`recordingDraftStore`, shared with study notes). Not on "clear the error": the
+   * recorder calls that itself before every retry and every new recording, and letting the copy
+   * go there threw it away before the retry's answer was known. The recording carries the sermon it was spoken for and its
+   * draft id from the moment it exists — this page can be reused for another sermon, and the
+   * id fixed up front keeps IndexedDB's own ordering between parking and letting go.
+   */
+  const heldRecordingRef = useRef<{ blob: Blob; sermonId: string; draftId: string } | null>(null);
+  const parkRecording = async (held: { blob: Blob; sermonId: string; draftId: string }) => {
+    try {
+      await saveRecordingDraft({ id: held.draftId, blob: held.blob, mimeType: held.blob.type || 'audio/webm', context: 'sermon', contextId: held.sermonId });
+    } catch {
+      // IndexedDB unavailable — the in-session retry panel still holds the recording.
+    }
+  };
+  const releaseRecording = (held: { draftId: string }) => {
+    void deleteRecordingDraft(held.draftId);
+    if (heldRecordingRef.current === held) heldRecordingRef.current = null;
+  };
+  /** Transcribe a held recording into the sermon it was spoken for; true once it is a thought. */
+  const transcribeHeld = async (held: { blob: Blob; sermonId: string; draftId: string }, attempt: number): Promise<boolean> => {
+    try {
+      const thoughtResponse = await createAudioThought(held.blob, held.sermonId, attempt, 3);
+      // Placing re-reads THIS page's sermon; a recording for another one was stored by the server.
+      if (sermonRef.current?.id === held.sermonId) await placeAudioThought({ ...thoughtResponse });
+      releaseRecording(held);
+      return true;
+    } catch (error) {
+      console.error("transcribeHeld: Recording error:", error);
+      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      await parkRecording(held);
+      return false;
+    }
+  };
+
   const handleNewRecording = async (audioBlob: Blob) => {
     if (!sermon) return;
+    const held = { blob: audioBlob, sermonId: sermon.id, draftId: newClientId() };
+    heldRecordingRef.current = held;
     setIsProcessing(true);
-    setStoredAudioBlob(audioBlob);
     setTranscriptionError(null);
     setRetryCount(0);
-
     try {
-      const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
-      await placeAudioThought({ ...thoughtResponse });
-      setStoredAudioBlob(null);
-      setTranscriptionError(null);
-    } catch (error) {
-      console.error("handleNewRecording: Recording error:", error);
-      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      await transcribeHeld(held, 0);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleRetryTranscription = async () => {
-    if (!storedAudioBlob || !sermon) return;
-
+    const held = heldRecordingRef.current;
+    if (!held) return;
     setIsProcessing(true);
     const newRetryCount = retryCount + 1;
     setRetryCount(newRetryCount);
     setTranscriptionError(null);
-
     try {
-      const thoughtResponse = await createAudioThought(storedAudioBlob, sermon.id, newRetryCount, 3);
-      await placeAudioThought({ ...thoughtResponse });
-      setStoredAudioBlob(null);
-      setTranscriptionError(null);
-      setRetryCount(0);
-    } catch (error) {
-      console.error("handleRetryTranscription: Recording error:", error);
-      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      if (await transcribeHeld(held, newRetryCount)) setRetryCount(0);
     } finally {
       setIsProcessing(false);
     }
@@ -1574,8 +1606,29 @@ useEffect(() => {
 
   const handleClearError = () => {
     setTranscriptionError(null);
-    setStoredAudioBlob(null);
     setRetryCount(0);
+  };
+
+  /** "Delete recording" in the recorder: the one in-session act that lets the parked copy go too. */
+  const handleDiscardRecording = () => {
+    if (heldRecordingRef.current) releaseRecording(heldRecordingRef.current);
+  };
+
+  /** A recording parked by an earlier visit, sent again from the banner; true once it is a thought. */
+  const resendParkedRecording = async (audioBlob: Blob): Promise<boolean> => {
+    if (!sermon) return false;
+    setIsProcessing(true);
+    try {
+      const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
+      await placeAudioThought({ ...thoughtResponse });
+      return true;
+    } catch (error) {
+      console.error("resendParkedRecording: Recording error:", error);
+      toast.error(t('audio.transcribeError.unknown', { defaultValue: 'Transcription failed. Please try again.' }));
+      return false;
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Reusable renderers moved after all hooks
@@ -1933,6 +1986,15 @@ useEffect(() => {
         />
       </div>
 
+      {uiMode !== 'raw' && sermon && (
+        <RecordingDraftBanner
+          context="sermon"
+          contextId={sermon.id}
+          onResend={resendParkedRecording}
+          isProcessing={isProcessing}
+          className="mb-2"
+        />
+      )}
       {uiMode !== 'raw' && (
         <AudioRecorderPortalBridge
           RecorderComponent={AudioRecorder}
@@ -1944,6 +2006,7 @@ useEffect(() => {
           maxRetries={3}
           transcriptionError={transcriptionError}
           onClearError={handleClearError}
+          onDiscardRecording={handleDiscardRecording}
           hideKeyboardShortcuts={uiMode === 'prep'}
           isReadOnly={!isMagicAvailable || isReadOnly}
           isRecorderDisabled={dictationBlocked}

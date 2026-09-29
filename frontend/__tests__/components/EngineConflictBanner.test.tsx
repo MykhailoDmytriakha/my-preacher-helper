@@ -3,7 +3,8 @@ import React, { useEffect } from 'react';
 
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataEngineProvider, useDocumentActions } from '@/data-engine/react.client';
+import { DataEngineProvider, useDataDocument, useDocumentActions } from '@/data-engine/react.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -133,5 +134,67 @@ describe('a late conflict on a document no screen has open', () => {
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByText('freshness.discardAction')); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.queryByText('freshness.deletedElsewhereTitle')).not.toBeInTheDocument());
+  });
+});
+
+/**
+ * A SERMON'S ONE-SHOT CHANGES WERE ANSWERED NOWHERE (BUG-20260813-late-refusal-silent-after-navigation).
+ *
+ * A link made from a note, a delete from the list, a sermon born from a note: each is a one-shot
+ * action with no open editor, but the banner chose by a fixed list of collections that left
+ * sermons out. It now chooses by what left the draft — and a screen editor's draft of the same
+ * sermon stays that screen's, neither shown nor settled from here.
+ */
+describe('a late answer to a one-shot change of a sermon', () => {
+  const sermon = { collection: 'sermons', id: 'sermon-1' };
+  const storedSermon = { userId: 'owner', title: 'Grace', verse: 'John 1:14', date: '2026-09-01', thoughts: [],
+    createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+  beforeEach(() => { process.env[ON_ENGINE] = 'sermons'; actions = null; });
+  afterEach(() => { delete process.env[ON_ENGINE]; });
+
+  const setupSermon = () => {
+    const harness = documentEngineHarness({ resource: sermon, value: storedSermon, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    return harness;
+  };
+
+  it('is shown app-wide, like the other collections', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    harness.silentRemote({ title: 'Renamed on the phone' });
+    await act(async () => { await actions!.commit(sermon, current => ({ ...current!, title: 'Renamed from the note' })); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument());
+    expect(screen.getByText(/Renamed from the note/)).toBeInTheDocument();
+  });
+
+  it('leaves a screen editor\'s waiting draft of the same sermon to that screen', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    // A one-shot change the server will not take (a date that is not a date)...
+    await act(async () => { await actions!.commit(sermon, current => ({ ...current!, title: 'Renamed from the note', date: 7 as never })); await settleEngine(); await settleEngine(); });
+    // ...and the sermon page's own editor, refused the same way, closed before the answer was read.
+    const screenEditor = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'page'));
+    await act(async () => { await screenEditor.edit({ ...storedSermon, verse: 'Typed on the sermon page', date: 8 as never }); await screenEditor.save(); await settleEngine(); await settleEngine(); });
+    screenEditor.close({ flush: false });
+    await act(async () => { await settleEngine(); });
+
+    await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
+    expect(screen.getByText(/Renamed from the note/)).toBeInTheDocument();
+    expect(screen.queryByText(/Typed on the sermon page/)).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
+
+    // The page's refused words are still there for the page to offer when it opens again.
+    const left = await harness.engine.listRecoverable(sermon);
+    expect(left.map(({ record }) => record.checkpoint.draft?.verse)).toContain('Typed on the sermon page');
+  });
+
+  it('keeps the one-shot slot out of reach of screen editors', () => {
+    setupSermon();
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    function ScreenOnActionSlot() { useDataDocument(sermon, { slot: 'action' }); return null; }
+    expect(() => render(<DataEngineProvider><ScreenOnActionSlot /></DataEngineProvider>)).toThrow(/reserved for one-shot actions/);
+    spy.mockRestore();
   });
 });

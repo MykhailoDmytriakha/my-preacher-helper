@@ -1,3 +1,4 @@
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { createIndexedDbCheckpoints } from '@/data-engine/checkpoint.client';
 import { createIndexedDbCommitStore } from '@/data-engine/commits.client';
 import { CollectionReader, type CollectionCursor } from '@/data-engine/collections';
@@ -66,7 +67,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     engine = new DataEngine({ transport, runtime, snapshots, observer, collections, commits, checkpoints: createIndexedDbCheckpoints(),
       membershipScopes: scopes, manualScopes: createIndexedDbManualScopes(), operationId: () => `operation-${++sequence}` });
     const instance = engine;
-    return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
+    return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
   return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; },
     replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); if (snapshot.value) owners.set(key(snapshot.resource), snapshot.value.userId); version += 1; } };
