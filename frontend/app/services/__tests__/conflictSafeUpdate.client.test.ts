@@ -69,6 +69,24 @@ describe('conflictSafeUpdate', () => {
     store['note-1'] = { content: 'server text' };
   });
 
+  /**
+   * A collection on the engine takes no legacy write. The outbox replay and the conflict banner's
+   * "keep mine" used to send one anyway after the closure — a network write the rules refused, or,
+   * offline, one that waited in the SDK's queue.
+   */
+  it('refuses a legacy write to a collection on the engine before touching the database', async () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups';
+    try {
+      const groupRef = { __id: 'note-1', parent: { id: 'groups' } } as never;
+      await expect(conflictSafeUpdate(groupRef, { content: 'my edit' }, 'missing', { aggregate: 'note', expectedRevision: 0 }))
+        .rejects.toMatchObject({ code: 'data-engine-required' });
+      expect(store['note-1'].content).toBe('server text');
+      expect(updateDocMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    }
+  });
+
   it('treats a missing counter as 0, so no migration is needed', () => {
     expect(readRevision({}, 'note')).toBe(0);
     expect(readRevision({ rev: { note: 7 } }, 'note')).toBe(7);

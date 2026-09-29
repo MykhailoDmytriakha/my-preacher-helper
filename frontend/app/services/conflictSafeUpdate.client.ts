@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { auth } from '@/services/firebaseAuth.service';
 import { enqueueWrite, newIntentId } from '@/services/writeOutbox.client';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -381,6 +382,11 @@ export async function conflictSafeUpdate(
   notFoundMessage: string,
   { aggregate, expectedRevision, outboxRoute, expectedBaseline }: ConflictSafeUpdateOptions
 ): Promise<number> {
+  // A collection on the engine takes no legacy write — refused here, before a network write the
+  // rules would turn away or, offline, a write that would wait in the SDK's queue. The outbox
+  // replay and the conflict banner's "keep mine" then hand the text over as a downloadable copy.
+  const collection = ref.parent?.id;
+  if (collection) assertLegacyClientWriteAllowed(collection);
   // OFFLINE: queue the INTENT, never an unconditional write.
   //
   // A transaction cannot run without the server. Writing an ordinary patch instead
