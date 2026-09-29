@@ -5,6 +5,7 @@ import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import StepByStepWizard from '@/components/audio/StepByStepWizard';
 import useSermon from '@/hooks/useSermon';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
+import { __resetConnectivityForTests } from '@/utils/connectivity';
 
 if (!Blob.prototype.arrayBuffer) {
     Blob.prototype.arrayBuffer = function () {
@@ -153,6 +154,10 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         global.URL.createObjectURL = jest.fn().mockReturnValue('blob:url');
         global.URL.revokeObjectURL = jest.fn();
     });
+
+    // An API call in one test arms connectivity's 3 s recovery timer, which writes module-level
+    // state after the test ends. Nothing here reads it yet; reset so no later test inherits it.
+    afterEach(() => __resetConnectivityForTests());
 
     it('renders step 1 with provider, voice and the next button', () => {
         render(<StepByStepWizard {...defaultProps} />);

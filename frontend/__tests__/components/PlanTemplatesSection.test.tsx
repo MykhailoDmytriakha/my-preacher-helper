@@ -123,18 +123,34 @@ describe('PlanTemplatesSection', () => {
     // The hook mock never feeds back the saved structure, so if the board read
     // straight from the cache the point would never render. The local draft
     // buffer must show it on Enter — regression guard for the ~1s "it vanished".
-    mockTemplates = [tpl('t1', 'Alpha', 0)];
-    render(<PlanTemplatesSection user={user} />);
+    //
+    // Fake timers: the edit is saved on a 400 ms debounce. Left pending on real timers it
+    // fired inside whichever test ran next and added a call to that test's count — the
+    // flake of 'brings the choice back when the resend is refused LATE' on a busy machine.
+    jest.useFakeTimers();
+    try {
+      mockTemplates = [tpl('t1', 'Alpha', 0)];
+      render(<PlanTemplatesSection user={user} />);
 
-    fireEvent.click(screen.getByLabelText('common.expand'));
-    fireEvent.click(screen.getAllByText('structure.addPointButton')[0]); // Introduction column
+      fireEvent.click(screen.getByLabelText('common.expand'));
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]); // Introduction column
 
-    const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-    fireEvent.change(pointInput, { target: { value: 'New point' } });
-    fireEvent.keyDown(pointInput, { key: 'Enter' });
+      const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'New point' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
 
-    // Visible right away — no waitFor, no updateTemplate round-trip needed.
-    expect(screen.getByText('New point')).toBeInTheDocument();
+      // Visible right away — no waitFor, no updateTemplate round-trip needed.
+      expect(screen.getByText('New point')).toBeInTheDocument();
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      act(() => { jest.advanceTimersByTime(400); });
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(mockUpdate).toHaveBeenCalledWith('t1', { structure: expect.objectContaining({
+        introduction: [expect.objectContaining({ text: 'New point' })],
+      }) }, 0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
