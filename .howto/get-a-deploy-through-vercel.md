@@ -14,14 +14,14 @@ A push to `main` deploys through Vercel, and the build runs the whole Jest suite
 - After async work, wait for the CONDITION (`waitFor`, `findBy*`), never for a guessed number of microtask flushes.
 - The build runs the suite with the production environment. A switch that changes which code path a screen takes must be cleared in `frontend/jest.setup.js` (it deletes `NEXT_PUBLIC_USE_CLIENT_*`, the DataEngine switches, `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXT_PUBLIC_ENABLE_TEST_LOGIN`). Simulate the build env by setting the variable on a local run, e.g. `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils DATA_ENGINE_COLLECTIONS=councils npm run test:fast`.
 - Watch the result through the commit status, not the deployments list: `gh api repos/MykhailoDmytriakha/my-preacher-helper/commits/<sha>/status` shows the `Vercel` context as `pending` from the start of the build and `success`/`failure` at the end, with the build URL. The `/deployments` list got the entry only when the build finished (2026-09-28: `8359ece9` pending for about ten minutes and absent from that list), so a wait loop on it looks like "no deploy".
-- A test that walks the filesystem as a gate must skip what git does not track: `app/dev/` is gitignored and exists on one disk only. See `NOT_IN_THE_REPOSITORY` in `frontend/__tests__/architecture/writesGoThroughTheInterface.test.ts`.
+- A test that walks the filesystem as a gate must skip what git does not track: `app/dev/` is gitignored and exists on one disk only. Use `applicationFiles` from `frontend/__tests__/architecture/firestoreBoundary.ts`.
 
 ## When it goes wrong
 
 - A deployment shows as CANCELED: either the ignore step skipped it — then its log has a `vercel-ignore-build: skip - …` line with the reason — or Vercel dropped it from the queue for a newer commit. To force a build anyway, redeploy it from the dashboard with "Use project's Ignore Build Step" unchecked.
 - Read the failing deployment's own log: `npx vercel inspect <dpl_id> --logs`. Reproduce locally with `npm run build` (it runs `test:build` first), but not while `next dev` runs from the same `.next`.
 - Green locally, red on the build machine: make the same failure appear locally with a perturbation. Delaying an awaited rejection by 30 ms turned the old assertion red and the fixed one green. If you could not reproduce it, say so plainly; a fix you have not reproduced is a guess.
-- A guard test red on one machine and green on another measured the working copy. `applicationFiles` in `frontend/__tests__/architecture/firestoreBoundary.ts` does not skip `dev` yet: on a disk with `app/dev/` pages, `dataEngineBoundary.test.ts` fails on `dev/...` entries (seen 2026-09-27) while the build machine has none.
+- A guard test red on one machine and green on another measured the working copy. Every architecture guard walks the app through `applicationFiles` and `NOT_IN_THE_REPOSITORY` in `frontend/__tests__/architecture/firestoreBoundary.ts`, which skip the gitignored `app/dev/` (fixed 2026-09-29; before that `dataEngineBoundary.test.ts` failed on `dev/...` entries on one disk). A new guard reuses that walk instead of writing its own.
 
 ## Why
 

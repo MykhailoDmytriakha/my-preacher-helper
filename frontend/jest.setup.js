@@ -179,8 +179,11 @@ afterAll(() => {
 // Use React's actual roots and portals. A separate mock root loses provider context
 // and recreates children on rerender; nested portals then compete for document.body.
 // Unmount before removing manually appended fixtures, so React still owns its nodes.
+// Nothing on the page means nothing mounted: RTL's containers live in document.body. Skip
+// loading RTL then, so files that never render do not pay for it. A test that renders into a
+// container outside document.body must call cleanup() itself.
 afterEach(() => {
-  if (typeof document !== 'undefined') {
+  if (typeof document !== 'undefined' && document.body.childElementCount > 0) {
     require('@testing-library/react/pure').cleanup();
     document.body.replaceChildren();
   }

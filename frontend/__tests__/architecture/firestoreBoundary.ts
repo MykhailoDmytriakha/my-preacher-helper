@@ -272,10 +272,16 @@ export function firestoreCalls(program: ts.Program, files: readonly string[], ro
     if (!source) throw new Error(`Missing architecture source: ${file}`);
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node)) {
-        const declaration = checker.getResolvedSignature(node)?.declaration;
-        if (declaration && sdk(declaration.getSourceFile().fileName)) {
-          const name = 'name' in declaration ? declaration.name?.getText() : undefined;
-          if (name && OPERATIONS.has(name)) calls.push({ file: path.relative(root, file), operation: name, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
+        // The callee's own type says which function is called. Resolving the full signature also
+        // infers every argument and made this pass ~30x slower with the same result (2026-09-29:
+        // 848 = 848 SDK calls across app/). Non-nullable keeps optional calls (`user?.getIdToken()`).
+        const declarations = checker.getNonNullableType(checker.getTypeAtLocation(node.expression)).getCallSignatures()
+          .map(signature => signature.declaration);
+        const names = new Set(declarations.flatMap(declaration => (
+          declaration && sdk(declaration.getSourceFile().fileName) && 'name' in declaration && declaration.name ? [declaration.name.getText()] : []
+        )));
+        for (const name of names) {
+          if (OPERATIONS.has(name)) calls.push({ file: path.relative(root, file), operation: name, line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1 });
         }
       }
       ts.forEachChild(node, visit);
@@ -285,10 +291,21 @@ export function firestoreCalls(program: ts.Program, files: readonly string[], ro
   return calls;
 }
 
+/**
+ * THE REPOSITORY, NOT THE WORKING COPY — learned from a failed production build.
+ *
+ * `app/dev/` is gitignored (`/frontend/app/dev/` in the root .gitignore), so its scratch pages exist
+ * on the machine that wrote them and nowhere else. Counting them froze a budget for files the build
+ * machine has never seen: every check passed locally and the honesty test failed in CI. The same
+ * folder made the SDK boundary fail on one disk only. Every architecture guard walks the app through
+ * this one list.
+ */
+export const NOT_IN_THE_REPOSITORY = new Set(['__tests__', 'node_modules', 'dev']);
+
 export function applicationFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) return ['__tests__', 'node_modules'].includes(entry.name) ? [] : applicationFiles(full);
+    if (entry.isDirectory()) return NOT_IN_THE_REPOSITORY.has(entry.name) ? [] : applicationFiles(full);
     return /\.tsx?$/.test(entry.name) && !/\.(?:test|d)\.tsx?$/.test(entry.name) ? [full] : [];
   });
 }

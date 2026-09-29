@@ -37,6 +37,11 @@ const config: Config = {
     // allowing parser integration tests to explicitly jest.unmock it.
     '^music-metadata$': '<rootDir>/node_modules/music-metadata/lib/index.js',
     '^file-type$': '<rootDir>/node_modules/file-type/index.js',
+    // Two aria-query copies are installed: 5.3.0 pinned inside @testing-library/dom and 5.3.2
+    // on top for jest-dom (range ^5.0.0). Every test file loaded both role tables. Point
+    // jest-dom at the pinned copy so each file loads one. If a dependency update removes this
+    // nested path, Jest stops before any test with "Could not locate module": delete this line.
+    '^aria-query$': '<rootDir>/node_modules/@testing-library/dom/node_modules/aria-query',
     // Handle module aliases (aligning with tsconfig.json)
     // Specific paths first
     '^@components/(.*)$': '<rootDir>/app/components/$1',

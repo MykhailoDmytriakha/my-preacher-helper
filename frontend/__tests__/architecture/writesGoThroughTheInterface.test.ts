@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { applicationFiles } from './firestoreBoundary';
+
 /**
  * FREEZE DIRECT-WRITE DEBT IN THE LEGACY PATH.
  *
@@ -104,31 +106,9 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
 const DIRECT_WRITE =
   /\b(?:updateDoc|setDoc|writeBatch|runTransaction)\s*\(|\b(?:batch|tx|transaction)\.(?:update|set)\s*\(/g;
 
-/**
- * THE REPOSITORY, NOT THE WORKING COPY — learned from a failed production build.
- *
- * `app/dev/` is gitignored (`.gitignore:67`), so its scratch pages exist on the machine that
- * wrote them and nowhere else. Counting them froze a budget for files the build machine has
- * never seen: every check passed locally and the honesty test failed in CI, blocking a deploy
- * over a difference that was never about the codebase at all.
- *
- * A guard that measures whatever happens to be on one disk is measuring the wrong thing.
- */
-const NOT_IN_THE_REPOSITORY = new Set(['__tests__', 'node_modules', 'dev']);
-
-function sourceFiles(dir: string): string[] {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      return NOT_IN_THE_REPOSITORY.has(entry.name) ? [] : sourceFiles(full);
-    }
-    return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [full] : [];
-  });
-}
-
 function countDirectWrites(): Record<string, number> {
   const counts: Record<string, number> = {};
-  sourceFiles(APP_ROOT).forEach((file) => {
+  applicationFiles(APP_ROOT).forEach((file) => {
     const relative = path.relative(APP_ROOT, file);
     if (relative.startsWith('api' + path.sep)) return;
     // The receipt transaction is the new canonical adapter; its boundary is type-checked
