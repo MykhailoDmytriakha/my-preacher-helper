@@ -82,6 +82,21 @@ describe('FlowItemRow', () => {
         expect(screen.queryByText(/leader notes/i)).not.toBeInTheDocument();
     });
 
+    it('leaves Enter on an inner button to that button, and selects the row on its own Enter', () => {
+        // BUG-20260927-flow-row-enter-hijacks-inner-buttons
+        const onSelect = jest.fn();
+        render(<FlowItemRow {...defaultProps} onSelect={onSelect} template={{ ...mockTemplate, status: 'filled' }} />);
+
+        const statusDot = screen.getByTitle('Filled');
+        const pressed = fireEvent.keyDown(statusDot, { key: 'Enter' });
+        expect(onSelect).not.toHaveBeenCalled();
+        expect(pressed).toBe(true); // not prevented: the button's own activation stays
+
+        const row = statusDot.closest('[role="button"]') as HTMLElement;
+        fireEvent.keyDown(row, { key: 'Enter' });
+        expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+
     it('renders correct status color and label', () => {
         const { rerender } = render(<FlowItemRow {...defaultProps} template={{ ...mockTemplate, status: 'filled' }} />);
         const statusDot = screen.getByTitle('Filled'); // default label

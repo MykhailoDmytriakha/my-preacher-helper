@@ -104,6 +104,8 @@ export default function FlowItemRow({
             tabIndex={0}
             onClick={onSelect}
             onKeyDown={(event) => {
+                // A key pressed on an inner control (status dot, menu) belongs to that control.
+                if (event.target !== event.currentTarget) return;
                 if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     onSelect();
