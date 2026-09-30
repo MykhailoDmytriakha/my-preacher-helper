@@ -453,6 +453,32 @@ describe('openAI.client additional coverage', () => {
         .toEqual(expect.objectContaining({ userId: baseSermon.userId }));
     });
 
+    it('returns every thought of the column exactly once when the model repeats a key', async () => {
+      // BUG-20260929-ai-sort-keeps-duplicate-thoughts: a repeated key must not repeat the thought.
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [
+            { key: 'efgh', outlinePoint: 'Main Point' },
+            { key: 'abcd' },
+            { key: 'efgh' },
+          ],
+        },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', items, baseSermon, outlinePoints);
+
+      expect(result.map(item => item.id)).toEqual([
+        'efgh-2222-2222-2222-222222222222',
+        'abcd-1111-1111-1111-111111111111',
+        'ijkl-3333-3333-3333-333333333333',
+      ]);
+      // The first mention decides: its assignment is kept.
+      expect(result[0].outlinePointId).toBe('op-1');
+    });
+
     it('matches outline points by substring when exact match fails', async () => {
       const substringItems: ThoughtInStructure[] = [
         { id: 'zzzz-1111-1111-1111-111111111111', content: 'Substring thought' },

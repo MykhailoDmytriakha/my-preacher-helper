@@ -400,10 +400,15 @@ function extractSortedKeysAndAssignments(
 
   const outlinePointAssignments: Record<string, string> = {};
   const subPointAssignments: Record<string, string> = {};
+  // A model can name one thought twice; the column must still hold each thought once. The first
+  // mention decides its place and its assignment (BUG-20260929-ai-sort-keeps-duplicate-thoughts).
+  const seenKeys = new Set<string>();
   const aiSortedKeys = sortedItems
     .map((aiItem: SortedItemResponse) => {
       if (aiItem && typeof aiItem.key === 'string') {
         const itemKey = aiItem.key.trim();
+        if (seenKeys.has(itemKey)) return null;
+        seenKeys.add(itemKey);
 
         if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
           outlinePointAssignments[itemKey] = aiItem.outlinePoint;
