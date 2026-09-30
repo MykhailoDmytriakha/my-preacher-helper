@@ -28,6 +28,13 @@ export function seriesFormValues(series?: Series): SeriesFormValues {
   };
 }
 
+/** The translation key of the first required field left empty, or null when the form may be saved. */
+export function missingSeriesField(values: SeriesFormValues): string | null {
+  if (!values.title.trim()) return 'workspaces.series.form.title';
+  if (!values.bookOrTopic.trim()) return 'workspaces.series.form.bookOrTopic';
+  return null;
+}
+
 export function seriesFormPatch(values: SeriesFormValues) {
   return {
     title: values.title.trim(), theme: values.title.trim(), description: values.description.trim() || undefined,

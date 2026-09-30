@@ -9,7 +9,7 @@ import { useDataDocument } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
-import SeriesFormFields, { seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
+import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { Series } from '@/models/models';
@@ -24,6 +24,8 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
   const document = useDataDocument({ collection: 'series', id: seriesId }, { create: true, autoSave: false, slot: 'series-create' });
   const [saving, setSaving] = useState(false), [restored, setRestored] = useState(!recoveryId);
   const [failure, setFailure] = useState<string | null>(null);
+  // An empty required field is the form's own message; the sync status speaks only of delivery.
+  const [missing, setMissing] = useState<string | null>(null);
   const attempted = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
@@ -35,18 +37,21 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
   }, [document, recoveryId]);
   const values = seriesFormValues((document.data ?? initial) as unknown as Series);
   const change = (patch: Partial<SeriesFormValues>) => {
+    setMissing(null);
     void document.update(current => ({ ...(current ?? initial), ...patch,
       ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData).catch(() => undefined);
   };
   const create = async () => {
     if (saving || document.loading || !restored) return;
+    const empty = missingSeriesField(values);
+    setMissing(empty ? t('common.fillRequiredField', { field: t(empty) }) : null);
+    if (empty) return;
     setSaving(true); setFailure(null);
     try {
       await document.commit(current => {
         const draft = current ?? initial, form = seriesFormValues(draft as unknown as Series);
-        if (!form.title.trim() || !form.bookOrTopic.trim()) throw new Error(t('common.fillRequiredField', {
-          field: t(!form.title.trim() ? 'workspaces.series.form.title' : 'workspaces.series.form.bookOrTopic'),
-        }));
+        const emptyNow = missingSeriesField(form);
+        if (emptyNow) throw new Error(t('common.fillRequiredField', { field: t(emptyNow) }));
         return deepCleanUndefined({ ...draft, ...seriesFormPatch(form) }) as DocumentData;
       });
       if (mounted.current) onQueued(seriesId);
@@ -64,6 +69,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
       <fieldset disabled={busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
       </fieldset>
+      {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
       <DataSyncStatus status={document.status} error={failure ?? document.error} onRetry={async () => {
         if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
         else await document.retry();

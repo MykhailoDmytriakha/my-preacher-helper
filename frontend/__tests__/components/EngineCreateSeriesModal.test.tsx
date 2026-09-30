@@ -49,6 +49,8 @@ it('reports missing fields and accepts an offline creation without claiming serv
   fireEvent.change(title, { target: { value: 'Offline series' } });
   fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.createSeries' }));
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('common.fillRequiredField'));
+  // An empty field is the form's message, not a delivery failure: nothing to retry.
+  expect(screen.queryByRole('button', { name: 'dataSync.retry' })).not.toBeInTheDocument();
   expect(onQueued).not.toHaveBeenCalled();
   fireEvent.change(screen.getByPlaceholderText('workspaces.series.form.bookOrTopicPlaceholder'), { target: { value: 'Romans' } });
   fireEvent.submit(title.closest('form')!);

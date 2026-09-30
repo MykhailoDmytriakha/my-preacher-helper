@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
@@ -8,7 +8,7 @@ import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
-import SeriesFormFields, { seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
+import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { Series } from '@/models/models';
@@ -27,15 +27,20 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       preview: record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500) })),
     recover: form.recover });
   const values = seriesFormValues(form.data as unknown as Series | undefined);
+  // An empty required field is the form's own message; the sync status speaks only of delivery.
+  const [missing, setMissing] = useState<string | null>(null);
   const change = (patch: Partial<SeriesFormValues>) => {
+    setMissing(null);
     void form.update(current => ({ ...current, ...patch, ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData).catch(() => undefined);
   };
   const save = async () => {
+    const empty = missingSeriesField(values);
+    setMissing(empty ? t('common.fillRequiredField', { field: t(empty) }) : null);
+    if (empty) return;
     await form.save(current => {
       const values = seriesFormValues(current as unknown as Series);
-      if (!values.title.trim() || !values.bookOrTopic.trim()) throw new Error(t('common.fillRequiredField', {
-        field: t(!values.title.trim() ? 'workspaces.series.form.title' : 'workspaces.series.form.bookOrTopic'),
-      }));
+      const emptyNow = missingSeriesField(values);
+      if (emptyNow) throw new Error(t('common.fillRequiredField', { field: t(emptyNow) }));
       return deepCleanUndefined({ ...current, ...seriesFormPatch(values) }) as DocumentData;
     });
     onClose();
@@ -51,6 +56,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       <fieldset disabled={loading || !form.active || form.busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
+      {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
       <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
