@@ -60,6 +60,11 @@ describe('markdownUtils', () => {
   });
 
   describe('normalizePlanPointHeadings', () => {
+    it('leaves a tilde code block as it is and still normalizes the heading after it', () => {
+      const input = '~~~\n```\n## Inside:\n~~~\n## After:';
+      expect(normalizePlanPointHeadings(input)).toBe('~~~\n```\n## Inside:\n~~~\n## After');
+    });
+
     it('returns empty for null/undefined/empty input', () => {
       expect(normalizePlanPointHeadings(null as unknown as string)).toBe('');
       expect(normalizePlanPointHeadings(undefined as unknown as string)).toBe('');

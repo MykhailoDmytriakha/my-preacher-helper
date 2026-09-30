@@ -24,6 +24,13 @@ const NOTE = [
   'Ещё текст.',
 ].join('\n');
 
+describe('splitNoteIntoSections and code blocks (BUG-20260927-note-sections-ignore-fence-length)', () => {
+  it('does not start a section at a heading inside a longer fence that quotes a shorter one', () => {
+    const sections = splitNoteIntoSections('````\n```\n# Inside code\n```\n````\n# Real\nbody');
+    expect(sections.map(section => section.heading)).toEqual(['', 'Real']);
+  });
+});
+
 describe('splitNoteIntoSections', () => {
   it('keeps the author own lines: preamble first, then a section per heading', () => {
     const sections = splitNoteIntoSections(NOTE);

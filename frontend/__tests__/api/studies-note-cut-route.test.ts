@@ -182,6 +182,11 @@ describe('POST /api/studies/notes/:id/cut', () => {
 });
 
 describe('grounding helpers', () => {
+  it('does not read a heading inside a longer fence that quotes a shorter one', () => {
+    const headings = collectNoteHeadings('````\n```\n# Inside\n```\n````\n# Real\n');
+    expect([...headings.values()]).toEqual(['Real']);
+  });
+
   it('collects headings as written, ignoring emphasis and fenced code', () => {
     const headings = collectNoteHeadings('# **Первая** тема\ntext\n```\n# not a heading\n```\n## Вторая ##\n');
     expect(Array.from(headings.values())).toEqual(['Первая тема', 'Вторая']);

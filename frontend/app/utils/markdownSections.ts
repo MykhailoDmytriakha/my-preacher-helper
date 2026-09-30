@@ -1,3 +1,5 @@
+import { createFenceTracker } from '@/utils/markdownFence';
+
 /**
  * Splits a markdown document into the section tree its headings already describe.
  *
@@ -46,7 +48,6 @@ const stripInlineMarkdown = (text: string): string =>
         .replace(/(\*|_)(.*?)\1/g, '$2')
         .replace(/~~(.*?)~~/g, '$1')
         .trim();
-const FENCE = /^\s*(```|~~~)/;
 
 type Draft = Omit<MarkdownSection, 'body' | 'children'> & { bodyLines: string[]; children: Draft[] };
 
@@ -74,14 +75,10 @@ export const splitMarkdownSections = (content: string): MarkdownOutline => {
     const roots: Draft[] = [];
     /** Open ancestors, outermost first. The last entry owns the lines being read. */
     const stack: Draft[] = [];
-    let inFence = false;
+    const fence = createFenceTracker();
 
     for (const line of content.split('\n')) {
-        if (FENCE.test(line)) {
-            inFence = !inFence;
-        }
-
-        const match = inFence ? null : line.match(HEADING);
+        const match = fence.isCode(line) ? null : line.match(HEADING);
         if (!match) {
             (stack.length ? stack[stack.length - 1].bodyLines : introLines).push(line);
             continue;

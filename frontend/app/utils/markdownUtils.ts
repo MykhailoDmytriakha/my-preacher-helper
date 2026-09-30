@@ -1,3 +1,5 @@
+import { createFenceTracker } from '@/utils/markdownFence';
+
 /**
  * Utility functions for markdown content sanitization and processing
  */
@@ -69,18 +71,13 @@ export const normalizePlanPointHeadings = (content: string): string => {
 
   const lines = content.split('\n');
   const out: string[] = [];
-  let inCodeBlock = false;
+  const fence = createFenceTracker();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    if (/^```/.test(trimmed)) {
-      inCodeBlock = !inCodeBlock;
-      out.push(line);
-      continue;
-    }
-    if (inCodeBlock) {
+    if (fence.isCode(line)) {
       out.push(line);
       continue;
     }

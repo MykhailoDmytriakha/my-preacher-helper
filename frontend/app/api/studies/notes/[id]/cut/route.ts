@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { createFenceTracker } from '@/utils/markdownFence';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -90,14 +91,10 @@ const normalizeHeading = (value: string) =>
 /** Headings as the note actually writes them, so a model-invented one can be told apart. */
 export function collectNoteHeadings(content: string): Map<string, string> {
   const headings = new Map<string, string>();
-  let inFence = false;
+  const fence = createFenceTracker();
   for (const raw of content.split('\n')) {
+    if (fence.isCode(raw)) continue;
     const line = raw.trim();
-    if (line.startsWith('```')) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
     const match = /^#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
     if (!match) continue;
     const text = match[1].replace(/[*_`]/g, '').trim();

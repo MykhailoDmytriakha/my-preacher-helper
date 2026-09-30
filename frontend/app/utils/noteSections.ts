@@ -1,3 +1,5 @@
+import { createFenceTracker } from '@/utils/markdownFence';
+
 /**
  * A STUDY NOTE, BROKEN INTO THE SECTIONS ITS AUTHOR WROTE.
  *
@@ -34,7 +36,7 @@ export function splitNoteIntoSections(content: string): NoteSection[] {
   const sections: NoteSection[] = [];
   let heading = '';
   let lines: string[] = [];
-  let inFence = false;
+  const fence = createFenceTracker();
 
   const flush = () => {
     const text = lines.join('\n').trim();
@@ -44,8 +46,7 @@ export function splitNoteIntoSections(content: string): NoteSection[] {
 
   for (const raw of content.split('\n')) {
     const line = raw.trim();
-    if (line.startsWith('```')) inFence = !inFence;
-    const match = inFence ? null : HEADING.exec(line);
+    const match = fence.isCode(raw) ? null : HEADING.exec(line);
     if (match) {
       flush();
       heading = match[1].replace(/[*_`]/g, '').trim();

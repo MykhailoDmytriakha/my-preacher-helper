@@ -5,6 +5,18 @@ import {
   splitMarkdownSections,
 } from '@/utils/markdownSections';
 
+describe('splitMarkdownSections and code blocks (BUG-20260927-note-sections-ignore-fence-length)', () => {
+  it('keeps a heading inside a longer fence that quotes a shorter one as text', () => {
+    const outline = splitMarkdownSections('````\n```\n# Inside code\n```\n````\n# Real heading\nbody');
+    expect(outline.sections.map(section => section.headingText)).toEqual(['Real heading']);
+  });
+
+  it('does not let a backtick line close a tilde fence, so the heading after the block stays a section', () => {
+    const outline = splitMarkdownSections('~~~\n```\n~~~\n# Real heading\nbody');
+    expect(outline.sections.map(section => section.headingText)).toEqual(['Real heading']);
+  });
+});
+
 describe('splitMarkdownSections', () => {
   it('returns an empty outline for empty input', () => {
     expect(splitMarkdownSections('')).toEqual({ intro: '', sections: [] });
