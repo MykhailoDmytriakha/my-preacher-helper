@@ -39,7 +39,7 @@ function setup(overrides: Partial<ReturnType<typeof useScratchDataDocument>> = {
     listRecoverable: jest.fn(async (): Promise<RecoveryCheckpoint[]> => []), recover: jest.fn(async () => undefined),
     ...overrides,
   } as ReturnType<typeof useScratchDataDocument>;
-  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null });
+  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null, failureCount: 0 });
   jest.mocked(useScratchDataDocument).mockImplementation(() => scratch);
   return scratch;
 }
@@ -176,7 +176,7 @@ describe('EngineScratchWorkspace', () => {
     const publish = jest.fn(); const view = render(<EngineScratchWorkspace sermonId="sermon" onConfirmed={publish} />);
     const oldActions = statusProps();
     expect(statusProps().recoveryLoading).toBe(true);
-    jest.mocked(useDataEngine).mockReturnValue({ owner: null, browser: null, error: null });
+    jest.mocked(useDataEngine).mockReturnValue({ owner: null, browser: null, error: null, failureCount: 0 });
     scratch.recoveryIdentity = {};
     view.rerender(<EngineScratchWorkspace sermonId="sermon" onConfirmed={publish} />);
     await act(async () => { pending.resolve([recovered('old-account')]); });

@@ -29,7 +29,10 @@ export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 interface EngineContextValue {
   browser: BrowserDataEngine | null;
   owner: string | null;
+  /** The last background failure of this owner's engine; see `useBackgroundFailure` for who may show it. */
   error: string | null;
+  /** Counts background failures; a screen compares it with the count when it started waiting. */
+  failureCount: number;
 }
 const EngineContext = createContext<EngineContextValue | null>(null);
 const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
@@ -116,10 +119,14 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const owner = user?.uid ?? null;
   const [mounted, setMounted] = useState<{ owner: string | null; browser: BrowserDataEngine } | null>(null);
-  const [failure, setFailure] = useState<{ owner: string | null; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ owner: string | null; message: string; count: number } | null>(null);
   useEffect(() => {
     let active = true;
-    const instance = createBrowserDataEngine({ onError: error => { if (active) setFailure({ owner, message: message(error) }); } });
+    const instance = createBrowserDataEngine({ onError: error => {
+      // The engine's own sentence is for developers; a screen that shows this failure says it in words.
+      console.error('DataEngine background operation failed', error);
+      if (active) setFailure(previous => ({ owner, message: message(error), count: (previous?.count ?? 0) + 1 }));
+    } });
     instance.engine.setOwner(owner);
     setFailure(null);
     setMounted({ owner, browser: instance });
@@ -127,7 +134,8 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
   }, [owner]);
   const browser = mounted?.owner === owner ? mounted.browser : null;
   const error = failure?.owner === owner ? failure.message : null;
-  const value = useMemo(() => ({ browser, owner, error }), [browser, owner, error]);
+  const failureCount = failure?.owner === owner ? failure.count : 0;
+  const value = useMemo(() => ({ browser, owner, error, failureCount }), [browser, owner, error, failureCount]);
   return <EngineContext.Provider value={value}>{children}</EngineContext.Provider>;
 }
 
@@ -266,7 +274,33 @@ export function useDocumentActions() {
  * missing provider there is a mistake — but a collection read from a screen that also runs
  * without the engine is an absence of rows, not a programming error.
  */
-const idleEngine: EngineContextValue = { browser: null, owner: null, error: null };
+const idleEngine: EngineContextValue = { browser: null, owner: null, error: null, failureCount: 0 };
+
+/*
+ * A BACKGROUND FAILURE EXPLAINS ONLY A WAIT IT HAPPENED DURING
+ * (BUG-20260927-engine-background-error-sticks-on-every-screen).
+ *
+ * The engine reports failures of its background work — a list read, delivery preparation — with no
+ * address. Handed to every screen, the last one stood as a red developer sentence over screens it
+ * had nothing to do with, and pages read it as "could not load" and hid what they already showed.
+ * It may only explain a screen that has nothing to show and began waiting before it happened; a
+ * screen with content, or one that started waiting after it, is not told, and the one that is
+ * told reads a sentence in words, not the engine's. A list's own failure still reaches that list
+ * through its own state.
+ */
+function useBackgroundFailure(waitIdentity: object | null): string | null {
+  const { t } = useTranslation();
+  const { error, failureCount } = useContext(EngineContext) ?? idleEngine;
+  const [since, setSince] = useState<{ identity: object; count: number } | null>(null);
+  const latestCount = useRef(failureCount);
+  latestCount.current = failureCount;
+  useEffect(() => {
+    if (waitIdentity) setSince({ identity: waitIdentity, count: latestCount.current });
+  }, [waitIdentity]);
+  return error && waitIdentity && since?.identity === waitIdentity && failureCount > since.count
+    ? t('dataSync.backgroundFailure')
+    : null;
+}
 
 /** Explicit semantic actions over an engine-owned pinned stage; no feature queue or ancestry. */
 export function useDataMembership() {
@@ -438,7 +472,7 @@ const aborted = () => Object.assign(new Error('Editor recovery was cancelled'), 
 function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default', create = false, autoSave = true, autoSaveDelayMs = 750, readOnlyCopy = false }: DocumentOptions = {}) {
   // The app-wide banner answers drafts under this slot; a screen editor there would be settled behind its back.
   if (slot === ACTION_SLOT) throw new Error(`The "${ACTION_SLOT}" slot is reserved for one-shot actions`);
-  const { browser, owner, error: engineError } = useDataEngine();
+  const { browser, owner } = useDataEngine();
   const readOnlyReason = useReadOnlyReason();
   const collection = resource?.collection ?? null, id = resource?.id ?? null;
   const key = JSON.stringify([collection, id, slot, create]);
@@ -495,6 +529,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   // Owner and resource identity gate rendering before effect cleanup can run.
   const current = opened?.identity === identity ? opened : null;
+  const backgroundFailure = useBackgroundFailure(browser && owner && collection && id ? identity : null);
 
   /*
    * AN OPENING THAT DOES NOT ANSWER IS NOT WAITED ON IN FRONT OF THE PERSON
@@ -629,10 +664,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     readOnly: Boolean(copy),
     copySource: copy?.source ?? null,
     readOnlyReason: copy ? readOnlyReason() : null,
-    // A background failure elsewhere in the engine never replaces a copy shown for reading: pages
-    // treat `error` as "could not load", and it once turned the preaching view of a sermon the
-    // screen already held into an error page (BUG-20260927-engine-background-error-sticks-on-every-screen).
-    error: error ?? current?.state.error ?? (copy ? null : engineError),
+    // A background failure elsewhere in the engine never reaches an open document or a copy shown
+    // for reading: pages treat `error` as "could not load" (see useBackgroundFailure).
+    error: error ?? current?.state.error ?? (copy || current ? null : backgroundFailure),
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
       return run(editor => editor.edit(value));
@@ -677,9 +711,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
 /** Collection snapshots retain tombstones so a remote deletion is distinguishable from an incomplete list. */
 export function useDataCollection(collection: string | null) {
-  const { browser, owner, error: engineError } = useContext(EngineContext) ?? idleEngine;
+  const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   const [attempt, setAttempt] = useState(0);
   const identity = useMemo(() => ({ owner, browser, collection, attempt }), [owner, browser, collection, attempt]);
+  const backgroundFailure = useBackgroundFailure(browser && owner && collection ? identity : null);
   const scope = useRef(identity); scope.current = identity;
   const subscription = useRef<{ identity: object; watching: boolean } | null>(null);
   const mounted = useRef(false);
@@ -738,8 +773,9 @@ export function useDataCollection(collection: string | null) {
     }
   });
   const copy = waiting && copied?.identity === identity ? copied : null;
-  // The engine's background failure neither stops a waiting list from being offered a copy nor hides one.
-  const error = ownError ?? (copy ? null : engineError);
+  // The engine's background failure explains only a list still waiting (see useBackgroundFailure);
+  // it neither stops that list from being offered a copy nor hides one.
+  const error = ownError ?? (copy || !waiting ? null : backgroundFailure);
   return {
     state: copy ? copy.state : state,
     loading: waiting && !copy && !error,

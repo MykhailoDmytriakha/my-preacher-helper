@@ -422,12 +422,12 @@ describe('React DataEngine contract', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('does not open without a resource and exposes provider background errors', async () => {
+  it('does not open without a resource and stays silent about background failures elsewhere', async () => {
     const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result } = renderHook(() => useDataDocument(null), { wrapper: Wrapper });
     expect(result.current.loading).toBe(false); expect(b.engine.openEditor).not.toHaveBeenCalled();
     await act(async () => jest.mocked(createBrowserDataEngine).mock.calls[0][0]?.onError?.(new Error('storage failed')));
-    expect(result.current.error).toBe('storage failed');
+    expect(result.current.error).toBeNull();
     await expect(result.current.edit({ content: 'not ready' })).rejects.toThrow('not ready');
   });
 
@@ -733,5 +733,58 @@ describe('React collection and explicit recovery APIs', () => {
     owner('other'); rerender(); await waitFor(() => expect(second.engine.openEditor).toHaveBeenCalledTimes(1));
     await act(async () => { listing.resolve([]); await oldList.catch(() => undefined); });
     await expect(oldList).rejects.toThrow('active editor changed'); expect(result.current.error).toBeNull();
+  });
+});
+
+describe('a background failure elsewhere in the engine (BUG-20260927-engine-background-error-sticks-on-every-screen)', () => {
+  beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+  const failInBackground = (text: string) => act(async () => { jest.mocked(createBrowserDataEngine).mock.calls.at(-1)?.[0]?.onError?.(new Error(text)); });
+
+  it('does not reach a document that is already open', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
+
+    await failInBackground('Collection cache is unavailable');
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.data).toEqual({ content: 'base' });
+  });
+
+  it('does not reach a list that already shows its rows', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+    await act(async () => b.collectionWatches[0].next(collectionState([snapshot()])));
+
+    await failInBackground('Data engine unavailable');
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.state?.snapshots).toHaveLength(1);
+  });
+
+  it('does not explain a wait that began after it', async () => {
+    const b = makeBrowser(); b.engine.openEditor.mockImplementation(() => new Promise(() => undefined));
+    jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result, rerender } = renderHook(({ id }: { id: string | null }) => useDataDocument(id ? { ...resource, id } : null),
+      { wrapper: Wrapper, initialProps: { id: null as string | null } });
+    await failInBackground('an older failure');
+
+    rerender({ id: 'opened-later' });
+    await waitFor(() => expect(b.engine.openEditor).toHaveBeenCalled());
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('still explains a list that is waiting when it happens', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+
+    await failInBackground('Data engine unavailable');
+
+    expect(result.current.error).toBe('dataSync.backgroundFailure');
   });
 });

@@ -66,7 +66,8 @@ it('keeps local creation available when an unrelated background read fails', asy
   const title = await screen.findByPlaceholderText('workspaces.series.form.titlePlaceholder');
   await waitFor(() => expect(title).toBeEnabled());
   act(() => { harness.engine.setOnline(false); reportBackground(new Error('Quota exceeded')); });
-  expect(title).toBeEnabled(); expect(screen.getByRole('alert')).toHaveTextContent('Quota exceeded');
+  // Not this form's failure: it stays silent here (BUG-20260927-engine-background-error-sticks-on-every-screen).
+  expect(title).toBeEnabled(); expect(screen.queryByText('Quota exceeded')).not.toBeInTheDocument();
   fireEvent.change(title, { target: { value: 'Local during outage' } });
   fireEvent.change(screen.getByPlaceholderText('workspaces.series.form.bookOrTopicPlaceholder'), { target: { value: 'Romans' } });
   fireEvent.submit(title.closest('form')!);

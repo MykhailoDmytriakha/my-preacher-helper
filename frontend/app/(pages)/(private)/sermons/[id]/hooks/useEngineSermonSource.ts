@@ -20,7 +20,10 @@ export function useEngineSermonSource(sermonId: string) {
     : null, [document.data, sermonId]);
   const setSermon = useCallback(async (_updater: unknown) => undefined, []);
   const refreshSermon = useCallback(async () => { await document.retry().catch(() => undefined); }, [document]);
-  const error = useMemo(() => document.error ? new Error(document.error) : null, [document.error]);
+  // In the useSermon shape `error` means "could not load". A sermon on the screen has loaded; the
+  // document's own later failures (a save, a refusal) are said by DataSyncStatus above the page, and
+  // must not turn the page into an error screen (BUG-20260927-engine-background-error-sticks-on-every-screen).
+  const error = useMemo(() => document.error && !sermon ? new Error(document.error) : null, [document.error, sermon]);
   return {
     sermon, setSermon, loading: document.loading, error, isOnline,
     awaitingFirstAnswer: document.loading, refreshSermon,

@@ -465,7 +465,8 @@ describe('screens keep working while device storage does not answer', () => {
 
       failInBackground('Data engine unavailable');
 
-      expect(hook.result.current.error).toBe('Data engine unavailable');
+      // Said in words from the locales, not in the engine's developer sentence.
+      expect(hook.result.current.error).toBe('dataSync.backgroundFailure');
     });
 
     it('does not stop a list that is still waiting from being offered a copy', async () => {

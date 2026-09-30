@@ -121,6 +121,7 @@
     "removeCopyYes": "Yes, remove it"
   },
   "dataSync": {
+    "backgroundFailure": "Could not read the data right now. Try again in a moment.",
     "missingOpeningVersion": "This saved form lacks its original opening version. Copy the preserved text and start a new form.",
     "actionCancelled": "This action was cancelled.",
     "actionChecking": "Checking the saved action…",
