@@ -278,6 +278,18 @@ describe('useStudyNoteShareLinks', () => {
     });
   });
 
+  it('keeps one empty list while the links are not loaded, so screens memoized on it stay still', () => {
+    // BUG-20260809-studies-search-lag: a fresh [] on every render rebuilt the whole studies list per keystroke.
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseAuth.mockReturnValue({ user: null, loading: true, isAuthenticated: false });
+    const { result, rerender } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
+    const first = result.current.shareLinks;
+
+    rerender();
+
+    expect(result.current.shareLinks).toBe(first);
+  });
+
   it('throws when creating a share link without a uid', async () => {
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({

@@ -14,7 +14,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryState } from 'nuqs';
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
@@ -116,8 +116,17 @@ export default function StudiesPage() {
     );
   }, [availableTags, notes]);
 
-  // Trimmed search query for filtering and highlighting (from local mirror)
-  const searchQuery = useMemo(() => search.trim(), [search]);
+  /**
+   * The field answers the keystroke at once; the list follows when the browser is free
+   * (BUG-20260809-studies-search-lag). Filtering, snippets and highlighting of every card ran
+   * inside the keystroke itself, so with a few hundred notes each letter froze the field for
+   * a noticeable moment. The list below is built from this deferred value and memoized, so the
+   * urgent render of a keystroke reuses it untouched and a newer letter interrupts a stale one.
+   */
+  const deferredSearch = useDeferredValue(search);
+  const searchQuery = useMemo(() => deferredSearch.trim(), [deferredSearch]);
+  // The results still describe an earlier query: say so, and keep bulk actions off them until they catch up.
+  const resultsCatchingUp = search !== deferredSearch;
 
   // Tokenized search for multi-word matching (AND across tokens, order-agnostic)
   const searchTokens = useMemo(
@@ -241,6 +250,25 @@ export default function StudiesPage() {
     setShareNote(note);
   }, []);
 
+  // Same elements while the deferred query is unchanged: a keystroke's urgent render skips every card.
+  const noteCards = useMemo(
+    () =>
+      visibleNotes.map((note) => (
+        <StudyNoteCard
+          key={note.id}
+          note={note}
+          bibleLocale={bibleLocale}
+          isExpanded={expandedNoteIds.has(note.id)}
+          onToggleExpand={handleToggleNoteExpanded}
+          onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
+          searchQuery={searchQuery}
+          onShare={handleShareNote}
+          hasShareLink={shareLinksByNoteId.has(note.id)}
+        />
+      )),
+    [visibleNotes, bibleLocale, expandedNoteIds, handleToggleNoteExpanded, router, searchQuery, handleShareNote, shareLinksByNoteId]
+  );
+
   const clearFilters = () => {
     applySearch('');
     setTagFilter('');
@@ -347,7 +375,7 @@ export default function StudiesPage() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
           <div className="relative flex-1">
             <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-            {searchQuery && (
+            {search.trim() && (
               <button
                 type="button"
                 onClick={() => applySearch('')}
@@ -418,6 +446,13 @@ export default function StudiesPage() {
         </div>
       </div>
 
+      <div
+        data-testid="study-results"
+        aria-busy={resultsCatchingUp}
+        className="space-y-4 md:space-y-6"
+        // Dimmed only when catching up takes a moment, so a quick list never flickers.
+        style={{ opacity: resultsCatchingUp ? 0.6 : 1, transition: resultsCatchingUp ? 'opacity 0.2s 0.2s linear' : 'opacity 0s linear' }}
+      >
       {/* Results header with expand/collapse */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600 dark:text-gray-400">
@@ -435,6 +470,7 @@ export default function StudiesPage() {
         {visibleNotes.length > 0 && (
           <button
             onClick={handleExpandAll}
+            disabled={resultsCatchingUp}
             className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
           >
             {allExpanded ? (
@@ -487,22 +523,9 @@ export default function StudiesPage() {
           )}
         </div>
       ) : (
-        <div className="space-y-3">
-          {visibleNotes.map((note) => (
-            <StudyNoteCard
-              key={note.id}
-              note={note}
-              bibleLocale={bibleLocale}
-              isExpanded={expandedNoteIds.has(note.id)}
-              onToggleExpand={handleToggleNoteExpanded}
-              onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
-              searchQuery={searchQuery}
-              onShare={handleShareNote}
-              hasShareLink={shareLinksByNoteId.has(note.id)}
-            />
-          ))}
-        </div>
+        <div className="space-y-3">{noteCards}</div>
       )}
+      </div>
 
       <ShareNoteModal
         isOpen={shareNote !== null}

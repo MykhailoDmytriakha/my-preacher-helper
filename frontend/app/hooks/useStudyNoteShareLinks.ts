@@ -22,6 +22,8 @@ import {
 } from '@services/studyNoteShareLinks.service';
 
 const shareLinksKey = (uid: string | undefined) => ['study-note-share-links', uid];
+/** One empty list for as long as the links are not loaded: a fresh [] per render breaks every memo built on it. */
+const NO_SHARE_LINKS: StudyNoteShareLink[] = [];
 const createFailureToastId = (noteId: string) => `write-recovery:study-note-share-link:create:${noteId}`;
 const revokeFailureToastId = (linkId: string) => `write-recovery:study-note-share-link:delete:${linkId}`;
 
@@ -112,7 +114,7 @@ export function useStudyNoteShareLinks() {
 
   return {
     uid,
-    shareLinks: shareLinksQuery.data ?? [],
+    shareLinks: shareLinksQuery.data ?? NO_SHARE_LINKS,
     loading: isAuthLoading || shareLinksQuery.isLoading,
     error: shareLinksQuery.error as Error | null,
     refetch: shareLinksQuery.refetch,
