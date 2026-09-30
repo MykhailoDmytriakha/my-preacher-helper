@@ -153,8 +153,11 @@ export default function EditThoughtModal({
   );
 
   return (
-    <FormDialog title={t('editThought.editTitle')} eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop>
-      <form onSubmit={event => { event.preventDefault(); void handleSave(); }} className="space-y-5 pt-5">
+    <FormDialog size="standard" title={t('editThought.editTitle')} eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
+      onSubmit={event => { event.preventDefault(); void handleSave(); }}
+      footer={<FormActions onCancel={onClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
+          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!isChanged || isReadOnly} />}>
+      <div className="space-y-5">
         {sermonOutline && <ThoughtOutlineField sermonOutline={sermonOutline} section={containerSection}
           outlinePointId={selectedSermonPointId} subPointId={selectedSubPointId} disabled={isReadOnly}
           onSelect={(pointId, subId) => { setSelectedSermonPointId(pointId); setSelectedSubPointId(subId); setSaveError(''); }} />}
@@ -167,9 +170,7 @@ export default function EditThoughtModal({
           </div> : <RichMarkdownEditor value={text} onChange={value => { setText(value); setSaveError(''); }} placeholder={t('manualThought.placeholder')} />}
         </div>
         {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
-        <FormActions onCancel={onClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
-          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!isChanged || isReadOnly} />
-      </form>
+      </div>
     </FormDialog>
   );
 }

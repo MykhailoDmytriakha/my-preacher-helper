@@ -57,8 +57,13 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   if (typeof document === 'undefined') return null;
 
   return (
-    <FormDialog title={t('prayer.update.title')} eyebrow={t('navigation.prayer')} tone="rose" size="compact" onClose={onClose} dismissOnBackdrop>
-      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+    <FormDialog title={t('prayer.update.title')} eyebrow={t('navigation.prayer')} tone="rose" size="compact" onClose={onClose} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
+      footer={
+        <FormActions onCancel={onClose} cancelLabel={t('prayer.update.cancel')} submitLabel={t('prayer.update.submit')}
+          saving={saving} savingLabel={t('prayer.update.saving')} submitDisabled={dictation.isProcessing || !text.trim()}
+          cancelDisabled={saving || dictation.isProcessing} tone="rose" />
+      }>
+      <div className="space-y-4">
         <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">{t('prayer.update.dictate')}</span>
           <div className="relative flex h-12 w-12 shrink-0 items-center justify-center" title={transcriptionUnavailableLabel}>
@@ -73,10 +78,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
           placeholder={t('prayer.update.placeholder')} aria-label={t('prayer.update.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />
         {error && <p className="text-sm text-red-500" role="alert">{error}</p>}
-        <FormActions onCancel={onClose} cancelLabel={t('prayer.update.cancel')} submitLabel={t('prayer.update.submit')}
-          saving={saving} savingLabel={t('prayer.update.saving')} submitDisabled={dictation.isProcessing || !text.trim()}
-          cancelDisabled={saving || dictation.isProcessing} tone="rose" />
-      </form>
+      </div>
     </FormDialog>
   );
 }

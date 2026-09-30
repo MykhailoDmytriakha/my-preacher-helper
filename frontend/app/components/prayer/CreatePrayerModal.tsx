@@ -86,8 +86,13 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
 
   return (
     <FormDialog title={t(`${i18nPrefix}.title`)} eyebrow={t('navigation.prayer')} tone="rose" size="compact"
-      onClose={handleClose} closeDisabled={saving} dismissOnBackdrop>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+      onClose={handleClose} closeDisabled={saving} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
+      footer={
+        <FormActions onCancel={handleClose} cancelLabel={t(`${i18nPrefix}.cancel`)}
+          submitLabel={t(`${i18nPrefix}.submit`)} saving={saving} savingLabel={t('buttons.saving')}
+          submitDisabled={!title.trim()} cancelDisabled={saving} tone="rose" />
+      }>
+      <div className="space-y-5">
         <FormField label={t('prayer.create.titleLabel')} required>
           <TextareaAutosize value={title} onChange={event => setTitle(event.target.value)}
             placeholder={t('prayer.create.titlePlaceholder')} className={FORM_INPUT_CLASS}
@@ -102,10 +107,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
           <input type="text" value={tagsInput} onChange={event => setTagsInput(event.target.value)}
             placeholder={t('prayer.create.tagsPlaceholder')} className={FORM_INPUT_CLASS} disabled={saving} />
         </FormField>
-        <FormActions onCancel={handleClose} cancelLabel={t(`${i18nPrefix}.cancel`)}
-          submitLabel={t(`${i18nPrefix}.submit`)} saving={saving} savingLabel={t('buttons.saving')}
-          submitDisabled={!title.trim()} cancelDisabled={saving} tone="rose" />
-      </form>
+      </div>
     </FormDialog>
   );
 }

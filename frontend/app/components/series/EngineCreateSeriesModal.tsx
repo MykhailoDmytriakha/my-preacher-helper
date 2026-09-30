@@ -54,9 +54,13 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
     finally { if (mounted.current) setSaving(false); }
   };
   const busy = saving || document.loading || !restored;
-  return <FormDialog title={t('workspaces.series.newSeries')} eyebrow={t('navigation.series')}
-    description={t('workspaces.series.form.createHint')} onClose={onClose}>
-    <form noValidate onSubmit={event => { event.preventDefault(); void create(); }} className="mt-6 space-y-5">
+  return <FormDialog noValidate title={t('workspaces.series.newSeries')} eyebrow={t('navigation.series')}
+    description={t('workspaces.series.form.createHint')} onClose={onClose} showCloseButton onSubmit={event => { event.preventDefault(); void create(); }}
+    footer={
+      <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')}
+        submitLabel={t('workspaces.series.actions.createSeries')} saving={busy} />
+    }>
+    <div className="space-y-5">
       <fieldset disabled={busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
       </fieldset>
@@ -64,8 +68,6 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
         if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
         else await document.retry();
       }} />
-      <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')}
-        submitLabel={t('workspaces.series.actions.createSeries')} saving={busy} />
-    </form>
+    </div>
   </FormDialog>;
 }

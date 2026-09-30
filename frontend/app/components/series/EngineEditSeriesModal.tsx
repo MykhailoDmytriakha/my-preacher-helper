@@ -40,9 +40,14 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     });
     onClose();
   };
-  return <FormDialog title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')}
-    description={t('workspaces.series.form.editHint')} onClose={onClose}>
-    <form noValidate onSubmit={event => { event.preventDefault(); void save().catch(() => undefined); }} className="mt-6 space-y-5">
+  return <FormDialog noValidate title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')}
+    description={t('workspaces.series.form.editHint')} onClose={onClose} showCloseButton onSubmit={event => { event.preventDefault(); void save().catch(() => undefined); }}
+    footer={
+      <FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }}
+        cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')}
+        saving={loading || form.busy} submitDisabled={!form.active || !form.status?.canSave} />
+    }>
+    <div className="space-y-5">
       <fieldset disabled={loading || !form.active || form.busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
@@ -50,9 +55,6 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} />
-      <FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }}
-        cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')}
-        saving={loading || form.busy} submitDisabled={!form.active || !form.status?.canSave} />
-    </form>
+    </div>
   </FormDialog>;
 }

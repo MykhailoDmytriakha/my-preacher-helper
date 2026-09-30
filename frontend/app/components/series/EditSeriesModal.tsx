@@ -72,12 +72,14 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
   };
 
   return (
-    <FormDialog title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')} description={t('workspaces.series.form.editHint')} onClose={onClose}>
-      {error && <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
-      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-        <SeriesFormFields values={values} onChange={changeFields} colorPickerTitle={t('workspaces.series.editSeries')} />
+    <FormDialog title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')} description={t('workspaces.series.form.editHint')} onClose={onClose} showCloseButton onSubmit={handleSubmit}
+      footer={
         <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')} saving={saving} />
-      </form>
+      }>
+      {error && <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+      <div className="space-y-5">
+        <SeriesFormFields values={values} onChange={changeFields} colorPickerTitle={t('workspaces.series.editSeries')} />
+      </div>
     </FormDialog>
   );
 }

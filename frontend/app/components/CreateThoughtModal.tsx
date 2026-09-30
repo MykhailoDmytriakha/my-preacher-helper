@@ -177,11 +177,14 @@ export default function CreateThoughtModal({
   if (!isOpen) return null;
 
   return (
-    <FormDialog title={t(titleKey)} eyebrow={t('thought.editorLabel')} onClose={handleClose} dismissOnBackdrop>
+    <FormDialog size="standard" title={t(titleKey)} eyebrow={t('thought.editorLabel')} onClose={handleClose} dismissOnBackdrop showCloseButton
+      onSubmit={handleSubmit}
+      footer={<FormActions onCancel={handleClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
+          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!text.trim()} />}>
       <div className="py-3">
         <ThoughtTextHeader dictation={dictation} available={isMagicAvailable} saving={isSubmitting} showDictation={showDictation} labelKey={textLabelKey} />
       </div>
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-5">
         {!isOnline && (
           <div className="p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-400 rounded-md flex items-start gap-2">
             <svg className="w-5 h-5 text-amber-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -234,10 +237,7 @@ export default function CreateThoughtModal({
         )}
 
         {showTags && <ThoughtTagsField tags={tags} allowedTags={allowedTags} availableTags={availableTags} onAddTag={handleAddTag} onRemoveTag={handleRemoveTag} />}
-
-        <FormActions onCancel={handleClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
-          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!text.trim()} />
-      </form>
+      </div>
       {confirmDialog}
     </FormDialog>
   );

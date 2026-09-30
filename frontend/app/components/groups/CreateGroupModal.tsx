@@ -94,8 +94,13 @@ export function CreateGroupView({ title, setTitle, description, setDescription, 
   const descriptionInput = useBufferedText(description, setDescription);
   return (
     <FormDialog title={t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
-      eyebrow={t('navigation.groups', { defaultValue: 'Groups' })} tone="emerald" onClose={onClose}>
-          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+      eyebrow={t('navigation.groups', { defaultValue: 'Groups' })} tone="emerald" onClose={onClose} showCloseButton onSubmit={handleSubmit}
+      footer={
+        <FormActions onCancel={onClose} saving={saving} tone="emerald"
+        cancelLabel={t('common.cancel', { defaultValue: 'Cancel' })}
+        submitLabel={t('workspaces.groups.actions.create', { defaultValue: 'Create group' })} />
+      }>
+          <div className="space-y-5">
             {feedback}
             <label className="space-y-2 block">
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
@@ -152,11 +157,7 @@ export function CreateGroupView({ title, setTitle, description, setDescription, 
                 defaultValue: 'A starter flow with Main topic + Scripture will be created automatically. You can also schedule the first meeting now.',
               })}
             </div>
-
-            <FormActions onCancel={onClose} saving={saving} tone="emerald"
-              cancelLabel={t('common.cancel', { defaultValue: 'Cancel' })}
-              submitLabel={t('workspaces.groups.actions.create', { defaultValue: 'Create group' })} />
-          </form>
+          </div>
     </FormDialog>
   );
 }

@@ -51,16 +51,18 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
   };
 
   return (
-    <FormDialog title={t('workspaces.series.newSeries')} eyebrow={t('navigation.series')} description={t('workspaces.series.form.createHint')} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+    <FormDialog title={t('workspaces.series.newSeries')} eyebrow={t('navigation.series')} description={t('workspaces.series.form.createHint')} onClose={onClose} showCloseButton onSubmit={handleSubmit}
+      footer={
+        <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.createSeries')} saving={saving} />
+      }>
+      <div className="space-y-5">
         <SeriesFormFields values={values} onChange={patch => setValues(previous => ({ ...previous, ...patch }))} colorPickerTitle={t('workspaces.series.newSeries')} />
         {initialSermonIds.length > 0 && (
           <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-100">
             {t('workspaces.series.form.initialSermonsHint', { count: initialSermonIds.length })}
           </div>
         )}
-        <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.createSeries')} saving={saving} />
-      </form>
+      </div>
     </FormDialog>
   );
 }

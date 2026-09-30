@@ -35,6 +35,8 @@ interface FormDialogProps {
   footer?: ReactNode;
   /** Wraps the whole dialog in a form, so a submit button may live in the sticky foot. */
   onSubmit?: (event: React.FormEvent) => void;
+  /** For a form that reports missing fields in its own words instead of the browser's bubbles. */
+  noValidate?: boolean;
   children: ReactNode;
   /** A separate dismiss action when the footer's Cancel explicitly discards a draft. */
   showCloseButton?: boolean;
@@ -48,7 +50,7 @@ const WIDTH_BY_SIZE: Record<NonNullable<FormDialogProps['size']>, string> = {
 };
 
 /** Presentation only: submission, draft retention and dismissal belong to the caller. */
-export default function FormDialog({ title, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, children, showCloseButton = false }: FormDialogProps) {
+export default function FormDialog({ title, eyebrow, description, tone = 'blue', size, dismissOnBackdrop = false, closeDisabled = false, onClose, footer, onSubmit, noValidate, children, showCloseButton = false }: FormDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
@@ -91,7 +93,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
           className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-gray-50 shadow-xl dark:bg-gray-900 sm:max-h-[85vh] sm:rounded-2xl ${width}`}>
-          {onSubmit ? <form onSubmit={onSubmit} className="flex min-h-0 flex-col">{bands}</form> : bands}
+          {onSubmit ? <form onSubmit={onSubmit} noValidate={noValidate} className="flex min-h-0 flex-col">{bands}</form> : bands}
         </div>
       </div>, document.body,
     );

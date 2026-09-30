@@ -54,8 +54,13 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
   };
   const cancel = async () => { await action.cancel(); onClose(); };
   const title = t(dialogTitle(mode, kind));
-  return <FormDialog title={title} eyebrow={series?.title} onClose={onClose}>
-    <div className="mt-4 space-y-4">
+  return <FormDialog title={title} eyebrow={series?.title} onClose={onClose} showCloseButton
+    onSubmit={event => { event.preventDefault(); void save(); }}
+    footer={editing ? (
+      <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('common.cancel')}
+        submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} />
+    ) : undefined}>
+    <div className="space-y-4">
       <DataMembershipStatus action={{ ...action, retry: action.phase ? action.retry : open }} onDiscarded={onClose} />
       {editing && mode === 'target' && member && <TargetChoices action={action} member={member} disabled={saving} />}
       {editing && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving}>
@@ -67,10 +72,6 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
       {editing && series && kind === 'reorder' && <ReorderChoices items={series.items ?? []} disabled={saving}
         onChange={itemIds => action.update({ kind: 'reorder', seriesId: targetId, itemIds })} />}
       {kind === 'remove' && <p>{t('workspaces.series.actions.membershipRemoveHint')}</p>}
-      {editing && <form onSubmit={event => { event.preventDefault(); void save(); }}>
-        <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('common.cancel')}
-          submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} />
-      </form>}
     </div>
   </FormDialog>;
 }

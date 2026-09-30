@@ -103,9 +103,13 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
   };
   const availableTags = allowedTags.filter(allowed => !shown.tags.some(tag => tag === allowed.name
     || (normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(allowed.name))));
-  return <FormDialog title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
-    eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop>
-    <form onSubmit={event => { event.preventDefault(); void save(); }} className="space-y-5 pt-5">
+  return <FormDialog size="standard" title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
+    eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
+    onSubmit={event => { event.preventDefault(); void save(); }}
+    footer={<FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
+        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
+        submitDisabled={readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
+    <div className="space-y-5">
       <DataSyncStatus status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
@@ -119,9 +123,6 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
         {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
           : <RichMarkdownEditor value={shown.text} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
       </div>
-      <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
-        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
-        submitDisabled={readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />
-    </form>
+    </div>
   </FormDialog>;
 }
