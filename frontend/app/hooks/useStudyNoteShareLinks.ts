@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -21,6 +22,8 @@ import {
 } from '@services/studyNoteShareLinks.service';
 
 const shareLinksKey = (uid: string | undefined) => ['study-note-share-links', uid];
+const createFailureToastId = (noteId: string) => `write-recovery:study-note-share-link:create:${noteId}`;
+const revokeFailureToastId = (linkId: string) => `write-recovery:study-note-share-link:delete:${linkId}`;
 
 type CreateShareLinkVars = { userId: string; noteId: string };
 type DeleteShareLinkVars = { userId: string; linkId: string };
@@ -44,6 +47,8 @@ export function useStudyNoteShareLinks() {
     mutationFn: ({ userId, noteId }: CreateShareLinkVars) =>
       createStudyNoteShareLink(userId, noteId),
     onSuccess: (created) => {
+      // A failure message for this note is old news now, and its "Retry" would make a second request.
+      toast.dismiss(createFailureToastId(created.noteId));
       queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) => {
         const filtered = (old ?? []).filter((link) => link.noteId !== created.noteId);
         return [created, ...filtered];
@@ -56,6 +61,10 @@ export function useStudyNoteShareLinks() {
     mutationFn: ({ userId, linkId }: DeleteShareLinkVars) =>
       deleteStudyNoteShareLink(userId, linkId),
     onSuccess: (_data, { linkId }) => {
+      const revoked = queryClient.getQueryData<StudyNoteShareLink[]>(shareLinksKey(uid))?.find((link) => link.id === linkId);
+      toast.dismiss(revokeFailureToastId(linkId));
+      // The person no longer wants a link for this note: an earlier "not created — retry" must not make one.
+      if (revoked) toast.dismiss(createFailureToastId(revoked.noteId));
       queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) =>
         (old ?? []).filter((link) => link.id !== linkId)
       );
@@ -73,20 +82,30 @@ export function useStudyNoteShareLinks() {
         matches(mutation.state.variables as TVars)
     );
 
+  /**
+   * A link that did not come into being, or did not go away, is said wherever the person next looks
+   * at notes or their links, in its own words (BUG-20260928-share-link-failure-seen-only-on-studies).
+   * The words say only what is known: the service turns every failure into a plain error, so a
+   * refusal cannot be told from a dropped connection, and "could not confirm" is the true sentence.
+   *
+   * Across sessions this keeps the shared rule — a textless failure from an earlier session is
+   * dropped. Keeping a failed revoke alive until it is settled needs evidence of the write's outcome
+   * that a cached list cannot give; two review rounds showed each shortcut losing a real warning.
+   */
   useWriteRecovery<CreateShareLinkVars>(queryClient, {
     mutationKey: SHARE_LINK_MUTATION_KEYS.create,
-    fallbackTitleKey: 'common.saveError',
+    fallbackTitleKey: 'studiesWorkspace.shareLinks.createUnconfirmed',
     recoveryText: () => undefined,
-    toastId: (vars) => `write-recovery:study-note-share-link:create:${vars.noteId}`,
+    toastId: (vars) => createFailureToastId(vars.noteId),
     owns: (vars) => Boolean(uid) && vars.userId === uid,
     retry: (vars) => createLinkMutation.mutate(vars),
   });
 
   useWriteRecovery<DeleteShareLinkVars>(queryClient, {
     mutationKey: SHARE_LINK_MUTATION_KEYS.delete,
-    fallbackTitleKey: 'common.saveError',
+    fallbackTitleKey: 'studiesWorkspace.shareLinks.revokeUnconfirmed',
     recoveryText: () => undefined,
-    toastId: (vars) => `write-recovery:study-note-share-link:delete:${vars.linkId}`,
+    toastId: (vars) => revokeFailureToastId(vars.linkId),
     owns: (vars) => Boolean(uid) && vars.userId === uid,
     retry: (vars) => deleteLinkMutation.mutate(vars),
   });

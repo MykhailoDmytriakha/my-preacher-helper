@@ -1,11 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { auth } from '@/services/firebaseAuth.service';
+import { SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { forgetReportedFailures } from '@/utils/writeRecovery';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,
@@ -193,6 +196,86 @@ describe('useStudyNoteShareLinks', () => {
 
     expect(mockDeleteShareLink).toHaveBeenCalledWith('auth-1', 'link-1');
     await waitFor(() => expect(result.current.shareLinks).toEqual([linkB]));
+  });
+
+  describe('failures the person must hear about, and only those', () => {
+    const EARLIER_SESSION = Date.now() - 60 * 60 * 1000;
+
+    const signedIn = (links: StudyNoteShareLink[]) => {
+      mockUseOnlineStatus.mockReturnValue(true);
+      mockUseAuth.mockReturnValue({ user: { uid: 'auth-1' } as any, loading: false, isAuthenticated: true });
+      mockGetShareLinks.mockResolvedValue(links);
+    };
+
+    const restoreFailure = async (
+      queryClient: QueryClient,
+      mutationKey: readonly unknown[],
+      variables: Record<string, string>
+    ) => {
+      const mutation = queryClient.getMutationCache().build(queryClient, {
+        mutationKey,
+        mutationFn: () => Promise.reject(new Error('The connection dropped')),
+      });
+      await mutation.execute(variables).catch(() => undefined);
+      (mutation.state as { submittedAt: number }).submittedAt = EARLIER_SESSION;
+      return mutation;
+    };
+
+    const renderWith = (queryClient: QueryClient) =>
+      renderHook(() => useStudyNoteShareLinks(), {
+        wrapper: ({ children }: { children: React.ReactNode }) => (
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        ),
+      });
+
+    const toastIds = (spy: jest.SpyInstance) =>
+      spy.mock.calls.map(([, options]) => (options as { id?: string } | undefined)?.id);
+
+    beforeEach(() => {
+      forgetReportedFailures();
+    });
+
+    it('does not bring back a link creation that failed in an earlier session', async () => {
+      // Its "Retry" could make a link the person has since disabled; a missing link shows in the list anyway.
+      const toastError = jest.spyOn(toast, 'error');
+      signedIn([makeShareLink({ id: 'link-1', noteId: 'note-1' })]);
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.create, { userId: 'auth-1', noteId: 'note-9' });
+
+      const { result } = renderWith(queryClient);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await waitFor(() => expect(queryClient.getMutationCache().getAll()).toHaveLength(0));
+      expect(toastIds(toastError)).not.toContain('write-recovery:study-note-share-link:create:note-9');
+      toastError.mockRestore();
+    });
+
+    it('takes back the failure message once the same link is created after all', async () => {
+      // Its "Retry" would otherwise stay on screen and could make a link the person disabled since.
+      const toastError = jest.spyOn(toast, 'error');
+      const toastDismiss = jest.spyOn(toast, 'dismiss');
+      signedIn([]);
+      mockCreateShareLink
+        .mockRejectedValueOnce(new Error('The connection dropped'))
+        .mockResolvedValueOnce(makeShareLink({ id: 'link-5', noteId: 'note-5' }));
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      const { result } = renderWith(queryClient);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await awaitAcceptance(result.current.createShareLink('note-5'), () => undefined).catch(() => undefined);
+      });
+      await waitFor(() => expect(toastIds(toastError)).toContain('write-recovery:study-note-share-link:create:note-5'));
+      expect(toastDismiss).not.toHaveBeenCalledWith('write-recovery:study-note-share-link:create:note-5');
+
+      await act(async () => {
+        await awaitAcceptance(result.current.createShareLink('note-5'), () => undefined);
+      });
+
+      expect(toastDismiss).toHaveBeenCalledWith('write-recovery:study-note-share-link:create:note-5');
+      toastError.mockRestore();
+      toastDismiss.mockRestore();
+    });
   });
 
   it('throws when creating a share link without a uid', async () => {

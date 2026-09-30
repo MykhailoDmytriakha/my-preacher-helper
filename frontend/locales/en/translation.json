@@ -3108,6 +3108,8 @@
       "copyLink": "Copy",
       "deleteLink": "Delete link",
       "revokeLink": "Disable link",
+      "createUnconfirmed": "Could not confirm that the share link was created. Try again.",
+      "revokeUnconfirmed": "Could not confirm that the share link was disabled — it may still open the note. Try again.",
       "openLink": "Open",
       "accessOn": "Open by link · view only",
       "accessOff": "Access closed · only you can see this note",
