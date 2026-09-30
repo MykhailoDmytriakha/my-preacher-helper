@@ -71,6 +71,53 @@ describe('serverOutputLogger', () => {
     expect(logFile).toContain(`${TIMESTAMP} route failed\n`);
   });
 
+  it('survives a closed terminal: a broken pipe on the original stream never escapes the write', () => {
+    // BUG-20260927-dev-logger-original-write-epipe
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'server-output-logger-'));
+    const brokenPipe = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+    const stdout: WriteStreamLike = { write: jest.fn(() => { throw brokenPipe; }) };
+    const stderr = createStream();
+    installServerOutputLogger({
+      argv: ['node', 'next', 'dev'], cwd, env: { NODE_ENV: 'development' }, now: () => FIXED_DATE,
+      pid: 4321, stderr: stderr.stream, stdout,
+    });
+
+    expect(() => stdout.write('server ready\n')).not.toThrow();
+  });
+
+  it('lets a writer waiting on a closed terminal go on: its callback runs and no drain is promised', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'server-output-logger-'));
+    const brokenPipe = Object.assign(new Error('write EPIPE'), { code: 'EPIPE' });
+    const stdout: WriteStreamLike = { write: jest.fn(() => { throw brokenPipe; }) };
+    const stderr = createStream();
+    installServerOutputLogger({
+      argv: ['node', 'next', 'dev'], cwd, env: { NODE_ENV: 'development' }, now: () => FIXED_DATE,
+      pid: 4321, stderr: stderr.stream, stdout,
+    });
+
+    let accepted: boolean | undefined;
+    const settledWith = await new Promise<unknown>((resolve) => {
+      accepted = stdout.write('server ready\n', (error?: Error | null) => resolve(error));
+      setTimeout(() => resolve('never called'), 200);
+    });
+
+    expect(settledWith).toBe(brokenPipe);
+    // false would tell the caller to wait for a 'drain' that a closed pipe never emits.
+    expect(accepted).toBe(true);
+  });
+
+  it('still reports a failure of the original stream that is not a closed terminal', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'server-output-logger-'));
+    const stdout: WriteStreamLike = { write: jest.fn(() => { throw new Error('something else'); }) };
+    const stderr = createStream();
+    installServerOutputLogger({
+      argv: ['node', 'next', 'dev'], cwd, env: { NODE_ENV: 'development' }, now: () => FIXED_DATE,
+      pid: 4321, stderr: stderr.stream, stdout,
+    });
+
+    expect(() => stdout.write('server ready\n')).toThrow('something else');
+  });
+
   it('records the detected Next local URL when it differs from the default port', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'server-output-logger-'));
     const stdout = createStream();

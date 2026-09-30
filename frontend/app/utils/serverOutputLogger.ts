@@ -225,7 +225,22 @@ const createPatchedWrite = (
       }
     }
 
-    return originalWrite.call(this, outputChunk, encodingOrCallback, callback);
+    try {
+      return originalWrite.call(this, outputChunk, encodingOrCallback, callback);
+    } catch (error) {
+      // A closed terminal or pipe: the output has nowhere to go, and letting EPIPE escape turns
+      // into an uncaught-exception loop that keeps an old dev server burning a core
+      // (BUG-20260927-dev-logger-original-write-epipe). Any other failure is still reported.
+      if ((error as NodeJS.ErrnoException | null)?.code === 'EPIPE') {
+        // A writer awaiting its callback must still be answered, and `false` would promise a
+        // 'drain' that a closed pipe never emits — so the callback gets the error, and the write
+        // reports nothing buffered.
+        const done = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+        if (done) process.nextTick(done, error as Error);
+        return true;
+      }
+      throw error;
+    }
   };
 };
 
