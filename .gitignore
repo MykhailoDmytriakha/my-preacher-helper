@@ -15,7 +15,8 @@
 
 # next.js
 /.next/
-/frontend/.next-typecheck/
+# extra build dirs: typecheck, a second dev server (NEXT_TYPEGEN_DIST_DIR=.next-<name>)
+/frontend/.next-*/
 /out/
 
 # frontend
