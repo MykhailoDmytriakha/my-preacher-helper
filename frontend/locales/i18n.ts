@@ -4,15 +4,21 @@ import { initReactI18next } from 'react-i18next';
 import { DEFAULT_LANGUAGE } from './constants';
 import enGraceVerses from './en/graceVerses.json';
 import enTranslation from './en/translation.json';
-import { getInitialLanguage } from './getInitialLang';
 import ruGraceVerses from './ru/graceVerses.json';
 import ruTranslation from './ru/translation.json';
 import ukGraceVerses from './uk/graceVerses.json';
 import ukTranslation from './uk/translation.json';
 
-// Get initial language before configuring i18n
-const initialLanguage = typeof window !== 'undefined' ? getInitialLanguage() : DEFAULT_LANGUAGE;
-
+/**
+ * THE FIRST RENDER IN THE BROWSER SPEAKS THE LANGUAGE THE SERVER RENDERED IN
+ * (BUG-20260902-ssr-renders-english-labels-then-swaps).
+ *
+ * The server cannot know the device's language for a prerendered page, so it renders in the
+ * default one. A browser that started in the cookie's language failed hydration on every
+ * translated string: text was thrown away and rendered again, and mismatched attributes such as
+ * `aria-label` were left in English. Both sides start in the default language; the device's own
+ * is applied the moment hydration is over (`LanguageInitializer`).
+ */
 // Create a reusable configuration
 const i18nConfig = {
   resources: {
@@ -20,7 +26,7 @@ const i18nConfig = {
     ru: { translation: ruTranslation, graceVerses: ruGraceVerses },
     uk: { translation: ukTranslation, graceVerses: ukGraceVerses }
   },
-  lng: initialLanguage, // Use initial language from cookie
+  lng: DEFAULT_LANGUAGE,
   fallbackLng: DEFAULT_LANGUAGE,
   interpolation: {
     escapeValue: false
@@ -39,13 +45,5 @@ export const i18n = createInstance(i18nConfig);
 
 // Initialize with React
 i18n.use(initReactI18next).init();
-
-// Client-side initialization to ensure hydration is consistent
-if (typeof window !== 'undefined' && initialLanguage !== i18n.language) {
-  // This should rarely happen, but just in case
-  setTimeout(() => {
-    i18n.changeLanguage(initialLanguage);
-  }, 0);
-}
 
 export default i18n;

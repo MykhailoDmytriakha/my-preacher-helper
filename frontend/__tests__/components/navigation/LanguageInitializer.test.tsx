@@ -60,7 +60,19 @@ describe('LanguageInitializer Component', () => {
     mockGetCookieLanguage.mockReturnValue('en');
   });
 
-  test('does not start a competing database language read outside the settings provider after migration', () => {
+  test('applies the device language right after hydration, without waiting for the account', async () => {
+    // BUG-20260902-ssr-renders-english-labels-then-swaps: the page hydrates in the default
+    // language (locales/i18n.ts), and the switch must not wait on sign-in.
+    mockAuthState.loading = true;
+    mockGetCookieLanguage.mockReturnValue('ru');
+
+    render(<LanguageInitializer />);
+
+    await waitFor(() => expect(mockChangeLanguage).toHaveBeenCalledWith('ru'));
+    expect(mockChangeLanguage).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not start a competing database language read outside the settings provider after migration', async () => {
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
     mockAuthState.user = { uid: 'owner-a' } as any;
     mockAuthState.isAuthenticated = true;
@@ -79,7 +91,8 @@ describe('LanguageInitializer Component', () => {
     mockGetCookieLanguage.mockReturnValue('ru');
     view.rerender(<LanguageInitializer />);
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
-    expect(mockChangeLanguage).toHaveBeenCalledWith('ru');
+    // The guest's cookie language arrives a task later, once everything rendered is listening.
+    await waitFor(() => expect(mockChangeLanguage).toHaveBeenCalledWith('ru'));
   });
 
   test('also defers signed-in initialization when the global engine switch is enabled', () => {
@@ -105,8 +118,9 @@ describe('LanguageInitializer Component', () => {
     
     await waitFor(() => {
       expect(mockInitializeLanguageFromDB).toHaveBeenCalled();
-      expect(mockGetCookieLanguage).not.toHaveBeenCalled();
     });
+    // The only cookie read is the switch after hydration, and the cookie already matches.
+    expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
   test('uses cookie language for guest users', async () => {
@@ -153,7 +167,7 @@ describe('LanguageInitializer Component', () => {
     expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
-  test('does nothing while authentication is loading', () => {
+  test('starts no account path while authentication is loading', () => {
     // Mock loading state
     mockAuthState.user = null;
     mockAuthState.loading = true;
@@ -162,9 +176,9 @@ describe('LanguageInitializer Component', () => {
     render(<LanguageInitializer />);
 
     // The loading guard is synchronous inside the mounted effect; no wall-clock
-    // sleep is needed to prove that none of the initialization paths starts.
+    // sleep is needed to prove that none of the account paths starts. The switch after
+    // hydration reads the cookie, which matches the language already in use here.
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
-    expect(mockGetCookieLanguage).not.toHaveBeenCalled();
     expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
