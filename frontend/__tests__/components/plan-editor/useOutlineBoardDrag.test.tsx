@@ -88,3 +88,19 @@ it('measures an existing physical slot and ignores the hidden lifted node', () =
   const { result } = setup(layer()); act(() => result.current.onDragStart(start()));
   expect(result.current.collisionDetection(collision({ x: 50, y: 140 }))).toEqual([{ id: 'note-point:p', data: { containerId: 'note-point:p', index: 0 } }]);
 });
+
+// BUG-20260905-scratch-keyboard-drag-lifts-offscreen: the keyboard sensor measures the lifted card on
+// every arrow press, and a card hidden with display:none measures as an empty box at the page corner,
+// so the copy did not move. A keyboard lift leaves the card in place; a pointer lift still hides it.
+it('leaves the source card in place when a note is lifted from the keyboard', () => {
+  const { result } = setup(layer());
+  act(() => result.current.onDragStart({ active: { id: 'note:n' }, activatorEvent: new KeyboardEvent('keydown', { key: ' ' }) } as unknown as DragStartEvent));
+  expect(result.current.activeDrag).toEqual(expect.objectContaining({ kind: 'note', id: 'n' }));
+  expect(result.current.liftedNoteId).toBeNull();
+  expect(result.current.keptNoteId).toBe('n');
+
+  act(() => result.current.cancelDrag());
+  expect(result.current.keptNoteId).toBeNull();
+  act(() => result.current.onDragStart({ active: { id: 'note:n' }, activatorEvent: new MouseEvent('mousedown') } as unknown as DragStartEvent));
+  expect(result.current.liftedNoteId).toBe('n');
+});

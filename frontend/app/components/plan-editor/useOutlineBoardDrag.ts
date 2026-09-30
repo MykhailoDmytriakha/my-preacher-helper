@@ -40,6 +40,14 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
    * corner — the copy then wrapped into a 26px column far from the finger.
    */
   const [liftedNoteId, setLiftedNoteId] = useState<string | null>(null);
+  /*
+   * A keyboard lift never hides the card (BUG-20260905-scratch-keyboard-drag-lifts-offscreen). The
+   * pointer sensors follow the pointer, but the keyboard sensor re-measures the lifted card on every
+   * arrow press — and a hidden card measures as that same empty box at the page corner, so the copy
+   * stood still (or jumped above the window) and the arrows did nothing.
+   */
+  const keyboardLiftRef = useRef(false);
+  const [keptNoteId, setKeptNoteId] = useState<string | null>(null);
   const overlayCardRef = useRef<HTMLDivElement | null>(null);
   /*
    * A drag starts only after the pointer has travelled a few pixels, so a tap on
@@ -59,11 +67,13 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     noteSlotRef.current = null;
     setNoteSlot(null);
     setLiftedNoteId(null);
+    setKeptNoteId(null);
     activeNoteHeightRef.current = 0;
     setActiveNoteHeight(0);
   };
 
   const onDragStart = (event: DragStartEvent) => {
+    keyboardLiftRef.current = typeof KeyboardEvent !== 'undefined' && event.activatorEvent instanceof KeyboardEvent;
     const subject = parseDragId(String(event.active.id));
     activeDragRef.current = subject;
     setActiveDrag(subject);
@@ -297,7 +307,9 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
 
   const activeNoteId = activeDrag?.kind === 'note' ? activeDrag.id : null;
   useEffect(() => {
-    if (activeNoteId) setLiftedNoteId(activeNoteId);
+    if (!activeNoteId) return;
+    if (keyboardLiftRef.current) setKeptNoteId(activeNoteId);
+    else setLiftedNoteId(activeNoteId);
   }, [activeNoteId]);
 
   const clearActiveDrag = () => {
@@ -306,7 +318,7 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     setHoveredDropId(null);
   };
   const cancelDrag = () => { clearActiveDrag(); resetNoteDrag(); };
-  return { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, overlayCardRef, sensors,
+  return { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, sensors,
     collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
     handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag };
 }

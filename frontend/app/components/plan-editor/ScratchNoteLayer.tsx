@@ -21,13 +21,19 @@ type NoteListProps = {
   notes: ScratchNote[];
   noteSlot: (NoteSlot & { own: boolean }) | null;
   liftedNoteId: string | null;
+  /**
+   * Lifted from the keyboard: the card stays in its place, visible and muted, because the keyboard
+   * sensor measures it on every arrow press. It does not count when the slot is placed, so the
+   * preview shows the order the note will be saved in.
+   */
+  keptNoteId?: string | null;
   activeNoteHeight: number;
   noteHomeOf: (id: string) => NoteSlot | null;
   testIdFor?: (note: ScratchNote) => string;
 };
 
 /** The pool and placed-note strips share the same physical slot and lifted-node rules. */
-export function ScratchNoteList({ scratch, isReadOnly, containerId, notes, noteSlot, liftedNoteId, activeNoteHeight, noteHomeOf, testIdFor }: NoteListProps) {
+export function ScratchNoteList({ scratch, isReadOnly, containerId, notes, noteSlot, liftedNoteId, keptNoteId = null, activeNoteHeight, noteHomeOf, testIdFor }: NoteListProps) {
   const renderScratchNote = (note: ScratchNote, testId?: string) => {
     return (
       <DraggableCard key={note.id} dragId={dragIdFor('note', note.id)} disabled={isReadOnly}>
@@ -46,7 +52,7 @@ export function ScratchNoteList({ scratch, isReadOnly, containerId, notes, noteS
             ref={setNodeRef}
             data-testid={testId}
             data-scratch-note={note.id}
-            className={note.id === liftedNoteId ? 'hidden' : undefined}
+            className={note.id === liftedNoteId ? 'hidden' : note.id === keptNoteId ? 'opacity-50' : undefined}
           >
             {scratch.renderNote(note, handleProps)}
           </div>
@@ -81,16 +87,25 @@ export function ScratchNoteList({ scratch, isReadOnly, containerId, notes, noteS
   const home = liftedNoteId ? noteHomeOf(liftedNoteId) : null;
   const homeHere = home && home.containerId === containerId ? home : null;
   const showHome = homeHere !== null && (!slot || slot.own || noteSlot === null);
-  const sameContainer = home !== null && home.containerId === containerId;
+  // Where the note came from, whichever way it was lifted: in its own list the slot is its full height.
+  const originId = liftedNoteId ?? keptNoteId;
+  const origin = originId ? noteHomeOf(originId) : null;
+  const sameContainer = origin !== null && origin.containerId === containerId;
   const visible = notes.filter((note) => note.id !== liftedNoteId);
   const items: React.ReactNode[] = [];
-  visible.forEach((note, index) => {
+  let counted = 0;
+  visible.forEach((note) => {
+    if (note.id === keptNoteId) {
+      items.push(renderScratchNote(note, testIdFor?.(note)));
+      return;
+    }
+    const index = counted++;
     if (slot && !slot.own && slot.index === index) items.push(renderNoteSlot('slot', false, sameContainer));
     if (showHome && homeHere && homeHere.index === index) items.push(renderNoteSlot('home', true, true));
     items.push(renderScratchNote(note, testIdFor?.(note)));
   });
-  if (slot && !slot.own && slot.index >= visible.length) items.push(renderNoteSlot('slot', false, sameContainer));
-  if (showHome && homeHere && homeHere.index >= visible.length) items.push(renderNoteSlot('home', true, true));
+  if (slot && !slot.own && slot.index >= counted) items.push(renderNoteSlot('slot', false, sameContainer));
+  if (showHome && homeHere && homeHere.index >= counted) items.push(renderNoteSlot('home', true, true));
   // The hidden original keeps the drag's node alive; it takes no room.
   const active = liftedNoteId ? notes.find((note) => note.id === liftedNoteId) : undefined;
   if (active) items.push(renderScratchNote(active, testIdFor?.(active)));

@@ -52,3 +52,22 @@ it('registers resting targets, paints only compatible active targets, and disabl
   expect(mockDroppable).toHaveBeenLastCalledWith({ id: 'into-point:p', disabled: true });
   expect(paint).toHaveBeenLastCalledWith(expect.objectContaining({ isOver: false }));
 });
+
+// BUG-20260905-scratch-keyboard-drag-lifts-offscreen: a keyboard lift keeps its card visible (the keyboard
+// sensor measures it), so the slot must be placed among the OTHER notes, as the saved order will be.
+it('places the slot among the other notes when a keyboard-lifted card stays visible', () => {
+  const [a, b, c] = ['a', 'b', 'c'].map(id => ({ id, text: `Note ${id}`, createdAt: '2026-01-01' }));
+  const threeNotes: ScratchLayerProps = { ...scratch, pool: [a, b, c], notesById: new Map([a, b, c].map(n => [n.id, n])) };
+  const order = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-scratch-strip] > *')].map(el => el.getAttribute('data-scratch-slot') ?? el.getAttribute('data-scratch-note'));
+  const lifted = { ...props, scratch: threeNotes, notes: [a, b, c], keptNoteId: 'b', activeDrag: { kind: 'note' as const, id: 'b' } };
+
+  const { container, rerender } = render(<ScratchNotePool {...lifted} noteSlot={{ containerId: NOTE_POOL_ID, index: 2, own: false }} />);
+  expect(order(container)).toEqual(['a', 'b', 'c', 'target']);
+  expect(container.querySelector('[data-scratch-note="b"]')).not.toHaveClass('hidden');
+  // Its own list: the slot is the card's full height, as for a pointer lift.
+  expect(container.querySelector('[data-scratch-slot="target"]')).toHaveStyle({ height: '200px' });
+
+  rerender(<ScratchNotePool {...lifted} noteSlot={{ containerId: NOTE_POOL_ID, index: 1, own: false }} />);
+  expect(order(container)).toEqual(['a', 'b', 'target', 'c']);
+});

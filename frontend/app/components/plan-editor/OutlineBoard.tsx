@@ -152,7 +152,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const editingDirectly = directText && !isReadOnly;
   const noteIndex = useMemo(() => indexScratchNotes(scratch), [scratch]);
   const notesInContainer = (id: string) => noteIndex.get(id) ?? [];
-  const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, overlayCardRef, sensors,
+  const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, sensors,
     collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
     handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag } = useOutlineBoardDrag(points, scratch, notesInContainer);
 
@@ -436,7 +436,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
 
   const isNoteTarget = (containerId: string) => noteSlot !== null && !noteSlot.own && noteSlot.containerId === containerId;
-  const noteListProps = { isReadOnly, noteSlot, liftedNoteId, activeNoteHeight, noteHomeOf };
+  const noteListProps = { isReadOnly, noteSlot, liftedNoteId, keptNoteId, activeNoteHeight, noteHomeOf };
   const renderNoteStrip = ({ containerId, notes, testId }: { containerId: string; notes: ScratchNote[]; testId: string }) => scratch
     ? <ScratchNoteStrip {...noteListProps} scratch={scratch} containerId={containerId} notes={notes} testId={testId} /> : null;
 
