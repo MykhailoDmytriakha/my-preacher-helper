@@ -56,7 +56,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+      onRecover={recovery.recover} />
     {removal ? <p>{action.kind === 'delete' ? initial?.preachDates?.find(date => date.id === target)?.date : value?.title}</p>
       : row && <PreachDateFields value={{ date: toDateOnlyKey(row.date) ?? '', church: row.church, audience: row.audience ?? '', notes: row.notes ?? '' }}
         disabled={readOnly} onChange={patch => { void form.update(current => patchPreachDate(current, target, patch)).catch(() => undefined); }} />}

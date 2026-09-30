@@ -7,8 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SubPointList } from '@/components/column/SubPointList';
+import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
-import { updateSermonOutline } from '@/services/outline.service';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
@@ -71,6 +71,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 }) => {
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
+  const writer = useStructureWriter();
 
   // --- All useState hooks at the top ---
   const [saving, setSaving] = useState<boolean>(false);
@@ -104,6 +105,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
    * Attempts of the same save do not count.
    */
   const saveGenerationRef = useRef(0);
+  /** The newest edit whose save has finished; an engine document is followed again once it catches up. */
+  const settledGenerationRef = useRef(0);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,12 +128,15 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   // and HTTP recovery). Never re-read a fragment through a second transport here.
   // Once this editor has changed, keep its visible list and merge baseline paired;
   // only its own accepted save can advance them. External editors remount this panel.
+  // An engine writer lays each change over the document's current copy, so the document
+  // stays the only store: follow it whenever no save of this panel is on its way.
   useEffect(() => {
-    if (saveGenerationRef.current > 0 || editingPointId || addingNewToSection) return;
+    if (editingPointId || addingNewToSection) return;
+    if (writer.immediate ? settledGenerationRef.current !== saveGenerationRef.current : saveGenerationRef.current > 0) return;
     setSectionPoints(mapOutline(sermon.outline));
     baseOutlineRef.current = sermon.outline ?? null;
-    setExpandedSections(expandedOutline(sermon.outline));
-  }, [sermon.outline, editingPointId, addingNewToSection]);
+    if (saveGenerationRef.current === 0) setExpandedSections(expandedOutline(sermon.outline));
+  }, [sermon.outline, editingPointId, addingNewToSection, writer.immediate]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -212,6 +218,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
       setSaving(true);
       setError(null);
+      const generationAtRequest = saveGenerationRef.current;
 
       try {
         // Convert our component state structure to the API expected format
@@ -221,16 +228,19 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
           conclusion: pointsToSave.conclusion,
         };
 
-        const generationAtRequest = saveGenerationRef.current;
         // `preferMine` — this view cannot hold a refused plan; see the writer.
-        const request = updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
-        const acceptance = await awaitAcceptance(
-          isBrowserOffline()
-            ? queuedMutation(`outline:${sermon.id}`, request)
-            : persistedWrite(request),
-          (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
-        );
-        const saved = acceptance.kind === 'persisted' ? await request : outlineToSave;
+        const request = writer.updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
+        // An immediate (engine) writer returns once the change is kept on this device;
+        // delivery, offline queueing and conflicts belong to the engine.
+        const saved = writer.immediate ? await request : await (async () => {
+          const acceptance = await awaitAcceptance(
+            isBrowserOffline()
+              ? queuedMutation(`outline:${sermon.id}`, request)
+              : persistedWrite(request),
+            (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+          );
+          return acceptance.kind === 'persisted' ? await request : outlineToSave;
+        })();
 
         /**
          * THE BASE AND WHAT IS ON SCREEN MOVE TOGETHER — OR NOT AT ALL.
@@ -266,6 +276,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         setError(t(writeFailureTranslationKey(err, 'errors.saveOutlineError')));
       } finally {
         setSaving(false);
+        if (generationAtRequest === saveGenerationRef.current) settledGenerationRef.current = generationAtRequest;
       }
     }, 100); // Shorter timeout since we're using direct data
   };

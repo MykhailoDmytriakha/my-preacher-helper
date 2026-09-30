@@ -109,7 +109,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
       <DataSyncStatus status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+        onRecover={recovery.recover} />
       <ThoughtOutlineField sermonOutline={sermon?.outline} outlinePointId={shown.outlinePointId} subPointId={shown.subPointId}
         disabled={readOnly} onSelect={(outlinePointId, subPointId) => change({ outlinePointId, subPointId })} />
       <ThoughtTagsField tags={shown.tags} allowedTags={allowedTags} availableTags={availableTags} disabled={readOnly}

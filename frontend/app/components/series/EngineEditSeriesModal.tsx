@@ -49,7 +49,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+        onRecover={recovery.recover} />
       <FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }}
         cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')}
         saving={loading || form.busy} submitDisabled={!form.active || !form.status?.canSave} />

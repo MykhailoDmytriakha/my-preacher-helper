@@ -69,6 +69,6 @@ function EngineSettingsStatus() {
     <DataSyncStatus status={document.status} error={document.readOnlyReason ?? document.error}
       onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+      onRecover={recovery.recover} />
   </section>;
 }

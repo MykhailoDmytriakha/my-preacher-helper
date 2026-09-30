@@ -63,7 +63,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
       <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+        onRecover={recovery.recover} />
       {series.enabled && <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />}
     </div>} />;
 }

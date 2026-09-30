@@ -27,10 +27,10 @@ it('does not flash "may be incomplete" through a scheduled re-read, which would 
     expect(screen.queryByRole('status')).toBeNull();
   } finally { jest.useRealTimers(); }
 });
-it('distinguishes pending delivery from local work needing attention', () => {
+it('says nothing about delivery on its way and speaks only for local work needing attention', () => {
   const document = { resource: { collection: 'groups', id: 'g' }, value: {}, pending: true, needsAttention: false, deleting: false };
   const { rerender } = render(<DataCollectionStatus state={{ ...state, documents: [document] }} />);
-  expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.queued');
+  expect(screen.queryByRole('status')).toBeNull();
   rerender(<DataCollectionStatus state={{ ...state, documents: [{ ...document, needsAttention: true }] }} />);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.collectionAttention');
   expect(screen.queryByText('dataSync.phase.queued')).toBeNull();

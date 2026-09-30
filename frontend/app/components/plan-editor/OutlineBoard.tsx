@@ -7,7 +7,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
-import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bars2Icon, Bars3Icon, CheckIcon, LightBulbIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -178,6 +178,8 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     return '';
   };
 
+  // Direct-text mode: ids whose empty note field was opened via the "+ note" affordance.
+  const [openedNoteIds, setOpenedNoteIds] = useState<Set<string>>(new Set());
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [addingToSection, setAddingToSection] = useState<SectionKey | null>(null);
@@ -438,11 +440,30 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const renderNoteStrip = ({ containerId, notes, testId }: { containerId: string; notes: ScratchNote[]; testId: string }) => scratch
     ? <ScratchNoteStrip {...noteListProps} scratch={scratch} containerId={containerId} notes={notes} testId={testId} /> : null;
 
+  const renderDirectNote = (id: string, note: string | undefined, onNote: (value: string) => void, indentClass: string, revealClass: string) => {
+    if (!note && !openedNoteIds.has(id)) {
+      return (
+        <button type="button" aria-label={t('planEditor.note.label')}
+          onClick={() => setOpenedNoteIds(prev => new Set(prev).add(id))}
+          className={`${indentClass} mt-1 inline-flex items-center gap-1 rounded text-xs text-slate-400 transition-colors hover:text-amber-600 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/50 dark:text-gray-500 dark:hover:text-amber-400 ${revealClass}`}>
+          <LightBulbIcon className="h-3 w-3" />
+          <span>{t('planEditor.note.add')}</span>
+        </button>
+      );
+    }
+    return (
+      <div className={`${indentClass} mt-1`}>
+        <TextareaAutosize minRows={1} value={note ?? ''} autoFocus={!note}
+          aria-label={t('planEditor.note.label')} placeholder={t('planEditor.note.placeholder')}
+          className="w-full resize-none overflow-hidden rounded border border-transparent bg-amber-50/60 px-2 py-1 text-xs italic text-slate-600 placeholder:text-amber-700/40 hover:border-amber-200 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400 dark:bg-amber-900/10 dark:text-amber-50/90 dark:placeholder:text-amber-200/30 dark:hover:border-amber-800"
+          onChange={event => onNote(event.target.value)} />
+      </div>
+    );
+  };
+
   const renderPointReminder = (point: OutlinePoint) => editingDirectly ? (
-    <TextareaAutosize minRows={2} value={point.note ?? ''}
-      aria-label={t('planEditor.note.label')} placeholder={t('planEditor.note.placeholder')}
-      className="w-full rounded border border-amber-200 bg-transparent p-1 text-sm dark:border-amber-800"
-      onChange={event => mutatePoint(point.id, current => ({ ...current, note: event.target.value }))} />
+    renderDirectNote(point.id, point.note, note => mutatePoint(point.id, current => ({ ...current, note })),
+      'ml-6', 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100')
   ) : (
     <PointNote note={point.note} onChange={note => mutatePoint(point.id, current => ({ ...current, note }))}
       isReadOnly={isReadOnly} indentClass="ml-6" addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
@@ -453,8 +474,8 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     const isEditing = editingSubPointId === sp.id;
 
     if (editingDirectly) return <>
-      <TextareaAutosize minRows={2} value={sp.text} aria-label={t('structure.subPointPlaceholder')}
-        className="min-w-0 flex-1 rounded border border-gray-300 bg-transparent p-1 text-sm dark:border-gray-600"
+      <TextareaAutosize minRows={1} value={sp.text} aria-label={t('structure.subPointPlaceholder')}
+        className="min-w-0 flex-1 resize-none overflow-hidden rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-gray-800 hover:border-gray-200 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:text-gray-200 dark:hover:border-gray-600"
         onChange={event => mutatePoint(point.id, current => ({ ...current,
           subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, text: event.target.value } : sub) }))} />
       <button type="button" aria-label={t(DELETE_KEY)} onClick={() => requestDeleteSubPoint(point.id, sp.id)}>
@@ -590,11 +611,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             {renderSubPointControls(point, sp)}
                           </div>
                           {showNotes && (
-                            editingDirectly ? <TextareaAutosize minRows={2} value={sp.note ?? ''}
-                              aria-label={t('planEditor.note.label')} placeholder={t('planEditor.note.placeholder')}
-                              className="w-full rounded border border-amber-200 bg-transparent p-1 text-sm dark:border-amber-800"
-                              onChange={event => mutatePoint(point.id, current => ({ ...current,
-                                subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, note: event.target.value } : sub) }))} /> : <PointNote
+                            editingDirectly ? renderDirectNote(sp.id, sp.note, value => mutatePoint(point.id, current => ({ ...current,
+                                subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, note: value } : sub) })),
+                              'ml-5', 'opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100') : <PointNote
                               note={sp.note}
                               onChange={(n) =>
                                 mutatePoint(point.id, (p) => ({
@@ -808,8 +827,8 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                           </div>
 
                           {editingDirectly ? (
-                            <TextareaAutosize minRows={2} value={point.text} aria-label={t('structure.editPointPlaceholder')}
-                              className="min-w-0 flex-1 rounded border border-gray-300 bg-transparent p-1 text-sm dark:border-gray-600"
+                            <TextareaAutosize minRows={1} value={point.text} aria-label={t('structure.editPointPlaceholder')}
+                              className="min-w-0 flex-1 resize-none overflow-hidden rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm text-gray-800 hover:border-gray-200 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:text-gray-200 dark:hover:border-gray-600"
                               onChange={event => mutatePoint(point.id, current => ({ ...current, text: event.target.value }))} />
                           ) : editingPointId === point.id ? (
                             <div className="flex-1 flex items-center gap-1">

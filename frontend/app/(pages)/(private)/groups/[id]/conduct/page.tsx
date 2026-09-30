@@ -42,7 +42,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
     {form.active && <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
-      recoveryChoices={recovery.choices} onListRecovery={recovery.refresh} onRecover={recovery.recover}
+      recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />}
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}

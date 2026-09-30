@@ -59,7 +59,7 @@ function EngineSeriesPage() {
   return <>
     <SeriesView source={source} onCreate={() => setCreation({ id: newClientId() })}
       feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus status={null} recoveryChoices={recovery.choices}
-        onListRecovery={recovery.refresh} onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
+        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
     {creation && <EngineCreateSeriesModal key={`${owner}:${creation.id}`} seriesId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/series/${id}`); }} />}
   </>;

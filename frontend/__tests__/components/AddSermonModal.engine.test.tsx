@@ -51,7 +51,8 @@ it('creates through the real entry point, keeps submitted input in list/calendar
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('Queued sermon'));
   expect(screen.getByTestId('calendar')).toHaveTextContent('Queued sermon');
-  expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.queued');
+  // Waiting in the queue is the ordinary way; the screen says nothing about it (isSyncTrouble).
+  expect(screen.queryByText('dataSync.phase.queued')).not.toBeInTheDocument();
   expect(legacyCreate).not.toHaveBeenCalled(); expect(legacyCreated).not.toHaveBeenCalled(); expect(getSermons).not.toHaveBeenCalled();
   const request = (await harness.commits.list('owner'))[0], resource = request.baseline.resource;
   view.unmount(); const restored = mount();

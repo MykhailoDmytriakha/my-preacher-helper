@@ -51,7 +51,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     debouncedSave: () => undefined, saveStatus: '', deleteGroupDetail: data.deleteGroupDetail,
     feedback: <DataSyncStatus status={data.status} error={data.error}
       onKeepLocal={data.keepLocal} onAcceptRemote={data.acceptRemote} onRetry={data.refresh}
-      recoveryChoices={recovery.choices} onListRecovery={recovery.refresh} onRecover={recovery.recover}
+      recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />,
   };
 }

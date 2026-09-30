@@ -55,7 +55,8 @@ it('reports missing fields and accepts an offline creation without claiming serv
   await waitFor(() => expect(onQueued).toHaveBeenCalledWith(resource.id));
   expect(harness.server.value).toBeNull(); expect(harness.transport.send).not.toHaveBeenCalled();
   expect((await harness.commits.list('owner')).some(commit => commit.value?.title === 'Offline series')).toBe(true);
-  expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.queued'); view.unmount();
+  // Queued offline is the ordinary way; nothing claims confirmation and nothing is shown (isSyncTrouble).
+  expect(screen.queryByText('dataSync.phase.queued')).not.toBeInTheDocument(); view.unmount();
 });
 
 it('keeps local creation available when an unrelated background read fails', async () => {

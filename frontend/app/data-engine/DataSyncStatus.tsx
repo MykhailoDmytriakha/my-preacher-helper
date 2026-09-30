@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 
+import { isSyncTrouble } from './status';
 import { useLasting } from './useLasting';
 
 import type { SyncStatus } from './status';
@@ -22,8 +23,8 @@ export interface DataSyncStatusProps {
   onKeepLocal?: () => void | Promise<void>;
   onAcceptRemote?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
+  /** Drafts found by `useRecoveryDiscovery`, which looks by itself; nothing to ask for. */
   recoveryChoices?: readonly RecoveryChoice[];
-  onListRecovery?: () => void | Promise<void>;
   onRecover?: (id: string) => void | Promise<void>;
   recoveryLoading?: boolean;
   recoveryError?: string | null;
@@ -32,9 +33,9 @@ export interface DataSyncStatusProps {
 
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onListRecovery, onRecover, recoveryLoading = false, recoveryError, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
-  const scope = useMemo(() => ({ onKeepLocal, onAcceptRemote, onRetry, onListRecovery, onRecover }), [onKeepLocal, onAcceptRemote, onRetry, onListRecovery, onRecover]);
+  const scope = useMemo(() => ({ onKeepLocal, onAcceptRemote, onRetry, onRecover }), [onKeepLocal, onAcceptRemote, onRetry, onRecover]);
   const currentScope = useRef<object>(scope); currentScope.current = scope;
   useEffect(() => { currentScope.current = scope; return () => { currentScope.current = {}; }; }, [scope]);
   const [action, setAction] = useState<{ scope: object; busy: boolean; error: string | null } | null>(null);
@@ -58,21 +59,27 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   const keep = status?.canKeepLocal && onKeepLocal;
   const accept = status?.canAcceptRemote && onAcceptRemote;
   const conflictBanner = status?.phase === 'conflict' && keep && accept;
-  if (!status && !failure && !onListRecovery && !recoveryChoices.length && !recoveryError) return null;
+  // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
+  const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
+  const trouble = isSyncTrouble(status?.phase);
+  // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
+  const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
+  const showRetry = Boolean(onRetry && (failure || readTrouble || trouble));
+  const said = [showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
+  if (!said.some(Boolean)) return null;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
   return <div className={`space-y-3 text-sm ${className}`}>
-    {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
-      <p>{t(status.phase === 'saved' && recoveryChoices.length ? 'dataSync.unfinishedWork' : `dataSync.phase.${status.phase}`)}</p>
-      {unconfirmedCopy && status.freshness !== 'server' && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
+    {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+      {showPhase && <p>{t(trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
+      {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
     </div>}
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
-    <div className="flex flex-wrap gap-2">
+    {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
       {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(keep)}>{t('dataSync.keepLocal')}</button>}
       {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(accept)}>{t('dataSync.acceptRemote')}</button>}
-      {onRetry && (failure || readTrouble || (status && status.phase !== 'saved')) && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
-      {onListRecovery && <button type="button" className={buttonClass} disabled={busy || recoveryLoading} onClick={() => run(onListRecovery)}>{t(recoveryLoading ? 'dataSync.recoveryLoading' : 'dataSync.findRecovery')}</button>}
-    </div>
+      {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
+    </div>}
     {recoveryError && <p role="alert" className="text-rose-700 dark:text-rose-300">{recoveryError}</p>}
     {recoveryChoices.length > 0 && <div className="space-y-2 rounded-lg border border-gray-300 p-3 dark:border-gray-600">
       <label className="block"><span>{t('dataSync.recoveryLabel')}</span>

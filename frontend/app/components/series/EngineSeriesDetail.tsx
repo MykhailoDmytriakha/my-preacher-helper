@@ -56,7 +56,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const sync = <DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
     onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-    onListRecovery={recovery.refresh} onRecover={recovery.recover} />;
+    onRecover={recovery.recover} />;
   if (document.loading && !document.data) return <SeriesDetailSkeleton />;
   if (!document.data) return <div className="space-y-4">
     <button onClick={() => router.push('/series')}>{t(SERIES_LABEL)}</button>
@@ -79,7 +79,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
         <DataSyncStatus status={metadata.dirty ? metadata.status : null} error={metadata.error}
           recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
-          onListRecovery={metadataRecovery.refresh} onRecover={metadataRecovery.recover} />
+          onRecover={metadataRecovery.recover} />
         {metadata.dirty && <button type="button" className="underline" onClick={() => setEditing(true)}>{t('workspaces.series.editSeries')}</button>}
       </section>}
       <DataCollectionStatus state={collection.state} />

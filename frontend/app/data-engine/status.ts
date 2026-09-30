@@ -8,6 +8,22 @@ import type { JournalEntry } from './types';
 export type SyncPhase = 'savingLocally' | 'localFailure' | 'draft' | 'queued' | 'sending' | 'unknown'
   | 'blocked' | 'refused' | 'conflict' | 'remoteChanged' | 'deleted' | 'saved';
 
+/**
+ * WHEN EVERYTHING GOES AS EXPECTED, THE PERSON SEES NOTHING (owner, 2026-09-29).
+ *
+ * Saving on the device, a draft kept there, waiting in the queue, sending and saved are the
+ * ordinary way a change travels, and the engine finishes each of them by itself. Only a phase the
+ * app could not resolve on its own is said on screen — the way a toast is never shown for a save
+ * that simply worked. A status line that appears and disappears with every keystroke also moved
+ * the page under the reader.
+ */
+const SETTLING_PHASES: ReadonlySet<string> = new Set<SyncPhase>(['savingLocally', 'draft', 'queued', 'sending', 'blocked', 'saved']);
+
+/** Whether this phase is trouble worth showing; every status surface asks this one rule. */
+export function isSyncTrouble(phase: string | null | undefined): boolean {
+  return Boolean(phase) && !SETTLING_PHASES.has(phase as string);
+}
+
 export interface SyncStatus {
   phase: SyncPhase;
   freshness: Observation['readiness'];

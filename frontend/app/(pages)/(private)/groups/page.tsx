@@ -62,7 +62,7 @@ function EngineGroupsPage() {
     } });
   return <>
     <GroupsView source={source} onCreate={() => setCreation({ id: newClientId() })} onDelete={group => setDeleting(group.id)}
-      feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus status={null} recoveryChoices={recovery.choices} onListRecovery={recovery.refresh}
+      feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus status={null} recoveryChoices={recovery.choices}
         onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
     {creation && <EngineCreateGroupModal key={`${owner}:${creation.id}`} groupId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/groups/${id}`); }} />}

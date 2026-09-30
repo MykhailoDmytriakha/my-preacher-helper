@@ -84,6 +84,7 @@ import {
 } from "@utils/thoughtOrdering";
 
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
+import { EngineSermonOutline } from './components/EngineSermonOutline';
 import { useScratchNotes } from "./hooks/useScratchNotes";
 import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
 import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
@@ -410,8 +411,7 @@ function SermonPageContent({ id, source, core, engineThoughts }: { id: string; s
   const dictationBlockedKey = usageBlockedLabelKey('dictation');
   const isReadOnly = Boolean(core?.isReadOnly);
   const engineEnabled = Boolean(core);
-  // Explicit migration boundary: outline editing and AI writers still use
-  // legacy transports. Keep their controls inert until their canonical adapters land.
+  // Controls that exist only in legacy form (their engine counterparts render instead).
   const legacyReadOnly = engineEnabled || isReadOnly;
 
   const searchParams = useSearchParams();
@@ -2052,11 +2052,12 @@ useEffect(() => {
                     onOpenPlanEditor={openPlanEditor}
                   />
                 </div>
-                {engineEnabled && !isReadOnly && <button type="button" onClick={() => setIsEngineOutlineOpen(true)}
-                  className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                  {t('planEditor.title')}
-                </button>}
-                <SermonOutline
+                {engineEnabled ? <EngineSermonOutline
+                  key={outlineRefreshKey}
+                  sermon={sermon!}
+                  thoughtsPerSermonPoint={thoughtsPerSermonPoint}
+                  isReadOnly={isReadOnly}
+                /> : <SermonOutline
                   key={outlineRefreshKey}
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
@@ -2064,7 +2065,7 @@ useEffect(() => {
                   onOutlinePointDeleted={handleOutlinePointDeleted}
                   onSubPointDeleted={handleSubPointDeleted}
                   isReadOnly={legacyReadOnly}
-                />
+                />}
                 {/* On an engine document the insights route stores the result itself; the page reads it back. */}
                 {sermon && !(core && isReadOnly) && <KnowledgeSection sermon={sermon} updateSermon={core ? () => { void core.retry().catch(() => undefined); } : handleSermonUpdate} />}
                 {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}

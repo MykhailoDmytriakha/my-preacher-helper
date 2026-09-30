@@ -5,8 +5,8 @@ import { useTranslation } from 'react-i18next';
 
 import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
-import { DataSyncStatus, type RecoveryChoice } from '@/data-engine/DataSyncStatus';
-import { useDataEngine } from '@/data-engine/react.client';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 
 import { useScratchDataDocument } from '../hooks/useScratchDataDocument';
 
@@ -17,7 +17,6 @@ interface EngineScratchWorkspaceProps {
   isReadOnly?: boolean;
   onConfirmed?: (snapshot: ResourceSnapshot) => void;
 }
-interface RecoveryState { identity: object; choices: RecoveryChoice[]; loading: boolean; error: string | null }
 
 /** Bind scratch interactions to the shared document lifecycle without another cache or baseline. */
 export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirmed }: EngineScratchWorkspaceProps) {
@@ -31,42 +30,18 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const isCurrent = useCallback(() => mounted.current && scope.current === identity && Boolean(identity.owner), [identity]);
-  const [recovery, setRecovery] = useState<RecoveryState | null>(null);
-  const request = useRef(0);
-  const activeRecovery = recovery?.identity === identity ? recovery : null;
-  const recoverChoices = activeRecovery?.choices ?? [];
-  const fallbackError = t('dataSync.actionFailed');
   const fallbackTitle = t('freshness.entitySermon');
-  const listRecovery = useCallback(async () => {
-    if (!isCurrent()) return;
-    const version = ++request.current;
-    setRecovery({ identity, choices: [], loading: true, error: null });
-    try {
-      const records = await latest.current.listRecoverable();
-      if (!isCurrent() || version !== request.current) return;
-      const choices = records.map(({ id, record }) => {
-        const draft = record.checkpoint.draft;
-        const title = draft?.title ?? record.checkpoint.confirmed.value?.title;
-        const notes = Array.isArray(draft?.scratch) ? draft.scratch : [];
-        const preview = notes.flatMap(note => note && typeof note === 'object' && !Array.isArray(note) && typeof note.text === 'string' ? [note.text] : []).join('\n').slice(0, 500);
-        return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}) };
-      });
-      setRecovery({ identity, choices, loading: false, error: null });
-    } catch (error) {
-      if (isCurrent() && version === request.current) setRecovery({ identity, choices: [], loading: false, error: error instanceof Error ? error.message : fallbackError });
-    }
-  }, [identity, isCurrent, fallbackError, fallbackTitle]);
-  const recover = useCallback(async (sourceId: string) => {
-    if (!isCurrent()) return;
-    const version = ++request.current;
-    setRecovery(previous => ({ identity, choices: previous?.identity === identity ? previous.choices : [], loading: true, error: null }));
-    try {
-      await latest.current.recover(sourceId);
-      if (isCurrent() && version === request.current) setRecovery({ identity, choices: [], loading: false, error: null });
-    } catch (error) {
-      if (isCurrent() && version === request.current) setRecovery(previous => ({ identity, choices: previous?.identity === identity ? previous.choices : [], loading: false, error: error instanceof Error ? error.message : fallbackError }));
-    }
-  }, [identity, isCurrent, fallbackError]);
+  const recovery = useRecoveryDiscovery({ identity: scratch.recoveryIdentity,
+    enabled: Boolean(owner) && !scratch.loading && scratch.status !== null,
+    version: JSON.stringify([scratch.status?.phase, scratch.confirmed?.metadata?.revision]),
+    list: async () => (await latest.current.listRecoverable()).map(({ id, record }) => {
+      const draft = record.checkpoint.draft;
+      const title = draft?.title ?? record.checkpoint.confirmed.value?.title;
+      const notes = Array.isArray(draft?.scratch) ? draft.scratch : [];
+      const preview = notes.flatMap(note => note && typeof note === 'object' && !Array.isArray(note) && typeof note.text === 'string' ? [note.text] : []).join('\n').slice(0, 500);
+      return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}) };
+    }),
+    recover: id => latest.current.recover(id) });
   const keepLocal = useCallback(async () => { if (isCurrent()) await latest.current.keepLocal(); }, [isCurrent]);
   const acceptRemote = useCallback(async () => { if (isCurrent()) await latest.current.acceptRemote(); }, [isCurrent]);
   const retry = useCallback(async () => { if (isCurrent()) await latest.current.retry(); }, [isCurrent]);
@@ -84,8 +59,8 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
 
   return <section className="space-y-4" data-testid="engine-scratch-workspace">
     <DataSyncStatus status={scratch.status} error={scratch.error} onKeepLocal={keepLocal} onAcceptRemote={acceptRemote} onRetry={retry}
-      recoveryChoices={recoverChoices} onListRecovery={listRecovery} onRecover={recover}
-      recoveryLoading={activeRecovery?.loading} recoveryError={activeRecovery?.error} />
+      recoveryChoices={recovery.choices} onRecover={recovery.recover}
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}

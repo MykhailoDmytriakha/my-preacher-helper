@@ -52,7 +52,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
       <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
         onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-        onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+        onRecover={recovery.recover} />
       {withScratch && sermon ? <ScratchProposalBoard sermonId={sermonId} sermon={sermon} form={form} readOnly={readOnly}
         valid={valid} onChange={change} /> : <OutlineBoard value={outline} onChange={change} directText showNotes isReadOnly={readOnly}
         getPointThoughtCount={id => sermon?.thoughts.filter(thought => thought.outlinePointId === id).length ?? 0}

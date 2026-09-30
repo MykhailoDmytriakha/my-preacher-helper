@@ -52,7 +52,7 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
     <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onListRecovery={recovery.refresh} onRecover={recovery.recover} />
+      onRecover={recovery.recover} />
     {topic && form.active && <CouncilOutcomePanel topic={topic} onWrite={write} />}
     <div className="flex gap-2">
       <button type="button" className="rounded-full bg-indigo-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"

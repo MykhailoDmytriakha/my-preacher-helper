@@ -13,11 +13,13 @@ import type { CollectionState } from './collections';
  */
 export function DataCollectionStatus({ state }: { state: CollectionState | null | undefined }) {
   const { t } = useTranslation();
-  const pending = state?.documents?.filter(document => document.pending) ?? [];
+  // Delivery that is merely on its way finishes by itself (see `isSyncTrouble`); only work
+  // that needs the person is said.
+  const attention = state?.documents?.some(document => document.pending && document.needsAttention) ?? false;
   const incomplete = useLasting(!state?.complete);
-  if (!pending.length && !incomplete) return null;
+  if (!attention && !incomplete) return null;
   return <div role="status" className="mb-3 rounded-lg border border-amber-200 p-3 text-sm dark:border-amber-700">
-    {pending.length > 0 && <p>{t(pending.some(document => document.needsAttention) ? 'dataSync.collectionAttention' : 'dataSync.phase.queued')}</p>}
+    {attention && <p>{t('dataSync.collectionAttention')}</p>}
     {incomplete && <p>{t('dataSync.collectionIncomplete')}</p>}
   </div>;
 }

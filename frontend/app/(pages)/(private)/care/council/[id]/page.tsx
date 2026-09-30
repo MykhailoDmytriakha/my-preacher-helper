@@ -148,7 +148,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   return <>
     <DataSyncStatus status={document.status} error={document.error} className="mb-4"
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
-      recoveryChoices={recovery.choices} onListRecovery={recovery.refresh} onRecover={recovery.recover}
+      recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     <CouncilDetailContent source={source} engineCouncilId={councilId} />
   </>;

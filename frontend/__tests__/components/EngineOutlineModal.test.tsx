@@ -51,6 +51,7 @@ afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 it('stages every title and reminder keystroke without sending or changing the page document', async () => {
   const { harness, view } = setup(); await ready();
   change('Main', 'My main'); change('Sub', 'My sub');
+  fireEvent.click(screen.getAllByLabelText('planEditor.note.label')[1]); // reveal the empty sub-point note
   fireEvent.change(screen.getAllByLabelText('planEditor.note.label')[1], { target: { value: 'Durable reminder' } });
   await settle();
   expect(harness.transport.send).not.toHaveBeenCalled();
@@ -152,6 +153,7 @@ it('adds and recovers an unsent subpoint before its title is complete', async ()
   fireEvent.click(column.getByText('structure.addSubPoint')); await settle();
   const input = column.getByLabelText('structure.subPointPlaceholder');
   fireEvent.change(input, { target: { value: 'Unfinished subpoint' } });
+  fireEvent.click(column.getAllByLabelText('planEditor.note.label')[1]); // reveal the empty sub-point note
   fireEvent.change(column.getAllByLabelText('planEditor.note.label')[1], { target: { value: 'Unfinished reminder' } }); await settle();
   view.unmount(); const restored = render(<Workspace />); await ready();
   const choice = await screen.findByRole('option', { name: 'Sermon' });

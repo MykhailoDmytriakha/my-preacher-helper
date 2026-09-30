@@ -50,7 +50,9 @@ it('projects a queued atomic move immediately, recovers its status after restart
   const panel = recovery.parentElement!;
   fireEvent.change(within(panel).getByRole('combobox'), { target: { value: within(panel).getByRole('option', { name: 'b' }).getAttribute('value') } });
   fireEvent.click(within(panel).getByRole('button', { name: 'dataSync.recover' }));
-  await waitFor(() => expect(screen.getAllByRole('status').some(node => node.textContent === 'dataSync.phase.queued')).toBe(true));
+  await act(async () => { await settleEngine(); });
+  // The recovered move waits in the queue silently (isSyncTrouble); delivery below proves it was recovered.
+  expect(screen.queryByText('dataSync.phase.queued')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'dataSync.discardAction' })).not.toBeInTheDocument();
   await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
   await waitFor(() => expect(harness.read(series('b').resource).value!.items).toEqual([member]));

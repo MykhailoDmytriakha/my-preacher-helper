@@ -9,6 +9,8 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
 jest.mock('@locales/i18n', () => ({}));
 import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
 import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
+import StructureStats from '@/components/sermon/StructureStats';
+import { EngineSermonOutline } from '@/(pages)/(private)/sermons/[id]/components/EngineSermonOutline';
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import ThoughtList from '@/components/sermon/ThoughtList';
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
@@ -128,7 +130,10 @@ jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true
 jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, default: ({}) => null }));
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: ({}) => <div data-testid="outline" /> }));
 jest.mock('@/components/sermon/KnowledgeSection', () => ({ __esModule: true, default: ({}) => <div data-testid="knowledge" /> }));
-jest.mock('@/components/sermon/StructureStats', () => ({ __esModule: true, default: ({}) => <div data-testid="stats" /> }));
+jest.mock('@/components/sermon/StructureStats', () => ({ __esModule: true, default: jest.fn(({}) => <div data-testid="stats" />) }));
+jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineSermonOutline', () => ({
+  EngineSermonOutline: jest.fn(() => <div data-testid="engine-outline" />),
+}));
 jest.mock('@/components/sermon/ScratchPanel', () => ({ __esModule: true, default: () => <div data-testid="scratch-panel">Наброски</div> }));
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -463,11 +468,31 @@ describe('SermonPage mode transitions', () => {
     });
   });
 
+  /*
+   * BUG-20260929-engine-outline-read-only: on an engine document the plan on the sermon page was
+   * rendered read-only (pencil did nothing, "Add point" greyed out) because its writer was the
+   * legacy one. It now writes through the engine writer and is editable unless the document is.
+   */
+  it('keeps the page outline editable on an engine document and routes it through the engine writer', async () => {
+    mockEngineEnabled = true;
+    searchParamsMock = new URLSearchParams();
+    const view = render(<TestProviders><SermonPage /></TestProviders>);
+    expect(await screen.findByTestId('engine-outline')).toBeInTheDocument();
+    expect(screen.queryByTestId('outline')).not.toBeInTheDocument();
+    const props = jest.mocked(EngineSermonOutline).mock.calls.at(-1)![0];
+    expect(props).toMatchObject({ isReadOnly: false });
+    expect(props.sermon.id).toBe('abc');
+    view.unmount();
+  });
+
   it('opens the pinned outline form only for the enabled sermon collection', async () => {
     mockEngineEnabled = true;
     searchParamsMock = new URLSearchParams();
     const view = render(<TestProviders><SermonPage /></TestProviders>);
-    fireEvent.click(await screen.findByRole('button', { name: 'planEditor.title' }));
+    await screen.findAllByTestId('stats');
+    // The stats card (phone and desktop) is the entry; the page no longer carries a second bare link to the editor.
+    expect(screen.queryByRole('button', { name: 'planEditor.title' })).not.toBeInTheDocument();
+    act(() => { jest.mocked(StructureStats).mock.calls.at(-1)![0].onOpenPlanEditor!(); });
     expect(jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc' });
     act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
     expect(screen.queryByTestId('engine-outline-modal')).not.toBeInTheDocument(); view.unmount();
