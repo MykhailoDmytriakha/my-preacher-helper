@@ -36,7 +36,7 @@ import { serializeContent } from '@/utils/contentFingerprint';
 /** Bump when the stored shape changes; old entries are then ignored, not parsed. */
 const PREFIX = 'draft:v1:';
 
-/** A single stored draft. `savedAt` is only used for eviction ordering. */
+/** A single stored draft. `savedAt` orders drafts newest first when a screen looks for them. */
 export interface DurableDraft<T> {
   value: T;
   savedAt: number;
@@ -98,16 +98,13 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * Persist a draft and say whether it landed. Never throws: losing the safety net must not break
  * typing — but it must not go unnoticed either.
  *
- * On a quota error we evict the OLDEST ORDINARY drafts (never the one being
- * written, and never a `conflict:` record) and retry once.
- *
- * Conflict records are exempt on purpose: an ordinary draft duplicates text that
- * is still visible in an open editor, but a conflict record is the LAST copy of
- * text the server has already refused — evicting it to make room is trading a
- * backup for an original. Adversarial review found the old eviction sweeping
- * those away silently.
+ * OUT OF ROOM, NOTHING ELSE IS REMOVED (BUG-20260928-draft-eviction-drops-unseen-drafts). The
+ * draft being written duplicates text still on an open screen; another stored draft may be the
+ * only copy of text from an earlier session that nobody has seen since. Making room by deleting
+ * it traded an original for a backup, silently. So a refused copy is reported instead: the
+ * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T, protectKey?: string): boolean {
+export function saveDraft<T>(key: string, value: T): boolean {
   const store = storage();
   if (!store) {
     recordDraftStorage(key, true, value);
@@ -119,16 +116,9 @@ export function saveDraft<T>(key: string, value: T, protectKey?: string): boolea
   try {
     store.setItem(key, payload);
   } catch {
-    evictOldestDrafts(store, key, protectKey);
-    try {
-      store.setItem(key, payload);
-    } catch {
-      // Out of room even after eviction: for a conflict record this is the last copy of
-      // refused text, and silence would be the loss itself.
-      console.error('durableDraft: no room to persist', key);
-      recordDraftStorage(key, true, value);
-      return false;
-    }
+    console.error('durableDraft: no room to persist', key);
+    recordDraftStorage(key, true, value);
+    return false;
   }
   recordDraftStorage(key, false);
   return true;
@@ -150,10 +140,8 @@ export function readDraft<T>(key: string): DurableDraft<T> | null {
   }
 }
 
-/** Drop a draft unconditionally (the user discarded it). Never throws. */
-export function clearDraft(key: string): void {
-  // A retired draft is no longer owed a copy.
-  recordDraftStorage(key, false);
+/** Remove the stored copy only; what the key is owed is decided by the caller. */
+function removeStoredDraft(key: string): void {
   const store = storage();
   if (!store) return;
   try {
@@ -161,6 +149,13 @@ export function clearDraft(key: string): void {
   } catch {
     /* nothing to do */
   }
+}
+
+/** Drop a draft unconditionally (the user discarded it). Never throws. */
+export function clearDraft(key: string): void {
+  // A retired draft is no longer owed a copy.
+  recordDraftStorage(key, false);
+  removeStoredDraft(key);
 }
 
 /**
@@ -178,7 +173,9 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
   const stored = readDraft<T>(key);
   if (!stored) return;
   if (serializeContent(stored.value) !== serializeContent(confirmed)) return;
-  clearDraft(key);
+  // Only the confirmed copy goes. A newer text whose copy was refused is still owed one, and its
+  // warning stays up until that very text is confirmed or discarded.
+  removeStoredDraft(key);
 }
 
 /**
@@ -209,9 +206,7 @@ export function moveDraft(fromKey: string, toKey: string): void {
     }
     return;
   }
-  // The source is protected from eviction: making room for the copy by deleting the
-  // very thing being copied is how a move ends with the text nowhere at all.
-  saveDraft(toKey, stored.value, fromKey);
+  saveDraft(toKey, stored.value);
   // VERIFY THE COPY LANDED. `saveDraft` never throws — out of room it logs and
   // gives up — so clearing the source on faith would leave the text with no durable
   // copy at all, which is worse than not moving it.
@@ -240,7 +235,7 @@ export function findDraftDocIds(uid: string, aggregate: string): string[] {
     .map((entry) => entry.docId);
 }
 
-/** All draft keys currently stored, oldest first. Used for eviction and cleanup. */
+/** All draft keys currently stored. Used for discovery and cleanup. */
 export function listDraftKeys(store: Storage = storage() as Storage): string[] {
   if (!store) return [];
   const keys: string[] = [];
@@ -272,36 +267,6 @@ export function clearDraftsForOwner(uid: string): void {
   if (!store) return;
   const owned = listDraftKeys(store).filter((key) => key.startsWith(`${PREFIX}${uid}:`));
   owned.forEach((key) => {
-    try {
-      store.removeItem(key);
-    } catch {
-      /* keep going */
-    }
-  });
-}
-
-/** Free room by dropping the oldest drafts, never the one being written. */
-function evictOldestDrafts(store: Storage, keepKey: string, protectKey?: string): void {
-  const entries = listDraftKeys(store)
-    .filter((key) => key !== keepKey)
-    // The draft being COPIED is protected as well: evicting it to make room for its
-    // own copy, and then failing to write that copy, is how a move can end with the
-    // text nowhere at all.
-    .filter((key) => key !== protectKey)
-    // NEVER evict a refused-save record. An ordinary draft duplicates text still
-    // visible in an editor; a conflict record is the last copy of text the server
-    // turned away. Freeing space by deleting it destroys the original to save a
-    // backup — exactly the loss this module exists to prevent.
-    .filter((key) => !key.includes(':conflict:'))
-    .map((key) => ({ key, savedAt: readDraft(key)?.savedAt ?? 0 }))
-    .sort((a, b) => a.savedAt - b.savedAt);
-
-  if (entries.length === 0) return;
-
-  // Half is arbitrary but bounded: enough room for a large note without wiping
-  // every other unsaved draft the user may still need.
-  const dropCount = Math.max(1, Math.ceil(entries.length / 2));
-  entries.slice(0, dropCount).forEach(({ key }) => {
     try {
       store.removeItem(key);
     } catch {

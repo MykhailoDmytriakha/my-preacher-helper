@@ -3,6 +3,7 @@ import {
   clearDraftIfMatches,
   clearDraftsForOwner,
   draftKey,
+  isDraftStorageRefused,
   listDraftKeys,
   moveDraft,
   readDraft,
@@ -93,27 +94,43 @@ describe('durableDraft', () => {
     expect(readDraft(key)).toBeNull();
   });
 
-  it('never throws when storage rejects the write, and keeps the newest draft', () => {
+  it('never removes another draft to make room: the new copy is reported as not kept instead', () => {
+    // BUG-20260928-draft-eviction-drops-unseen-drafts: a draft from an earlier session may be the
+    // only copy of text nobody has seen since; the one being written duplicates an open editor.
+    const unseen = draftKey('uid-1', 'note-old', 'note');
+    saveDraft(unseen, { old: true });
     const key = draftKey('uid-1', 'note-new', 'note');
-    saveDraft(draftKey('uid-1', 'note-old', 'note'), { old: true });
 
     const real = Storage.prototype.setItem;
-    let failuresLeft = 1;
     const spy = jest
       .spyOn(Storage.prototype, 'setItem')
       .mockImplementation(function mocked(this: Storage, k: string, v: string) {
-        if (failuresLeft > 0 && k === key) {
-          failuresLeft -= 1;
-          throw new DOMException('quota', 'QuotaExceededError');
-        }
+        // Full: nothing new fits until something else is freed.
+        if (k === key) throw new DOMException('quota', 'QuotaExceededError');
         return real.call(this, k, v);
       });
 
-    expect(() => saveDraft(key, { fresh: true })).not.toThrow();
-    // Eviction freed room and the retry landed.
-    expect(readDraft<{ fresh: boolean }>(key)?.value).toEqual({ fresh: true });
+    let kept = true;
+    expect(() => { kept = saveDraft(key, { fresh: true }); }).not.toThrow();
 
+    expect(kept).toBe(false);
+    expect(isDraftStorageRefused()).toBe(true);
+    expect(readDraft<{ old: boolean }>(unseen)?.value).toEqual({ old: true });
     spy.mockRestore();
+    clearDraft(key);
+  });
+
+  it('keeps warning about newer refused text when an older stored draft is confirmed', () => {
+    const key = draftKey('uid-1', 'note-1', 'note');
+    saveDraft(key, { text: 'A' });
+    const spy = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    saveDraft(key, { text: 'B' }); // B has no durable copy
+    spy.mockRestore();
+
+    clearDraftIfMatches(key, { text: 'A' }); // A's save lands
+
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraft(key);
   });
 
   it('lists only its own keys, leaving unrelated storage alone', () => {
