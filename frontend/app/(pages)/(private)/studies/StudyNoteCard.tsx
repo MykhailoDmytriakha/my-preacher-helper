@@ -67,6 +67,13 @@ const CONTENT_SECTION_CLASS = [
   `dark:${UI_COLORS.neutral.darkBorder}`,
 ].join(' ');
 
+/**
+ * A collapsed card in search says WHY it was found — the match count and a first look — and no
+ * more: a list exists to choose from, not to be read (BUG-20260911-collapsed-card-renders-unbounded-search-snippets).
+ * The rest is one tap away, in the expanded card or the note itself.
+ */
+const COLLAPSED_SNIPPET_LIMIT = 2;
+
 const CONTENT_SNIPPET_CLASS = [
   'rounded-md border border-l-4 px-3 py-2 shadow-sm bg-white/90 dark:bg-gray-900/40',
   UI_COLORS.success.border,
@@ -294,10 +301,9 @@ export default function StudyNoteCard({
                 )}
               </h4>
               {/*
-                The match count stays up here with the name, unlike share and copy. In search
-                a collapsed card can render an unbounded run of snippets (extractSearchSnippets
-                caps nothing), and a summary that sits under them is a summary nobody reads.
-                It costs the title width only while a search is running.
+                The match count stays up here with the name, unlike share and copy: under the
+                fragments a summary is a summary nobody reads. It costs the title width only
+                while a search is running.
               */}
               {searchQuery && totalMatchSignals > 0 && !isExpanded && (
                 <span className={`${MATCH_COUNT_BADGE} shrink-0`}>
@@ -318,7 +324,7 @@ export default function StudyNoteCard({
                             <span className={MATCH_COUNT_BADGE}>{contentSnippets.length}</span>
                           </div>
                           <div className="space-y-6">
-                            {contentSnippets.map((snippet, index) => (
+                            {contentSnippets.slice(0, COLLAPSED_SNIPPET_LIMIT).map((snippet, index) => (
                               <div key={index} className={CONTENT_SNIPPET_CLASS}>
                                 <MarkdownDisplay content={snippet} compact searchQuery={searchQuery} />
                               </div>

@@ -391,6 +391,20 @@ describe('StudyNoteCard', () => {
       expect(marks.some((m) => m.textContent === 'Genesis')).toBe(true);
     });
 
+    it('shows a collapsed card as a short summary: the match count and at most two fragments', () => {
+      // BUG-20260911-collapsed-card-renders-unbounded-search-snippets
+      const filler = 'word '.repeat(200);
+      const note = createTestNote({ id: 'note-many-matches', content: Array.from({ length: 10 }, () => `grace ${filler}`).join('') });
+
+      const { container } = render(
+        <StudyNoteCard note={note} bibleLocale="en" isExpanded={false} onToggleExpand={jest.fn()} onEdit={jest.fn()} searchQuery="grace" />
+      );
+
+      // Each fragment carries one match: two fragments on the card, ten counted.
+      expect(container.textContent?.match(/grace/g)).toHaveLength(2);
+      expect(screen.getByText('10')).toBeInTheDocument();
+    });
+
     it('displays matching tags and references in COLLAPSED view when searchQuery matches', () => {
       const note = createTestNote({
         id: 'note-search-collapsed-items',
