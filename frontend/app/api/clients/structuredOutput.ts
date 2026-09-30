@@ -109,9 +109,40 @@ async function executeStructuredTarget<T extends z.ZodType>(
     : client.beta.chat.completions.parse(params);
 }
 
+/**
+ * A PASSING HICCUP IS RETRIED ONCE, BY WHOEVER OWNS THE RETRIES
+ * (BUG-20260905-ai-chain-never-retries-same-model).
+ *
+ * The SDK retries a 429, a 5xx or a timeout twice by itself, so a caller that leaves it alone needs
+ * nothing more here. A caller behind the 60 s serverless wall switches that off (`maxRetries: 0`)
+ * and sets its own deadline — and got no retry at all: a second of provider trouble cost the person
+ * the whole run. For such a caller, once the chain has no next target, a `retrySameProvider`
+ * verdict earns one more try on the same model after a short pause, inside what is left of the
+ * SAME deadline and only when enough of it is left for a real answer. Moving on to a next target
+ * is unchanged.
+ */
+const SAME_TARGET_RETRY_PAUSE_MS = 500;
+const SAME_TARGET_RETRY_MIN_BUDGET_MS = 10_000;
+
+type RequestOptions = StructuredOutputOptions['requestOptions'];
+
+/** The caller owns retries when it switched the SDK's off and set its own deadline. */
+function ownRetryDeadline(requestOptions: RequestOptions): number | null {
+  return requestOptions?.maxRetries === 0 && typeof requestOptions.timeout === 'number'
+    ? performance.now() + requestOptions.timeout
+    : null;
+}
+
+/** A same-model retry gets only what is left of the caller's deadline — whole milliseconds, as the SDK requires. */
+function requestOptionsForAttempt(requestOptions: RequestOptions, retryDeadline: number | null, isSameTargetRetry: boolean): RequestOptions {
+  return isSameTargetRetry && retryDeadline !== null
+    ? { ...requestOptions, timeout: Math.floor(retryDeadline - performance.now()) }
+    : requestOptions;
+}
+
 async function runWithFallback<TResult>(
   targets: readonly [ModelTarget, ...ModelTarget[]],
-  execute: (target: ModelTarget) => Promise<TResult>,
+  execute: (target: ModelTarget, isSameTargetRetry: boolean) => Promise<TResult>,
   onAttempt: (target: ModelTarget) => void,
   // Only the LAST target's error survives the chain, so without this every earlier
   // failure vanished: a run that reported `401` from the last fallback said nothing
@@ -123,20 +154,33 @@ async function runWithFallback<TResult>(
     disposition: ErrorDisposition;
     attempt: number;
     willTryNext: boolean;
+    willRetrySameTarget: boolean;
   }) => void,
-  index = 0
+  /** When the caller owns retries: the moment its own deadline runs out, on the `performance.now()` clock. */
+  retryDeadline: number | null,
+  index = 0,
+  isSameTargetRetry = false
 ): Promise<TResult> {
   const target = targets[index] as ModelTarget;
   onAttempt(target);
 
   try {
-    return await execute(target);
+    return await execute(target, isSameTargetRetry);
   } catch (error) {
     const disposition = providerAdapters[target.providerId].classifyError(error);
     const canTryNext = disposition !== 'terminal' && index < targets.length - 1;
-    onFailure({ target, error, disposition, attempt: index + 1, willTryNext: canTryNext });
+    const budgetLeftMs = retryDeadline === null ? 0 : retryDeadline - performance.now() - SAME_TARGET_RETRY_PAUSE_MS;
+    const willRetrySameTarget = !canTryNext && !isSameTargetRetry
+      && disposition === 'retrySameProvider' && budgetLeftMs >= SAME_TARGET_RETRY_MIN_BUDGET_MS;
+    onFailure({ target, error, disposition, attempt: index + 1, willTryNext: canTryNext, willRetrySameTarget });
+    if (willRetrySameTarget) {
+      await new Promise((resolve) => setTimeout(resolve, SAME_TARGET_RETRY_PAUSE_MS));
+      // A late timer can eat the budget the check above counted on.
+      if (retryDeadline === null || retryDeadline - performance.now() < SAME_TARGET_RETRY_MIN_BUDGET_MS) throw error;
+      return runWithFallback(targets, execute, onAttempt, onFailure, retryDeadline, index, true);
+    }
     if (!canTryNext) throw error;
-    return runWithFallback(targets, execute, onAttempt, onFailure, index + 1);
+    return runWithFallback(targets, execute, onAttempt, onFailure, retryDeadline, index + 1);
   }
 }
 
@@ -240,20 +284,21 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       logContext,
     });
 
+    const retryDeadline = ownRetryDeadline(options.requestOptions);
     const completion = await runWithFallback(
       targets,
-      (target) => executeStructuredTarget(target, {
+      (target, isSameTargetRetry) => executeStructuredTarget(target, {
         systemPrompt: promptBlueprint.systemPrompt,
         userMessage: promptBlueprint.userMessage,
         schema,
         formatName,
-        requestOptions: options.requestOptions,
+        requestOptions: requestOptionsForAttempt(options.requestOptions, retryDeadline, isSameTargetRetry),
       }),
       (target) => {
         executionState.target = target;
         logger.info(operationName, `Starting structured output call using model: ${target.modelId}`);
       },
-      ({ target, error, disposition, attempt, willTryNext }) => {
+      ({ target, error, disposition, attempt, willTryNext, willRetrySameTarget }) => {
         const status = (error as { status?: unknown })?.status;
         const reason = error instanceof Error ? error.message : String(error);
         logger.warn(
@@ -263,10 +308,12 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
             status: status ?? null,
             disposition,
             willTryNext,
+            willRetrySameTarget,
             reason: reason.slice(0, 300),
           }
         );
-      }
+      },
+      retryDeadline
     );
     const target = executionState.target;
     if (!target) throw new Error('Structured-output target was not executed');

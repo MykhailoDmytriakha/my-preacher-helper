@@ -470,6 +470,83 @@ describe('structuredOutput client', () => {
     }));
   });
 
+  describe('a passing provider hiccup (BUG-20260905-ai-chain-never-retries-same-model)', () => {
+    const hiccup = { status: 503, message: 'Service Unavailable' };
+    const answer = { choices: [{ message: { parsed: { answer: 'second try' } } }], usage: undefined };
+
+    it('retries the same model once for a caller that took retries over from the SDK', async () => {
+      geminiParseMock.mockRejectedValueOnce(hiccup).mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'free-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(result).toEqual({ success: true, data: { answer: 'second try' }, refusal: null, error: null });
+      expect(geminiParseMock).toHaveBeenCalledTimes(2);
+      expect(geminiParseMock).toHaveBeenNthCalledWith(2, expect.objectContaining({ model: 'gemini-3.1-flash-lite-preview' }), expect.anything());
+      // The retry lives inside the caller's own deadline, never on top of it.
+      const retryOptions = geminiParseMock.mock.calls[1][1] as { timeout: number; maxRetries: number };
+      expect(retryOptions.maxRetries).toBe(0);
+      // The SDK refuses a fractional timeout and the retry would never leave.
+      expect(Number.isInteger(retryOptions.timeout)).toBe(true);
+      expect(retryOptions.timeout).toBeLessThan(45_000);
+      expect(retryOptions.timeout).toBeGreaterThan(40_000);
+    });
+
+    it('adds no retry of its own where the SDK already retried', async () => {
+      geminiParseMock.mockRejectedValueOnce(hiccup).mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'free-user',
+      });
+
+      expect(result.success).toBe(false);
+      expect(geminiParseMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('checks the deadline again after the pause, not only before it', async () => {
+      geminiParseMock.mockRejectedValueOnce(hiccup).mockResolvedValueOnce(answer);
+      let clock = 0;
+      const now = jest.spyOn(performance, 'now').mockImplementation(() => clock);
+      const realSetTimeout = global.setTimeout;
+      const pause = jest.spyOn(global, 'setTimeout').mockImplementation(((callback: () => void, ms?: number) => {
+        if (ms === 500) clock += 2_000; // the pause itself ran late
+        return realSetTimeout(callback, 0);
+      }) as typeof setTimeout);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'free-user',
+        requestOptions: { timeout: 11_000, maxRetries: 0 },
+      });
+
+      now.mockRestore();
+      pause.mockRestore();
+      expect(result.success).toBe(false);
+      expect(geminiParseMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not retry when too little of the caller\'s deadline is left', async () => {
+      geminiParseMock.mockRejectedValueOnce(hiccup).mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'free-user',
+        requestOptions: { timeout: 5_000, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(false);
+      expect(geminiParseMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('stops after one attempt on a terminal provider failure', async () => {
     mockGetUserEntitlementServerSide.mockResolvedValueOnce({ paidTier: 'tier3' });
     geminiParseMock.mockRejectedValueOnce({ status: 400, code: 'invalid_request_error' });
