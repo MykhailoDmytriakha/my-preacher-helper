@@ -1,168 +1,29 @@
 /**
- * Tests for the theme initialization script that runs before React hydrates.
- * This script prevents Flash of Incorrect Theme (FOIT) by applying the saved
- * theme preference immediately when the page loads.
- *
- * The actual script is inlined in layout.tsx, but we test its logic here.
+ * The inline theme script that runs before React hydrates, tested by running THE REAL TEXT that
+ * app/layout.tsx renders into <head> (BUG-20260929-tests-check-their-own-copy: this file used to
+ * test a copy of its logic, so breaking the real script left it green).
  */
+import { THEME_INIT_SCRIPT } from '@/utils/themeInitScript';
 
 const STORAGE_KEY = 'theme-preference';
 
-// Extract the theme initialization logic for testing
-function executeThemeInitScript(options: {
-  storedPreference: string | null;
-  systemPrefersDark: boolean;
-  matchMediaSupported?: boolean;
-}): { shouldBeDark: boolean; preference: string } {
-  const { storedPreference, systemPrefersDark, matchMediaSupported = true } = options;
-
-  // Simulate the script logic
-  const stored = storedPreference;
-  const preference = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
-  const prefersDark = matchMediaSupported ? systemPrefersDark : false;
-  const shouldBeDark = preference === 'dark' || (preference === 'system' && prefersDark);
-
-  return { shouldBeDark, preference };
+function runThemeScript() {
+  // The script is plain JavaScript text: execute it the way the browser does.
+  new Function(THEME_INIT_SCRIPT)();
 }
 
-describe('Theme Initialization Script Logic', () => {
-  describe('preference resolution', () => {
-    it('should default to "system" when no stored preference', () => {
-      const result = executeThemeInitScript({
-        storedPreference: null,
-        systemPrefersDark: false,
-      });
-      expect(result.preference).toBe('system');
-    });
+function systemPrefersDark(dark: boolean) {
+  window.matchMedia = jest.fn().mockImplementation(() => ({ matches: dark })) as unknown as typeof window.matchMedia;
+}
 
-    it('should use "dark" when stored as dark', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'dark',
-        systemPrefersDark: false,
-      });
-      expect(result.preference).toBe('dark');
-    });
-
-    it('should use "light" when stored as light', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'light',
-        systemPrefersDark: true,
-      });
-      expect(result.preference).toBe('light');
-    });
-
-    it('should use "system" when stored as system', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'system',
-        systemPrefersDark: false,
-      });
-      expect(result.preference).toBe('system');
-    });
-
-    it('should fallback to "system" for invalid stored values', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'invalid',
-        systemPrefersDark: false,
-      });
-      expect(result.preference).toBe('system');
-    });
-
-    it('should fallback to "system" for empty string', () => {
-      const result = executeThemeInitScript({
-        storedPreference: '',
-        systemPrefersDark: false,
-      });
-      expect(result.preference).toBe('system');
-    });
-  });
-
-  describe('dark mode determination', () => {
-    it('should apply dark when preference is "dark"', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'dark',
-        systemPrefersDark: false,
-      });
-      expect(result.shouldBeDark).toBe(true);
-    });
-
-    it('should not apply dark when preference is "light"', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'light',
-        systemPrefersDark: true, // Even if system prefers dark
-      });
-      expect(result.shouldBeDark).toBe(false);
-    });
-
-    it('should apply dark when preference is "system" and system prefers dark', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'system',
-        systemPrefersDark: true,
-      });
-      expect(result.shouldBeDark).toBe(true);
-    });
-
-    it('should not apply dark when preference is "system" and system prefers light', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'system',
-        systemPrefersDark: false,
-      });
-      expect(result.shouldBeDark).toBe(false);
-    });
-
-    it('should apply dark when no stored preference and system prefers dark', () => {
-      const result = executeThemeInitScript({
-        storedPreference: null,
-        systemPrefersDark: true,
-      });
-      expect(result.shouldBeDark).toBe(true);
-    });
-
-    it('should not apply dark when no stored preference and system prefers light', () => {
-      const result = executeThemeInitScript({
-        storedPreference: null,
-        systemPrefersDark: false,
-      });
-      expect(result.shouldBeDark).toBe(false);
-    });
-  });
-
-  describe('matchMedia fallback', () => {
-    it('should default to light theme when matchMedia is not supported', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'system',
-        systemPrefersDark: true,
-        matchMediaSupported: false,
-      });
-      expect(result.shouldBeDark).toBe(false);
-    });
-
-    it('should still respect explicit dark preference when matchMedia is not supported', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'dark',
-        systemPrefersDark: false,
-        matchMediaSupported: false,
-      });
-      expect(result.shouldBeDark).toBe(true);
-    });
-
-    it('should still respect explicit light preference when matchMedia is not supported', () => {
-      const result = executeThemeInitScript({
-        storedPreference: 'light',
-        systemPrefersDark: true,
-        matchMediaSupported: false,
-      });
-      expect(result.shouldBeDark).toBe(false);
-    });
-  });
-});
-
-describe('Theme Initialization DOM Integration', () => {
+describe('theme initialization script', () => {
   let originalMatchMedia: typeof window.matchMedia;
+  const root = () => document.documentElement;
 
   beforeEach(() => {
     localStorage.clear();
-    document.documentElement.classList.remove('dark');
-    document.documentElement.removeAttribute('data-theme-preference');
+    root().classList.remove('dark');
+    root().removeAttribute('data-theme-preference');
     originalMatchMedia = window.matchMedia;
   });
 
@@ -170,105 +31,86 @@ describe('Theme Initialization DOM Integration', () => {
     window.matchMedia = originalMatchMedia;
   });
 
-  // Simulates what the inline script does
-  function runInlineScript() {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const preference = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
-      const prefersDark = typeof window.matchMedia === 'function'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        : false;
-      const shouldBeDark = preference === 'dark' || (preference === 'system' && prefersDark);
+  describe('preference resolution', () => {
+    it.each([
+      [null, 'system'],
+      ['dark', 'dark'],
+      ['light', 'light'],
+      ['system', 'system'],
+      ['invalid', 'system'],
+      ['', 'system'],
+      ['DARK', 'system'],
+    ])('stored %p resolves to %p', (stored, expected) => {
+      systemPrefersDark(false);
+      if (stored !== null) localStorage.setItem(STORAGE_KEY, stored);
 
-      if (shouldBeDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      document.documentElement.setAttribute('data-theme-preference', preference);
-    } catch {
-      // Silently fail - matches the real script behavior
-    }
-  }
+      runThemeScript();
 
-  it('should add dark class when localStorage has dark preference', () => {
-    localStorage.setItem(STORAGE_KEY, 'dark');
-
-    runInlineScript();
-
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('dark');
+      expect(root().getAttribute('data-theme-preference')).toBe(expected);
+    });
   });
 
-  it('should not add dark class when localStorage has light preference', () => {
-    localStorage.setItem(STORAGE_KEY, 'light');
-    document.documentElement.classList.add('dark'); // Pre-existing
+  describe('dark mode determination', () => {
+    it.each([
+      ['dark', false, true],
+      ['dark', true, true],
+      ['light', true, false],
+      ['light', false, false],
+      ['system', true, true],
+      ['system', false, false],
+    ])('stored %p with the system preferring dark=%p gives dark=%p', (stored, systemDark, dark) => {
+      systemPrefersDark(systemDark);
+      localStorage.setItem(STORAGE_KEY, stored);
 
-    runInlineScript();
+      runThemeScript();
 
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('light');
-  });
-
-  it('should add dark class when system prefers dark and preference is system', () => {
-    localStorage.setItem(STORAGE_KEY, 'system');
-
-    window.matchMedia = jest.fn().mockImplementation(() => ({
-      matches: true, // System prefers dark
-    }));
-
-    runInlineScript();
-
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('system');
-  });
-
-  it('should not add dark class when system prefers light and preference is system', () => {
-    localStorage.setItem(STORAGE_KEY, 'system');
-
-    window.matchMedia = jest.fn().mockImplementation(() => ({
-      matches: false, // System prefers light
-    }));
-
-    runInlineScript();
-
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
-  });
-
-  it('should default to system preference when localStorage is empty', () => {
-    // No localStorage set
-
-    window.matchMedia = jest.fn().mockImplementation(() => ({
-      matches: true, // System prefers dark
-    }));
-
-    runInlineScript();
-
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(document.documentElement.getAttribute('data-theme-preference')).toBe('system');
-  });
-
-  it('should handle missing matchMedia gracefully', () => {
-    localStorage.setItem(STORAGE_KEY, 'system');
-
-    // Remove matchMedia
-    (window as any).matchMedia = undefined;
-
-    runInlineScript();
-
-    // Should not crash and should default to light (no dark class)
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
-  });
-
-  it('should handle localStorage errors gracefully', () => {
-    // Mock localStorage.getItem to throw
-    const originalGetItem = localStorage.getItem;
-    localStorage.getItem = jest.fn(() => {
-      throw new Error('localStorage is disabled');
+      expect(root().classList.contains('dark')).toBe(dark);
     });
 
-    expect(() => runInlineScript()).not.toThrow();
+    it('removes a dark class left from before when the preference is light', () => {
+      systemPrefersDark(true);
+      localStorage.setItem(STORAGE_KEY, 'light');
+      root().classList.add('dark');
 
-    localStorage.getItem = originalGetItem;
+      runThemeScript();
+
+      expect(root().classList.contains('dark')).toBe(false);
+    });
+
+    it('follows a dark system when nothing is stored', () => {
+      systemPrefersDark(true);
+
+      runThemeScript();
+
+      expect(root().classList.contains('dark')).toBe(true);
+      expect(root().getAttribute('data-theme-preference')).toBe('system');
+    });
+  });
+
+  describe('fallbacks', () => {
+    it('stays light and does not fail when matchMedia is missing', () => {
+      localStorage.setItem(STORAGE_KEY, 'system');
+      (window as unknown as { matchMedia?: unknown }).matchMedia = undefined;
+
+      expect(() => runThemeScript()).not.toThrow();
+      expect(root().classList.contains('dark')).toBe(false);
+      expect(root().getAttribute('data-theme-preference')).toBe('system');
+    });
+
+    it('still honours an explicit dark preference when matchMedia is missing', () => {
+      localStorage.setItem(STORAGE_KEY, 'dark');
+      (window as unknown as { matchMedia?: unknown }).matchMedia = undefined;
+
+      runThemeScript();
+
+      expect(root().classList.contains('dark')).toBe(true);
+    });
+
+    it('does not throw when storage itself is unavailable', () => {
+      const getItem = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+
+      expect(() => runThemeScript()).not.toThrow();
+      getItem.mockRestore();
+    });
   });
 });

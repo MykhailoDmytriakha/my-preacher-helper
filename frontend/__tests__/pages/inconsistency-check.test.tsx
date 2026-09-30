@@ -1,48 +1,12 @@
 import { Sermon } from '@/models/models';
-import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
-import type { StructureSectionId } from '@/utils/tagUtils';
+import { sermonHasInconsistentThoughts } from '@/utils/thoughtStructureConsistency';
 
-// Изолированная функция для тестирования
-const checkForInconsistentThoughts = (sermon: Sermon): boolean => {
-  if (!sermon || !sermon.thoughts || !sermon.outline) return false;
-
-  // Проверяем каждую мысль
-  return sermon.thoughts.some(thought => {
-    // 1. Legacy collision: more than one structure tag on one thought
-    const usedStructureTags = thought.tags
-      .map((tag) => normalizeStructureTag(tag))
-      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-    if (usedStructureTags.length > 1) {
-      return true;
-    }
-
-    // New thoughts normally have outlinePointId without a structure tag.
-    if (usedStructureTags.length === 0) {
-      return false;
-    }
-    
-    // 2. Legacy mismatch: a structure tag exists but placement does not match it.
-    if (!thought.outlinePointId) return true;
-    
-    // Определяем секцию пункта плана
-    let outlinePointSection: StructureSectionId | undefined;
-    
-    if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'introduction';
-    } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'main';
-    } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'conclusion';
-    }
-    
-    if (!outlinePointSection) return true;
-    
-    return usedStructureTags[0] !== getCanonicalTagForSection(outlinePointSection);
-  });
-};
+// The real check the sermon page runs (BUG-20260929-tests-check-their-own-copy: this file used to
+// hold a copy of it, so breaking the page's check left these tests green).
+const checkForInconsistentThoughts = (sermon: Sermon): boolean => sermonHasInconsistentThoughts(sermon);
 
 describe('Inconsistency Check Function', () => {
-  // Базовый каркас проповеди для тестов
+  // A base sermon for the tests
   const baseSermon: Sermon = {
     id: 'sermon-1',
     title: 'Test Sermon',

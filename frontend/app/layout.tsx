@@ -10,6 +10,7 @@ import { ConnectionProvider } from "./providers/ConnectionProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
 import { APP_THEME_COLORS } from "./utils/themeColors";
+import { THEME_INIT_SCRIPT } from "./utils/themeInitScript";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -45,33 +46,12 @@ export const viewport: Viewport = {
   themeColor: APP_THEME_COLORS.theme,
 };
 
-// Inline script to prevent Flash of Incorrect Theme (FOIT)
-// This runs synchronously before React hydrates to apply the saved theme immediately
-const themeInitScript = `
-(function() {
-  try {
-    var stored = localStorage.getItem('theme-preference');
-    var preference = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
-    var prefersDark = typeof window.matchMedia === 'function' 
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches 
-      : false;
-    var shouldBeDark = preference === 'dark' || (preference === 'system' && prefersDark);
-    
-    if (shouldBeDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    document.documentElement.setAttribute('data-theme-preference', preference);
-  } catch (e) {}
-})();
-`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body
         className={`${interSans.variable} ${robotoMono.variable} antialiased`}

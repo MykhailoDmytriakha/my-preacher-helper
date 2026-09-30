@@ -81,6 +81,7 @@ import {
   replaceThoughtIdInStructure,
   resolveSectionForNewThought,
 } from "@utils/thoughtOrdering";
+import { sermonHasInconsistentThoughts } from "@utils/thoughtStructureConsistency";
 
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { EngineStructureWriterProvider } from './components/EngineStructureWriterProvider';
@@ -308,39 +309,6 @@ const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
     isThesisDone,
     isHomileticPlanDone
   };
-};
-
-const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
-  if (!sermon || !sermon.thoughts || !sermon.outline) return false;
-
-  return sermon.thoughts.some(thought => {
-    const usedStructureTags = thought.tags
-      .map((tag) => normalizeStructureTag(tag))
-      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-    if (usedStructureTags.length > 1) {
-      return true;
-    }
-
-    if (usedStructureTags.length === 0) {
-      return false;
-    }
-
-    if (!thought.outlinePointId) return true;
-
-    let outlinePointSection: StructureSectionId | undefined;
-
-    if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'introduction';
-    } else if (sermon.outline!.main.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'main';
-    } else if (sermon.outline!.conclusion.some(p => p.id === thought.outlinePointId)) {
-      outlinePointSection = 'conclusion';
-    }
-
-    if (!outlinePointSection) return true;
-
-    return usedStructureTags[0] !== getCanonicalTagForSection(outlinePointSection);
-  });
 };
 
 export default function SermonPage() {
@@ -1960,7 +1928,7 @@ useEffect(() => {
     [STRUCTURE_TAGS.MAIN_BODY]: canonicalStructure.main.length,
     [STRUCTURE_TAGS.CONCLUSION]: canonicalStructure.conclusion.length,
   };
-  const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(sermon);
+  const hasInconsistentThoughts = sermonHasInconsistentThoughts(sermon);
 
   return (
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
