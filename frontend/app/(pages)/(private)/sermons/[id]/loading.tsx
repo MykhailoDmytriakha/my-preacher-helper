@@ -5,7 +5,7 @@ import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleto
 // feedback instead of feeling like nothing happened.
 export default function Loading() {
   return (
-    <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
+    <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       <SermonDetailSkeleton />
     </div>
   );

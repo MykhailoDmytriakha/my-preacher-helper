@@ -855,8 +855,9 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus }: {
   }
 
   return (
-    <div className="p-4">
-      {syncStatus && <div className="mb-4">{syncStatus}</div>}
+    <div className="px-4 pb-4">
+      {/* `empty:hidden`: a silent status leaves no margin behind. */}
+      <div className="mb-4 empty:hidden">{syncStatus}</div>
       {!engine && freshness.state !== 'fresh' && !freshnessDismissed && <DataFreshnessBanner
         entityKey="entitySermon" dirty={false}
         unknown={freshness.state === 'unknown'} deleted={freshness.remotelyDeleted}

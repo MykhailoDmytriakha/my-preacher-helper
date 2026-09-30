@@ -1,21 +1,20 @@
 "use client";
 
-import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, RefreshCw } from "lucide-react";
+import { List, MessageSquareText, Calendar, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
 import { SermonSyncBadge } from "@/components/dashboard/SermonSyncBadge";
+import { SermonStatusChip, getSermonStatusDateTexts } from "@/components/sermon/SermonStatusChip";
 import { Chip } from "@/components/ui/Chip";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
 import {
   countPreachDatesByStatus,
-  getEffectiveIsPreached,
-  getLatestPreachedDate,
-  getNextPlannedDate
+  getEffectiveIsPreached
 } from "@/utils/preachDateStatus";
 import { getSeriesForRef } from "@/utils/seriesMembership";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
@@ -29,12 +28,9 @@ import HighlightedText from "../HighlightedText";
 
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
-import type { ChipTone } from "@/utils/chipClasses";
 import type { TFunction } from "i18next";
 
 const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
-const DASHBOARD_PREACHED_KEY = "dashboard.preached";
-const CALENDAR_STATUS_PLANNED_KEY = "calendar.status.planned";
 
 interface SermonCardProps {
   sermon: Sermon;
@@ -104,16 +100,6 @@ function SermonCardHeader({
   t,
 }: SermonCardHeaderProps) {
   const [editorOpen, setEditorOpen] = useState(false);
-  const hasPreachedDate = Boolean(formattedPreachedDate);
-  const hasPlannedDate = !hasPreachedDate && Boolean(formattedPlannedDate);
-  const hasStatusDate = hasPreachedDate || hasPlannedDate;
-  const statusDateText = formattedPreachedDate ?? formattedPlannedDate ?? '';
-  const statusLabel = hasPreachedDate
-    ? t(DASHBOARD_PREACHED_KEY)
-    : t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' });
-  // Preached is the app's green, still-to-come is amber — the same pair the calendar uses.
-  const statusTone: ChipTone = hasPreachedDate ? 'emerald' : 'amber';
-
   return (
     <div className="flex items-start justify-between mb-2">
       <div className="flex flex-col gap-1.5">
@@ -127,14 +113,7 @@ function SermonCardHeader({
             <span className={TEXT_PRIMARY_CLASSES}>{formattedUpdatedDate}</span>
           </Chip>
         )}
-        {hasStatusDate && (
-          <Chip tone={statusTone} size="sm" className="gap-1.5" icon={<CheckCircle2 className="w-3 h-3" />}>
-            <span className="uppercase tracking-wide text-[10px]">{statusLabel}</span>
-            <span className={TEXT_PRIMARY_CLASSES}>
-              {statusDateText}
-            </span>
-          </Chip>
-        )}
+        <SermonStatusChip formattedPreachedDate={formattedPreachedDate} formattedPlannedDate={formattedPlannedDate} />
         {/*
           Silent while one of this card's editors is open: the editor covers the card and
           says the verdict itself, so rendering the badge underneath would be the same
@@ -331,17 +310,13 @@ export default function SermonCard({
 }: SermonCardProps) {
   const { t } = useTranslation();
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
-  const latestPreachedDate = getLatestPreachedDate(sermon);
-  const nextPlannedDate = getNextPlannedDate(sermon);
   const preachedDatesCount = countPreachDatesByStatus(sermon, 'preached');
   const plannedDatesCount = countPreachDatesByStatus(sermon, 'planned');
 
   const formattedCreatedDate = formatDateOnly(sermon.date?.slice(0, 10));
   const updatedIso = extractIsoString(sermon.updatedAt);
   const formattedUpdatedDate = updatedIso ? formatDateOnly(updatedIso.slice(0, 10)) : null;
-  const formattedPreachedDate = latestPreachedDate?.date ? formatDateOnly(latestPreachedDate.date) : null;
-  const formattedPlannedDate =
-    !formattedPreachedDate && nextPlannedDate?.date ? formatDateOnly(nextPlannedDate.date) : null;
+  const { formattedPreachedDate, formattedPlannedDate } = getSermonStatusDateTexts(sermon);
   const thoughtCount = sermon.thoughts?.length || 0;
   const hasOutline = sermon.outline?.introduction?.length ||
     sermon.outline?.main?.length ||

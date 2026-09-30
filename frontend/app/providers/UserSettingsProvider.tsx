@@ -61,14 +61,9 @@ function EngineSettingsStatus() {
     })),
     recover: document.recover,
   });
-  const needsAttention = document.error || document.readOnly || recovery.choices.length || recovery.error
-    || (document.status && (document.status.phase !== 'saved' || document.status.readFailed || document.status.freshness !== 'server'));
-  if (!needsAttention) return null;
-  return <section aria-label={title} className="my-3">
-    <p className="mb-1 font-medium">{title}</p>
-    <DataSyncStatus status={document.status} error={document.readOnlyReason ?? document.error}
-      onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
-      recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
-      onRecover={recovery.recover} />
-  </section>;
+  // Whether there is anything to say is the status's own rule (isSyncTrouble); it names the settings only then.
+  return <DataSyncStatus title={title} className="my-3" status={document.status} error={document.readOnlyReason ?? document.error}
+    onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
+    recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
+    onRecover={recovery.recover} />;
 }

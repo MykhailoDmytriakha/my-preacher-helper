@@ -37,7 +37,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);
   const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId);
   if (document.document.readOnly && document.group) return <GroupReadOnlyContent group={document.group} reason={document.document.readOnlyReason} />;
-  const feedback = <div className="shrink-0 px-5 py-2">
+  const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus status={document.status} error={document.error} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
     {form.active && <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}

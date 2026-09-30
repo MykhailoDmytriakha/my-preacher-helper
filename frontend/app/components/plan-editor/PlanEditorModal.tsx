@@ -9,10 +9,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
-import { updateSermonOutline } from '@/services/outline.service';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -110,6 +110,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
+  // Legacy service or, on an engine document, the page's engine writer (same merge, same refusal).
+  const writer = useStructureWriter();
   const { templates, createTemplate } = usePlanTemplates(sermon.userId);
 
   const [outline, setOutline] = useState<SermonOutline>(emptyOutline);
@@ -253,14 +255,18 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
       const generationAtRequest = generationRef.current;
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          const request = updateSermonOutline(sermon.id, next, baseOutlineRef.current);
-          const acceptance = await awaitAcceptance(
-            isBrowserOffline()
-              ? queuedMutation(`outline:${sermon.id}`, request)
-              : persistedWrite(request),
-            (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
-          );
-          const committed = acceptance.kind === 'persisted' ? await request : next;
+          const request = writer.updateSermonOutline(sermon.id, next, baseOutlineRef.current);
+          // An immediate (engine) writer returns once the change is kept on this device; the
+          // engine owns delivery and offline queueing.
+          const committed = writer.immediate ? await request : await (async () => {
+            const acceptance = await awaitAcceptance(
+              isBrowserOffline()
+                ? queuedMutation(`outline:${sermon.id}`, request)
+                : persistedWrite(request),
+              (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+            );
+            return acceptance.kind === 'persisted' ? await request : next;
+          })();
           // The COMMITTED plan can legitimately contain more than we sent — a point
           // added on the other device that the merge kept. Adopt it as the new base
           // and show it, or the next save would treat that point as deleted here.
@@ -288,7 +294,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         }
       }, 120);
     },
-    [isReadOnly, sermon.id, onOutlineUpdate, setCollision, setStoredCollision, t]
+    [isReadOnly, sermon.id, onOutlineUpdate, setCollision, setStoredCollision, t, writer]
   );
 
   // Read inside the debounced callback, so a refusal that arrives mid-typing stops

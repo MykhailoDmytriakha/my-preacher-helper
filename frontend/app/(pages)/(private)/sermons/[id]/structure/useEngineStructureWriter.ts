@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react';
 
 import { useDataDocument } from '@/data-engine/react.client';
+import { OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -70,7 +71,8 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
     createManualThought: (_sermonId, thought) => edit(current => ({ next: addSermonThought(current, thought), result: thought })),
     updateSermonOutline: (_sermonId, outline, baseOutline, onCollision) => edit(current => {
       const merged = mergeOutline(baseOutline ?? null, outline, current.outline ?? null, onCollision === 'preferMine');
-      if (merged.collisions.length && onCollision !== 'preferMine') throw new Error('The same plan point was changed elsewhere');
+      // The same error the legacy writer raises, so an editor's "keep mine / take theirs" works on the engine too.
+      if (merged.collisions.length && onCollision !== 'preferMine') throw new OutlineCollisionError(merged.collisions, current.outline ?? null, 0);
       const next = replaceSermonOutline(current, merged.outline as SermonOutline);
       return { next, result: next.outline ?? null };
     }),

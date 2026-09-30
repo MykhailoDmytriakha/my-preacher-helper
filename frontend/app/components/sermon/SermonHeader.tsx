@@ -12,6 +12,7 @@ import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/Acti
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { SermonStatusChip, getSermonStatusDateTexts } from '@/components/sermon/SermonStatusChip';
 import SourceNoteChips from '@/components/sermon/SourceNoteChips';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/hooks/useAuth';
@@ -64,6 +65,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
+  const { formattedPreachedDate, formattedPlannedDate } = getSermonStatusDateTexts(sermon);
   const isReadOnly = Boolean(editor?.isReadOnly || editor?.status?.phase === 'deleted');
 
   const enableAudio = settings?.enableAudioGeneration || false;
@@ -262,6 +264,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
+
+          {/* Same status chip the dashboard card shows: preached date, else planned date. */}
+          <SermonStatusChip formattedPreachedDate={formattedPreachedDate} formattedPlannedDate={formattedPlannedDate} />
 
           {/* WHO THIS SERMON IS BEING PREPARED FOR. Stated at creation and often known
               long before any date, so it is shown next to the date rather than inside the

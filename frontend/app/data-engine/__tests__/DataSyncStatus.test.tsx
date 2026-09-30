@@ -125,6 +125,14 @@ describe('DataSyncStatus', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Disk full');
   });
 
+  it('names its subject only together with something worth saying', () => {
+    const { container, rerender } = render(<DataSyncStatus title="Settings" status={status('saved', { freshness: 'cache' })} />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<DataSyncStatus title="Settings" status={status('refused')} />);
+    expect(screen.getByRole('region', { name: 'Settings' })).toHaveTextContent('Settings');
+    expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase.refused);
+  });
+
   it('reports action errors, ignores late errors after callback replacement, and renders nothing without information', async () => {
     const { container, rerender, unmount } = render(<DataSyncStatus status={null} />); expect(container).toBeEmptyDOMElement();
     const old = deferred(), retry = jest.fn(() => old.promise);

@@ -18,7 +18,6 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
-import { EngineOutlineModal } from "@/components/sermon/EngineOutlineModal";
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
@@ -84,7 +83,7 @@ import {
 } from "@utils/thoughtOrdering";
 
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
-import { EngineSermonOutline } from './components/EngineSermonOutline';
+import { EngineStructureWriterProvider } from './components/EngineStructureWriterProvider';
 import { useScratchNotes } from "./hooks/useScratchNotes";
 import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
 import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
@@ -375,7 +374,10 @@ function EngineSermonPageContent({ id }: { id: string }) {
     error: core.error ? new Error(core.error) : null, isOnline, awaitingFirstAnswer: core.loading,
     refreshSermon: core.retry, getSortedThoughts: () => [...(sermon?.thoughts ?? [])],
   };
-  return <SermonPageContent id={id} source={source} core={core} engineThoughts={thoughts} />;
+  // One door for outline writes on this page (the page outline and the structure editor alike).
+  return <EngineStructureWriterProvider sermonId={id}>
+    <SermonPageContent id={id} source={source} core={core} engineThoughts={thoughts} />
+  </EngineStructureWriterProvider>;
 }
 
 function SermonPageContent({ id, source, core, engineThoughts }: { id: string; source: ReturnType<typeof useSermon>; core?: CoreDocument; engineThoughts?: ReturnType<typeof useSermonThoughtsDataDocument> }) {
@@ -721,11 +723,8 @@ useEffect(() => {
   const isCreateModalOpenRef = useRef(isCreateModalOpen);
   isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
-  const [isEngineOutlineOpen, setIsEngineOutlineOpen] = useState(false);
-  // One entry to outline editing in both modes: the engine opens its pinned form.
-  const openPlanEditor = engineEnabled
-    ? (isReadOnly ? undefined : () => setIsEngineOutlineOpen(true))
-    : (legacyReadOnly ? undefined : () => setIsPlanEditorOpen(true));
+  // One structure editor in both modes; on the engine it writes through the page's engine writer.
+  const openPlanEditor = isReadOnly ? undefined : () => setIsPlanEditorOpen(true);
   // Bumped when the plan editor changes the outline, to force SermonOutline to
   // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
   const [outlineRefreshKey, setOutlineRefreshKey] = useState(0);
@@ -1514,6 +1513,16 @@ useEffect(() => {
     );
   }, [applyToThoughtsAndReportOnce, sermon]);
 
+  /**
+   * Thought follow-ups after an outline change, for the legacy writer only. On the engine the
+   * writer re-points or releases the thoughts of a moved or deleted point in the same change.
+   */
+  const legacyOutlineFollowUps = engineEnabled ? {} : {
+    onOutlineUpdate: handleOutlineUpdate,
+    onOutlinePointDeleted: handleOutlinePointDeleted,
+    onSubPointDeleted: handleSubPointDeleted,
+  };
+
   const handleSermonUpdate = useCallback((updatedSermon: Sermon) => {
     setSermon(updatedSermon);
   }, [setSermon]);
@@ -1954,7 +1963,8 @@ useEffect(() => {
   const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(sermon);
 
   return (
-    <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
+    <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
+      {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       {/* This SERMON changed elsewhere — distinct from the app-update toast. */}
       {!engineEnabled && (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') && !sermonFreshnessDismissed && (
         <DataFreshnessBanner
@@ -2052,20 +2062,13 @@ useEffect(() => {
                     onOpenPlanEditor={openPlanEditor}
                   />
                 </div>
-                {engineEnabled ? <EngineSermonOutline
+                <SermonOutline
                   key={outlineRefreshKey}
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
+                  {...legacyOutlineFollowUps}
                   isReadOnly={isReadOnly}
-                /> : <SermonOutline
-                  key={outlineRefreshKey}
-                  sermon={sermon!}
-                  thoughtsPerSermonPoint={thoughtsPerSermonPoint}
-                  onOutlineUpdate={handleOutlineUpdate}
-                  onOutlinePointDeleted={handleOutlinePointDeleted}
-                  onSubPointDeleted={handleSubPointDeleted}
-                  isReadOnly={legacyReadOnly}
-                />}
+                />
                 {/* On an engine document the insights route stores the result itself; the page reads it back. */}
                 {sermon && !(core && isReadOnly) && <KnowledgeSection sermon={sermon} updateSermon={core ? () => { void core.retry().catch(() => undefined); } : handleSermonUpdate} />}
                 {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
@@ -2079,8 +2082,6 @@ useEffect(() => {
           </motion.div>
         </div>
       </div>
-      {engineEnabled && !isReadOnly && isEngineOutlineOpen && <EngineOutlineModal
-        sermonId={sermon!.id} onClose={() => setIsEngineOutlineOpen(false)} />}
       {!legacyReadOnly && editingModalData && (
         <EditThoughtModal
           // Remount for every queued edit because the modal seeds its fields only on mount.
@@ -2108,7 +2109,7 @@ useEffect(() => {
         sermonOutline={sermon?.outline}
         disabled={legacyReadOnly}
       />}
-      {!engineEnabled && sermon && (
+      {sermon && (
         <PlanEditorModal
           isOpen={isPlanEditorOpen}
           onClose={() => {
@@ -2116,12 +2117,10 @@ useEffect(() => {
             setOutlineRefreshKey((k) => k + 1);
           }}
           sermon={sermon}
-          onOutlineUpdate={handleOutlineUpdate}
-          onOutlinePointDeleted={handleOutlinePointDeleted}
-          onSubPointDeleted={handleSubPointDeleted}
-          onOutlinePointMoved={handleOutlinePointMoved}
-          onSubPointMoved={handleSubPointMoved}
-          isReadOnly={legacyReadOnly}
+          {...legacyOutlineFollowUps}
+          onOutlinePointMoved={legacyOutlineFollowUps.onOutlineUpdate && handleOutlinePointMoved}
+          onSubPointMoved={legacyOutlineFollowUps.onOutlineUpdate && handleSubPointMoved}
+          isReadOnly={isReadOnly}
         />
       )}
     </div>

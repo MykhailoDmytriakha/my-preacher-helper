@@ -8,9 +8,9 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
 
 jest.mock('@locales/i18n', () => ({}));
 import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
-import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import StructureStats from '@/components/sermon/StructureStats';
-import { EngineSermonOutline } from '@/(pages)/(private)/sermons/[id]/components/EngineSermonOutline';
+import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
+import SermonOutline from '@/components/sermon/SermonOutline';
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import ThoughtList from '@/components/sermon/ThoughtList';
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
@@ -62,13 +62,19 @@ jest.mock('@/data-engine/react.client', () => ({
   isCollectionOnEngine: (collection: string) => collection === 'sermons' && mockEngineEnabled,
   DataDocumentProvider: jest.fn(({ children }: { children: React.ReactNode }) => <div data-testid="document-provider">{children}</div>),
 }));
+// The engine writer itself is exercised in SermonOutline.engineWriter.test.tsx; here only which door the page hands out.
+jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineStructureWriterProvider', () => ({
+  EngineStructureWriterProvider: ({ children }: { children: React.ReactNode }) => {
+    const { StructureWriterContext, legacyStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
+    return <StructureWriterContext.Provider value={{ ...legacyStructureWriter, immediate: true }}>{children}</StructureWriterContext.Provider>;
+  },
+}));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({
   useSermonCoreDataDocument: jest.fn(() => mockCore),
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument', () => ({
   useSermonThoughtsDataDocument: jest.fn(() => ({ patchThought: jest.fn(async () => undefined), deleteThought: jest.fn(async () => undefined) })),
 }));
-jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal: jest.fn(() => <div data-testid="engine-outline-modal" />) }));
 jest.mock('@/components/thought/EngineThoughtModal', () => ({ EngineThoughtModal: jest.fn(() => <div data-testid="engine-thought-modal" />) }));
 jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
   EngineScratchWorkspace: jest.fn(() => <div data-testid="engine-scratch-workspace" />),
@@ -128,12 +134,17 @@ jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, def
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
 jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, default: ({}) => null }));
-jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: ({}) => <div data-testid="outline" /> }));
+// Renders which writer reaches it, so a test can tell the engine door from the legacy one.
+jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: jest.fn(() => {
+  const { useStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
+  return <div data-testid="outline" data-immediate={String(useStructureWriter().immediate)} />;
+}) }));
+jest.mock('@/components/plan-editor/PlanEditorModal', () => ({ __esModule: true, default: jest.fn(({ isOpen }: { isOpen: boolean }) => {
+  const { useStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
+  return isOpen ? <div data-testid="plan-editor" data-immediate={String(useStructureWriter().immediate)} /> : null;
+}) }));
 jest.mock('@/components/sermon/KnowledgeSection', () => ({ __esModule: true, default: ({}) => <div data-testid="knowledge" /> }));
 jest.mock('@/components/sermon/StructureStats', () => ({ __esModule: true, default: jest.fn(({}) => <div data-testid="stats" />) }));
-jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineSermonOutline', () => ({
-  EngineSermonOutline: jest.fn(() => <div data-testid="engine-outline" />),
-}));
 jest.mock('@/components/sermon/ScratchPanel', () => ({ __esModule: true, default: () => <div data-testid="scratch-panel">Наброски</div> }));
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -477,15 +488,21 @@ describe('SermonPage mode transitions', () => {
     mockEngineEnabled = true;
     searchParamsMock = new URLSearchParams();
     const view = render(<TestProviders><SermonPage /></TestProviders>);
-    expect(await screen.findByTestId('engine-outline')).toBeInTheDocument();
-    expect(screen.queryByTestId('outline')).not.toBeInTheDocument();
-    const props = jest.mocked(EngineSermonOutline).mock.calls.at(-1)![0];
+    expect(await screen.findByTestId('outline')).toHaveAttribute('data-immediate', 'true');
+    const props = jest.mocked(SermonOutline).mock.calls.at(-1)![0];
     expect(props).toMatchObject({ isReadOnly: false });
     expect(props.sermon.id).toBe('abc');
+    // The engine writer re-points thoughts itself; the legacy follow-up writers are not handed over.
+    expect(props.onOutlinePointDeleted).toBeUndefined();
+    expect(props.onOutlineUpdate).toBeUndefined();
     view.unmount();
   });
 
-  it('opens the pinned outline form only for the enabled sermon collection', async () => {
+  /*
+   * The full structure editor (templates, undo/redo, clear, full screen) on both kinds of
+   * document: on the engine a separate, reduced editor used to open instead (owner, 2026-09-29).
+   */
+  it('opens the full structure editor on an engine document, writing through the engine writer', async () => {
     mockEngineEnabled = true;
     searchParamsMock = new URLSearchParams();
     const view = render(<TestProviders><SermonPage /></TestProviders>);
@@ -493,12 +510,20 @@ describe('SermonPage mode transitions', () => {
     // The stats card (phone and desktop) is the entry; the page no longer carries a second bare link to the editor.
     expect(screen.queryByRole('button', { name: 'planEditor.title' })).not.toBeInTheDocument();
     act(() => { jest.mocked(StructureStats).mock.calls.at(-1)![0].onOpenPlanEditor!(); });
-    expect(jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc' });
-    act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
-    expect(screen.queryByTestId('engine-outline-modal')).not.toBeInTheDocument(); view.unmount();
+    expect(screen.getByTestId('plan-editor')).toHaveAttribute('data-immediate', 'true');
+    const props = jest.mocked(PlanEditorModal).mock.calls.at(-1)![0];
+    expect(props).toMatchObject({ isOpen: true, isReadOnly: false });
+    expect(props.sermon.id).toBe('abc');
+    expect(props.onOutlinePointDeleted).toBeUndefined();
+    expect(props.onOutlinePointMoved).toBeUndefined();
+    act(() => { props.onClose(); });
+    expect(screen.queryByTestId('plan-editor')).not.toBeInTheDocument(); view.unmount();
     mockEngineEnabled = false;
     const legacy = render(<TestProviders><SermonPage /></TestProviders>);
-    expect(screen.queryByTestId('engine-outline-modal')).not.toBeInTheDocument(); legacy.unmount();
+    await screen.findAllByTestId('stats');
+    act(() => { jest.mocked(StructureStats).mock.calls.at(-1)![0].onOpenPlanEditor!(); });
+    expect(screen.getByTestId('plan-editor')).toHaveAttribute('data-immediate', 'false');
+    legacy.unmount();
   });
 
   it('opens the canonical form and routes direct placement/deletion to the shared document', async () => {

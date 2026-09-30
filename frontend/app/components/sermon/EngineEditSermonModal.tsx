@@ -59,7 +59,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     submitDisabled={!form.durable || series.unsettled || (!form.dirty && !series.changed)} showPlannedDate
     seriesOptions={series.enabled ? series.options : undefined} seriesLoading={series.loading} seriesDisabled={series.disabled}
     detailsHint={t('editSermon.plannedDateHint')}
-    seriesStatus={<div className="space-y-3 p-4">
+    seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}

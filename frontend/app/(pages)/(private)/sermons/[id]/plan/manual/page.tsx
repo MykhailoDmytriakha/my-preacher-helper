@@ -277,7 +277,7 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   const { document } = source;
   if (document.readOnly && source.sermon) return <SermonReadOnlyContent sermon={source.sermon} reason={document.readOnlyReason} />;
   return <PlanWriterContext.Provider value={writer}>
-    <div className="px-4 pt-4"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+    <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>
     <ManualConspectusContent source={source as unknown as SermonSource} />
   </PlanWriterContext.Provider>;

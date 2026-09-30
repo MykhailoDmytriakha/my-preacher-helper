@@ -28,12 +28,14 @@ export interface DataSyncStatusProps {
   onRecover?: (id: string) => void | Promise<void>;
   recoveryLoading?: boolean;
   recoveryError?: string | null;
+  /** Names what this status is about when it stands apart from its screen (e.g. the settings). */
+  title?: string;
   className?: string;
 }
 
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const scope = useMemo(() => ({ onKeepLocal, onAcceptRemote, onRetry, onRecover }), [onKeepLocal, onAcceptRemote, onRetry, onRecover]);
   const currentScope = useRef<object>(scope); currentScope.current = scope;
@@ -68,7 +70,8 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   const said = [showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (!said.some(Boolean)) return null;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
-  return <div className={`space-y-3 text-sm ${className}`}>
+  return <div className={`space-y-3 text-sm ${className}`} {...(title ? { role: 'region', 'aria-label': title } : {})}>
+    {title && <p className="font-medium">{title}</p>}
     {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {showPhase && <p>{t(trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
