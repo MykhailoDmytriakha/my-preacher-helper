@@ -37,6 +37,7 @@ jest.mock('react-i18next', () => ({
                     .replace('{{total}}', options.total)
                     .replace('{{n}}', options.n);
             }
+            if (options && options.chunks !== undefined) return `${key}(${options.chunks})`;
             return key;
         },
         i18n: { language: mockLanguage, changeLanguage: jest.fn() },
@@ -688,6 +689,117 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
         expect(blob.size).toBe(6);
         expect(blob.type).toBe('audio/mpeg');
+    });
+
+    it('keeps finished batches and repeats only the batch whose chunk failed', async () => {
+        // 4 intro chunks → batch 1 (chunks 1-3) succeeds, batch 2 (chunk 4) fails, then is repeated.
+        mockUseSermon.mockReturnValue(sermonWithChunks([0, 1, 2, 3].map(i => ({ index: i, text: `Intro ${i}`, sectionId: 'introduction' }))));
+
+        const encoder = new TextEncoder();
+        const streamOf = (...events: object[]) => ({
+            ok: true,
+            body: {
+                getReader: () => ({
+                    read: jest.fn()
+                        .mockResolvedValueOnce({ done: false, value: encoder.encode(events.map(e => JSON.stringify(e)).join('\n') + '\n') })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                }),
+            },
+        });
+        const audio = (data: string) => streamOf({ type: 'audio_chunk', data }, { type: 'download_complete', filename: 'sermon-audio.mp3', mimeType: 'audio/mpeg' });
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce(audio('AAAA'))
+            .mockResolvedValueOnce(streamOf({ type: 'error', code: 'tts-chunk-failed', chunks: [4], message: 'TTS chunk 4 failed' }))
+            .mockResolvedValueOnce(audio('BBBB'));
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        // Nothing is downloaded with a hole in it; the person is told which part is missing.
+        expect(await screen.findByText('audioExport.chunkFailed(4)')).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+
+        const bodies = (global.fetch as jest.Mock).mock.calls
+            .filter(([url]) => String(url).includes('/audio/generate'))
+            .map(([, init]) => JSON.parse(init.body));
+        expect(bodies.map(body => body.offset)).toEqual([0, 3, 3]);
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        expect(blob.size).toBe(6);
+    });
+
+    it('resumes a Google export to the end of the server count, not the preview count', async () => {
+        // One preview fragment that Google re-splits into two generation chunks; the second fails once.
+        setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+        const googleChunks = [{ index: 0, text: 'Google long', sectionId: 'introduction' }];
+        mockUseSermon.mockReturnValue(sermonWithChunks(googleChunks, {
+            audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts' },
+        }));
+        const encoder = new TextEncoder();
+        const streamOf = (...events: object[]) => ({
+            ok: true,
+            body: { getReader: () => ({ read: jest.fn()
+                .mockResolvedValueOnce({ done: false, value: encoder.encode(events.map(e => JSON.stringify(e)).join('\n') + '\n') })
+                .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+        });
+        const wav = (data: number[]) => streamOf({ type: 'audio_chunk', data: wavBase64(data) },
+            { type: 'download_complete', filename: 'sermon-audio.wav', mimeType: 'audio/wav', totalChunks: 2 });
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: googleChunks, originalLength: 11, optimizedLength: 11 }) })
+            .mockResolvedValueOnce(wav([1, 2]))
+            .mockResolvedValueOnce(streamOf({ type: 'error', code: 'tts-chunk-failed', chunks: [2], message: 'TTS chunk 2 failed' }))
+            .mockResolvedValueOnce(wav([3, 4]));
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await waitFor(() => expect(screen.getByText('Google long')).toBeInTheDocument());
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        expect(await screen.findByText('audioExport.chunkFailed(2)')).toBeInTheDocument();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+
+        const offsets = (global.fetch as jest.Mock).mock.calls
+            .filter(([url]) => String(url).includes('/audio/generate'))
+            .map(([, init]) => JSON.parse(init.body).offset);
+        expect(offsets).toEqual([0, 1, 1]);
+    });
+
+    it('does not count a batch whose stream stopped before completion, and repeats it', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([0, 1].map(i => ({ index: i, text: `Intro ${i}`, sectionId: 'introduction' }))));
+        const encoder = new TextEncoder();
+        const streamOf = (...events: object[]) => ({
+            ok: true,
+            body: { getReader: () => ({ read: jest.fn()
+                .mockResolvedValueOnce({ done: false, value: encoder.encode(events.map(e => JSON.stringify(e)).join('\n') + '\n') })
+                .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+        });
+        (global.fetch as jest.Mock)
+            // The connection drops after part of the audio: no completion event.
+            .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'AAAA' }))
+            .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'BBBB' }, { type: 'download_complete', filename: 'sermon-audio.mp3', mimeType: 'audio/mpeg' }));
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        expect(await screen.findByText('audioExport.streamInterrupted')).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+        const offsets = (global.fetch as jest.Mock).mock.calls
+            .filter(([url]) => String(url).includes('/audio/generate'))
+            .map(([, init]) => JSON.parse(init.body).offset);
+        expect(offsets).toEqual([0, 0]);
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        expect(blob.size).toBe(3);
     });
 
     it('drives one quality chunk per Google batch and merges the WAV batches in-browser', async () => {

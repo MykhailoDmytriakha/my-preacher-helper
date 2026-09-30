@@ -981,7 +981,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
   });
 
-  it('continues an export after one chunk rejects and meters only successful audio', async () => {
+  it('refuses a batch whose chunk failed twice, names the chunk, and charges nothing for it', async () => {
     (generateChunkAudio as jest.Mock).mockImplementation((text: string) => {
       if (text.startsWith('Introduction')) {
         return Promise.reject(new Error('first chunk failed'));
@@ -993,7 +993,6 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         mimeType: 'audio/mpeg',
       });
     });
-    (getMeteredAudioDurationSeconds as jest.Mock).mockResolvedValueOnce(2.75);
 
     const response = await POST(
       createRequest({
@@ -1007,19 +1006,13 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
 
-    expect(events).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'download_complete' }),
-    ]));
-    expect(events.some(event => event.type === 'error')).toBe(false);
-    expect(getMeteredAudioDurationSeconds).toHaveBeenCalledWith(
-      expect.any(Blob),
-      'audio/mpeg',
-      'Main part chunk text.'
-    );
-    expect(consumeAudioSeconds).toHaveBeenCalledWith('user-1', 2.75, expect.any(Date));
-    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+    // The sermon text is never delivered with a hole in it: no audio, no completion.
+    expect(events.some(event => event.type === 'download_complete' || event.type === 'audio_chunk')).toBe(false);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', code: 'tts-chunk-failed', chunks: [1] }));
     expect((generateChunkAudio as jest.Mock).mock.calls.filter(([text]) =>
       String(text).startsWith('Introduction'))).toHaveLength(2);
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
+    expect(consumeAiUsage).not.toHaveBeenCalled();
   });
 
   it('admits only offset zero and lets later batches finish after crossing the cap', async () => {
@@ -1092,10 +1085,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     expect(events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'progress', current: 2, total: 2, percent: 80 }),
-      {
-        type: 'error',
-        message: 'TTS generation failed with openai/gpt-4o-mini-tts: All TTS chunks failed',
-      },
+      expect.objectContaining({ type: 'error', code: 'tts-chunk-failed', chunks: [1, 2] }),
     ]));
     expect((generateChunkAudio as jest.Mock).mock.calls.every(([, options]) =>
       options.provider === 'openai' && options.model === 'gpt-4o-mini-tts'))

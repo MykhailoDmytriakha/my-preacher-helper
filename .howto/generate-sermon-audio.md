@@ -18,11 +18,12 @@ Two server steps driven by `frontend/app/components/audio/StepByStepWizard.tsx`.
 
 ## Traps
 
-- A chunk that fails twice (`TTS_CHUNK_ATTEMPTS`) is skipped and the export goes on; only `All TTS chunks failed` stops it. A passage missing from the audio → look for `[TTS] Chunk … failed` in the server log.
+- A chunk that stays silent after its two attempts (`TTS_CHUNK_ATTEMPTS`) fails its whole batch before anything is metered: the stream sends `error` with code `tts-chunk-failed` (`TTS_CHUNK_FAILED`, `frontend/app/utils/audioChunkIdentity.ts`) and the chunk numbers. The wizard keeps the finished batches for the same settings and shown text, and the next press of Generate continues from the failed batch. Never let a batch succeed with a hole in it: the file would read as done while a paragraph is missing.
 - Gemini TTS on the free tier: many small requests hit per-minute and per-day request limits quickly — `.howto/handle-gemini-rate-limits.md`.
 
 ## Why
 
+- 2026-09-30: a chunk that failed twice was dropped silently and the export reported success (BUG-20260927-audio-export-drops-failed-chunk).
 - 2026-05-29: 44.1 kHz stereo silence spliced into 24 kHz mono Gemini WAV shifted the timing.
 - 2026-05-31: Scripture references in saved chunks were not spoken as words, pauses landed inside sections, and the two chunk counts were reported as a bug.
 - 2026-07-14: Google moved to even quality chunks with browser batching, behind the one-line `GOOGLE_SMALL_CHUNKING` switch.

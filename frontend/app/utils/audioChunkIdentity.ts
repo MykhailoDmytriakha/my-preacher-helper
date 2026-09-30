@@ -3,6 +3,9 @@ import type { AudioChunk } from '@/types/audioGeneration.types';
 /** The code every audio-chunk route answers with when the stored set is not the one the screen showed. */
 export const CHUNKS_CHANGED = 'chunks-changed';
 
+/** The stream error code for a generation batch refused because one of its chunks stayed silent after retries. */
+export const TTS_CHUNK_FAILED = 'tts-chunk-failed';
+
 /**
  * WHAT A PERSON HEARS OF A CHUNK SET — the one rule the chunks route and the audio wizard use to
  * decide whether two sets are the same. Bookkeeping such as `createdAt` or a client `preview` is

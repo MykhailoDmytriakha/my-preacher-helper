@@ -23,7 +23,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
-import { heardChunks } from '@/utils/audioChunkIdentity';
+import { TTS_CHUNK_FAILED, heardChunks } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
@@ -73,6 +73,9 @@ type DownloadCompleteEvent = {
 type ErrorEvent = {
     type: 'error';
     message: string;
+    code?: typeof TTS_CHUNK_FAILED;
+    /** 1-based numbers of the chunks, in the whole generation, that stayed silent. */
+    chunks?: number[];
 };
 
 type StreamEvent = ProgressEvent | CompleteEvent | ErrorEvent | AudioChunkEvent | DownloadCompleteEvent;
@@ -106,6 +109,13 @@ const GOOGLE_TTS_MODEL_25_CATALOG = 'gemini-2.5-flash-tts';
 const GOOGLE_TTS_MODEL_31_CATALOG = 'gemini-3.1-flash-tts';
 const OPENAI_TTS_VOICES: readonly TTSVoice[] = ['onyx', 'echo', 'ash'];
 const TTS_CHUNK_ATTEMPTS = 2;
+
+class TtsChunkFailedError extends Error {
+    constructor(readonly chunks: number[]) {
+        super(`TTS chunk${chunks.length > 1 ? 's' : ''} ${chunks.join(', ')} failed after retries`);
+        this.name = 'TtsChunkFailedError';
+    }
+}
 const TTS_CHUNK_RETRY_BACKOFF_MS = 100;
 
 function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
@@ -424,12 +434,18 @@ export async function POST(
                     await Promise.allSettled(
                         Array.from({ length: Math.min(TTS_CONCURRENCY, chunksForGeneration.length) }, worker)
                     );
+                    // A chunk that stayed silent after its retries fails the whole batch, before
+                    // anything is metered: a file with a missing paragraph must never read as done,
+                    // and the browser repeats exactly this batch (BUG-20260927-audio-export-drops-failed-chunk).
+                    const failedChunkNumbers = chunksForGeneration
+                        .map((_, i) => (generatedChunks[i] ? null : batchOffset + i + 1))
+                        .filter((chunkNumber): chunkNumber is number => chunkNumber !== null);
+                    if (failedChunkNumbers.length > 0) {
+                        throw new TtsChunkFailedError(failedChunkNumbers);
+                    }
                     const successfulChunks = generatedChunks.filter((result): result is NonNullable<typeof result> =>
                         result !== undefined
                     );
-                    if (successfulChunks.length === 0) {
-                        throw new Error('All TTS chunks failed');
-                    }
 
                     const measuredDurations = await Promise.all(successfulChunks.map(({ blob, chunk, mimeType }) =>
                         getMeteredAudioDurationSeconds(blob, mimeType, chunk.text)
@@ -556,6 +572,7 @@ export async function POST(
                     sendEvent(controller, {
                         type: 'error',
                         message: `TTS generation failed with ${provider}/${requestedTarget.modelId}: ${error instanceof Error ? error.message : 'Generation failed'}`,
+                        ...(error instanceof TtsChunkFailedError ? { code: TTS_CHUNK_FAILED, chunks: error.chunks } : {}),
                     });
                     controller.close();
                 }
