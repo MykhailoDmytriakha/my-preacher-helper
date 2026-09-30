@@ -6,6 +6,7 @@ const mockHandleFetch = jest.fn();
 const mockHandleInstall = jest.fn();
 const mockHandleActivate = jest.fn();
 const mockHandleCache = jest.fn();
+const mockCaches = { delete: jest.fn(async () => true), open: jest.fn(() => new Promise(() => undefined)) };
 let mockOptions: {
   skipWaiting: boolean;
   clientsClaim: boolean;
@@ -41,6 +42,7 @@ describe('service worker transport boundary', () => {
       value: {
         origin: 'https://my-preacher-helper.com',
         __SW_MANIFEST: [],
+        caches: mockCaches,
         addEventListener: (name: string, callback: WorkerCallback) => mockListeners.set(name, callback),
       },
     });
@@ -74,13 +76,31 @@ describe('service worker transport boundary', () => {
   });
 
   it('retains install, activation and message handling', () => {
-    const event = {};
+    const event = { waitUntil: jest.fn(), data: { type: 'CACHE_URLS' } };
     mockListeners.get('install')!(event);
     mockListeners.get('activate')!(event);
     mockListeners.get('message')!(event);
     expect(mockHandleInstall).toHaveBeenCalledWith(event);
     expect(mockHandleActivate).toHaveBeenCalledWith(event);
     expect(mockHandleCache).toHaveBeenCalledWith(event);
+  });
+
+  it('drops the previous build\'s offline navigation payloads when a new version activates', () => {
+    mockListeners.get('activate')!({ waitUntil: jest.fn() });
+    expect(mockCaches.delete).toHaveBeenCalledWith('pages-rsc-offline');
+  });
+
+  it('keeps a page the person has seen, and leaves other pages\' messages to Serwist', () => {
+    mockHandleCache.mockClear();
+    const seen = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/sermons/example' } };
+    mockListeners.get('message')!(seen);
+    expect(seen.waitUntil).toHaveBeenCalledTimes(1);
+    expect(mockCaches.open).toHaveBeenCalledWith('pages-rsc-offline');
+    expect(mockHandleCache).not.toHaveBeenCalled();
+
+    const shared = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/share/notes/token' } };
+    mockListeners.get('message')!(shared);
+    expect(shared.waitUntil).not.toHaveBeenCalled();
   });
 
   it('keeps recovery reads network-only and the offline fallback limited to documents', () => {
