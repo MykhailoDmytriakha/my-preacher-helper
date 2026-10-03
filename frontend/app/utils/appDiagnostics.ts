@@ -1,4 +1,4 @@
-import { getDeviceStorageHealth, subscribeDeviceStorage, type SilentStorage } from '@/utils/deviceStorage';
+import { getDeviceStorageHealth, subscribeDeviceStorage, subscribeStorageRelease, type SilentStorage } from '@/utils/deviceStorage';
 
 /** Bounded, content-free device diagnostics. Never store raw errors, URLs or documents. */
 const STORAGE_KEY = 'preacher:diagnostics:v1';
@@ -11,7 +11,7 @@ const EVENTS = [
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
   'freshness-check', 'freshness-error', 'freshness-timeout', 'freshness-late-response', 'freshness-late-error',
-  'freshness-deferred', 'storage-silent', 'storage-answered',
+  'freshness-deferred', 'storage-silent', 'storage-answered', 'storage-release',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData {
@@ -103,6 +103,8 @@ subscribeDeviceStorage(() => {
   }
   silentBefore = silent;
 });
+// And whether the layer asked Safari to let go of a database a frozen page held, and what came of it.
+subscribeStorageRelease(event => recordDiagnostic('storage-release', { source: event.source, result: event.result }));
 
 export function diagnosticErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== 'object' || !('code' in error)) return undefined;

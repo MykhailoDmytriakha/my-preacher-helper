@@ -70,6 +70,7 @@ function markSilent(database: string, since: number): void {
   silentSince.set(database, since);
   declaredAt.set(database, Date.now());
   publish();
+  scheduleRelease(database);
 }
 
 const waitingLonger = (database: string, ms: number, now = Date.now()) =>
@@ -98,6 +99,7 @@ function markAnsweringLater(database: string, verify: boolean): void {
     if (checked && waitingLonger(database, STORAGE_ANSWER_SETTLE_MS)) return;
     silentSince.delete(database);
     declaredAt.delete(database);
+    released.delete(database);
     publish();
   }, STORAGE_ANSWER_SETTLE_MS));
 }
@@ -138,8 +140,134 @@ export function trackStorage<T>(database: string, operation: Promise<T>): Promis
   return operation;
 }
 
+/*
+ * A DATABASE HELD BY A PAGE SAFARI FROZE IS RELEASED BY ASKING FOR A VERSION CHANGE.
+ *
+ * Measured on WebKit (Safari 26.5 on macOS, iPadOS 26.1): a page frozen into the back-forward cache
+ * in the middle of a transaction — one that continues from a request callback, as every
+ * read-then-write does — keeps that transaction, and other pages' transactions on the store wait
+ * until Safari evicts the frozen page: 60 s on the Mac, minutes on iPadOS, 45 minutes on the owner's
+ * iPad. Safari freezes such pages whatever the page says (`no-store`, `unload`, Web Locks all
+ * ignored). What it honours is a version change: a frozen page cannot answer one, so Safari evicts
+ * it at once — even while the change itself stays blocked — and its transaction goes with it.
+ *
+ * So when an engine database has stayed silent RELEASE_AFTER_MS past being declared silent, a
+ * throwaway worker asks for its next version and is terminated a moment later. The request never
+ * completes: it stays blocked behind this page's own connections, an upgrade that starts anyway is
+ * aborted, and terminating the worker drops it, so the version never moves and nothing is left
+ * queued (both measured). Nothing of this page is closed, aborted or replayed; only the frozen page
+ * is evicted, by Safari, as it would have been when it expired. The wait first leaves the person a
+ * moment to go back to that page, which then restores intact; after it, that page reloads instead.
+ *
+ * WebKit only. Chrome evicts a frozen page that blocks a transaction by itself (measured: no silence
+ * at all), and there a terminated worker's blocked request stays queued and stalls every later open
+ * (measured on Chrome 154) — the cure would become the disease.
+ */
+export const RELEASE_AFTER_MS = 3000;
+const RELEASE_WORKER_LIFETIME_MS = 1500;
+export interface StorageRelease { source: string; result: 'asked' | 'blocked' | 'unblocked' | 'failed' }
+const releaseListeners = new Set<(event: StorageRelease) => void>();
+const engineDatabases = new Map<string, string>();
+const releaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/** Databases already released during their current silence: one ask per silence. */
+const released = new Set<string>();
+/** Workers still asking; a page that leaves ends them, so a request never outlives its page. */
+const liveReleases = new Set<() => void>();
+let watchingDeparture = false;
+function endReleasesOnDeparture(): void {
+  if (watchingDeparture || typeof window === 'undefined') return;
+  watchingDeparture = true;
+  window.addEventListener('pagehide', () => { for (const end of [...liveReleases]) end(); });
+}
+
+/** Safari and every iOS browser (all WebKit); not Chrome, Edge, Opera or Firefox. */
+function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const agent = navigator.userAgent;
+  return /AppleWebKit\//.test(agent) && !/(Chrome|Chromium|Edg|OPR)\//.test(agent);
+}
+
+/** The worker's whole job, as source: read the version, ask for the next one, never let it complete. */
+const RELEASE_WORKER_SOURCE = `onmessage = (event) => {
+  const name = event.data.name;
+  const probe = indexedDB.open(name);
+  probe.onupgradeneeded = () => probe.transaction.abort(); // a database that is gone is not created empty
+  probe.onerror = (error) => { if (error && error.preventDefault) error.preventDefault(); postMessage('failed'); };
+  probe.onsuccess = () => {
+    const version = probe.result.version;
+    probe.result.close();
+    const ask = indexedDB.open(name, version + 1);
+    ask.onblocked = () => postMessage('blocked');
+    ask.onupgradeneeded = () => { ask.transaction.abort(); postMessage('unblocked'); };
+    ask.onsuccess = () => { ask.result.close(); postMessage('unblocked'); };
+    ask.onerror = (error) => { if (error && error.preventDefault) error.preventDefault(); };
+  };
+};`;
+
+function announceRelease(event: StorageRelease): void {
+  for (const listener of [...releaseListeners]) {
+    try { listener(event); } catch { /* A listener never changes what storage did. */ }
+  }
+}
+
+export function subscribeStorageRelease(listener: (event: StorageRelease) => void): () => void {
+  releaseListeners.add(listener);
+  return () => { releaseListeners.delete(listener); };
+}
+
+function scheduleRelease(label: string): void {
+  const name = engineDatabases.get(label);
+  if (!name || releaseTimers.has(label) || released.has(label) || !isWebKit()) return;
+  releaseTimers.set(label, setTimeout(() => {
+    releaseTimers.delete(label);
+    if (!silentSince.has(label)) return;
+    // Answered meanwhile (the declaration lags the answer by a settle period): nothing to release.
+    if (!waitingLonger(label, STORAGE_SILENCE_MS)) return;
+    // Hidden now: ask once the page is seen again, not never.
+    if (!pageVisible()) { scheduleRelease(label); return; }
+    released.add(label);
+    askForRelease(label, name);
+  }, RELEASE_AFTER_MS));
+}
+
+function askForRelease(label: string, name: string): void {
+  if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL?.createObjectURL !== 'function') return;
+  let source: string | undefined;
+  let worker: Worker | undefined;
+  let ended = false;
+  const end = () => {
+    if (ended) return;
+    ended = true;
+    liveReleases.delete(end);
+    worker?.terminate();
+    if (source) URL.revokeObjectURL(source);
+  };
+  endReleasesOnDeparture();
+  liveReleases.add(end);
+  try {
+    source = URL.createObjectURL(new Blob([RELEASE_WORKER_SOURCE], { type: 'text/javascript' }));
+    worker = new Worker(source);
+  } catch {
+    end();
+    announceRelease({ source: label, result: 'failed' });
+    return;
+  }
+  // Safari evicts the frozen page while delivering the version change, before it answers "blocked":
+  // the first answer is the moment to end the request, so it cannot outlive this page's attention.
+  worker.onmessage = event => {
+    const result = event.data;
+    if (result === 'blocked' || result === 'unblocked' || result === 'failed') announceRelease({ source: label, result });
+    end();
+  };
+  worker.onerror = () => { announceRelease({ source: label, result: 'failed' }); end(); };
+  worker.postMessage({ name });
+  announceRelease({ source: label, result: 'asked' });
+  setTimeout(end, RELEASE_WORKER_LIFETIME_MS);
+}
+
 /** The same store `idb-keyval` would create, with every call watched under `label`. */
 export function watchedStore(databaseName: string, storeName: string, label: string): UseStore {
+  if ((ENGINE_STORAGE as readonly string[]).includes(label)) engineDatabases.set(label, databaseName);
   let store: UseStore | undefined;
   return (mode, callback) => trackStorage(label, (store ??= createStore(databaseName, storeName))(mode, callback));
 }
@@ -202,5 +330,9 @@ export function resetDeviceStorageForTests(): void {
   verifying.clear();
   answering.forEach(timer => clearTimeout(timer));
   answering.clear();
+  releaseTimers.forEach(timer => clearTimeout(timer));
+  releaseTimers.clear();
+  released.clear();
+  liveReleases.clear();
   publish();
 }
