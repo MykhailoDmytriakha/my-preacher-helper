@@ -38,6 +38,10 @@ export interface SyncStatus {
 
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
 export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null): SyncStatus | null {
+  // A form resolves only its own fields, so dropping a refused change of the whole document is not its
+  // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
+  // from elsewhere is still offered, as it always was.
+  if (parent?.phase === 'refused' && !parent.hasForeignChange) parent = { ...parent, canAcceptRemote: false };
   if (!form?.record.active || !editor || !parent) return parent;
   // Explicit Keep local may include durable corrections to a known failed command.
   // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
@@ -84,7 +88,9 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     hasForeignChange: foreign,
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && pendingIds.length === 0 && checkpoint.confirmed.value !== null && !checkpoint.confirmed.metadata?.deleted,
-    canAcceptRemote: !state.actionResolutionRequired && foreign && settled,
+    // A refusal has no other version to take, but "use the server's version" still means dropping
+    // this device's refused change — without it a refused screen draft had no way back.
+    canAcceptRemote: !state.actionResolutionRequired && (foreign || (phase === 'refused' && !state.manualWork)) && settled,
     canKeepLocal: !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }

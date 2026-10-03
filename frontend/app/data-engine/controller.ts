@@ -1,4 +1,5 @@
 import { requiredDomainTargets } from './domainPolicy';
+import { editorSlot } from './editorIdentity';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { DataSession, type SessionCheckpoint } from './session';
@@ -61,6 +62,8 @@ export interface EditorState {
   /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
   preparing?: boolean;
   actionResolutionRequired?: boolean;
+  /** A form's save is among the pending work: dropping a refusal of the whole document is not offered. */
+  manualWork?: boolean;
 }
 
 /** A single editor owns its checkpoint; the runtime owns delivery for every editor. */
@@ -70,6 +73,8 @@ export class EditorController {
   private unfinalized: string[] = [];
   private durable = true;
   private error: string | null = null;
+  /** Requests a manual form handed to this editor (`adoptManualCommit`): resolved by the form, not here. */
+  private manualRequests = new Set<string>();
   private result: CommandResult | null = null;
   private preparations = 0;
   private disposed = false;
@@ -125,8 +130,10 @@ export class EditorController {
 
   getState(): EditorState {
     this.assertCurrent();
-    return { checkpoint: this.session.checkpoint(), durable: this.durable, error: this.error, result: this.result, preparing: this.preparations > 0,
-      actionResolutionRequired: this.atomicPending.size > 0 };
+    const checkpoint = this.session.checkpoint();
+    return { checkpoint, durable: this.durable, error: this.error, result: this.result, preparing: this.preparations > 0,
+      actionResolutionRequired: this.atomicPending.size > 0,
+      manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
   }
 
   subscribe(listener: () => void): () => void {
@@ -176,6 +183,7 @@ export class EditorController {
     const checkpoint = this.session.checkpoint();
     if (request.owner !== this.options.owner || request.baseline.resource.collection !== checkpoint.confirmed.resource.collection
       || request.baseline.resource.id !== checkpoint.confirmed.resource.id || !request.value) throw new Error('Manual request identity mismatch');
+    this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id) || checkpoint.pending[request.id]) return this.enqueue(() => this.applyCommit(request));
     if (!checkpoint.draft) throw new Error('The document was deleted while its form was open');
     this.session.edit(projectManualSelection(checkpoint.draft, request.value, selection));
@@ -219,8 +227,14 @@ export class EditorController {
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
   acceptRemote(selection?: readonly ManualPath[]): Promise<void> {
+    // The draft as the person chose; typing that lands before this queued choice runs is kept.
+    const atChoice = this.session.checkpoint().draft;
     return this.enqueue(async () => {
       this.assertManualResolution(selection);
+      const before = this.session.checkpoint();
+      // A refusal has no other version to take: "use the server's version" drops the refused change.
+      const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
+        && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
       if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
@@ -229,6 +243,7 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       this.session.acceptRemote();
+      if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
       await this.persist();
     });
@@ -328,12 +343,17 @@ export class EditorController {
 
   private async applyCommit(request: CommitRequest): Promise<void> {
     this.assertCurrent();
+    // A request whose owner is no editor identity is a form's (or an action scope's) — also when this
+    // editor took it over from a screen that was left. Its refusal is resolved there, not here.
+    if (this.session.checkpoint().pending[request.id] && editorSlot(request.editorId) === null) this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id)) return;
     if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.add(request.id);
     else this.atomicPending.delete(request.id);
     if (request.state === 'cancelled' && request.cancelledByAction) this.result = null;
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.result = request.result;
     if (this.session.applyCommit(request)) this.completedCommits.push(request.id);
+    // Cancelled elsewhere with nothing of ours left in flight: the old refusal or conflict answers nothing.
+    if (request.state === 'cancelled' && !this.prepared && !Object.keys(this.session.checkpoint().pending).length) this.result = null;
     await this.persist();
   }
 

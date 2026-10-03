@@ -70,6 +70,7 @@ export function reconcileRecoveryRecord(record: EditorRecord, requests: readonly
     if (request.owner !== record.owner || !sameResource(request.baseline.resource, record.checkpoint.confirmed.resource)
       || completed.has(request.id)
       || (request.editorId !== record.editorId && !session.checkpoint().pending[request.id])) continue;
+    // Work the person decided on another editor settles here too (`DataSession.applyCommit`).
     if (session.applyCommit(request)) completed.add(request.id);
   }
   return { ...clone(record), checkpoint: session.checkpoint(), ...(completed.size ? { completedCommits: [...completed] } : {}) };

@@ -1,6 +1,7 @@
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
+import { editorSlot } from './editorIdentity';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
@@ -99,6 +100,8 @@ interface EditorEntry {
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
+const hasFormWork = (owner: string, resource: ResourceRef, requests: readonly CommitRequest[]) => requests.some(request => request.owner === owner
+  && sameResource(request.baseline.resource, resource) && !['acknowledged', 'cancelled'].includes(request.state) && editorSlot(request.editorId) === null);
 const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
@@ -481,6 +484,66 @@ export class DataEngine {
     return records.filter(({ record }) => !this.editors.has(record.editorId))
       .map(({ id, record }) => ({ id, record: reconcileRecoveryRecord(record, requests) }))
       .filter(({ record }) => isRecoverableCheckpoint(record));
+  }
+
+  /**
+   * Whether a screen opened on this document now would take over its queued work: exactly one chain
+   * of unfinished requests (`submittedWorkCheckpoint`). When there are several, the engine does not
+   * pick among them, so a waiting draft of the document has no screen that can decide it.
+   */
+  async screenDecides(resource: ResourceRef): Promise<boolean> {
+    const owner = this.requireOwner();
+    this.validateResource(resource, owner);
+    const generation = this.generation;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    return submittedWorkCheckpoint(owner, copy(resource), requests) !== null;
+  }
+
+  /**
+   * Whether an editor open in this tab holds a request of this document that the server refused or
+   * conflicted on — its screen then says the answer itself. A screen opened before the request existed
+   * holds nothing, and the answer must be said elsewhere.
+   */
+  async answerHeldOpen(resource: ResourceRef): Promise<boolean> {
+    const journal = await this.listPending();
+    const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
+    return [...this.editors.values()].some(entry => {
+      const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
+      return Boolean(checkpoint && sameResource(checkpoint.confirmed.resource, resource)
+        && Object.keys(checkpoint.pending).some(id => answered.has(id)));
+    });
+  }
+
+  /**
+   * "Use the server's version" for every request of a document the server refused or conflicted on,
+   * for a document no screen can decide (`screenDecides`). Each is cancelled as the person's choice, so
+   * the checkpoints holding it settle (`DataSession.applyCommit`) without opening any editor — one of
+   * them may still be open in another tab. Resolves to the number of requests taken back.
+   */
+  async takeStoredVersion(resource: ResourceRef): Promise<number> {
+    const owner = this.requireOwner();
+    this.validateResource(resource, owner);
+    const generation = this.generation;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    // A form's work is resolved by its form: cancelling it here breaks that form's next save.
+    if (hasFormWork(owner, resource, requests)) return 0;
+    const answered = requests.filter(request => request.owner === owner
+      && sameResource(request.baseline.resource, resource) && (request.state === 'refused' || request.state === 'conflict'));
+    if (answered.length) await this.commits.cancel('', answered.map(request => request.id));
+    return answered.length;
+  }
+
+  /**
+   * Whether unfinished work of this document belongs to a form (a request whose owner is no editor
+   * identity). Such work is resolved by the form, as it always was; the app-wide notice and its
+   * choices stay out of it (BUG-20260813-late-refusal-silent-after-navigation).
+   */
+  async formWorkPending(resource: ResourceRef): Promise<boolean> {
+    const owner = this.requireOwner();
+    this.validateResource(resource, owner);
+    return hasFormWork(owner, resource, await this.commits.list());
   }
 
   /** Explicitly fork a checkpoint to a fresh editor identity, preserving pending operation IDs. */

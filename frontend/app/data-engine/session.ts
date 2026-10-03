@@ -50,8 +50,16 @@ export class DataSession {
   /** One projection rule for mounted editors and recovery of editors that already closed. */
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
-      if (request.cancelledByAction && this.state.pending[request.id]) this.rollbackAction(request);
+      const held = this.state.pending[request.id];
+      if (request.cancelledByAction && held) this.rollbackAction(request);
+      const latest = Boolean(held) && Object.values(this.state.pending).every(other => other.generation <= held.generation);
       this.release(request.id);
+      if (held && !request.cancelledByAction && !Object.keys(this.state.pending).length) {
+        // Nothing of this editor's is in flight any more, so a conflict it held answers nothing: decided
+        // work settles fully; work swept along by a choice about another draft stays an ordinary draft.
+        if (request.cancelledByChoice && latest) this.settleDecided(held.value);
+        else this.state.conflicts = [];
+      }
       return true;
     }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId);
@@ -149,6 +157,41 @@ export class DataSession {
     this.state.confirmed = copy(snapshot);
     this.state.draft = copy(snapshot.value);
     this.state.remoteCandidate = null;
+  }
+
+  /**
+   * WORK THE PERSON DECIDED ON ANOTHER EDITOR (BUG-20260813-late-refusal-silent-after-navigation).
+   *
+   * Every opening of a screen is a new editor, and the one opened again takes over the queued
+   * requests of the one that was left — a closed checkpoint, or a screen still open in another tab.
+   * The person's "keep mine" or "use the server's version" there cancels them `cancelledByChoice`.
+   * This editor then waits for nothing: when its latest request was decided that way and its draft
+   * is exactly what that request carried, it takes the version the decider took — the newer server
+   * copy, or its confirmed one. Text typed after that request stays an ordinary draft; the conflict
+   * belonged to the decided request. The same rule runs for mounted editors and for recovery's
+   * projection of closed ones, so one cannot settle while the other keeps waiting.
+   */
+  private settleDecided(decided: DocumentData | null): void {
+    this.state.conflicts = [];
+    if (!equalValues(this.state.draft, decided)) return;
+    if (this.state.remoteCandidate) this.state.confirmed = copy(this.state.remoteCandidate);
+    this.state.draft = copy(this.state.confirmed.value);
+    this.state.remoteCandidate = null;
+    this.state.dirty = false;
+    this.state.editGeneration += 1;
+  }
+
+  /**
+   * "Use the server's version" after a refusal: there is no other version to adopt, so the refused
+   * change goes and the stored copy comes back. `atChoice` is the draft when the person chose; a field
+   * typed since then stays (three-way merge), because a later keystroke is not part of that choice.
+   */
+  dropRefused(atChoice: DocumentData | null): void {
+    const merged = mergeDocumentFields(atChoice, this.state.draft, this.state.confirmed.value);
+    this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;
+    this.state.dirty = !equalValues(this.state.draft, this.state.confirmed.value);
+    this.state.conflicts = [];
+    this.state.editGeneration += 1;
   }
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */

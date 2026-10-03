@@ -13,6 +13,12 @@ export interface CommitRequest {
   retentionScope?: string;
   /** Whole-action discard removes membership intent while retaining later metadata edits. */
   cancelledByAction?: boolean;
+  /**
+   * Cancelled because the person chose about exactly this request — the deciding editor held it
+   * and showed it — not swept along as a dependent of someone else's choice. A closed checkpoint
+   * whose latest request was decided this way waits for nothing (`reconcileRecoveryRecord`).
+   */
+  cancelledByChoice?: boolean;
   owner: string;
   editorId: string;
   editGeneration: number;
@@ -265,6 +271,8 @@ export class CommitQueue {
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     const all = await this.options.store.list(owner);
     const records = cancellationScope(all, editorId, additionalRequestIds);
+    // Only what the deciding editor held was chosen about; dependents and participants are swept.
+    const chosen = new Set(all.filter(record => record.editorId === editorId || additionalRequestIds.includes(record.id)).map(record => record.id));
     this.assertCurrent(owner, generation);
     if (!wholeAction && records.some(record => record.atomic)) throw Object.assign(
       new Error('Resolve the complete action before replacing one participant'), { code: 'atomic-action-resolution-required' });
@@ -274,7 +282,7 @@ export class CommitQueue {
     for (const record of records) {
       if (record.command) await this.options.runtime.discard(record.command.operationId);
       this.assertCurrent(owner, generation);
-      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled' });
+      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) });
       this.assertCurrent(owner, generation);
       this.emit(cancelled);
     }

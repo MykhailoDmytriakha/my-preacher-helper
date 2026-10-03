@@ -169,7 +169,10 @@
     },
     "deleteRefusedTitle": "The server did not accept the deletion",
     "deleteRefusedBody": "Here is what the record holds now. You can keep it or try deleting again.",
-    "retryDelete": "Try deleting again"
+    "retryDelete": "Try deleting again",
+    "screenDraftBody": "The server did not take a change made on a screen you have since left. Open it to decide what stays; your text is kept until then.",
+    "openToDecide": "Open and decide",
+    "screenDraftsUndecidable": "Changes made on several screens wait for a decision, and no screen can choose between them. Copy what you need, then use the server version."
   },
   "diagnostics": {
     "collecting": "Collecting technical information…",

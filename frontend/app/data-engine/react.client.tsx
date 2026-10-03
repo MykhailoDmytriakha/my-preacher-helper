@@ -682,6 +682,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     },
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
+    // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: () => run(editor => editor.acceptRemote()),
     keepLocal: () => run(editor => editor.keepLocal()),
     listRecoverable: async () => {
