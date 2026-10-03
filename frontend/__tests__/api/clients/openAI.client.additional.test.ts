@@ -479,6 +479,116 @@ describe('openAI.client additional coverage', () => {
       expect(result[0].outlinePointId).toBe('op-1');
     });
 
+    it('keeps every thought when two of them share the first characters of their id', async () => {
+      // BUG-20261003-ai-sort-short-key-collision: ids that begin alike must still get distinct keys.
+      const alike: ThoughtInStructure[] = [
+        { id: 'abcd1111-0000-0000-0000-000000000000', content: 'First of the pair' },
+        { id: 'abcd2222-0000-0000-0000-000000000000', content: 'Second of the pair' },
+        { id: 'efgh3333-0000-0000-0000-000000000000', content: 'Third thought' },
+      ];
+      // The model answers with the keys it was shown in the prompt.
+      mockStructuredOutput.callWithStructuredOutput.mockImplementation(async (_system: string, user: string) => {
+        const shown = [...user.matchAll(/key: (\S+?),/g)].map((match) => match[1]);
+        return { success: true, data: { sortedItems: [...shown].reverse().map((key) => ({ key })) }, refusal: null, error: null };
+      });
+
+      const result = await sortItemsWithAI('col-1', alike, baseSermon, outlinePoints);
+
+      expect(result.map(item => item.id).sort()).toEqual(alike.map(item => item.id).sort());
+      expect(result.map(item => item.id)).toEqual([...alike].reverse().map(item => item.id));
+    });
+
+    it('still places a thought when the model answers with the old four-character key that names it alone', async () => {
+      const alike: ThoughtInStructure[] = [
+        { id: 'abcd1111-0000-0000-0000-000000000000', content: 'First of the pair' },
+        { id: 'abcd2222-0000-0000-0000-000000000000', content: 'Second of the pair' },
+        { id: 'efgh3333-0000-0000-0000-000000000000', content: 'Third thought' },
+      ];
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { sortedItems: [{ key: 'efgh', outlinePoint: 'Main Point' }, { key: 'abcd' }] },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', alike, baseSermon, outlinePoints);
+
+      // 'efgh' names one thought: placed first with its assignment; 'abcd' is ambiguous: both
+      // thoughts of the pair come back at the end, in their original order.
+      expect(result.map(item => item.id)).toEqual([
+        'efgh3333-0000-0000-0000-000000000000',
+        'abcd1111-0000-0000-0000-000000000000',
+        'abcd2222-0000-0000-0000-000000000000',
+      ]);
+      expect(result[0].outlinePointId).toBe('op-1');
+    });
+
+    it('ignores an id that is not in the column, and accepts a thought\'s exact full id', async () => {
+      const column: ThoughtInStructure[] = [
+        { id: 'abcd', content: 'Short id' },
+        { id: 'abcdefghi', content: 'Long id' },
+        { id: 'efab3333-0000', content: 'Real one' },
+      ];
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { sortedItems: [{ key: 'efab3999-0000' }, { key: 'abcdefghi', outlinePoint: 'Main Point' }] },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', column, baseSermon, outlinePoints);
+
+      // 'efab3999…' names no thought; 'abcdefghi' is exactly one thought's id.
+      expect(result.map(item => item.id)).toEqual(['abcdefghi', 'abcd', 'efab3333-0000']);
+      expect(result[0].outlinePointId).toBe('op-1');
+      expect(result.find(item => item.id === 'efab3333-0000')?.outlinePointId).toBeUndefined();
+    });
+
+    it('treats "constructor" or "__proto__" as naming no thought unless a thought really has that key', async () => {
+      const plain: ThoughtInStructure[] = [
+        { id: 'aaaa-1111', content: 'One' },
+        { id: 'bbbb-2222', content: 'Two' },
+      ];
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { sortedItems: [{ key: '__proto__', outlinePoint: 'Main Point' }, { key: 'constructor', outlinePoint: 'Main Point' }, { key: 'bbbb' }] },
+        refusal: null,
+        error: null,
+      });
+      const result = await sortItemsWithAI('col-1', plain, baseSermon, outlinePoints);
+      expect(result.map(item => item.id)).toEqual(['bbbb-2222', 'aaaa-1111']);
+
+      // Here "constructor" is the real key of the first thought (ids differ only at character 11).
+      const named: ThoughtInStructure[] = [
+        { id: 'constructor-X', content: 'One' },
+        { id: 'constructos-Y', content: 'Two' },
+      ];
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { sortedItems: [{ key: 'constructos', outlinePoint: 'Main Point' }, { key: 'constructor', outlinePoint: 'Main Point' }] },
+        refusal: null,
+        error: null,
+      });
+      const ordered = await sortItemsWithAI('col-1', named, baseSermon, outlinePoints);
+      expect(ordered.map(item => item.id)).toEqual(['constructos-Y', 'constructor-X']);
+      expect(ordered.every(item => item.outlinePointId === 'op-1')).toBe(true);
+    });
+
+    it('returns a thought listed twice in the column once when the model leaves it out', async () => {
+      const twice: ThoughtInStructure[] = [
+        { id: 'aaaa-1111', content: 'Twice' },
+        { id: 'aaaa-1111', content: 'Twice' },
+        { id: 'bbbb-2222', content: 'Once' },
+      ];
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true, data: { sortedItems: [{ key: 'bbbb' }] }, refusal: null, error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', twice, baseSermon, outlinePoints);
+
+      expect(result.map(item => item.id)).toEqual(['bbbb-2222', 'aaaa-1111']);
+    });
+
     it('matches outline points by substring when exact match fails', async () => {
       const substringItems: ThoughtInStructure[] = [
         { id: 'zzzz-1111-1111-1111-111111111111', content: 'Substring thought' },

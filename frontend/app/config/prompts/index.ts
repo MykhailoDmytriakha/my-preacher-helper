@@ -12,7 +12,7 @@ export { brainstormSystemPrompt } from './system/brainstorm';
 // Export all user templates
 export { createThoughtUserMessage } from './user/thoughtTemplate';
 export { createInsightsUserMessage } from './user/insightsTemplate';
-export { createSortingUserMessage } from './user/sortingTemplate';
+export { buildSortItemKeys, createSortingUserMessage } from './user/sortingTemplate';
 export { createTopicsUserMessage } from './user/topicsTemplate';
 export { createVersesUserMessage } from './user/versesTemplate';
 export { createDirectionsUserMessage } from './user/directionsTemplate';

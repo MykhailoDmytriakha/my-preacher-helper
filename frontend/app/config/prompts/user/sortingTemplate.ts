@@ -19,22 +19,37 @@ interface OutlinePromptContext {
   singleOutlinePoint?: SermonPoint;
 }
 
-const getItemKey = (item: Item) => item.id.slice(0, 4);
+/**
+ * The short key the model sees for each thought, and reads back in its answer: the start of the
+ * thought's id, the same length for all, four characters unless two ids begin alike — then just
+ * long enough to tell every thought apart. The prompt and the parser of the answer must use this
+ * one rule: a shared four-character key made one thought silently drop out of the sorted column
+ * (BUG-20261003-ai-sort-short-key-collision).
+ */
+export function buildSortItemKeys(items: ReadonlyArray<{ id: string }>): Map<string, string> {
+  const ids = [...new Set(items.map((item) => item.id))];
+  for (let length = 4; ; length++) {
+    const keys = ids.map((id) => id.slice(0, length));
+    if (new Set(keys).size === ids.length || ids.every((id) => id.length <= length)) {
+      return new Map(ids.map((id, index) => [id, keys[index]]));
+    }
+  }
+}
 
-const getLockedItems = (items: Item[]): LockedItemPrompt[] => (
+const getLockedItems = (items: Item[], keys: Map<string, string>): LockedItemPrompt[] => (
   items
     .map((item, index) => (
       item.isLocked
-        ? { index: index + 1, key: getItemKey(item), content: item.content }
+        ? { index: index + 1, key: keys.get(item.id) ?? item.id, content: item.content }
         : null
     ))
     .filter((item): item is LockedItemPrompt => item !== null)
 );
 
-const buildItemsList = (items: Item[]): string => (
+const buildItemsList = (items: Item[], keys: Map<string, string>): string => (
   items
     .map((item, index) => (
-      `position: ${index + 1}, key: ${getItemKey(item)}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}`
+      `position: ${index + 1}, key: ${keys.get(item.id) ?? item.id}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}`
     ))
     .join("\n")
 );
@@ -119,8 +134,9 @@ export function createSortingUserMessage(
   outlinePoints?: SermonPoint[]
 ): string {
   const sectionName = SECTION_NAMES[columnId] || columnId;
-  const lockedItems = getLockedItems(items);
-  const itemsList = buildItemsList(items);
+  const keys = buildSortItemKeys(items);
+  const lockedItems = getLockedItems(items, keys);
+  const itemsList = buildItemsList(items, keys);
   const {
     outlinePointsText,
     hasSubPoints,
@@ -163,7 +179,7 @@ export function createSortingUserMessage(
       ]
     }
 
-    The "key" should be the first 4 characters of the original item ID.
+    The "key" must be exactly the key shown for the item above — copy it as is (it is usually 4 characters, longer when two items' keys would otherwise be the same).
     ${buildOutlinePointFieldInstruction(outlinePointsText, outlinePoints)}
     ${buildSubPointFieldInstruction(hasSubPoints, outlinePoints)}
     The "content" should be the first 5-10 words of the item to confirm you understand what you're sorting.

@@ -4,7 +4,7 @@
 import { z } from "zod";
 
 export const SortedItemSchema = z.object({
-  key: z.string().describe("The first 4 characters of the source item id"),
+  key: z.string().describe("The item's key exactly as shown in the input"),
   outlinePoint: z.string().optional().describe("Optional outline point text for assignment"),
   subPoint: z.string().optional().describe("Optional sub-point text within the outline point"),
   content: z.string().optional().describe("Optional content preview"),

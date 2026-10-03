@@ -3,6 +3,7 @@ import OpenAI from "openai";
 
 import {
   sortingSystemPrompt,
+  buildSortItemKeys,
   createSortingUserMessage,
   directionsSystemPrompt, createDirectionsUserMessage,
   planSystemPrompt, createPlanUserMessage,
@@ -356,11 +357,13 @@ export async function generateSermonVerses(
 type SortedItemResponse = { key: string; outlinePoint?: string; subPoint?: string; content?: string };
 
 function buildItemsMap(items: ThoughtInStructure[]): Record<string, ThoughtInStructure> {
-  const itemsMapByKey: Record<string, ThoughtInStructure> = {};
+  // The same keys the prompt showed the model (createSortingUserMessage).
+  const keys = buildSortItemKeys(items);
+  // No prototype: a key the model answers, like "constructor", must name no thought.
+  const itemsMapByKey: Record<string, ThoughtInStructure> = Object.create(null);
 
   items.forEach(item => {
-    const shortKey = item.id.slice(0, 4);
-    itemsMapByKey[shortKey] = item;
+    itemsMapByKey[keys.get(item.id) ?? item.id] = item;
   });
 
   return itemsMapByKey;
@@ -398,16 +401,29 @@ function extractSortedKeysAndAssignments(
     }
   });
 
-  const outlinePointAssignments: Record<string, string> = {};
-  const subPointAssignments: Record<string, string> = {};
+  const outlinePointAssignments: Record<string, string> = Object.create(null);
+  const subPointAssignments: Record<string, string> = Object.create(null);
+  // The model is asked to copy each key as shown, but may answer with the whole id or with only
+  // its start (the old four-character habit). Accepted: the exact key; a thought's exact id; the
+  // start of exactly one thought's id. Anything else names no thought — an ambiguous start, or
+  // an id that is not in the column — and those thoughts come back at the end.
+  const sources = Object.entries(itemsMapByKey);
+  const resolveKey = (answered: string): string | null => {
+    if (itemsMapByKey[answered]) return answered;
+    const byId = sources.find(([, item]) => item.id === answered);
+    if (byId) return byId[0];
+    if (answered.length < 4) return null;
+    const matches = sources.filter(([, item]) => item.id.startsWith(answered));
+    return matches.length === 1 ? matches[0][0] : null;
+  };
   // A model can name one thought twice; the column must still hold each thought once. The first
   // mention decides its place and its assignment (BUG-20260929-ai-sort-keeps-duplicate-thoughts).
   const seenKeys = new Set<string>();
   const aiSortedKeys = sortedItems
     .map((aiItem: SortedItemResponse) => {
       if (aiItem && typeof aiItem.key === 'string') {
-        const itemKey = aiItem.key.trim();
-        if (seenKeys.has(itemKey)) return null;
+        const itemKey = resolveKey(aiItem.key.trim());
+        if (itemKey === null || seenKeys.has(itemKey)) return null;
         seenKeys.add(itemKey);
 
         if (itemsMapByKey[itemKey] && aiItem.outlinePoint && typeof aiItem.outlinePoint === 'string') {
@@ -570,17 +586,19 @@ function buildSortedItem(
   };
 }
 
-function appendMissingSortedItems(
-  sortedItems: ThoughtInStructure[],
-  itemsMapByKey: Record<string, ThoughtInStructure>,
-  aiSortedKeys: string[]
-) {
-  const missingSortedKeys = Object.keys(itemsMapByKey).filter(key => !aiSortedKeys.includes(key));
-  if (missingSortedKeys.length > 0) {
-    console.log(`DEBUG: ${missingSortedKeys.length} items were missing in the AI sorted order, appending them to the end`);
-    missingSortedKeys.forEach(key => {
-      sortedItems.push(itemsMapByKey[key]);
-    });
+function appendMissingSortedItems(sortedItems: ThoughtInStructure[], items: ThoughtInStructure[]) {
+  // Measured against the column itself, not the key map: a thought the answer left out — for
+  // whatever reason — still comes back, at the end, in its original order.
+  const placed = new Set(sortedItems.map(item => item.id));
+  let appended = 0;
+  items.forEach(item => {
+    if (placed.has(item.id)) return;
+    placed.add(item.id);
+    sortedItems.push(item);
+    appended += 1;
+  });
+  if (appended > 0) {
+    console.log(`DEBUG: ${appended} items were missing in the AI sorted order, appending them to the end`);
   }
 }
 
@@ -619,7 +637,7 @@ export async function sortItemsWithAI(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "sermon.structure.sort",
-      promptVersion: "v1",
+      promptVersion: "v2",
       systemPrompt: sortingSystemPrompt,
       userMessage,
       context: inputInfo,
@@ -660,7 +678,7 @@ export async function sortItemsWithAI(
     });
 
     // Check if all items were included in the sorted result
-    appendMissingSortedItems(sortedItems, itemsMapByKey, aiSortedKeys);
+    appendMissingSortedItems(sortedItems, items);
 
     return sortedItems;
   } catch (error) {

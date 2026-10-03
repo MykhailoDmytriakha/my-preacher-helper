@@ -150,7 +150,7 @@ Structured telemetry prompts:
 | `sermon.insights.directions` | `v2` | Проповедь · Размышления · направления | Suggest research/development directions. |
 | `sermon.insights.section_hints` | `v1` | Проповедь · Размышления · предположенный план | Suggest intro/main/conclusion organization hints. |
 | `sermon.structure.focus.generate_outline` | `v1` | Проповедь · Структура · режим фокуса · создать пункты плана | Generate outline points for a section. |
-| `sermon.structure.sort` | `v1` | Проповедь · Структура · разложить мысли по пунктам | Sort thoughts and assign outline/sub-point placement. |
+| `sermon.structure.sort` | `v2` | Проповедь · Структура · разложить мысли по пунктам | Sort thoughts and assign outline/sub-point placement. |
 | `sermon.conspect.section` | `v1` | Проповедь · Конспект · текст раздела | Generate section-level conspect content. |
 | `sermon.conspect.point` | `v13` | Проповедь · Конспект · текст одного пункта | Generate the FILLING of a preacher cue sheet for one outline point or its sub-points (the headings come from the sermon structure): route arrow on top, sub-points as real `### ` sub-headings, per-group Scripture refs rendered inline one per line; no model-generated title. Detailed mode preserves more source-supported references, fragments, examples, and transitions. |
 | `sermon.export.speech_text` | `v1` | Проповедь · Экспорт · текст под озвучку | Convert written sermon text to TTS-friendly chunks. |
