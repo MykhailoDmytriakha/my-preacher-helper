@@ -10,7 +10,8 @@ import type { MembershipPin } from './membershipScope';
 
 /** Pin the list before presenting the selector. Never reread ancestors when Save is pressed. */
 export function captureMembershipPins(owner: string, state: CollectionState, requests: readonly CommitRequest[]): MembershipPin[] {
-  if (!state.complete) throw new Error('A complete saved series list is required for membership editing');
+  // Coded: the person can act on both — connect to load the list, or settle the series first.
+  if (!state.complete) throw Object.assign(new Error('A complete saved series list is required for membership editing'), { code: 'series-list-incomplete' });
   const related = requests.filter(request => request.owner === owner && request.baseline.resource.collection === 'series');
   const snapshots = new Map(state.snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
   for (const request of related) if (request.result?.kind === 'acknowledged') {
@@ -18,7 +19,7 @@ export function captureMembershipPins(owner: string, state: CollectionState, req
     if (canReplaceSnapshot(snapshots.get(snapshot.resource.id), snapshot)) snapshots.set(snapshot.resource.id, snapshot);
   }
   return collectionDocumentViews(owner, 'series', [...snapshots.values()], related).flatMap((view): MembershipPin[] => {
-    if (view.needsAttention || view.deleting) throw new Error('Resolve outstanding series changes before opening membership editing');
+    if (view.needsAttention || view.deleting) throw Object.assign(new Error('Resolve outstanding series changes before opening membership editing'), { code: 'series-changes-pending' });
     if (!view.value) return [];
     const submitted = submittedWorkCheckpoint(owner, view.resource, related);
     if (!submitted) return [{ baseline: snapshots.get(view.resource.id)!, predecessor: null }];

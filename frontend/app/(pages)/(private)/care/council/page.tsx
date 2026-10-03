@@ -16,6 +16,7 @@ import { useCouncils } from '@/hooks/useCouncils';
 import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
+import { refusalMessage } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
@@ -89,9 +90,9 @@ function EngineCouncilListPage() {
   const serverIds = useMemo(() => (engine.serverAnswered ? engine.knownIds : null), [engine.serverAnswered, engine.knownIds]);
   return <>
     {!pending && user?.uid && <EngineCouncilMigration owner={user.uid} serverIds={serverIds}
-      onRefused={message => toast.error(message || t('council.save.refused'))} />}
+      onRefused={error => toast.error(refusalMessage(error, t, 'council.save.refused'))} />}
     {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
-      onFailed={message => { setPending(null); toast.error(message || t('council.save.refused')); }} />}
+      onFailed={error => { setPending(null); toast.error(refusalMessage(error, t, 'council.save.refused')); }} />}
     <DataCollectionStatus state={engine.state} />
     <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />
   </>;

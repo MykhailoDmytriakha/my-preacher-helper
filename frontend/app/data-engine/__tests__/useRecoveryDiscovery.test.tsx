@@ -47,7 +47,7 @@ it('keeps the newest discovery result and surfaces a storage failure', async () 
   expect(hook.result.current.choices).toEqual(['latest']);
   list.mockRejectedValue(new Error('Storage unavailable'));
   await act(async () => { await hook.result.current.refresh(); });
-  expect(hook.result.current.error).toBe('Storage unavailable');
+  expect(hook.result.current.error).toBe('dataSync.documentFailed');
   expect(hook.result.current.choices).toEqual(['latest']);
 });
 

@@ -13,9 +13,9 @@ const created: string[] = [];
 const createdWith: Council[] = [];
 let failNext: string | null = null;
 jest.mock('../EngineCouncilCreator', () => ({
-  EngineCouncilCreator: ({ council, onCreated, onFailed }: { council: Council; onCreated: (id: string) => void; onFailed: (message: string) => void }) => {
+  EngineCouncilCreator: ({ council, onCreated, onFailed }: { council: Council; onCreated: (id: string) => void; onFailed: (error: unknown) => void }) => {
     React.useEffect(() => {
-      if (failNext === council.id) { onFailed('refused'); return; }
+      if (failNext === council.id) { onFailed(new Error('refused')); return; }
       created.push(council.id); createdWith.push(council);
       onCreated(council.id);
     }, [council, onCreated, onFailed]);
@@ -44,7 +44,7 @@ describe('EngineCouncilMigration', () => {
     failNext = 'a';
     const onRefused = jest.fn();
     render(<EngineCouncilMigration owner="owner" serverIds={new Set()} onRefused={onRefused} />);
-    await waitFor(() => expect(onRefused).toHaveBeenCalledWith('refused'));
+    await waitFor(() => expect(onRefused).toHaveBeenCalledWith(expect.objectContaining({ message: 'refused' })));
     expect(clearLocalCouncils).not.toHaveBeenCalled();
   });
 

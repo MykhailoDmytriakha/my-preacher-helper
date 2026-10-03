@@ -333,7 +333,7 @@ describe('React DataEngine contract', () => {
     const s = makeEditor(); const b = makeBrowser(s.editor); b.engine.openEditor.mockRejectedValueOnce(new Error('read unavailable'));
     jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result, rerender } = renderHook(({ create }) => useDataDocument(resource, { create, autoSave: false }), { wrapper: Wrapper, initialProps: { create: false } });
-    await waitFor(() => expect(result.current.error).toBe('read unavailable'));
+    await waitFor(() => expect(result.current.error).toBe('dataSync.documentFailed'));
     await act(async () => { await result.current.retry(); });
     await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
     expect(b.engine.openEditor).toHaveBeenCalledTimes(2);
@@ -609,10 +609,10 @@ describe('React collection and explicit recovery APIs', () => {
     const first = makeBrowser(), second = makeBrowser(); first.engine.watchCollection.mockImplementationOnce(() => { throw new Error('watch unavailable'); });
     jest.mocked(createBrowserDataEngine).mockReturnValueOnce(first.browser).mockReturnValue(second.browser);
     const { result, rerender } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.error).toBe('watch unavailable'));
+    await waitFor(() => expect(result.current.error).toBe('dataSync.backgroundFailure'));
     first.engine.refreshCollection.mockRejectedValueOnce(new Error('refresh unavailable'));
     await act(async () => { await result.current.refresh().catch(() => undefined); });
-    expect(result.current.error).toBe('refresh unavailable');
+    expect(result.current.error).toBe('dataSync.backgroundFailure');
     first.engine.refreshCollection.mockResolvedValueOnce(collectionState());
     await act(async () => { await result.current.refresh(); });
     expect(first.engine.watchCollection).toHaveBeenCalledTimes(2);
@@ -621,7 +621,7 @@ describe('React collection and explicit recovery APIs', () => {
     owner('other'); rerender(); await waitFor(() => expect(second.collectionWatches).toHaveLength(1));
     expect(result.current.error).toBeNull();
     await act(async () => second.collectionWatches[0].next({ ...collectionState(), error: 'feed unavailable' }));
-    expect(result.current.error).toBe('feed unavailable');
+    expect(result.current.error).toBe('dataSync.backgroundFailure');
   });
 
   it('rejects superseded recovery actions even when navigation happens before their opening effect', async () => {

@@ -155,11 +155,12 @@ describe('EngineScratchWorkspace', () => {
     const scratch = setup();
     jest.mocked(scratch.listRecoverable).mockRejectedValueOnce(new Error('Storage failed'));
     const view = render(<EngineScratchWorkspace sermonId="sermon" />); await act(async () => {});
-    expect(statusProps().recoveryError).toBe('Storage failed');
+    // The screen reads words; the engine's sentence goes to the console (BUG-20261003-engine-error-sentence-on-screen).
+    expect(statusProps().recoveryError).toBe('dataSync.documentFailed');
     jest.mocked(scratch.listRecoverable).mockRejectedValueOnce('unexpected');
     scratch.status = syncStatus('saving');
     view.rerender(<EngineScratchWorkspace sermonId="sermon" />); await act(async () => {});
-    expect(statusProps().recoveryError).toBe('Could not read saved drafts');
+    expect(statusProps().recoveryError).toBe('dataSync.documentFailed');
     jest.mocked(scratch.listRecoverable).mockResolvedValue([recovered('source')]);
     scratch.status = syncStatus('saved');
     view.rerender(<EngineScratchWorkspace sermonId="sermon" />); await act(async () => {});

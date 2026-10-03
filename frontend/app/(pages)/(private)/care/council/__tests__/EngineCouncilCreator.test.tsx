@@ -45,7 +45,8 @@ describe('EngineCouncilCreator', () => {
     const onFailed = jest.fn();
     render(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={onFailed} />);
 
-    await waitFor(() => expect(onFailed).toHaveBeenCalledWith('permission-denied'));
+    // The failure itself goes up; the page says it in words (BUG-20261003-engine-error-sentence-on-screen).
+    await waitFor(() => expect(onFailed).toHaveBeenCalledWith(expect.objectContaining({ message: 'permission-denied' })));
     expect(onCreated).not.toHaveBeenCalled();
   });
 

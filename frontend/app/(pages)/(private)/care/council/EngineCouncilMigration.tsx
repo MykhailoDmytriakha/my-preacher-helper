@@ -13,7 +13,7 @@ interface EngineCouncilMigrationProps {
   /** Ids the server itself returned; null until it has answered at all. */
   serverIds: Set<string> | null;
   /** A carry-over that stopped has to be said: these councils exist nowhere but this browser. */
-  onRefused?: (message: string) => void;
+  onRefused?: (error: unknown) => void;
 }
 
 /**
@@ -64,6 +64,6 @@ export function EngineCouncilMigration({ owner, serverIds, onRefused }: EngineCo
   return <EngineCouncilCreator
     council={council}
     onCreated={() => setIndex(value => value + 1)}
-    onFailed={message => { setStopped(true); onRefused?.(message); }}
+    onFailed={error => { setStopped(true); onRefused?.(error); }}
   />;
 }

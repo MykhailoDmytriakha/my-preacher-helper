@@ -10,7 +10,8 @@ import type { Council } from '@/models/models';
 interface EngineCouncilCreatorProps {
   council: Council;
   onCreated: (id: string) => void;
-  onFailed: (message: string) => void;
+  /** The failure itself; the screen says it in words (`actionFailureMessage`). */
+  onFailed: (error: unknown) => void;
 }
 
 /**
@@ -56,7 +57,7 @@ export function EngineCouncilCreator({ council, onCreated, onFailed }: EngineCou
         // The council does not exist, so the id is free again: the person may press once more.
         awaiting.current = null;
         submitted.current = null;
-        report.current.onFailed(error instanceof Error ? error.message : 'council-create-failed');
+        report.current.onFailed(error);
       });
   }, [council, commit, document.loading]);
 

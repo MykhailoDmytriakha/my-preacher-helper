@@ -67,7 +67,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
   const document = useCouncilDataDocument(councilId);
   // Conducting is the worst place to lose a decision quietly: a refusal is said out loud here too.
-  const report = (error: unknown) => { toast.error(actionFailureMessage(error, t('council.save.refused'))); };
+  const report = (error: unknown) => { toast.error(actionFailureMessage(error, t, 'council.save.refused')); };
   const { recovery } = document;
 
   return <>

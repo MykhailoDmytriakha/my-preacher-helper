@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { saidError } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
@@ -40,7 +41,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     await form.save(current => {
       const values = seriesFormValues(current as unknown as Series);
       const emptyNow = missingSeriesField(values);
-      if (emptyNow) throw new Error(t('common.fillRequiredField', { field: t(emptyNow) }));
+      if (emptyNow) throw saidError(t('common.fillRequiredField', { field: t(emptyNow) }));
       return deepCleanUndefined({ ...current, ...seriesFormPatch(values) }) as DocumentData;
     });
     onClose();

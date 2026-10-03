@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
+import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
@@ -24,14 +25,14 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
   const document = useDataDocument({ collection: 'groups', id: groupId }, { create: true, autoSave: false, slot: 'group-create' });
   const [saving, setSaving] = useState(false);
   const [restored, setRestored] = useState(!recoveryId);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<FailureWords | null>(null);
   const attempted = useRef(false), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!recoveryId || document.loading || attempted.current) return;
     attempted.current = true;
     void document.recover(recoveryId).then(() => { if (mounted.current) setRestored(true); }, error => {
-      if (mounted.current) setFailure(error instanceof Error ? error.message : 'Draft recovery failed');
+      if (mounted.current) setFailure(refusalWords(error, 'dataSync.documentFailed'));
     });
   }, [document, recoveryId]);
   const value = (document.data ?? initial) as unknown as Omit<Group, 'id'>;
@@ -44,11 +45,11 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
     try {
       await document.commit(current => {
         const next = (current ?? initial) as unknown as Omit<Group, 'id'>;
-        if (!next.title.trim()) throw new Error(t('workspaces.groups.form.title'));
+        if (!next.title.trim()) throw saidError(t('common.fillRequiredField', { field: t('workspaces.groups.form.title') }));
         return deepCleanUndefined({ ...next, title: next.title.trim(), description: next.description?.trim() || undefined }) as unknown as DocumentData;
       });
       if (mounted.current) onQueued(groupId);
-    } catch (error) { if (mounted.current) setFailure(error instanceof Error ? error.message : 'Group creation failed'); }
+    } catch (error) { if (mounted.current) setFailure(refusalWords(error, 'dataSync.documentFailed')); }
     finally { if (mounted.current) setSaving(false); }
   };
   return <CreateGroupView title={value.title} setTitle={title => edit(current => ({ ...current, title }))}
@@ -58,7 +59,7 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
       edit(current => ({ ...current, meetingDates: date ? [{ ...(current.meetingDates?.[0] ?? { id, createdAt }), date }] : [] }));
     }} saving={saving || document.loading || !restored} onClose={onClose}
     handleSubmit={event => { event.preventDefault(); void create(); }}
-    feedback={<DataSyncStatus status={document.status} error={failure ?? document.error} onRetry={async () => {
+    feedback={<DataSyncStatus status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
       if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
       else await document.retry();
     }} />} />;

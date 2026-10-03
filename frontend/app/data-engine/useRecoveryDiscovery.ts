@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import { failureWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 
 export interface RecoveryDiscoveryOptions<T> {
   identity: object;
@@ -12,11 +15,14 @@ export interface RecoveryDiscoveryOptions<T> {
 
 /** Discover previous work automatically; only an explicit action may restore it. */
 export function useRecoveryDiscovery<T>({ identity, enabled, version, list, recover }: RecoveryDiscoveryOptions<T>) {
+  // The list's failure is kept as words and said when shown; silent device storage keeps its own
+  // explanation (BUG-20261003-engine-error-sentence-on-screen).
+  const { t } = useTranslation();
   const latest = useRef({ identity, enabled, list, recover });
   latest.current = { identity, enabled, list, recover };
   const mounted = useRef(false);
   const sequence = useRef(0);
-  const [state, setState] = useState<{ identity: object; choices: T[]; loading: boolean; error: string | null } | null>(null);
+  const [state, setState] = useState<{ identity: object; choices: T[]; loading: boolean; error: FailureWords | null } | null>(null);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; sequence.current += 1; }; }, []);
   const current = useCallback(() => mounted.current && latest.current.identity === identity && latest.current.enabled, [identity]);
   const refresh = useCallback(async () => {
@@ -27,8 +33,10 @@ export function useRecoveryDiscovery<T>({ identity, enabled, version, list, reco
       const choices = await latest.current.list();
       if (current() && sequence.current === request) setState({ identity, choices, loading: false, error: null });
     } catch (error) {
-      if (current() && sequence.current === request) setState(previous => ({ identity, choices: previous?.identity === identity ? previous.choices : [], loading: false,
-        error: error instanceof Error ? error.message : 'Could not read saved drafts' }));
+      if (!current() || sequence.current !== request) return;
+      // Outside the updater: React may call an updater twice, and the console hears a failure once.
+      const words = failureWords(error, 'dataSync.documentFailed');
+      setState(previous => ({ identity, choices: previous?.identity === identity ? previous.choices : [], loading: false, error: words }));
     }
   }, [current, identity]);
   useEffect(() => { if (enabled) void refresh(); }, [enabled, version, refresh]);
@@ -38,5 +46,5 @@ export function useRecoveryDiscovery<T>({ identity, enabled, version, list, reco
     if (current()) await refresh();
   }, [current, refresh]);
   const shown = state?.identity === identity ? state : null;
-  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: shown?.error ?? null, refresh, recover: restore };
+  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: shown?.error ? sayFailure(shown.error, t) : null, refresh, recover: restore };
 }

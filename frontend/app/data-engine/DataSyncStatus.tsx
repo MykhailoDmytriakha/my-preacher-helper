@@ -4,6 +4,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 
 import { isSyncTrouble } from './status';
 import { useLasting } from './useLasting';
@@ -41,14 +42,16 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
   // The callbacks shown on screen now; set at commit, so a render React throws away never moves it.
   const currentScope = useRef<object>(scope);
   useLayoutEffect(() => { currentScope.current = scope; return () => { currentScope.current = {}; }; }, [scope]);
-  const [action, setAction] = useState<{ scope: object; busy: boolean; error: string | null } | null>(null);
+  const [action, setAction] = useState<{ scope: object; busy: boolean; error: FailureWords | null } | null>(null);
   const running = useRef<object | null>(null);
   const [selectedId, setSelectedId] = useState('');
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server'));
   const readTrouble = useLasting(Boolean(status?.readFailed));
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
   const busy = action?.scope === scope && action.busy;
-  const failure = error ?? (action?.scope === scope ? action.error : null);
+  // `error` arrives already in words: the engine hooks translate where they catch
+  // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
+  const failure = error ?? (action?.scope === scope && action.error ? sayFailure(action.error, t) : null);
   const run = (callback: () => void | Promise<void>) => {
     if (running.current === scope) return;
     running.current = scope;
@@ -59,7 +62,7 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
     void Promise.resolve().then(callback).then(() => {
       if (currentScope.current === scope) setAction({ scope, busy: false, error: null });
     }, caught => {
-      if (currentScope.current === scope) setAction({ scope, busy: false, error: caught instanceof Error ? caught.message : t('dataSync.actionFailed') });
+      if (currentScope.current === scope) setAction({ scope, busy: false, error: refusalWords(caught, 'dataSync.actionFailed') });
     }).finally(() => { if (running.current === scope) running.current = null; });
   };
   const keep = status?.canKeepLocal && onKeepLocal;

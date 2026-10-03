@@ -117,7 +117,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
    * here. Swallowing it is how a council silently stopped saving while the screen looked fine.
    */
   const report = (error: unknown) => {
-    toast.error(actionFailureMessage(error, t('council.save.refused')));
+    toast.error(actionFailureMessage(error, t, 'council.save.refused'));
   };
   const { recovery } = document;
 
@@ -135,7 +135,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       toast.error(code === 'topic-gone' ? t('council.topic.carryGone')
         : code === 'topic-already-carried' ? t('council.topic.carryAlreadyCarried')
         : code === 'referenced-document-deleted' ? t('council.topic.carryTargetDeleted')
-        : actionFailureMessage(error, t('council.topic.carryFailed')));
+        : actionFailureMessage(error, t, 'council.topic.carryFailed'));
     });
     return target;
   };

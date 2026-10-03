@@ -7,6 +7,7 @@ import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
+import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
@@ -23,7 +24,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
     items: [], sermonIds: [], seriesKind: 'sermon', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
   const document = useDataDocument({ collection: 'series', id: seriesId }, { create: true, autoSave: false, slot: 'series-create' });
   const [saving, setSaving] = useState(false), [restored, setRestored] = useState(!recoveryId);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<FailureWords | null>(null);
   // An empty required field is the form's own message; the sync status speaks only of delivery.
   const [missing, setMissing] = useState<string | null>(null);
   const attempted = useRef(false), mounted = useRef(true);
@@ -32,7 +33,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
     if (!recoveryId || document.loading || attempted.current) return;
     attempted.current = true;
     void document.recover(recoveryId).then(() => { if (mounted.current) setRestored(true); }, error => {
-      if (mounted.current) setFailure(error instanceof Error ? error.message : 'Draft recovery failed');
+      if (mounted.current) setFailure(refusalWords(error, 'dataSync.documentFailed'));
     });
   }, [document, recoveryId]);
   const values = seriesFormValues((document.data ?? initial) as unknown as Series);
@@ -51,11 +52,11 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
       await document.commit(current => {
         const draft = current ?? initial, form = seriesFormValues(draft as unknown as Series);
         const emptyNow = missingSeriesField(form);
-        if (emptyNow) throw new Error(t('common.fillRequiredField', { field: t(emptyNow) }));
+        if (emptyNow) throw saidError(t('common.fillRequiredField', { field: t(emptyNow) }));
         return deepCleanUndefined({ ...draft, ...seriesFormPatch(form) }) as DocumentData;
       });
       if (mounted.current) onQueued(seriesId);
-    } catch (error) { if (mounted.current) setFailure(error instanceof Error ? error.message : 'Series creation failed'); }
+    } catch (error) { if (mounted.current) setFailure(refusalWords(error, 'dataSync.documentFailed')); }
     finally { if (mounted.current) setSaving(false); }
   };
   const busy = saving || document.loading || !restored;
@@ -70,7 +71,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
       </fieldset>
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
-      <DataSyncStatus status={document.status} error={failure ?? document.error} onRetry={async () => {
+      <DataSyncStatus status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
         if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
         else await document.retry();
       }} />

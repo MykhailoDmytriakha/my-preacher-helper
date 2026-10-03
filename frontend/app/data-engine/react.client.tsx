@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/providers/AuthProvider';
+import { failureWords, logFailureOnce, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
 
@@ -35,9 +36,12 @@ interface EngineContextValue {
   failureCount: number;
 }
 const EngineContext = createContext<EngineContextValue | null>(null);
+/** Only whether the provider failed and how often; `useBackgroundFailure` says it in words. */
 const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
 const EDITOR_CHANGED = 'The active editor changed';
 const ENGINE_NOT_READY = 'The data engine is not ready';
+/** What a list, or a screen waiting on the engine's background work, says when that work failed. */
+const BACKGROUND_FAILED = 'dataSync.backgroundFailure';
 
 /**
  * Why a copy shown for reading cannot take this change, in the person's words: when the device's
@@ -52,6 +56,33 @@ function useReadOnlyReason() {
   const translate = useRef(t);
   translate.current = t;
   return useCallback((storage = isStorageSilent()) => translate.current(storage ? 'dataSync.readOnly.storage' : 'dataSync.readOnly.opening'), []);
+}
+
+/*
+ * WHAT A FAILURE SAYS ON SCREEN (BUG-20261003-engine-error-sentence-on-screen).
+ *
+ * The engine's errors are sentences for developers ("The document is not available in the local
+ * cache"), and screens printed them under their own translated "could not load". Each hook keeps
+ * the words of a failure where it catches it and translates them when it renders: a failed read
+ * says the hook's line (`failureWords`), a refused action keeps an instruction it may carry
+ * (`refusalWords`); see `utils/actionFailureMessage.ts`. Thrown errors reach the caller unchanged.
+ */
+const DOCUMENT_FAILED = 'dataSync.documentFailed';
+
+function useSayFailure() {
+  const { t } = useTranslation();
+  return (words: FailureWords | null | undefined): string | null => (words ? sayFailure(words, t) : null);
+}
+
+/** The error an engine object keeps in its state, in words; the original goes to the console once per value. */
+function useStateFailure(raw: string | null | undefined, key = DOCUMENT_FAILED): string | null {
+  const { t } = useTranslation();
+  const logged = useRef<string | null>(null);
+  useEffect(() => {
+    if (raw && raw !== logged.current) console.error('[data-engine]', raw);
+    logged.current = raw ?? null;
+  }, [raw]);
+  return raw ? t(key) : null;
 }
 
 const COPY_RETRY_MS = 5000;
@@ -124,7 +155,7 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
     let active = true;
     const instance = createBrowserDataEngine({ onError: error => {
       // The engine's own sentence is for developers; a screen that shows this failure says it in words.
-      console.error('DataEngine background operation failed', error);
+      logFailureOnce(error, 'DataEngine background operation failed');
       if (active) setFailure(previous => ({ owner, message: message(error), count: (previous?.count ?? 0) + 1 }));
     } });
     instance.engine.setOwner(owner);
@@ -298,7 +329,7 @@ function useBackgroundFailure(waitIdentity: object | null): string | null {
     if (waitIdentity) setSince({ identity: waitIdentity, count: latestCount.current });
   }, [waitIdentity]);
   return error && waitIdentity && since?.identity === waitIdentity && failureCount > since.count
-    ? t('dataSync.backgroundFailure')
+    ? t(BACKGROUND_FAILED)
     : null;
 }
 
@@ -306,12 +337,13 @@ function useBackgroundFailure(waitIdentity: object | null): string | null {
 export function useDataMembership() {
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   const readOnlyReason = useReadOnlyReason();
+  const say = useSayFailure();
   const identity = useMemo(() => ({ browser, owner }), [browser, owner]);
   const latest = useRef<object>(identity); latest.current = identity;
   const current = useRef<{ identity: object; scope: MembershipScope; scopeId: string; stop: () => void } | null>(null);
   const opening = useRef<{ identity: object; promise: Promise<void> } | null>(null);
   const [stored, setStored] = useState<{ identity: object; state: ReturnType<MembershipScope['getState']> } | null>(null);
-  const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
   const [delivery, setDelivery] = useState<{ identity: object; scopeId: string; state: MembershipDelivery } | null>(null);
   const refreshVersion = useRef(0);
   const [recoveryVersion, setRecoveryVersion] = useState(0);
@@ -328,14 +360,14 @@ export function useDataMembership() {
       if (latest.current === identity && current.current === held && version === refreshVersion.current) setDelivery({ identity, scopeId: held.scopeId, state });
     }).catch(error => {
       if (latest.current === identity && current.current === held && version === refreshVersion.current) {
-        setDelivery(null); setFailure({ identity, message: message(error) });
+        setDelivery(null); setFailure({ identity, words: failureWords(error, DOCUMENT_FAILED) });
       }
     });
   }, [browser, identity]);
   const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T> => {
     active(); setFailure(null);
     try { const result = await action(); active(); refresh(); return result; }
-    catch (error) { if (latest.current === identity) setFailure({ identity, message: message(error) }); throw error; }
+    catch (error) { if (latest.current === identity) setFailure({ identity, words: refusalWords(error, DOCUMENT_FAILED) }); throw error; }
   }, [active, identity, refresh]);
   const begin = useCallback((sourceId?: string, creation?: { collection: 'sermons' | 'groups'; value: DocumentData; requestedSeriesId?: string }): Promise<void> => {
     if (opening.current?.identity === identity) return opening.current.promise;
@@ -388,7 +420,7 @@ export function useDataMembership() {
   }, [browser, owner, identity, refresh]);
   const state = stored?.identity === identity ? stored.state : null;
   return {
-    ready: Boolean(browser && owner), error: failure?.identity === identity ? failure.message : null,
+    ready: Boolean(browser && owner), error: failure?.identity === identity ? say(failure.words) : null,
     values: state?.values ?? [], phase: state?.record.phase ?? null, durable: state?.durable ?? false,
     action: state?.record.action ?? null, scopeId: state?.record.scopeId ?? null,
     creation: state?.record.creation ?? null,
@@ -474,6 +506,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   if (slot === ACTION_SLOT) throw new Error(`The "${ACTION_SLOT}" slot is reserved for one-shot actions`);
   const { browser, owner } = useDataEngine();
   const readOnlyReason = useReadOnlyReason();
+  const say = useSayFailure();
   const collection = resource?.collection ?? null, id = resource?.id ?? null;
   const key = JSON.stringify([collection, id, slot, create]);
   const [opened, setOpened] = useState<OpenEditor | null>(null);
@@ -483,10 +516,11 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const requestedRecovery = useRef<RecoveryRequest | null>(null);
   const recovery = selection?.base === base ? selection : null;
   const identity = useMemo(() => ({ base, attempt, recovery }), [base, attempt, recovery]);
-  const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
-  const error = failure?.identity === identity ? failure.message : null;
-  const setError = useCallback((value: string | null) => {
-    setFailure(value === null ? null : { identity, message: value });
+  const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
+  const error = failure?.identity === identity ? say(failure.words) : null;
+  /** Hold a failure for the screen as words: `read` for a failed read, `refused` for a refused action; null clears it. */
+  const setError = useCallback((failure: unknown, kind: 'read' | 'refused' = 'refused') => {
+    setFailure(failure === null ? null : { identity, words: (kind === 'read' ? failureWords : refusalWords)(failure, DOCUMENT_FAILED) });
   }, [identity]);
   const mounted = useRef(false);
   // Read when the editor closes, not when it opened: whether leaving may send what was typed.
@@ -516,12 +550,13 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         try {
           const state = value.getState();
           setOpened({ identity, owner, key, browser, editor: value, state, status: describeSync(state, value.getObservation(), value.getDelivery()) });
-        } catch (failure) { setError(message(failure)); }
+        } catch (failure) { setError(failure, 'read'); }
       };
       stop = value.subscribe(publish);
       publish();
       recovery?.resolve();
-    }).catch(failure => { recovery?.reject(failure); if (active) setError(message(failure)); });
+    // Recovering a draft is the person's action; its refusal may explain itself ("no longer exists").
+    }).catch(failure => { recovery?.reject(failure); if (active) setError(failure, recovery ? 'refused' : 'read'); });
     // Leaving the screen is a moment to save, not to forget (BUG-20260919-engine-leaving-strands-last-edit):
     // with autosave, whatever the debounce had not sent yet becomes a durable request as the editor closes.
     return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); editor?.close({ flush: autoSaveRef.current }); };
@@ -590,7 +625,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
       setError(null);
     } catch (failure) {
-      if (isCurrent()) setError(message(failure));
+      if (isCurrent()) setError(failure);
       throw failure;
     }
   }, [current, copy, readOnlyReason, isCurrent, setError]);
@@ -620,7 +655,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     const timer = setTimeout(() => {
       saveTimer.current = null;
       if (!active || !isCurrent()) return;
-      void current.editor.save().catch(failure => { if (isCurrent()) setError(message(failure)); });
+      void current.editor.save().catch(failure => { if (isCurrent()) setError(failure); });
     }, delay);
     saveTimer.current = timer;
     // Hiding the page — another tab, another app, the iPad's home gesture — may be the last
@@ -630,7 +665,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       active = false;
       clearTimeout(timer);
       if (saveTimer.current === timer) saveTimer.current = null;
-      void current.editor.save().catch(failure => { if (isCurrent()) setError(message(failure)); });
+      void current.editor.save().catch(failure => { if (isCurrent()) setError(failure); });
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') saveNow(); };
     window.addEventListener('pagehide', saveNow);
@@ -666,6 +701,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     readOnlyReason: copy ? readOnlyReason() : null,
     // A background failure elsewhere in the engine never reaches an open document or a copy shown
     // for reading: pages treat `error` as "could not load" (see useBackgroundFailure).
+    // The editor's own state error also holds refused actions (controller `enqueue`), so it keeps
+    // the engine's words, which may be an instruction (BUG-20261003-engine-refusals-speak-english).
     error: error ?? current?.state.error ?? (copy || current ? null : backgroundFailure),
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
@@ -695,7 +732,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         return records;
       } catch (failure) {
         // Silent storage is not a failure of this document: the search reports it, the editor stays as it is.
-        if (isCurrent() && (failure as { code?: string }).code !== 'storage-silent') setError(message(failure));
+        if (isCurrent() && (failure as { code?: string }).code !== 'storage-silent') setError(failure, 'read');
         throw failure;
       }
     },
@@ -716,11 +753,12 @@ export function useDataCollection(collection: string | null) {
   const [attempt, setAttempt] = useState(0);
   const identity = useMemo(() => ({ owner, browser, collection, attempt }), [owner, browser, collection, attempt]);
   const backgroundFailure = useBackgroundFailure(browser && owner && collection ? identity : null);
+  const say = useSayFailure();
   const scope = useRef(identity); scope.current = identity;
   const subscription = useRef<{ identity: object; watching: boolean } | null>(null);
   const mounted = useRef(false);
   const [observed, setObserved] = useState<{ identity: object; state: CollectionState } | null>(null);
-  const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
   const current = useCallback(() => mounted.current && scope.current === identity, [identity]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
@@ -733,11 +771,13 @@ export function useDataCollection(collection: string | null) {
         if (active && current()) { setObserved({ identity, state }); setFailure(null); }
       });
       subscription.current = { identity, watching: true };
-    } catch (error) { if (current()) setFailure({ identity, message: message(error) }); }
+    } catch (error) { if (current()) setFailure({ identity, words: failureWords(error, BACKGROUND_FAILED) }); }
     return () => { active = false; stop?.(); };
   }, [browser, owner, collection, identity, current]);
   const state = observed?.identity === identity ? observed.state : null;
-  const ownError = (failure?.identity === identity ? failure.message : null) ?? state?.error ?? null;
+  const stateError = useStateFailure(state?.error, BACKGROUND_FAILED);
+  // A list that fails says what its wait says; the engine's sentence goes to the console.
+  const ownError = (failure?.identity === identity ? say(failure.words) : null) ?? stateError;
   const waiting = Boolean(owner && collection && !ownError && (!state || (state.freshness === 'unknown' && !state.documents?.some(document => document.value !== null))));
   /*
    * A LIST WHOSE CACHE DOES NOT ANSWER (BUG-20260927-engine-open-hangs-on-silent-device-storage).
@@ -792,7 +832,7 @@ export function useDataCollection(collection: string | null) {
         if (subscription.current?.identity === identity && !subscription.current.watching) setAttempt(value => value + 1);
         return next;
       } catch (error) {
-        if (current()) setFailure({ identity, message: message(error) });
+        if (current()) setFailure({ identity, words: failureWords(error, BACKGROUND_FAILED) });
         throw error;
       }
     },
@@ -812,7 +852,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   const identity = useMemo(() => ({ owner, browser, key, editor: document.getManualForm }), [owner, browser, key, document.getManualForm]);
   const currentIdentity = useRef(identity); currentIdentity.current = identity;
   const [opened, setOpened] = useState<{ identity: object; form: ManagedManualForm; state: ReturnType<ManagedManualForm['getState']> } | null>(null);
-  const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
+  const say = useSayFailure();
   const [working, setWorking] = useState<{ identity: object; count: number }>({ identity, count: 0 });
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -825,7 +866,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       const form = getManualForm(slot, fields, recovery);
       const update = () => { if (active && current()) setOpened({ identity, form, state: form.getState() }); };
       stop = form.subscribe(update); update();
-    } catch (error) { if (current()) setFailure({ identity, message: message(error) }); }
+    } catch (error) { if (current()) setFailure({ identity, words: refusalWords(error, DOCUMENT_FAILED) }); }
     return () => { active = false; stop?.(); };
   }, [identity, owner, browser, hasResource, documentReady, getManualForm, slot, fields, recovery, current]);
   const target = opened?.identity === identity ? opened : null;
@@ -840,7 +881,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       if (!current()) throw new Error(EDITOR_CHANGED);
       setFailure(null);
     } catch (error) {
-      if (current()) setFailure({ identity, message: message(error) });
+      if (current()) setFailure({ identity, words: refusalWords(error, DOCUMENT_FAILED) });
       throw error;
     } finally {
       if (busy && current()) setWorking(value => ({ identity, count: Math.max(0, value.identity === identity ? value.count - 1 : 0) }));
@@ -849,7 +890,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   const begin = useCallback(() => run(form => form.begin()), [run]);
   const proposals = useMemo(() => ({ identity, pending: new Set<AbortController>() }), [identity]);
   useEffect(() => () => { proposals.pending.forEach(controller => controller.abort()); }, [proposals]);
-  const error = failure?.identity === identity ? failure.message : readOnly ? document.readOnlyReason : document.error;
+  const error = failure?.identity === identity ? say(failure.words) : readOnly ? document.readOnlyReason : document.error;
   return {
     readOnly,
     active: target?.state?.record.active ?? false,
