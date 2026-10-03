@@ -1,13 +1,17 @@
 <!doctype html><meta charset="utf-8"><title>app layer</title><body><h1 id="h">app layer</h1><script type="module">
 import { watchedStore, subscribeStorageRelease, getDeviceStorageHealth } from './deviceStorage.js';
-import { set } from './idb-keyval.js';
+import { set, update, get } from './idb-keyval.js';
 const q = new URLSearchParams(location.search), mode = q.get('mode'), run = q.get('run'), dbName = 'lab-' + run;
 const log = (ev, data = {}) => fetch('/log', { method: 'POST', body: JSON.stringify({ run, mode, page: 'c', ev, ...data, ms: Math.round(performance.now()) }), keepalive: true }).catch(() => {});
 log('load', { ua: navigator.userAgent });
 subscribeStorageRelease(event => log('release', event));
 const store = watchedStore(dbName, 's', 'engine-state');
 const t1 = performance.now();
-set('kc', 'one', store).then(() => {
+// op=update: the stuck write is a read-then-write, as the engine's journal and cursors do it.
+const first = q.get('op') === 'update'
+  ? update('kc', value => (value ?? 0) + 1, store).then(() => get('kc', store)).then(value => log('update-value', { value }))
+  : set('kc', 'one', store);
+first.then(() => {
   log('write1-complete', { took: Math.round(performance.now() - t1) });
   const t2 = performance.now();
   return set('kc2', 'two', store).then(() => {

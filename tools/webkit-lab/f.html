@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>restored</title><body><h1>restored page</h1><script type="module">
+import { watchedStore } from './deviceStorage.js';
+import { set, update, get } from './idb-keyval.js';
+const q = new URLSearchParams(location.search), run = q.get('run');
+const log = (ev, data = {}) => navigator.sendBeacon('/log', JSON.stringify({ run, page: 'f', ev, ...data, ms: Math.round(performance.now()) }));
+const store = watchedStore('lab-' + run, 's', 'engine-state');
+const describe = error => String(error && error.name) + ': ' + String(error && error.message);
+addEventListener('pagehide', e => log('pagehide', { persisted: e.persisted }));
+addEventListener('pageshow', e => {
+  log('pageshow', { persisted: e.persisted });
+  if (!e.persisted) return;
+  // Back from the back-forward cache: the same store keeps working, update() included.
+  const t = performance.now();
+  update('counter', value => (value ?? 0) + 1, store)
+    .then(() => get('counter', store))
+    .then(value => log('after-restore-update', { value, took: Math.round(performance.now() - t) }))
+    .catch(error => log('after-restore-error', { err: describe(error) }));
+});
+set('counter', 1, store).then(() => {
+  log('first-write');
+  setTimeout(() => { location.href = 'g.html?' + q.toString(); }, 300);
+}).catch(error => log('first-error', { err: describe(error) }));
+</script>
