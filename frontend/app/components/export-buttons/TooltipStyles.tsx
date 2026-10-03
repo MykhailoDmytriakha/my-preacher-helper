@@ -4,8 +4,10 @@ export const TooltipStyles = () => (
       position: relative;
     }
 
+    /* Hidden, a tooltip is not laid out at all: a visibility-hidden box still widened a phone page
+       (BUG-20261003-sermon-list-hidden-tooltips-scroll-sideways). */
     .tooltip .tooltiptext {
-      visibility: hidden;
+      display: none;
       background-color: rgba(0, 0, 0, 0.8);
       color: #fff;
       text-align: center;
@@ -15,13 +17,16 @@ export const TooltipStyles = () => (
       white-space: nowrap;
       position: absolute;
       z-index: 1000;
-      opacity: 0;
-      transition: opacity 0.2s, visibility 0.2s;
     }
 
     .tooltip:hover .tooltiptext {
-      visibility: visible;
-      opacity: 1;
+      display: block;
+      animation: tooltip-fade-in 0.2s;
+    }
+
+    @keyframes tooltip-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .tooltiptext-top {
