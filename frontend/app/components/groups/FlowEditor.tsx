@@ -40,10 +40,13 @@ export default function FlowEditor({
                 role="presentation"
             />
 
-            {/* Panel — full screen on mobile, absolute side on desktop */}
-            <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto bg-white p-5 dark:bg-gray-900 xl:static xl:z-auto xl:block xl:max-h-none xl:rounded-2xl xl:border xl:border-gray-200 xl:shadow-sm xl:dark:border-gray-800">
+            {/* Panel — full screen on mobile, a side panel on desktop. The header stays put and the
+                fields scroll in their own area, which never hands the wheel over to the page: on
+                desktop the panel is bounded by the page (--flow-editor-max-h) instead of growing
+                past the window, where it froze under the nav while the other column scrolled. */}
+            <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 xl:static xl:z-auto xl:max-h-[var(--flow-editor-max-h,calc(100dvh-2rem))] xl:rounded-2xl xl:border xl:border-gray-200 xl:shadow-sm xl:dark:border-gray-800">
                 {/* Header */}
-                <div className="mb-6 flex items-center justify-between">
+                <div className="flex shrink-0 items-center justify-between px-5 pb-6 pt-5">
                     <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 xl:text-base xl:font-semibold">
                         {flowItem.instanceTitle || template.title}
                     </h3>
@@ -57,7 +60,7 @@ export default function FlowEditor({
                     </button>
                 </div>
 
-                <div className="space-y-6">
+                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 pb-5">
                     {/* Status selector */}
                     <div>
                         <label htmlFor="block-status" className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">

@@ -49,6 +49,7 @@ import { useLegacyGroupPageEditor } from '@/hooks/useLegacyGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
+import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import {
@@ -86,6 +87,9 @@ function EngineGroupPage({ groupId }: { groupId: string }) {
 function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const router = useRouter();
   const { t } = useTranslation();
+  const { navHeight } = useStickyOffsets();
+  const editorTop = stickyTopBelowNav(navHeight);
+  const fitEditorToWindow = useWindowFittedPanel(editorTop, '--flow-editor-max-h');
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
     templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
@@ -527,7 +531,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         <div className="space-y-6">
           {/* Side panel editor — shows when a block is selected */}
           {selectedFlowItem && selectedTemplate ? (
-            <div className="xl:sticky xl:top-4">
+            <div ref={fitEditorToWindow} className="xl:sticky" style={{ top: editorTop }}>
               <FlowEditor
                 flowItem={selectedFlowItem}
                 template={selectedTemplate}

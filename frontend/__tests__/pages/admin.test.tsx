@@ -12,6 +12,10 @@ jest.mock('@/services/firebaseAuth.service', () => ({
 }));
 
 jest.mock('@/components/navigation/LanguageInitializer', () => () => <div data-testid="language-initializer" />);
+jest.mock('@/hooks/useStickyOffsets', () => ({
+  ...jest.requireActual('@/hooks/useStickyOffsets'),
+  useStickyOffsets: () => ({ setHeaderRef: jest.fn(), navHeight: 65, belowHeader: 65 }),
+}));
 jest.mock('next/link', () => ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>);
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: mockTranslate, i18n: { language: 'en' } }),
@@ -95,6 +99,15 @@ describe('Admin Page', () => {
     expect(fills).toHaveLength(2);
     expect(fills[1]).toHaveStyle({ width: '0%' });
     expect(fills[1]).toHaveClass('bg-blue-600', 'dark:bg-blue-400');
+  });
+
+  it('sticks the section menu below the measured app nav, not under it', async () => {
+    mockAuthorizedList();
+    render(<AdminPage />);
+    await screen.findByText('alpha@example.com');
+    const aside = document.querySelector('aside') as HTMLElement;
+    expect(aside).toHaveClass('md:sticky');
+    expect(aside.style.top).toBe('81px');
   });
 
   it('renders admin AI overage in the grace zone instead of collapsing the bar', async () => {

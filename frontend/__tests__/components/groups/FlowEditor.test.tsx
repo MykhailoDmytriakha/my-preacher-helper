@@ -111,4 +111,24 @@ describe('FlowEditor', () => {
         fireEvent.click(closeBtn);
         expect(onClose).toHaveBeenCalled();
     });
+
+    it('keeps the block title and close button in view while the fields scroll in their own contained area', () => {
+        render(
+            <FlowEditor
+                flowItem={mockFlowItem}
+                template={mockTemplate}
+                onUpdateTemplate={onUpdateTemplate}
+                onUpdateFlowItem={onUpdateFlowItem}
+                onClose={onClose}
+            />
+        );
+
+        // The header never scrolls away with a long block.
+        expect(screen.getByLabelText('Close editor').closest('.overflow-y-auto')).toBeNull();
+        // The fields scroll inside the panel and do not hand the wheel over to the page behind.
+        const fields = screen.getByLabelText('Block Name (Template)').closest('.overflow-y-auto');
+        expect(fields).not.toBeNull();
+        expect(fields).toHaveClass('overscroll-contain');
+    });
 });
+

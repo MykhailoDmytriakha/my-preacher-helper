@@ -12,6 +12,11 @@ import { documentEngineHarness, settleEngine } from '../../test-utils/documentEn
 import { hasGroupsAccess } from '@/services/userSettings.service';
 
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('@/hooks/useStickyOffsets', () => ({
+  ...jest.requireActual('@/hooks/useStickyOffsets'),
+  useStickyOffsets: () => ({ setHeaderRef: jest.fn(), navHeight: 65, belowHeader: 65 }),
+}));
+
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 const mockPush = jest.fn();
@@ -410,6 +415,22 @@ describe('GroupDetailPage', () => {
     await waitFor(() => {
       expect(updateGroupDetail).toHaveBeenCalled();
     });
+  });
+
+  it('pins the block editor below the measured app nav and bounds it to the window', async () => {
+    render(<GroupDetailPage />);
+    await waitFor(() => expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Add block' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Main topic' }));
+    fireEvent.click(screen.getAllByText('Main topic')[0]);
+    const field = await screen.findByLabelText('Block Name (Template)');
+
+    const panel = field.closest('[class~="xl:sticky"]') as HTMLElement;
+    expect(panel).not.toBeNull();
+    // 65px nav + 16px gap: the panel's own header is never hidden under the nav.
+    expect(panel.style.top).toBe('81px');
+    // jsdom lays nothing out (top 0), so the panel counts as stuck: window 768 - 81 - 16.
+    expect(panel.style.getPropertyValue('--flow-editor-max-h')).toBe('671px');
   });
 
   it('handles drag-end reorder and schedules autosave', async () => {

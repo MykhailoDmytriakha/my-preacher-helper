@@ -16,7 +16,7 @@ Dev and production share one Firestore project, so creating hundreds of test not
 
 The Chrome automation window is usually reported as hidden (`document.visibilityState === 'hidden'`):
 
-- `requestAnimationFrame` never fires, so frame-gap samplers read zero;
+- `requestAnimationFrame` never fires, so frame-gap samplers read zero; a `screenshot` action does render one frame, so layout that is re-measured in rAF (e.g. `useWindowFittedPanel`) updates only after a screenshot — take one before reading such values (2026-10-03, the group page side panel);
 - `PerformanceObserver({ type: 'event' })` records nothing for text inserted by the `type` action.
 
 What works: a capture listener on `input` that posts a `MessageChannel` message and times its arrival. The message runs after the event's synchronous work, so the gap is how long that keystroke held the main thread — exactly what freezes the field. Work that React defers (`useDeferredValue`, transitions) runs later and is not counted, which is the point. Type one letter per `type` action with a pause between them, and click the field again after any big re-render — a click queued behind a render does not focus it.
