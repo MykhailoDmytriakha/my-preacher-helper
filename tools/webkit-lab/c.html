@@ -1,0 +1,25 @@
+<!doctype html><meta charset="utf-8"><title>app layer</title><body><h1 id="h">app layer</h1><script type="module">
+import { watchedStore, subscribeStorageRelease, getDeviceStorageHealth } from './deviceStorage.js';
+import { set } from './idb-keyval.js';
+const q = new URLSearchParams(location.search), mode = q.get('mode'), run = q.get('run'), dbName = 'lab-' + run;
+const log = (ev, data = {}) => fetch('/log', { method: 'POST', body: JSON.stringify({ run, mode, page: 'c', ev, ...data, ms: Math.round(performance.now()) }), keepalive: true }).catch(() => {});
+log('load', { ua: navigator.userAgent });
+subscribeStorageRelease(event => log('release', event));
+const store = watchedStore(dbName, 's', 'engine-state');
+const t1 = performance.now();
+set('kc', 'one', store).then(() => {
+  log('write1-complete', { took: Math.round(performance.now() - t1) });
+  const t2 = performance.now();
+  return set('kc2', 'two', store).then(() => {
+    log('write2-complete', { took: Math.round(performance.now() - t2) });
+    setTimeout(() => {
+      const t3 = performance.now(), fresh = indexedDB.open(dbName);
+      fresh.onsuccess = () => { log('fresh-open', { took: Math.round(performance.now() - t3), version: fresh.result.version }); fresh.result.close(); };
+      fresh.onblocked = () => log('fresh-blocked');
+    }, 2500);
+    document.getElementById('h').textContent = 'DONE';
+  });
+}).catch(error => log('write-error', { err: String(error && error.name) + ': ' + String(error && error.message) }));
+let seconds = 0;
+const tick = setInterval(() => { seconds++; if (seconds % 5 === 0) log('health', { s: seconds, silent: getDeviceStorageHealth().silent.map(entry => entry.database) }); if (seconds >= 120) clearInterval(tick); }, 1000);
+</script>

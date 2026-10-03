@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8"><title>victim</title><body><h1 id="h">victim</h1><script>
+const q = new URLSearchParams(location.search), mode = q.get('mode'), run = q.get('run'), dbName = 'lab-' + run;
+const log = (ev, data = {}) => fetch('/log', { method: 'POST', body: JSON.stringify({ run, mode, page: 'b', ev, ...data, ms: Math.round(performance.now()) }), keepalive: true }).catch(() => {});
+log('load', { ua: navigator.userAgent });
+addEventListener('pageshow', e => log('pageshow', { persisted: e.persisted }));
+const t0 = performance.now();
+const open = indexedDB.open(dbName, 1);
+open.onblocked = () => log('open-blocked');
+open.onerror = () => log('open-error', { err: String(open.error) });
+open.onsuccess = () => {
+  log('open', { took: Math.round(performance.now() - t0) });
+  const db = open.result, t1 = performance.now();
+  const tx = db.transaction('s', 'readwrite'); tx.objectStore('s').put('b', 'kb');
+  let done = false;
+  tx.oncomplete = () => { done = true; const took = Math.round(performance.now() - t1); log('write-complete', { took }); document.getElementById('h').textContent = 'DONE ' + took + ' ms'; };
+  tx.onabort = () => { done = true; log('write-abort', { err: String(tx.error) }); };
+  let seconds = 0;
+  const tick = setInterval(() => {
+    seconds++;
+    if (done) { clearInterval(tick); return; }
+    document.getElementById('h').textContent = 'WAITING ' + seconds + ' s';
+    if (seconds % 5 === 0) log('still-waiting', { s: seconds });
+    // Self-recovery probe: ask for a version change; a frozen holder cannot answer it.
+    if (seconds === 3 && q.get('recover') === '1') {
+      const version = db.version + 1, t2 = performance.now();
+      db.close();
+      log('recover-asked', { version });
+      const bump = indexedDB.open(dbName, version);
+      bump.onblocked = () => log('recover-blocked', { after: Math.round(performance.now() - t2) });
+      bump.onupgradeneeded = () => log('recover-upgrade', { after: Math.round(performance.now() - t2) });
+      bump.onsuccess = () => {
+        log('recover-open', { after: Math.round(performance.now() - t2) });
+        const fresh = bump.result, t3 = performance.now();
+        const tx2 = fresh.transaction('s', 'readwrite'); tx2.objectStore('s').put('after-recover', 'kb2');
+        tx2.oncomplete = () => log('recover-write-complete', { took: Math.round(performance.now() - t3) });
+      };
+      bump.onerror = () => log('recover-error', { err: String(bump.error) });
+    }
+    if (seconds >= 600) { clearInterval(tick); log('gave-up'); }
+  }, 1000);
+};
+</script>

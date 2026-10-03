@@ -1,0 +1,54 @@
+<!doctype html><meta charset="utf-8"><title>holder</title><body><h1>holder</h1><script>
+const q = new URLSearchParams(location.search), mode = q.get('mode'), run = q.get('run'), dbName = 'lab-' + run;
+const log = (ev, data = {}) => navigator.sendBeacon('/log', JSON.stringify({ run, mode, page: 'a', ev, ...data, ms: Math.round(performance.now()) }));
+log('load', { ua: navigator.userAgent });
+addEventListener('pagehide', e => {
+  log('pagehide', { persisted: e.persisted });
+  if (mode === 'pagehide-write' && window.__db) { const tx = window.__db.transaction('s', 'readwrite'); tx.objectStore('s').put('late' + Date.now(), 'k'); }
+});
+addEventListener('pageshow', e => log('pageshow', { persisted: e.persisted }));
+if (q.get('unload') === '1') addEventListener('unload', () => log('unload'));
+if (q.get('lock') === '1' && navigator.locks) navigator.locks.request('lab-hold', () => new Promise(() => {})).catch(() => {});
+const next = ({ c: 'c.html?', d: 'd.html?' }[q.get('next')] ?? 'b.html?') + q.toString();
+const open = indexedDB.open(dbName, 1);
+open.onupgradeneeded = () => open.result.createObjectStore('s');
+open.onerror = () => log('open-error', { err: String(open.error) });
+open.onsuccess = () => {
+  const db = open.result; window.__db = db; log('open');
+  const seed = db.transaction('s', 'readwrite'); seed.objectStore('s').put('seed', 'k');
+  seed.oncomplete = () => {
+    log('seeded');
+    if (mode === 'spin') {
+      const tx = db.transaction('s', 'readwrite'); const st = tx.objectStore('s');
+      const spin = () => { st.get('k').onsuccess = spin; }; spin(); log('spinning');
+      setTimeout(() => { location.href = next; }, 300);
+    } else if (mode === 'rmw') {
+      // idb-keyval update(): read, then write from the read's callback — navigation lands between the two.
+      const tx = db.transaction('s', 'readwrite'); const st = tx.objectStore('s');
+      st.get('k').onsuccess = function () { st.put(String(this.result) + '+', 'k'); };
+      log('rmw-issued'); location.href = next;
+    } else if (mode === 'chain') {
+      // The engine's nested reads (validateCommitReferences): several read steps before the write.
+      const tx = db.transaction('s', 'readwrite'); const st = tx.objectStore('s');
+      let steps = 0; const step = () => { steps++; if (steps < 40) st.get('k').onsuccess = step; else st.put('done', 'k'); }; step();
+      log('chain-issued'); setTimeout(() => { location.href = next; }, 0);
+    } else if (mode === 'loop') {
+      // A busy engine after waking: one short read-then-write transaction after another, without pause.
+      let count = 0;
+      const one = () => {
+        const tx = db.transaction('s', 'readwrite'); const st = tx.objectStore('s');
+        st.get('k').onsuccess = function () { st.put(String(count), 'k'); };
+        tx.oncomplete = () => { count++; one(); };
+      };
+      one(); log('loop-started');
+      setTimeout(() => { log('loop-count', { count }); location.href = next; }, 300);
+    } else if (mode === 'burst') {
+      const tx = db.transaction('s', 'readwrite'); const st = tx.objectStore('s');
+      for (let i = 0; i < 3000; i++) st.put('v' + i + 'x'.repeat(200), 'k' + i);
+      log('burst-issued'); location.href = next;
+    } else {
+      setTimeout(() => { location.href = next; }, 300);
+    }
+  };
+};
+</script>
