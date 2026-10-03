@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>iPad check</title>
+<p style="font:20px sans-serif">Starting…</p>
+<script>
+// A short address to type on a device: starts the frozen-page scenario with a fresh run id.
+// ipad.html runs the app's storage layer (with the cure); ipad.html?before runs a raw write without it.
+const before = location.search.includes('before');
+const run = (before ? 'ipad-before-' : 'ipad-after-') + Date.now();
+location.replace(before ? `a.html?mode=spin&next=b&run=${run}` : `a.html?mode=spin&next=c&op=update&run=${run}`);
+</script>
