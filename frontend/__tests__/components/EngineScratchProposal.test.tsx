@@ -16,6 +16,8 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/services/scratch.service', () => ({ composePlanFromScratch: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isMagicAvailable: true }) }));
 const resource = { collection: 'sermons', id: 'sermon' };
+/** Engine round trips that settle in milliseconds locally have taken seconds on the two-worker build machine. */
+const BUILD_MACHINE_WAIT_MS = 10_000;
 const a = { id: 'a', text: 'Opening thought', tags: ['main'], outlinePointId: 'main', subPointId: 'sub', date: '2026-09-19' };
 const b = { id: 'b', text: 'Sibling', tags: [], date: '2026-09-19' };
 const structure = { introduction: [], main: ['a'], conclusion: [], ambiguous: ['b'] };
@@ -140,17 +142,18 @@ it.each(['local', 'remote'] as const)('resolves a changed source with the explic
   fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' })); await deliver(harness);
   if (choice === 'remote') {
     expect(harness.read(resource).value).toMatchObject({ scratch, outline: original.value!.outline });
-    // The store settles before React commits the discarded stage; on a busy machine the render lags.
-    await waitFor(() => expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument());
+    // The store settles before React commits the discarded stage; on a busy machine the render lags
+    // (this file runs ~7x slower on the two-worker build machine than locally).
+    await waitFor(() => expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument(), { timeout: BUILD_MACHINE_WAIT_MS });
   } else {
     // The local choice re-sends on its own after the scope write and the replacement save; on a busy
     // build machine that lands after the one delivery round above. Wait for it passively — another
     // retry() here would also rescue a resend the engine failed to schedule.
-    await waitFor(() => expect(harness.read(resource).value?.scratch).toEqual([]));
+    await waitFor(() => expect(harness.read(resource).value?.scratch).toEqual([]), { timeout: BUILD_MACHINE_WAIT_MS });
     expect(JSON.stringify(harness.read(resource).value?.outline)).toContain('Generated heading');
   }
   view.unmount();
-});
+}, 3 * BUILD_MACHINE_WAIT_MS);
 it('retains the stage when generation fails and does not send an Apply implicitly', async () => {
   const { harness, view } = setup(); await ready(); change('Main', 'Manual work before failure'); await settle();
   jest.mocked(composePlanFromScratch).mockRejectedValue(new Error('Source changed'));
