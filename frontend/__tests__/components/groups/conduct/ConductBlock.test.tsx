@@ -61,6 +61,44 @@ describe('ConductBlock', () => {
     (useConductTimer as jest.Mock).mockImplementation(() => mockTimerReturn);
   });
 
+  describe('the meeting screen reads like the council\'s', () => {
+    it('hands the block content to the Markdown renderer, not to a plain text node', () => {
+      // The content is written in the rich Markdown editor; shown raw, ** and ## reached the screen.
+      // How it then renders is proven against the real react-markdown in ConductBlock.rendered.test.tsx.
+      const template = { ...mockTemplate, content: '**Pray** together' };
+      render(<ConductBlock {...defaultProps} template={template} />);
+
+      expect(screen.getByTestId('markdown')).toHaveTextContent('**Pray** together');
+    });
+
+    it('offers the same text size button as the notes and the council', () => {
+      render(<ConductBlock {...defaultProps} />);
+      expect(screen.getByRole('button', { name: 'textScale.open' })).toBeInTheDocument();
+    });
+
+    it('scales the block body as one container and leaves the controls alone', () => {
+      const { container } = render(<ConductBlock {...defaultProps} template={{ ...mockTemplate, questions: ['Why?'] }} />);
+      const scaled = [...container.querySelectorAll('.meeting-scaled')];
+      const inScaled = (text: string) => scaled.some((node) => node.contains(screen.getByText(text)));
+
+      expect(inScaled('Main Topic')).toBe(true);
+      expect(inScaled('Block content here')).toBe(true);
+      expect(inScaled('Why?')).toBe(true);
+      expect(inScaled('1 / 3')).toBe(false);
+      expect(inScaled('00:30')).toBe(false);
+    });
+
+    it('keeps the leader\'s notes as typed, line breaks included, at the chosen size', () => {
+      const flowItem = { ...mockFlowItem, instanceNotes: 'Line one\nLine two' };
+      render(<ConductBlock {...defaultProps} flowItem={flowItem} />);
+      fireEvent.click(screen.getByText('Notes'));
+
+      const notes = screen.getByText((_, node) => node?.tagName === 'P' && node.textContent === 'Line one\nLine two');
+      expect(notes).toHaveClass('whitespace-pre-wrap');
+      expect(notes.closest('.meeting-scaled')).not.toBeNull();
+    });
+  });
+
   it('renders block title', () => {
     render(<ConductBlock {...defaultProps} />);
     expect(screen.getByText('Main Topic')).toBeInTheDocument();

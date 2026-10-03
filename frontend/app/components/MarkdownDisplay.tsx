@@ -151,7 +151,7 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                             }
 
                             return (
-                                <div className={`my-3 p-3 rounded-md border-l-4 ${bgClass} ${borderClass} text-sm`}>
+                                <div className={`markdown-callout my-3 p-3 rounded-md border-l-4 ${bgClass} ${borderClass} text-sm`}>
                                     <div className="font-bold mb-1 flex items-center gap-2 opacity-80">
                                         <span>{icon}</span>
                                         <span>{title}</span>

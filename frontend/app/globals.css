@@ -157,7 +157,8 @@ input[type="search"]::-webkit-search-results-decoration {
 }
 
 /*
- * THE COUNCIL'S MEETING SCREEN — the size control MULTIPLIES, it does not flatten.
+ * THE MEETING SCREENS — the size control MULTIPLIES, it does not flatten. One rule for every
+ * screen a meeting is led from: the brotherly council and a small group's conduct mode.
  *
  * `.prose-scaled` gives every paragraph the same `1rem * scale`, which is right for a page that
  * is one body of text and wrong here: the section counter, the kind of section and the body all
@@ -166,7 +167,7 @@ input[type="search"]::-webkit-search-results-decoration {
  * line states its size as a share of that: the counter stays small, the title stays a title, and
  * the whole stack grows together.
  */
-.council-scaled {
+.meeting-scaled {
   font-size: calc(1rem * var(--text-scale));
 }
 
@@ -175,36 +176,60 @@ input[type="search"]::-webkit-search-results-decoration {
  * wrapper — so the explanation stayed 16px while the title around it grew. Here it takes the
  * screen's size like everything else, and the shares inside it keep their proportions.
  */
-.council-scaled .prose,
-.council-scaled .prose :where(p, li, ul, ol, blockquote) {
+.meeting-scaled .prose,
+.meeting-scaled .prose :where(p, li, ul, ol, blockquote) {
   font-size: inherit;
 }
 
-.council-scaled h1 {
+.meeting-scaled h1 {
   font-size: 1.9em;
 }
 
-.council-scaled h2 {
+.meeting-scaled h2 {
   font-size: 1.45em;
 }
 
-.council-scaled h3 {
+.meeting-scaled h3 {
   font-size: 1.2em;
 }
 
+/*
+ * Markdown headings arrive demoted — MarkdownDisplay turns "##" into an h4 at text-base, "###" into
+ * an h5 at text-sm — and a size in rem would stay put while the body around them doubles: at 200%
+ * a section heading ended up smaller than its own paragraph. The same sizes, stated as shares.
+ */
+.meeting-scaled h4 {
+  font-size: 1em;
+}
+
+.meeting-scaled h5 {
+  font-size: 0.875em;
+}
+
+.meeting-scaled h6 {
+  font-size: 0.75em;
+}
+
+/* A question or a quote set apart in a box (MarkdownDisplay's structured blocks) is text-sm too. */
+.meeting-scaled .markdown-callout {
+  font-size: 0.875em;
+  margin-block: 0.75em;
+  padding: 0.75em;
+}
+
 /* Lists: the bullet's indent and the space between points are proportions too. */
-.council-scaled ul,
-.council-scaled ol {
+.meeting-scaled ul,
+.meeting-scaled ol {
   margin-block: 0.7em;
   padding-left: 1.2em;
 }
 
-.council-scaled li + li {
+.meeting-scaled li + li {
   margin-top: 0.45em;
 }
 
 /*
- * THE COUNCIL'S MEETING SCREEN — leading that grows with the letters.
+ * THE MEETING SCREENS — leading that grows with the letters.
  *
  * The size control multiplies font-size through `--text-scale`, but Tailwind's type scale ships a
  * line-height in rem with every size (`text-3xl` is 1.875rem of type on 2.25rem of line). Double
@@ -213,17 +238,20 @@ input[type="search"]::-webkit-search-results-decoration {
  * letters and follows them up. Scoped to this screen on purpose — the notes have their own
  * rhythm, and this is not the place to change it for them.
  */
-.council-scaled h1,
-.council-scaled h2,
-.council-scaled h3 {
+.meeting-scaled h1,
+.meeting-scaled h2,
+.meeting-scaled h3,
+.meeting-scaled h4,
+.meeting-scaled h5,
+.meeting-scaled h6 {
   line-height: 1.15;
 }
 
-.council-scaled p,
-.council-scaled li,
-.council-scaled ul,
-.council-scaled ol,
-.council-scaled blockquote {
+.meeting-scaled p,
+.meeting-scaled li,
+.meeting-scaled ul,
+.meeting-scaled ol,
+.meeting-scaled blockquote {
   line-height: 1.55;
 }
 

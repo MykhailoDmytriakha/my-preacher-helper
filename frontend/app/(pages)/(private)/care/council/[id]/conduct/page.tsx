@@ -237,7 +237,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
                 size, which erases the difference between a counter and the matter itself; this
                 screen scales its container once and states every part as a share of it.
               */}
-              <div className="council-scaled mx-auto w-full max-w-2xl">
+              <div className="meeting-scaled mx-auto w-full max-w-2xl">
                 {/*
                   ONE QUIET LINE, THEN THE TITLE. Where the council stands and what kind of section
                   this is are the same thought — "section 1 of 8, an announcement" — and they were

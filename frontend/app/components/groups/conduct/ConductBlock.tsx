@@ -5,6 +5,8 @@ import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
+import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import { formatTime, useConductTimer } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -119,36 +121,46 @@ export default function ConductBlock({
         </button>
       </div>
 
-      {/* Block content */}
-      <div className="flex-1 overflow-y-auto px-5 py-6">
-        <h1 className="mb-4 text-2xl font-bold text-gray-900 dark:text-gray-100">{title}</h1>
+      {/*
+        Block content — the part a leader reads aloud, and the only part the text size control
+        grows. It is the council's meeting screen rule (`.meeting-scaled` in globals.css): the
+        scale is applied once, to this container, and every line states its size as a share of
+        it, so the title stays a title at 200%. The header, the timer and the buttons keep their
+        size, as on the council.
+      */}
+      {/* The bottom inset lets the last line scroll clear of the floating text size button. */}
+      <div className="flex-1 overflow-y-auto px-5 pb-20 pt-6">
+        <div className="meeting-scaled">
+          <h1 className="mb-[0.5em] text-[1.9em] font-bold text-gray-900 dark:text-gray-100">{title}</h1>
 
-        {template.content && (
-          <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-800 dark:text-gray-200">
-            {template.content}
-          </div>
-        )}
+          {template.content && (
+            // Written in the rich Markdown editor, so it is Markdown: shown raw, ** and ## reached the screen.
+            <div className="text-gray-800 dark:text-gray-200">
+              <MarkdownDisplay content={template.content} />
+            </div>
+          )}
 
-        {template.scriptureRefs && template.scriptureRefs.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {template.scriptureRefs.map((ref) => (
-              <Chip key={ref} tone="blue">
-                {ref}
-              </Chip>
-            ))}
-          </div>
-        )}
+          {template.scriptureRefs && template.scriptureRefs.length > 0 && (
+            <div className="mt-[1em] flex flex-wrap gap-2">
+              {template.scriptureRefs.map((ref) => (
+                <Chip key={ref} tone="blue">
+                  {ref}
+                </Chip>
+              ))}
+            </div>
+          )}
 
-        {template.questions && template.questions.length > 0 && (
-          <ul className="mt-4 space-y-2">
-            {template.questions.map((q, i) => (
-              <li key={i} className="flex gap-2 text-sm text-gray-700 dark:text-gray-300">
-                <span className="font-semibold text-gray-400">{i + 1}.</span>
-                <span>{q}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+          {template.questions && template.questions.length > 0 && (
+            <ul className="mt-[1em] space-y-[0.5em]">
+              {template.questions.map((q, i) => (
+                <li key={i} className="flex gap-[0.5em] text-[0.875em] text-gray-700 dark:text-gray-300">
+                  <span className="font-semibold text-gray-400">{i + 1}.</span>
+                  <span>{q}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       {/* Notes accordion */}
@@ -162,8 +174,10 @@ export default function ConductBlock({
             {t('conduct.block.notesToggle', { defaultValue: 'Notes' })}
           </button>
           {notesOpen && (
-            <div className="border-t border-gray-100 bg-amber-50/60 px-5 py-4 dark:border-gray-700 dark:bg-amber-950/20">
-              <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{flowItem.instanceNotes}</p>
+            // Plain text from a text area, not Markdown: kept as typed, and as large as the body.
+            // Capped and scrolled on its own, so long notes at 200% cannot squeeze the block away.
+            <div className="meeting-scaled max-h-[40vh] overflow-y-auto border-t border-gray-100 bg-amber-50/60 px-5 py-4 dark:border-gray-700 dark:bg-amber-950/20">
+              <p className="whitespace-pre-wrap text-[0.875em] text-gray-700 dark:text-gray-300">{flowItem.instanceNotes}</p>
             </div>
           )}
         </div>
@@ -210,6 +224,13 @@ export default function ConductBlock({
           </button>
         )}
       </div>
+
+      {/*
+        THE SAME ROUND CONTROL AS IN THE NOTES AND ON THE COUNCIL — one provider, one remembered
+        size. Lifted clear of the timer and the navigation bar, so it never sits on "Next", and
+        above this screen's own layer (z-[200] on the conduct page).
+      */}
+      <FloatingTextScaleControls className="!bottom-44 !right-6 z-[210]" />
     </div>
   );
 }
