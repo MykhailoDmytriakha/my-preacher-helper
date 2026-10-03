@@ -27,5 +27,7 @@ These compatibility readers are not templates for new features. `readOwnerList` 
 
 - 2026-09-06: on the owner's iPad the SDK delivered zero server snapshots while the HTTPS road answered in 205 ms on the same device; `getDocs` neither resolved nor threw, so the screen showed a heading over a skeleton.
 - Until 2026-09-16 series and groups were missing from `OWNER_COLLECTIONS`, so the series screen had no second road and stayed a skeleton on that iPad.
+- 2026-10-02: a read-only copy must keep its screen, not swap in a bare reader — the group page and the group meeting screen did, and the owner could neither read the group nor run the meeting for 45 minutes. A meeting writes nothing while it runs, so the conduct screen runs on the copy (`groups/[id]/conduct/page.tsx`). The reason is said once, by `DeviceStorageNotice`; a screen repeats it only when it covers that banner (a modal, a full-screen overlay).
+- 2026-10-02: aborting the engine's in-flight transactions on `pagehide persisted` and replaying them on `pageshow` was built and rejected (Codex review, confirmed by runs): replay reverses the order of writes, an idb-keyval `update` aborted before its first read never settles, and an evicted page loses a write Chrome would have finished. Transaction atomicity gives no ordering. Evidence and the open direction: `BUG-20260927-engine-open-hangs-on-silent-device-storage`.
 
 See also: `.howto/read-while-offline.md` · `.howto/use-server-first-query.md`
