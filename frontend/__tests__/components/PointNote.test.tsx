@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import React from 'react';
 
 import PointNote from '@/components/PointNote';
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 describe('PointNote editing', () => {
   const longNote = 'First paragraph\nSecond paragraph\nThird paragraph\nFourth paragraph';
@@ -53,6 +54,20 @@ describe('PointNote editing', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.getByText('Original note')).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('cancels the note on Escape and leaves the window it sits in open', () => {
+    const onClose = jest.fn();
+    function InWindow() {
+      const layer = useModalLayer({ onClose });
+      return <div {...layer}><PointNote note="Original note" onChange={jest.fn()} /></div>;
+    }
+    render(<InWindow />);
+    fireEvent.click(screen.getByText('Original note'));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('keeps Shift+Enter for a newline and Enter for saving', () => {

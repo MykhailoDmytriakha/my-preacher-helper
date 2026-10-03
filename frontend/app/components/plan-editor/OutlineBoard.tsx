@@ -500,6 +500,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             onKeyDown={(e) => {
               if (e.key === 'Enter') saveSubPointEdit(point.id, sp.id);
               if (e.key === 'Escape') {
+                e.stopPropagation(); // answered here: the window around the board stays open
                 setEditingSubPointId(null);
                 setEditingSubPointText('');
               }
@@ -696,6 +697,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') saveNewSubPoint(point.id);
                         if (e.key === 'Escape') {
+                          e.stopPropagation(); // answered here: the window around the board stays open
                           setAddingSubPointTo(null);
                           setNewSubPointText('');
                         }
@@ -854,6 +856,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') saveEdit();
                                   if (e.key === 'Escape') {
+                                    e.stopPropagation(); // answered here: the window around the board stays open
                                     setEditingPointId(null);
                                     setEditingText('');
                                   }
@@ -961,6 +964,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') addPoint(section);
                     if (e.key === 'Escape') {
+                      e.stopPropagation(); // answered here: the window around the board stays open
                       setAddingToSection(null);
                       setNewPointText('');
                     }

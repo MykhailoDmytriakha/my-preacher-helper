@@ -305,6 +305,18 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     return dy > 0 ? { ...transform, y: transform.y + dy } : transform;
   }, []);
 
+  /*
+   * ESCAPE DURING A KEYBOARD LIFT BELONGS TO THE LIFT (BUG-20261003-escape-cancelling-inner-action-closes-dialog).
+   * dnd-kit cancels on Escape at the document; the window the board sits in closes on Escape at the
+   * window. Stopping the press at the document keeps the cancel and spares the window.
+   */
+  useEffect(() => {
+    if (!activeDrag || !keyboardLiftRef.current) return;
+    const keepEscapeInTheBoard = (event: KeyboardEvent) => { if (event.key === 'Escape') event.stopPropagation(); };
+    document.addEventListener('keydown', keepEscapeInTheBoard);
+    return () => document.removeEventListener('keydown', keepEscapeInTheBoard);
+  }, [activeDrag]);
+
   const activeNoteId = activeDrag?.kind === 'note' ? activeDrag.id : null;
   useEffect(() => {
     if (!activeNoteId) return;

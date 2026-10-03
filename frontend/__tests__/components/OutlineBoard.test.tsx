@@ -1,8 +1,9 @@
-import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 import type { ScratchNote, SermonOutline } from '@/models/models';
 
@@ -503,5 +504,113 @@ describe('OutlineBoard — reminder notes', () => {
     expect(screen.queryByText('planEditor.note.add')).not.toBeInTheDocument();
     expect(screen.queryByTitle('planEditor.note.label')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('planEditor.note.delete')).not.toBeInTheDocument();
+  });
+});
+
+describe('Escape in a field of the board closes that field, not the window around the board', () => {
+  function InWindow({ value, onClose }: { value: SermonOutline; onClose: () => void }) {
+    const layer = useModalLayer({ onClose });
+    return <div {...layer}><OutlineBoard value={value} onChange={jest.fn()} /></div>;
+  }
+  const withPoint: SermonOutline = { introduction: [{ id: 'p1', text: 'Old text', subPoints: [{ id: 's1', text: 'Sub text', position: 1000 }] }], main: [], conclusion: [] };
+  const open: Record<string, () => HTMLElement> = {
+    'adding a point': () => {
+      fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByText('structure.addPointButton'));
+      return screen.getByPlaceholderText('structure.addPointPlaceholder');
+    },
+    'editing a point': () => {
+      fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getAllByLabelText('common.edit')[0]);
+      return screen.getByDisplayValue('Old text');
+    },
+    'adding a sub-point': () => {
+      fireEvent.click(screen.getByText('structure.addSubPoint'));
+      return screen.getByPlaceholderText('structure.subPointPlaceholder');
+    },
+    'editing a sub-point': () => {
+      fireEvent.doubleClick(screen.getByText('Sub text'));
+      return screen.getByDisplayValue('Sub text');
+    },
+  };
+  it('cancelling a keyboard lift of a scratch note', async () => {
+    const note: ScratchNote = { id: 'n1', text: 'Loose note', createdAt: '2026-07-05T00:00:00.000Z' };
+    const onClose = jest.fn();
+    function ScratchInWindow() {
+      const layer = useModalLayer({ onClose });
+      return <div {...layer}><OutlineBoard value={empty()} onChange={jest.fn()} scratch={{
+        notesById: new Map([[note.id, note]]), onPlace: jest.fn(),
+        renderNote: (n: ScratchNote, handleProps) => <div><span {...handleProps}>move</span>{n.text}</div>,
+        poolHeader: <div>pool</div>, poolEmptyLabel: 'empty', pool: [note], placements: {},
+      }} /></div>;
+    }
+    render(<ScratchInWindow />);
+    const handle = document.querySelector<HTMLElement>('[aria-roledescription="draggable"]')!;
+    handle.focus();
+
+    fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
+    await waitFor(() => expect(handle).toHaveAttribute('aria-pressed', 'true'));
+    fireEvent.keyDown(handle, { key: 'Escape', code: 'Escape' });
+
+    await waitFor(() => expect(handle).not.toHaveAttribute('aria-pressed', 'true'));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it.each(Object.keys(open))('%s', (flow) => {
+    const onClose = jest.fn();
+    render(<InWindow value={flow === 'adding a point' ? empty() : withPoint} onClose={onClose} />);
+    const field = open[flow]();
+
+    fireEvent.keyDown(field, { key: 'Escape' });
+
+    expect(field).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('a scratch note moved with the keyboard', () => {
+  it('lands in the point the arrows brought it over when Space is pressed again', async () => {
+    // Geometry is set by hand (jsdom lays nothing out); the sensor, the collision policy and the
+    // drop handling are the real ones.
+    const rect = (left: number, top = 0, width = 100, height = 60) =>
+      ({ x: left, y: top, left, top, right: left + width, bottom: top + height, width, height, toJSON: () => ({}) });
+    const boxes = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.closest('[data-scratch-note="n"]')) return rect(0) as DOMRect;
+      if (this.closest('[data-note-container="note-point:p"]')) return rect(200) as DOMRect;
+      return rect(0, 0, 400, 200) as DOMRect;
+    });
+    const previous = Object.getOwnPropertyDescriptor(document, 'elementsFromPoint');
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: (x: number) => {
+        const target = document.querySelector(`[data-note-container="${x >= 150 ? 'note-point:p' : 'note-pool'}"]`);
+        return target ? [target] : [];
+      },
+    });
+    try {
+      const note: ScratchNote = { id: 'n', text: 'Loose note', createdAt: '2026-10-03' };
+      const onMove = jest.fn();
+      render(<OutlineBoard value={{ introduction: [{ id: 'p', text: 'Destination' }], main: [], conclusion: [] }} onChange={jest.fn()}
+        scratch={{ pool: [note], notesById: new Map([['n', note]]), placements: {}, onPlace: jest.fn(), onMove,
+          renderNote: (n: ScratchNote, handleProps) => <button {...handleProps}>{n.text}</button> }} />);
+      const handle = screen.getByRole('button', { name: 'Loose note' });
+      handle.focus();
+
+      fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
+      await waitFor(() => expect(handle).toHaveAttribute('aria-pressed', 'true'));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+      for (let i = 0; i < 6; i++) {
+        fireEvent.keyDown(handle, { key: 'ArrowRight', code: 'ArrowRight' });
+        await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+      }
+      await waitFor(() => expect(document.querySelector('[data-note-container="note-point:p"] [data-scratch-slot="target"]')).not.toBeNull());
+      fireEvent.keyDown(handle, { key: ' ', code: 'Space' });
+
+      await waitFor(() => expect(onMove).toHaveBeenCalledTimes(1));
+      expect(onMove).toHaveBeenCalledWith('n', { pointId: 'p' }, [], 0);
+      expect(handle).not.toHaveAttribute('aria-pressed', 'true');
+    } finally {
+      boxes.mockRestore();
+      if (previous) Object.defineProperty(document, 'elementsFromPoint', previous);
+      else Reflect.deleteProperty(document, 'elementsFromPoint');
+    }
   });
 });

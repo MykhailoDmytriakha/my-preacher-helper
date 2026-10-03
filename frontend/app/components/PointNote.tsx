@@ -162,6 +162,8 @@ const PointNote: React.FC<PointNoteProps> = ({
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault();
+              // Answered here: the window the note sits in stays open.
+              e.stopPropagation();
               cancel();
             } else if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();

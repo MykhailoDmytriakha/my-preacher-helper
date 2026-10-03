@@ -133,6 +133,8 @@ export default function DatePickerField({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        // This Escape closes the calendar only; the form the field sits in stays open.
+        event.stopPropagation();
         setOpen(false);
       }
     };
