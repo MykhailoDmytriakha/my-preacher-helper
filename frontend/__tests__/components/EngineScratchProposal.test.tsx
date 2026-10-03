@@ -143,7 +143,10 @@ it.each(['local', 'remote'] as const)('resolves a changed source with the explic
     // The store settles before React commits the discarded stage; on a busy machine the render lags.
     await waitFor(() => expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument());
   } else {
-    expect(harness.read(resource).value?.scratch).toEqual([]);
+    // The local choice re-sends on its own after the scope write and the replacement save; on a busy
+    // build machine that lands after the one delivery round above. Wait for it passively — another
+    // retry() here would also rescue a resend the engine failed to schedule.
+    await waitFor(() => expect(harness.read(resource).value?.scratch).toEqual([]));
     expect(JSON.stringify(harness.read(resource).value?.outline)).toContain('Generated heading');
   }
   view.unmount();
