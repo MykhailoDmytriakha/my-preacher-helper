@@ -334,3 +334,27 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
     margin: 0;
   }
 }
+
+/* Fixed page chrome travels with the page under a swipe or a pull (PageGestures). Only while a gesture
+   moves the page: a translate at rest would make each element the containing block of its own fixed
+   descendants. Durations match the page surface's motion classes. */
+[data-page-gesture]:not([data-page-gesture="idle"]) .page-gesture-follow {
+  translate: var(--page-gesture-x, 0px) var(--page-gesture-y, 0px);
+}
+
+/* A follower inside another already travels with it: the translated outer one is its containing block. */
+[data-page-gesture]:not([data-page-gesture="idle"]) .page-gesture-follow .page-gesture-follow {
+  translate: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-page-gesture="leaving"] .page-gesture-follow {
+    transition: translate 200ms ease-in;
+  }
+
+  [data-page-gesture="settling"] .page-gesture-follow,
+  [data-page-gesture="refreshing"] .page-gesture-follow,
+  [data-page-gesture="error"] .page-gesture-follow {
+    transition: translate 250ms ease-out;
+  }
+}

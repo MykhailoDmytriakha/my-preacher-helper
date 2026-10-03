@@ -144,7 +144,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   // Once the meeting runs, a late editor opening (storage answering mid-meeting) must not blank it.
   if (loading && phase === 'preflight') {
     return (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white dark:bg-gray-950">
+      <div className="page-gesture-follow fixed inset-0 z-[200] flex items-center justify-center bg-white dark:bg-gray-950">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
       </div>
     );
@@ -152,7 +152,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
 
   if (!group) {
     return (
-      <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white dark:bg-gray-950">
+      <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white dark:bg-gray-950">
         {feedback}
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
           {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load group' })}
@@ -163,7 +163,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
 
   if (activeFlow.length === 0) {
     return (
-      <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-white dark:bg-gray-950">
+      <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-white dark:bg-gray-950">
         {feedback}
         <p className="text-gray-600 dark:text-gray-400">
           {t('groupFlow.emptyState', { defaultValue: 'No blocks yet' })}
@@ -182,7 +182,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   const currentTemplate = templates.find((tpl) => tpl.id === currentFlowItem?.templateId);
 
   return (
-    <div className="fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">
+    <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">
       {feedback}
       {phase === 'preflight' && readOnlyNote && (
         <p role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">

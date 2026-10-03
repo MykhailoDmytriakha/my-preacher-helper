@@ -44,7 +44,7 @@ export const ProgressSidebar: React.FC<ProgressSidebarProps> = ({
 
   return (
     <div
-      className="fixed left-4 top-1/2 z-50 flex flex-col gap-4 transform -translate-y-1/2"
+      className="page-gesture-follow fixed left-4 top-1/2 z-50 flex flex-col gap-4 transform -translate-y-1/2"
       data-testid="plan-progress-map"
     >
       {sections.map((section) => (

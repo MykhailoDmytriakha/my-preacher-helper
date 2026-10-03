@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>transform probe</title>
+<style>body{margin:0;background:#fff;font:16px system-ui} #top{position:fixed;top:0;left:0;right:0;height:40px;background:#cde} #bottom{position:fixed;bottom:16px;right:16px;width:56px;height:56px;border-radius:50%;background:#a7f} .row{height:100px;border-bottom:1px solid #eee}</style>
+<body><div id="top">fixed top</div><div id="bottom"></div><div id="content"></div><script>
+const q = new URLSearchParams(location.search), run = q.get('run'), target = q.get('target') || 'html';
+const log = (ev, data = {}) => navigator.sendBeacon('/log', JSON.stringify({ run, page: 'h', ev, ...data }));
+const content = document.getElementById('content');
+for (let i = 0; i < 40; i++) { const row = document.createElement('div'); row.className = 'row'; row.textContent = 'row ' + i; content.appendChild(row); }
+const rect = id => { const r = document.getElementById(id).getBoundingClientRect(); return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left) }; };
+const surface = target === 'html' ? document.documentElement : target === 'wrap' ? document.getElementById('content') : document.body;
+const move = (x, y) => {
+  if (q.get('mode') !== 'relpos') { surface.style.transform = x || y ? `translate(${x}px, ${y}px)` : ''; return; }
+  surface.style.position = x || y ? 'relative' : ''; surface.style.left = x ? x + 'px' : ''; surface.style.top = y ? y + 'px' : '';
+};
+const probeRow = () => { const r = document.querySelector('.row').getBoundingClientRect(); return { top: Math.round(r.top), left: Math.round(r.left) }; };
+setTimeout(() => {
+  const before = { top: rect('top'), bottom: rect('bottom'), vh: innerHeight };
+  move(0, 80);
+  const pulled = { top: rect('top'), bottom: rect('bottom'), row: probeRow() };
+  move(0, 0);
+  scrollTo(0, 1000);
+  setTimeout(() => {
+    const scrolledBefore = { top: rect('top'), bottom: rect('bottom'), scrollY: Math.round(scrollY) };
+    move(120, 0);
+    const swiped = { top: rect('top'), bottom: rect('bottom'), row: probeRow(), scrollY: Math.round(scrollY) };
+    move(0, 0);
+    log('result', { target, before, pulled, scrolledBefore, swiped, ua: navigator.userAgent.slice(-40) });
+  }, 300);
+}, 500);
+</script>

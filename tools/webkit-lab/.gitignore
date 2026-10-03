@@ -3,3 +3,4 @@ idb-keyval.js
 log.ndjson
 server.out
 build/
+*.png

@@ -91,7 +91,7 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
         `shrink-0` with a set size, and the percentage is tabular so 80% and 200%
         measure the same). See BUG-20260814-text-scale-panel-reflows.
       */}
-      <div className={`fixed bottom-6 right-4 sm:right-6 z-50 flex justify-end ${className}`}>
+      <div className={`page-gesture-follow fixed bottom-6 right-4 sm:right-6 z-50 flex justify-end ${className}`}>
         <button
           ref={buttonRef}
           onClick={toggleModal}

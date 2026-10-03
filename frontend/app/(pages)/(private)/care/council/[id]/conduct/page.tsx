@@ -514,7 +514,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       ref={frame}
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950"
+      className="page-gesture-follow fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950"
     >
       {children}
     </div>

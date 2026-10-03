@@ -47,13 +47,13 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div data-study-workspace={isStudyDetail ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900">
+    // The page root itself moves under a swipe or a pull, so the gestures render it.
+    <PageGestures data-study-workspace={isStudyDetail ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900">
       {/* Mounted OUTSIDE the conditional on purpose: the preaching-plan screen hides
           the chrome, and while the queue worker lived inside the banner that screen
           — the one a preacher keeps open for an hour — drained nothing at all. */}
       <DiagnosticsRecorder pathname={pathname ?? '/'} />
       <OfflinePageMemory address={`${pathname ?? '/'}?${searchParams?.toString() ?? ''}`} />
-      <PageGestures />
       <OutboxDrain />
       {!isPreachingPlan && (
         <>
@@ -84,6 +84,6 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
         {children}
       </main>
       <DevQuickNav />
-    </div>
+    </PageGestures>
   );
 }
