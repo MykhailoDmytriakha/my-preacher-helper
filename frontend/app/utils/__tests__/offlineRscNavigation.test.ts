@@ -40,6 +40,7 @@ function fakeCaches() {
         async delete(key: RequestInfo | URL) { return store.delete(keyOf(key)); },
       } as unknown as Cache;
     },
+    async delete(name: string) { return stores.delete(name); },
   };
 }
 
@@ -50,6 +51,86 @@ function offline(): (request: Request) => Promise<Response> {
 const stored = (caches: ReturnType<typeof fakeCaches>) => [...(caches.stores.get(OFFLINE_RSC_CACHE)?.keys() ?? [])];
 
 describe('offline RSC navigation', () => {
+  it('keeps every address it could not warm yet, and finishes when the network is back', async () => {
+    const caches = fakeCaches();
+    const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+    for (let i = 0; i < 60; i++) await seen.remember(new URL(`${ORIGIN}/sermons/${i}`));
+    let online = false;
+    const fetched: string[] = [];
+    const after = createOfflineRscNavigation({
+      fetchFn: async request => {
+        if (!online) throw new TypeError('Failed to fetch');
+        fetched.push(new URL(request.url).pathname); return flight('new build');
+      }, caches,
+    });
+    void after.retire();
+    await after.rewarm(); // no network: nothing warmed, nothing forgotten — and this worker stops trying
+    expect(stored(caches)).toEqual([]);
+    online = true;
+    await after.rewarm();
+    expect(fetched).toEqual([]);
+    // The worker starts again later (service workers do): it finishes the list.
+    const restarted = createOfflineRscNavigation({
+      fetchFn: async request => { fetched.push(new URL(request.url).pathname); return flight('new build'); }, caches,
+    });
+    await restarted.rewarm();
+    await restarted.rewarm();
+    expect(new Set(fetched).size).toBe(60);
+    expect(stored(caches)).toHaveLength(60);
+  });
+
+  it('does not starve reachable addresses behind ones that keep failing', async () => {
+    const caches = fakeCaches();
+    const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+    for (let i = 0; i < 60; i++) await seen.remember(new URL(`${ORIGIN}/sermons/${i}`));
+    let requests = 0;
+    // The fifty seen last are gone from the server; the ten older ones are fine.
+    const fetchFn = async (request: Request) => {
+      requests += 1;
+      const id = Number(new URL(request.url).pathname.split('/').pop());
+      return id >= 10 ? new Response('gone', { status: 404 }) : flight('new build');
+    };
+    const after = createOfflineRscNavigation({ fetchFn, caches });
+    await after.retire();
+    await after.rewarm();
+    await after.rewarm(); // paused after a batch that warmed nothing: no second round of 50 failures
+    expect(requests).toBe(50);
+    const restarted = createOfflineRscNavigation({ fetchFn, caches });
+    await restarted.rewarm();
+    expect(stored(caches).map(key => new URL(key).pathname).sort()).toEqual(
+      Array.from({ length: 10 }, (_, i) => `/sermons/${i}`).sort());
+  });
+
+  it('keeps a page seen while the new version is still retiring the old one', async () => {
+    const caches = fakeCaches();
+    const nav = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+    const retiring = nav.retire();
+    const remembering = nav.remember(new URL(`${ORIGIN}/sermons/fresh`));
+    await Promise.all([retiring, remembering]);
+    expect(stored(caches)).toEqual([`${ORIGIN}/sermons/fresh`]);
+  });
+
+  it('after a new version activates, warms the addresses seen before again, newest first, once', async () => {
+    const caches = fakeCaches();
+    const before = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+    for (const id of ['a', 'b', 'c']) await before.remember(new URL(`${ORIGIN}/sermons/${id}`));
+    const fetched: string[] = [];
+    const after = createOfflineRscNavigation({
+      fetchFn: async request => { fetched.push(new URL(request.url).pathname); return flight('new build'); }, caches,
+    });
+    // Activation: the old build's payloads go (Next would refuse them), the addresses stay known.
+    await after.retire();
+    expect(stored(caches)).toEqual([]);
+    // The first page the person sees online brings them back without visiting each one again.
+    await after.rewarm();
+    expect(fetched).toEqual(['/sermons/c', '/sermons/b', '/sermons/a']);
+    const answer = await createOfflineRscNavigation({ fetchFn: offline(), caches }).respond(navigationRequest('/sermons/a', 'from-anywhere'));
+    expect(await answer.text()).toBe('new build');
+    await after.rewarm();
+    expect(fetched).toHaveLength(3);
+  });
+
+
   it('answers an offline navigation from any page with the payload kept when the page was seen', async () => {
     const caches = fakeCaches();
     // Online: the preacher sees the sermon.

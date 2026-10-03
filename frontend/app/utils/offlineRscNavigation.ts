@@ -38,6 +38,10 @@ import {
 import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/utils/cache-busting-search-param';
 
 export const OFFLINE_RSC_CACHE = 'pages-rsc-offline';
+/** Where a new version keeps the addresses the old one had, until it has warmed them again. */
+export const OFFLINE_RSC_INDEX_CACHE = 'pages-rsc-offline-index';
+/** How many of the most recently seen addresses a new version warms again by itself. */
+export const OFFLINE_RSC_REWARM_MAX = 50;
 /** A payload is ~10 kB; two hundred addresses cover every sermon, study and page a preacher keeps. */
 export const OFFLINE_RSC_MAX_ENTRIES = 200;
 /** The message a page sends the worker when the person has seen it. */
@@ -50,7 +54,24 @@ const ROOT_LEVEL_TREE = encodeURIComponent(
 const ROOT_LEVEL_RSC = computeCacheBustingSearchParam(undefined, undefined, ROOT_LEVEL_TREE, undefined);
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
-type CacheStorageLike = { open(name: string): Promise<CacheLike> };
+type CacheStorageLike = { open(name: string): Promise<CacheLike>; delete?(name: string): Promise<boolean> };
+const OFFLINE_RSC_INDEX_URL = 'https://offline-index.invalid/addresses';
+
+async function readIndex(index: CacheLike): Promise<string[]> {
+  const stored = await index.match(OFFLINE_RSC_INDEX_URL);
+  if (!stored) return [];
+  try {
+    const addresses: unknown = await stored.json();
+    return Array.isArray(addresses) ? addresses.filter((address): address is string => typeof address === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeIndex(index: CacheLike, addresses: string[]): Promise<void> {
+  if (!addresses.length) { await index.delete(OFFLINE_RSC_INDEX_URL); return; }
+  await index.put(OFFLINE_RSC_INDEX_URL, new Response(JSON.stringify(addresses), { headers: { 'content-type': 'application/json' } }));
+}
 
 function withoutCacheBusting(url: URL): URL {
   const clean = new URL(url.href);
@@ -155,7 +176,8 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
     const deadline = new Promise<void>((resolve) => {
       timer = setTimeout(() => { controller?.abort(); resolve(); }, warmTimeoutMs);
     });
-    const work = Promise.race([store(url, key, controller?.signal), deadline]).finally(() => {
+    // After a version's retirement, so a page seen during activation is not stored and then dropped.
+    const work = Promise.race([retiring.then(() => store(url, key, controller?.signal)), deadline]).finally(() => {
       clearTimeout(timer);
       inFlight.delete(key);
     });
@@ -175,5 +197,64 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
     }
   }
 
-  return { respond, remember };
+  /**
+   * A NEW VERSION ACTIVATES (BUG-20260927-engine-open-hangs-on-silent-device-storage, its trigger).
+   * The old build's payloads are dropped — Next would refuse them — but their addresses are carried
+   * over, together with any still waiting from an earlier version, so the new version can warm them
+   * again instead of leaving offline navigation empty until each page is visited online once more.
+   * Without that, the first offline tap after a deploy was a full page load, and a full load is what
+   * freezes the previous page in Safari's back-forward cache.
+   */
+  let retiring: Promise<void> = Promise.resolve();
+  function retire(): Promise<void> {
+    retiring = (async () => {
+      try {
+        const index = await caches.open(OFFLINE_RSC_INDEX_CACHE);
+        const waiting = await readIndex(index);
+        const kept = (await (await caches.open(OFFLINE_RSC_CACHE)).keys()).map(request => request.url);
+        await writeIndex(index, [...waiting.filter(address => !kept.includes(address)), ...kept].slice(-OFFLINE_RSC_MAX_ENTRIES));
+      } catch { /* Nothing to carry over: pages warm up again as they are seen. */ }
+      await caches.delete?.(OFFLINE_RSC_CACHE);
+    })();
+    return retiring;
+  }
+
+  /**
+   * Warm the carried-over addresses again, the most recently seen first, a batch per page the person
+   * sees online. Without network it does not try. A batch that warms nothing (the server or the
+   * network is down) moves to the old end of the list and the worker stops trying until it starts
+   * again; a batch that warms some proves the network works, so the addresses that failed in it are
+   * pages that are gone, and they are dropped — they warm again whenever they are visited.
+   */
+  let rewarming: Promise<void> | null = null;
+  let rewarmPaused = false;
+  function rewarm(): Promise<void> {
+    if (rewarmPaused || (typeof navigator !== 'undefined' && navigator.onLine === false)) return Promise.resolve();
+    return rewarming ??= (async () => {
+      try {
+        await retiring;
+        const index = await caches.open(OFFLINE_RSC_INDEX_CACHE);
+        const waiting = await readIndex(index);
+        if (!waiting.length) return;
+        const batch = waiting.slice(-OFFLINE_RSC_REWARM_MAX);
+        const rest = waiting.slice(0, waiting.length - batch.length);
+        const payloads = await caches.open(OFFLINE_RSC_CACHE);
+        let warmed = 0;
+        for (const address of [...batch].reverse()) {
+          await remember(new URL(address));
+          if (await payloads.match(address)) warmed += 1;
+        }
+        if (warmed === 0) {
+          rewarmPaused = true;
+          await writeIndex(index, [...batch, ...rest]);
+        } else {
+          await writeIndex(index, rest);
+        }
+      } catch { /* The list stays as it was; the next page seen tries again. */ } finally {
+        rewarming = null;
+      }
+    })();
+  }
+
+  return { respond, remember, retire, rewarm };
 }

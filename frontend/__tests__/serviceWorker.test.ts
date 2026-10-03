@@ -85,16 +85,27 @@ describe('service worker transport boundary', () => {
     expect(mockHandleCache).toHaveBeenCalledWith(event);
   });
 
-  it('drops the previous build\'s offline navigation payloads when a new version activates', () => {
-    mockListeners.get('activate')!({ waitUntil: jest.fn() });
+  it('drops the previous build\'s offline navigation payloads when a new version activates, keeping their addresses', async () => {
+    const put = jest.fn(async () => undefined);
+    const cache = { keys: jest.fn(async () => [new Request('https://my-preacher-helper.com/sermons/example')]), put, match: jest.fn(), delete: jest.fn() };
+    mockCaches.open.mockImplementation((() => Promise.resolve(cache)) as never);
+    const event = { waitUntil: jest.fn() };
+    mockListeners.get('activate')!(event);
+    await event.waitUntil.mock.calls.at(-1)?.[0];
     expect(mockCaches.delete).toHaveBeenCalledWith('pages-rsc-offline');
+    // The addresses go to the index, so the new version can warm them again (offlineRscNavigation).
+    expect(mockCaches.open).toHaveBeenCalledWith('pages-rsc-offline-index');
+    expect(put).toHaveBeenCalledTimes(1);
+    mockCaches.open.mockImplementation(() => new Promise(() => undefined));
   });
 
-  it('keeps a page the person has seen, and leaves other pages\' messages to Serwist', () => {
+  it('keeps a page the person has seen, and leaves other pages\' messages to Serwist', async () => {
     mockHandleCache.mockClear();
     const seen = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/sermons/example' } };
     mockListeners.get('message')!(seen);
     expect(seen.waitUntil).toHaveBeenCalledTimes(1);
+    // Storing waits for a version's retirement to finish first (a microtask when there is none).
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(mockCaches.open).toHaveBeenCalledWith('pages-rsc-offline');
     expect(mockHandleCache).not.toHaveBeenCalled();
 

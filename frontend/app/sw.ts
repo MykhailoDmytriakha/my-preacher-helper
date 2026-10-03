@@ -1,7 +1,7 @@
 import { defaultCache } from "@serwist/next/worker";
 import { NetworkOnly, Serwist } from "serwist";
 
-import { OFFLINE_PAGE_SEEN, OFFLINE_RSC_CACHE, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
+import { OFFLINE_PAGE_SEEN, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
 
@@ -67,15 +67,16 @@ const serwist = new Serwist({
 self.addEventListener("install", serwist.handleInstall);
 self.addEventListener("activate", (event: ExtendableEvent) => {
   serwist.handleActivate(event);
-  // Stored payloads carry the previous build id and would only be refused; the new version stores its own.
-  event.waitUntil(self.caches.delete(OFFLINE_RSC_CACHE));
+  // Stored payloads carry the previous build id and would only be refused; the addresses are kept,
+  // and the new version warms them again when a page next tells it it is seen (below).
+  event.waitUntil(offlineNavigation.retire());
 });
 self.addEventListener("message", (event: ExtendableMessageEvent) => {
   // A page the person has seen (OfflinePageMemory) — keep its payload for offline navigations to it.
   const data = event.data as { type?: unknown; url?: unknown } | null;
   if (data?.type === OFFLINE_PAGE_SEEN && typeof data.url === "string") {
     const url = new URL(data.url);
-    if (isRememberedPage(url, self.origin)) event.waitUntil(offlineNavigation.remember(url));
+    if (isRememberedPage(url, self.origin)) event.waitUntil(Promise.all([offlineNavigation.remember(url), offlineNavigation.rewarm()]));
     return;
   }
   serwist.handleCache(event);
