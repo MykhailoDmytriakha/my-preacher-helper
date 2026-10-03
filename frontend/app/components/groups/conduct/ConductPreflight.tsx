@@ -14,9 +14,11 @@ interface ConductPreflightProps {
   onBack: () => void;
   onUpdateDuration?: (id: string, durationMin: number | null) => void;
   disabled?: boolean;
+  /** The saved durations, unchangeable — a copy for reading has nowhere to keep a change. Start stays. */
+  lockDurations?: boolean;
 }
 
-export default function ConductPreflight({ flow, templates, onStart, onBack, onUpdateDuration, disabled = false }: ConductPreflightProps) {
+export default function ConductPreflight({ flow, templates, onStart, onBack, onUpdateDuration, disabled = false, lockDurations = false }: ConductPreflightProps) {
   const { t } = useTranslation();
   const [localFlow, setLocalFlow] = useState<GroupFlowItem[]>(flow);
   const [totalMeetingMin, setTotalMeetingMin] = useState<number | null>(null);
@@ -155,7 +157,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack, onU
                     min="0"
                     max="999"
                     value={item.durationMin == null ? '' : String(item.durationMin)}
-                    disabled={disabled}
+                    disabled={disabled || lockDurations}
                     onChange={(value) => updateDuration(item.id, value)}
                     placeholder={t('conduct.preflight.noLimit', { defaultValue: '—' })}
                     className={`w-20 rounded-lg border px-2 py-1 text-right text-sm transition-colors focus:outline-none ${

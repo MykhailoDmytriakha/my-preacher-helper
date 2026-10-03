@@ -80,7 +80,7 @@ function LegacyGroupPage({ groupId }: { groupId: string }) {
 function EngineGroupPage({ groupId }: { groupId: string }) {
   const editor = useGroupPageEditor(groupId);
   return editor.readOnly && editor.group
-    ? <GroupReadOnlyContent group={editor.group} reason={editor.readOnlyReason} />
+    ? <GroupReadOnlyContent group={editor.group} />
     : <GroupDetailView editor={editor} />;
 }
 function GroupDetailView({ editor }: { editor: GroupPageEditor }) {

@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
-import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
@@ -17,7 +16,7 @@ import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { GroupFlowItem } from '@/models/models';
 import { normalizeFlow } from '@/utils/groupFlow';
 
-import type { Group } from '@/models/models';
+import type { Group, GroupBlockTemplate } from '@/models/models';
 import type { ReactNode } from 'react';
 
 type Phase = 'preflight' | 'conducting' | 'overview';
@@ -36,7 +35,18 @@ function LegacyConductPage({ groupId }: { groupId: string }) {
 function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);
   const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId);
-  if (document.document.readOnly && document.group) return <GroupReadOnlyContent group={document.group} reason={document.document.readOnlyReason} />;
+  /*
+   * A COPY FOR READING STILL RUNS THE MEETING. Only the setup writes — the durations, saved on
+   * Start — and the meeting itself lives in this page: steps, timers, the overview. So while the
+   * device storage is silent the same screen runs on the copy, the durations stay as saved, and
+   * Start saves nothing. It is the same ConductView in the same place, so when the storage answers
+   * mid-meeting the meeting goes on where it was. This screen covers the app's DeviceStorageNotice,
+   * so the setup says the reason itself.
+   */
+  if (document.document.readOnly && document.group) {
+    return <ConductView groupId={groupId} group={document.group} loading={false} saveFlow={async () => undefined}
+      lockDurations readOnlyNote={document.document.readOnlyReason} />;
+  }
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus status={document.status} error={document.error} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
@@ -50,16 +60,20 @@ function EngineConductPage({ groupId }: { groupId: string }) {
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
     setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'} feedback={feedback} />;
 }
-function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, feedback }: {
+function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback }: {
   groupId: string; group: Group | null; loading: boolean; saveFlow: (flow: GroupFlowItem[]) => Promise<void>;
-  updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean; feedback?: ReactNode;
+  updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean;
+  lockDurations?: boolean; readOnlyNote?: string | null; feedback?: ReactNode;
 }) {
   const router = useRouter();
   const { t } = useTranslation();
 
   const [phase, setPhase] = useState<Phase>('preflight');
   const [currentIndex, setCurrentIndex] = useState(0);
+  // What the meeting started with — its steps and their blocks — so the group changing underneath
+  // (storage answering, another device editing) never takes a block out of a meeting in progress.
   const [localFlow, setLocalFlow] = useState<GroupFlowItem[] | null>(null);
+  const [localTemplates, setLocalTemplates] = useState<GroupBlockTemplate[] | null>(null);
   const [totalMeetingMin, setTotalMeetingMin] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -79,7 +93,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
     return [];
   }, [localFlow, group]);
 
-  const templates = group?.templates ?? [];
+  const templates = localTemplates ?? group?.templates ?? [];
 
   // Called by ConductBlock before any navigation — saves elapsed for this block
   const handleTimeRecorded = useCallback((flowItemId: string, elapsed: number) => {
@@ -89,6 +103,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   const handleStart = async (updatedFlow: GroupFlowItem[], meetingMin: number | null) => {
     try { await saveFlow(updatedFlow); } catch { return; }
     setLocalFlow(updatedFlow);
+    setLocalTemplates(group?.templates ?? []);
     setTotalMeetingMin(meetingMin);
     setIsPaused(false);
     setBlockTimes({});
@@ -126,7 +141,8 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   const handleEnd = () => router.push(`/groups/${groupId}`);
   const handleBack = () => router.push(`/groups/${groupId}`);
 
-  if (loading) {
+  // Once the meeting runs, a late editor opening (storage answering mid-meeting) must not blank it.
+  if (loading && phase === 'preflight') {
     return (
       <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white dark:bg-gray-950">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
@@ -168,6 +184,11 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">
       {feedback}
+      {phase === 'preflight' && readOnlyNote && (
+        <p role="status" className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+          {readOnlyNote}
+        </p>
+      )}
       {phase === 'preflight' && (
         <ConductPreflight
           flow={activeFlow}
@@ -175,6 +196,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
           onStart={handleStart}
           onUpdateDuration={updateDuration}
           disabled={setupDisabled}
+          lockDurations={lockDurations}
           onBack={handleBack}
         />
       )}

@@ -6,7 +6,6 @@ export interface GroupPageEditor {
   group: Group | null;
   loading: boolean;
   readOnly?: boolean;
-  readOnlyReason?: string | null;
   title: string;
   setTitle: Dispatch<SetStateAction<string>>;
   description: string;

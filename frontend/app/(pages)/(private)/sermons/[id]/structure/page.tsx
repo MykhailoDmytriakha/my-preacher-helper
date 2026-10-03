@@ -111,7 +111,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
   }), [sermon, document.loading, document.error]);
-  if (document.readOnly && sermon) return <SermonReadOnlyContent sermon={sermon} reason={document.readOnlyReason} structure />;
+  if (document.readOnly && sermon) return <SermonReadOnlyContent sermon={sermon} structure />;
   return <StructureWriterContext.Provider value={writer}>
     <StructureBoard sermonId={sermonId} engine={engine} holdingRef={holdingRef} syncStatus={<DataSyncStatus
       status={document.status} error={document.error} onRetry={document.retry}

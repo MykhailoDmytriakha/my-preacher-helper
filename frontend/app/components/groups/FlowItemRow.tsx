@@ -13,7 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
 const STATUS_DOT: Record<string, string> = {
@@ -74,9 +74,6 @@ export default function FlowItemRow({
     };
 
     const statusDot = STATUS_DOT[template.status] ?? STATUS_DOT.empty;
-    const displayTitle = flowItem.instanceTitle || template.title;
-    const contentSnippet = template.content?.trim();
-    const notesSnippet = flowItem.instanceNotes?.trim();
 
     const closeMenu = useCallback(() => setMenuOpen(false), []);
 
@@ -146,46 +143,8 @@ export default function FlowItemRow({
                 {index + 1}
             </span>
 
-            {/* Content area */}
-            <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-                        {displayTitle}
-                    </span>
-                </div>
-                {contentSnippet && (
-                    /*
-                     * Block content is Markdown from the rich editor — rendered here as on the meeting
-                     * screen, at the row's caption size. The renderer gives headings and lists classes of
-                     * their own, so the row restates them for its descendants instead of the wrapper.
-                     * A link in it opens its page and leaves the row as it was.
-                     */
-                    <div
-                        role="presentation"
-                        onClick={(event) => {
-                            if ((event.target as HTMLElement).closest('a')) event.stopPropagation();
-                        }}
-                    >
-                        <MarkdownDisplay
-                            content={contentSnippet}
-                            compact
-                            className="mt-0.5 !text-xs !text-gray-500 dark:!text-gray-400 [&_h3]:!my-0.5 [&_h3]:!text-xs [&_h4]:!my-0.5 [&_h4]:!text-xs [&_h5]:!my-0.5 [&_h5]:!text-xs [&_h6]:!my-0.5 [&_h6]:!text-xs [&_li]:my-0 [&_ol]:!my-0.5 [&_p]:my-0.5 [&_ul]:!my-0.5"
-                        />
-                    </div>
-                )}
-                {notesSnippet && (
-                    <p className="mt-0.5 text-xs italic text-indigo-500 dark:text-indigo-400 line-clamp-2">
-                        {notesSnippet}
-                    </p>
-                )}
-            </div>
-
-            {/* Duration badge */}
-            {flowItem.durationMin && (
-                <span className="flex-shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                    {flowItem.durationMin}{t('groupFlow.stats.duration', { defaultValue: 'm' })}
-                </span>
-            )}
+            {/* Title, content, notes and duration — the same summary the reading view shows */}
+            <FlowItemSummary flowItem={flowItem} template={template} />
 
             {/* Three-dot menu */}
             <div ref={menuRef} className="relative flex-shrink-0">

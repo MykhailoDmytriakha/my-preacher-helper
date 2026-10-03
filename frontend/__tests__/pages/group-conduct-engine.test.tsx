@@ -37,6 +37,16 @@ it('allows starting an unchanged setup without submitting a redundant write', as
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount();
 });
+it('runs the meeting from the blocks it started with when another device removes one mid-meeting', async () => {
+  const { harness, view } = setup();
+  const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });
+  await waitFor(() => expect(start).toBeEnabled());
+  fireEvent.click(start);
+  expect(await screen.findByText('Conducting now')).toBeInTheDocument();
+  await act(async () => { await harness.remote({ templates: [] }); });
+  expect(screen.getByText('Conducting now')).toBeInTheDocument();
+  view.unmount();
+});
 it('keeps duration typing unsent and conflicts against the pinned opening value on Start', async () => {
   const { harness, view } = setup();
   const duration = await screen.findByDisplayValue('5');
@@ -86,7 +96,7 @@ it('starts with the final durable duration when Start precedes the React echo', 
 });
 
 
-it('reads prepared meeting blocks during silent storage and restores setup without sending a write', async () => {
+it('conducts the meeting from a copy for reading during silent storage, and keeps it going when storage returns', async () => {
   const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
   jest.useFakeTimers(); resetDeviceStorageForTests();
   const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
@@ -105,12 +115,24 @@ it('reads prepared meeting blocks during silent storage and restores setup witho
   const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
   void trackStorage('engine-state', new Promise(() => undefined));
   await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
-  await screen.findByText('Read this during the meeting');
-  expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /conduct.preflight.startButton/ })).not.toBeInTheDocument();
+  // The meeting setup itself, not a document standing in for it: the block, its saved duration
+  // (locked — there is nowhere to keep a change), the reason said once, and Start ready.
+  await screen.findByText('Reading');
+  const [meetingTotal, blockDuration] = screen.getAllByRole('spinbutton');
+  expect(blockDuration).toHaveValue(5);
+  expect(blockDuration).toBeDisabled();
+  // The meeting's own total lives in this page only, so it stays available.
+  expect(meetingTotal).toBeEnabled();
+  expect(screen.getByRole('status')).toHaveTextContent('dataSync.readOnly.storage');
+  const start = screen.getByRole('button', { name: /conduct.preflight.startButton/ });
+  expect(start).toBeEnabled();
+  await act(async () => { fireEvent.click(start); await jest.advanceTimersByTimeAsync(0); });
+  expect(screen.getByText('Conducting now')).toBeInTheDocument();
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
   expect(harness.transport.send).not.toHaveBeenCalled();
+  // Storage answers in the middle of the meeting: the meeting goes on where it was.
   await act(async () => { finishOpening(); await settleEngine(); });
-  await waitFor(() => expect(screen.getByRole('button', { name: /conduct.preflight.startButton/ })).toBeEnabled());
+  expect(screen.getByText('Conducting now')).toBeInTheDocument();
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
 });

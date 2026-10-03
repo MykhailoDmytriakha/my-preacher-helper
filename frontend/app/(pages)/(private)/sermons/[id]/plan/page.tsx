@@ -154,7 +154,7 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const writer = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
-  if (document.readOnly && source.sermon && !preaching) return <SermonReadOnlyContent sermon={source.sermon} reason={document.readOnlyReason} />;
+  if (document.readOnly && source.sermon && !preaching) return <SermonReadOnlyContent sermon={source.sermon} />;
   return <PlanWriterContext.Provider value={writer}>
     <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>

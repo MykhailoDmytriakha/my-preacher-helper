@@ -9,15 +9,17 @@ import { readPlanText, renderPlanWithFallback } from '@/utils/planText';
 
 import type { Sermon } from '@/models/models';
 
-/** Presentation only. Never mount a draft editor against a copy that cannot accept writes. */
-export function SermonReadOnlyContent({ sermon, reason, structure = false }: {
-  sermon: Sermon; reason?: string | null; structure?: boolean;
+/**
+ * Presentation only. Never mount a draft editor against a copy that cannot accept writes.
+ * Why editing is off is said once, for the whole app, by DeviceStorageNotice; not repeated here.
+ */
+export function SermonReadOnlyContent({ sermon, structure = false }: {
+  sermon: Sermon; structure?: boolean;
 }) {
   const { t } = useTranslation();
   const plan = renderPlanWithFallback(sermon, readPlanText(sermon));
   return <article className="space-y-6 p-5">
     <Link href={`/sermons/${encodeURIComponent(sermon.id)}`}>{t('navigation.sermons')}</Link>
-    <p role="status">{reason}</p>
     <h1 className="text-2xl font-bold">{sermon.title}</h1>
     <p>{sermon.verse}</p>
     {structure ? <>
