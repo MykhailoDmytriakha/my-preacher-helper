@@ -294,6 +294,22 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Group')).toBeInTheDocument();
   });
 
+  it('should label the meeting segment instead of echoing the route', () => {
+    mockUsePathname.mockReturnValue('/groups/test-group-id/conduct');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: { id: 'test-group-id', title: 'Family Group #1' } });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Meeting')).toBeInTheDocument();
+    expect(screen.queryByText('Conduct')).not.toBeInTheDocument();
+  });
+
   it('should humanize unknown segments into title-cased crumbs', () => {
     mockUsePathname.mockReturnValue('/unknown/foo-bar');
     mockUseSearchParams.mockReturnValue({

@@ -82,6 +82,11 @@ const segmentLabels: Record<string, SegmentConfig> = {
     labelKey: 'navigation.breadcrumb.manual',
     defaultLabel: 'By hand',
   },
+  // Same for the meeting screens of a group and a council: the trail read "… / Conduct".
+  conduct: {
+    labelKey: 'navigation.breadcrumb.conduct',
+    defaultLabel: 'Meeting',
+  },
   series: {
     labelKey: 'navigation.series',
     defaultLabel: 'Series',

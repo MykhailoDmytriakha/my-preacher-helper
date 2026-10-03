@@ -275,7 +275,8 @@
       "sermon": "Sermon",
       "plan": "Plan",
       "preaching": "Preaching",
-      "manual": "By hand"
+      "manual": "By hand",
+      "conduct": "Meeting"
     },
     "tooltip": {
       "swipe": "💡 Tip: Swipe right to go back, or use breadcrumbs above"
