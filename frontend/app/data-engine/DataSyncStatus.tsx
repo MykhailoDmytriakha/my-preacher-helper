@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -38,8 +38,9 @@ export interface DataSyncStatusProps {
 export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
   const scope = useMemo(() => ({ onKeepLocal, onAcceptRemote, onRetry, onRecover }), [onKeepLocal, onAcceptRemote, onRetry, onRecover]);
-  const currentScope = useRef<object>(scope); currentScope.current = scope;
-  useEffect(() => { currentScope.current = scope; return () => { currentScope.current = {}; }; }, [scope]);
+  // The callbacks shown on screen now; set at commit, so a render React throws away never moves it.
+  const currentScope = useRef<object>(scope);
+  useLayoutEffect(() => { currentScope.current = scope; return () => { currentScope.current = {}; }; }, [scope]);
   const [action, setAction] = useState<{ scope: object; busy: boolean; error: string | null } | null>(null);
   const running = useRef<object | null>(null);
   const [selectedId, setSelectedId] = useState('');
@@ -52,7 +53,10 @@ export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onR
     if (running.current === scope) return;
     running.current = scope;
     setAction({ scope, busy: true, error: null });
-    void Promise.resolve().then(() => { if (currentScope.current === scope) return callback(); }).then(() => {
+    // The click runs the callback the person saw. Screens pass fresh callbacks on every render, so a
+    // re-render before the start is not a different subject; a stale one refuses inside the callback.
+    // Only reporting is limited to the callbacks still shown: a late result of replaced ones stays quiet.
+    void Promise.resolve().then(callback).then(() => {
       if (currentScope.current === scope) setAction({ scope, busy: false, error: null });
     }, caught => {
       if (currentScope.current === scope) setAction({ scope, busy: false, error: caught instanceof Error ? caught.message : t('dataSync.actionFailed') });

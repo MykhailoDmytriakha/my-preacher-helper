@@ -61,6 +61,26 @@ describe('DataSyncStatus', () => {
     await act(async () => { await Promise.resolve(); }); expect(accept).toHaveBeenCalledTimes(1);
   });
 
+  it('does the action that was clicked even when the screen re-renders before it starts', async () => {
+    // Screens pass fresh callbacks on every render. A re-render between the click and the start
+    // of the action (the engine still reporting while the person clicks) used to drop the click.
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    const keep = jest.fn(), accept = jest.fn(), keepNext = jest.fn(), acceptNext = jest.fn();
+    const { rerender } = render(<DataSyncStatus status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+      rerender(<DataSyncStatus status={conflict} onKeepLocal={keepNext} onAcceptRemote={acceptNext} />);
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(keep).toHaveBeenCalledTimes(1); expect(keepNext).not.toHaveBeenCalled();
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs }));
+      rerender(<DataSyncStatus status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(acceptNext).toHaveBeenCalledTimes(1); expect(accept).not.toHaveBeenCalled();
+  });
+
   it('keeps refusal correction and remote acceptance separate from conflict detection', async () => {
     const keep = jest.fn(), accept = jest.fn();
     const { rerender } = render(<DataSyncStatus status={status('refused', { canKeepLocal: true })} onKeepLocal={keep} />);

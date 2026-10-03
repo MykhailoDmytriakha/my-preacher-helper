@@ -134,12 +134,15 @@ it('keeps one submitted proposal identity across offline restart', async () => {
 });
 
 it.each(['local', 'remote'] as const)('resolves a changed source with the explicit %s choice as a complete action', async choice => {
-  const { harness, view } = setup(); await ready(); await generate();
+  const { harness, view, Workspace } = setup(); await ready(); await generate();
   const scratch = [{ id: 'note', text: 'Remote correction', createdAt: '2026-09-22' }];
   harness.replace({ ...original, metadata: { ...original.metadata!, revision: 2 }, value: { ...original.value!, scratch } });
   await deliver(harness); await save(); await deliver(harness);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('Generated heading');
-  fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' })); await deliver(harness);
+  const resolution = await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  // The engine may still be reporting when the person clicks — the build machine hit it now and then,
+  // and the choice was dropped. Re-render in the same step so every run checks it.
+  act(() => { fireEvent.click(resolution); view.rerender(<Workspace />); }); await deliver(harness);
   if (choice === 'remote') {
     expect(harness.read(resource).value).toMatchObject({ scratch, outline: original.value!.outline });
     // The store settles before React commits the discarded stage; on a busy machine the render lags
