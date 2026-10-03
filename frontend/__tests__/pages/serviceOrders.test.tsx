@@ -174,6 +174,19 @@ describe('Orders of service', () => {
       expect(screen.getByRole('button', { name: /serviceOrders\.dragHandle.*Погребение/ })).toBeInTheDocument();
     });
 
+    /*
+     * A FINGER ON THE HANDLE DRAGS, IT DOES NOT SCROLL (BUG-20260911-service-orders-drag-pickup-drop).
+     * Without `touch-action: none` the browser takes a touch on the handle for a page scroll and
+     * the pickup fails on a tablet; the move itself is placed before saving (test above).
+     */
+    it('keeps the page from scrolling under a finger on a handle', () => {
+      render(<ServiceOrdersPage />);
+      enterReorder();
+      for (const handle of screen.getAllByRole('button', { name: /serviceOrders\.dragHandle/ })) {
+        expect(handle).toHaveClass('touch-none');
+      }
+    });
+
     it('puts the controls away again when done', () => {
       render(<ServiceOrdersPage />);
       enterReorder();
