@@ -123,6 +123,8 @@ it('reads a series during silent storage without mutation controls, then restore
   await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
   await screen.findByRole('heading', { name: 'a', level: 1 });
   expect(screen.getByRole('heading', { name: 'Meeting' })).toBeInTheDocument();
+  // DeviceStorageNotice says why, once for the whole app; the screen does not repeat it.
+  expect(screen.queryByText('dataSync.readOnly.storage')).not.toBeInTheDocument();
   for (const name of ['workspaces.series.editSeries', 'workspaces.series.deleteSeries', 'workspaces.series.actions.addGroup', 'workspaces.series.actions.addSermon', 'workspaces.series.actions.reorder']) {
     expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
   }

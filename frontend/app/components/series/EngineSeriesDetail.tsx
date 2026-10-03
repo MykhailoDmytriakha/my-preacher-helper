@@ -74,7 +74,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   return <SeriesDetailView readOnly={document.readOnly} series={series} items={items} onBack={() => router.push('/series')}
     onAddSermons={() => setMembership({ mode: 'sermon' })} onAddGroups={() => setMembership({ mode: 'group' })}
     onEdit={() => setEditing(true)} onDelete={() => setDeleting(true)} onRefresh={() => { void refresh().catch(() => undefined); }}
-    feedback={<>{document.readOnly && <p role="status">{document.readOnlyReason}</p>}{sync}
+    feedback={<>{sync}
       {!document.readOnly && !editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
         <DataSyncStatus status={metadata.dirty ? metadata.status : null} error={metadata.error}
