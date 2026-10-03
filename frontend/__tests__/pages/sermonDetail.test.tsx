@@ -1836,6 +1836,41 @@ describe('Sermon Detail Page', () => {
       await user.click(restore);
       expect(screen.queryByTestId('restore-prep-draft')).not.toBeInTheDocument();
     }, 15_000);
+
+    it('keeps the leftover backup when the device refuses to store its new copy', async () => {
+      // Retiring the old key before the new copy landed left the text in neither place.
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: { ...defaultUseSermonReturn.sermon, preparation: {} },
+      });
+      const legacy = JSON.stringify({ authorIntent: 'text from a failed save' });
+      const store = new Map<string, string>([['prep-draft-backup-sermon-123', legacy]]);
+      mockLocalStorage.getItem.mockImplementation((key: string) => {
+        if (key === 'sermon-sermon-123-mode') return 'prep';
+        return store.get(key) ?? null;
+      });
+      mockLocalStorage.setItem.mockImplementation((key: string, value: string) => {
+        if (key.startsWith('draft:')) throw new DOMException('quota', 'QuotaExceededError');
+        store.set(key, value);
+      });
+      mockLocalStorage.removeItem.mockImplementation((key: string) => {
+        store.delete(key);
+      });
+      jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(screen.queryByTestId('save-context-notes')).toBeInTheDocument());
+      expect(store.get('prep-draft-backup-sermon-123')).toBe(legacy);
+      expect(mockLocalStorage.removeItem).not.toHaveBeenCalledWith('prep-draft-backup-sermon-123');
+      jest.mocked(console.error).mockRestore();
+    }, 15_000);
   });
 
   describe('Open thought editor outline freshness', () => {

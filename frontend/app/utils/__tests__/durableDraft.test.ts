@@ -1,20 +1,29 @@
-import {
-  clearDraft,
-  clearDraftIfMatches,
-  clearDraftsForOwner,
-  draftKey,
-  isDraftStorageRefused,
-  listDraftKeys,
-  moveDraft,
-  readDraft,
-  saveDraft,
-} from '@/utils/durableDraft';
+type DurableDraftModule = typeof import('@/utils/durableDraft');
+
+let clearDraft: DurableDraftModule['clearDraft'];
+let clearDraftIfMatches: DurableDraftModule['clearDraftIfMatches'];
+let clearDraftsForOwner: DurableDraftModule['clearDraftsForOwner'];
+let draftKey: DurableDraftModule['draftKey'];
+let isDraftStorageRefused: DurableDraftModule['isDraftStorageRefused'];
+let listDraftKeys: DurableDraftModule['listDraftKeys'];
+let moveDraft: DurableDraftModule['moveDraft'];
+let readDraft: DurableDraftModule['readDraft'];
+let saveDraft: DurableDraftModule['saveDraft'];
+
+// A fresh module for every test. Which drafts are owed a copy lives in the module, not in
+// localStorage, so a refusal left by one test (one that failed before its cleanup, or one that
+// ends refused on purpose) would let the next "still warns" check pass on the leftover.
+beforeEach(() => {
+  window.localStorage.clear();
+  jest.isolateModules(() => {
+    ({ clearDraft, clearDraftIfMatches, clearDraftsForOwner, draftKey, isDraftStorageRefused, listDraftKeys,
+      moveDraft, readDraft, saveDraft } = jest.requireActual<DurableDraftModule>('@/utils/durableDraft'));
+  });
+});
+
+afterEach(() => { jest.restoreAllMocks(); });
 
 describe('durableDraft', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
-  });
-
   it('round-trips a value', () => {
     const key = draftKey('uid-1', 'note-1', 'note');
     saveDraft(key, { title: 'hello' });
@@ -169,13 +178,88 @@ describe('durableDraft', () => {
     }
 
     expect(readDraft(draftKey('u1', 'sermon-1', 'conflict:core'))).not.toBeNull();
+    clearDraft(draftKey('u1', 'note-2', 'note'));
   });
 
 });
 
 describe('moveDraft — a new note keeps a durable home while its id changes', () => {
-  beforeEach(() => {
-    window.localStorage.clear();
+  it('does not let an older copy landing under the destination settle the text refused there', () => {
+    const from = draftKey('u1', 'new', 'note'), to = draftKey('u1', 'real-id', 'note');
+    saveDraft(from, { title: 'A' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft(to, { title: 'C' }); // the text written under the real id has no copy
+    setItem.mockRestore();
+
+    moveDraft(from, to); // A lands under the real id; it proves nothing about C
+
+    expect(readDraft(to)?.value).toEqual({ title: 'A' });
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraftIfMatches(to, { title: 'C' });
+    expect(isDraftStorageRefused()).toBe(false);
+  });
+
+  it('settles the debt of a carry that could not be written once that text is confirmed under the new key', () => {
+    const from = draftKey('u1', 'new', 'note'), to = draftKey('u1', 'real-id', 'note');
+    saveDraft(from, { title: 'A' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft(from, { title: 'B' });
+    moveDraft(from, to); // no room for the copy: the placeholder keeps A
+    setItem.mockRestore();
+
+    expect(readDraft(from)?.value).toEqual({ title: 'A' });
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraftIfMatches(to, { title: 'B' }); // B is saved under the note's real id
+    expect(isDraftStorageRefused()).toBe(false);
+  });
+
+  it('keeps warning while the placeholder still owes a text the destination owes another one for', () => {
+    // Two texts owed for one key cannot both live under it; neither may be dropped.
+    const from = draftKey('u1', 'new', 'note'), to = draftKey('u1', 'real-id', 'note');
+    saveDraft(from, { title: 'A' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft(to, { title: 'C' });
+    saveDraft(from, { title: 'B' });
+    setItem.mockRestore();
+
+    moveDraft(from, to);
+    clearDraftIfMatches(to, { title: 'C' });
+
+    expect(isDraftStorageRefused()).toBe(true); // B is still neither stored nor confirmed
+  });
+
+  it('settles the debt of exactly the text the carry has just protected', () => {
+    const from = draftKey('u1', 'new', 'note'), to = draftKey('u1', 'real-id', 'note');
+    saveDraft(from, { title: 'A' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft(from, { title: 'A' }); // an unchanged text flushed again and refused
+    setItem.mockRestore();
+
+    moveDraft(from, to);
+
+    expect(readDraft(to)?.value).toEqual({ title: 'A' });
+    expect(isDraftStorageRefused()).toBe(false);
+  });
+
+  it('keeps owing the refused newer text when the older stored copy moves to the new key', () => {
+    const from = draftKey('u1', 'new', 'note'), to = draftKey('u1', 'real-id', 'note');
+    saveDraft(from, { title: 'A' });
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    saveDraft(from, { title: 'B' }); // B has no durable copy anywhere
+    setItem.mockRestore();
+
+    moveDraft(from, to);
+
+    expect(readDraft(to)?.value).toEqual({ title: 'A' });
+    expect(readDraft(from)).toBeNull();
+    expect(isDraftStorageRefused()).toBe(true);
+    clearDraftIfMatches(to, { title: 'B' }); // B is confirmed under the note's real id
+    expect(isDraftStorageRefused()).toBe(false);
   });
 
   it('carries the record to the new key and retires the old one', () => {

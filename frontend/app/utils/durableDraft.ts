@@ -195,24 +195,48 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
  */
 export function moveDraft(fromKey: string, toKey: string): void {
   if (fromKey === toKey) return;
+  // What the document is owed moves with it whether or not its stored copy can: the refused text
+  // will be stored or confirmed under the new key, and only there can it settle the debt.
+  carryRefusal(fromKey, toKey);
   const stored = readDraft<unknown>(fromKey);
-  if (!stored) {
-    // A copy the browser refused has nothing to move — but the debt moves with the document,
-    // or confirming the text under its new key would never retire it.
-    const owed = refusedDraftKeys.get(fromKey);
-    if (owed !== undefined) {
-      refusedDraftKeys.delete(fromKey);
-      refusedDraftKeys.set(toKey, owed);
-    }
-    return;
-  }
-  saveDraft(toKey, stored.value);
-  // VERIFY THE COPY LANDED. `saveDraft` never throws — out of room it logs and
-  // gives up — so clearing the source on faith would leave the text with no durable
-  // copy at all, which is worse than not moving it.
+  if (!stored) return;
+  // Copied as it is, without settling anything: an older stored text landing under the new key
+  // proves nothing about a newer text the browser refused there.
+  if (!writeStoredDraft(toKey, stored)) return;
+  // VERIFY THE COPY LANDED before the source goes: clearing it on faith would leave the text
+  // with no durable copy at all, which is worse than not moving it.
   const carried = readDraft<unknown>(toKey);
   if (!carried || serializeContent(carried.value) !== serializeContent(stored.value)) return;
-  clearDraft(fromKey);
+  removeStoredDraft(fromKey);
+  // The carried text itself is now kept under the new key: a debt for exactly that text is settled.
+  if (refusedDraftKeys.get(toKey) === serializeContent(stored.value)) recordDraftStorage(toKey, false);
+}
+
+/** Write a stored record unchanged; says whether the browser kept it. Debts are not touched. */
+function writeStoredDraft(key: string, stored: DurableDraft<unknown>): boolean {
+  const store = storage();
+  if (!store) return false;
+  try {
+    store.setItem(key, JSON.stringify(stored));
+    return true;
+  } catch {
+    console.error('durableDraft: no room to carry', key);
+    return false;
+  }
+}
+
+/**
+ * Move what a key is owed to the key its document now lives under. When the destination already
+ * owes a text of its own, the two cannot share one key and neither may be dropped: the placeholder's
+ * debt stays where it is, so the notice stays up — a warning too many is safe, one too few loses
+ * text. (A created note always gets a fresh id today, so its destination owes nothing yet.)
+ */
+function carryRefusal(fromKey: string, toKey: string): void {
+  const owed = refusedDraftKeys.get(fromKey);
+  if (owed === undefined || refusedDraftKeys.has(toKey)) return;
+  // One key's debt becomes another's: the notice does not change and nobody needs telling.
+  refusedDraftKeys.delete(fromKey);
+  refusedDraftKeys.set(toKey, owed);
 }
 
 /**

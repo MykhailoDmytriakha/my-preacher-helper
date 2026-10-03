@@ -547,7 +547,8 @@ useEffect(() => {
     if (legacy) {
       const parsed = JSON.parse(legacy) as Preparation;
       if (!readDraft<Preparation>(key)) saveDraft(key, parsed);
-      localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
+      // The old key goes only once the new store holds a copy: a refused write must not leave none.
+      if (readDraft<Preparation>(key)) localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
     }
   } catch { }
 

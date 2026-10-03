@@ -51,6 +51,9 @@ const render = (props: {
 beforeEach(() => {
   jest.useFakeTimers();
   window.localStorage.clear();
+  // Refusals live in the draft module, not in localStorage: a test that failed before its cleanup
+  // must fail the next one loudly rather than let its "still warns" check pass on the leftover.
+  expect(isDraftStorageRefused()).toBe(false);
 });
 
 afterEach(() => {
