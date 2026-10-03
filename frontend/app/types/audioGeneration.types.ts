@@ -69,21 +69,12 @@ export interface GoogleVoiceOption {
     tone: string;
 }
 
-/** Audio quality levels */
-export type AudioQuality = 'standard' | 'hd';
-
 /**
  * Source of the audio text:
  * - 'ai'  — GPT-optimized for natural speech (references expanded, numbers spelled out, markdown stripped)
  * - 'raw' — the original sermon text as-is, only mechanically split into TTS-sized chunks
  */
 export type AudioSourceMode = 'ai' | 'raw';
-
-/** Quality to model mapping */
-export const QUALITY_MODEL_MAP: Record<AudioQuality, string> = {
-    standard: 'tts-1',
-    hd: 'tts-1-hd',
-} as const;
 
 /** Default TTS model for cost-effective generation */
 export const DEFAULT_TTS_MODEL = 'gpt-4o-mini-tts';
@@ -169,8 +160,6 @@ export interface GenerateAudioRequest {
     provider?: TTSProvider;
     /** Voice to use for TTS */
     voice: TTSVoice | GoogleTTSVoice;
-    /** Audio quality (maps to TTS model) */
-    quality: AudioQuality;
     /** Explicit model override, used by Google/Gemini TTS */
     model?: string;
     /** Sections to include (default: all) — single key, 'all', or an array of keys */
@@ -273,8 +262,6 @@ export interface AudioExportModalState {
     isOpen: boolean;
     /** Selected voice */
     voice: TTSVoice;
-    /** Selected quality */
-    quality: AudioQuality;
     /** Selected Google/Gemini TTS model */
     googleModel: GoogleTTSModel;
     /** Selected Google/Gemini voice */
@@ -294,7 +281,6 @@ export const INITIAL_AUDIO_EXPORT_STATE: AudioExportModalState = {
     provider: 'openai',
     isOpen: false,
     voice: 'onyx',
-    quality: 'standard',
     googleModel: 'gemini-3.1-flash-tts',
     googleVoice: 'Kore',
     sections: 'all',

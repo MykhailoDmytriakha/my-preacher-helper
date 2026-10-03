@@ -34,7 +34,6 @@ import type { Sermon } from '@/models/models';
 import type {
     AudioChunk,
     TTSVoice,
-    AudioQuality,
     TTSProvider,
     GoogleTTSVoice,
 } from '@/types/audioGeneration.types';
@@ -308,13 +307,12 @@ export async function POST(
                 { status: 400 }
             );
         }
-        const quality: AudioQuality = body.quality === 'hd' ? 'hd' : 'standard';
         const selectedModel = provider === 'google'
             ? getGoogleModel(requestedTarget.modelId)
             : requestedTarget.modelId;
 
         console.log(`[TTS] Starting audio generation for sermon ${sermonId}`);
-        console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, catalogModel=${requestedTarget.modelId}, runtimeModel=${selectedModel}, quality=${quality}, sections=${sections}`);
+        console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, catalogModel=${requestedTarget.modelId}, runtimeModel=${selectedModel}, sections=${sections}`);
 
         // 2. Check for saved chunks
         let chunks = (sermon.audioChunks || []) as AudioChunk[];

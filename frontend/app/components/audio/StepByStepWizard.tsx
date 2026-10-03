@@ -29,6 +29,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/hooks/useAuth';
@@ -38,7 +39,6 @@ import {
     AVAILABLE_VOICES,
     SERMON_SECTIONS,
     AudioChunk,
-    AudioQuality,
     AudioSourceMode,
     GoogleTTSModel,
     GoogleTTSVoice,
@@ -134,6 +134,15 @@ export interface StepByStepWizardProps {
 const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts';
 const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-tts';
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
+/**
+ * The OpenAI voice samples were recorded before gpt-4o-mini-tts (with tts-1, "standard"), and a
+ * quality switch once chose between them. The model alone decides the sound now; the samples
+ * people heard by default stay.
+ */
+const OPENAI_SAMPLE_VARIANT = 'standard';
+/** Every voice model the app offers, in the order Settings shows them; the plan decides which are open. */
+const TTS_CATALOG = getFunctionCatalog('tts');
+const providerIdOf = (provider: TTSProvider) => (provider === 'google' ? 'gemini' : 'openai');
 
 /** Curated male voices for Google TTS, ordered youngest → oldest sounding. */
 const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string; descDefault: string }[] = [
@@ -232,7 +241,6 @@ export default function StepByStepWizard({
     // Settings
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
     const [voice, setVoice] = useState<TTSVoice>('onyx');
-    const [quality, setQuality] = useState<AudioQuality>('standard');
     const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_31);
     const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
     const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
@@ -366,7 +374,7 @@ export default function StepByStepWizard({
 
     // ------------------------------------------------------------------
     // Voice preview (samples in /public/samples)
-    //   OpenAI:  {voice}-{quality}-{lang}.mp3
+    //   OpenAI:  {voice}-standard-{lang}.mp3  (see OPENAI_SAMPLE_VARIANT)
     //   Google:  {voice}-{modelShort}-{lang}.wav   (per Gemini 3.1 / 2.5)
     // ------------------------------------------------------------------
     const togglePreview = useCallback((voiceId: string) => {
@@ -382,7 +390,7 @@ export default function StepByStepWizard({
         const fileLang = ['en', 'ru', 'uk'].includes(lang) ? lang : 'en';
         const url = ttsProvider === 'google'
             ? `/samples/${voiceId}-${googleModelShort(googleModel)}-${fileLang}.wav`
-            : `/samples/${voiceId}-${quality}-${fileLang}.mp3`;
+            : `/samples/${voiceId}-${OPENAI_SAMPLE_VARIANT}-${fileLang}.mp3`;
 
         const audio = new Audio(url);
         audio.volume = 0.8;
@@ -395,11 +403,11 @@ export default function StepByStepWizard({
         audio.play().catch(e => console.error('Playback failed', e));
         audioRef.current = audio;
         setPlayingPreview(voiceId);
-    }, [playingPreview, ttsProvider, googleModel, quality, t, i18n.language]);
+    }, [playingPreview, ttsProvider, googleModel, t, i18n.language]);
 
     useEffect(() => () => { audioRef.current?.pause(); }, []);
-    // Stop any preview when provider/model/quality changes (the sample URL changes).
-    useEffect(() => { audioRef.current?.pause(); setPlayingPreview(null); }, [ttsProvider, googleModel, quality, voice, googleVoice]);
+    // Stop any preview when provider/model/voice changes (the sample URL changes).
+    useEffect(() => { audioRef.current?.pause(); setPlayingPreview(null); }, [ttsProvider, googleModel, voice, googleVoice]);
 
     // ------------------------------------------------------------------
     // Generate one request's worth of audio (a batch of chunks) and return its
@@ -729,7 +737,6 @@ export default function StepByStepWizard({
         const baseBody: Record<string, unknown> = {
             provider: ttsProvider,
             voice: isGoogle ? googleVoice : voice,
-            quality,
             model: isGoogle ? googleModel : OPENAI_TTS_MODEL,
             sections,
             // The text on screen for these sections: generation reads the database and makes audio
@@ -783,7 +790,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, t]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
@@ -870,10 +877,25 @@ export default function StepByStepWizard({
             { id: 'openai', label: t('audioExport.providerOpenai', { defaultValue: 'OpenAI' }), sub: t('audioExport.providerOpenaiSub', { defaultValue: 'Onyx · Echo' }) },
             { id: 'google', label: t('audioExport.providerGoogle', { defaultValue: 'Google' }), sub: t('audioExport.providerGoogleSub', { defaultValue: 'Gemini · 4 голоса' }) },
         ];
-        const providerOptions = allProviderOptions.filter(option => availableTtsTargets.some(target =>
-            target.providerId === (option.id === 'google' ? 'gemini' : 'openai')));
-        const selectedProviderId = ttsProvider === 'google' ? 'gemini' : 'openai';
-        const modelOptions = availableTtsTargets.filter(target => target.providerId === selectedProviderId);
+        // The whole catalog is shown; what the plan does not open is visible, marked paid and inert,
+        // exactly as in Settings (ModelSelector).
+        const isOpenForPlan = (target: { providerId: string; modelId: string }) => availableTtsTargets.some(open =>
+            open.providerId === target.providerId && open.modelId === target.modelId);
+        const providerOptions = allProviderOptions.map(option => ({
+            ...option,
+            locked: !TTS_CATALOG.some(entry => entry.providerId === providerIdOf(option.id) && isOpenForPlan(entry)),
+        }));
+        // The chosen provider's models, then every model the plan keeps closed elsewhere — so a free
+        // plan sees what a paid one would open, while a plan with everything open sees one provider.
+        const modelOptions = [
+            ...TTS_CATALOG.filter(entry => entry.providerId === providerIdOf(ttsProvider)),
+            ...TTS_CATALOG.filter(entry => entry.providerId !== providerIdOf(ttsProvider) && !isOpenForPlan(entry)),
+        ].map(entry => ({ ...entry, locked: !isOpenForPlan(entry) }));
+        const paidChip = (
+            <span className="mt-1 inline-block rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10.5px] font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                {t('settings.modelSelector.paidLocked')}
+            </span>
+        );
 
         return (
             <div className="space-y-6">
@@ -887,15 +909,19 @@ export default function StepByStepWizard({
                                 return (
                                     <button
                                         key={p.id}
+                                        type="button"
                                         onClick={() => setProvider(p.id)}
-                                        className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                        disabled={p.locked}
+                                        aria-pressed={sel}
+                                        className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL} ${p.locked ? 'cursor-default opacity-60' : ''}`}
                                     >
                                         <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${sel ? 'border-orange-500' : 'border-gray-300 dark:border-gray-600'}`}>
                                             {sel && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />}
                                         </span>
-                                        <span className="flex flex-col leading-tight">
+                                        <span className="flex flex-col items-start leading-tight">
                                             <span>{p.label}</span>
                                             <span className={`text-[11px] font-medium ${mutedDescClass(sel)}`}>{p.sub}</span>
+                                            {p.locked && paidChip}
                                         </span>
                                     </button>
                                 );
@@ -910,9 +936,9 @@ export default function StepByStepWizard({
                             <div className="flex flex-wrap gap-2">
                                 {modelOptions.map(model => {
                                     const isGoogleModel = model.providerId === 'gemini';
-                                    const selected = isGoogleModel
-                                        ? googleModel === model.modelId
-                                        : ttsProvider === 'openai';
+                                    const selected = !model.locked && (isGoogleModel
+                                        ? ttsProvider === 'google' && googleModel === model.modelId
+                                        : ttsProvider === 'openai');
                                     const defaultLabel = model.modelId === GOOGLE_MODEL_GEMINI_31
                                         ? 'Gemini 3.1 TTS'
                                         : model.modelId === GOOGLE_MODEL_GEMINI_25
@@ -930,34 +956,13 @@ export default function StepByStepWizard({
                                             onClick={() => {
                                                 if (isGoogleModel) setGoogleModel(model.modelId as GoogleTTSModel);
                                             }}
-                                            className={`rounded-lg border px-3 py-2 text-left transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                            disabled={model.locked}
+                                            aria-pressed={selected}
+                                            className={`rounded-lg border px-3 py-2 text-left transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL} ${model.locked ? 'cursor-default opacity-60' : ''}`}
                                         >
                                             <span className="block text-sm font-semibold leading-tight">{defaultLabel}</span>
                                             <span className={`block text-[11px] ${mutedDescClass(selected)}`}>{description}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        <div className="flex flex-col items-start gap-2">
-                            {labelRow(t('audioExport.qualityLabel', { defaultValue: 'Quality' }))}
-                            <div className="flex flex-wrap gap-2">
-                                {(['standard', 'hd'] as AudioQuality[]).map(q => {
-                                    const selected = quality === q;
-                                    return (
-                                        <button
-                                            key={q}
-                                            type="button"
-                                            onClick={() => setQuality(q)}
-                                            className={`rounded-lg border px-3 py-2 text-left transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL}`}
-                                        >
-                                            <span className="block text-sm font-semibold leading-tight">
-                                                {q === 'standard' ? t('audioExport.qualityStandard', { defaultValue: 'Standard' }) : t('audioExport.qualityHd', { defaultValue: 'HD' })}
-                                            </span>
-                                            <span className={`block text-[11px] ${mutedDescClass(selected)}`}>
-                                                {q === 'standard' ? t('audioExport.qualityStandardDesc', { defaultValue: 'faster, cheaper' }) : t('audioExport.qualityHdDesc', { defaultValue: 'clearer sound' })}
-                                            </span>
+                                            {model.locked && paidChip}
                                         </button>
                                     );
                                 })}
@@ -1215,7 +1220,7 @@ export default function StepByStepWizard({
         const voiceLabel = ttsProvider === 'google' ? googleVoice : voice.charAt(0).toUpperCase() + voice.slice(1);
         const modelLabel = ttsProvider === 'google'
             ? (googleModel === GOOGLE_MODEL_GEMINI_31 ? 'Gemini 3.1 TTS' : 'Gemini 2.5 TTS')
-            : (quality === 'hd' ? t('audioExport.qualityHd', { defaultValue: 'HD' }) : t('audioExport.qualityStandard', { defaultValue: 'Standard' }));
+            : OPENAI_TTS_MODEL;
         const providerLabel = ttsProvider === 'google' ? t('audioExport.providerGoogle', { defaultValue: 'Google' }) : t('audioExport.providerOpenai', { defaultValue: 'OpenAI' });
         const srcLabel = mode === 'ai' ? aiSourceLabel : t('audioExport.sourceRaw', { defaultValue: 'Original as-is' });
         // Estimate from the chunks actually in the current selection (not stale stats).

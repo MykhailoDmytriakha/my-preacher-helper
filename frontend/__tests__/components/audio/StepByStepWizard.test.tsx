@@ -181,19 +181,42 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
     });
 
-    it('offers only the resolved default to free users and preselects a paid preference', async () => {
+    it('shows free users the other voice models as paid and lets them pick none of them', async () => {
         setTtsEntitlement('free', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         const { rerender } = render(<StepByStepWizard {...defaultProps} />);
 
         await waitFor(() => expect(screen.getByText('Google')).toBeInTheDocument());
-        expect(screen.queryByText('OpenAI')).not.toBeInTheDocument();
-        expect(screen.getByText(/Gemini 3\.1 TTS/)).toBeInTheDocument();
-        expect(screen.queryByText(/Gemini 2\.5 TTS/)).not.toBeInTheDocument();
+        // The plan's model is chosen; the rest of the catalog is visible, marked paid, and inert.
+        const gemini25 = screen.getByText(/Gemini 2\.5 TTS/).closest('button')!;
+        expect(gemini25).toBeDisabled();
+        expect(gemini25).toHaveTextContent('settings.modelSelector.paidLocked');
+        const openai = screen.getByText('OpenAI').closest('button')!;
+        expect(openai).toBeDisabled();
+        expect(openai).toHaveTextContent('settings.modelSelector.paidLocked');
+        // The closed provider's models are listed too, as paid.
+        const openaiModel = screen.getByText('gpt-4o-mini-tts').closest('button')!;
+        expect(openaiModel).toBeDisabled();
+        expect(openaiModel).toHaveTextContent('settings.modelSelector.paidLocked');
+        expect(openaiModel).toHaveAttribute('aria-pressed', 'false');
+        fireEvent.click(openai);
+        fireEvent.click(gemini25);
+        expect(screen.getByText(/Gemini 3\.1 TTS/).closest('button')).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByText('Puck')).toBeInTheDocument(); // still on Google voices
         expect(screen.getByText('Your plan uses the configured default voice model.')).toBeInTheDocument();
 
         setTtsEntitlement('tier2', { providerId: 'openai', modelId: 'gpt-4o-mini-tts' });
         rerender(<StepByStepWizard {...defaultProps} />);
-        expect(screen.getByText('OpenAI')).toBeInTheDocument();
+        expect(screen.getByText('OpenAI').closest('button')).toBeEnabled();
+        expect(screen.queryByText('settings.modelSelector.paidLocked')).not.toBeInTheDocument();
+        // With everything open, the model row shows the chosen provider (still Google) only, as before.
+        expect(screen.getByText(/Gemini 2\.5 TTS/).closest('button')).toBeEnabled();
+        expect(screen.queryByText('gpt-4o-mini-tts')).not.toBeInTheDocument();
+    });
+
+    it('has no quality switch: the voice model alone decides the sound, and the request carries no quality', async () => {
+        render(<StepByStepWizard {...defaultProps} />);
+        expect(screen.queryByText('Quality')).not.toBeInTheDocument();
+        expect(screen.queryByText('HD')).not.toBeInTheDocument();
     });
 
     it('generates AI-optimized text on step 2 and reveals editable chunks', async () => {
@@ -605,11 +628,11 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         });
 
         const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+        expect(JSON.parse(generateCall[1].body)).not.toHaveProperty('quality');
         expect(JSON.parse(generateCall[1].body)).toMatchObject({
             provider: 'google',
             voice: 'Charon',
             model: 'gemini-2.5-flash-tts',
-            quality: 'standard',
             sections: ['introduction'], // seed restores selection from the only chunk's section
         });
         expect(generateCall[1].headers).toMatchObject({ Authorization: 'Bearer test-token' });
