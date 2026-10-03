@@ -66,6 +66,12 @@ describe('FlowItemRow', () => {
         expect(screen.getByText('15m')).toBeInTheDocument(); // 15 + "m" from default value
     });
 
+    it('hands the block content to the Markdown renderer, not to a plain text node', () => {
+        const template = { ...mockTemplate, content: '## Opening\n\n**Pray** together' };
+        render(<FlowItemRow {...defaultProps} template={template} />);
+        expect(screen.getByTestId('markdown')).toHaveTextContent('## Opening **Pray** together');
+    });
+
     it('renders leader notes if provided', () => {
         const flowItemWithNotes = { ...mockFlowItem, instanceNotes: 'Special leader notes' };
         render(<FlowItemRow {...defaultProps} flowItem={flowItemWithNotes} />);

@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
 const STATUS_DOT: Record<string, string> = {
@@ -153,9 +154,24 @@ export default function FlowItemRow({
                     </span>
                 </div>
                 {contentSnippet && (
-                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words">
-                        {contentSnippet}
-                    </p>
+                    /*
+                     * Block content is Markdown from the rich editor — rendered here as on the meeting
+                     * screen, at the row's caption size. The renderer gives headings and lists classes of
+                     * their own, so the row restates them for its descendants instead of the wrapper.
+                     * A link in it opens its page and leaves the row as it was.
+                     */
+                    <div
+                        role="presentation"
+                        onClick={(event) => {
+                            if ((event.target as HTMLElement).closest('a')) event.stopPropagation();
+                        }}
+                    >
+                        <MarkdownDisplay
+                            content={contentSnippet}
+                            compact
+                            className="mt-0.5 !text-xs !text-gray-500 dark:!text-gray-400 [&_h3]:!my-0.5 [&_h3]:!text-xs [&_h4]:!my-0.5 [&_h4]:!text-xs [&_h5]:!my-0.5 [&_h5]:!text-xs [&_h6]:!my-0.5 [&_h6]:!text-xs [&_li]:my-0 [&_ol]:!my-0.5 [&_p]:my-0.5 [&_ul]:!my-0.5"
+                        />
+                    </div>
                 )}
                 {notesSnippet && (
                     <p className="mt-0.5 text-xs italic text-indigo-500 dark:text-indigo-400 line-clamp-2">
