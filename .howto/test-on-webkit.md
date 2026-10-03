@@ -16,4 +16,4 @@ Chrome is not a proxy for Safari: the 45-minute IndexedDB silence of 2026-10-02 
 - 2026-10-03: a page Safari freezes into the back-forward cache mid-transaction (a continuation from a request callback, i.e. any read-then-write) holds the store until Safari evicts it — 60.7 s on macOS Safari 26.5, >160 s on iPadOS 26.1, 45 min on the owner's iPad. A version-change request from a throwaway worker makes Safari evict it at once; that is the cure in `utils/deviceStorage.ts` (WebKit only: on Chrome 154 a terminated worker's blocked request stays queued and stalls later opens). Measured with this lab; details in `BUG-20260927-engine-open-hangs-on-silent-device-storage`.
 - The simulator runtime may lag the device (iOS 26.1 here vs 26.6.1 on the iPad): say which you measured.
 
-See also: `.howto/read-owner-documents.md`
+See also: `.howto/debug-on-ipad.md` · `.howto/read-owner-documents.md`
