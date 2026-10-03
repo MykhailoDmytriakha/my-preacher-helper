@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, LightBulbIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -20,7 +20,7 @@ import {
   noteSubContainerId,
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
-import { sortSubPointsByPosition } from '@/utils/subPoints';
+import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
@@ -327,10 +327,18 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     setEditingSubPointText('');
   };
 
+  // A column is its own scroll box (on a phone only a few lines of it show), so the
+  // question appears where the eye can see it, not below the fold of the column.
+  const revealWhenShown = useCallback((element: HTMLElement | null) => {
+    element?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
+
   const requestDeleteSubPoint = (outlinePointId: string, subPointId: string) => {
     if (isReadOnly) return;
     const count = getSubPointThoughtCount?.(subPointId) ?? 0;
-    if (count > 0) {
+    const subPoint = SECTIONS.flatMap((s) => points[s.key])
+      .find((p) => p.id === outlinePointId)?.subPoints?.find((sp) => sp.id === subPointId);
+    if (subPointDeletionNeedsConfirm(subPoint, count)) {
       setPendingSubPointDelete({ outlinePointId, subPointId });
     } else {
       deleteSubPoint(outlinePointId, subPointId);
@@ -499,14 +507,14 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
             autoFocus
           />
-          <button
+          <button type="button"
             onClick={() => saveSubPointEdit(point.id, sp.id)}
             className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400"
             aria-label={t(SAVE_KEY)}
           >
             <CheckIcon className="h-3.5 w-3.5" />
           </button>
-          <button
+          <button type="button"
             onClick={() => {
               setEditingSubPointId(null);
               setEditingSubPointText('');
@@ -531,14 +539,14 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         </span>
         {!isReadOnly && (
           <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/subpoint:opacity-100">
-            <button
+            <button type="button"
               onClick={() => startEditingSubPoint(sp)}
               className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
               aria-label={t('common.edit')}
             >
               <PencilIcon className="h-3.5 w-3.5" />
             </button>
-            <button
+            <button type="button"
               onClick={() => requestDeleteSubPoint(point.id, sp.id)}
               className="p-0.5 text-slate-400 hover:text-red-500 dark:text-blue-100/45 dark:hover:text-red-200"
               aria-label={t(DELETE_KEY)}
@@ -555,6 +563,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     const sorted = sortSubPointsByPosition(point.subPoints);
     const pendingDeleteForPoint =
       pendingSubPointDelete?.outlinePointId === point.id ? pendingSubPointDelete : null;
+    const pendingThoughtCount = pendingDeleteForPoint
+      ? getSubPointThoughtCount?.(pendingDeleteForPoint.subPointId) ?? 0
+      : 0;
     const showWrapper = sorted.length > 0 || addingSubPointTo === point.id || pendingDeleteForPoint !== null || !isReadOnly;
 
     if (!showWrapper) return null;
@@ -646,26 +657,30 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             </div>
 
             {pendingDeleteForPoint && (
-              <div className="flex items-center gap-2 py-1.5 px-2 mt-1 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-xs">
-                <span className="text-red-600 dark:text-red-400 flex-1">
-                  {t('structure.subPointDeleteConfirm', {
-                    defaultValue: '{{count}} thought(s) will be ungrouped',
-                    count: getSubPointThoughtCount?.(pendingDeleteForPoint.subPointId) ?? 0,
-                  })}
+              <div ref={revealWhenShown} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5 px-2 mt-1 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-xs">
+                <span className="text-red-600 dark:text-red-400 min-w-0 flex-1 basis-32">
+                  {pendingThoughtCount > 0
+                    ? t('structure.subPointDeleteConfirm', {
+                        defaultValue: '{{count}} thought(s) will be ungrouped',
+                        count: pendingThoughtCount,
+                      })
+                    : t('structure.subPointDeleteTextConfirm')}
                 </span>
-                <button
-                  onClick={confirmDeleteSubPoint}
-                  className="px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-800/60 text-red-700 dark:text-red-300 font-medium transition-colors"
-                >
-                  {t(DELETE_KEY)}
-                </button>
-                <button
-                  onClick={() => setPendingSubPointDelete(null)}
-                  className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
-                  aria-label={t(CANCEL_KEY)}
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
+                <div className="ml-auto flex items-center gap-2">
+                  <button type="button"
+                    onClick={confirmDeleteSubPoint}
+                    className="px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-800/60 text-red-700 dark:text-red-300 font-medium transition-colors"
+                  >
+                    {t(DELETE_KEY)}
+                  </button>
+                  <button type="button"
+                    onClick={() => setPendingSubPointDelete(null)}
+                    className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
+                    aria-label={t(CANCEL_KEY)}
+                  >
+                    <XMarkIcon className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -689,14 +704,14 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                       className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
                       autoFocus
                     />
-                    <button
+                    <button type="button"
                       onClick={() => saveNewSubPoint(point.id)}
                       className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400"
                       aria-label={t(SAVE_KEY)}
                     >
                       <CheckIcon className="h-3.5 w-3.5" />
                     </button>
-                    <button
+                    <button type="button"
                       onClick={() => {
                         setAddingSubPointTo(null);
                         setNewSubPointText('');
@@ -708,7 +723,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <button
+                  <button type="button"
                     onClick={() => startAddingSubPoint(point.id)}
                     className="flex items-center gap-1 pl-1.5 py-0.5 text-xs font-medium text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500/50"
                   >
@@ -847,10 +862,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                 placeholder={t('structure.editPointPlaceholder')}
                                 autoFocus
                               />
-                              <button aria-label={t(SAVE_KEY)} onClick={saveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400">
+                              <button type="button" aria-label={t(SAVE_KEY)} onClick={saveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400">
                                 <CheckIcon className="h-5 w-5" />
                               </button>
-                              <button
+                              <button type="button"
                                 aria-label={t(CANCEL_KEY)}
                                 onClick={() => {
                                   setEditingPointId(null);
@@ -865,7 +880,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start gap-1.5">
                                 {(point.subPoints?.length ?? 0) > 0 && (
-                                  <button
+                                  <button type="button"
                                     onClick={() => setCollapsedPoints((prev) => ({ ...prev, [point.id]: !prev[point.id] }))}
                                     className="mt-0.5 p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 flex-shrink-0"
                                     aria-label={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
@@ -890,7 +905,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
                           {editingPointId !== point.id && !isReadOnly && (
                             <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                              {!directText && <button
+                              {!directText && <button type="button"
                                 aria-label={t('common.edit')}
                                 onClick={() => {
                                   setEditingPointId(point.id);
@@ -901,7 +916,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               >
                                 <PencilIcon className="h-4 w-4" />
                               </button>}
-                              <button aria-label={t(DELETE_KEY)} onClick={() => deletePoint(point)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
+                              <button type="button" aria-label={t(DELETE_KEY)} onClick={() => deletePoint(point)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
                                 <TrashIcon className="h-4 w-4" />
                               </button>
                             </div>
@@ -954,10 +969,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                   className="flex-1 p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   autoFocus
                 />
-                <button aria-label={t(SAVE_KEY)} onClick={() => addPoint(section)} className="p-1.5 text-green-600 hover:text-green-800">
+                <button type="button" aria-label={t(SAVE_KEY)} onClick={() => addPoint(section)} className="p-1.5 text-green-600 hover:text-green-800">
                   <CheckIcon className="h-5 w-5" />
                 </button>
-                <button
+                <button type="button"
                   aria-label={t(CANCEL_KEY)}
                   onClick={() => {
                     setAddingToSection(null);
@@ -969,7 +984,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                 </button>
               </div>
             ) : (
-              <button
+              <button type="button"
                 onClick={() => {
                   if (directText) {
                     emit({ ...points, [section]: [...points[section], { id: newClientId(), text: '' }] });
@@ -1009,13 +1024,13 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           </p>
         )}
         <div className="mt-4 flex justify-end gap-2">
-          <button
+          <button type="button"
             onClick={() => setPendingDelete(null)}
             className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
           >
             {t(CANCEL_KEY)}
           </button>
-          <button
+          <button type="button"
             onClick={confirmDeletePoint}
             className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
           >

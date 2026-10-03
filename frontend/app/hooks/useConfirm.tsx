@@ -21,6 +21,9 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
  *
  * No provider: each component owns its question and renders its own window, so nothing global
  * can leave a promise hanging, and a test sees the real window rather than a stubbed alert.
+ *
+ * `withdraw()` takes back a question that no longer applies — the thing it asked about changed
+ * under it — and answers it "no".
  */
 export interface ConfirmOptions {
   title: string;
@@ -36,6 +39,7 @@ type Pending = ConfirmOptions & { resolve: (answer: boolean) => void };
 export function useConfirm(): {
   confirm: (options: ConfirmOptions) => Promise<boolean>;
   confirmDialog: React.ReactElement;
+  withdraw: () => void;
 } {
   const [request, setRequest] = useState<Pending | null>(null);
   // The live request, outside state: resolving inside a state updater would run twice.
@@ -59,6 +63,10 @@ export function useConfirm(): {
     });
   }, []);
 
+  const withdraw = useCallback(() => {
+    if (pending.current) settle(false);
+  }, [settle]);
+
   // A component that leaves while it is asking has its question answered "no".
   useEffect(() => () => pending.current?.resolve(false), []);
 
@@ -75,7 +83,7 @@ export function useConfirm(): {
     />
   );
 
-  return { confirm, confirmDialog };
+  return { confirm, confirmDialog, withdraw };
 }
 
 export default useConfirm;

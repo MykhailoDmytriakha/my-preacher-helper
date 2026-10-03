@@ -135,4 +135,29 @@ describe('useConfirm', () => {
     expect(native).not.toHaveBeenCalled();
     native.mockRestore();
   });
+
+  it('withdraws an open question on request: it answers "no" and the window goes away', async () => {
+    function Withdrawer({ onAnswer }: { onAnswer: (answer: boolean) => void }) {
+      const { confirm, confirmDialog, withdraw } = useConfirm();
+      return (
+        <>
+          <button type="button" onClick={async () => onAnswer(await confirm({ title: 'Удалить?' }))}>ask</button>
+          <button type="button" onClick={withdraw}>withdraw</button>
+          {confirmDialog}
+        </>
+      );
+    }
+    const onAnswer = jest.fn();
+    render(<Withdrawer onAnswer={onAnswer} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ask' }));
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'withdraw' }));
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(onAnswer).toHaveBeenCalledWith(false);
+  });
 });
+

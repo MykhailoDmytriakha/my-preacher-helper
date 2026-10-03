@@ -26,6 +26,18 @@ const getNumericPosition = (value?: number) =>
 export const sortSubPointsByPosition = (subPoints: SubPoint[] = []): SubPoint[] =>
   [...subPoints].sort((left, right) => left.position - right.position);
 
+/**
+ * Whether deleting this sub-point would take something the preacher made with it: thoughts
+ * grouped under it, its own words, or its reminder note. Only a sub-point carrying none of
+ * these goes in one click; every other one asks first. One rule for the plan editor and the
+ * structure columns, so the two screens never disagree about when to ask.
+ */
+export const subPointDeletionNeedsConfirm = (
+  subPoint: Pick<SubPoint, "text" | "note"> | undefined,
+  thoughtCount: number,
+): boolean =>
+  thoughtCount > 0 || Boolean(subPoint?.text?.trim()) || Boolean(subPoint?.note?.trim());
+
 export const buildSubPointIdSet = (subPoints: SubPoint[] = []) =>
   new Set(sortSubPointsByPosition(subPoints).map((subPoint) => subPoint.id));
 

@@ -1442,6 +1442,7 @@
     "addSubPoint": "Add sub-point",
     "subPointPlaceholder": "Sub-point name...",
     "subPointDeleteConfirm": "{{count}} thought(s) will be ungrouped",
+    "subPointDeleteTextConfirm": "Delete this sub-point? What is written in it will be lost.",
     "dropThoughtsHere": "Drop thoughts here",
     "dropThoughtsToAdd": "Drop thoughts here to add to this point",
     "dropThoughtsToSubPoint": "Drop thoughts into this sub-point",
@@ -1682,7 +1683,8 @@
       "add": "note",
       "placeholder": "What I want to say here…",
       "label": "Reminder note",
-      "delete": "Delete note"
+      "delete": "Delete note",
+      "deleteConfirm": "Delete this note?"
     },
     "thoughtsUnassignedWarning": "{{count}} thought(s) will be unassigned, not deleted",
     "templateApplied": "Template applied",

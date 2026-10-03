@@ -1444,6 +1444,7 @@
     "addSubPoint": "Додати підпункт",
     "subPointPlaceholder": "Назва підпункту...",
     "subPointDeleteConfirm": "{{count}} думка(ок) втратить групування",
+    "subPointDeleteTextConfirm": "Видалити підпункт? Написане в ньому зникне.",
     "dropThoughtsHere": "Перетягніть думки сюди",
     "dropThoughtsToAdd": "Перетягніть думки сюди, щоб додати до цього пункту",
     "dropThoughtsToSubPoint": "Перетягніть думки в цей підпункт",
@@ -1684,7 +1685,8 @@
       "add": "нотатка",
       "placeholder": "Що хочу тут сказати…",
       "label": "Нотатка-нагадування",
-      "delete": "Видалити нотатку"
+      "delete": "Видалити нотатку",
+      "deleteConfirm": "Видалити нотатку?"
     },
     "thoughtsUnassignedWarning": "{{count}} думок буде відв'язано, але не видалено",
     "templateApplied": "Шаблон застосовано",

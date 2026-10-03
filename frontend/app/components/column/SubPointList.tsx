@@ -13,7 +13,7 @@ import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from
 import React, { useEffect, useRef, useState } from "react";
 
 import PointNote from "@/components/PointNote";
-import { sortSubPointsByPosition } from "@/utils/subPoints";
+import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/subPoints";
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import type { SubPoint } from "@/models/models";
@@ -147,7 +147,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const handleDeleteClick = (spId: string) => {
     const count = getAffectedThoughtCount?.(spId) ?? 0;
-    if (count > 0) {
+    if (subPointDeletionNeedsConfirm(subPoints.find((sp) => sp.id === spId), count)) {
       setConfirmDeleteId(spId);
     } else {
       onDelete(outlinePointId, spId);
@@ -155,6 +155,10 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   };
 
   const handleConfirmDelete = () => {
+    if (isPointLocked) {
+      setConfirmDeleteId(null);
+      return;
+    }
     if (confirmDeleteId) {
       onDelete(outlinePointId, confirmDeleteId);
       setConfirmDeleteId(null);
@@ -167,6 +171,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   };
 
   const sorted = sortSubPointsByPosition(subPoints);
+  const confirmThoughtCount = confirmDeleteId ? getAffectedThoughtCount?.(confirmDeleteId) ?? 0 : 0;
 
   if (sorted.length === 0 && isPointLocked) return null;
 
@@ -195,14 +200,14 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       </span>
       {!isPointLocked && (
         <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/sp:opacity-100">
-          <button
+          <button type="button"
             onClick={() => startEditingSubPoint(sp)}
             className={styles.editButtonClass}
             aria-label={t("common.edit")}
           >
             <PencilIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
-          <button
+          <button type="button"
             onClick={() => handleDeleteClick(sp.id)}
             className={styles.deleteButtonClass}
             aria-label={t(COMMON_DELETE_KEY)}
@@ -239,10 +244,10 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                   }}
                   className={styles.inputClass}
                 />
-                <button onClick={handleEditSave} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
+                <button type="button" onClick={handleEditSave} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
                   <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
                 </button>
-                <button onClick={() => { setEditingId(null); setEditText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
+                <button type="button" onClick={() => { setEditingId(null); setEditText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
                   <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
                 </button>
               </div>
@@ -330,19 +335,21 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       {confirmDeleteId && (
         <div className={styles.confirmDeleteWrapperClass}>
           <span className={styles.confirmDeleteMessageClass}>
-            {t("structure.subPointDeleteConfirm", {
-              defaultValue: "{{count}} thought(s) will be ungrouped",
-              count: getAffectedThoughtCount?.(confirmDeleteId) ?? 0,
-            })}
+            {confirmThoughtCount > 0
+              ? t("structure.subPointDeleteConfirm", {
+                  defaultValue: "{{count}} thought(s) will be ungrouped",
+                  count: confirmThoughtCount,
+                })
+              : t("structure.subPointDeleteTextConfirm")}
           </span>
           <div className={styles.confirmDeleteRowClass}>
-            <button
+            <button type="button"
               onClick={handleConfirmDelete}
               className={styles.confirmDeleteBtnClass}
             >
               {t(COMMON_DELETE_KEY)}
             </button>
-            <button
+            <button type="button"
               onClick={() => setConfirmDeleteId(null)}
               className={styles.confirmDeleteCancelBtnClass}
               aria-label={t(COMMON_CANCEL_KEY)}
@@ -370,15 +377,15 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                 placeholder={t("structure.subPointPlaceholder", { defaultValue: "Sub-point name..." })}
                 className={styles.inputClass}
               />
-              <button onClick={handleAdd} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
+              <button type="button" onClick={handleAdd} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
                 <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
               </button>
-              <button onClick={() => { setIsAdding(false); setAddText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
+              <button type="button" onClick={() => { setIsAdding(false); setAddText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
                 <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
               </button>
             </div>
           ) : (
-            <button
+            <button type="button"
               onClick={() => setIsAdding(true)}
               className={styles.addButtonClass}
             >

@@ -1,9 +1,11 @@
 'use client';
 
 import { LightBulbIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+
+import { useConfirm } from '@/hooks/useConfirm';
 
 interface PointNoteProps {
   /** Current note text (undefined/empty = no note). */
@@ -41,6 +43,8 @@ interface PointNoteProps {
     clear?: string;
     /** Text of the empty "+ note" affordance. */
     add?: string;
+    /** Title of the question asked before the × clears the note. */
+    deleteConfirm?: string;
   };
 }
 
@@ -48,8 +52,9 @@ interface PointNoteProps {
  * Reminder note ("what I want to say here") shown under a plan point or sub-point —
  * a skeleton hint jotted BEFORE the point is filled with full thoughts, kept separate
  * from them. Buttonless editing: click away (blur) or Enter saves, Escape cancels; a
- * faint × deletes (undo-able upstream). Self-contained edit state, so it drops into any
- * editor (the plan-editor board and the structure-page columns share this one component).
+ * faint × deletes after asking — the hosts autosave, so a cleared note is gone for good.
+ * Self-contained edit state, so it drops into any editor (the plan-editor board and the
+ * structure-page columns share this one component).
  */
 const PointNote: React.FC<PointNoteProps> = ({
   note,
@@ -66,6 +71,24 @@ const PointNote: React.FC<PointNoteProps> = ({
   const placeholderText = labels?.placeholder ?? t('planEditor.note.placeholder');
   const clearText = labels?.clear ?? t('planEditor.note.delete');
   const addText = labels?.add ?? t('planEditor.note.add');
+  const { confirm, confirmDialog, withdraw } = useConfirm();
+  // The answer comes after an await. By then the host may have re-rendered: with a newer
+  // outline (its old onChange would write the outline as it was when we asked), locked, or
+  // with different note text — and a "yes" was given to the text in the question, not to that.
+  const latestRef = useRef({ onChange, isReadOnly, note });
+  useLayoutEffect(() => {
+    latestRef.current = { onChange, isReadOnly, note };
+  });
+  /**
+   * The open question and the note text it is about; null while nothing is asked. A new question
+   * replaces this ticket, and only the continuation holding the current ticket may act — an
+   * older, replaced question settles as "no" and must not touch what the newer one tracks.
+   */
+  const askedRef = useRef<{ text: string } | null>(null);
+  useEffect(() => {
+    if (askedRef.current && askedRef.current.text !== note) withdraw();
+  }, [note, withdraw]);
+  const clearButtonRef = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   // Distinguishes a real blur-save from an Escape-cancel (Escape also blurs the field).
@@ -95,6 +118,25 @@ const PointNote: React.FC<PointNoteProps> = ({
     // and clicked away, or edited back to the original) — no spurious write.
     if (next !== note) onChange(next);
     setEditing(false);
+  };
+
+  const clearAfterAsking = async () => {
+    const ticket = { text: note ?? '' };
+    askedRef.current = ticket;
+    const confirmed = await confirm({
+      title: labels?.deleteConfirm ?? t('planEditor.note.deleteConfirm'),
+      description: ticket.text,
+      confirmText: t('common.delete'),
+    });
+    if (askedRef.current !== ticket) return;
+    askedRef.current = null;
+    const latest = latestRef.current;
+    if (!confirmed) {
+      clearButtonRef.current?.focus();
+      return;
+    }
+    if (latest.isReadOnly || latest.note !== ticket.text) return;
+    latest.onChange(undefined);
   };
 
   const cancel = () => {
@@ -137,35 +179,44 @@ const PointNote: React.FC<PointNoteProps> = ({
 
   if (note) {
     return (
-      <div
-        className={`${indentClass} mt-1 flex items-start gap-1 text-xs italic text-slate-500 dark:text-gray-400 ${
-          isReadOnly ? '' : 'cursor-text hover:text-slate-700 dark:hover:text-gray-300'
-        }`}
-        onClick={isReadOnly ? undefined : startEdit}
-        title={isReadOnly ? undefined : labelText}
-      >
-        <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
-        <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
-        {!isReadOnly && !hideClearButton && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onChange(undefined);
-            }}
-            className="not-italic flex-shrink-0 rounded p-0.5 text-slate-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
-            aria-label={clearText}
-          >
-            <XMarkIcon className="h-3 w-3" />
-          </button>
-        )}
-      </div>
+      <>
+        <div
+          className={`${indentClass} mt-1 flex items-start gap-1 text-xs italic text-slate-500 dark:text-gray-400 ${
+            isReadOnly ? '' : 'cursor-text hover:text-slate-700 dark:hover:text-gray-300'
+          }`}
+          onClick={isReadOnly ? undefined : startEdit}
+          title={isReadOnly ? undefined : labelText}
+        >
+          <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
+          <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
+          {!isReadOnly && !hideClearButton && (
+            <button type="button"
+              ref={clearButtonRef}
+              onClick={(e) => {
+                e.stopPropagation();
+                void clearAfterAsking();
+              }}
+              className="not-italic flex-shrink-0 rounded p-0.5 text-slate-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
+              aria-label={clearText}
+            >
+              <XMarkIcon className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+        {/* The question is a portal, but React still bubbles its clicks through this tree:
+            stop them here so answering it never reaches a host's click handler. Keys are left
+            alone: Escape must reach the modal layer that closes the topmost window. */}
+        <span className="contents" onClick={(e) => e.stopPropagation()}>
+          {confirmDialog}
+        </span>
+      </>
     );
   }
 
   if (isReadOnly) return null;
 
   return (
-    <button
+    <button type="button"
       onClick={startEdit}
       className={`${indentClass} mt-1 inline-flex items-center gap-1 rounded text-xs text-slate-400 dark:text-gray-500 transition-colors focus:outline-none focus-visible:ring-1 ${addHoverClass} ${addRevealClass}`}
       aria-label={labelText}

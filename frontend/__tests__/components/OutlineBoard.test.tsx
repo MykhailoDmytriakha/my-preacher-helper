@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, within, cleanup, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -177,6 +177,64 @@ describe('OutlineBoard', () => {
     expect(onSubPointDeleted).toHaveBeenCalledWith('p1', 's1');
   });
 
+  it('asks before deleting a sub-point that carries text even when no thoughts are attached', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [{ id: 's1', text: 'My words here', position: 1000 }] }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    const onSubPointDeleted = jest.fn();
+    render(
+      <OutlineBoard value={value} onChange={onChange}
+        onSubPointDeleted={onSubPointDeleted} getSubPointThoughtCount={() => 0} />
+    );
+    const childRow = screen.getByText('My words here').parentElement!;
+    fireEvent.click(within(childRow).getByLabelText('common.delete'));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('structure.subPointDeleteTextConfirm')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('common.cancel'));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('My words here')).toBeInTheDocument();
+
+    fireEvent.click(within(screen.getByText('My words here').parentElement!).getByLabelText('common.delete'));
+    fireEvent.click(screen.getByText('common.delete'));
+    expect(onChange.mock.calls[0][0].main[0].subPoints).toEqual([]);
+    expect(onSubPointDeleted).toHaveBeenCalledWith('p1', 's1');
+  });
+
+  it('never submits a surrounding form from its own buttons (the scratch board sits inside one)', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [{ id: 's1', text: 'My words here', position: 1000 }] }],
+      conclusion: [],
+    };
+    const onSubmit = jest.fn((event: React.FormEvent) => event.preventDefault());
+    const { container } = render(
+      <form onSubmit={onSubmit}>
+        <OutlineBoard value={value} onChange={jest.fn()} getSubPointThoughtCount={() => 0} showNotes directText />
+      </form>
+    );
+    container.querySelectorAll('button').forEach((button) => fireEvent.click(button));
+    fireEvent.click(within(screen.getByText('My words here').closest('div')!.parentElement!).getAllByLabelText('common.delete')[0]);
+    screen.queryAllByLabelText('common.cancel').forEach((button) => fireEvent.click(button));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('button:not([type="button"])')).toHaveLength(0);
+  });
+
+  it('removes an empty sub-point at once — there is nothing written to lose', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [{ id: 's1', text: '', position: 1000 }] }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    render(<OutlineBoard value={value} onChange={onChange} getSubPointThoughtCount={() => 0} directText />);
+    const mainCol = screen.getByTestId('outline-board-column-main');
+    fireEvent.click(within(mainCol).getAllByLabelText('common.delete').at(-1)!);
+    expect(onChange.mock.calls[0][0].main[0].subPoints).toEqual([]);
+  });
+
   it('renders the optional scratch pool and point/sub-point strips only when scratch is provided', () => {
     const value: SermonOutline = {
       introduction: [],
@@ -332,7 +390,7 @@ describe('OutlineBoard — reminder notes', () => {
     expect(next.introduction[0].note).toBe('via enter');
   });
 
-  it('deletes a note via the × affordance', () => {
+  it('deletes a note via the × affordance only after the question is confirmed', async () => {
     const value: SermonOutline = {
       introduction: [{ id: 'p1', text: 'Point', note: 'remove me' }],
       main: [],
@@ -342,9 +400,35 @@ describe('OutlineBoard — reminder notes', () => {
     render(<OutlineBoard value={value} onChange={onChange} showNotes />);
     const introCol = screen.getByTestId('outline-board-column-introduction');
     fireEvent.click(within(introCol).getByLabelText('planEditor.note.delete'));
+    const question = await screen.findByRole('dialog', { name: 'planEditor.note.deleteConfirm' });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(within(question).getByText('common.delete'));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
     const next = onChange.mock.calls.at(-1)![0] as SermonOutline;
     expect(next.introduction[0].note).toBeUndefined();
     expect(next.introduction[0].text).toBe('Point');
+  });
+
+  it('applies a confirmed note deletion to the outline as it is NOW, not as it was when asked', async () => {
+    const asked: SermonOutline = {
+      introduction: [{ id: 'p1', text: 'Point', note: 'remove me' }],
+      main: [],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    const { rerender } = render(<OutlineBoard value={asked} onChange={onChange} showNotes />);
+    fireEvent.click(within(screen.getByTestId('outline-board-column-introduction')).getByLabelText('planEditor.note.delete'));
+    const question = await screen.findByRole('dialog', { name: 'planEditor.note.deleteConfirm' });
+
+    // While the question is open, a newer outline arrives (another edit, a save echo).
+    const now: SermonOutline = { ...asked, main: [{ id: 'p2', text: 'Added meanwhile' }] };
+    rerender(<OutlineBoard value={now} onChange={onChange} showNotes />);
+
+    fireEvent.click(within(question).getByText('common.delete'));
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const next = onChange.mock.calls.at(-1)![0] as SermonOutline;
+    expect(next.introduction[0].note).toBeUndefined();
+    expect(next.main).toEqual([{ id: 'p2', text: 'Added meanwhile' }]);
   });
 
   it('edits an existing sub-point note', () => {

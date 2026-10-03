@@ -253,4 +253,66 @@ describe('SubPointList', () => {
 
     expect(screen.queryByDisplayValue('Saul')).not.toBeInTheDocument();
   });
+
+  it('asks before deleting a sub-point that carries text even when no thoughts are attached', () => {
+    const onDelete = jest.fn();
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: 'My words here', position: 1000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={onDelete}
+        getAffectedThoughtCount={() => 0}
+        t={t}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('common.delete'));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText('structure.subPointDeleteTextConfirm')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('common.delete'));
+    expect(onDelete).toHaveBeenCalledWith('point-1', 'sub-1');
+  });
+
+  it('removes an empty sub-point at once — there is nothing written to lose', () => {
+    const onDelete = jest.fn();
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: '', position: 1000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={onDelete}
+        getAffectedThoughtCount={() => 0}
+        t={t}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText('common.delete'));
+    expect(onDelete).toHaveBeenCalledWith('point-1', 'sub-1');
+  });
+
+  it('does not delete a sub-point whose point got locked while the question was open', () => {
+    const onDelete = jest.fn();
+    const props = {
+      subPoints: [{ id: 'sub-1', text: 'My words here', position: 1000 }],
+      outlinePointId: 'point-1',
+      onAdd: jest.fn(),
+      onEdit: jest.fn(),
+      onDelete,
+      getAffectedThoughtCount: () => 0,
+      t,
+    };
+    const { rerender } = render(<SubPointList {...props} isPointLocked={false} />);
+    fireEvent.click(screen.getByLabelText('common.delete'));
+    rerender(<SubPointList {...props} isPointLocked />);
+    const confirm = screen.queryByText('common.delete');
+    if (confirm) fireEvent.click(confirm);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
 });
+

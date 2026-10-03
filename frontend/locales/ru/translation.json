@@ -1444,6 +1444,7 @@
     "addSubPoint": "Добавить подпункт",
     "subPointPlaceholder": "Название подпункта...",
     "subPointDeleteConfirm": "{{count}} мысль(ей) потеряет группировку",
+    "subPointDeleteTextConfirm": "Удалить подпункт? Написанное в нём пропадёт.",
     "dropThoughtsHere": "Перетащите мысли сюда",
     "dropThoughtsToAdd": "Перетащите мысли сюда, чтобы добавить к этому пункту",
     "dropThoughtsToSubPoint": "Перетащите мысли в этот подпункт",
@@ -1684,7 +1685,8 @@
       "add": "заметка",
       "placeholder": "Что хочу тут сказать…",
       "label": "Заметка-напоминание",
-      "delete": "Удалить заметку"
+      "delete": "Удалить заметку",
+      "deleteConfirm": "Удалить заметку?"
     },
     "thoughtsUnassignedWarning": "{{count}} мыслей будут отвязаны, но не удалены",
     "templateApplied": "Шаблон применён",
