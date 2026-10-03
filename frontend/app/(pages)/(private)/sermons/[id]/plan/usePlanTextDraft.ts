@@ -78,6 +78,7 @@ export default function usePlanTextDraft({
   modifiedNodeIds,
   pendingNodeIds,
   liveNodeIds,
+  frozen = false,
 }: {
   uid: string | null | undefined;
   sermonId: string | null | undefined;
@@ -87,8 +88,15 @@ export default function usePlanTextDraft({
   pendingNodeIds: Set<string>;
   /** Nodes the outline still has. A draft for anything else has nowhere to be shown. */
   liveNodeIds: Set<string>;
+  /**
+   * This screen is the one shown on a copy for reading (device storage silent), where a separate
+   * reader used to stand: it stores and retires nothing, as that reader did. Its cells hold the
+   * server's words, and a write still queued makes them look unconfirmed — storing them would lay
+   * the copy over newer unsent text. Stored drafts are still read.
+   */
+  frozen?: boolean;
 }): PlanTextDraft {
-  const enabled = Boolean(uid && sermonId);
+  const enabled = Boolean(uid && sermonId) && !frozen;
 
   /**
    * UNCONFIRMED MEANS TWO THINGS, and both belong here: being typed right now, and sitting in

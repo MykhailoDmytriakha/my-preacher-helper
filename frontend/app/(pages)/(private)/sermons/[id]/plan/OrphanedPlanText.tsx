@@ -32,9 +32,12 @@ export function mergeOrphans(inSession: { id: string; text: string }[], stored: 
 export function OrphanedPlanText({
   cells,
   onDiscard,
+  readOnly = false,
 }: {
   cells: { id: string; text: string }[];
   onDiscard: (nodeIds: string[]) => void;
+  /** A copy for reading: the words stay in sight and copyable, and letting them go waits. */
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const { copyToClipboard } = useClipboard({
@@ -63,13 +66,13 @@ export function OrphanedPlanText({
               >
                 {t("plan.orphanedCopy")}
               </button>
-              <button
+              {!readOnly && <button
                 type="button"
                 onClick={() => onDiscard([cell.id])}
                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
               >
                 {t("plan.orphanedDiscard")}
-              </button>
+              </button>}
             </div>
           </li>
         ))}

@@ -10,14 +10,13 @@ import { toast } from "sonner";
 import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
-import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useDocumentFreshness } from "@/hooks/useDocumentFreshness";
 import { useFreshnessUid } from "@/hooks/useFreshnessUid";
 import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
-import { liveNodeIds, renderPlanWithFallback } from "@/utils/planText";
+import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import {
   planFreshnessProjection,
   type PlanFreshnessProjection,
@@ -69,7 +68,11 @@ interface ManualPointCardProps {
   index: number;
   section: SermonSectionKey;
   conspectus: ManualConspectus;
+  /** The text each cell shows — the editor's cells, or the document itself on a copy for reading. */
+  text: Record<string, string>;
   noteMode?: boolean;
+  /** A copy for reading: the card shows its text and offers no editor, rename, save or delete. */
+  readOnly?: boolean;
 }
 
 /**
@@ -136,7 +139,7 @@ const EditableTitle = ({
   );
 };
 
-const ManualPointCard = ({ point, index, section, conspectus, noteMode }: ManualPointCardProps) => {
+const ManualPointCard = ({ point, index, section, conspectus, text, noteMode, readOnly = false }: ManualPointCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const tone = SECTION_TONE_CLASSES[section];
@@ -154,13 +157,13 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
       <h3 className={`mb-2 flex items-center justify-between gap-2 text-lg font-semibold ${tone.text}`}>
         <span className="flex min-w-0 flex-1 items-baseline gap-1">
           <span className="shrink-0 opacity-60">{index + 1}.</span>
-          <EditableTitle
+          {readOnly ? <span className="min-w-0 truncate px-1">{point.text}</span> : <EditableTitle
             value={point.text}
             ariaLabel={t("plan.renamePoint")}
             onRename={(next) => conspectus.renamePoint(point.id, next)}
-          />
+          />}
         </span>
-        <div className="flex shrink-0 gap-2">
+        {!readOnly && <div className="flex shrink-0 gap-2">
           {noteMode && <NotePointGenerateButton point={point} section={section} />}
           <button
             type="button"
@@ -196,7 +199,7 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
             armedLabel={t("plan.deleteConfirm")}
             onDelete={() => void conspectus.deletePoint(point.id)}
           />
-        </div>
+        </div>}
       </h3>
 
       {noteMode && <NotePointActions point={point} />}
@@ -209,29 +212,29 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
             {node.kind === "subPoint" && (
               <h4 className={`mb-1 flex items-baseline gap-2 text-base font-semibold ${tone.text}`}>
                 <span className="shrink-0 opacity-60">{node.label}</span>
-                <EditableTitle
+                {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
                   value={node.heading}
                   ariaLabel={t("plan.renameSubPoint")}
                   onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
-                />
+                />}
                 {noteMode && <span className="ml-auto inline-flex shrink-0 self-center">
                   <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />
                 </span>}
-                <DeleteNodeButton
+                {!readOnly && <DeleteNodeButton
                   compact
                   title={t("plan.deleteSubPoint")}
                   armedTitle={t("plan.deleteSubPointConfirm")}
                   armedLabel={t("plan.deleteConfirm")}
                   onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}
-                />
+                />}
               </h4>
             )}
             {noteMode && node.kind === 'subPoint' && <NotePointActions point={point} targetNodeId={node.id} />}
             {noteMode && <NoteNodeReminder
               text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note}
-              hasPlan={Boolean(conspectus.contentByNodeId[node.id]?.trim())}
+              hasPlan={Boolean(text[node.id]?.trim())}
             />}
-            {isEditing ? (
+            {isEditing && !readOnly ? (
               <RichMarkdownEditor
                 value={conspectus.contentByNodeId[node.id] ?? ""}
                 placeholder={t(NO_PLAN_CONTENT_KEY)}
@@ -240,20 +243,20 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
               />
             ) : (
               <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
-                <MarkdownDisplay content={conspectus.contentByNodeId[node.id] || t(NO_PLAN_CONTENT_KEY)} />
+                <MarkdownDisplay content={text[node.id] || t(NO_PLAN_CONTENT_KEY)} />
               </div>
             )}
           </div>
         ))}
 
-        <AddNodeButton
+        {!readOnly && <AddNodeButton
           className="ml-3"
           label={t("plan.addSubPoint")}
           placeholder={t("plan.addSubPointPlaceholder")}
           confirmLabel={t("plan.addConfirm")}
           cancelLabel={t("plan.addCancel")}
           onAdd={(text) => conspectus.addSubPoint(point.id, text)}
-        />
+        />}
       </div>
     </div>
   );
@@ -275,17 +278,19 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const writer = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
-  if (document.readOnly && source.sermon) return <SermonReadOnlyContent sermon={source.sermon} />;
+  // The read-only screen stands exactly where the separate reader stood — on every copy, preaching
+  // included — and as its own tree, so every switch mounts the other one fresh, as the swap did.
+  // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
   return <PlanWriterContext.Provider value={writer}>
-    <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
-      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>
-    <ManualConspectusContent source={source as unknown as SermonSource} />
+    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
+    <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={document.readOnly} />
   </PlanWriterContext.Provider>;
 }
 
 type SermonSource = ReturnType<typeof useSermon>;
 
-function ManualConspectusContent({ source }: { source?: SermonSource }) {
+function ManualConspectusContent({ source, readOnly = false }: { source?: SermonSource; readOnly?: boolean }) {
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
@@ -297,6 +302,12 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
   const hasUnsavedCells = Object.values(conspectus.modifiedNodeIds).some(Boolean);
+  /**
+   * On a copy for reading the text comes straight from the document, as the reader drew it: the
+   * editor's cells are merged over time and would keep text a newer copy no longer has.
+   */
+  const storedText = useMemo(() => readPlanText(sermon), [sermon]);
+  const shownText = readOnly ? storedText : conspectus.contentByNodeId;
 
   /**
    * WHICH POINTS THE FULLNESS MAP SHOULD LIGHT UP.
@@ -310,11 +321,11 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
     const filled: Record<string, boolean> = {};
     SECTIONS.forEach((section) => {
       (sermon?.outline?.[section] ?? []).forEach((point) => {
-        filled[point.id] = pointHasContent(point, conspectus.contentByNodeId);
+        filled[point.id] = pointHasContent(point, shownText);
       });
     });
     return filled;
-  }, [sermon?.outline, conspectus.contentByNodeId]);
+  }, [sermon?.outline, shownText]);
 
   /**
    * Text that never reached the server survives a closed tab — the precondition the write
@@ -328,6 +339,7 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
     modifiedNodeIds: conspectus.modifiedNodeIds,
     pendingNodeIds: conspectus.pendingNodeIds,
     liveNodeIds: livePlanNodes,
+    frozen: readOnly,
   });
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
@@ -410,8 +422,8 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
    * instead of appearing only after a save.
    */
   const combinedPlan = useMemo(
-    () => renderPlanWithFallback(sermon, conspectus.contentByNodeId),
-    [sermon, conspectus.contentByNodeId]
+    () => renderPlanWithFallback(sermon, shownText),
+    [sermon, shownText]
   );
   const noContentText = t(NO_PLAN_CONTENT_KEY);
 
@@ -548,9 +560,11 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
         onRequestPlanOverlay={openOverlay}
         onRequestPreachingMode={openPreaching}
         onStartPreachingMode={openPreaching}
+        readOnly={readOnly}
       />
 
-      {draft.recovered && (
+      {/* Not on a copy for reading — see the paired screen: the draft waits in storage. */}
+      {draft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           cells={recoveredCells(draft.recovered, sermon)}
           onRestore={() => {
@@ -563,6 +577,7 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
 
       <OrphanedPlanText
         cells={orphans}
+        readOnly={readOnly}
         onDiscard={(nodeIds) => {
           draft.forget(Object.fromEntries(orphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
           conspectus.discardCells(nodeIds);
@@ -588,14 +603,23 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
           />
         )}
 
-      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode} sermon={sermon} conspectus={conspectus}>
+      {/* Generating from the note writes the plan, so a copy for reading keeps only the note's reminders. */}
+      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !readOnly} sermon={sermon} conspectus={conspectus}>
       {SECTIONS.map((section) => {
         const points = sermon.outline?.[section] ?? [];
         const tone = SECTION_TONE_CLASSES[section];
+        // An old sermon keeps a section's text whole, outside the cards; on a copy it is shown where
+        // the person reads, by the rule the assembled plan uses.
+        const legacyText = readOnly ? legacySectionText(sermon, section, readPlanText(sermon)) : "";
 
         return (
           <section key={section} className={`rounded-lg border p-3 ${tone.surface}`}>
             <h2 className={`mb-3 text-xl font-semibold ${tone.text}`}>{t(`sections.${section}`)}</h2>
+            {legacyText && (
+              <div data-testid="plan-legacy-section-text" className="mb-4 rounded-md border border-gray-200 bg-white p-4 dark:border-gray-700/70 dark:bg-gray-800">
+                <MarkdownDisplay content={legacyText} />
+              </div>
+            )}
 
             <div className="space-y-4">
               {points.map((point, index) => (
@@ -605,19 +629,21 @@ function ManualConspectusContent({ source }: { source?: SermonSource }) {
                   index={index}
                   section={section}
                   conspectus={conspectus}
+                  text={shownText}
                   noteMode={noteMode}
+                  readOnly={readOnly}
                 />
               ))}
             </div>
 
-            <AddNodeButton
+            {!readOnly && <AddNodeButton
               className="mt-3"
               label={t("plan.addPoint")}
               placeholder={t("plan.addPointPlaceholder")}
               confirmLabel={t("plan.addConfirm")}
               cancelLabel={t("plan.addCancel")}
               onAdd={(text) => conspectus.addPoint(section, text)}
-            />
+            />}
           </section>
         );
       })}

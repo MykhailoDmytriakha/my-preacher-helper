@@ -1,4 +1,4 @@
-when: read owner's documents · owner list · readOwnerList · readOwnerDocument · readOwnerListFromServer · /api/owner-list · OWNER_COLLECTIONS · Unknown collection · device waits forever · list never loads · skeleton forever on iPad · getDocs never resolves · Firestore silent · second road · SDK deadline · isSilentReadError · accountChangedError · bare getDocs · чтение документов владельца · список не грузится · вечный скелетон · бесконечная загрузка на iPad · Firestore молчит · запасной путь через сервер · дедлайн чтения · useDataDocument · useDataCollection · readOnly · copySource · readOnlyReason · deviceStorage · DataCollectionStatus · чтение через движок · копия только для чтения · хранилище устройства молчит
+when: read owner's documents · owner list · readOwnerList · readOwnerDocument · readOwnerListFromServer · /api/owner-list · OWNER_COLLECTIONS · Unknown collection · device waits forever · list never loads · skeleton forever on iPad · getDocs never resolves · Firestore silent · second road · SDK deadline · isSilentReadError · accountChangedError · bare getDocs · чтение документов владельца · список не грузится · вечный скелетон · бесконечная загрузка на iPad · Firestore молчит · запасной путь через сервер · дедлайн чтения · useDataDocument · useDataCollection · readOnly · copySource · readOnlyReason · deviceStorage · DataCollectionStatus · чтение через движок · копия только для чтения · хранилище устройства молчит · reproduce silent storage · jam IndexedDB · заклинить память устройства · read-only copy · document.readOnly · screen swapped for a bare reader · копия для чтения · экран только для чтения · память устройства молчит
 
 # Read the owner's documents
 
@@ -9,6 +9,31 @@ For an engine-owned collection, read through `useDataDocument` or `useDataCollec
 - For a document, opt into `{ readOnlyCopy: true }` when the screen can display a copy while its editor waits. Render `data` when available and use `readOnly`, `copySource` and `readOnlyReason` to explain and enforce the read-only state. Never turn that copy into an editable local draft or replay actions later.
 - `useDataCollection` offers a read-only server/device list copy while list storage is silent. Render `state.documents` with `DataCollectionStatus` and disable mutations when `readOnly` is true; a copy is not proof of server completeness or saved intent.
 - `frontend/app/utils/deviceStorage.ts` watches bounded storage reads, records silence diagnostics and lets read gates stop waiting. It does not cancel or falsely fail an indeterminate write. The normal editor replaces the copy when storage answers.
+
+## Reproduce silent storage on localhost
+
+Open any page with the engine on, make the tab report visible (the automation tab is hidden), then hold a write transaction on the engine's records store with an endless chain of reads — every engine call on that store queues behind it and after `STORAGE_SILENCE_MS` (3 s) the database is declared silent:
+
+```js
+window.__jam = true;
+const req = indexedDB.open('preacher-data-engine-state-v1');
+req.onsuccess = () => {
+  const store = req.result.transaction('records', 'readwrite').objectStore('records');
+  const loop = () => { if (window.__jam) store.get('__jam__').onsuccess = loop; };
+  loop();
+};
+```
+
+Then move without a reload (`window.next.router.push('/sermons/<id>/plan')`) — a reload drops the script. The yellow «Память устройства не отвечает» banner shows and screens get the read-only copy. `window.__jam = false` lets the transaction finish; the editors open and the screens return to normal by themselves (2026-10-03, sermon plan page).
+
+## A screen on a read-only copy
+
+While storage is silent `document.readOnly` is true and every write is refused. Keep the screen itself and give it a `readOnly` flag through the spot every control already passes (a layout context, the card props, the header). Never swap in a separate reader: it loses the layout the person knows. Exceptions:
+- An editor made of dozens of controls (the structure board) gets its own read body. It is built from the editor's grouping and colour helpers, and the toolbar stays as it is. Switching off each control one by one leaves any one that was missed offering a change the copy cannot keep.
+- The read-only screen is its own tree (`key={onCopy ? 'copy' : 'editor'}`). It stands exactly where a separate reader would stand, and everywhere else the editor tree is untouched, so every switch mounts the other one fresh. Never keep one tree across copy and editor. Seeding keeps a cell the newer document lacks, and the draft store either takes the copy's words or loses its ownership. Three Codex rounds broke every variant of keeping it (2026-10-03). The plan screen excludes preaching from `onCopy`, so the preacher's timer runs on.
+- The copy tree stores and retires no drafts (`usePlanTextDraft({ frozen })`), as the reader did. It still reads them: orphans are shown with Copy only, and recovery stays hidden.
+- Whatever the bare reader showed must still be on the page. An old sermon's whole-section text comes from `legacySectionText`, the same rule the assembled plan uses.
+- Test with the real engine writers and a stand-in document that records writes (`confirmed: null` on a copy, as the engine gives). Put the buttons that may remain on an allow-list, add a writable control so the assertions are known to see controls, and check the draft store across every switch (`__tests__/pages/sermonPlanScreensReadOnly.test.tsx`, `structureBoardReadOnly.test.tsx`; BUG-20261002-sermon-read-only-copy-bare-page).
 
 ## Legacy paths (unconverted collections only)
 

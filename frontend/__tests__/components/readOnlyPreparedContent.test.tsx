@@ -1,38 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
 
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
-import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 
-import type { Group, Sermon } from '@/models/models';
+import type { Group } from '@/models/models';
 
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <div>{content}</div> }));
-
-it('retains legacy and current plan sections while offering no mutation controls', () => {
-  const sermon = { id: 's', title: 'Prepared sermon', verse: 'Romans 1', thoughts: [],
-    outline: { introduction: [{ id: 'intro', text: 'Opening' }], main: [], conclusion: [] },
-    planText: { intro: 'Saved opening text' },
-    plan: { main: { outline: 'Legacy main content' }, conclusion: { outline: 'Closing content' } },
-  } as unknown as Sermon;
-  render(<SermonReadOnlyContent sermon={sermon} />);
-  expect(screen.getByText(/Saved opening text/)).toHaveTextContent('Legacy main content');
-  expect(screen.getByText(/Closing content/)).toBeInTheDocument();
-  // DeviceStorageNotice says why, once for the whole app; the copy does not repeat it.
-  expect(screen.queryByRole('status')).not.toBeInTheDocument();
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button')).not.toBeInTheDocument();
-});
-
-it('retains outline reminder notes and all thought text without editing or dragging', () => {
-  const sermon = { id: 's', title: 'Prepared sermon', thoughts: [{ id: 't', text: 'Thought text' }],
-    outline: { introduction: [{ id: 'p', text: 'Opening', note: 'Reminder note' }], main: [], conclusion: [] },
-  } as unknown as Sermon;
-  render(<SermonReadOnlyContent sermon={sermon} structure />);
-  expect(screen.getByText('Opening')).toBeInTheDocument();
-  expect(screen.getByText('Thought text')).toBeInTheDocument();
-  expect(screen.getByText('Reminder note')).toBeInTheDocument();
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /delete|add|edit/i })).not.toBeInTheDocument();
-});
 
 it('shows the group as its page does — blocks in order with every detail, and the way into the meeting', () => {
   const group = { id: 'g', title: 'Prepared meeting', description: 'Meeting description',

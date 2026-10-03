@@ -89,6 +89,8 @@ export interface PlanPageHeaderProps {
    */
   getExportContent?: PlanExportContentBuilder;
   getPdfContent?: () => Promise<React.ReactNode>;
+  /** A copy for reading: switching the editor would store a mode the copy cannot keep. */
+  readOnly?: boolean;
 }
 
 export default function PlanPageHeader({
@@ -105,6 +107,7 @@ export default function PlanPageHeader({
   onStartPreachingMode,
   getExportContent,
   getPdfContent,
+  readOnly = false,
 }: PlanPageHeaderProps) {
   const sectionMenuRef = useRef<HTMLDivElement>(null);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
@@ -179,14 +182,14 @@ export default function PlanPageHeader({
         </p>
       </div>
 
-      <div data-testid="plan-header-mode-switch">
+      {!readOnly && <div data-testid="plan-header-mode-switch">
         <PlanModeSwitch
           sermon={sermon}
           current={mode}
           beforeSwitch={beforeSwitch}
           onSwitched={onSwitched}
         />
-      </div>
+      </div>}
 
       <div className="flex flex-wrap items-center gap-3">
         <ViewPlanMenu

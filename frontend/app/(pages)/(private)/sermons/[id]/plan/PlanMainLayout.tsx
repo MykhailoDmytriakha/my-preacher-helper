@@ -11,7 +11,7 @@ import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { Chip } from "@/components/ui/Chip";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
-import { readPlanText } from "@/utils/planText";
+import { legacySectionText, readPlanText } from "@/utils/planText";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
@@ -195,6 +195,8 @@ interface PlanMainLayoutContextValue {
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
+  /** A copy for reading: every card shows its text and offers no editor, save or generation. */
+  readOnly: boolean;
 }
 
 const PlanMainLayoutContext = createContext<PlanMainLayoutContextValue | null>(null);
@@ -221,6 +223,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
     generatingIds,
     aiBlocked,
     onOpenFragmentsModal,
+    readOnly,
   } = usePlanMainLayoutContext();
 
   const themeSectionName = sectionName === "main" ? "mainPart" : sectionName;
@@ -237,7 +240,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
     >
       <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
         {outlinePoint.text}
-        <div className="flex gap-2">
+        {!readOnly && <div className="flex gap-2">
           <Button
             onClick={() => onOpenFragmentsModal(outlinePoint.id)}
             variant="section"
@@ -262,7 +265,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
             disabled={isGenerating || aiBlocked}
             label={aiBlocked ? t("settings.usage.aiUsageExhausted") : isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
           />
-        </div>
+        </div>}
       </h3>
 
       <div className="mb-3">
@@ -362,10 +365,11 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     onUpdateCombinedPlan,
     setGeneratedContent,
     setModifiedContent,
+    readOnly,
   } = usePlanMainLayoutContext();
 
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
-  const isEditMode = Boolean(editModePoints[outlinePoint.id]);
+  const isEditMode = !readOnly && Boolean(editModePoints[outlinePoint.id]);
 
   /**
    * THE CELLS OF THIS POINT — its own, then one per sub-point.
@@ -399,7 +403,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
           <span className="mr-2 opacity-60">{pointIndex + 1}.</span>
           {outlinePoint.text}
         </span>
-        <div className="flex shrink-0 space-x-2">
+        {!readOnly && <div className="flex shrink-0 space-x-2">
           <Button
             className="text-sm px-2 py-1 h-8"
             onClick={() => onSaveSermonPoint(outlinePoint.id, cellsOfThisPoint, sectionKey)}
@@ -420,7 +424,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
           >
             {isEditMode ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </Button>
-        </div>
+        </div>}
       </h3>
 
       <div className="space-y-3">
@@ -566,13 +570,18 @@ const PlanSectionBlock = ({
     isLoading,
     generatingIds,
     onSwitchToStructure,
+    readOnly,
+    sermon,
   } = usePlanMainLayoutContext();
   const hasGeneratingPoints = Object.values(generatingIds).some(Boolean);
+  // An old sermon keeps a section's text whole, outside the cards; on a copy it is shown here,
+  // where the person reads (the assembled plan shows it by the same rule).
+  const legacyText = readOnly ? legacySectionText(sermon, sectionKey, readPlanText(sermon)) : "";
 
   return (
     <>
       <div ref={sectionRef} data-section={sectionKey} className="lg:col-span-2">
-        {showPlanStyleSelector && (
+        {showPlanStyleSelector && !readOnly && (
           <PlanStyleSelector
             value={planStyle}
             onChange={setPlanStyle}
@@ -584,6 +593,11 @@ const PlanSectionBlock = ({
           section={sectionKey}
           onSwitchPage={onSwitchToStructure}
         />
+        {legacyText && (
+          <div data-testid="plan-legacy-section-text" className="mt-3 rounded-lg border bg-white p-4 dark:bg-gray-800">
+            <MarkdownRenderer markdown={legacyText} section={sectionKey} />
+          </div>
+        )}
       </div>
       <PlanSectionColumns
         sectionKey={sectionKey}
@@ -633,6 +647,8 @@ export interface PlanMainLayoutProps {
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
+  /** A copy for reading (device storage silent): the plan is shown, nothing on it can be changed. */
+  readOnly?: boolean;
 }
 
 export default function PlanMainLayout({
@@ -666,6 +682,7 @@ export default function PlanMainLayout({
   setGeneratedContent,
   setModifiedContent,
   onSwitchToStructure,
+  readOnly = false,
 }: PlanMainLayoutProps) {
   const introOutline = sermon.outline?.introduction;
   const mainOutline = sermon.outline?.main;
@@ -696,6 +713,7 @@ export default function PlanMainLayout({
     setGeneratedContent,
     setModifiedContent,
     onSwitchToStructure,
+    readOnly,
   };
 
   return (
@@ -737,7 +755,7 @@ export default function PlanMainLayout({
             />
           </div>
 
-          {modalSermonPointId && (() => {
+          {modalSermonPointId && !readOnly && (() => {
             const outlinePoint = findSermonPointById(modalSermonPointId);
             if (!outlinePoint) return null;
             return (

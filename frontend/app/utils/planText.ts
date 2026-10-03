@@ -126,55 +126,74 @@ export function renderPlanWithFallback(
   liveText: PlanTextMap
 ): CombinedPlan {
   const assembled = renderPlan(sermon?.outline, liveText);
-  /**
-   * PER SECTION, WHICHEVER OLD COPY ACTUALLY HOLDS TEXT — not a fixed winner.
-   *
-   * A sermon from before the split may hold both `plan` and `draft`, and they can each be
-   * complete in different sections: one holds only the introduction, the working copy holds
-   * all three. Choosing one document wholesale then dropped the other's sections on the
-   * floor, which is a plan losing text in front of its author. Asking section by section
-   * costs nothing and cannot lose anything, so the question "which one wins" stops existing.
-   */
-  const storedOutline = (section: SectionKey): string => {
-    // Where both hold this section, `plan` wins — it is the saved document and `draft` the
-    // legacy field, as the export path has always said in words and as the repository does
-    // when it hydrates `plan` from `plan` first. Two suites used to encode OPPOSITE orders
-    // here because the two code paths never met; they meet now, and this is the order.
-    const fromPlan = (sermon?.plan?.[section]?.outline ?? "").trim();
-    if (fromPlan) return sermon?.plan?.[section]?.outline ?? "";
-    return sermon?.draft?.[section]?.outline ?? "";
-  };
   if (!sermon?.plan && !sermon?.draft) return assembled;
 
-  const text = liveText;
   const withFallback = { ...assembled };
   SECTIONS.forEach((section) => {
-    // "Nothing to assemble from" means no NODE OF THIS SECTION holds text — not that the
-    // assembly came out empty, because a bare structure still yields its headings.
-    const nodeIds = (sermon?.outline?.[section] ?? []).flatMap((point) => (
-      [point.id, ...((point.subPoints ?? []).map((sub) => sub.id))]
-    ));
-    const sectionHasText = nodeIds.some((id) => (text[id] ?? "").trim() !== "");
-
-    /**
-     * A CLEARED CELL IS AN ANSWER, AND THE FALLBACK MUST NOT ARGUE WITH IT.
-     *
-     * The fallback exists for sections nobody has ever written under the new shape. Once a
-     * node here has been WRITTEN — even written empty — this section is being maintained in
-     * the new shape, and showing the old assembled string would undo the person's edit in
-     * front of them: they clear a card, reload, and yesterday's paragraph is back.
-     *
-     * So an empty string counts as "written", while a node that was simply never touched
-     * does not.
-     */
-    const sectionWasWritten = nodeIds.some((id) => (sermon?.planText ?? {})[id] !== undefined);
-
-    const fallback = storedOutline(section);
-    if (!sectionHasText && !sectionWasWritten && fallback.trim() !== "") {
-      withFallback[section] = fallback;
-    }
+    const fallback = legacySectionText(sermon, section, liveText);
+    if (fallback) withFallback[section] = fallback;
   });
   return withFallback;
+}
+
+/**
+ * PER SECTION, WHICHEVER OLD COPY ACTUALLY HOLDS TEXT — not a fixed winner.
+ *
+ * A sermon from before the split may hold both `plan` and `draft`, and they can each be
+ * complete in different sections: one holds only the introduction, the working copy holds
+ * all three. Choosing one document wholesale then dropped the other's sections on the
+ * floor, which is a plan losing text in front of its author. Asking section by section
+ * costs nothing and cannot lose anything, so the question "which one wins" stops existing.
+ *
+ * Where both hold this section, `plan` wins — it is the saved document and `draft` the
+ * legacy field, as the export path has always said in words and as the repository does
+ * when it hydrates `plan` from `plan` first. Two suites used to encode OPPOSITE orders
+ * here because the two code paths never met; they meet now, and this is the order — and
+ * the ONLY place it is decided: `hasWrittenPlan` once asked `plan ?? draft` wholesale and
+ * `writtenSections` asked `draft ?? plan`, so an empty `plan` hid a written `draft` behind
+ * the "not ready" screen (found 2026-10-03, BUG-20261002-sermon-read-only-copy-bare-page).
+ * Whether that text is SHOWN is `legacySectionText`'s answer, and the predicates ask it too.
+ */
+function storedSectionOutline(sermon: Sermon | null | undefined, section: SectionKey): string {
+  const fromPlan = sermon?.plan?.[section]?.outline ?? "";
+  return fromPlan.trim() ? fromPlan : sermon?.draft?.[section]?.outline ?? "";
+}
+
+/**
+ * The old whole-section text a section still stands on, or "" once the section lives in the
+ * per-node shape. One rule for the assembled plan above and for the screens that show it on a
+ * copy for reading (BUG-20261002-sermon-read-only-copy-bare-page).
+ */
+export function legacySectionText(
+  sermon: Sermon | null | undefined,
+  section: SectionKey,
+  /** The text as it is ON SCREEN — includes edits not yet saved into the sermon. */
+  liveText: PlanTextMap
+): string {
+  const fallback = storedSectionOutline(sermon, section);
+  if (fallback.trim() === "") return "";
+
+  // "Nothing to assemble from" means no NODE OF THIS SECTION holds text — not that the
+  // assembly came out empty, because a bare structure still yields its headings.
+  const nodeIds = (sermon?.outline?.[section] ?? []).flatMap((point) => (
+    [point.id, ...((point.subPoints ?? []).map((sub) => sub.id))]
+  ));
+  const sectionHasText = nodeIds.some((id) => (liveText[id] ?? "").trim() !== "");
+
+  /**
+   * A CLEARED CELL IS AN ANSWER, AND THE FALLBACK MUST NOT ARGUE WITH IT.
+   *
+   * The fallback exists for sections nobody has ever written under the new shape. Once a
+   * node here has been WRITTEN — even written empty — this section is being maintained in
+   * the new shape, and showing the old assembled string would undo the person's edit in
+   * front of them: they clear a card, reload, and yesterday's paragraph is back.
+   *
+   * So an empty string counts as "written", while a node that was simply never touched
+   * does not.
+   */
+  const sectionWasWritten = nodeIds.some((id) => (sermon?.planText ?? {})[id] !== undefined);
+
+  return sectionHasText || sectionWasWritten ? "" : fallback;
 }
 
 /**
@@ -194,8 +213,7 @@ export function writtenSections(sermon: Sermon | null | undefined): Record<Secti
     ));
     if (nodeIds.some((id) => live.has(id) && (text[id] ?? "").trim() !== "")) return true;
     // An older sermon may hold only the assembled string for this section — see `hasWrittenPlan`.
-    const stored = sermon?.draft?.[section]?.outline ?? sermon?.plan?.[section]?.outline ?? "";
-    return stored.trim() !== "";
+    return legacySectionText(sermon, section, text) !== "";
   };
   return { introduction: written("introduction"), main: written("main"), conclusion: written("conclusion") };
 }
@@ -220,7 +238,8 @@ export function hasWrittenPlan(sermon: Sermon | null | undefined): boolean {
   }
 
   // An older sermon may hold only the assembled string — see `renderPlanFromSermon`.
-  // It still has a plan, and answering "no" would route someone away from it.
-  const stored = sermon?.plan ?? sermon?.draft;
-  return SECTIONS.some((section) => (stored?.[section]?.outline ?? "").trim() !== "");
+  // It still has a plan, and answering "no" would route someone away from it. Counted exactly as
+  // the plan is drawn (`legacySectionText`): a section rewritten in cells, even emptied, no longer
+  // stands on its old string, so neither "ready to preach" nor exports may count it.
+  return SECTIONS.some((section) => legacySectionText(sermon, section, text) !== "");
 }

@@ -4,6 +4,7 @@ import {
   readPlanText,
   renderPlan,
   renderPlanFromSermon,
+  writtenSections,
 } from '@/utils/planText';
 import { planFreshnessProjection } from '@/utils/sermonFreshnessProjection';
 
@@ -326,5 +327,27 @@ describe('clearing a section beats the legacy fallback', () => {
       planText: {},
     } as unknown as Sermon;
     expect(renderPlanFromSermon(assembledOnly).introduction).toBe('LEGACY ASSEMBLED TEXT');
+  });
+});
+
+/**
+ * ONE ANSWER TO "WHICH OLD COPY HOLDS THIS SECTION": `plan` where it has text, else `draft`.
+ * The checks below once asked `plan ?? draft` wholesale and `draft ?? plan`, so an empty-but-present
+ * `plan` hid a written `draft` behind the "not ready" screen that the assembled plan still showed.
+ */
+describe('an old sermon whose text lives in one copy and not the other', () => {
+  const outline = { introduction: [{ id: 'p1', text: 'Opening' }], main: [], conclusion: [] };
+
+  it('has a plan when an empty plan sits beside a written draft', () => {
+    const sermon = { outline, plan: { introduction: { outline: '' } }, draft: { introduction: { outline: 'Written in the draft' } } } as unknown as Sermon;
+    expect(hasWrittenPlan(sermon)).toBe(true);
+    expect(writtenSections(sermon).introduction).toBe(true);
+    expect(renderPlanFromSermon(sermon).introduction).toBe('Written in the draft');
+  });
+
+  it('counts a section written in the plan when the draft holds it empty', () => {
+    const sermon = { outline, plan: { introduction: { outline: 'Written in the plan' } }, draft: { introduction: { outline: '' } } } as unknown as Sermon;
+    expect(writtenSections(sermon).introduction).toBe(true);
+    expect(hasWrittenPlan(sermon)).toBe(true);
   });
 });

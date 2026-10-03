@@ -11,7 +11,6 @@ import Column from "@/components/Column";
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
-import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { StructureWriterContext, useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
@@ -42,6 +41,7 @@ import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/th
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
 import { SectionVisibilityPills } from "./components/SectionVisibilityPills";
+import { StructureReadOnlyBoard } from "./components/StructureReadOnlyBoard";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
@@ -111,19 +111,24 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
   }), [sermon, document.loading, document.error]);
-  if (document.readOnly && sermon) return <SermonReadOnlyContent sermon={sermon} structure />;
+  // A copy for reading keeps this page and its toolbar; only the board is drawn without controls.
+  // It is its own tree, standing exactly where the separate reader stood, so every switch mounts
+  // the other one fresh, as the swap did.
   return <StructureWriterContext.Provider value={writer}>
-    <StructureBoard sermonId={sermonId} engine={engine} holdingRef={holdingRef} syncStatus={<DataSyncStatus
-      status={document.status} error={document.error} onRetry={document.retry}
-      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
+    <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
+      syncStatus={document.readOnly ? null : <DataSyncStatus
+        status={document.status} error={document.error} onRetry={document.retry}
+        onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
   </StructureWriterContext.Provider>;
 }
 
-function StructureBoard({ sermonId, engine, holdingRef, syncStatus }: {
+function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = false }: {
   sermonId: string | null;
   engine?: StructureEngineSource;
   holdingRef?: React.MutableRefObject<boolean>;
   syncStatus?: React.ReactNode;
+  /** A copy for reading (device storage silent): see `StructureReadOnlyBoard`. */
+  readOnly?: boolean;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -917,7 +922,14 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus }: {
           </div>
         </div>
 
-        <DndContext
+        {readOnly ? <StructureReadOnlyBoard
+          containers={containers}
+          outlinePoints={outlinePoints}
+          sections={visibleSections}
+          titles={columnTitles}
+          headerColors={requiredTagColors}
+          isVerticalLayout={isVerticalLayout}
+        /> : <DndContext
           data-testid="dnd-context"
           sensors={dndSensors}
           collisionDetection={collisionDetector}
@@ -1072,8 +1084,8 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus }: {
               />
             ) : null}
           </DragOverlay>
-        </DndContext>
-        {editingItem && (
+        </DndContext>}
+        {editingItem && !readOnly && (
           <EditThoughtModal
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}

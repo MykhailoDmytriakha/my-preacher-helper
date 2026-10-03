@@ -8,7 +8,6 @@ import { toast } from "sonner";
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
-import { SermonReadOnlyContent } from '@/components/sermon/SermonReadOnlyContent';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -154,17 +153,21 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   const source = useEngineSermonSource(sermonId);
   const writer = useEnginePlanWriter(sermonId, owner);
   const { document } = source;
-  if (document.readOnly && source.sermon && !preaching) return <SermonReadOnlyContent sermon={source.sermon} />;
+  // The read-only screen stands exactly where the separate reader stood — on a copy, except while
+  // preaching — and as its own tree, so it never shares state with the editor: every switch mounts
+  // the other one fresh, as the swap did. Nothing seeded from the copy reaches the editor.
+  // It offers nothing the copy could not keep; why is said once, for the app, by DeviceStorageNotice.
+  const onCopy = document.readOnly && !preaching;
   return <PlanWriterContext.Provider value={writer}>
-    <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
-      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>
-    <PlanPageContent source={source as unknown as SermonSource} />
+    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+      onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
+    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={onCopy} />
   </PlanWriterContext.Provider>;
 }
 
 type SermonSource = ReturnType<typeof useSermon>;
 
-function PlanPageContent({ source }: { source?: SermonSource }) {
+function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; readOnly?: boolean }) {
   const { t } = useTranslation();
   const planWriter = usePlanWriter();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -327,6 +330,7 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
     modifiedNodeIds: modifiedContent,
     pendingNodeIds: pendingPlanCells.nodeIds,
     liveNodeIds: livePlanNodes,
+    frozen: readOnly,
   });
   /** Unsaved cells the person let go after seeing them (their node was removed elsewhere). */
   const discardPlanCells = useCallback((nodeIds: string[]) => {
@@ -618,10 +622,17 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
     return getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId);
   }, [sermon]);
 
+  /**
+   * On a copy for reading the text comes straight from the document, as the reader drew it: the
+   * editor's cells are merged over time and would keep text a newer copy no longer has.
+   */
+  const storedText = useMemo(() => readPlanText(sermon), [sermon]);
+  const shownContent = readOnly ? storedText : generatedContent;
+
   // Update section outline deterministically from ordered points + point-content map.
   const combinedPlan = useMemo(
-    () => renderPlanWithFallback(sermon, generatedContent),
-    [sermon, generatedContent]
+    () => renderPlanWithFallback(sermon, shownContent),
+    [sermon, shownContent]
   );
 
   /**
@@ -1065,6 +1076,7 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
   const orphanArea = (
     <OrphanedPlanText
       cells={planOrphans}
+      readOnly={readOnly}
       onDiscard={(nodeIds) => {
         planDraft.forget(Object.fromEntries(planOrphans.filter((cell) => nodeIds.includes(cell.id)).map((cell) => [cell.id, cell.text])));
         discardPlanCells(nodeIds);
@@ -1094,7 +1106,7 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
           <p className="text-gray-600 dark:text-gray-300 text-lg">{t(sermon.sourceNoteIds?.length ? "plan.fromNote.readyDescription" : "plan.notReadyDescription")}</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          {!!sermon.sourceNoteIds?.length && <Button
+          {!!sermon.sourceNoteIds?.length && !readOnly && <Button
             onClick={async () => {
               try {
                 await planWriter.savePlanMode(sermonId, 'note');
@@ -1198,11 +1210,14 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
         onStartPreachingMode={handleStartPreachingMode}
         getExportContent={getExportContent}
         getPdfContent={getPdfContent}
+        readOnly={readOnly}
       />
 
       {orphanArea}
 
-      {planDraft.recovered && (
+      {/* On a copy for reading the recovered text waits in storage: restoring it would mark
+          cells unsaved that cannot be saved, and discarding it would lose the only copy. */}
+      {planDraft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
           cells={recoveredCells(planDraft.recovered, sermon)}
           onRestore={() => {
@@ -1306,7 +1321,7 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
         introductionSectionRef={introductionSectionRef}
         mainSectionRef={mainSectionRef}
         conclusionSectionRef={conclusionSectionRef}
-        generatedContent={generatedContent}
+        generatedContent={shownContent}
         modifiedContent={modifiedContent}
         savedSermonPoints={savedSermonPoints}
         editModePoints={editModePoints}
@@ -1323,6 +1338,7 @@ function PlanPageContent({ source }: { source?: SermonSource }) {
         setGeneratedContent={setGeneratedContent}
         setModifiedContent={setModifiedContent}
         onSwitchToStructure={handleSwitchToStructure}
+        readOnly={readOnly}
       />
     </div>
   );
