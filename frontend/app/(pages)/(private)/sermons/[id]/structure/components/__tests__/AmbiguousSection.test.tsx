@@ -50,7 +50,7 @@ describe('AmbiguousSection', () => {
     it('covers header, toggle, visibility toggles, and empty states in one pass', () => {
       const { rerender } = render(<AmbiguousSection {...defaultProps} />);
       expect(screen.getByText('Unassigned')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Hide Unassigned section/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'structure.hideSectionNamed' })).toBeInTheDocument();
       expect(screen.getByTestId('sortable-item-thought-1')).toBeInTheDocument();
       expect(screen.getByTestId('sortable-item-thought-2')).toBeInTheDocument();
 
@@ -71,11 +71,11 @@ describe('AmbiguousSection', () => {
     it('handles click callbacks and label updates', () => {
       const mockOnToggleVisibility = jest.fn();
       const { rerender } = render(<AmbiguousSection {...defaultProps} onToggleVisibility={mockOnToggleVisibility} />);
-      fireEvent.click(screen.getByRole('button', { name: /Hide Unassigned section/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'structure.hideSectionNamed' }));
       expect(mockOnToggleVisibility).toHaveBeenCalledTimes(1);
 
       rerender(<AmbiguousSection {...defaultProps} isVisible={false} />);
-      expect(screen.getByRole('button', { name: /Show Unassigned section/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'structure.showSectionNamed' })).toBeInTheDocument();
     });
   });
 
@@ -160,7 +160,7 @@ describe('AmbiguousSection', () => {
   describe('accessibility', () => {
     it('exposes button labels and data attributes expected by tests', () => {
       render(<AmbiguousSection {...defaultProps} />);
-      expect(screen.getByRole('button', { name: /Hide Unassigned section/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'structure.hideSectionNamed' })).toBeInTheDocument();
       expect(screen.getByTestId('sortable-item-thought-1')).toBeInTheDocument();
       expect(screen.getByTestId('edit-thought-1')).toBeInTheDocument();
       expect(screen.getByTestId('delete-thought-1')).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe('AmbiguousSection', () => {
       render(<AmbiguousSection {...defaultProps} />);
       const container = screen.getByText('Unassigned').closest('div');
       expect(container).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Hide Unassigned section/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'structure.hideSectionNamed' })).toBeInTheDocument();
     });
   });
 
@@ -192,7 +192,7 @@ describe('AmbiguousSection', () => {
         <AmbiguousSection {...defaultProps} onToggleVisibility={mockOnToggleVisibility} onEdit={mockOnEdit} onDelete={mockOnDelete} />,
       );
 
-      const toggleButton = screen.getByRole('button', { name: /Hide Unassigned section/i });
+      const toggleButton = screen.getByRole('button', { name: 'structure.hideSectionNamed' });
       const editButton = screen.getByTestId('edit-thought-1');
       const deleteButton = screen.getByTestId('delete-thought-1');
 

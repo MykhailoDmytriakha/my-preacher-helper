@@ -288,7 +288,12 @@
     "menu": "Menu",
     "feedbackShort": "Feedback",
     "language": "Interface language",
-    "openMenu": "Open menu"
+    "openMenu": "Open menu",
+    "sermonFilters": "Sermon filters",
+    "breadcrumbLabel": "Breadcrumb",
+    "avatar": "Avatar",
+    "changeLanguage": "Change language",
+    "skipToContent": "Skip to main content"
   },
   "landing": {
     "title": "Preacher Helper, built for preachers",
@@ -972,7 +977,8 @@
     "noEmail": "No email set",
     "admin": {
       "goToAdmin": "Go to admin"
-    }
+    },
+    "colorOption": "Color {{color}}"
   },
   "admin": {
     "title": "Admin",
@@ -1305,7 +1311,9 @@
     "magicUnavailable": "Magic is currently unavailable due to connectivity issues",
     "syncFailed": "Sync failed",
     "failedToSaveOutline": "Failed to save structure",
-    "failedToSaveSermon": "Failed to save sermon"
+    "failedToSaveSermon": "Failed to save sermon",
+    "savedOfflineWillSync": "Changes saved locally. They will sync when you are back online.",
+    "guestSignInFailed": "Guest sign-in error"
   },
   "createThought": {
     "title": "New Thought",
@@ -1514,7 +1522,11 @@
     "deletePointConfirmDesc": "Are you sure you want to delete this point? This action cannot be undone. To confirm, type the name of the point:",
     "deletePointConfirmTitle": "Delete Structure Point",
     "newOutlinePointName": "New point name...",
-    "saveError": "Failed to save structure point"
+    "saveError": "Failed to save structure point",
+    "hideSectionNamed": "Hide {{title}} section",
+    "showSectionNamed": "Show {{title}} section",
+    "previewExpand": "Expand",
+    "previewCollapse": "Collapse"
   },
   "knowledge": {
     "title": "Sermon Insights",
@@ -1603,7 +1615,8 @@
     "collapse": "Collapse",
     "unknown": "Unknown",
     "saveError": "Failed to save. Please try again.",
-    "clickToEdit": "Click to edit"
+    "clickToEdit": "Click to edit",
+    "notifications": "Notifications"
   },
   "shareNotes": {
     "title": "Shared note",
@@ -1662,7 +1675,8 @@
     "imagesNote": "Up to 3 images, max 3 MB each and 4.4 MB total",
     "pasteHint": "Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V",
     "attachDiagnostics": "Attach technical details for the developer",
-    "attachDiagnosticsNote": "App state and recent events. No note text, passwords or tokens."
+    "attachDiagnosticsNote": "App state and recent events. No note text, passwords or tokens.",
+    "attachmentAlt": "Attachment {{number}}"
   },
   "planEditor": {
     "title": "Structure editor",
@@ -1812,7 +1826,10 @@
         "message": "An error occurred while setting up the timer. Please try again."
       },
       "regionLabel": "Region",
-      "readyToStart": "READY TO START"
+      "readyToStart": "READY TO START",
+      "ariaEmergency": "time is running out",
+      "ariaClickToChange": "click to change duration",
+      "ariaRemaining": "{{time}} remaining"
     },
     "exitPreachingMode": "Exit Preaching Mode",
     "progress": {
@@ -3506,7 +3523,10 @@
       "carryWhere": "Carry to which council?",
       "carryNew": "To a new council",
       "carriedTo": "carried to \"{{title}}\"",
-      "movedToNext": "Section added to \"{{title}}\""
+      "movedToNext": "Section added to \"{{title}}\"",
+      "carryGone": "The section is no longer in this council.",
+      "carryAlreadyCarried": "This section was already carried to another council.",
+      "carryTargetDeleted": "The council you chose was deleted — pick another one or prepare a new council."
     },
     "conduct": {
       "back": "Back to council",

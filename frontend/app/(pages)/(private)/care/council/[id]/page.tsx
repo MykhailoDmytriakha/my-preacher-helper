@@ -47,9 +47,11 @@ import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
+import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
+
 
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
@@ -115,7 +117,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
    * here. Swallowing it is how a council silently stopped saving while the screen looked fine.
    */
   const report = (error: unknown) => {
-    toast.error(error instanceof Error ? error.message : t('council.save.refused'));
+    toast.error(actionFailureMessage(error, t('council.save.refused')));
   };
   const { recovery } = document;
 
@@ -129,7 +131,11 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       return undefined;
     }
     void document.carryTopicToNext(councilId, topic, target.id).catch((error: unknown) => {
-      toast.error(error instanceof Error ? error.message : t('council.topic.carryFailed'));
+      const code = (error as { code?: unknown } | null)?.code;
+      toast.error(code === 'topic-gone' ? t('council.topic.carryGone')
+        : code === 'topic-already-carried' ? t('council.topic.carryAlreadyCarried')
+        : code === 'referenced-document-deleted' ? t('council.topic.carryTargetDeleted')
+        : actionFailureMessage(error, t('council.topic.carryFailed')));
     });
     return target;
   };

@@ -76,7 +76,7 @@ describe('UserProfileDropdown Component', () => {
   test('renders avatar with user photo when available', () => {
     render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
     
-    const avatar = screen.getByAltText('Avatar');
+    const avatar = screen.getByAltText('navigation.avatar');
     expect(avatar).toBeInTheDocument();
     expect(avatar).toHaveAttribute('src', 'https://example.com/photo.jpg');
   });
@@ -201,7 +201,7 @@ describe('UserProfileDropdown Component', () => {
   test('handles image load error', () => {
     render(<UserProfileDropdown user={mockUser} onLogout={mockLogout} />);
     
-    const avatar = screen.getByAltText('Avatar');
+    const avatar = screen.getByAltText('navigation.avatar');
     fireEvent.error(avatar);
     
     // After error, should show initial

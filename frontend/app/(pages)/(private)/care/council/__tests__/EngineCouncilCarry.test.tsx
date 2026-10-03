@@ -112,12 +112,13 @@ describe('carrying a section from a held council through the engine', () => {
 
   it('says so when the engine refuses the carry instead of leaving a silent button', async () => {
     state.councils = [state.council!, council('only-target', 'preparing')];
-    mockCarry.mockRejectedValue(new Error('The destination council was deleted'));
+    mockCarry.mockRejectedValue(Object.assign(new Error('The destination council was deleted'), { code: 'referenced-document-deleted' }));
     render(<CouncilDetailPage />);
 
     fireEvent.click(carryButton());
     expect(await screen.findByTestId('council-topic-carry-topic-1')).toBeInTheDocument();
     await Promise.resolve();
-    expect(toast.error).toHaveBeenCalledWith('The destination council was deleted');
+    // The person is told in the interface language which council is gone, not the engine's own sentence.
+    expect(toast.error).toHaveBeenCalledWith('council.topic.carryTargetDeleted');
   });
 });

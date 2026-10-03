@@ -288,7 +288,12 @@
     "menu": "Меню",
     "feedbackShort": "Відгук",
     "language": "Мова інтерфейсу",
-    "openMenu": "Відкрити меню"
+    "openMenu": "Відкрити меню",
+    "sermonFilters": "Відбір проповідей",
+    "breadcrumbLabel": "Навігаційний ланцюжок",
+    "avatar": "Аватар",
+    "changeLanguage": "Змінити мову",
+    "skipToContent": "Перейти до основного вмісту"
   },
   "landing": {
     "title": "Preacher Helper, створений для проповідників",
@@ -972,7 +977,8 @@
     "noEmail": "Email не вказано",
     "admin": {
       "goToAdmin": "Відкрити адмінку"
-    }
+    },
+    "colorOption": "Колір {{color}}"
   },
   "admin": {
     "title": "Адміністрування",
@@ -1307,7 +1313,9 @@
     "magicUnavailable": "Магія тимчасово недоступна через проблеми із підключенням",
     "syncFailed": "Помилка синхронізації",
     "failedToSaveOutline": "Не вдалося зберегти структуру",
-    "failedToSaveSermon": "Не вдалося зберегти проповідь"
+    "failedToSaveSermon": "Не вдалося зберегти проповідь",
+    "savedOfflineWillSync": "Зміни збережено на цьому пристрої й буде надіслано, щойно з'явиться мережа.",
+    "guestSignInFailed": "Не вдалося увійти як гість"
   },
   "createThought": {
     "title": "Нова думка",
@@ -1516,7 +1524,11 @@
     "deletePointConfirmDesc": "Ви впевнені, що хочете видалити цей пункт? Цю дію неможливо скасувати. Для підтвердження введіть назву пункту:",
     "deletePointConfirmTitle": "Видалити пункт структури",
     "newOutlinePointName": "Назва нового пункту...",
-    "saveError": "Не вдалося зберегти пункт структури"
+    "saveError": "Не вдалося зберегти пункт структури",
+    "hideSectionNamed": "Сховати розділ «{{title}}»",
+    "showSectionNamed": "Показати розділ «{{title}}»",
+    "previewExpand": "Розгорнути",
+    "previewCollapse": "Згорнути"
   },
   "knowledge": {
     "title": "Роздуми над проповіддю",
@@ -1605,7 +1617,8 @@
     "collapse": "Згорнути",
     "unknown": "Невідомо",
     "saveError": "Помилка збереження. Будь ласка, спробуйте ще раз.",
-    "clickToEdit": "Натисніть, щоб редагувати"
+    "clickToEdit": "Натисніть, щоб редагувати",
+    "notifications": "Сповіщення"
   },
   "shareNotes": {
     "title": "Нотатка за посиланням",
@@ -1664,7 +1677,8 @@
     "imagesNote": "До 3 зображень, макс. 3 МБ кожне і 4,4 МБ загалом",
     "pasteHint": "Або вставте знімок екрана прямо з буфера обміну — Ctrl+V / ⌘V",
     "attachDiagnostics": "Додати технічну інформацію для розробника",
-    "attachDiagnosticsNote": "Стан застосунку та останні події. Без текстів нотаток, паролів і токенів."
+    "attachDiagnosticsNote": "Стан застосунку та останні події. Без текстів нотаток, паролів і токенів.",
+    "attachmentAlt": "Вкладення {{number}}"
   },
   "planEditor": {
     "title": "Редактор структури",
@@ -1814,7 +1828,10 @@
         "message": "Сталася помилка при налаштуванні таймера. Будь ласка, спробуйте ще раз."
       },
       "regionLabel": "Регіон",
-      "readyToStart": "ГОТОВИЙ ДО ПОЧАТКУ"
+      "readyToStart": "ГОТОВИЙ ДО ПОЧАТКУ",
+      "ariaEmergency": "час спливає",
+      "ariaClickToChange": "натисніть, щоб змінити тривалість",
+      "ariaRemaining": "залишилося {{time}}"
     },
     "exitPreachingMode": "Вийти з режиму проповіді",
     "progress": {
@@ -3544,7 +3561,10 @@
       "carryWhere": "Куди перенести?",
       "carryNew": "До нової ради",
       "carriedTo": "перенесено до «{{title}}»",
-      "movedToNext": "Секцію додано до «{{title}}»"
+      "movedToNext": "Секцію додано до «{{title}}»",
+      "carryGone": "Цього розділу більше немає в раді.",
+      "carryAlreadyCarried": "Цей розділ уже перенесено до іншої ради.",
+      "carryTargetDeleted": "Обрану раду видалено — оберіть іншу або підготуйте нову раду."
     },
     "conduct": {
       "back": "До ради",

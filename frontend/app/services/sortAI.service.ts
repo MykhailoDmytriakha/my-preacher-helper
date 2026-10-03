@@ -4,6 +4,7 @@ import { Item, SermonPoint } from "@/models/models";
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { i18n } from '@locales/i18n';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -46,9 +47,8 @@ export const sortItemsWithAI = async (
   } catch (error) {
     console.error("sortItemsWithAI: Error sorting items", error);
     if (isUsageCapReachedError(error)) throw error;
-    // We can't use the useTranslation hook here since this is not a component
-    // The error message will be handled by the caller using the translation key
-    toast.error("Error sorting items with AI. Please try again.");
+    // Not a component, so no hook: the shared i18n instance says it in the interface language.
+    toast.error(i18n.t('errors.aiSortingError'));
     throw error;
   }
 };

@@ -418,7 +418,7 @@ describe('ThoughtCard Component', () => {
   it('renders tags with no hover scale animation and hidden horizontal overflow', () => {
     render(<ThoughtCard {...defaultProps} />);
 
-    const tagList = screen.getByRole('list', { name: 'Tags' });
+    const tagList = screen.getByRole('list', { name: 'structure.tags' });
     // Ensure overflow-x-hidden is applied at container
     expect(tagList.className).toMatch(/overflow-x-hidden/);
 

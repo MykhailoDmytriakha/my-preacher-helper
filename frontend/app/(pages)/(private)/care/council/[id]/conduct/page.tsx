@@ -14,6 +14,7 @@ import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
+import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
   applyOutcome,
   councilProgress,
@@ -25,6 +26,7 @@ import {
   topicState,
   type TopicOutcome,
 } from '@/utils/council';
+
 
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
@@ -65,7 +67,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
   const document = useCouncilDataDocument(councilId);
   // Conducting is the worst place to lose a decision quietly: a refusal is said out loud here too.
-  const report = (error: unknown) => { toast.error(error instanceof Error ? error.message : t('council.save.refused')); };
+  const report = (error: unknown) => { toast.error(actionFailureMessage(error, t('council.save.refused'))); };
   const { recovery } = document;
 
   return <>

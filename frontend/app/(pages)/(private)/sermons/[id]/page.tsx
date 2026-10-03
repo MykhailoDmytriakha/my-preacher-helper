@@ -599,10 +599,10 @@ useEffect(() => {
       }
     } else {
       // If update failed (offline), we keep the backup and show a toast
-      toast.error('Changes saved locally. They will sync when you are back online.', { id: 'prep-sync-error' });
+      toast.error(t('errors.savedOfflineWillSync'), { id: 'prep-sync-error' });
     }
     setSavingPrep(false);
-  }, [core, sermon, setSermon, user?.uid]);
+  }, [core, sermon, setSermon, user?.uid, t]);
 
   const savePrepField = useCallback(async (field: keyof Preparation, value: unknown, child?: string) => {
     const patch = { [field]: child ? { [child]: value } : value } as Partial<Preparation>;

@@ -46,4 +46,11 @@ export const i18n = createInstance(i18nConfig);
 // Initialize with React
 i18n.use(initReactI18next).init();
 
+// The page declares the language it speaks: a screen reader picks its voice by it and the browser
+// offers translation by it. The server renders the default; the device language arrives after
+// hydration (`LanguageInitializer`), and every later switch goes through here too.
+if (typeof document !== 'undefined') {
+  i18n.on('languageChanged', (language) => { document.documentElement.lang = language; });
+}
+
 export default i18n;

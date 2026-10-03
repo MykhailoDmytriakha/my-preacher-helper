@@ -77,6 +77,7 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
   focusedColumn,
   columnTitle,
 }) => {
+  const { t } = useTranslation();
   // Handle null/undefined items
   const safeItems = items || [];
   const itemCount = safeItems.length;
@@ -97,7 +98,7 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
           className="flex items-center justify-between p-4 cursor-pointer w-full text-left"
           onClick={onToggleVisibility}
           aria-expanded={isVisible}
-          aria-label={`${isVisible ? 'Hide' : 'Show'} ${columnTitle} section`}
+          aria-label={t(isVisible ? 'structure.hideSectionNamed' : 'structure.showSectionNamed', { title: columnTitle })}
         >
           <h2 className="text-xl font-semibold dark:text-white">
             {columnTitle} <span className="ml-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-2 py-0.5 rounded-full">{itemCount}</span>

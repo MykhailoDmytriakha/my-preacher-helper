@@ -42,7 +42,7 @@ describe('PrepStepCard', () => {
 
   it('shows done badge when done=true', () => {
     render(<PrepStepCard {...baseProps} done />);
-    expect(screen.getByLabelText('Done')).toBeInTheDocument();
+    expect(screen.getByLabelText('common.done')).toBeInTheDocument();
   });
 });
 

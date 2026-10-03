@@ -58,4 +58,14 @@ describe('the switch to the device language after hydration', () => {
 
     await waitFor(() => expect(screen.getByTestId('label')).toHaveTextContent('Повторить'));
   });
+
+  it('declares the page language once the interface switches, for screen readers and translation', async () => {
+    await i18n.changeLanguage('en');
+    expect(document.documentElement.lang).toBe('en');
+    document.cookie = 'lang=ru; path=/';
+
+    render(React.createElement(I18nextProvider, { i18n }, React.createElement(LanguageInitializer)));
+
+    await waitFor(() => expect(document.documentElement.lang).toBe('ru'));
+  });
 });

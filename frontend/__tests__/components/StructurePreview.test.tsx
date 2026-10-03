@@ -41,7 +41,7 @@ describe('StructurePreview', () => {
   it('shows the preview heading and a collapse button', () => {
     render(<StructurePreview sermon={buildSermon({ introduction: [], main: [], conclusion: [] })} />);
     expect(screen.getByRole('heading', { name: 'structure.preview' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Collapse' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'structure.previewCollapse' })).toBeInTheDocument();
   });
 
   it('shows no section labels when every section is empty', () => {
@@ -103,12 +103,12 @@ describe('StructurePreview', () => {
   it('hides the sections when collapsed and shows them again when expanded', () => {
     render(<StructurePreview sermon={buildSermon({ introduction: ['t1'], main: ['t2'], conclusion: [] })} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse' }));
+    fireEvent.click(screen.getByRole('button', { name: 'structure.previewCollapse' }));
     expect(screen.queryByText('tags.introduction')).not.toBeInTheDocument();
     expect(screen.queryByText('Central argument...')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'structure.preview' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand' }));
+    fireEvent.click(screen.getByRole('button', { name: 'structure.previewExpand' }));
     expect(screen.getByText('tags.introduction')).toBeInTheDocument();
     expect(screen.getByText('Central argument...')).toBeInTheDocument();
   });

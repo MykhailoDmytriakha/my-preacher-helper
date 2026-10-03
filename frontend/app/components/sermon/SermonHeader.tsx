@@ -337,7 +337,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           sermonId={sermon.id}
           getExportContent={generateExportContent}
           getPdfContent={getPdfContent} // Pass the PDF content function
-          title={sermon.title || "Sermon Details"}
+          title={sermon.title || t('dashboardHome.sections.sermons.untitled')}
           disabledFormats={['pdf']} // Disable PDF export here
           enableAudio={enableAudio}
           sermonTitle={sermon.title}
@@ -349,10 +349,10 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
               <ActionButton
                 onClick={handleStartPreaching}
                 className="bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 font-medium"
-                title={t('plan.preachButton') || 'Preach'}
+                title={t('plan.preachButton')}
               >
                 <ScrollText className="h-4 w-4 flex-shrink-0" />
-                <span className="hidden sm:inline">{t('plan.preachButton') || 'Preach'}</span>
+                <span className="hidden sm:inline">{t('plan.preachButton')}</span>
               </ActionButton>
             </div>
           }

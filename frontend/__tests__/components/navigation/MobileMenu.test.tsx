@@ -76,7 +76,7 @@ describe('MobileMenu Component', () => {
 
     expect(screen.getByText('Mykhailo')).toBeInTheDocument();
     expect(screen.getByText('mykhailo@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('img', { name: 'Avatar' })).toHaveAttribute('src', 'https://example.com/avatar.png');
+    expect(screen.getByRole('img', { name: 'navigation.avatar' })).toHaveAttribute('src', 'https://example.com/avatar.png');
   });
 
   test('promotes the email when the account has no display name', () => {

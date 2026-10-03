@@ -59,10 +59,10 @@ export function useCouncilDataDocument(councilId: string) {
   const carryTopicToNext = useCallback(async (_id: string, topic: CouncilTopic, targetCouncilId: string) => {
     if (!council) throw missing();
     const existing = council.topics.find(item => item.id === topic.id);
-    if (!existing) throw new Error('The section is no longer in this council');
+    if (!existing) throw Object.assign(new Error('The section is no longer in this council'), { code: 'topic-gone' });
     // Carrying twice would claim two destinations for one section; the second claim is refused
     // here rather than sent, so the person is told instead of watching a write fail.
-    if (existing.carriedToCouncilId) throw new Error('The section was already carried to another council');
+    if (existing.carriedToCouncilId) throw Object.assign(new Error('The section was already carried to another council'), { code: 'topic-already-carried' });
     await act(current => ({
       ...current,
       topics: current.topics.map(item => (item.id === topic.id ? { ...item, carriedToCouncilId: targetCouncilId } : item)),

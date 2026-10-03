@@ -396,10 +396,8 @@ describe('PreachingTimer Integration', () => {
         jest.advanceTimersByTime(seconds * 1000);
       });
     };
-    const shownTime = () => {
-      const label = screen.getAllByRole('timer')[0].getAttribute('aria-label') ?? '';
-      return /: (-?\d+:\d\d) remaining/.exec(label)?.[1];
-    };
+    // The countdown the person sees; the timer's label says the same in the interface language.
+    const shownTime = () => screen.getAllByRole('timer')[0].querySelector('.time-display')?.textContent ?? undefined;
     const shownPhase = () => screen.getAllByRole('timer')[0].getAttribute('aria-label') ?? '';
 
     const START = /actions\.start/i;

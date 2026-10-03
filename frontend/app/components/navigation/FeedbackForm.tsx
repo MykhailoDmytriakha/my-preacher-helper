@@ -73,7 +73,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
 
     const remaining = MAX_FEEDBACK_IMAGES - imagesRef.current.length;
     if (files.length > remaining) {
-      setImageError(t('feedback.imageLimitReached') || 'Maximum 3 images allowed');
+      setImageError(t('feedback.imageLimitReached'));
       if (remaining <= 0) return;
     }
 
@@ -81,12 +81,12 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     toProcess.forEach(file => {
       if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
         setImageError(
-          t('feedback.invalidImage') || 'Only PNG, JPEG, and WebP images are supported'
+          t('feedback.invalidImage')
         );
         return;
       }
       if (file.size > MAX_FEEDBACK_IMAGE_BYTES) {
-        setImageError(t('feedback.imageTooLarge') || 'Image is too large (max 3 MB)');
+        setImageError(t('feedback.imageTooLarge'));
         return;
       }
       const reader = new FileReader();
@@ -274,7 +274,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     <form ref={formRef} onSubmit={handleSubmit} onPaste={handleClipboard}>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" suppressHydrationWarning={true}>
-          {t('feedback.typeLabel') || 'Feedback Type'}
+          {t('feedback.typeLabel')}
         </label>
         <Select
           accent="blue"
@@ -283,16 +283,16 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           required
           disabled={isSubmitting}
         >
-          <option value="suggestion" suppressHydrationWarning={true}>{t('feedback.typeSuggestion') || 'Suggestion'}</option>
-          <option value="bug" suppressHydrationWarning={true}>{t('feedback.typeBug') || 'Bug Report'}</option>
-          <option value="question" suppressHydrationWarning={true}>{t('feedback.typeQuestion') || 'Question'}</option>
-          <option value="other" suppressHydrationWarning={true}>{t('feedback.typeOther') || 'Other'}</option>
+          <option value="suggestion" suppressHydrationWarning={true}>{t('feedback.typeSuggestion')}</option>
+          <option value="bug" suppressHydrationWarning={true}>{t('feedback.typeBug')}</option>
+          <option value="question" suppressHydrationWarning={true}>{t('feedback.typeQuestion')}</option>
+          <option value="other" suppressHydrationWarning={true}>{t('feedback.typeOther')}</option>
         </Select>
       </div>
 
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" suppressHydrationWarning={true}>
-          {t('feedback.messageLabel') || 'Your Feedback'}
+          {t('feedback.messageLabel')}
         </label>
         <textarea
           value={feedbackText}
@@ -301,7 +301,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           aria-invalid={excessTextBytes > 0 || undefined}
           rows={4}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-          placeholder={t('feedback.messagePlaceholder') || 'Please tell us what you think...'}
+          placeholder={t('feedback.messagePlaceholder')}
           required
           disabled={isSubmitting}
         />
@@ -314,7 +314,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       {/* Image attachment section */}
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2" suppressHydrationWarning={true}>
-          {t('feedback.imagesLabel') || 'Attachments'}
+          {t('feedback.imagesLabel')}
         </label>
 
         {/* Thumbnails grid */}
@@ -325,13 +325,13 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={src}
-                  alt={`attachment-${index + 1}`}
+                  alt={t('feedback.attachmentAlt', { number: index + 1 })}
                   className="w-full h-full object-cover"
                 />
                 <button
                   type="button"
                   onClick={() => handleRemoveImage(index)}
-                  aria-label={t('feedback.removeImage') || 'Remove image'}
+                  aria-label={t('feedback.removeImage')}
                   disabled={isSubmitting}
                   data-testid={`remove-image-${index}`}
                   className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-md focus:opacity-100"
@@ -357,7 +357,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             data-testid="image-file-input"
             className="sr-only"
             id="feedback-image-input"
-            aria-label={t('feedback.attachImages') || 'Attach images (optional)'}
+            aria-label={t('feedback.attachImages')}
           />
           <label
             htmlFor="feedback-image-input"
@@ -371,10 +371,10 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
             </svg>
-            {t('feedback.attachImages') || 'Attach images (optional)'}
+            {t('feedback.attachImages')}
           </label>
           <span className="text-xs text-gray-400 dark:text-gray-500" suppressHydrationWarning={true}>
-            {t('feedback.imagesNote') || 'Up to 3 images, max 3 MB each and 4.4 MB total'}
+            {t('feedback.imagesNote')}
           </span>
         </div>
 
@@ -383,7 +383,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           data-testid="paste-hint"
           suppressHydrationWarning={true}
         >
-          {t('feedback.pasteHint') || 'Or paste a screenshot straight from the clipboard (Ctrl+V)'}
+          {t('feedback.pasteHint')}
         </p>
 
         <p
@@ -444,7 +444,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           suppressHydrationWarning={true}
           disabled={isSubmitting}
         >
-          {t('feedback.cancelButton') || 'Cancel'}
+          {t('feedback.cancelButton')}
         </button>
         <button
           type="submit"
@@ -462,10 +462,10 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
-              {t('feedback.sendingButton') || 'Sending...'}
+              {t('feedback.sendingButton')}
             </span>
           ) : (
-            t('feedback.submitButton') || 'Submit'
+            t('feedback.submitButton')
           )}
         </button>
       </div>

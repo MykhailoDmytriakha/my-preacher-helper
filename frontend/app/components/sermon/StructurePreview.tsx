@@ -58,7 +58,7 @@ const StructurePreview: React.FC<StructurePreviewProps> = ({
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-          aria-label={isCollapsed ? "Expand" : "Collapse"}
+          aria-label={isCollapsed ? t('structure.previewExpand') : t('structure.previewCollapse')}
         >
           <ChevronIcon
             className={isCollapsed ? 'rotate-180' : ''}

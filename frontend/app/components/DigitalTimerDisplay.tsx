@@ -53,7 +53,7 @@ const DigitalTimerDisplay: React.FC<DigitalTimerDisplayProps> = ({
       role="timer"
       aria-live="polite"
       aria-atomic="true"
-      aria-label={`${phaseLabel} phase: ${time} remaining${isEmergency ? ', emergency time remaining' : ''}${isInteractive ? ', click to change duration' : ''}`}
+      aria-label={[phaseLabel, t('plan.timer.ariaRemaining', { time }), isEmergency && t('plan.timer.ariaEmergency'), isInteractive && t('plan.timer.ariaClickToChange')].filter(Boolean).join(', ')}
       style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}
     >
       <div

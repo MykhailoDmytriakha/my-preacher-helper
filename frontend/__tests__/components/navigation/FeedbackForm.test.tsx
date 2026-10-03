@@ -35,7 +35,7 @@ jest.mock('@/utils/feedbackPayload', () => {
 // Mock dependencies
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { amount?: string; used?: number; limit?: number; count?: number }) => {
+    t: (key: string, options?: { amount?: string; used?: number; limit?: number; count?: number; number?: number }) => {
       const translations: { [key: string]: string } = {
         'feedback.typeLabel': 'Feedback Type',
         'feedback.typeSuggestion': 'Suggestion',
@@ -58,10 +58,11 @@ jest.mock('react-i18next', () => ({
         'feedback.textOverBudget': '{{count}} bytes over the limit',
         'feedback.payloadTooLarge': 'Feedback is too large for one request. Shorten the message or remove an attachment.',
         'feedback.attachmentBudgetRemaining': '{{amount}} MB attachment budget remaining',
+        'feedback.attachmentAlt': 'Attachment {{number}}',
         'feedback.pasteHint': 'Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V',
         'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
       };
-      return (translations[key] || key).replace('{{amount}}', options?.amount || '').replace('{{used}}', String(options?.used ?? '')).replace('{{limit}}', String(options?.limit ?? '')).replace('{{count}}', String(options?.count ?? ''));
+      return (translations[key] || key).replace('{{amount}}', options?.amount || '').replace('{{used}}', String(options?.used ?? '')).replace('{{limit}}', String(options?.limit ?? '')).replace('{{count}}', String(options?.count ?? '')).replace('{{number}}', String(options?.number ?? ''));
     }
   })
 }));
@@ -386,7 +387,7 @@ describe('FeedbackForm Component', () => {
     );
     expect(textarea).toHaveValue('Exact feedback that failed');
     expect(type).toHaveValue('bug');
-    expect(screen.getByAltText('attachment-1')).toHaveAttribute('src', dataUrl);
+    expect(screen.getByAltText('Attachment 1')).toHaveAttribute('src', dataUrl);
     expect(rejectedSubmit).toHaveBeenCalledWith(
       'Exact feedback that failed',
       'bug',
@@ -483,7 +484,7 @@ describe('FeedbackForm Component', () => {
       await Promise.resolve();
     });
 
-    expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+    expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(1);
     expect(screen.getByTestId('image-error')).toHaveTextContent(
       'Feedback is too large for one request. Shorten the message or remove an attachment.'
     );
@@ -513,7 +514,7 @@ describe('FeedbackForm Component', () => {
       fireEvent.change(fileInput, { target: { files: [createMockFile('near-budget.png')] } });
       await Promise.resolve();
     });
-    expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+    expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(1);
 
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: '\\'.repeat(100) } });
@@ -583,8 +584,8 @@ describe('FeedbackForm Component', () => {
         await Promise.resolve();
       });
 
-      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
-      expect(screen.getByAltText('attachment-1')).toHaveAttribute('src', dataUrl);
+      expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(1);
+      expect(screen.getByAltText('Attachment 1')).toHaveAttribute('src', dataUrl);
 
       restore();
     });
@@ -643,7 +644,7 @@ describe('FeedbackForm Component', () => {
 
       // Default behaviour left alone → the browser still inserts "copied words".
       expect(notPrevented).toBe(true);
-      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+      expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(1);
 
       restore();
     });
@@ -673,7 +674,7 @@ describe('FeedbackForm Component', () => {
         await Promise.resolve();
       });
 
-      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+      expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(1);
       restore();
     });
 
@@ -705,14 +706,14 @@ describe('FeedbackForm Component', () => {
           await Promise.resolve();
         });
       }
-      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(3);
+      expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(3);
 
       await act(async () => {
         fireEvent.paste(textarea, { clipboardData: clipboardWith([createMockFile('four.png')]) });
         await Promise.resolve();
       });
 
-      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(3);
+      expect(screen.getAllByAltText(/^Attachment /)).toHaveLength(3);
       expect(screen.getByTestId('image-error')).toHaveTextContent('Maximum 3 images allowed');
 
       restore();

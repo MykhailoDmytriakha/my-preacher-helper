@@ -85,10 +85,10 @@ const TimerControls: React.FC<TimerControlsProps> = ({
     ? (buttonDisabled
         ? (t("plan.selectTime", { defaultValue: "Select time..." }) || "Select time...")
         : showPlayButton
-          ? (t("actions.start") || "Start")
-          : (t("plan.timer.resume") || "Resume")
+          ? (t("actions.start"))
+          : (t("plan.timer.resume"))
       )
-    : (t("plan.timer.pause") || "Pause");
+    : (t("plan.timer.pause"));
 
   return (
     <div className="timer-controls-card" style={controlStyles}>
@@ -117,8 +117,8 @@ const TimerControls: React.FC<TimerControlsProps> = ({
           onClick={onStop}
           disabled={status === 'idle'}
           className={`control-button stop-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${status === 'idle' ? CSS_CLASSES.DISABLED : ''}`}
-          title={t("plan.timer.stop") || "Stop"}
-          aria-label={t("plan.timer.stop") || "Stop"}
+          title={t("plan.timer.stop")}
+          aria-label={t("plan.timer.stop")}
         >
           <div className="control-inner">
             <Square className="control-icon" />
@@ -130,8 +130,8 @@ const TimerControls: React.FC<TimerControlsProps> = ({
           onClick={onSkip}
           disabled={status === 'idle' || status === 'finished' || currentPhase === 'conclusion'}
           className={`control-button skip-button transition-all duration-200 transform hover:scale-105 active:scale-95 ${(status === 'idle' || status === 'finished' || currentPhase === 'conclusion') ? CSS_CLASSES.DISABLED : ''}`}
-          title={t("plan.timer.skip") || "Skip to next phase"}
-          aria-label={t("plan.timer.skip") || "Skip to next phase"}
+          title={t("plan.timer.skip")}
+          aria-label={t("plan.timer.skip")}
         >
           <div className="control-inner">
             <SkipForward className="control-icon" />

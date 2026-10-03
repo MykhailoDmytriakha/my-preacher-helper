@@ -54,7 +54,7 @@ export default function FlowEditor({
                         type="button"
                         onClick={onClose}
                         className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300 xl:rounded-lg xl:p-1.5"
-                        aria-label="Close editor"
+                        aria-label={t('common.close')}
                     >
                         <XMarkIcon className="h-6 w-6 xl:h-5 xl:w-5" />
                     </button>

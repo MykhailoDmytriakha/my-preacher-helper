@@ -234,7 +234,7 @@ function useNoteAIAssistant({
     ) => {
         if (aiBlocked) return;
         if (!content.trim()) {
-            toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
+            toast.error(t('studiesWorkspace.aiAnalyze.emptyContent'));
             return;
         }
 
@@ -271,15 +271,15 @@ function useNoteAIAssistant({
 
             if (hasAnyResult) {
                 setPendingAnalysisResult(aiResult);
-                toast.success(t('studiesWorkspace.aiAnalyze.success') || 'Analysis complete. Please review suggestions.');
+                toast.success(t('studiesWorkspace.aiAnalyze.success'));
             } else {
-                toast.info(t('studiesWorkspace.aiAnalyze.noResults') || 'No useful suggestions found for this content.');
+                toast.info(t('studiesWorkspace.aiAnalyze.noResults'));
             }
             await refreshAiUsage();
 
         } catch (error) {
             if (isUsageCapReachedError(error)) return;
-            toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
+            toast.error(t('studiesWorkspace.aiAnalyze.error'));
         } finally {
             setAnalyzingSource(null);
         }
@@ -333,7 +333,7 @@ function useNoteAIAssistant({
             storedVoiceBlobRef.current = audioBlob;
             const message = err instanceof TranscriptionClientError
                 ? buildTranscriptionErrorMessage(err, t)
-                : (t('errors.audioProcessing') || 'Voice transcription failed');
+                : (t('errors.audioProcessing'));
             setVoiceError(message);
             // A resend of an already-persisted draft passes persistOnFailure:false to avoid duplicates.
             // Skip persistence for a brand-new note ('new'): its contextId would collide across every
@@ -466,7 +466,7 @@ function EditorHeader({
                 onClick={() => router.push(`/studies/${prevNoteId}?${searchParams.toString()}`)}
                 disabled={!prevNoteId}
                 className="flex items-center justify-center rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
-                title={t('common.previous') || 'Previous (←)'}
+                title={t('common.previous')}
             >
                 <ChevronLeftIcon className="h-4 w-4" />
             </button>
@@ -477,7 +477,7 @@ function EditorHeader({
                 onClick={() => router.push(`/studies/${nextNoteId}?${searchParams.toString()}`)}
                 disabled={!nextNoteId}
                 className="flex items-center justify-center rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
-                title={t('common.next') || 'Next (→)'}
+                title={t('common.next')}
             >
                 <ChevronRightIcon className="h-4 w-4" />
             </button>
@@ -606,14 +606,14 @@ function EditorHeaderTypeControl({
                         onClick={() => setType('note')}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                     >
-                        {t('studiesWorkspace.type.note') || 'Note'}
+                        {t('studiesWorkspace.type.note')}
                     </button>
                     <button
                         type="button"
                         onClick={() => setType('question')}
                         className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
                     >
-                        {t('studiesWorkspace.type.question') || 'Question'}
+                        {t('studiesWorkspace.type.question')}
                     </button>
                 </div>
             </div>
@@ -625,11 +625,11 @@ function EditorHeaderTypeControl({
             <div className="flex items-center gap-2">
                 {type === 'question' ? (
                     <Chip tone="amber" size="sm" icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}>
-                        {t('studiesWorkspace.type.question') || 'Question'}
+                        {t('studiesWorkspace.type.question')}
                     </Chip>
                 ) : (
                     <Chip tone="neutral" size="sm">
-                        {t('studiesWorkspace.type.note') || 'Note'}
+                        {t('studiesWorkspace.type.note')}
                     </Chip>
                 )}
             </div>
@@ -1113,7 +1113,7 @@ export default function StudyNoteEditorPage() {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
                                             const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
-                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse'); return; }
+                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError')); return; }
                                             setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
                                             setQuickRefInput('');
                                         }
@@ -1400,7 +1400,7 @@ export default function StudyNoteEditorPage() {
                             <RichMarkdownEditor
                                 value={content}
                                 onChange={setContent}
-                                placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
+                                placeholder={t('studiesWorkspace.contentPlaceholder')}
                                 minHeight="300px"
                                 stickyToolbarTop={scrollLayout.toolbarTop}
                             />
@@ -1506,7 +1506,7 @@ export default function StudyNoteEditorPage() {
 function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, handleDelete, aiMenu }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'handleDelete' | 'aiMenu'>) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
-    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
+    const copyLabel = isCopied ? t('common.copied') : t('common.copy');
 
     useEffect(() => {
         if (!showMenu) return;
@@ -1524,7 +1524,7 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
             {isEditing && aiMenu}
             <div className={`text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400 ${isEditing || justSaved ? '' : 'hidden'}`}>
                 {isSaving ? (
-                    <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
+                    <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving')}</span></>
                 ) : saveError ? (
                     <span className="text-red-500">{t(saveError)}</span>
                 ) : lastSaved && !hasUnsavedEdits ? (
@@ -1532,7 +1532,7 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
                        Found in the browser: the tick stayed up while newer keystrokes sat
                        unsent, which is the one claim this whole migration exists to stop
                        the app from making. */
-                    <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
+                    <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved')}</span></>
                 ) : null}
             </div>
 
@@ -1557,8 +1557,8 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
                     ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
                     }`}
-                title={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
-                aria-label={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
+                title={isEditing ? t('common.done') : t('common.edit')}
+                aria-label={isEditing ? t('common.done') : t('common.edit')}
             >
                 {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
             </button>
@@ -1567,8 +1567,8 @@ function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, las
                 <button
                     onClick={() => setShowMenu(!showMenu)}
                     className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                    title={t('common.more') || 'More'}
-                    aria-label={t('common.more') || 'More'}
+                    title={t('common.more')}
+                    aria-label={t('common.more')}
                 >
                     <EllipsisVerticalIcon className="h-5 w-5" />
                 </button>
@@ -1596,8 +1596,8 @@ function EditorTitleField({ isEditing, title, setTitle, t, searchQuery }: Pick<E
         <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-            aria-label={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+            placeholder={t('studiesWorkspace.titlePlaceholder')}
+            aria-label={t('studiesWorkspace.titlePlaceholder')}
             className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${titleSizeClass(title)}`}
         />
     ) : (

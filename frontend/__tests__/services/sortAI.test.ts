@@ -91,7 +91,7 @@ describe('sortItemsWithAI', () => {
     await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockSermonPoints))
       .rejects.toThrow('Sorting failed with status 500');
     
-    expect(toast.error).toHaveBeenCalledWith('Error sorting items with AI. Please try again.');
+    expect(toast.error).toHaveBeenCalledWith('errors.aiSortingError');
   });
 
   test('handles network errors gracefully', async () => {
@@ -105,7 +105,7 @@ describe('sortItemsWithAI', () => {
     await expect(sortItemsWithAI(columnId, mockItems, sermonId, mockSermonPoints))
       .rejects.toThrow('Network error');
     
-    expect(toast.error).toHaveBeenCalledWith('Error sorting items with AI. Please try again.');
+    expect(toast.error).toHaveBeenCalledWith('errors.aiSortingError');
   });
 
   test('returns all items in response', async () => {

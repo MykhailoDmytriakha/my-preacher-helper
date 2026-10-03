@@ -325,9 +325,9 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
           rows={4}
           value={modernDraft}
           onChange={(e) => setModernDraft(e.target.value)}
-          placeholder={t('wizard.steps.homileticPlan.fields.modernTranslation.placeholder') || ''}
+          placeholder={t('wizard.steps.homileticPlan.fields.modernTranslation.placeholder')}
           className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-          aria-label={t('wizard.steps.homileticPlan.fields.modernTranslation.label') || 'Modern translation'}
+          aria-label={t('wizard.steps.homileticPlan.fields.modernTranslation.label')}
         />
         <div className="mt-2 flex items-center justify-end gap-2">
           {modernHasChanges && (
@@ -337,7 +337,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={handleSaveModern}
                 disabled={savingModern || (modernDraft.trim().length === 0)}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-                title={t('homiletic.actions.save') || "ModernTranslationSave"}
+                title={t('homiletic.actions.save')}
               >
                 <Check className="w-4 h-4" />
               </button>
@@ -345,7 +345,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 type="button"
                 onClick={() => setModernDraft(initialModernTranslation || '')}
                 className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-                title={t('homiletic.actions.cancel') || "ModernTranslationCancel"}
+                title={t('homiletic.actions.cancel')}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -379,16 +379,16 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                   const val = e.target.value;
                   setUpdatedPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
                 }}
-                placeholder={t('wizard.steps.homileticPlan.fields.updatedPlan.itemPlaceholder') || ''}
+                placeholder={t('wizard.steps.homileticPlan.fields.updatedPlan.itemPlaceholder')}
                 className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.itemLabel') || 'Plan item'}
+                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.itemLabel')}
               />
               <button
                 type="button"
                 onClick={() => moveUpdatedItem(idx, -1)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.updatedPlan.moveUp') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveUp') || 'Move up'}
+                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveUp')}
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
@@ -397,7 +397,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={() => moveUpdatedItem(idx, 1)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.updatedPlan.moveDown') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveDown') || 'Move down'}
+                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.moveDown')}
               >
                 <ArrowDown className="w-4 h-4" />
               </button>
@@ -406,7 +406,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={() => removeUpdatedItem(item.id)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.updatedPlan.remove') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.remove') || 'Remove'}
+                aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.remove')}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -420,7 +420,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
               onClick={handleSaveUpdatedPlan}
               disabled={updatedPlanDraft.some(it => (it.title || '').trim().length === 0)}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save') || 'Save'}
+              title={t('actions.save')}
             >
               <Check className="w-4 h-4" />
             </button>
@@ -428,7 +428,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
               type="button"
               onClick={() => setUpdatedPlanDraft(initialUpdatedPlan || [])}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel') || 'Cancel'}
+              title={t('actions.cancel')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -461,16 +461,16 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                   const val = e.target.value;
                   setSermonPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
                 }}
-                placeholder={t('wizard.steps.homileticPlan.fields.sermonPlan.itemPlaceholder') || ''}
+                placeholder={t('wizard.steps.homileticPlan.fields.sermonPlan.itemPlaceholder')}
                 className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.itemLabel') || 'Plan item'}
+                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.itemLabel')}
               />
               <button
                 type="button"
                 onClick={() => moveSermonPlanItem(idx, -1)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.sermonPlan.moveUp') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveUp') || 'Move up'}
+                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveUp')}
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
@@ -479,7 +479,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={() => moveSermonPlanItem(idx, 1)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.sermonPlan.moveDown') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveDown') || 'Move down'}
+                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.moveDown')}
               >
                 <ArrowDown className="w-4 h-4" />
               </button>
@@ -488,7 +488,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                 onClick={() => removeSermonPlanItem(item.id)}
                 className={`inline-flex items-center justify-center px-2 py-1 rounded-md text-xs border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={t('wizard.steps.homileticPlan.fields.sermonPlan.remove') as string}
-                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.remove') || 'Remove'}
+                aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.remove')}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -502,7 +502,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
               onClick={handleSaveSermonPlan}
               disabled={sermonPlanDraft.some(it => (it.title || '').trim().length === 0)}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
-              title={t('actions.save') || 'Save'}
+              title={t('actions.save')}
             >
               <Check className="w-4 h-4" />
             </button>
@@ -510,7 +510,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
               type="button"
               onClick={() => setSermonPlanDraft(initialSermonPlan || [])}
               className={`inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
-              title={t('actions.cancel') || 'Cancel'}
+              title={t('actions.cancel')}
             >
               <X className="w-4 h-4" />
             </button>

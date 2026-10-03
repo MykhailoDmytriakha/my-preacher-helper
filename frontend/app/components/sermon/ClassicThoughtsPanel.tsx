@@ -121,7 +121,7 @@ const ActiveFilters = ({
 
       {sortOrder === "structure" && (
         <Chip tone="emerald" size="sm">
-          {t("filters.sortByStructure") || "Sorted by ThoughtsBySection"}
+          {t("filters.sortByStructure")}
         </Chip>
       )}
 
@@ -322,7 +322,7 @@ export default function ClassicThoughtsPanel({
                   onClick={() => setIsBrainstormOpen(!isBrainstormOpen)}
                   disabled={!isMagicAvailable}
                   className={`inline-flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-md text-sm font-medium bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 text-amber-700 dark:text-amber-300 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/30 dark:hover:to-yellow-900/30 transition-all shadow-sm hover:shadow ${!isMagicAvailable ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
-                  title={!isMagicAvailable ? t("errors.magicUnavailable") || "AI features unavailable in offline mode" : ""}
+                  title={!isMagicAvailable ? t("errors.magicUnavailable") : ""}
                   aria-label={t("brainstorm.title")}
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

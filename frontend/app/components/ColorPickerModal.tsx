@@ -78,7 +78,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
                 }`}
                 style={{ backgroundColor: color }}
                 onClick={() => handleSelectColor(color)}
-                aria-label={`Color ${color}`}
+                aria-label={t('settings.colorOption', { color })}
               />
             ))}
           </div>

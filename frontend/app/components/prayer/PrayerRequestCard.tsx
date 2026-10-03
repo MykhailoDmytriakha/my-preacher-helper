@@ -151,7 +151,7 @@ export default function PrayerRequestCard({
           <button
             onClick={() => { setMenuOpen(!menuOpen); setConfirming(false); }}
             className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded"
-            aria-label="Actions"
+            aria-label={t('common.actions')}
           >
             <EllipsisVerticalIcon className="h-4 w-4" />
           </button>

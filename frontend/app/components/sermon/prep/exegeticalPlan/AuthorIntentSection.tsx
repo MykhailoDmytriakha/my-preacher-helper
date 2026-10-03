@@ -55,7 +55,7 @@ const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
               onClick={handleCancel}
               className="px-2.5 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors"
             >
-              {t('actions.cancel') || 'Cancel'}
+              {t('actions.cancel')}
             </button>
             
             <button
@@ -63,9 +63,9 @@ const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
               onClick={handleSave}
               disabled={isSaving}
               className="px-2.5 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors disabled:opacity-50"
-              title={t('actions.save') || 'Save'}
+              title={t('actions.save')}
             >
-              {isSaving ? t('buttons.saving') : (t('actions.save') || 'Save')}
+              {isSaving ? t('buttons.saving') : (t('actions.save'))}
             </button>
           </div>
         )}

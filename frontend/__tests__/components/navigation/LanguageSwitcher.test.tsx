@@ -60,7 +60,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Check if the button is rendered with the globe icon
-    const button = screen.getByRole('button', { name: /change language/i });
+    const button = screen.getByRole('button', { name: 'navigation.changeLanguage' });
     expect(button).toBeInTheDocument();
     expect(button).toHaveAttribute('title', 'English');
     expect(screen.getByText('🌐')).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Click the language button
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Check dropdown is visible with all languages
     expect(screen.getByText('English')).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // The English option should have an SVG checkmark since it's the current language
     const englishButton = screen.getByText('English').closest('button');
@@ -129,7 +129,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Click on Russian language option
     fireEvent.click(screen.getByText('Русский'));
@@ -155,7 +155,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Click on Ukrainian language option
     fireEvent.click(screen.getByText('Українська'));
@@ -171,7 +171,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Check that event listener was added
     expect(document.addEventListener).toHaveBeenCalledWith('mousedown', expect.any(Function));
@@ -181,10 +181,10 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Close dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Check that event listener was removed
     expect(document.removeEventListener).toHaveBeenCalledWith('mousedown', expect.any(Function));
@@ -201,7 +201,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Verify event listener was added
     expect(addEventListenerSpy).toHaveBeenCalledWith('mousedown', expect.any(Function));
@@ -229,7 +229,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Simulate the click inside handler
     const handleClickOutsideCall = (document.addEventListener as jest.Mock).mock.calls.find(
@@ -256,7 +256,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // Open dropdown
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Click on Russian language option
     fireEvent.click(screen.getByText('Русский'));
@@ -278,6 +278,7 @@ describe('LanguageSwitcher Component', () => {
   test('uses first language as default when current language not found', () => {
     // Set a language that doesn't exist in supported languages
     (useTranslation as jest.Mock).mockReturnValue({
+      t: (key: string) => key,
       i18n: {
         language: 'fr', // French is not in supported languages
         changeLanguage: mockChangeLanguage
@@ -287,7 +288,7 @@ describe('LanguageSwitcher Component', () => {
     render(<LanguageSwitcher />);
 
     // The button should show English (first language) as title
-    const button = screen.getByRole('button', { name: /change language/i });
+    const button = screen.getByRole('button', { name: 'navigation.changeLanguage' });
     expect(button).toHaveAttribute('title', 'English');
   });
 
@@ -295,7 +296,7 @@ describe('LanguageSwitcher Component', () => {
     const { unmount } = render(<LanguageSwitcher />);
 
     // Open dropdown to add event listener
-    fireEvent.click(screen.getByRole('button', { name: /change language/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'navigation.changeLanguage' }));
 
     // Unmount to trigger cleanup
     unmount();

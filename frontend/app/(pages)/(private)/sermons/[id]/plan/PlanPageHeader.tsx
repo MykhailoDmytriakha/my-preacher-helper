@@ -204,7 +204,7 @@ export default function PlanPageHeader({
           sermonId={sermonId}
           getExportContent={buildExportContent}
           getPdfContent={getPdfContent}
-          title={sermon.title || "Sermon Plan"}
+          title={sermon.title || t('dashboardHome.sections.sermons.untitled')}
           className="w-full sm:ml-auto sm:w-auto"
           disabledFormats={["pdf"]}
           planData={

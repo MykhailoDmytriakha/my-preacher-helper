@@ -301,7 +301,7 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label="Tags">
+    <div className="flex flex-wrap gap-1.5 overflow-x-hidden" role="list" aria-label={t('structure.tags')}>
       {tags.map((tag) => {
         const tagInfo = allowedTags.find(t => t.name === tag);
         let displayName = tag;

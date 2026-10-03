@@ -63,9 +63,9 @@ describe('TreeNode', () => {
       render(<TreeNode {...defaultProps} />);
       let input = screen.getByPlaceholderText('Enter point title...') as HTMLInputElement;
       expect(input.value).toBe('Test Node');
-      expect(screen.getByLabelText('delete')).toBeInTheDocument();
-      expect(screen.getByLabelText('add child')).toBeInTheDocument();
-      expect(screen.getByLabelText('add sibling')).toBeInTheDocument();
+      expect(screen.getByLabelText('Delete this point')).toBeInTheDocument();
+      expect(screen.getByLabelText('Add a subpoint')).toBeInTheDocument();
+      expect(screen.getByLabelText('Add a sibling point')).toBeInTheDocument();
 
       const draftTitles = { 'node-1': 'Draft Title' };
       cleanup();
@@ -138,13 +138,13 @@ describe('TreeNode', () => {
   describe('User Interactions - Buttons', () => {
     it('invokes callbacks for toolbar buttons', () => {
       render(<TreeNode {...defaultProps} />);
-      fireEvent.click(screen.getByLabelText('delete'));
+      fireEvent.click(screen.getByLabelText('Delete this point'));
       expect(mockOnRemove).toHaveBeenCalledWith('node-1');
 
-      fireEvent.click(screen.getByLabelText('add child'));
+      fireEvent.click(screen.getByLabelText('Add a subpoint'));
       expect(mockOnAddChild).toHaveBeenCalledWith('node-1');
 
-      fireEvent.click(screen.getByLabelText('add sibling'));
+      fireEvent.click(screen.getByLabelText('Add a sibling point'));
       expect(mockOnAddSibling).toHaveBeenCalledWith('node-1');
     });
   });
@@ -192,11 +192,11 @@ describe('TreeNode', () => {
   describe('Accessibility', () => {
     it('exposes aria labels, titles, and placeholders', () => {
       render(<TreeNode {...defaultProps} />);
-      const deleteButton = screen.getByLabelText('delete');
-      expect(deleteButton).toHaveAttribute('aria-label', 'delete');
+      const deleteButton = screen.getByLabelText('Delete this point');
+      expect(deleteButton).toHaveAttribute('aria-label', 'Delete this point');
       expect(deleteButton).toHaveAttribute('title', 'Delete this point');
-      expect(screen.getByLabelText('add child')).toHaveAttribute('title', 'Add a subpoint (⌘+Enter)');
-      expect(screen.getByLabelText('add sibling')).toHaveAttribute('title', 'Add a sibling point (Enter)');
+      expect(screen.getByLabelText('Add a subpoint')).toHaveAttribute('title', 'Add a subpoint (⌘+Enter)');
+      expect(screen.getByLabelText('Add a sibling point')).toHaveAttribute('title', 'Add a sibling point (Enter)');
       expect(screen.getByPlaceholderText('Enter point title...')).toBeInTheDocument();
     });
   });

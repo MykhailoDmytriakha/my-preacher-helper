@@ -107,7 +107,7 @@ describe('FlowEditor', () => {
 
     it('calls onClose', () => {
         render(<FlowEditor {...defaultProps} />);
-        const closeBtn = screen.getByLabelText('Close editor');
+        const closeBtn = screen.getByLabelText('common.close');
         fireEvent.click(closeBtn);
         expect(onClose).toHaveBeenCalled();
     });
@@ -124,7 +124,7 @@ describe('FlowEditor', () => {
         );
 
         // The header never scrolls away with a long block.
-        expect(screen.getByLabelText('Close editor').closest('.overflow-y-auto')).toBeNull();
+        expect(screen.getByLabelText('common.close').closest('.overflow-y-auto')).toBeNull();
         // The fields scroll inside the panel and do not hand the wheel over to the page behind.
         const fields = screen.getByLabelText('Block Name (Template)').closest('.overflow-y-auto');
         expect(fields).not.toBeNull();

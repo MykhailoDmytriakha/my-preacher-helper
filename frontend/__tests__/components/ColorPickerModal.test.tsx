@@ -8,15 +8,16 @@ import '@testing-library/jest-dom';
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
     return {
-      t: (key: string) => {
+      t: (key: string, options?: { color?: string }) => {
         const translations: Record<string, string> = {
+          'settings.colorOption': 'Color {{color}}',
           'settings.editColorFor': 'Edit color for',
           'settings.presetColors': 'Preset Colors',
           'settings.customColor': 'Custom Color',
           'common.cancel': 'Cancel',
           'common.save': 'Save',
         };
-        return translations[key] || key;
+        return (translations[key] || key).replace('{{color}}', options?.color ?? '');
       }
     };
   },

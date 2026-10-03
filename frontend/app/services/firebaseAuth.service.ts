@@ -13,6 +13,7 @@ import { toast } from "sonner";
 
 import app from "@/config/firebaseConfig";
 import { forgetReportedFailures } from "@/utils/writeRecovery";
+import { i18n } from "@locales/i18n";
 import { updateUserProfile } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
 
@@ -135,7 +136,7 @@ export const signInAsGuest = async (): Promise<User | null> => {
     return result.user;
   } catch (error) {
     console.error("Error signing in as guest:", error);
-    toast.error("Guest sign-in error");
+    toast.error(i18n.t('errors.guestSignInFailed'));
     throw error;
   }
 };

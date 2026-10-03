@@ -41,7 +41,7 @@ export default function UserAvatar({
       {user?.photoURL && !imgError ? (
         <Image
           src={user.photoURL}
-          alt="Avatar"
+          alt={t('navigation.avatar')}
           width={40}
           height={40}
           className="w-full h-full rounded-full"

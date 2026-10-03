@@ -225,7 +225,7 @@ describe('firebaseAuth.service', () => {
     mockSignInAnonymously.mockRejectedValue(error);
 
     await expect(signInAsGuest()).rejects.toBe(error);
-    expect(mockToastError).toHaveBeenCalledWith('Guest sign-in error');
+    expect(mockToastError).toHaveBeenCalledWith('errors.guestSignInFailed');
   });
 
   it('logOut signs out successfully', async () => {

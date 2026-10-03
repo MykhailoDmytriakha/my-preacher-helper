@@ -95,7 +95,7 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
       <button
         onClick={toggleDropdown}
         className="flex items-center justify-center w-9 h-9 rounded-full text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-label="Change language"
+        aria-label={t('navigation.changeLanguage')}
         title={currentLang.name}
       >
         <span className="text-lg">🌐</span>

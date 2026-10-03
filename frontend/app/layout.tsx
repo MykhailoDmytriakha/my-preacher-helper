@@ -2,7 +2,9 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 
+import { LocalizedToaster } from "./components/LocalizedToaster";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { SkipLink } from "./components/navigation/SkipLink";
 import { ThemeWatcher } from "./components/ThemeWatcher";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -12,7 +14,6 @@ import { TextScaleProvider } from "./providers/TextScaleProvider";
 import { APP_THEME_COLORS } from "./utils/themeColors";
 import { THEME_INIT_SCRIPT } from "./utils/themeInitScript";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { Toaster } from "sonner";
 import "./globals.css";
 
 const interSans = Inter({
@@ -57,12 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${interSans.variable} ${robotoMono.variable} antialiased`}
         suppressHydrationWarning={true}
       >
-        <a
-          href="#main-content"
-          className="sr-only focus:not-sr-only focus:absolute focus:z-[9999] focus:top-4 focus:left-4 focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:shadow-lg dark:focus:bg-gray-800"
-        >
-          Skip to main content
-        </a>
+        <SkipLink />
         <ThemeWatcher />
         <TextScaleProvider>
           <AuthProvider>
@@ -70,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <QueryProvider>
                 <NuqsAdapter>
                   <LanguageInitializer />
-                  <Toaster richColors closeButton position="top-right" />
+                  <LocalizedToaster />
                   <div className="min-h-screen flex flex-col" id="app-shell">
                     <OfflineBanner />
                     {children}

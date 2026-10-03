@@ -257,7 +257,7 @@ describe('DashboardNav Component', () => {
       </TestProviders>
     );
 
-    const avatar = screen.getByAltText('Avatar');
+    const avatar = screen.getByAltText('navigation.avatar');
     expect(avatar).toBeInTheDocument();
     expect(avatar).toHaveAttribute('src', 'https://example.com/photo.jpg');
   });

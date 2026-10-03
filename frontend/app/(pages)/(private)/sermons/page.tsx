@@ -217,7 +217,7 @@ export default function SermonsPage() {
         {/* Row 1: Tabs + Interactive Icons/Search */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-gray-700 pb-2">
           {/* Left Side: Tabs */}
-          <nav className="flex flex-wrap gap-2" aria-label="Tabs">
+          <nav className="flex flex-wrap gap-2" aria-label={t('navigation.sermonFilters')}>
             <button
               onClick={() => handleTabChange("active")}
               className={`

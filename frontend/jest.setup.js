@@ -274,6 +274,9 @@ jest.mock('i18next', () => {
     t: (key) => key, // Simple pass-through translation mock
     changeLanguage: jest.fn(),
     language: 'en', // Default language for tests
+    // Event subscription, as on the real instance (`locales/i18n.ts` follows language changes).
+    on: jest.fn(),
+    off: jest.fn(),
     // Add any other methods needed by your components
   };
 

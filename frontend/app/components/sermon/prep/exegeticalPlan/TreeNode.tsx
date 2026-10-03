@@ -139,7 +139,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             <button
               onClick={() => onPromote(node.id)}
               disabled={depth === 0}
-              aria-label="outdent"
+              aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.promote')}
               title={t('wizard.steps.exegeticalPlan.builder.tooltips.promote') as string}
               className={`inline-flex items-center justify-center p-0.5 rounded transition-colors ${depth === 0
                 ? 'text-gray-200 dark:text-gray-800 cursor-not-allowed'
@@ -152,7 +152,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             <button
               onClick={() => onDemote(node.id)}
               disabled={index === 0}
-              aria-label="indent"
+              aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.demote')}
               title={t('wizard.steps.exegeticalPlan.builder.tooltips.demote') as string}
               className={`inline-flex items-center justify-center p-0.5 rounded transition-colors ${index === 0
                 ? 'text-gray-200 dark:text-gray-800 cursor-not-allowed'
@@ -166,7 +166,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
             <button
               onClick={() => onAddChild(node.id)}
-              aria-label="add child"
+              aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')}
               title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addChild')} (⌘+Enter)`}
               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
             >
@@ -176,7 +176,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
             <button
               onClick={() => onAddSibling(node.id)}
-              aria-label="add sibling"
+              aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')}
               title={`${t('wizard.steps.exegeticalPlan.builder.tooltips.addSibling')} (Enter)`}
               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] text-gray-400 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded transition-colors"
             >
@@ -188,7 +188,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
 
             <button
               onClick={() => onRemove(node.id)}
-              aria-label="delete"
+              aria-label={t('wizard.steps.exegeticalPlan.builder.tooltips.delete')}
               title={t('wizard.steps.exegeticalPlan.builder.tooltips.delete') as string}
               className="w-5 h-5 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 flex items-center justify-center transition-all"
             >

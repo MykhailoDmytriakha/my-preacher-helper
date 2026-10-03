@@ -69,10 +69,10 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
               ? 'bg-gray-400 dark:bg-gray-500 text-gray-700 dark:text-gray-200 hover:bg-green-600 hover:text-white dark:hover:bg-green-600 dark:hover:text-white'
               : 'bg-green-600 hover:bg-green-700 text-white'
           }`}
-          title={t('plan.preachButton') || 'Preach'}
+          title={t('plan.preachButton')}
         >
           <ScrollText className="h-3 w-3 flex-shrink-0" />
-          <span>{t('plan.preachButton') || 'Preach'}</span>
+          <span>{t('plan.preachButton')}</span>
         </button>
       )}
     </div>

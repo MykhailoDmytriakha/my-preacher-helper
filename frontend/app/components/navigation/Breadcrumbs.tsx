@@ -505,7 +505,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="py-3" data-testid="breadcrumbs">
+    <nav aria-label={t('navigation.breadcrumbLabel')} className="py-3" data-testid="breadcrumbs">
       <ol className="flex flex-wrap items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
         {items.map((item, index) => {
           const isLast = index === items.length - 1;

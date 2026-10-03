@@ -2,6 +2,7 @@
 
 import { ChevronDown } from 'lucide-react';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { UI_COLORS } from '@/utils/themeColors';
 
@@ -30,6 +31,7 @@ const PrepStepCard: React.FC<PrepStepCardProps> = ({
   stepRef,
   done = false,
 }) => {
+  const { t } = useTranslation();
   return (
     <div
       ref={stepRef}
@@ -59,8 +61,8 @@ const PrepStepCard: React.FC<PrepStepCardProps> = ({
           {done && (
             <span
               className={`ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border ${UI_COLORS.success.border} dark:${UI_COLORS.success.darkBorder} ${UI_COLORS.success.bg} dark:${UI_COLORS.success.darkBg} ${UI_COLORS.success.text} dark:${UI_COLORS.success.darkText}`}
-              aria-label="Done"
-              title="Done"
+              aria-label={t('common.done')}
+              title={t('common.done')}
             >
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 6L9 17l-5-5" />

@@ -74,27 +74,27 @@ describe('PrayerRequestCard', () => {
     expect(screen.getByText('family')).toBeInTheDocument();
     expect(screen.getByText('2 updates')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add Update' }));
     expect(onAddUpdate).toHaveBeenCalledWith('prayer-1');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Mark Answered' }));
     await waitFor(() => {
       expect(onSetStatus).toHaveBeenCalledWith('prayer-1', 'answered');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Mark Not Answered' }));
     await waitFor(() => {
       expect(onSetStatus).toHaveBeenCalledWith('prayer-1', 'not_answered');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     expect(onEdit).toHaveBeenCalledWith(basePrayer);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(screen.getByRole('button', { name: 'Delete forever?' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Delete forever?' }));
@@ -196,7 +196,7 @@ describe('PrayerRequestCard', () => {
 
     expect(screen.getByText('God answered this prayer.')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    fireEvent.click(screen.getByRole('button', { name: 'common.actions' }));
 
     expect(screen.getByRole('button', { name: 'Mark Active' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Mark Answered' })).not.toBeInTheDocument();

@@ -111,7 +111,7 @@ describe('ExegeticalPlanModule', () => {
             run: () => {
               const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Parent', children: [] }];
               render(<ExegeticalPlanModule value={value} />);
-              fireEvent.click(screen.getByLabelText('add child'));
+              fireEvent.click(screen.getByLabelText('Add a subpoint'));
               expect(screen.getAllByPlaceholderText('Enter point title...').length).toBeGreaterThan(1);
             }
           },
@@ -120,7 +120,7 @@ describe('ExegeticalPlanModule', () => {
             run: () => {
               const value: ExegeticalPlanNode[] = [{ id: '1', title: 'First', children: [] }];
               render(<ExegeticalPlanModule value={value} />);
-              fireEvent.click(screen.getByLabelText('add sibling'));
+              fireEvent.click(screen.getByLabelText('Add a sibling point'));
               expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(2);
             }
           },
@@ -132,7 +132,7 @@ describe('ExegeticalPlanModule', () => {
                 { id: '2', title: 'Second', children: [] }
               ];
               render(<ExegeticalPlanModule value={value} />);
-              fireEvent.click(screen.getAllByLabelText('delete')[0]);
+              fireEvent.click(screen.getAllByLabelText('Delete this point')[0]);
               expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
             }
           }
@@ -276,7 +276,7 @@ describe('ExegeticalPlanModule', () => {
             run: async () => {
               const value: ExegeticalPlanNode[] = [{ id: '1', title: 'Parent', children: [] }];
               render(<ExegeticalPlanModule value={value} />);
-              fireEvent.click(screen.getByLabelText('add child'));
+              fireEvent.click(screen.getByLabelText('Add a subpoint'));
               await waitFor(() => {
                 const inputs = screen.getAllByPlaceholderText('Enter point title...');
                 expect(inputs.at(-1)).toHaveAttribute('autofocus');
@@ -288,7 +288,7 @@ describe('ExegeticalPlanModule', () => {
             run: async () => {
               const value: ExegeticalPlanNode[] = [{ id: '1', title: 'First', children: [] }];
               render(<ExegeticalPlanModule value={value} />);
-              fireEvent.click(screen.getByLabelText('add sibling'));
+              fireEvent.click(screen.getByLabelText('Add a sibling point'));
               await waitFor(() => {
                 const inputs = screen.getAllByPlaceholderText('Enter point title...');
                 expect(inputs).toHaveLength(2);
@@ -327,7 +327,7 @@ describe('ExegeticalPlanModule', () => {
               fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[0], {
                 target: { value: 'Modified First' }
               });
-              fireEvent.click(screen.getAllByLabelText('delete')[0]);
+              fireEvent.click(screen.getAllByLabelText('Delete this point')[0]);
               fireEvent.click(screen.getByRole('button', { name: /Save/i }));
               expect(mockOnSave).toHaveBeenCalledWith(
                 expect.arrayContaining([expect.objectContaining({ id: '2', title: 'Second' })])
@@ -414,7 +414,7 @@ describe('ExegeticalPlanModule', () => {
               fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[0], {
                 target: { value: 'Main Point' }
               });
-              fireEvent.click(screen.getByLabelText('add child'));
+              fireEvent.click(screen.getByLabelText('Add a subpoint'));
               await waitFor(() => screen.getAllByPlaceholderText('Enter point title...').length === 2);
               fireEvent.change(screen.getAllByPlaceholderText('Enter point title...')[1], {
                 target: { value: 'Sub Point' }
