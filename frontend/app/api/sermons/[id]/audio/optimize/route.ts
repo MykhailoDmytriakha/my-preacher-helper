@@ -34,12 +34,14 @@ import {
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, updateLegacyResource } from '@/data-engine/legacyBoundary.server';
-import { applyLegacyPatch, assertServerWritable, serverEditResponse, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { applyLegacyPatch, assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
+import { heardChunks } from '@/utils/audioChunkIdentity';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
+import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
@@ -65,6 +67,7 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
+    let changedTo: Record<string, unknown> | undefined;
     try {
         const uid = await getRequiredAuthenticatedUid(request);
         if (!uid) {
@@ -156,6 +159,15 @@ export async function POST(
                 .map((chunk, idx) => ({ ...chunk, index: idx }));
         };
         let allChunks = assemble(sermon.audioChunks);
+        // The sections prepared now are replaced; their stored words must still be the ones this run
+        // started from, or a correction made meanwhile would vanish. Position is not compared: another
+        // section growing shifts every index after it without touching these words.
+        const preparedWords = (stored: unknown): string => heardChunks(
+            ((Array.isArray(stored) ? stored : []) as AudioChunk[])
+                .filter(chunk => isAllSections || processing.has(chunk.sectionId))
+                .map((chunk, position) => ({ ...chunk, index: position }))
+        );
+        const startedFrom = preparedWords(sermon.audioChunks);
 
         // 5. Save to DB
         // Use dot-path updates so we record the source mode and refresh chunk/optimize
@@ -173,6 +185,10 @@ export async function POST(
                 legacy: () => updateLegacyResource({ collection: 'sermons', id: sermonId }, patchFor(allChunks)),
                 // Inside the engine's read-apply-retry loop: the other sections as stored right now.
                 engine: current => {
+                    if (preparedWords(current.audioChunks) !== startedFrom) {
+                        changedTo = current;
+                        throw new ServerEditError(CHUNKS_CHANGED, 409);
+                    }
                     allChunks = assemble(current.audioChunks);
                     return applyLegacyPatch(current, patchFor(allChunks));
                 },
@@ -197,6 +213,7 @@ export async function POST(
         });
 
     } catch (error) {
+        if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
         console.error('Optimize error:', error);
         if (isUsageCapReachedError(error)) return usageCapResponse(error);
         return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(

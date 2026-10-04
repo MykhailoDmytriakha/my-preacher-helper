@@ -370,6 +370,76 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         }
     });
 
+    /**
+     * The sections a run re-prepares are replaced, so a correction made in one of them while the
+     * AI was working would vanish without a word: the run answers 409 with the stored set instead.
+     */
+    it('refuses with the stored set when a section it re-prepares was corrected while the AI was working', async () => {
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                userId: mockUserId,
+                audioChunks: [{ index: 0, sectionId: 'introduction', text: 'Old Intro', createdAt: 'then' }],
+                thoughts: [{ id: 't1', text: 'New Intro', tags: ['introduction'] }],
+            }),
+        });
+        mockEngineCurrent = {
+            userId: mockUserId,
+            audioChunks: [{ index: 0, sectionId: 'introduction', text: 'Intro corrected on the phone', createdAt: 'then' }],
+        };
+        try {
+            const req = new NextRequest('http://localhost:3000/api/optimize', {
+                method: 'POST',
+                body: JSON.stringify({ userId: mockUserId, sections: 'introduction' }),
+            });
+            const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+            const json = await response.json();
+
+            expect(response.status).toBe(409);
+            expect(json.code).toBe('chunks-changed');
+            expect(json.chunks).toEqual([expect.objectContaining({ sectionId: 'introduction', text: 'Intro corrected on the phone' })]);
+            expect(mockEngineWritten).toBeNull();
+        } finally {
+            mockEngineCurrent = null;
+            mockEngineWritten = null;
+        }
+    });
+
+    it('writes when only the position of a re-prepared section moved, not its words', async () => {
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                userId: mockUserId,
+                audioChunks: [{ index: 0, sectionId: 'conclusion', text: 'Old Conclusion', createdAt: 'then' }],
+                thoughts: [{ id: 't1', text: 'New Conclusion', tags: ['conclusion'] }],
+            }),
+        });
+        mockEngineCurrent = {
+            userId: mockUserId,
+            audioChunks: [
+                { index: 0, sectionId: 'introduction', text: 'Intro added on the phone', createdAt: 'then' },
+                { index: 1, sectionId: 'conclusion', text: 'Old Conclusion', createdAt: 'then' },
+            ],
+        };
+        try {
+            const req = new NextRequest('http://localhost:3000/api/optimize', {
+                method: 'POST',
+                body: JSON.stringify({ userId: mockUserId, sections: 'conclusion' }),
+            });
+            const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+
+            expect(response.status).toBe(200);
+            const stored = mockEngineWritten?.audioChunks as Array<{ sectionId: string; text: string }>;
+            expect(stored.find(chunk => chunk.sectionId === 'introduction')?.text).toBe('Intro added on the phone');
+            expect(stored.some(chunk => chunk.text === 'Old Conclusion')).toBe(false);
+        } finally {
+            mockEngineCurrent = null;
+            mockEngineWritten = null;
+        }
+    });
+
     it('should prioritize outline points if they exist', async () => {
         mockGet.mockResolvedValue({
             exists: true,

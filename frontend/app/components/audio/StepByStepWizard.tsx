@@ -237,6 +237,8 @@ export default function StepByStepWizard({
     const { user } = useAuth();
     const charsLabel = t('audioExport.chars', { defaultValue: 'симв.' });
     const aiSourceLabel = t('audioExport.sourceAi', { defaultValue: 'AI-optimized' });
+    /** Said by every path that met a 409 `chunks-changed` and now shows the stored set. */
+    const changedElsewhere = t('audioExport.chunksChangedElsewhere');
 
     // Settings
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
@@ -524,7 +526,7 @@ export default function StepByStepWizard({
                     return 'stored';
                 }
                 showStoredSet(data);
-                setError(t('audioExport.chunksChangedElsewhere'));
+                setError(changedElsewhere);
                 return 'replaced';
             }
             throw new Error(data.error || `HTTP ${response.status}`);
@@ -535,7 +537,7 @@ export default function StepByStepWizard({
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId, showStoredSet, t]);
+    }, [changedElsewhere, sermonId, showStoredSet, t]);
 
     // ------------------------------------------------------------------
     // Prepare text for a given source (AI optimize OR raw split)
@@ -561,7 +563,13 @@ export default function StepByStepWizard({
                 category: 'ai',
             });
             if (!response.ok) {
-                const data = await response.json();
+                const data = await response.json().catch(() => ({}));
+                if (response.status === 409 && data.code === CHUNKS_CHANGED) {
+                    // A section being prepared was corrected elsewhere meanwhile: show what is stored.
+                    showStoredSet(data);
+                    setError(changedElsewhere);
+                    return;
+                }
                 throw new Error(data.error || 'Optimization failed');
             }
             const data = await response.json();
@@ -585,7 +593,7 @@ export default function StepByStepWizard({
         } finally {
             setIsLoading(false);
         }
-    }, [aiBlocked, chunks, mode, refreshAiUsage, sermonId, sections, ttsProvider]);
+    }, [aiBlocked, changedElsewhere, chunks, mode, refreshAiUsage, sermonId, sections, showStoredSet, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -636,7 +644,7 @@ export default function StepByStepWizard({
                 // The stored set is shown behind the editor, which keeps the person's text to copy;
                 // saving again is refused again, never aimed at whatever chunk now sits there.
                 showStoredSet(data);
-                throw new Error(t('audioExport.chunksChangedElsewhere'));
+                throw new Error(changedElsewhere);
             }
             throw new Error(data.error || 'Save failed');
         }
@@ -650,7 +658,7 @@ export default function StepByStepWizard({
             return next;
         });
         setEditingChunk(null);
-    }, [sermonId, mode, showStoredSet, t]);
+    }, [changedElsewhere, sermonId, mode, showStoredSet]);
 
     // ------------------------------------------------------------------
     // Generate audio (TTS)

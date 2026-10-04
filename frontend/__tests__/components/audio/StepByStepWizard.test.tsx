@@ -488,6 +488,22 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'false');
     });
 
+    it('shows the stored set when the section it prepared was corrected elsewhere meanwhile', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: false, status: 409,
+            json: async () => ({ code: 'chunks-changed', mode: 'ai', chunks: [{ index: 0, text: 'Opening corrected on the phone', sectionId: 'introduction' }] }),
+        });
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('Original as-is'));
+        await waitFor(() => expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument());
+        expect(screen.getByText('Opening corrected on the phone')).toBeInTheDocument();
+        expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('shows the previous source again when a preparation goes unanswered', async () => {
         mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
         (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
