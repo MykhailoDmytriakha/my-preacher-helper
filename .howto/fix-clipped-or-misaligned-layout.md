@@ -1,4 +1,4 @@
-when: layout bug · badge clipped · button cut off · overflow-hidden cuts button · -top-1 -right-1 · negative offset clipped · tooltip cut off · tooltip off screen · 1px gap on mobile · subpixel seam · buttons overflow on phone · horizontal scroll on iPhone SE · action bar overflows · controls overlap text · controls overlap banner · toggle covers first row · row jumps on hover · hover jitter · edit/delete rail · sub-point controls past card edge · numbers shift width · timer text jumps · tabular-nums · recorder timer unreadable · layout shifts when data loads · empty vs loaded state · wide table sprawls · colgroup · nav wraps in fixed header · tabs wrap · line-clamp hides scripture · вёрстка поехала · обрезана кнопка · бейдж обрезан · горизонтальная прокрутка на iPhone · кнопки вылезают на телефоне · строка прыгает при наведении · цифры таймера прыгают · таблица расползается · вкладки переносятся
+when: layout bug · badge clipped · button cut off · overflow-hidden cuts button · -top-1 -right-1 · negative offset clipped · tooltip cut off · tooltip off screen · 1px gap on mobile · subpixel seam · buttons overflow on phone · horizontal scroll on iPhone SE · action bar overflows · controls overlap text · controls overlap banner · toggle covers first row · row jumps on hover · hover jitter · edit/delete rail · sub-point controls past card edge · numbers shift width · timer text jumps · tabular-nums · recorder timer unreadable · layout shifts when data loads · empty vs loaded state · wide table sprawls · colgroup · nav wraps in fixed header · tabs wrap · line-clamp hides scripture · вёрстка поехала · обрезана кнопка · бейдж обрезан · горизонтальная прокрутка на iPhone · кнопки вылезают на телефоне · строка прыгает при наведении · цифры таймера прыгают · таблица расползается · вкладки переносятся · hover buttons show on every card · hovering the parent reveals all children · group-hover fires for all cards · nested group · кнопки при наведении у всех карточек · наведение на пункт раскрывает все мысли
 
 # Fix clipped or misaligned layout
 
@@ -21,6 +21,7 @@ Find the symptom below. Most cases are one of three causes: an `overflow-hidden`
 ## Jumping
 
 - A row changes size on hover and flickers → hover-only controls must not change padding, wrapping, truncation or height. Take them out of flow (an absolute rail) and reveal them with opacity only (`opacity-0 group-hover:opacity-100`, plus `group-focus-within` for the keyboard). Otherwise the row shrinks, loses hover, grows back, and repeats.
+- Hovering a container reveals the hover buttons of every card inside it → an unnamed `group-hover:` fires on hover of ANY ancestor with `group`, and a card inside a card makes two. Name the group the control belongs to: `group/card` on the card and `group-hover/card:` on its buttons (`SortableItem.tsx`; the tooltip button is `group/tip`). Guard: `frontend/__tests__/components/structureHoverScope.test.tsx` fails when an unnamed `group-hover:` sits under two `group` ancestors; the same count run in the browser console finds it on any page.
 - Counters and timers shift width as digits change → `tabular-nums` + `font-mono` (the timer in `FlatRecorderButton`).
 - A compact control that reveals more buttons in place (recorder pause/cancel/finish) → one fixed outer width plus fixed slots (`FlatRecorderButton`: `w-[190px]`, timer `w-[3.1rem]`, actions `w-[34px]`). `min`/`max` widths plus `truncate` on the timer made an active recording unreadable.
 - The page jumps when data arrives → keep the same root element structure for empty, loading and loaded states; swap only what is inside.
@@ -38,6 +39,7 @@ Find the symptom below. Most cases are one of three causes: an `overflow-hidden`
 - 2026-02-27: a header's `overflow-hidden` cut 4 px off the `FocusRecorderButton` pause/cancel buttons.
 - 2026-03-16: the sermon action bar scrolled sideways on an iPhone SE.
 - 2026-04-25: hover rails that changed row geometry put the pointer into a jitter loop.
+- 2026-10-04: hovering a plan point showed edit and move on every thought of the point: the thought card and the point card were both unnamed `group`.
 - 2026-05-01: the recorder timer truncated mid-recording; the desktop nav wrapped inside its fixed-height header.
 - 2026-07-13: the admin users table sprawled unevenly on wide screens and crushed its badges on narrow ones.
 

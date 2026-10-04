@@ -121,7 +121,7 @@ export const getCardClassName = ({
   const dragOpacityClass = isDragDisabled && !isLocked ? `opacity-75 ${cursorClass}` : cursorClass;
   const marginClass = isOverlay ? "" : "mb-6";
 
-  return `relative group min-h-[144px] rounded-lg p-5 ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
+  return `relative group/card min-h-[144px] rounded-lg p-5 ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
 };
 
 export const HighlightBadge = ({
@@ -189,7 +189,7 @@ export const SortableItemActions = ({
 }) => {
   const hoverActionsClass = isHighlighted || isOverlay
     ? "opacity-100 pointer-events-auto"
-    : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto";
+    : "opacity-0 pointer-events-none group-hover/card:opacity-100 group-hover/card:pointer-events-auto";
   const lockLabel = isLocked
     ? t("structure.unlockThought", { defaultValue: "Unlock thought" })
     : t("structure.lockThought", { defaultValue: "Lock thought" });

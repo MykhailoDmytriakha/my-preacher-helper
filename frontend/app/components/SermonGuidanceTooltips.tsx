@@ -164,12 +164,12 @@ export const OutlinePointGuidanceTooltip: React.FC<{
     <div className="relative shrink-0" ref={popoverRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="group p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+        className="group/tip p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
         title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for structure point' })}
         aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for structure point' })}
         aria-expanded={open}
       >
-        <InformationCircleIcon className="h-5 w-5 text-blue-500 dark:text-blue-300 group-hover:text-blue-600 dark:group-hover:text-blue-200" />
+        <InformationCircleIcon className="h-5 w-5 text-blue-500 dark:text-blue-300 group-hover/tip:text-blue-600 dark:group-hover/tip:text-blue-200" />
       </button>
       {open && (
         <div
