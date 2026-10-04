@@ -222,8 +222,6 @@ export default function usePlanTextDraft({
   const orphaned = useMemo(() => Object.entries(found ?? {})
     .filter(([nodeId, text]) => !liveNodeIds.has(nodeId) && text.trim() !== "")
     .map(([id, text]) => ({ id, text })), [found, liveNodeIds]);
-  const foundRef = useRef(found);
-  foundRef.current = found;
   const liveNodeIdsRef = useRef(liveNodeIds);
   liveNodeIdsRef.current = liveNodeIds;
 
@@ -248,14 +246,17 @@ export default function usePlanTextDraft({
 
   /**
    * The person let these cells go after seeing them. Only the copy they saw, or the one this screen
-   * stored, is removed — a newer text another tab has put under the key since stays.
+   * stored, is removed — a newer text another tab has put under the key since stays, and so does an
+   * older draft found at open that the screen showed this session's text in place of
+   * (BUG-20260928-orphan-forget-drops-unseen-older-draft): it was not what the person let go, so it
+   * comes back as a gone point's text the next time the plan opens, for them to decide.
    */
   const forget = useCallback((cells: Record<string, string>) => {
     const { uid: owner, sermonId: docId } = addressRef.current;
     if (!owner || !docId) return;
     Object.entries(cells).forEach(([nodeId, text]) => {
       const key = cellKey(owner, docId, nodeId);
-      new Set([text, oursRef.current[nodeId], foundRef.current?.[nodeId]]).forEach((seen) => {
+      new Set([text, oursRef.current[nodeId]]).forEach((seen) => {
         if (seen !== undefined) clearDraftIfMatches(key, seen);
       });
       delete oursRef.current[nodeId];

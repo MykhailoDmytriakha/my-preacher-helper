@@ -112,6 +112,29 @@ describe('the plan draft', () => {
     expect(storedCell('gone')).toBeUndefined();
   });
 
+  // BUG-20260928-orphan-forget-drops-unseen-older-draft: the orphan zone shows this session's text
+  // for a gone point; an older draft found at open sits under the same key whenever the newer text
+  // could not be stored. Letting go of what was shown must not delete a version shown in its place.
+  it('keeps an older draft of a gone point that was not the one shown when the shown text is let go', () => {
+    storeCells({ gone: 'older draft found at open' });
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('quota', 'QuotaExceededError'); });
+    const view = render({ content: { gone: 'newer text typed here' }, modified: { gone: true }, live: new Set(['p1']) });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    setItem.mockRestore();
+
+    act(() => { view.result.current.forget({ gone: 'newer text typed here' }); });
+    expect(storedCell('gone')).toBe('older draft found at open');
+
+    // As the page does after "Убрать": the cell leaves the screen, then the person leaves.
+    view.rerender({ content: {}, modified: {}, pending: new Set(), live: new Set(['p1']) });
+    act(() => { jest.advanceTimersByTime(1_000); });
+    view.unmount();
+    expect(storedCell('gone')).toBe('older draft found at open');
+    jest.mocked(console.error).mockRestore();
+    window.localStorage.clear();
+  });
+
   it('offers what a previous session left unconfirmed', () => {
     storeCells({ p1: 'written last night' });
 
