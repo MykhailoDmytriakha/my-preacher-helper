@@ -382,6 +382,8 @@
     "tryDifferentSearch": "Try a different search term",
     "thought": "thought",
     "thoughts": "thoughts",
+    "moreMatchingThoughts_one": "+{{count}} more matching thought",
+    "moreMatchingThoughts_other": "+{{count}} more matching thoughts",
     "hasOutline": "Has structure",
     "activeSermons": "Active Sermons",
     "created": "Created",

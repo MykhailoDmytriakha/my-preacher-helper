@@ -25,7 +25,8 @@ jest.mock('next/navigation', () => ({
 // Mock react-i18next
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: { count?: number }) => {
+      if (key === 'dashboard.moreMatchingThoughts') return `more: ${options?.count}`;
       const translations: { [key: string]: string } = {
         'dashboard.thought': 'thought',
         'dashboard.thoughts': 'thoughts',
@@ -120,6 +121,39 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Created')).toBeInTheDocument();
     // No preached/planned date → status badge is hidden
     expect(screen.queryByText('Preached')).not.toBeInTheDocument();
+  });
+
+  // The list is for choosing, not reading (BUG-20260911-collapsed-card-renders-unbounded-search-snippets):
+  // a sermon with many matching thoughts showed every one, and the card grew over several screens.
+  it('shows at most two matching thoughts in search and says how many more there are', () => {
+    const snippets = Array.from({ length: 5 }, (_, i) => ({ text: `grace thought ${i + 1}`, tags: [] }));
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        searchQuery="grace"
+        searchSnippets={snippets}
+      />
+    );
+
+    expect(screen.getAllByText(/thought \d/)).toHaveLength(2);
+    expect(screen.getByText('more: 3')).toBeInTheDocument();
+  });
+
+  it('says nothing more when every matching thought is already shown', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        searchQuery="grace"
+        searchSnippets={[{ text: 'grace thought 1', tags: [] }]}
+      />
+    );
+
+    expect(screen.getAllByText(/thought \d/)).toHaveLength(1);
+    expect(screen.queryByText(/^more:/)).not.toBeInTheDocument();
   });
 
   it('displays thought count correctly for singular', () => {

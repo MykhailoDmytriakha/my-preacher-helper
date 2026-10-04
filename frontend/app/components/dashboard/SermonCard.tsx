@@ -174,12 +174,21 @@ function SermonCardTitleVerse({ sermon, effectiveIsPreached, searchQuery }: Serm
   );
 }
 
+/**
+ * A list card says WHY it was found and stays a card: two matching thoughts and how many more
+ * (BUG-20260911-collapsed-card-renders-unbounded-search-snippets, the same rule as the study card).
+ * The sermon itself shows them all.
+ */
+const CARD_SNIPPET_LIMIT = 2;
+
 function SermonCardSnippets({ sermonId, searchQuery, searchSnippets }: SermonCardSnippetsProps) {
+  const { t } = useTranslation();
   if (searchSnippets.length === 0) return null;
+  const hidden = searchSnippets.length - CARD_SNIPPET_LIMIT;
 
   return (
     <div className="mb-3 space-y-2">
-      {searchSnippets.map((snippet, idx) => (
+      {searchSnippets.slice(0, CARD_SNIPPET_LIMIT).map((snippet, idx) => (
         <div
           key={`${sermonId}-snippet-${idx}`}
           className="text-sm text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 flex flex-col gap-2"
@@ -214,6 +223,11 @@ function SermonCardSnippets({ sermonId, searchQuery, searchSnippets }: SermonCar
           )}
         </div>
       ))}
+      {hidden > 0 && (
+        <p className="px-1 text-xs text-gray-500 dark:text-gray-400">
+          {t('dashboard.moreMatchingThoughts', { count: hidden })}
+        </p>
+      )}
     </div>
   );
 }
