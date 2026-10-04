@@ -43,12 +43,13 @@ import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
-import { BibleLocale, getLocalizedBookName } from '../bibleData';
+import { BibleLocale } from '../bibleData';
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
@@ -90,7 +91,7 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
             .filter((note: StudyNote) => bookFilter ? note.scriptureRefs.some((ref: ScriptureReference) => ref.book.toLowerCase() === bookFilter.toLowerCase()) : true)
             .filter((note: StudyNote) => {
                 if (searchTokens.length === 0) return true;
-                const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs.map((ref: ScriptureReference) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`).join(' ')}`.toLowerCase();
+                const haystack = studyNoteSearchText(note, bibleLocale);
                 return searchTokens.every((token: string) => haystack.includes(token));
             })
             .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());

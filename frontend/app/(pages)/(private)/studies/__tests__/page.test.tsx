@@ -7,6 +7,7 @@ import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
 
 import StudiesPage from '../page';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -364,6 +365,20 @@ describe('StudiesPage', () => {
       expect(screen.queryByRole('heading', { name: /^Жертва$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: /Адама и Каина/i })).not.toBeInTheDocument();
     });
+  });
+
+  // BUG-20260927-study-search-drops-by-short-reference: the pre-filter built the reference text by
+  // hand (full book name only) and dropped a note before the shared rule could match its short form.
+  it('finds a note by its reference written as the card shows it, short or long', async () => {
+    const ref = { id: 'ref-luke', book: 'Luke', chapter: 5, fromVerse: 17 };
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'luke', title: 'Healing the paralytic', scriptureRefs: [ref] })] });
+    render(<StudiesPage />);
+    const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+
+    for (const style of ['short', 'long'] as const) {
+      fireEvent.change(searchInput, { target: { value: formatScriptureReference(ref, { locale: 'en', style }) } });
+      await waitFor(() => expect(screen.getByRole('heading', { name: /Healing the paralytic/i })).toBeInTheDocument());
+    }
   });
 
   describe('Search rendering (snippets/tags/refs)', () => {

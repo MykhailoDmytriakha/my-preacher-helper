@@ -23,9 +23,9 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
-import { scriptureReferenceSearchText } from '@/utils/scriptureReference';
+import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
 
-import { getBooksForDropdown, BibleLocale, getLocalizedBookName, resolveBibleLocale } from './bibleData';
+import { getBooksForDropdown, BibleLocale, resolveBibleLocale } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
 
@@ -179,9 +179,7 @@ export default function StudiesPage() {
       )
       .filter((note) => {
         if (searchTokens.length === 0) return true;
-        const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-          .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
-          .join(' ')}`.toLowerCase();
+        const haystack = studyNoteSearchText(note, bibleLocale);
 
         return searchTokens.every((token) => haystack.includes(token));
       })

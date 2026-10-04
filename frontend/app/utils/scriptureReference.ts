@@ -105,3 +105,26 @@ export function scriptureReferenceSearchText(ref: ScriptureRefShape, locale: App
   const long = formatScriptureReference(ref, { locale, style: 'long' });
   return `${short} ${long}`.toLowerCase();
 }
+
+/**
+ * Everything a study note is found by, lower-cased — its references as the card shows them, both
+ * forms (BUG-20260927-study-search-drops-by-short-reference: a hand-built full-name-only text
+ * dropped a note the person searched for by the abbreviation on its card).
+ */
+export function studyNoteSearchText(
+  note: { title?: string; content?: string; tags?: readonly string[]; scriptureRefs?: readonly ScriptureRefShape[] },
+  locale: AppLocale
+): string {
+  const refs = (note.scriptureRefs ?? []).map((ref) => `${scriptureReferenceSearchText(ref, locale)} ${storedNumberingSearchText(ref, locale)}`).join(' ');
+  return `${note.title ?? ''} ${note.content ?? ''} ${(note.tags ?? []).join(' ')} ${refs}`.toLowerCase();
+}
+
+/**
+ * EXACTLY the text this search matched before it learned the displayed forms: the full name with
+ * the STORED chapter number, as the pre-filter used to build it (missing parts included, so a
+ * search that found a note before still does). A Psalm is stored by the Hebrew numbering and shown
+ * by the Septuagint one in Russian and Ukrainian; the number a person knows must still find it.
+ */
+function storedNumberingSearchText(ref: ScriptureRefShape, locale: AppLocale): string {
+  return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`;
+}
