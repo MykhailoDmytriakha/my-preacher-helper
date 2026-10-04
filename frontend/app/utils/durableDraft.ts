@@ -79,14 +79,28 @@ const draftStorageListeners = new Set<() => void>();
 function recordDraftStorage(key: string, refused: false): void;
 function recordDraftStorage(key: string, refused: true, value: unknown): void;
 function recordDraftStorage(key: string, refused: boolean, value?: unknown): void {
-  const before = refusedDraftKeys.size > 0;
+  const before = refusedDraftKeys.has(key);
   if (refused) refusedDraftKeys.set(key, serializeContent(value)); else refusedDraftKeys.delete(key);
-  if (before === refusedDraftKeys.size > 0) return;
+  // Told on every change of WHICH keys are owed, not only when the whole set empties or fills: a
+  // listener asking for one owner sees its answer change while other owners' debts stay.
+  if (before === refusedDraftKeys.has(key)) return;
   draftStorageListeners.forEach(listener => { try { listener(); } catch { /* a listener never breaks typing */ } });
 }
 
 export function isDraftStorageRefused(): boolean {
   return refusedDraftKeys.size > 0;
+}
+
+/**
+ * Whether THIS account's text is owed a copy (BUG-20260928-draft-storage-notice-not-owner-scoped).
+ * A draft key names its owner, so another account signed in to the same tab is not told about
+ * text that is not theirs. Nobody signed in — nobody to tell.
+ */
+export function isDraftStorageRefusedFor(owner: string | null | undefined): boolean {
+  if (!owner) return false;
+  const prefix = `${PREFIX}${owner}:`; // the colon keeps owner "a" from matching "ab"
+  for (const key of refusedDraftKeys.keys()) if (key.startsWith(prefix)) return true;
+  return false;
 }
 
 export function subscribeDraftStorage(listener: () => void): () => void {
