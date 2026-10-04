@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
+import DatePickerField from '@/components/ui/DatePickerField';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncils } from '@/hooks/useCouncils';
@@ -180,15 +181,13 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
               data-testid="council-new-title"
             />
           </label>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-300">
-            {t('council.newCouncilDate')}
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDate(event.target.value)}
-              className={`mt-1 ${inputClass}`}
-            />
-          </label>
+          {/* The app's date picker, not the browser's: it starts the week on the day chosen in the
+              settings (BUG-20260927-council-date-ignores-week-start). A new council has no stored
+              date to protect, so it refuses a day that does not exist, as the browser's field did. */}
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">
+            <label htmlFor="council-new-date">{t('council.newCouncilDate')}</label>
+            <DatePickerField id="council-new-date" refuseMissingDays value={date} onChange={setDate} wrapperClassName="mt-1" inputClassName={`${inputClass} pr-10`} />
+          </div>
           <div className="flex gap-2">
             <button type="submit" className={buttonPrimary}>
               {t('council.create')}

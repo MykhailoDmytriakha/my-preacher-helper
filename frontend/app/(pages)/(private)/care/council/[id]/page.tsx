@@ -39,6 +39,7 @@ import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicS
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -321,22 +322,26 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
               ) : readOnly ? (
                 council.date ? <span>{formatDateOnly(council.date)}</span> : null
               ) : (
-                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-                  {t('council.detail.dateLabel')}
-                  <input
-                    type="date"
+                // The app's date picker, not the browser's: it starts the week on the day chosen in
+                // the settings (BUG-20260927-council-date-ignores-week-start). Every change is
+                // saved, so only a finished day is handed over.
+                <span className="inline-flex items-center gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+                  <label htmlFor="council-detail-date">{t('council.detail.dateLabel')}</label>
+                  <DatePickerField
+                    id="council-detail-date"
+                    finishedDatesOnly
                     value={council.date ?? ''}
-                    onChange={(event) =>
+                    onChange={(nextDate) =>
                       patch((current) => {
                         const next = { ...current };
-                        if (event.target.value) next.date = event.target.value;
+                        if (nextDate) next.date = nextDate;
                         else delete next.date;
                         return next;
                       })
                     }
-                    className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm font-normal text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    inputClassName="w-40 rounded-lg border border-gray-300 bg-white px-2 py-1 pr-9 text-sm font-normal text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                   />
-                </label>
+                </span>
               )}
             </div>
           </div>

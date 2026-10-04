@@ -1,4 +1,4 @@
-import { getTodayDateOnlyKey, toDateOnlyKey, toLocalDateOnlyKey, parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
+import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, toDateOnlyKey, toLocalDateOnlyKey, parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
 
 describe('dateOnly', () => {
     describe('getTodayDateOnlyKey', () => {
@@ -95,5 +95,40 @@ describe('toLocalDateOnlyKey — the day a stamp fell on, in the person\'s own c
         expect(toLocalDateOnlyKey(undefined)).toBeNull();
         expect(toLocalDateOnlyKey('   ')).toBeNull();
         expect(toLocalDateOnlyKey('not a date')).toBeNull();
+    });
+
+    describe('isDateOnlyKey', () => {
+        it('accepts a finished day', () => {
+            expect(isDateOnlyKey('2026-09-20')).toBe(true);
+            expect(isDateOnlyKey('2024-02-29')).toBe(true);
+        });
+
+        it('refuses a day still being typed or one the calendar does not have', () => {
+            expect(isDateOnlyKey('')).toBe(false);
+            expect(isDateOnlyKey('2026-0')).toBe(false);
+            expect(isDateOnlyKey('2026-09-2')).toBe(false);
+            expect(isDateOnlyKey('2026-02-31')).toBe(false);
+            expect(isDateOnlyKey('2025-02-29')).toBe(false);
+            expect(isDateOnlyKey('2026-13-01')).toBe(false);
+            expect(isDateOnlyKey('2026-09-20T00:00:00.000Z')).toBe(false);
+        });
+
+        it('counts the day instead of asking the device clock', () => {
+            expect(isDateOnlyKey('2011-12-30')).toBe(true);
+            expect(isDateOnlyKey('0099-01-01')).toBe(true);
+            expect(isDateOnlyKey('2000-02-29')).toBe(true);
+            expect(isDateOnlyKey('1900-02-29')).toBe(false);
+            expect(isDateOnlyKey('0000-01-01')).toBe(false);
+        });
+    });
+
+    describe('isMissingDay', () => {
+        it('names only a day-shaped value that is not a day', () => {
+            expect(isMissingDay('2026-02-31')).toBe(true);
+            expect(isMissingDay('0000-01-01')).toBe(true);
+            expect(isMissingDay('2026-02-28')).toBe(false);
+            expect(isMissingDay('2026-1')).toBe(false);
+            expect(isMissingDay('')).toBe(false);
+        });
     });
 });

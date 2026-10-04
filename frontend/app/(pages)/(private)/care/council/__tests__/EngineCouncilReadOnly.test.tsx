@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import CouncilConductPage from '../[id]/conduct/page';
@@ -16,7 +16,10 @@ import '@testing-library/jest-dom';
  */
 
 const state: { council: Council | null; readOnly: boolean } = { council: null, readOnly: true };
+const mockUpdateCouncil = jest.fn((_id: string, _updater: (current: Council) => Council) => Promise.resolve());
 
+// The date field reads the week-start setting (DatePickerField).
+jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn() }), useParams: () => ({ id: 'council-1' }) }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
 jest.mock('@/data-engine/react.client', () => ({
@@ -35,7 +38,7 @@ jest.mock('@/hooks/useCouncilDataDocument', () => ({
   useCouncilDataDocument: () => ({
     council: state.council, loading: false, readOnly: state.readOnly, error: null, status: null, confirmed: null, remote: null,
     refresh: jest.fn(), acceptRemote: jest.fn(), keepLocal: jest.fn(),
-    updateCouncil: jest.fn().mockResolvedValue(undefined), deleteCouncil: jest.fn().mockResolvedValue(undefined),
+    updateCouncil: mockUpdateCouncil, deleteCouncil: jest.fn().mockResolvedValue(undefined),
     carryTopicToNext: jest.fn(), listRecoverable: jest.fn().mockResolvedValue([]), recover: jest.fn(),
     recovery: { choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn() },
   }),
@@ -87,6 +90,24 @@ describe('a council copy for reading', () => {
     expect(screen.getByTestId('council-title')).toBeInTheDocument();
     expect(screen.getByTestId('council-add-topic')).toBeInTheDocument();
     expect(screen.getByTestId('council-topic-edit-topic-1')).toBeInTheDocument();
+  });
+
+  // The date is saved on every change, so a half-typed one must not reach the council
+  // (BUG-20260927-council-date-ignores-week-start moved it off the browser's date field).
+  it('saves the council date only once a finished day is typed', () => {
+    state.readOnly = false;
+    state.council = council('preparing');
+    mockUpdateCouncil.mockClear();
+    render(<CouncilDetailPage />);
+    const date = screen.getByLabelText('council.detail.dateLabel');
+
+    fireEvent.change(date, { target: { value: '2026-1' } });
+    expect(mockUpdateCouncil).not.toHaveBeenCalled();
+
+    fireEvent.change(date, { target: { value: '2026-10-04' } });
+    expect(mockUpdateCouncil).toHaveBeenCalledTimes(1);
+    const [, updater] = mockUpdateCouncil.mock.calls[0];
+    expect(updater(council('preparing')).date).toBe('2026-10-04');
   });
 });
 

@@ -22,6 +22,8 @@ const mockCreate = jest.fn();
 const state: { councils: Council[]; loading: boolean; error: unknown } = { councils: [], loading: false, error: null };
 const mockRefresh = jest.fn();
 
+// The date field reads the week-start setting (DatePickerField).
+jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
   useParams: () => ({}),
@@ -166,6 +168,40 @@ describe('Brothers\' council list', () => {
 
     expect(mockCreate).toHaveBeenCalledWith({ title: 'Совет 2 октября', date: undefined });
     expect(mockPush).toHaveBeenCalledWith('/care/council/new-1');
+  });
+
+  // BUG-20260927-council-date-ignores-week-start: the browser's own date field starts the week as
+  // the browser likes; the app's picker starts it on the day chosen in the settings.
+  it("picks the new council's date with the app's date picker, not the browser's", () => {
+    state.councils = seedCouncils('u1');
+    const { container } = render(<CouncilListPage />);
+    fireEvent.click(screen.getByTestId('council-new'));
+
+    expect(container.querySelector('input[type="date"]')).toBeNull();
+    expect(screen.getByLabelText(/council\.newCouncilDate|Дата|Date/i)).toHaveAttribute('type', 'text');
+  });
+
+  // The browser's date field never let a half-typed or non-existent day through; the text field
+  // must keep that for the new council.
+  it('does not create a council on a half-typed or non-existent day', () => {
+    state.councils = seedCouncils('u1');
+    mockCreate.mockReturnValue({ id: 'new-1' });
+    render(<CouncilListPage />);
+    fireEvent.click(screen.getByTestId('council-new'));
+    const title = screen.getByTestId('council-new-title');
+    const form = title.closest('form') as HTMLFormElement;
+    const date = screen.getByLabelText(/council\.newCouncilDate|Дата|Date/i);
+    fireEvent.change(title, { target: { value: 'Совет' } });
+
+    fireEvent.change(date, { target: { value: '2026-1' } });
+    form.requestSubmit();
+    fireEvent.change(date, { target: { value: '2026-02-31' } });
+    form.requestSubmit();
+    expect(mockCreate).not.toHaveBeenCalled();
+
+    fireEvent.change(date, { target: { value: '2026-10-05' } });
+    form.requestSubmit();
+    expect(mockCreate).toHaveBeenCalledWith({ title: 'Совет', date: '2026-10-05' });
   });
 });
 

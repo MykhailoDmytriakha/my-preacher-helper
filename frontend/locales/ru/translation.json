@@ -1626,6 +1626,7 @@
     "clear": "Очистить",
     "openCalendar": "Открыть календарь",
     "datePlaceholder": "гггг-мм-дд",
+    "dateDoesNotExist": "Такого дня нет в календаре",
     "hours": "Часы",
     "seconds": "Секунды",
     "expand": "Развернуть",

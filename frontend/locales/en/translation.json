@@ -1622,6 +1622,7 @@
     "clear": "Clear",
     "openCalendar": "Open calendar",
     "datePlaceholder": "yyyy-mm-dd",
+    "dateDoesNotExist": "There is no such day in the calendar",
     "hours": "Hours",
     "seconds": "Seconds",
     "expand": "Expand",

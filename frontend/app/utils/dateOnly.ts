@@ -10,6 +10,25 @@ const toLocalYmd = (date: Date): string => {
 
 export const getTodayDateOnlyKey = (referenceDate = new Date()): string => toLocalYmd(referenceDate);
 
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/**
+ * A finished day as a date field stores it: `YYYY-MM-DD` naming a day the calendar has.
+ * "2026-0" is still being typed and "2026-02-31" does not exist; neither is a date to save.
+ * Counted, not parsed: a `Date` answers by the device's clock, and a day the local zone
+ * skipped (Samoa, 2011-12-30) would read as missing.
+ */
+export const isDateOnlyKey = (value: string): boolean => {
+  if (!DATE_ONLY_REGEX.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return day <= (month === 2 && leap ? 29 : DAYS_IN_MONTH[month - 1]);
+};
+
+/** Shaped like a day, names none: "2026-02-31", "2026-13-01", "0000-01-01". */
+export const isMissingDay = (value: string): boolean => DATE_ONLY_REGEX.test(value) && !isDateOnlyKey(value);
+
 export const toDateOnlyKey = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;

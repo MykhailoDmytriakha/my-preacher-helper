@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
-import { getTodayDateOnlyKey, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
+import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
 import { getWeekStartsOn } from "@/utils/weekStart";
 
 import "react-day-picker/dist/style.css";
@@ -30,6 +30,22 @@ interface DatePickerFieldProps {
   wrapperClassName?: string;
   inputClassName?: string;
   calendarButtonLabel?: string;
+  /**
+   * For a caller that saves on every change. By default every keystroke is handed over, which a
+   * form needs: its `pattern` then refuses a half-typed date at submit, and a draft keeps what was
+   * typed. A caller that saves each change instead stored the keystrokes — a group meeting dated
+   * "2" after the first digit. With this on, only a finished day or an emptied field is handed over;
+   * half-typed text stays in the field until it is finished or the person leaves it. An emptied
+   * field is handed over at once, so it fits a caller for whom an empty date removes nothing else.
+   */
+  finishedDatesOnly?: boolean;
+  /**
+   * For a form that creates a record: refuse a day-shaped value that names no day ("2026-02-31"),
+   * as the browser's own date field did — the `pattern` checks only the shape. Not for a form that
+   * edits stored data: a record saved with such a day, or a recovered draft holding one, must still
+   * save its other fields (BUG-20261003-date-form-accepts-impossible-day).
+   */
+  refuseMissingDays?: boolean;
 }
 
 const getDefaultInputClassName = () =>
@@ -45,6 +61,8 @@ export default function DatePickerField({
   wrapperClassName = "",
   inputClassName,
   calendarButtonLabel,
+  finishedDatesOnly = false,
+  refuseMissingDays = false,
 }: DatePickerFieldProps) {
   const generatedId = useId();
   const inputId = id || generatedId;
@@ -64,10 +82,33 @@ export default function DatePickerField({
   });
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // finishedDatesOnly: what the field shows, which may run ahead of `value` while a date is typed.
+  const [text, setText] = useState(value);
+  const valueRef = useRef(value);
+  // True while the field holds typed text that was not handed over.
+  const unsentRef = useRef(false);
+  const shown = finishedDatesOnly ? text : value;
+  const missingDayMessage = t("common.dateDoesNotExist", { defaultValue: "There is no such day in the calendar" });
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    // A new value is shown unless the person is typing something not handed over yet: that text
+    // stays theirs, and leaving the field shows the saved day.
+    valueRef.current = value;
+    if (!unsentRef.current) {
+      setText(value);
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const refused = refuseMissingDays && isMissingDay(shown.trim());
+    inputRef.current?.setCustomValidity(refused ? missingDayMessage : "");
+  }, [refuseMissingDays, shown, missingDayMessage]);
 
   useEffect(() => {
     const parsed = parseDateOnlyAsLocalDate(value);
@@ -158,26 +199,59 @@ export default function DatePickerField({
     }
   };
 
+  // A day picked in the calendar replaces anything half-typed. The field then shows the saved value
+  // until the caller takes the new one, so a refused pick does not look accepted.
+  const hand = (next: string) => {
+    unsentRef.current = false;
+    setText(valueRef.current);
+    onChange(next);
+  };
+
+  const handleType = (raw: string) => {
+    if (!finishedDatesOnly) {
+      onChange(raw);
+      return;
+    }
+    setText(raw);
+    const next = raw.trim();
+    unsentRef.current = !(next === "" || isDateOnlyKey(next));
+    if (!unsentRef.current) {
+      onChange(next);
+    }
+  };
+
+  // Leaving the field shows what is saved: half-typed text was never handed over, and a handed-over
+  // day the caller refused was never saved.
+  const handleBlur = () => {
+    if (!finishedDatesOnly) {
+      return;
+    }
+    unsentRef.current = false;
+    if (text !== value) {
+      setText(value);
+    }
+  };
+
   const handleSelect = (date: Date | undefined) => {
     if (!date) {
       return;
     }
 
-    onChange(format(date, DATE_KEY_FORMAT));
+    hand(format(date, DATE_KEY_FORMAT));
     setMonth(date);
     setOpen(false);
   };
 
   const handleToday = () => {
     const todayKey = getTodayDateOnlyKey();
-    onChange(todayKey);
+    hand(todayKey);
     const today = parseDateOnlyAsLocalDate(todayKey) || new Date();
     setMonth(today);
     setOpen(false);
   };
 
   const handleClear = () => {
-    onChange("");
+    hand("");
     setOpen(false);
   };
 
@@ -289,12 +363,14 @@ export default function DatePickerField({
     <>
       <div ref={wrapperRef} className={`relative ${wrapperClassName}`}>
         <input
+          ref={inputRef}
           id={inputId}
           type="text"
           inputMode="numeric"
           autoComplete="off"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+          value={shown}
+          onChange={(event) => handleType(event.target.value)}
+          onBlur={handleBlur}
           onClick={openCalendar}
           placeholder={resolvedPlaceholder}
           required={required}

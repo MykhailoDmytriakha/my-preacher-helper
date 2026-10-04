@@ -1626,6 +1626,7 @@
     "clear": "Очистити",
     "openCalendar": "Відкрити календар",
     "datePlaceholder": "рррр-мм-дд",
+    "dateDoesNotExist": "Такого дня немає в календарі",
     "hours": "Години",
     "seconds": "Секунди",
     "expand": "Розгорнути",
