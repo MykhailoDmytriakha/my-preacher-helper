@@ -152,12 +152,14 @@ export function useDurableDraft<T>({
     inspectedKeyRef.current = key;
     const stored = readDraft<T>(key);
     setRecovered(stored ? stored.value : null);
-    // NOTE: deliberately NOT clearing the previous key here. The key also changes
-    // when the user navigates from one document to another WITHOUT unmounting this
-    // hook, so clearing it would destroy the unsaved draft of the document just
-    // left — the exact loss this module exists to prevent. A placeholder id like
-    // "new" is a caller-level concept, so the caller retires that draft itself at
-    // the moment the server assigns a real id.
+    // NOTE: deliberately NOT clearing the previous key here. The previous key may
+    // hold the only copy of text never confirmed, so clearing it would destroy the
+    // exact thing this module exists to keep. While this hook stays mounted the key
+    // changes when a new note adopts its real id — "new" is a caller-level concept,
+    // so the caller carries and retires that draft itself — and when the account
+    // changes under a mounted editor (open: BUG-20261003-account-change-under-open-note).
+    // Moving to another document is not one of these: it is an unmount (see the
+    // flush below).
   }, [key]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
@@ -187,7 +189,10 @@ export function useDurableDraft<T>({
       // Unmount is also a moment the text can disappear from memory: leaving the
       // route runs cleanup, and the note editor's pending save is cancelled by
       // its own cleanup. Writing here costs one storage write and keeps the
-      // invariant true across navigation.
+      // invariant true across navigation. Moving from one note to the next is an
+      // unmount too: the router keys the `[id]` segment by its value, so the next
+      // note gets a new editor instance and this write covers the last keystrokes
+      // of the note just left.
       flush();
     };
   }, []);

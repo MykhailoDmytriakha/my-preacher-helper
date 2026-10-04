@@ -720,7 +720,8 @@ export default function StudyNoteEditorPage() {
      * user change this field?". Diffing against the cache destroys data: a tab whose
      * cache refreshed but whose inputs did not would read its own untouched field as
      * a deliberate change and overwrite the other device. Reproduced live.
-     * Keyed by document, because moving between notes re-renders WITHOUT unmounting.
+     * Keyed by document, because a created note adopts its real id WITHOUT unmounting
+     * (moving to another note is a remount: the router keys the `[id]` segment by its value).
      */
     /**
      * Revision this editor's text is built from. Fed by the listener (server truth)

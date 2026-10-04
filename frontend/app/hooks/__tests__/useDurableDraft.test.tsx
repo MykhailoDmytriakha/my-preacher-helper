@@ -296,3 +296,62 @@ describe('a recovered draft must survive until the user decides', () => {
     expect(readDraft<string>(KEY)?.value).toBe('unconfirmed text from the other tab');
   });
 });
+
+// The offline shell keeps the note editor mounted without a sign-in guard, so the account
+// can change under it (open: BUG-20261003-account-change-under-open-note). Storing the write
+// still waiting at that moment was tried and refused in review: one slot per note means it can
+// replace a newer draft another editor left. These lock what must hold meanwhile.
+describe('when the account changes under a mounted editor', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  type Props = { uid: string | undefined; value: string; confirmedValue?: string };
+  const open = (initialProps: Props) =>
+    renderHook(
+      (props: Props) => useDurableDraft<string>({ docId: 'note-1', aggregate: 'note', enabled: true, ...props }),
+      { initialProps }
+    );
+
+  it('keeps a newer draft another editor left when this editor\'s owner goes away with a write waiting', () => {
+    const older = open({ uid: 'uid-1', value: 'server text', confirmedValue: 'server text' });
+    older.rerender({ uid: 'uid-1', value: 'older unsaved text', confirmedValue: 'server text' });
+    act(() => jest.advanceTimersByTime(100));
+    const newer = open({ uid: 'uid-1', value: 'server text', confirmedValue: 'server text' });
+    newer.rerender({ uid: 'uid-1', value: 'newer unsaved text, its only copy', confirmedValue: 'server text' });
+    act(() => jest.advanceTimersByTime(51));
+    newer.unmount();
+    older.rerender({ uid: undefined, value: 'older unsaved text', confirmedValue: 'server text' });
+    act(() => jest.advanceTimersByTime(1000));
+    older.unmount();
+
+    expect(readDraft<string>(KEY)?.value).toBe('newer unsaved text, its only copy');
+  });
+
+  it('leaves no draft of text already saved when the owner signs out afterwards', () => {
+    const view = open({ uid: 'uid-1', value: 'server text' });
+    view.rerender({ uid: 'uid-1', value: 'saved text' });
+    act(() => jest.advanceTimersByTime(300));
+    act(() => view.result.current.markSaved('saved text'));
+    view.rerender({ uid: undefined, value: 'saved text' });
+    act(() => {
+      view.unmount();
+    });
+
+    expect(readDraft<string>(KEY)).toBeNull();
+  });
+
+  it('keeps writing when the same owner comes back after a moment without one', () => {
+    const view = open({ uid: 'uid-1', value: 'server text' });
+    view.rerender({ uid: undefined, value: 'server text' });
+    view.rerender({ uid: 'uid-1', value: 'typed after the owner came back' });
+    act(() => jest.advanceTimersByTime(300));
+
+    expect(readDraft<string>(KEY)?.value).toBe('typed after the owner came back');
+  });
+});

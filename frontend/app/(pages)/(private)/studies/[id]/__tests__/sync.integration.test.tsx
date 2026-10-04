@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -134,6 +134,37 @@ describe('note editor sync integration', () => {
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
   });
   afterEach(() => jest.useRealTimers());
+
+  // The offline shell keeps this page mounted without a sign-in guard, so the account can
+  // change under it (open: BUG-20261003-account-change-under-open-note). A write still waiting
+  // then is dropped, not stored: storing it would replace the newer, only draft of another
+  // editor of this note.
+  it('keeps the newer only draft of a closed editor when an older editor loses its owner with a write waiting', () => {
+    let uid: string | undefined = 'user-1';
+    (useStudyNotes as jest.Mock).mockImplementation(() => ({
+      uid, notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+    }));
+    const edit = (view: ReturnType<typeof render>, text: string) => {
+      const page = within(view.container);
+      fireEvent.click(page.getByRole('button', { name: 'common.edit' }));
+      fireEvent.change(page.getByTestId('rich-markdown-editor'), { target: { value: text } });
+    };
+    const older = render(<StudyNoteEditorPage />);
+    edit(older, 'older unsaved text');
+    act(() => jest.advanceTimersByTime(100));
+    const newer = render(<StudyNoteEditorPage />);
+    edit(newer, 'newer unsaved text, its only copy');
+    act(() => jest.advanceTimersByTime(51));
+    newer.unmount();
+    uid = undefined;
+    older.rerender(<StudyNoteEditorPage />);
+    older.unmount();
+    act(() => jest.advanceTimersByTime(2000));
+
+    const draft = JSON.parse(window.localStorage.getItem('draft:v1:user-1:note-sync:note')!);
+    expect(draft.value.content).toBe('newer unsaved text, its only copy');
+    expect(updateNote).not.toHaveBeenCalled();
+  });
 
   it('does not hide a real remote edit when the query cache refreshes ahead of the editor', () => {
     const view = render(<StudyNoteEditorPage />);

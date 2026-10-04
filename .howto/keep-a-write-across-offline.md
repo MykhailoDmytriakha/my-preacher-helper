@@ -1,4 +1,4 @@
-when: write lost after reload · offline edit lost · offline write hangs · await updateDoc never resolves offline · saving spinner stuck until reconnect · persisted mutation · paused mutation · resumePausedMutations · setMutationDefaults · registerOfflineMutationDefaults · mutationFn missing after reload · replay ids and timestamps · duplicate items after replay · WriteSubmission · persistedWrite · queuedMutation · awaitAcceptance · announceIfPersisted · useWriteRecovery · OfflineQueuedError · writeOutbox · replayOutbox · false success toast offline · офлайн · без сети · без интернета · правка пропала после перезагрузки · запись висит без сети · очередь записи · доиграть при появлении сети · дубли после повтора · ложное сообщение об успехе · DataEngine commit queue · useDataForm · submitted intent · durable draft · operation identity · движок данных · сохранённая очередь · черновик формы
+when: write lost after reload · offline edit lost · offline write hangs · await updateDoc never resolves offline · saving spinner stuck until reconnect · persisted mutation · paused mutation · resumePausedMutations · setMutationDefaults · registerOfflineMutationDefaults · mutationFn missing after reload · replay ids and timestamps · duplicate items after replay · WriteSubmission · persistedWrite · queuedMutation · awaitAcceptance · announceIfPersisted · useWriteRecovery · OfflineQueuedError · writeOutbox · replayOutbox · false success toast offline · офлайн · без сети · без интернета · правка пропала после перезагрузки · запись висит без сети · очередь записи · доиграть при появлении сети · дубли после повтора · ложное сообщение об успехе · DataEngine commit queue · useDataForm · submitted intent · durable draft · operation identity · движок данных · сохранённая очередь · черновик формы · useDurableDraft · durableDraft · draft lost when leaving · draft under another account · черновик потерян · несохранённый текст · Найден несохранённый текст
 
 # Keep a write across offline and reload
 
@@ -27,10 +27,20 @@ These compatibility paths are not templates for new features. Their contract is 
 - Retry intent, local state and conflict metadata survive together. A retry kept in a component ref or closure dies with a reload, redirect or auth bounce.
 - Residual risk: an online mutation still in flight is not persisted, so closing the tab at that moment loses it. For expensive text add a durable draft (`frontend/app/utils/durableDraft.ts`).
 
+## Durable draft of an editor (`useDurableDraft`)
+
+The note editor (and the plan's cells, `usePlanTextDraft`) keeps unsaved typing in localStorage (`frontend/app/utils/durableDraft.ts`): the target is that a draft exists while its text is unconfirmed (a draft can still outlive its confirmed write, see the open limit below), and the editor offers it, never applies it.
+
+- Moving to another note is a remount: the router keys the `[id]` segment by its value, so the hook's unmount flush stores the last keystrokes (checked live 2026-10-03, timers dropped). The key changes under a mounted editor only when a created note adopts its real id (the caller moves the draft) or the owner changes.
+- An account change under a mounted editor (the `/~offline` shell has no sign-in guard) is an open hole: the write still waiting is dropped and the next account's key can receive the previous account's text (BUG-20261003-account-change-under-open-note). Patches inside the hook were refused in review — storing the waiting write replaced another tab's newer draft, pinning the first owner lost the next owner's own typing. One slot per note cannot tell writers apart.
+- Never clear a draft because the key changed, the text equals what the screen opened with, or the slot looks empty. A draft leaves only by exact match (`clearDraftIfMatches`): `markSaved` when the server confirmed that text, the person's "reject" of the offered text, and the editor itself when the person types back to the confirmed text — then only the draft this editor wrote.
+- Open limit: a draft and the engine write live in two stores that cannot change together, so a draft can outlive its confirmed write (seen live: a reload while the autosave was in flight); deciding that needs the engine's write identity, not equal text.
+
 ## Why
 
 - 2026-03-16: optimistic records were persisted but retries lived in component refs; a reload, redirect or auth bounce stranded local edits for good.
 - 2026-06-14: after moving to Firestore's native offline queue, handlers still awaited `updateDoc`-backed promises and controls hung in "saving" until reconnect.
 - 2026-06-14: ids and timestamps minted inside the mutation function duplicated children and rewrote history with replay time on resume.
+- 2026-10-03: a tracker entry said moving between notes keeps the editor mounted and loses the last 250 ms; live it remounts. The real hole of that class is an account change under the offline shell, left open: three hook patches in a row each lost someone's text.
 
 See also: `.howto/write-a-document-field.md` · `.howto/read-while-offline.md` · `.howto/update-react-query-cache.md`
