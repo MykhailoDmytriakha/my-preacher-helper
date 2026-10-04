@@ -1244,7 +1244,7 @@ export default function StepByStepWizard({
                     <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
                     <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-orange-500" />{srcLabel}</span>
                     <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
-                    <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /><b className="text-gray-800 dark:text-gray-200">{visibleSections.length}</b> {t('audioExport.sectionsCount', { defaultValue: 'секции' })}</span>
+                    <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /><b className="text-gray-800 dark:text-gray-200">{visibleSections.length}</b> {t('audioExport.sectionsCount', { count: visibleSections.length, defaultValue: 'sections' })}</span>
                     <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
                     <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />≈ {minutes} {t('audioExport.mins', { defaultValue: 'мин' })}</span>
                 </div>

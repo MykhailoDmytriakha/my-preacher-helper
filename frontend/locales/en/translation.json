@@ -382,6 +382,8 @@
     "tryDifferentSearch": "Try a different search term",
     "thought": "thought",
     "thoughts": "thoughts",
+    "thoughts_one": "thought",
+    "thoughts_other": "thoughts",
     "moreMatchingThoughts_one": "+{{count}} more matching thought",
     "moreMatchingThoughts_other": "+{{count}} more matching thoughts",
     "hasOutline": "Has structure",
@@ -799,6 +801,8 @@
     "aiEmpty": "No optimized text yet. Generate it — then you can edit each thought.",
     "generateOptimized": "Generate optimized text",
     "sectionsCount": "sections",
+    "sectionsCount_one": "section",
+    "sectionsCount_other": "sections",
     "previewNotReady": "Generate the optimized text first on the \"Source\" step.",
     "previewHint": "Final narration per section — view only. Generated transitions are shown in bold. Edits are made on the \"Source\" step.",
     "transitionBadge": "Transition",
@@ -1385,6 +1389,8 @@
   "structure": {
     "title": "Sermon Composition:",
     "entries": "entries",
+    "entries_one": "entry",
+    "entries_other": "entries",
     "recommended": "Recommended: {{percent}}%",
     "workButton": "Sort the thoughts",
     "inconsistentTagsWarning": "Some entries have inconsistent tags. Fix them before working on the structure.",
@@ -1744,7 +1750,9 @@
     "deleteError": "Couldn't delete the template",
     "saveStructureError": "Couldn't save changes",
     "empty": "No templates yet. Create one above, or save a structure as a template from the structure editor.",
-    "pointsLabel": "points"
+    "pointsLabel": "points",
+    "pointsLabel_one": "point",
+    "pointsLabel_other": "points"
   },
   "plan": {
     "refine": {
@@ -2911,7 +2919,11 @@
       },
       "itemsLabel": {
         "templates": "Templates",
+        "templates_one": "template",
+        "templates_other": "templates",
         "flowSteps": "Flow steps",
+        "flowSteps_one": "flow step",
+        "flowSteps_other": "flow steps",
         "readiness": "Ready",
         "duration": "Min",
         "meetings": "Meetings",
@@ -3007,6 +3019,8 @@
     "noBookData": "Add references to see book stats",
     "notesList": "Notes",
     "matchingNotes": "matches",
+    "matchingNotes_one": "match",
+    "matchingNotes_other": "matches",
     "noNotes": "No notes match the filters yet",
     "noMatchingNotes": "No notes match your filters",
     "createFirstNote": "Create your first note",
@@ -3103,7 +3117,11 @@
     "showForm": "Show note form",
     "stats": {
       "notesLabel": "notes",
+      "notesLabel_one": "note",
+      "notesLabel_other": "notes",
       "booksLabel": "books",
+      "booksLabel_one": "book",
+      "booksLabel_other": "books",
       "refsCount": "{{count}} refs",
       "tagsCount": "{{count}} tags",
       "refsSeparator": " · "
@@ -3172,7 +3190,10 @@
       "resultsTitle": "AI Analysis Results",
       "resultsDesc": "Select the suggestions you'd like to apply to your note.",
       "resultsDescMerge": "New items will be added to your note. Existing items are kept.",
-      "newLabel": "new",
+      "newTagsLabel_one": "new",
+      "newTagsLabel_other": "new",
+      "newRefsLabel_one": "new",
+      "newRefsLabel_other": "new",
       "allAlreadyIn": "already in note",
       "titleWillReplace": "will replace current",
       "noNewTags": "No new tags suggested",

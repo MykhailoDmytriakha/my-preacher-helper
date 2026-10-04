@@ -308,7 +308,7 @@ export default function StudyNoteCard({
               */}
               {searchQuery && totalMatchSignals > 0 && !isExpanded && (
                 <span className={`${MATCH_COUNT_BADGE} shrink-0`}>
-                  {totalMatchSignals} {t('studiesWorkspace.matchingNotes')}
+                  {totalMatchSignals} {t('studiesWorkspace.matchingNotes', { count: totalMatchSignals })}
                 </span>
               )}
             </div>

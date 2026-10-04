@@ -188,7 +188,7 @@ export default function AnalysisConfirmationModal({
                                     </span>
                                     {addedTags.length > 0 && (
                                         <Chip tone="emerald" size="sm">
-                                            +{addedTags.length} {t('studiesWorkspace.aiAnalyze.newLabel', { defaultValue: 'new' })}
+                                            +{addedTags.length} {t('studiesWorkspace.aiAnalyze.newTagsLabel', { count: addedTags.length, defaultValue: 'new' })}
                                         </Chip>
                                     )}
                                     {keptTags.length > 0 && addedTags.length === 0 && (
@@ -234,7 +234,7 @@ export default function AnalysisConfirmationModal({
                                     </span>
                                     {addedRefs.length > 0 && (
                                         <Chip tone="emerald" size="sm">
-                                            +{addedRefs.length} {t('studiesWorkspace.aiAnalyze.newLabel', { defaultValue: 'new' })}
+                                            +{addedRefs.length} {t('studiesWorkspace.aiAnalyze.newRefsLabel', { count: addedRefs.length, defaultValue: 'new' })}
                                         </Chip>
                                     )}
                                     {keptRefs.length > 0 && addedRefs.length === 0 && (

@@ -69,7 +69,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${introPercentage}%` : "0%",
                 backgroundColor: introColor,
               }}
-              data-tooltip={`${t('tags.introduction')}: ${intro} ${t(structureEntriesTranslationKey)}`}
+              data-tooltip={`${t('tags.introduction')}: ${intro} ${t(structureEntriesTranslationKey, { count: intro })}`}
             />
             <div
               className="transition-all duration-500"
@@ -77,7 +77,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${mainPercentage}%` : "0%",
                 backgroundColor: mainColor,
               }}
-              data-tooltip={`${t('tags.mainPart')}: ${main} ${t(structureEntriesTranslationKey)}`}
+              data-tooltip={`${t('tags.mainPart')}: ${main} ${t(structureEntriesTranslationKey, { count: main })}`}
             />
             <div
               className="transition-all duration-500"
@@ -85,7 +85,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
                 width: totalThoughts ? `${conclusionPercentage}%` : "0%",
                 backgroundColor: conclusionColor,
               }}
-              data-tooltip={`${t('tags.conclusion')}: ${conclusion} ${t(structureEntriesTranslationKey)}`}
+              data-tooltip={`${t('tags.conclusion')}: ${conclusion} ${t(structureEntriesTranslationKey, { count: conclusion })}`}
             />
           </div>
         </div>

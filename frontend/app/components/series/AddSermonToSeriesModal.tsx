@@ -196,7 +196,7 @@ export default function AddSermonToSeriesModal({
                               {formatDate(sermon.date) || t('dashboardHome.sections.attention.due.noDate')}
                             </span>
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
-                              {sermon.thoughts?.length || 0} {t('dashboard.thoughts')}
+                              {sermon.thoughts?.length || 0} {t('dashboard.thoughts', { count: sermon.thoughts?.length || 0 })}
                             </span>
                           </div>
                         </div>

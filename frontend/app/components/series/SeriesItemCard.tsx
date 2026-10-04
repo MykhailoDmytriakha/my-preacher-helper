@@ -129,12 +129,12 @@ export default function SeriesItemCard({
           </Chip>
           {isSermon && (
             <Chip tone="blue" size="sm">
-              {sermon?.thoughts?.length || 0} {t('dashboard.thoughts')}
+              {sermon?.thoughts?.length || 0} {t('dashboard.thoughts', { count: sermon?.thoughts?.length || 0 })}
             </Chip>
           )}
           {!isSermon && (
             <Chip tone="violet" size="sm">
-              {(group?.flow || []).length} {t('workspaces.groups.itemsLabel.flowSteps', { defaultValue: 'flow steps' })}
+              {(group?.flow || []).length} {t('workspaces.groups.itemsLabel.flowSteps', { count: (group?.flow || []).length, defaultValue: 'flow steps' })}
             </Chip>
           )}
         </div>

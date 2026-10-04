@@ -584,7 +584,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
           >
             <span>{sectionTitles[sectionType]}</span>
             <span className={`ml-2 ${countBadgeBaseClass} ${colors.badge}`}>
-              {totalThoughts} {t('structure.entries')}
+              {totalThoughts} {t('structure.entries', { count: totalThoughts })}
             </span>
           </button>
 

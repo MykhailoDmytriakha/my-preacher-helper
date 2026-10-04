@@ -360,7 +360,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                     <>
                       <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{tpl.name}</span>
                       <span className="text-xs text-gray-400 tabular-nums">
-                        {countPoints(tpl.structure)} {t('planTemplates.pointsLabel')}
+                        {countPoints(tpl.structure)} {t('planTemplates.pointsLabel', { count: countPoints(tpl.structure) })}
                       </span>
                       <button
                         aria-label={t('common.edit')}

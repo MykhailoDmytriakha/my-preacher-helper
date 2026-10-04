@@ -317,7 +317,7 @@ export default function StudiesPage() {
           <div className="flex items-center gap-2">
             <ClipboardDocumentListIcon className="h-5 w-5" />
             <span>
-              {stats.total} {t('studiesWorkspace.stats.notesLabel')}
+              {stats.total} {t('studiesWorkspace.stats.notesLabel', { count: stats.total })}
             </span>
           </div>
           {booksLeaderboard.length > 0 && (
@@ -325,7 +325,7 @@ export default function StudiesPage() {
               <span className="text-gray-300 dark:text-gray-600">•</span>
               <div className="flex items-center gap-2">
                 <BookOpenIcon className="h-4 w-4" />
-                <span>{Object.keys(stats.booksCount).length} {t('studiesWorkspace.stats.booksLabel')}</span>
+                <span>{Object.keys(stats.booksCount).length} {t('studiesWorkspace.stats.booksLabel', { count: Object.keys(stats.booksCount).length })}</span>
               </div>
             </>
           )}

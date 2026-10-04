@@ -163,11 +163,11 @@ export default function AddGroupToSeriesModal({
                         <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400">
                           <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200">
                             {(group.templates || []).length}{' '}
-                            {t('workspaces.groups.itemsLabel.templates', { defaultValue: 'templates' })}
+                            {t('workspaces.groups.itemsLabel.templates', { count: (group.templates || []).length, defaultValue: 'templates' })}
                           </span>
                           <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
                             {(group.flow || []).length}{' '}
-                            {t('workspaces.groups.itemsLabel.flowSteps', { defaultValue: 'flow steps' })}
+                            {t('workspaces.groups.itemsLabel.flowSteps', { count: (group.flow || []).length, defaultValue: 'flow steps' })}
                           </span>
                         </div>
                       </div>
