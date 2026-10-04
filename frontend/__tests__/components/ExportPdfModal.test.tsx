@@ -82,6 +82,25 @@ describe("ExportPdfModal", () => {
     expect(mockSave).toHaveBeenCalledWith("export.pdf");
   });
 
+  // BUG-20260927-pdf-export-cuts-long-content-bottom: a tall page used to be scaled to the whole
+  // page height and then placed 30 mm down, so its bottom 30 mm fell off the sheet.
+  it("fits long content on the page below the top margin instead of cutting its bottom", async () => {
+    mockHtml2Canvas.mockResolvedValue({ width: 800, height: 2400, toDataURL: jest.fn(() => "data:image/png;base64,long") });
+    const getContent = jest.fn().mockResolvedValue(<div>Long sermon</div>);
+    render(<ExportPdfModal isOpen onClose={jest.fn()} getContent={getContent} title="Long" />);
+    expect(await screen.findByText("Long sermon")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save as PDF" }));
+    await waitFor(() => expect(mockAddImage).toHaveBeenCalledTimes(1));
+
+    const [, , x, y, width, height] = mockAddImage.mock.calls[0];
+    expect(y).toBe(30);
+    expect(y + height).toBeLessThanOrEqual(297 - 10);
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(x + width).toBeLessThanOrEqual(210);
+    expect(width / height).toBeCloseTo(800 / 2400, 5);
+  });
+
   it("renders loading failure state when PDF content cannot be prepared", async () => {
     const getContent = jest.fn().mockRejectedValue(new Error("load failed"));
 

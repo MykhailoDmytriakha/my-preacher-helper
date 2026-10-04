@@ -10,6 +10,9 @@ import { useExportPreview } from "./useExportPreview";
 
 import type { ExportPdfModalProps } from "./types";
 
+/** Room kept under the image at the bottom of the page, in millimetres. */
+const PDF_BOTTOM_MARGIN_MM = 10;
+
 export function ExportPdfModal({
   isOpen,
   onClose,
@@ -55,9 +58,12 @@ export function ExportPdfModal({
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
-      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      const imgX = (pdfWidth - imgWidth * ratio) / 2;
       const imgY = 30;
+      // The image is scaled into the room BELOW the top margin (BUG-20260927-pdf-export-cuts-long-content-bottom):
+      // scaled to the whole page height and then placed 30 mm down, a long page lost its bottom 30 mm.
+      // Content taller than the page is shrunk to fit, never cut.
+      const ratio = Math.min(pdfWidth / imgWidth, (pdfHeight - imgY - PDF_BOTTOM_MARGIN_MM) / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
 
       pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, imgHeight * ratio);
       pdf.save(`${title || "export"}.pdf`);

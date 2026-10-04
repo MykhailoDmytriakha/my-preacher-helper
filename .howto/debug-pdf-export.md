@@ -8,7 +8,7 @@ Before changing rendering logic, find out what the exported file actually is: `p
 
 - `pdftotext` prints nothing and `pdfimages -list` shows one image → the file is a picture, as built. Selectable text needs a different renderer, not a styling fix.
 - `pdffonts` lists fonts and `pdftotext` returns the words → it is a text PDF; look at text rendering instead.
-- `handleExportPdf` scales the canvas by `Math.min(pageWidth / imageWidth, pageHeight / imageHeight)` and places it 30 mm from the top. Long content is shrunk onto the single page, not split across pages; when the height decides the scale, the image is a full page tall but starts 30 mm down, so its bottom 30 mm fall off the page.
+- `handleExportPdf` scales the canvas by `Math.min(pageWidth / imageWidth, (pageHeight - 30 - 10) / imageHeight)` and places it 30 mm from the top: long content is shrunk onto the single page, never cut (the old `pageHeight / imageHeight` let a long page run 30 mm off the sheet — BUG-20260927-pdf-export-cuts-long-content-bottom). Not split across pages. The PDF button is off on every screen for now (`disabledFormats={["pdf"]}` in `PlanPageHeader` and `SermonHeader`).
 - `html2canvas` and `jspdf` load lazily on the first export click.
 
 ## Why
