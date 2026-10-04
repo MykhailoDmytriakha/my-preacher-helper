@@ -24,7 +24,7 @@ jest.mock("react-i18next", () => ({
         "filters.filter": "Filter",
         "filters.activeFilters": "Active Filters",
         "filters.clear": "Clear",
-        "filters.missingTags": "Missing Tags",
+        "filters.unplaced": "Not placed",
         "filters.sortByStructure": "Sorted by ThoughtsBySection",
         "brainstorm.title": "Brainstorm",
       };
@@ -56,7 +56,6 @@ const createProps = (overrides: Partial<Props> = {}): Props => ({
     { name: "grace", color: "#0f172a" },
     { name: "hope", color: "#fef08a" },
   ],
-  hasStructureTags: true,
   filterButtonRef: React.createRef<HTMLButtonElement>(),
   isBrainstormOpen: false,
   setIsBrainstormOpen: jest.fn(),
@@ -147,7 +146,7 @@ describe("ClassicThoughtsPanel", () => {
     render(
       <ClassicThoughtsPanel
         {...createProps({
-          viewFilter: "missingTags",
+          viewFilter: "unplaced",
           structureFilter: "all",
           sortOrder: "structure",
           tagFilters: ["grace", "unknown-tag"],
@@ -158,7 +157,7 @@ describe("ClassicThoughtsPanel", () => {
     );
 
     expect(screen.getAllByText("Active Filters:").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Missing Tags").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Not placed").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sorted by ThoughtsBySection").length).toBeGreaterThan(0);
     expect(screen.getAllByText("grace").length).toBeGreaterThan(0);
     expect(screen.getAllByText("unknown-tag").length).toBeGreaterThan(0);

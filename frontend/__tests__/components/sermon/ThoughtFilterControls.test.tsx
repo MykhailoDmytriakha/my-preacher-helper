@@ -24,7 +24,6 @@ function makeProps(overrides: Partial<React.ComponentProps<typeof ThoughtFilterC
       { name: 'Grace', color: '#0f0' },
       { name: STRUCTURE_TAGS.CONCLUSION, color: '#00f' },
     ],
-    hasStructureTags: true,
     buttonRef,
     ...overrides,
   };
@@ -123,23 +122,41 @@ describe('ThoughtFilterControls', () => {
     expect(resetFilters).toHaveBeenCalled();
   });
 
-  it('selects the missing-tags view filter when its radio option is clicked', () => {
+  it('selects the not-placed view filter when its radio option is clicked', () => {
     const setViewFilter = jest.fn();
     render(<ThoughtFilterControls {...makeProps({ setViewFilter })} />);
 
-    const option = screen.getByRole('radio', { name: 'filters.missingTags' });
+    const option = screen.getByRole('radio', { name: 'filters.unplaced' });
     expect(option).not.toBeChecked();
     fireEvent.click(option);
 
     expect(setViewFilter).toHaveBeenCalledTimes(1);
-    expect(setViewFilter).toHaveBeenCalledWith('missingTags');
+    expect(setViewFilter).toHaveBeenCalledWith('unplaced');
   });
 
-  it('shows the missing-tags option as selected when it is the active view filter', () => {
-    render(<ThoughtFilterControls {...makeProps({ viewFilter: 'missingTags' })} />);
+  it('shows the not-placed option as selected when it is the active view filter', () => {
+    render(<ThoughtFilterControls {...makeProps({ viewFilter: 'unplaced' })} />);
 
-    expect(screen.getByRole('radio', { name: 'filters.missingTags' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: 'filters.unplaced' })).toBeChecked();
     expect(screen.getByRole('radio', { name: 'filters.all' })).not.toBeChecked();
+  });
+
+  // BUG-20261004-structure-sort-needs-legacy-tags: section tags are legacy markers, so the structure sort
+  // and the section filter are always offered; a thought's section comes from its place in the structure.
+  it('always offers the structure sort and the section filter, with no section-tag hint', () => {
+    const setSortOrder = jest.fn();
+    const setStructureFilter = jest.fn();
+    render(<ThoughtFilterControls {...makeProps({ setSortOrder, setStructureFilter })} />);
+
+    const structureSort = screen.getByRole('radio', { name: 'filters.sortByStructure' });
+    expect(structureSort).toBeEnabled();
+    fireEvent.click(structureSort);
+    expect(setSortOrder).toHaveBeenCalledWith('structure');
+
+    const sectionOptions = screen.getAllByRole('radio').filter((radio) => radio.getAttribute('name')?.startsWith('structureFilter-'));
+    expect(sectionOptions.length).toBe(4);
+    sectionOptions.forEach((radio) => expect(radio).toBeEnabled());
+    expect(screen.queryByText(/requiresStructureTags|noStructureTagsPresent/)).not.toBeInTheDocument();
   });
 });
 

@@ -6,7 +6,6 @@ import { STRUCTURE_TAGS } from '@lib/constants';
 import { normalizeStructureTag } from '@utils/tagUtils';
 
 // CSS class constants to avoid duplicate strings
-const DISABLED_LABEL_CLASSES = 'opacity-50 cursor-not-allowed';
 
 import type { ViewFilter, StructureFilter, SortOrder } from '@hooks/useThoughtFiltering';
 
@@ -23,7 +22,6 @@ interface ThoughtFilterControlsProps {
   sortOrder: SortOrder;
   setSortOrder: (order: SortOrder) => void;
   allowedTags: { name: string; color: string }[];
-  hasStructureTags: boolean;
   buttonRef: React.RefObject<HTMLButtonElement | null>; // Allow null for initial ref value
 }
 
@@ -40,7 +38,6 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
   sortOrder,
   setSortOrder,
   allowedTags,
-  hasStructureTags,
   buttonRef,
 }) => {
   const { t } = useTranslation();
@@ -147,7 +144,7 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.sortByDate') || 'By Date (Newest First)'}</span>
             </label>
-            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
+            <label className="flex items-center">
               <input
                 type="radio"
                 name={`sortOrder-${uid}`}
@@ -155,15 +152,9 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
                 checked={sortOrder === 'structure'}
                 onChange={() => { setSortOrder('structure'); }}
                 className="h-4 w-4 text-blue-600"
-                disabled={!hasStructureTags}
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
                 {t('filters.sortByStructure') || 'By ThoughtsBySection (Intro → Main → Conclusion)'}
-                {!hasStructureTags && (
-                  <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">
-                    ({t('filters.requiresStructureTags') || 'Requires structure tags'})
-                  </span>
-                )}
               </span>
             </label>
           </div>
@@ -188,12 +179,12 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
               <input
                 type="radio"
                 name={`viewFilter-${uid}`}
-                value="missingTags"
-                checked={viewFilter === 'missingTags'}
-                onChange={() => { setViewFilter('missingTags'); }}
+                value="unplaced"
+                checked={viewFilter === 'unplaced'}
+                onChange={() => { setViewFilter('unplaced'); }}
                 className="h-4 w-4 text-blue-600"
               />
-              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.missingTags')}</span>
+              <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.unplaced')}</span>
             </label>
           </div>
         </div>
@@ -202,14 +193,9 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
         <div className="px-4 py-2">
           <h3 className="text-sm font-medium">
             {t('filters.byStructure')}
-            {!hasStructureTags && (
-              <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-                ({t('filters.noStructureTagsPresent') || 'No structure tags present'})
-              </span>
-            )}
           </h3>
           <div className="mt-2 space-y-2">
-            <label className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
+            <label className="flex items-center">
               <input
                 type="radio"
                 name={`structureFilter-${uid}`}
@@ -217,13 +203,12 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
                 checked={structureFilter === 'all'}
                 onChange={() => { setStructureFilter('all'); }}
                 className="h-4 w-4 text-blue-600"
-                disabled={!hasStructureTags}
               />
               <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{t('filters.allStructure')}</span>
             </label>
             {/* Use STRUCTURE_TAGS constants */}
             {[STRUCTURE_TAGS.INTRODUCTION, STRUCTURE_TAGS.MAIN_BODY, STRUCTURE_TAGS.CONCLUSION].map(tag => (
-              <label key={tag} className={`flex items-center ${!hasStructureTags ? DISABLED_LABEL_CLASSES : ''}`}>
+              <label key={tag} className="flex items-center">
                 <input
                   type="radio"
                   name={`structureFilter-${uid}`}
@@ -231,7 +216,6 @@ const ThoughtFilterControls: React.FC<ThoughtFilterControlsProps> = ({
                   checked={structureFilter === tag}
                   onChange={() => { setStructureFilter(tag); }}
                   className="h-4 w-4 text-blue-600"
-                  disabled={!hasStructureTags}
                 />
                 <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{getStructureTagLabel(tag)}</span>
               </label>

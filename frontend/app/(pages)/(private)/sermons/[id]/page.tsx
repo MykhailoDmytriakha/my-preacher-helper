@@ -711,10 +711,10 @@ useEffect(() => {
     resetFilters,
     sortOrder,
     setSortOrder,
-    hasStructureTags
   } = useThoughtFiltering({
     initialThoughts: sermon?.thoughts ?? [],
     sermonStructure: sermon?.structure,
+    sermonThoughtsBySection: sermon?.thoughtsBySection,
     sermonOutline: sermon?.outline
   });
 
@@ -1630,7 +1630,6 @@ useEffect(() => {
       sortOrder={sortOrder}
       setSortOrder={setSortOrder}
       allowedTags={allowedTags}
-      hasStructureTags={hasStructureTags}
       filterButtonRef={filterButtonRef}
       isBrainstormOpen={isBrainstormOpen}
       setIsBrainstormOpen={setIsBrainstormOpen}

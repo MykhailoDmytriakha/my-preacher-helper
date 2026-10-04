@@ -55,21 +55,20 @@ describe('useThoughtFiltering Hook', () => {
     expect(result.current.structureFilter).toBe('all');
     expect(result.current.tagFilters).toEqual([]);
     expect(result.current.sortOrder).toBe('date');
-    expect(result.current.hasStructureTags).toBe(true);
     // Check default date sort (newest first)
     expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['6', '3', '2', '1', '4', '5']);
     expect(result.current.activeCount).toBe(6);
   });
 
-  it('should filter by viewFilter="missingTags"', () => {
+  it('should filter by viewFilter="unplaced"', () => {
     const { result } = setupHook();
     
     act(() => {
-      result.current.setViewFilter('missingTags');
+      result.current.setViewFilter('unplaced');
     });
 
-    expect(result.current.viewFilter).toBe('missingTags');
-    // Only thoughts 5 and 6 should remain
+    expect(result.current.viewFilter).toBe('unplaced');
+    // Only thoughts 5 (unknown outline point) and 6 (no point) are not placed in the structure
     expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['6', '5']);
     expect(result.current.activeCount).toBe(2);
   });
@@ -140,7 +139,7 @@ describe('useThoughtFiltering Hook', () => {
     
     // Apply some filters
     act(() => {
-      result.current.setViewFilter('missingTags');
+      result.current.setViewFilter('unplaced');
       result.current.setStructureFilter(STRUCTURE_TAGS.MAIN_BODY);
       result.current.toggleTagFilter('custom1');
       result.current.setSortOrder('structure');
@@ -194,25 +193,23 @@ describe('useThoughtFiltering Hook', () => {
     expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['1', '4', '2', '3', '5', '6']);
   });
 
-  it('should sort by date when sortOrder is "structure" but no thoughts have structure tags', () => {
+  it('keeps the structure sort for thoughts without section tags', () => {
     const structureStrings = ['Вступление','Основная часть','Заключение','Вступ','Основна частина','Висновок','Introduction','Main Part','Conclusion','intro','main','conclusion'];
     const thoughtsWithoutStructureTags = mockThoughts.filter(t =>
       !(t.tags || []).some(tag => structureStrings.includes(tag))
     );
-    // Should only contain thoughts 5 and 6
     expect(thoughtsWithoutStructureTags.map(t => t.id)).toEqual(['5', '6']);
 
     const { result } = setupHook(thoughtsWithoutStructureTags, mockStructureEmpty);
-    
-    expect(result.current.hasStructureTags).toBe(false);
 
     act(() => {
       result.current.setSortOrder('structure');
     });
 
-    expect(result.current.sortOrder).toBe('date'); // Should revert to date sort
-    // Date sort for 5 and 6: 6 (newest), 5
-    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['6', '5']);
+    // Section tags are legacy markers: their absence no longer reverts the sort to date.
+    expect(result.current.sortOrder).toBe('structure');
+    // Neither thought is placed, so both follow the structure as orphans, oldest first.
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['5', '6']);
   });
   
   it('should correctly update activeCount when initialThoughts prop changes', () => {
@@ -244,6 +241,65 @@ describe('useThoughtFiltering Hook', () => {
         expect(result.current.activeCount).toBe(6);
     });
 
+});
+
+// BUG-20261004-structure-sort-needs-legacy-tags: a thought's section comes from its place in the structure
+// (outline point, structure lists); section tags are legacy markers new thoughts no longer carry. Sorting
+// and filtering by structure must work for thoughts placed without any section tag.
+describe('useThoughtFiltering for thoughts placed without section tags', () => {
+  const placed: Thought[] = [
+    { id: 'a', text: 'Opening', tags: [], date: '2023-10-26T10:00:00Z', outlinePointId: 'p1' },
+    { id: 'b', text: 'Closing', tags: ['custom1'], date: '2023-10-26T09:00:00Z', outlinePointId: 'p3' },
+    { id: 'c', text: 'Body', tags: [], date: '2023-10-26T12:00:00Z', outlinePointId: 'p2' },
+    { id: 'd', text: 'Not placed yet', tags: [], date: '2023-10-26T11:00:00Z' },
+  ];
+  const render = () => renderHook(() => useThoughtFiltering({ initialThoughts: placed, sermonStructure: mockStructureEmpty, sermonOutline: mockOutline }));
+
+  it('orders them by the sermon structure', () => {
+    const { result } = render();
+    act(() => { result.current.setSortOrder('structure'); });
+    expect(result.current.sortOrder).toBe('structure');
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['a', 'c', 'b', 'd']);
+  });
+
+  it('filters them by the section they are placed in', () => {
+    const { result } = render();
+    act(() => { result.current.setStructureFilter(STRUCTURE_TAGS.MAIN_BODY); });
+    expect(result.current.structureFilter).toBe(STRUCTURE_TAGS.MAIN_BODY);
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['c']);
+    expect(result.current.activeCount).toBe(1);
+  });
+
+  it('sorts and filters a thought by the same section, even when a legacy tag disagrees with its place', () => {
+    const conflicting: Thought[] = [
+      { id: 'x', text: 'Closing with an old intro tag', tags: [STRUCTURE_TAGS.INTRODUCTION], date: '2023-10-26T10:00:00Z' },
+      { id: 'y', text: 'Body', tags: [], date: '2023-10-26T11:00:00Z' },
+    ];
+    const structure: Sermon['structure'] = { introduction: [], main: ['y'], conclusion: ['x'], ambiguous: [] };
+    const { result } = renderHook(() => useThoughtFiltering({ initialThoughts: conflicting, sermonStructure: structure }));
+    act(() => { result.current.setSortOrder('structure'); });
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['y', 'x']);
+    act(() => { result.current.setStructureFilter(STRUCTURE_TAGS.CONCLUSION); });
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['x']);
+  });
+
+  it('reads a sermon whose sections are stored only in the legacy thoughtsBySection field', () => {
+    const legacy: Thought[] = [{ id: 'x', text: 'Opening', tags: [], date: '2023-10-26T10:00:00Z' }];
+    const { result } = renderHook(() => useThoughtFiltering({
+      initialThoughts: legacy,
+      sermonStructure: undefined,
+      sermonThoughtsBySection: { introduction: ['x'], main: [], conclusion: [], ambiguous: [] },
+    }));
+    act(() => { result.current.setStructureFilter(STRUCTURE_TAGS.INTRODUCTION); });
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['x']);
+  });
+
+  it('lists only the thoughts not placed in the structure yet', () => {
+    const { result } = render();
+    act(() => { result.current.setViewFilter('unplaced'); });
+    expect(result.current.filteredThoughts.map(t => t.id)).toEqual(['d']);
+    expect(result.current.activeCount).toBe(1);
+  });
 });
 
 describe('thoughtOrdering utilities', () => {

@@ -1,18 +1,21 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 
-import { normalizeStructureTag } from '@utils/tagUtils';
-import { getPreachOrderedThoughts } from '@utils/thoughtOrdering';
+import { CANONICAL_TO_SECTION, normalizeStructureTag } from '@utils/tagUtils';
+import { canonicalizeStructure } from '@utils/thoughtOrdering';
 
 import type { Thought, Sermon } from '@/models/models';
 
 export type SortOrder = 'date' | 'structure';
-export type ViewFilter = 'all' | 'missingTags';
-export type StructureFilter = string; // Can be 'all' or a specific structure tag
+/** 'unplaced': thoughts not assigned to a section — not placed yet, or kept under consideration. */
+export type ViewFilter = 'all' | 'unplaced';
+export type StructureFilter = string; // 'all' or a section tag from STRUCTURE_TAGS
 
 interface UseThoughtFilteringProps {
   initialThoughts: Thought[];
   sermonStructure: Sermon['structure']; // Pass sermon structure for sorting
   sermonOutline?: Sermon['outline']; // Optional: outline to refine structure order
+  /** Legacy section lists; canonicalizeStructure reads them when `structure` is absent. */
+  sermonThoughtsBySection?: Sermon['thoughtsBySection'];
 }
 
 interface UseThoughtFilteringReturn {
@@ -27,119 +30,84 @@ interface UseThoughtFilteringReturn {
   resetFilters: () => void;
   sortOrder: SortOrder;
   setSortOrder: React.Dispatch<React.SetStateAction<SortOrder>>;
-  hasStructureTags: boolean; // Indicate if any thought has a structure tag
 }
+
+const UNPLACED_SECTION = 'ambiguous';
+/** Preaching order of the sections; thoughts not assigned to a section come last. */
+const SECTION_ORDER = ['introduction', 'main', 'conclusion', UNPLACED_SECTION] as const;
 
 export function useThoughtFiltering({
   initialThoughts,
   sermonStructure,
   sermonOutline,
+  sermonThoughtsBySection,
 }: UseThoughtFilteringProps): UseThoughtFilteringReturn {
   const [viewFilter, setViewFilter] = useState<ViewFilter>('all');
   const [structureFilter, setStructureFilter] = useState<StructureFilter>('all');
   const [tagFilters, setTagFilters] = useState<string[]>([]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('date');
-  
-  // Check if any structure tags are present (use direct prop)
-  const hasStructureTags = useMemo(() => {
-    return initialThoughts?.some(thought => 
-      thought.tags.some(tag => normalizeStructureTag(tag) !== null)
-    ) ?? false;
-  }, [initialThoughts]);
 
-  // Filter thoughts based on selected filters (use direct prop)
-  const filteredThoughts = useMemo(() => {
-    let thoughtsToProcess = [...initialThoughts]; // Use direct prop
+  // The section each thought sits in, from its place in the structure: its outline point first, then the
+  // structure lists. Section tags are legacy markers and count only as the fallback for old thoughts
+  // (thoughtOrdering.resolveThought) — the same rule the structure sort orders by.
+  const pseudoSermon = useMemo(() => ({
+    thoughts: initialThoughts,
+    structure: sermonStructure,
+    thoughtsBySection: sermonThoughtsBySection,
+    outline: sermonOutline,
+  }) as Sermon, [initialThoughts, sermonStructure, sermonThoughtsBySection, sermonOutline]);
 
-    // Apply view filter
-    if (viewFilter === 'missingTags') {
-      thoughtsToProcess = thoughtsToProcess.filter(thought => 
-        !thought.tags.some(tag => normalizeStructureTag(tag) !== null)
-      );
+  // One partition serves both the section filter and the structure sort, so a thought is never
+  // filtered into one section and sorted into another (a legacy tag cannot pull it elsewhere).
+  const { sectionById, structureIndex } = useMemo(() => {
+    const bySection = canonicalizeStructure(pseudoSermon);
+    const sections = new Map<string, string>();
+    const order = new Map<string, number>();
+    SECTION_ORDER.forEach((section) => {
+      (bySection[section] ?? []).forEach((id) => {
+        if (sections.has(id)) return;
+        sections.set(id, section);
+        order.set(id, order.size);
+      });
+    });
+    return { sectionById: sections, structureIndex: order };
+  }, [pseudoSermon]);
+
+  const applyFilters = useCallback((thoughts: Thought[]) => {
+    const sectionOf = (thought: Thought) => sectionById.get(thought.id) ?? UNPLACED_SECTION;
+    let result = thoughts;
+    if (viewFilter === 'unplaced') {
+      result = result.filter((thought) => sectionOf(thought) === UNPLACED_SECTION);
     }
-
-    // Apply structure filter
     if (structureFilter !== 'all') {
-      thoughtsToProcess = thoughtsToProcess.filter(thought =>
-        thought.tags.some(tag => normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(structureFilter))
-      );
+      const canonical = normalizeStructureTag(structureFilter);
+      const section = canonical ? CANONICAL_TO_SECTION[canonical] : null;
+      result = result.filter((thought) => section !== null && sectionOf(thought) === section);
     }
-
-    // Apply tag filters
     if (tagFilters.length > 0) {
-      thoughtsToProcess = thoughtsToProcess.filter(thought =>
-        tagFilters.every(filterTag => thought.tags.includes(filterTag))
-      );
+      result = result.filter((thought) => tagFilters.every((filterTag) => thought.tags.includes(filterTag)));
     }
+    return result;
+  }, [sectionById, viewFilter, structureFilter, tagFilters]);
 
-    // Apply sorting (use direct prop)
-    if (sortOrder === 'structure' && hasStructureTags) {
-      const pseudoSermon = {
-        thoughts: initialThoughts,
-        structure: sermonStructure,
-        outline: sermonOutline,
-      } as Sermon;
+  const filteredThoughts = useMemo(() => {
+    const thoughtsToProcess = [...applyFilters(initialThoughts)];
 
-      const orderedThoughts = getPreachOrderedThoughts(pseudoSermon, { includeOrphans: true });
-      const orderIndex = new Map(orderedThoughts.map((thought, index) => [thought.id, index]));
-
+    if (sortOrder === 'structure') {
       thoughtsToProcess.sort((a, b) => {
-        const indexA = orderIndex.get(a.id) ?? Number.POSITIVE_INFINITY;
-        const indexB = orderIndex.get(b.id) ?? Number.POSITIVE_INFINITY;
+        const indexA = structureIndex.get(a.id) ?? Number.POSITIVE_INFINITY;
+        const indexB = structureIndex.get(b.id) ?? Number.POSITIVE_INFINITY;
         if (indexA !== indexB) return indexA - indexB;
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
     } else { // Default sort by date
       thoughtsToProcess.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     }
-    
+
     return thoughtsToProcess;
-  }, [
-    initialThoughts, // Depend on prop
-    viewFilter,
-    structureFilter,
-    tagFilters,
-    sortOrder,
-    hasStructureTags,
-    sermonStructure,
-    sermonOutline, // Depend on prop used in sorting logic
-  ]);
+  }, [applyFilters, initialThoughts, sortOrder, structureIndex]);
 
-  // Calculate activeCount separately (use direct prop)
-  const activeCount = useMemo(() => {
-    let countThoughts = [...initialThoughts]; // Use direct prop
-    
-    // Re-apply filters that affect the count
-    if (viewFilter === 'missingTags') {
-      countThoughts = countThoughts.filter(thought => 
-        !thought.tags.some(tag => normalizeStructureTag(tag) !== null)
-      );
-    }
-    if (structureFilter !== 'all') {
-      countThoughts = countThoughts.filter(thought =>
-        thought.tags.some(tag => normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(structureFilter))
-      );
-    }
-    if (tagFilters.length > 0) {
-      countThoughts = countThoughts.filter(thought =>
-        tagFilters.every(filterTag => thought.tags.includes(filterTag))
-      );
-    }
-    
-    return countThoughts.length;
-  }, [initialThoughts, viewFilter, structureFilter, tagFilters]); // Depend on prop
-
-  // Reset structure filter and sort order if no structure tags are present
-  useEffect(() => {
-    if (!hasStructureTags) {
-      if (structureFilter !== 'all') {
-        setStructureFilter('all');
-      }
-      if (sortOrder === 'structure') {
-        setSortOrder('date');
-      }
-    }
-  }, [hasStructureTags, structureFilter, sortOrder]);
+  const activeCount = useMemo(() => applyFilters(initialThoughts).length, [applyFilters, initialThoughts]);
 
   const toggleTagFilter = useCallback((tag: string) => {
     setTagFilters(prevFilters =>
@@ -156,8 +124,6 @@ export function useThoughtFiltering({
     setSortOrder('date');
   }, []);
 
-  // No debug logging in production
-
   return {
     filteredThoughts,
     activeCount,
@@ -170,6 +136,5 @@ export function useThoughtFiltering({
     resetFilters,
     sortOrder,
     setSortOrder,
-    hasStructureTags,
   };
-} 
+}

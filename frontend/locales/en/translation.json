@@ -1217,7 +1217,7 @@
   "filters": {
     "filter": "Filter",
     "all": "All thoughts",
-    "missingTags": "Missing required tags",
+    "unplaced": "Not assigned to a section",
     "byStructure": "Filter by structure",
     "byTags": "Filter by tags",
     "allStructure": "All structure parts",
@@ -1234,8 +1234,6 @@
     "sortByDate": "By Date (Newest First)",
     "sortByStructure": "By Structure (Intro → Main → Conclusion)",
     "sortByStructureShort": "By structure",
-    "noStructureTagsPresent": "No structure tags present",
-    "requiresStructureTags": "Requires structure tags",
     "removeFilter": "Remove filter: {{filter}}"
   },
   "audio": {

@@ -1225,7 +1225,7 @@
   "filters": {
     "filter": "Фильтр",
     "all": "Все мысли",
-    "missingTags": "Без обязательных тегов",
+    "unplaced": "Не распределены по разделам",
     "byStructure": "Фильтр по структуре",
     "byTags": "Фильтр по тегам",
     "allStructure": "Все части структуры",
@@ -1242,8 +1242,6 @@
     "sortByDate": "По дате (сначала новые)",
     "sortByStructure": "По структуре (вступление → основная часть → заключение)",
     "sortByStructureShort": "По структуре",
-    "noStructureTagsPresent": "Нет тегов структуры",
-    "requiresStructureTags": "Требуются теги структуры",
     "removeFilter": "Убрать фильтр: {{filter}}"
   },
   "audio": {

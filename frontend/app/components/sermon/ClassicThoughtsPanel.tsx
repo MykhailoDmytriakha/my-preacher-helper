@@ -39,7 +39,6 @@ interface ClassicThoughtsPanelProps {
   sortOrder: SortOrder;
   setSortOrder: Dispatch<SetStateAction<SortOrder>>;
   allowedTags: { name: string; color: string }[];
-  hasStructureTags: boolean;
   filterButtonRef: RefObject<HTMLButtonElement | null>;
   isBrainstormOpen: boolean;
   setIsBrainstormOpen: Dispatch<SetStateAction<boolean>>;
@@ -111,9 +110,9 @@ const ActiveFilters = ({
         {t("filters.activeFilters")}:
       </span>
 
-      {viewFilter === "missingTags" && (
+      {viewFilter === "unplaced" && (
         <Chip tone="rose" size="sm">
-          {t("filters.missingTags")}
+          {t("filters.unplaced")}
         </Chip>
       )}
 
@@ -170,7 +169,6 @@ export default function ClassicThoughtsPanel({
   sortOrder,
   setSortOrder,
   allowedTags,
-  hasStructureTags,
   filterButtonRef,
   isBrainstormOpen,
   setIsBrainstormOpen,
@@ -258,14 +256,11 @@ export default function ClassicThoughtsPanel({
                     <div className="relative group flex items-stretch">
                       <button
                         onClick={() => setSortOrder(sortOrder === "structure" ? "date" : "structure")}
-                        disabled={!hasStructureTags}
                         className={[
                           "flex items-center justify-center w-9 border border-r-0 rounded-l-md transition-colors",
-                          hasStructureTags
-                            ? sortOrder === "structure"
-                              ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500 dark:border-blue-500"
-                              : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-                            : "bg-white dark:bg-gray-800 text-gray-300 dark:text-gray-600 border-gray-300 dark:border-gray-600 cursor-not-allowed opacity-50",
+                          sortOrder === "structure"
+                            ? "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border-blue-500 dark:border-blue-500"
+                            : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700",
                         ].join(" ")}
                       >
                         <Rows3 className="w-4 h-4" />
@@ -304,7 +299,6 @@ export default function ClassicThoughtsPanel({
                     sortOrder={sortOrder}
                     setSortOrder={setSortOrder}
                     allowedTags={allowedTags}
-                    hasStructureTags={hasStructureTags}
                     buttonRef={filterButtonRef}
                   />
                 </motion.div>

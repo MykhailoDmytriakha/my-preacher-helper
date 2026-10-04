@@ -1225,7 +1225,7 @@
   "filters": {
     "filter": "Фільтр",
     "all": "Всі думки",
-    "missingTags": "Без обов'язкових тегів",
+    "unplaced": "Не розподілені за розділами",
     "byStructure": "Фільтр за структурою",
     "byTags": "Фільтр за тегами",
     "allStructure": "Всі частини структури",
@@ -1242,8 +1242,6 @@
     "sortByDate": "За датою (спочатку нові)",
     "sortByStructure": "За структурою (вступ → основна частина → висновок)",
     "sortByStructureShort": "За структурою",
-    "noStructureTagsPresent": "Немає тегів структури",
-    "requiresStructureTags": "Потрібні теги структури",
     "removeFilter": "Прибрати фільтр: {{filter}}"
   },
   "audio": {
