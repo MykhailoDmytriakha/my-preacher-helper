@@ -2,10 +2,10 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import { getSectionIconClasses } from '@/components/column/utils';
 import SortableItem, {
   getCardClassName,
   getHighlightStyles,
-  getSectionIconClasses,
   HighlightBadge,
   SortableItemActions,
   SortableItemPreview,
@@ -364,7 +364,7 @@ Second paragraph with indentation.
     expect(container).toHaveClass('bg-slate-50');
 
     const toggleButton = screen.getByRole('button', { name: 'structure.unlockThought' });
-    expect(toggleButton).toHaveAttribute('aria-pressed', 'true');
+    expect(toggleButton).not.toHaveAttribute('aria-pressed');
     expect(toggleButton).toHaveAttribute('data-state', 'locked');
     expect(screen.queryByText('structure.locked')).not.toBeInTheDocument();
 
@@ -385,7 +385,7 @@ Second paragraph with indentation.
     expect(container).not.toHaveClass('bg-slate-50');
 
     const toggleButton = screen.getByRole('button', { name: 'structure.lockThought' });
-    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
+    expect(toggleButton).not.toHaveAttribute('aria-pressed');
     expect(toggleButton).toHaveAttribute('data-state', 'unlocked');
   });
 
@@ -662,7 +662,8 @@ Second paragraph with indentation.
     );
 
     const unlockButton = screen.getByRole('button', { name: 'structure.unlockThought' });
-    expect(unlockButton).toHaveAttribute('aria-pressed', 'true');
+    expect(unlockButton).toHaveAttribute('data-state', 'locked');
+    expect(unlockButton).not.toHaveAttribute('aria-pressed');
     expect(unlockButton.className).toContain('bg-slate-200');
     expect(unlockButton.querySelector('svg')?.getAttribute('class') || '').toContain('h-5 w-5');
 
@@ -685,7 +686,8 @@ Second paragraph with indentation.
     );
 
     const lockButton = screen.getByRole('button', { name: 'structure.lockThought' });
-    expect(lockButton).toHaveAttribute('aria-pressed', 'false');
+    expect(lockButton).toHaveAttribute('data-state', 'unlocked');
+    expect(lockButton).not.toHaveAttribute('aria-pressed');
     expect(lockButton.className).toContain('bg-white');
     expect(lockButton.querySelector('svg')?.getAttribute('class') || '').toContain('text-blue-800');
   });

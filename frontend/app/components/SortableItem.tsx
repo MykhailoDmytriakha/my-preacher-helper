@@ -2,21 +2,18 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS, type Transform } from "@dnd-kit/utilities";
-import {
-  ArrowTopRightOnSquareIcon,
-  LockClosedIcon,
-  LockOpenIcon,
-} from "@heroicons/react/24/outline";
+import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { CheckIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
 import { Chip } from '@/components/ui/Chip';
 import { Item } from "@/models/models";
-import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { EditIcon, TrashIcon } from "@components/Icons";
 
 import CardContent from "./CardContent";
+import { getSectionIconClasses } from "./column/utils";
+import { LockToggleButton } from "./LockToggleButton";
 
 const ACTION_BUTTON_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full shadow-sm transition-colors";
 
@@ -87,19 +84,6 @@ export const getHighlightStyles = (isHighlighted: boolean, highlightType: "assig
   return highlightType === "assigned"
     ? { borderColor: "rgb(250, 204, 21)", backgroundColor: "rgb(254, 249, 195)" }
     : { borderColor: "rgb(59, 130, 246)", backgroundColor: "rgb(219, 234, 254)" };
-};
-
-export const getSectionIconClasses = (containerId: string) => {
-  if (containerId === "introduction") {
-    return `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`;
-  }
-  if (containerId === "main") {
-    return `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`;
-  }
-  if (containerId === "conclusion") {
-    return `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`;
-  }
-  return "text-gray-600 dark:text-gray-300";
 };
 
 export const getCardClassName = ({
@@ -228,28 +212,18 @@ export const SortableItemActions = ({
       className={`flex w-10 flex-col items-center gap-1.5 ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
     >
       {canToggleLock && (
-        <button
+        <LockToggleButton
+          isLocked={isLocked}
+          label={lockLabel}
+          unlockedIconClassName={sectionIconColorClasses}
           onPointerDown={stopEvent}
           onMouseDown={stopEvent}
           onClick={(event) => {
             stopEvent(event);
             onToggleLock?.(item.id, !isLocked);
           }}
-          className={`focus:outline-none border ${ACTION_BUTTON_BASE_CLASS} ${isLocked
-            ? "border-slate-300 bg-slate-200 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-600"
-            : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-300 hover:border-slate-300 hover:bg-slate-50 dark:hover:border-slate-600 dark:hover:bg-gray-700"}`}
-          title={lockLabel}
-          aria-label={lockLabel}
-          aria-pressed={isLocked}
-          data-state={isLocked ? "locked" : "unlocked"}
           disabled={isDeleting || isOverlay}
-        >
-          {isLocked ? (
-            <LockClosedIcon className="h-5 w-5" />
-          ) : (
-            <LockOpenIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
-          )}
-        </button>
+        />
       )}
 
       <div className={`flex flex-col items-center gap-1.5 transition-opacity ${hoverActionsClass}`}>

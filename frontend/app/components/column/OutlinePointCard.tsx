@@ -6,6 +6,7 @@ import React from 'react';
 
 import { FlatRecorderButton } from '@/components/FlatRecorderButton';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { LockToggleButton } from '@/components/LockToggleButton';
 import PointNote from '@/components/PointNote';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
 import { getOutlinePointAiSortState } from '@/utils/aiSorting';
@@ -16,7 +17,7 @@ import { recordAudioThought } from './audio';
 import { BG_GRAY_LIGHTER_DARK, INLINE_EDIT_ACTION_BUTTON_BASE_CLASS, TRANSLATION_COMMON_CANCEL, TRANSLATION_COMMON_DELETE, TRANSLATION_COMMON_SAVE, TRANSLATION_STRUCTURE_ADD_THOUGHT } from './constants';
 import { SubPointList } from './SubPointList';
 import { PointThoughtLane } from './ThoughtLanes';
-import { getPlaceholderColors, getPointLockToggleLabel, isPointAudioSection, openPointEditor } from './utils';
+import { getPlaceholderColors, getPointLockToggleLabel, getSectionIconClasses, isPointAudioSection, openPointEditor } from './utils';
 
 import type { OnAudioThoughtCreated, ThoughtItemRenderer, Translate } from './types';
 import type { Item, SermonPoint, SubPoint } from '@/models/models';
@@ -366,19 +367,14 @@ export const OutlinePointCard: React.FC<{
             {/* Right-side actions and info */}
             <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
 
-              {/* Toggle point lock status button */}
+              {/* Locks every thought of the point: the same toggle a thought card draws for one thought */}
               {pointToggleHandler && hasItems && (
-                <button
+                <LockToggleButton
+                  isLocked={isPointLocked}
+                  label={pointLockToggleLabel}
+                  unlockedIconClassName={getSectionIconClasses(containerId)}
                   onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
-                  className={`p-1.5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${isPointLocked
-                    ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
-                    : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                    }`}
-                  title={pointLockToggleLabel}
-                  aria-label={pointLockToggleLabel}
-                >
-                  <CheckIcon className={`h-3.5 w-3.5 ${isPointLocked ? 'text-green-700 dark:text-green-300' : ''}`} />
-                </button>
+                />
               )}
 
               {/* Quick help for outline point */}
@@ -389,7 +385,7 @@ export const OutlinePointCard: React.FC<{
               )}
 
               <span className={`text-xs whitespace-nowrap flex-shrink-0 ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
-                {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
+                {pointItems.length} {t('structure.thoughts', { count: pointItems.length })}
               </span>
 
               {/* Focus Recorder Button (per outline point) */}

@@ -1,10 +1,19 @@
+import { LockClosedIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { createInstance } from 'i18next';
 import React from 'react';
 
 import { OutlinePointCard } from '@/components/column/OutlinePointCard';
+import { SortableItemActions } from '@/components/SortableItem';
 import { createAudioThought } from '@/services/thought.service';
+import en from '@locales/en/translation.json';
+import ru from '@locales/ru/translation.json';
+import uk from '@locales/uk/translation.json';
 
+import type { Translate } from '@/components/column/types';
 import type { Item } from '@/models/models';
+
+jest.unmock('i18next');
 
 const mockDropNodes = new Map<string, HTMLElement | null>();
 jest.mock('@dnd-kit/core', () => ({ useDroppable: ({ id }: { id: string }) => ({ setNodeRef: (node: HTMLElement | null) => { mockDropNodes.set(id, node); }, isOver: false }) }));
@@ -104,6 +113,46 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   expect(screen.queryByRole('button', { name: 'Sub clear: Device error' })).not.toBeInTheDocument();
 });
 
+// The header locks every thought of the point; a thought card locks one. Same action, same sign:
+// an open padlock while the thoughts can move, a closed one once they are locked.
+const glyphOf = (element: React.ReactElement) => {
+  const { container, unmount } = render(element);
+  const glyph = container.querySelector('svg path')?.getAttribute('d');
+  unmount();
+  return glyph;
+};
+const padlockGlyph = (isLocked: boolean) => glyphOf(isLocked ? <LockClosedIcon /> : <LockOpenIcon />);
+const thoughtCardLockGlyph = (isLocked: boolean) => glyphOf(
+  <SortableItemActions item={item('card', isLocked)} containerId="main" isHighlighted={false} isDragging={false} isDeleting={false}
+    canEdit={false} isLocked={isLocked} mutationDisabled={false} canToggleLock showDeleteIcon={false}
+    sectionIconColorClasses="" t={t} isOverlay={false} />
+);
+
+it.each([false, true])('draws the point lock toggle as the same padlock a thought card shows (locked=%s)', isLocked => {
+  const padlock = padlockGlyph(isLocked);
+  expect(padlock).toBeTruthy();
+  expect(padlock).not.toBe(padlockGlyph(!isLocked));
+  expect(thoughtCardLockGlyph(isLocked)).toBe(padlock);
+  render(<OutlinePointCard {...base} pointItems={[item('first', isLocked)]} onTogglePointLock={jest.fn()} />);
+  const toggle = screen.getByRole('button', {
+    name: isLocked ? 'Unlock all thoughts in this structure point' : 'Lock all thoughts in this structure point',
+  });
+  expect(toggle.querySelector('svg path')?.getAttribute('d')).toBe(padlock);
+  expect(toggle).toHaveAttribute('data-state', isLocked ? 'locked' : 'unlocked');
+});
+
+const locales = { en, ru, uk } as const;
+it.each([
+  ['ru', 1, '1 мысль'], ['ru', 3, '3 мысли'], ['ru', 5, '5 мыслей'], ['ru', 21, '21 мысль'],
+  ['uk', 1, '1 думка'], ['uk', 3, '3 думки'], ['uk', 5, '5 думок'],
+  ['en', 1, '1 thought'], ['en', 3, '3 thoughts'],
+] as const)('%s: a point with %i thoughts reads "%s"', async (lng, count, expected) => {
+  const i18n = createInstance();
+  await i18n.init({ lng, resources: { [lng]: { translation: locales[lng] } }, interpolation: { escapeValue: false } });
+  const pointItems = Array.from({ length: count }, (_, index) => item(`thought-${index}`));
+  render(<OutlinePointCard {...base} t={i18n.t.bind(i18n) as Translate} pointItems={pointItems} />);
+  expect(screen.getByText(expected)).toBeInTheDocument();
+});
 
 it.each([false, true])('collapses nested content and restores it without emitting writes (focus=%s)', isFocusMode => {
   const onSaveEdit = jest.fn();

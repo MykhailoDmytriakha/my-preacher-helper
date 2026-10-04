@@ -1,6 +1,7 @@
 jest.mock('@heroicons/react/24/outline', () => {
   const mockIcon = (name: string) => (props: any) => <svg {...props} data-testid={`icon-${name}`} />;
   return {
+    ...jest.requireActual('@heroicons/react/24/outline'),
     QuestionMarkCircleIcon: mockIcon('question'),
     PlusIcon: mockIcon('plus'),
     PencilIcon: mockIcon('pencil'),

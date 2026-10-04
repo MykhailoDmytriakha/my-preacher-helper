@@ -63,6 +63,20 @@ export const getPlaceholderColors = (
   };
 };
 
+/** Section tint for action icons on the structure board (thought cards, point headers). */
+export const getSectionIconClasses = (containerId: string) => {
+  if (containerId === "introduction") {
+    return `${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText}`;
+  }
+  if (containerId === "main") {
+    return `${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText}`;
+  }
+  if (containerId === "conclusion") {
+    return `${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText}`;
+  }
+  return "text-gray-600 dark:text-gray-300";
+};
+
 export const isPointAudioSection = (containerId: string): containerId is ColumnSectionId =>
   isColumnSectionId(containerId);
 
