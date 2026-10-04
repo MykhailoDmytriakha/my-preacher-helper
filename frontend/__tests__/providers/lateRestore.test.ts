@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 
-import { HELD_AFTER_LATE_RESTORE, takeInLateRestore } from '@/providers/QueryProvider';
+import { persistQueryClientRestore } from '@tanstack/react-query-persist-client';
+
+import { HELD_AFTER_LATE_RESTORE, PERSISTED_CACHE_MAX_AGE, takeInLateRestore } from '@/providers/QueryProvider';
 
 import type { PersistedClient } from '@tanstack/react-query-persist-client';
 
@@ -50,10 +52,38 @@ describe('taking in a late query-cache restore', () => {
     expect(resume).not.toHaveBeenCalled();
   });
 
-  it('ignores a restore the provider would have discarded: too old, or from another cache version', () => {
+  it('ignores a restore from another cache version', () => {
     const client = new QueryClient();
-    takeInLateRestore(client, restored({ timestamp: Date.now() - 8 * 24 * 60 * 60 * 1000 }));
     takeInLateRestore(client, restored({ buster: 'other' }));
     expect(client.getQueryData(['entitlement'])).toBeUndefined();
   });
+
+  // BUG-20260930-legacy-cache-week-expiry: what this device saw stays, however long ago.
+  it('takes in a restore however old it is', () => {
+    const client = new QueryClient();
+    takeInLateRestore(client, restored({ timestamp: Date.now() - 30 * 24 * 60 * 60 * 1000 }));
+    expect(client.getQueryData(['entitlement'])).toEqual({ tier: 'pro' });
+  });
+});
+
+/*
+ * The timely restore goes through TanStack's own restore with the provider's options: a copy last
+ * written a month ago — the app simply not opened since — still comes back, offline edits included.
+ */
+describe('restoring the saved query cache after a long pause', () => {
+  it('brings back what was seen and the edits not yet sent, a month later', async () => {
+    const client = new QueryClient();
+    const month = restored({
+      timestamp: Date.now() - 30 * 24 * 60 * 60 * 1000,
+      clientState: { ...restored().clientState, mutations: [pausedEdit] } as PersistedClient['clientState'],
+    });
+    const persister = { persistClient: jest.fn(), restoreClient: jest.fn().mockResolvedValue(month), removeClient: jest.fn() };
+
+    await persistQueryClientRestore({ queryClient: client, persister, maxAge: PERSISTED_CACHE_MAX_AGE });
+
+    expect(persister.removeClient).not.toHaveBeenCalled();
+    expect(client.getQueryData(['entitlement'])).toEqual({ tier: 'pro' });
+    expect(client.getMutationCache().getAll()).toHaveLength(1);
+  });
+
 });

@@ -79,6 +79,9 @@ describe('QueryProvider', () => {
     expect(queriesDefaults?.staleTime).toBe(30000);
     expect(queriesDefaults?.refetchOnMount).toBe(true);
     expect(queriesDefaults?.networkMode).toBe('offlineFirst');
+    // A query nothing watches stays in memory, so the next save of the cache still carries it
+    // (BUG-20260930-legacy-cache-week-expiry: seen once, seen offline however long ago).
+    expect(queriesDefaults?.gcTime).toBe(Infinity);
     
     // Test jitter logic
     const retryDelayFn = mutationsDefaults?.retryDelay as (attemptIndex: number) => number;

@@ -19,6 +19,11 @@ jest.mock('@services/sermon.service', () => ({
   getSermons: jest.fn(),
 }));
 
+const mockEngineSermons = { sermons: [] as Sermon[], loading: false, error: null as string | null };
+jest.mock('@/hooks/useSermonsDataCollection', () => ({
+  useSermonsDataCollection: () => mockEngineSermons,
+}));
+
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockUseServerFirstQuery = useServerFirstQuery as jest.MockedFunction<typeof useServerFirstQuery>;
 const mockGetSermons = getSermons as jest.MockedFunction<typeof getSermons>;
@@ -117,5 +122,28 @@ describe('useUserChurches', () => {
 
     expect(queryResult).toEqual([]);
     expect(mockGetSermons).not.toHaveBeenCalled();
+  });
+
+  // BUG-20260930-legacy-cache-week-expiry: on the engine the old-path query of every sermon is
+  // neither saved nor asked offline, so the suggestions were empty without a network.
+  describe('when sermons live on the data engine', () => {
+    const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
+    beforeEach(() => { process.env[ON_ENGINE] = 'sermons'; });
+    afterEach(() => { delete process.env[ON_ENGINE]; mockEngineSermons.sermons = []; });
+
+    it("suggests the churches of the owner's sermons from the engine, without the old-path query", () => {
+      mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as unknown as ReturnType<typeof useAuth>);
+      mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([]));
+      mockEngineSermons.sermons = [
+        { id: 's1', userId: 'user-1', church: { id: 'c1', name: 'Grace', city: 'Kyiv' } },
+        { id: 's2', userId: 'user-1', preachDates: [{ id: 'p1', date: '2026-10-01', church: { id: 'c2', name: 'Hope', city: '' } }] },
+        { id: 's3', userId: 'someone-else', church: { id: 'c3', name: 'Elsewhere', city: '' } },
+      ] as unknown as Sermon[];
+
+      const { result } = renderHook(() => useUserChurches());
+
+      expect(result.current.availableChurches.map(church => church.name).sort()).toEqual(['Grace', 'Hope']);
+      expect(mockUseServerFirstQuery).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+    });
   });
 });

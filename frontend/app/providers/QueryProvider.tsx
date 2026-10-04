@@ -14,7 +14,16 @@ import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
 import { i18n } from '@locales/i18n';
 
-const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
+/**
+ * SEEN ONCE, SEEN OFFLINE — HOWEVER LONG AGO (BUG-20260930-legacy-cache-week-expiry). The saved copy
+ * of the query cache used to expire a week after its last write: an app left unopened for a week
+ * came back with the share links and church suggestions gone offline, and with the offline edits
+ * not yet sent (paused mutations live in the same copy) thrown away. The data engine keeps its
+ * snapshots without a time limit; this copy does the same. Age never guarded against a changed
+ * shape — the buster is empty — so a changed shape needs its own key (as entitlement's 'v2').
+ * A query is not dropped from memory either: it would leave the saved copy at the next write.
+ */
+export const PERSISTED_CACHE_MAX_AGE = Infinity;
 
 // Persist what the next session can actually act on:
 //  - paused (offline-queued): resumePausedMutations replays them;
@@ -40,7 +49,7 @@ export const shouldDehydrateMutation = (mutation: {
  */
 export const HELD_AFTER_LATE_RESTORE = 'held-after-late-restore';
 export function takeInLateRestore(queryClient: QueryClient, restored: PersistedClient): void {
-  if (Date.now() - restored.timestamp > ONE_WEEK_MS || (restored.buster ?? '') !== '') return;
+  if (Date.now() - restored.timestamp > PERSISTED_CACHE_MAX_AGE || (restored.buster ?? '') !== '') return;
   const held = Object.assign(new Error('Saved offline in an earlier session; retry to send it'), { code: HELD_AFTER_LATE_RESTORE });
   hydrate(queryClient, {
     ...restored.clientState,
@@ -88,7 +97,7 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             refetchOnReconnect: true,
             refetchOnMount: true,
             networkMode: 'offlineFirst',
-            gcTime: ONE_WEEK_MS,
+            gcTime: PERSISTED_CACHE_MAX_AGE,
           },
           mutations: {
             networkMode: 'offlineFirst',
@@ -139,7 +148,7 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
       client={queryClient}
       persistOptions={{
         persister,
-        maxAge: ONE_WEEK_MS,
+        maxAge: PERSISTED_CACHE_MAX_AGE,
         dehydrateOptions: {
           // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
           // A collection the engine owns is read through the engine; its legacy queries stay in memory.
