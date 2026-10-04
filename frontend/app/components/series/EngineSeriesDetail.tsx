@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
 import FormDialog from '@/components/ui/FormDialog';
@@ -35,6 +36,7 @@ export function EngineSeriesDetail({ seriesId }: { seriesId: string }) {
 function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const { t } = useTranslation(), router = useRouter(), { user } = useAuth();
   const document = useDataDocument({ collection: 'series', id: seriesId }, { autoSave: false });
+  usePublishShellTitle('series', seriesId, document.data);
   const collection = useSeriesDataCollection(true, user?.uid ?? null);
   const sermons = useDashboardSermons(), groups = useGroupsRead(user?.uid ?? null);
   const [editing, setEditing] = useState(false), [deleting, setDeleting] = useState(false);

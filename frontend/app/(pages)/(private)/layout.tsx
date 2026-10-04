@@ -13,6 +13,7 @@ import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
 import PageGestures from '@/components/navigation/PageGestures';
+import { ShellTitlesProvider } from '@/components/navigation/shellTitles';
 import { OfflinePageMemory } from '@/components/OfflinePageMemory';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
@@ -27,9 +28,11 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
       <DataEngineWorkspace>
       <UserSettingsProvider>
       <TechnicalDetailsDialog />
+      <ShellTitlesProvider>
       <Suspense fallback={null}>
         <PrivateLayoutContent>{children}</PrivateLayoutContent>
       </Suspense>
+      </ShellTitlesProvider>
       </UserSettingsProvider>
       </DataEngineWorkspace>
     </ProtectedRoute>

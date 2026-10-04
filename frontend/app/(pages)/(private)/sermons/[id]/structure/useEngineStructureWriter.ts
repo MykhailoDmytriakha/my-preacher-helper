@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react';
 
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument } from '@/data-engine/react.client';
 import { OutlineCollisionError } from '@/services/sermons.client';
 import { changedFields } from '@/utils/changedFields';
@@ -82,6 +83,7 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
 /** The engine writer for one open sermon; must render inside that sermon's DataDocumentProvider. */
 export function useEngineStructureWriter(sermonId: string, owner: string | null): { writer: StructureWriter; document: SermonDocument } {
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
+  usePublishShellTitle('sermons', sermonId, document.data);
   // The update function changes identity with the editor; the writer reads the latest one.
   const latest = useRef(document);
   latest.current = document;

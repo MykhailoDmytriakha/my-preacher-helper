@@ -15,6 +15,8 @@ import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
 import '@locales/i18n';
 
+import { useShellTitle } from './shellTitles';
+
 // Route constants
 const ROUTES = {
   DASHBOARD: '/sermons',
@@ -326,11 +328,18 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
 
-  // Get sermon data if we have sermonId
-  const { sermon } = useSermon(sermonId || '');
-
-  // Get series data if we have seriesId
-  const { series } = useSeriesDetail(seriesId || '');
+  // The page that holds the document publishes the title it shows; the legacy reader only fills in
+  // until it does (on the data engine that cache never sees an engine rename).
+  const { sermon: storedSermon } = useSermon(sermonId || '');
+  const { series: storedSeries } = useSeriesDetail(seriesId || '');
+  const shownSermonTitle = useShellTitle('sermons', sermonId);
+  const shownSeriesTitle = useShellTitle('series', seriesId);
+  const sermon = useMemo<SermonData>(() => (sermonId && shownSermonTitle !== null
+    ? { ...(storedSermon ?? { id: sermonId }), title: shownSermonTitle } as SermonData
+    : storedSermon), [storedSermon, sermonId, shownSermonTitle]);
+  const series = useMemo<SeriesData>(() => (seriesId && shownSeriesTitle !== null
+    ? { ...(storedSeries ?? { id: seriesId }), title: shownSeriesTitle } as SeriesData
+    : storedSeries), [storedSeries, seriesId, shownSeriesTitle]);
 
   // Get group data if we have groupId
   const { group } = useGroupRead(groupId || '');

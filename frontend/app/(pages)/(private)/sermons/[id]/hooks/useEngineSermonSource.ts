@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
@@ -14,6 +15,7 @@ import type { Sermon } from '@/models/models';
  */
 export function useEngineSermonSource(sermonId: string) {
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
+  usePublishShellTitle('sermons', sermonId, document.data);
   const isOnline = useOnlineStatus();
   const sermon = useMemo(() => document.data
     ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)

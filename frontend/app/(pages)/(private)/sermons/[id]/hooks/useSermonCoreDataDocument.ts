@@ -1,3 +1,4 @@
+import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { useDataDocument, useDataEngine, useDataForm } from '@/data-engine/react.client';
 
 import type { ManualTextBinding } from '@/components/common/manualTextBinding';
@@ -25,6 +26,7 @@ function patchFields(current: DocumentData, patch: Record<string, unknown>, nest
 export function useSermonCoreDataDocument(sermonId: string | null) {
   const { owner } = useDataEngine();
   const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: 'core' });
+  usePublishShellTitle('sermons', sermonId, document.data);
   const titleForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'title', [['title']]);
   const verseForm = useDataForm(sermonId ? { collection: 'sermons', id: sermonId } : null, 'verse', [['verse']]);
   const textBinding = (form: typeof titleForm, field: 'title' | 'verse'): ManualTextBinding => ({
