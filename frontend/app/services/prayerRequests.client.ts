@@ -14,9 +14,10 @@ import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
-import { readOwnerList } from '@/services/ownerListRead.client';
+import { ownedBy, readOwnerList } from '@/services/ownerListRead.client';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { resolveOwnerUid } from '@/utils/queryKeys';
 import { readWithDeadline } from '@/utils/readWithDeadline';
 
 const PRAYER_REQUESTS_COLLECTION = 'prayerRequests';
@@ -94,7 +95,10 @@ export async function getPrayerRequestByIdViaClient(id: string): Promise<PrayerR
     online ? 4000 : 8000
   );
   if (!snap.exists()) return undefined;
-  return hydratePrayerRequest(snap.data() as Omit<PrayerRequest, 'id'>, snap.id);
+  const prayer = hydratePrayerRequest(snap.data() as Omit<PrayerRequest, 'id'>, snap.id);
+  const owner = resolveOwnerUid();
+  // The SDK cache answers with whatever account last read this id (see `ownedBy`).
+  return owner ? ownedBy(owner, prayer) : prayer;
 }
 
 export async function updatePrayerRequestViaClient(

@@ -94,7 +94,8 @@ describe('prayerRequests.service client Firestore path', () => {
         docSnap('p-new', { ...basePrayer, title: 'Newer', updatedAt: '2026-03-03T00:00:00.000Z' }),
       ],
     });
-    mockGetDoc.mockResolvedValue(docSnap('p1', basePrayer));
+    // The document read for the screen belongs to whoever is signed in (jest.setup: test-user-id).
+    mockGetDoc.mockResolvedValue(docSnap('p1', { ...basePrayer, userId: 'test-user-id' }));
     mockSetDoc.mockResolvedValue(undefined);
     mockUpdateDoc.mockResolvedValue(undefined);
     mockDeleteDoc.mockResolvedValue(undefined);

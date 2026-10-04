@@ -111,8 +111,10 @@ export async function readOwnerDocument<T extends { id: string }>(
   hydrate: (documents: Record<string, unknown>[]) => T[]
 ): Promise<T | undefined> {
   const online = !isBrowserOffline();
+  // Checked once, before either road can answer: a late SDK answer races the server below too.
+  const mine = viaSdk.then((document) => ownedBy(owner, document));
   try {
-    return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
+    return await readWithDeadline(mine, online ? SDK_DEADLINE_MS : 8000);
   } catch (error) {
     if (!online || !isSilentReadError(error)) throw error;
     if (resolveOwnerUid() !== owner) {
@@ -121,8 +123,19 @@ export async function readOwnerDocument<T extends { id: string }>(
     const fromServer = async () =>
       (await readOwnerListFromServer(collection, owner, hydrate)).find((entry) => entry.id === id);
     // As with a list: the first road is overtaken, not abandoned.
-    return readWithDeadline(firstToAnswer(viaSdk, fromServer()), SECOND_ROAD_DEADLINE_MS);
+    return readWithDeadline(firstToAnswer(mine, fromServer()), SECOND_ROAD_DEADLINE_MS);
   }
+}
+
+/**
+ * THE SDK'S CACHE BELONGS TO THE DEVICE, NOT THE ACCOUNT (cross-account entry, BUGS.md).
+ * A list query filters by owner; a single `getDoc` does not, and offline or on a slow network it
+ * answers from the local cache with whatever account last read that document. Another owner's
+ * document is "not found" here, as the server would say.
+ */
+export function ownedBy<T>(owner: string, document: T | undefined): T | undefined {
+  const named = (document as { userId?: unknown } | undefined)?.userId;
+  return document !== undefined && named !== undefined && named !== owner ? undefined : document;
 }
 
 /** The same list, asked of the app's own server over ordinary HTTPS. */

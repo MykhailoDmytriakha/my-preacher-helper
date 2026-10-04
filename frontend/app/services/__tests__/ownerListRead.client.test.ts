@@ -1,5 +1,5 @@
 import { apiClient } from '@/utils/apiClient';
-import { readOwnerList, readOwnerDocument } from '@/services/ownerListRead.client';
+import { ownedBy, readOwnerList, readOwnerDocument } from '@/services/ownerListRead.client';
 
 /**
  * A LIST THAT NEVER ARRIVES IS THE SAME DEFECT AS A LIST THAT ARRIVES WRONG.
@@ -156,6 +156,33 @@ describe('one document, with the same promise the lists have', () => {
     expect(mockApi).not.toHaveBeenCalled();
   });
 
+  // Cross-account entry (BUGS.md): the SDK cache belongs to the device, so `getDoc` can answer with
+  // the copy another account read. A document naming another owner is "not found" for this one.
+  it('treats another owner\'s cached document as not found', async () => {
+    const document = await readOwnerDocument('series', 'owner-1', 'a', Promise.resolve({ id: 'a', userId: 'owner-2', title: 'Чужая' }), shape);
+
+    expect(document).toBeUndefined();
+  });
+
+  // The late road too: a foreign copy the SDK hands back after its deadline, while the server
+  // refuses, must still be "not found" (Codex round 3).
+  it('treats another owner\'s cached document as not found when it arrives after the deadline', async () => {
+    jest.useFakeTimers();
+    try {
+      mockApi.mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: 'Forbidden' }) } as never);
+      const late = new Promise(resolve => setTimeout(() => resolve({ id: 'a', userId: 'owner-2', title: 'Чужая' }), 2600));
+
+      const reading = readOwnerDocument('series', 'owner-1', 'a', late as never, shape);
+      const settled = reading.then(value => ({ value }), error => ({ error }));
+      await jest.advanceTimersByTimeAsync(10000);
+
+      const outcome = await settled as { value?: unknown };
+      expect(outcome.value).toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('answers from the server even when the browser NEVER answers at all', async () => {
     // The iPad case: `getDoc` neither resolves nor rejects. Without the deadline this test
     // hangs, which is precisely what the screen did.
@@ -193,5 +220,14 @@ describe('one document, with the same promise the lists have', () => {
       code: 'permission-denied',
     });
     expect(mockApi).not.toHaveBeenCalled();
+  });
+});
+
+describe('ownedBy', () => {
+  it('keeps the owner\'s document and one that names no owner, and drops another owner\'s', () => {
+    expect(ownedBy('owner-1', { id: 'a', userId: 'owner-1' })).toEqual({ id: 'a', userId: 'owner-1' });
+    expect(ownedBy('owner-1', { id: 'a' })).toEqual({ id: 'a' });
+    expect(ownedBy('owner-1', { id: 'a', userId: 'owner-2' })).toBeUndefined();
+    expect(ownedBy('owner-1', undefined)).toBeUndefined();
   });
 });

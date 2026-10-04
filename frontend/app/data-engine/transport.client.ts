@@ -111,6 +111,9 @@ export function createHttpEngineTransport(): EngineTransport & CollectionTranspo
       if (snapshot.resource.collection !== resource.collection || snapshot.resource.id !== resource.id) {
         throw Object.assign(new Error('Mismatched data engine response'), { code: 'data-loss' });
       }
+      // The same owner rule as a list: another account's document is never this owner's answer,
+      // even when a cache on the way (the service worker) hands one back (cross-account entry, BUGS.md).
+      validateCollectionSnapshots(owner, resource.collection, [snapshot]);
       return snapshot;
     },
     async list(owner, collection, options) {

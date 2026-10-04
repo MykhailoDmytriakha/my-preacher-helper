@@ -34,7 +34,7 @@ import {
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
 import { accountChangedError } from '@/services/ownerHttpTransport.client';
-import { readOwnerList } from '@/services/ownerListRead.client';
+import { ownedBy, readOwnerList } from '@/services/ownerListRead.client';
 import { isSilentReadError } from '@/services/ownerListRead.client';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
@@ -128,10 +128,11 @@ export async function getSermonByIdViaClient(id: string): Promise<Sermon | undef
     assertOwner();
     // Pending writes belong to this device. Recovery must not replace them with
     // an older committed version. A cache-only answer is not a server proof.
-    if (!online || !snap.metadata?.fromCache || snap.metadata?.hasPendingWrites) {
-      return snap.exists() ? hydrateSermon({ ...(snap.data() as Sermon), id: snap.id }) : undefined;
-    }
-    if (snap.exists()) cached = hydrateSermon({ ...(snap.data() as Sermon), id: snap.id });
+    // The SDK cache answers with whatever account last read this id (see `ownedBy`).
+    const found = snap.exists() ? hydrateSermon({ ...(snap.data() as Sermon), id: snap.id }) : undefined;
+    const mine = owner ? ownedBy(owner, found) : found;
+    if (!online || !snap.metadata?.fromCache || snap.metadata?.hasPendingWrites) return mine;
+    cached = mine;
   } catch (error) {
     if (!online || !isSilentReadError(error)) throw error;
   }

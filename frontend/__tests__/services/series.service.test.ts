@@ -76,8 +76,10 @@ describe('series.service', () => {
         docSnap('series-b', { ...baseSeries, title: 'B', startDate: '2024-02-01T00:00:00Z' }),
       ],
     });
+    // The document read for the screen belongs to whoever is signed in (jest.setup: test-user-id);
+    // another owner's cached copy is refused (cross-account entry, BUGS.md).
     mockGetDoc
-      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, title: 'B' }))
+      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, userId: 'test-user-id', title: 'B' }))
       .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, title: 'B' }));
     mockSetDoc.mockResolvedValueOnce(undefined);
     mockUpdateDoc.mockResolvedValueOnce(undefined);

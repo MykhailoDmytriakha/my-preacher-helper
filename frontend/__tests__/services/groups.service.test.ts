@@ -109,8 +109,9 @@ describe('groups.service', () => {
         docSnap('g-new', { ...baseGroup, title: 'New', updatedAt: '2026-02-11T00:00:00.000Z' }),
       ],
     });
+    // The document read for the screen belongs to whoever is signed in (jest.setup: test-user-id).
     mockGetDoc
-      .mockResolvedValueOnce(docSnap('g-new', { ...baseGroup, title: 'New' }))
+      .mockResolvedValueOnce(docSnap('g-new', { ...baseGroup, userId: 'test-user-id', title: 'New' }))
       .mockResolvedValueOnce(docSnap('g-new', { ...baseGroup, title: 'New' }));
     mockSetDoc.mockResolvedValueOnce(undefined);
     mockUpdateDoc.mockResolvedValueOnce(undefined);

@@ -4,8 +4,9 @@ import { createHttpEngineTransport } from '../transport.client';
 import type { DataCommand, ResourceSnapshot } from '../types';
 jest.mock('@/services/ownerHttpTransport.client', () => ({ requestOwnerJson: jest.fn() }));
 jest.mock('@/utils/queryKeys', () => ({ resolveOwnerUid: jest.fn(() => 'owner') }));
-const command: DataCommand = { protocol: 1, operationId: 'op', owner: 'owner', resource: { collection: 'studies', id: 'one' }, generation: null, dependsOn: [], kind: 'create', value: { text: 'mine' } };
-const snapshot: ResourceSnapshot = { resource: command.resource, value: { text: 'mine' }, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
+const command: DataCommand = { protocol: 1, operationId: 'op', owner: 'owner', resource: { collection: 'studyNotes', id: 'one' }, generation: null, dependsOn: [], kind: 'create', value: { text: 'mine' } };
+// A server snapshot always names its owner (protocol: the server stamps userId).
+const snapshot: ResourceSnapshot = { resource: command.resource, value: { text: 'mine', userId: 'owner' }, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } };
 describe('HTTP engine transport', () => {
   it('preserves proven related snapshots and rejects incomplete, ambiguous or foreign participant evidence', async () => {
     const metadata = { ...snapshot.metadata!, operationId: 'op' };
@@ -61,7 +62,7 @@ describe('HTTP engine transport', () => {
     expect(requestOwnerJson).toHaveBeenCalledWith('/api/data-engine/commands', expect.objectContaining({ method: 'POST', payload: command }));
     jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: snapshot });
     expect(await createHttpEngineTransport().read('owner', command.resource)).toEqual(snapshot);
-    expect(requestOwnerJson).toHaveBeenLastCalledWith('/api/data-engine/documents/studies/one', expect.objectContaining({ method: 'GET', answerStatuses: [] }));
+    expect(requestOwnerJson).toHaveBeenLastCalledWith('/api/data-engine/documents/studyNotes/one', expect.objectContaining({ method: 'GET', answerStatuses: [] }));
   });
   it.each([
     { kind: 'refused', operationId: 'op', code: 'denied' },
@@ -82,6 +83,12 @@ describe('HTTP engine transport', () => {
     await expect(transport.read('owner', command.resource)).rejects.toMatchObject({ code: 'data-loss' });
     jest.mocked(requestOwnerJson).mockRejectedValue(Object.assign(new Error('timeout'), { code: 'deadline-exceeded' }));
     await expect(transport.send(command)).rejects.toMatchObject({ code: 'deadline-exceeded' });
+  });
+  // Cross-account entry (BUGS.md): a cache on the way (the service worker) can hand back the answer
+  // another account got for the same address; a document read must refuse it, as a list does.
+  it('refuses a document that belongs to another account', async () => {
+    jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: { ...snapshot, value: { text: 'theirs', userId: 'someone-else' } } });
+    await expect(createHttpEngineTransport().read('owner', command.resource)).rejects.toMatchObject({ code: 'data-loss' });
   });
   it('checks the explicit owner before request and again after reply', async () => {
     jest.mocked(resolveOwnerUid).mockReturnValue('other');
