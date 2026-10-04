@@ -1,4 +1,5 @@
 import { PlanStyle } from "@/api/clients/openAI.client";
+import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { NotePlanResultSchema, type NotePlanResult, type NotePlanRevision } from '@/utils/notePlan';
@@ -67,7 +68,7 @@ export async function generatePlanPointContent({
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to generate content: ${response.status}`);
+    throw withStatus(new Error(`Failed to generate content: ${response.status}`), response.status);
   }
 
   const data = await response.json();

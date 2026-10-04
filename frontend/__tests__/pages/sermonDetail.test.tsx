@@ -57,8 +57,9 @@ jest.mock('@/utils/recordingDraftStore', () => ({
 }));
 
 jest.mock('@components/AudioRecorder', () => ({
-  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, onDiscardRecording, splitLeft }: any) => (
+  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, onDiscardRecording, splitLeft, transcriptionError }: any) => (
     <div data-testid={splitLeft ? "classic-audio-recorder" : "scratch-audio-recorder"}>
+      {transcriptionError && <p data-testid="transcription-error">{transcriptionError}</p>}
       <button onClick={() => onRecordingComplete?.(new Blob(['test']))}>Mock Record</button>
       <button onClick={() => onRetry?.()}>Mock Retry</button>
       <button onClick={() => onClearError?.()}>Mock Clear</button>
@@ -959,6 +960,15 @@ describe('Sermon Detail Page', () => {
       });
 
       fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
+    });
+
+    it('says no answer came in time for a recording instead of printing HTTP 504', async () => {
+      (createAudioThought as jest.Mock).mockRejectedValueOnce(Object.assign(new Error('Transcription failed (attempt 1/4): HTTP 504'), { status: 504 }));
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
+      expect(await within(classicRecorder).findByTestId('transcription-error')).toHaveTextContent('errors.aiOutOfTimeAudio');
+      expect(within(classicRecorder).queryByText(/HTTP 504/)).toBeNull();
     });
 
     /**

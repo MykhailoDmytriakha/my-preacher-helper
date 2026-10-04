@@ -120,6 +120,19 @@ describe('compose-plan-from-scratch route', () => {
     expect(body).toEqual({ outline });
   });
 
+  it('answers 504 with a deadline code when compose stopped at its own deadline', async () => {
+    const sermon = { id: 'sermon-1', userId: 'user-1', scratch: [{ id: 'n1', text: 'Intro source', createdAt: '2026-07-04T00:00:00.000Z' }],
+      outline: { introduction: [], main: [], conclusion: [] } };
+    (adminAuth.verifyIdToken as jest.Mock).mockResolvedValueOnce({ uid: 'user-1' });
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce(sermon);
+    (composePlanFromScratch as jest.Mock).mockResolvedValueOnce({ outline: sermon.outline, success: false, unplacedScratchNoteIds: [], timedOut: true });
+
+    const response = await postWithToken('valid-token');
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ code: 'deadline-exceeded' });
+  });
+
   it('filters scratch notes to requested ids before composing for the sermon owner', async () => {
     const outline = {
       introduction: [],

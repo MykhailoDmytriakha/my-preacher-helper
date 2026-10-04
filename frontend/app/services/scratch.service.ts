@@ -11,6 +11,7 @@ import {
   deleteScratchNoteViaClient,
   updateScratchNoteViaClient,
 } from '@/services/sermons.client';
+import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { isBrowserOffline } from '@/utils/connectivity';
 
@@ -101,7 +102,7 @@ export async function composePlanFromScratch(
       data && typeof data === 'object' && 'error' in data
         ? String((data as { error?: unknown }).error)
         : response.statusText;
-    throw new Error(message || `Compose failed with status ${response.status}`);
+    throw withStatus(new Error(message || `Compose failed with status ${response.status}`), response.status);
   }
 
   const parsed = ComposePlanApiResponseSchema.safeParse(data);

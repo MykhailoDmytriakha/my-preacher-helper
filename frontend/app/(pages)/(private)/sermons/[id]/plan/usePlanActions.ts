@@ -6,6 +6,7 @@ import { Sermon } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
+import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { debugLog } from "@/utils/debugMode";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
@@ -119,7 +120,8 @@ export default function usePlanActions({
     } catch (error) {
       debugLog("Plan generate failed", { sermonId: sermon.id, outlinePointId, error });
       if (isUsageCapReachedError(error)) return;
-      toast.error(t("errors.failedToGenerateContent"));
+      // Out of time is not "failed": the 60 s ceiling cut it, and another try may fit.
+      toast.error(t(ranOutOfTime(error) ? "errors.aiOutOfTime" : "errors.failedToGenerateContent"));
     } finally {
       setGeneratingIds((prev) => {
         const { [outlinePointId]: _finishedPoint, ...next } = prev;

@@ -21,6 +21,7 @@ import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
+import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
@@ -616,9 +617,11 @@ export default function ScratchPanel({
       await refreshAiUsage();
     } catch (error) {
       if (!isLatestRequest()) return;
+      // A bare 504 from the 60 s ceiling is a timeout too, not a "Gateway Timeout" to print.
       const isTimeout =
-        error instanceof Error &&
-        (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out"));
+        ranOutOfTime(error) ||
+        (error instanceof Error &&
+          (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out")));
       const isOffline = isBrowserOffline();
       const message = isOffline
         ? t("scratch.board.composeOffline")

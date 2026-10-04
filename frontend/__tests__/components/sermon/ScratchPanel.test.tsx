@@ -1264,6 +1264,16 @@ describe('ScratchPanel', () => {
     expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
   });
 
+  it('says compose timed out on a bare 504 instead of printing the status line', async () => {
+    composePlanFromScratchMock().mockRejectedValueOnce(Object.assign(new Error('Gateway Timeout'), { status: 504 }));
+    renderScratchPanel();
+
+    fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+
+    expect(await screen.findByText('scratch.board.composeTimeout')).toBeInTheDocument();
+    expect(screen.queryByText('Gateway Timeout')).not.toBeInTheDocument();
+  });
+
   it('ignores a late compose response after timeout and keeps the surfaced error', async () => {
     jest.useFakeTimers();
     let resolveCompose: (result: ReturnType<typeof composeOutline>) => void = () => undefined;

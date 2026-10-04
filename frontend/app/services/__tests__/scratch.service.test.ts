@@ -32,6 +32,12 @@ describe('scratch.service', () => {
     });
   });
 
+  it('carries the status of a bare 504, so the screen can say compose ran out of time', async () => {
+    apiClientMock().mockResolvedValueOnce({ ok: false, status: 504, statusText: 'Gateway Timeout', json: async () => { throw new Error('not JSON'); } });
+
+    await expect(composePlanFromScratch('sermon-1', emptyOutline, ['n1'])).rejects.toMatchObject({ status: 504 });
+  });
+
   it('sends the current user bearer token when composing from scratch notes', async () => {
     apiClientMock().mockResolvedValueOnce({
       ok: true,

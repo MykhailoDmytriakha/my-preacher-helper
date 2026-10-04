@@ -201,6 +201,12 @@ describe('Thought Service', () => {
       );
     });
 
+    it('carries the status of a bare 504, so the screen can say the call ran out of time', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 504, statusText: 'Gateway Timeout', json: jest.fn().mockRejectedValue(new Error('Invalid JSON')) });
+
+      await expect(createAudioThought(mockBlob, mockSermonId, 0, 1)).rejects.toMatchObject({ status: 504 });
+    });
+
     it('should handle error responses with originalText', async () => {
       const mockErrorResponse = {
         ok: false,

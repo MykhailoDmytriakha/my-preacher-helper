@@ -82,6 +82,15 @@ describe("planApi", () => {
     ).rejects.toThrow("Failed to generate content: 500");
   });
 
+  // The plan screen says "ran out of time" only if the client keeps the status of a cut call.
+  it("carries the status of a bare 504", async () => {
+    mockedApiClient.mockResolvedValue({ ok: false, status: 504 } as Response);
+
+    await expect(
+      generatePlanPointContent({ sermonId: "sermon-1", outlinePointId: "point-1", style: "memory" })
+    ).rejects.toMatchObject({ status: 504 });
+  });
+
   it("throws when generate response payload has no content field", async () => {
     mockedApiClient.mockResolvedValue({
       ok: true,

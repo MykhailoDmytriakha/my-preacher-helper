@@ -1,8 +1,8 @@
 import { Insights } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
-import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -43,8 +43,7 @@ export class AiInsightError extends Error {
  */
 function classify(error: unknown, status?: number): AiInsightFailure {
   if (status === 413) return 'too-large';
-  if (error instanceof FetchTimeoutError) return 'too-large';
-  if (status === 408 || status === 504) return 'too-large';
+  if (ranOutOfTime(error, status)) return 'too-large';
   return 'unavailable';
 }
 

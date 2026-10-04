@@ -40,6 +40,17 @@ describe('sermon.structured', () => {
     mockStructuredCall.mockReset();
   });
 
+  it('tells the route when compose stopped at its own deadline, and only then', async () => {
+    const sermonWithScratch = { ...baseSermon, scratch: [{ id: 'n1', text: 'A note', createdAt: '2026-07-04T00:00:00.000Z' }] } as Sermon;
+    mockStructuredCall.mockResolvedValueOnce({ success: false, data: null, refusal: null,
+      error: Object.assign(new Error('Request timed out.'), { name: 'APIConnectionTimeoutError' }) });
+    expect((await composePlanFromScratchStructured(sermonWithScratch)).timedOut).toBe(true);
+    mockStructuredCall.mockResolvedValueOnce({ success: false, data: null, refusal: null, error: new Error('Invalid schema') });
+    expect((await composePlanFromScratchStructured(sermonWithScratch)).timedOut).toBe(false);
+    mockStructuredCall.mockResolvedValueOnce({ success: false, data: null, refusal: null, error: new Error('Invalid parameter: timeout must be positive') });
+    expect((await composePlanFromScratchStructured(sermonWithScratch)).timedOut).toBe(false);
+  });
+
   it('returns structured insights on success', async () => {
     mockStructuredCall.mockResolvedValue({
       success: true,

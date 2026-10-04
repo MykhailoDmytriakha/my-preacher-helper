@@ -115,6 +115,19 @@ function collectScratchNoteIds(outline: unknown): string[] {
   ]).filter((scratchNoteId): scratchNoteId is string => Boolean(scratchNoteId));
 }
 
+/**
+ * Compose returned no outline. When its own deadline under the 60 s wall fired, a 504 with a code
+ * lets the screen say "no answer in the time allowed" instead of a generic failure.
+ */
+function composeFailure(timedOut: boolean) {
+  return timedOut
+    ? jsonNoStore({ error: 'Compose plan timed out', code: 'deadline-exceeded' }, { status: 504 })
+    : jsonNoStore(
+      { error: 'Failed to compose plan from scratch', outline: { introduction: [], main: [], conclusion: [] } },
+      { status: 500 }
+    );
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const uid = await getRequiredAuthenticatedUid(request);
@@ -159,18 +172,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? { ...sermon, scratch: scratchForCompose }
       : sermon;
     const knownScratchIds = new Set(scratchForCompose.map((note) => note.id));
-    const { outline, success, unplacedScratchNoteIds } = await composePlanFromScratch(
+    const { outline, success, unplacedScratchNoteIds, timedOut } = await composePlanFromScratch(
       sermonForCompose,
       existingOutline,
       uid
     );
 
-    if (!success) {
-      return jsonNoStore(
-        { error: 'Failed to compose plan from scratch', outline: { introduction: [], main: [], conclusion: [] } },
-        { status: 500 }
-      );
-    }
+    if (!success) return composeFailure(Boolean(timedOut));
 
     const parsedOutline = ComposedPlanOutlineSchema.safeParse(outline);
     if (!parsedOutline.success) {

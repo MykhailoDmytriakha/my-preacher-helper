@@ -255,6 +255,13 @@ describe('failureWords', () => {
     expect(logged.mock.calls.filter(([value]) => value === 'rejected')).toHaveLength(1);
   });
 
+  it('says an AI call cut by its time ceiling in words on both paths', () => {
+    const cut = Object.assign(new Error('Compose failed with status 504'), { status: 504 });
+    expect(refusalWords(cut, 'fallback')).toEqual({ key: 'errors.aiOutOfTime' });
+    expect(failureWords(cut, 'fallback')).toEqual({ key: 'errors.aiOutOfTime' });
+    expect(refusalWords(Object.assign(new Error('Server busy'), { status: 503 }), 'fallback')).toEqual({ said: 'Server busy' });
+  });
+
   it('reads only its own codes, never the prototype', () => {
     expect(failureWords(Object.assign(new Error('x'), { code: 'constructor' }), 'fallback')).toEqual({ key: 'fallback' });
   });

@@ -2,6 +2,7 @@
 import { toast } from "sonner";
 
 import { isUsageCapReachedError } from "@/services/usageLimits";
+import { ranOutOfTime } from "@/utils/aiTimeFailure";
 
 import { isPointAudioSection } from "./utils";
 
@@ -79,7 +80,10 @@ export const recordAudioThought = async ({
       return null;
     }
 
-    const errorMessage = error instanceof Error ? error.message : t("errors.audioProcessing");
+    // Out of time is said in words; "Transcription failed (attempt 1/4): HTTP 504" is for developers.
+    const errorMessage = ranOutOfTime(error)
+      ? t("errors.aiOutOfTimeAudio")
+      : error instanceof Error ? error.message : t("errors.audioProcessing");
     setAudioError(String(errorMessage));
     toast.error(String(errorMessage));
     return null;

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
 import { generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { withStatus } from "@/utils/aiTimeFailure";
 import { savePlanTextViaClient } from "@/services/sermons.client";
 import { UsageCapReachedError } from "@/services/usageLimits";
 
@@ -244,6 +245,37 @@ describe("usePlanActions", () => {
     });
 
     expect(mockToast.error).toHaveBeenCalledWith("errors.failedToGenerateContent");
+    expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  // A bare 504 (the function ceiling or a gateway) is said in words, not as a failed generation
+  // (BUG-heavy AI prompts tail, .howto/raise-route-time-limit.md).
+  it("says no answer came in time when the route answered a bare 504", async () => {
+    mockGeneratePlanPointContent.mockRejectedValue(withStatus(new Error("Failed to generate content: 504"), 504));
+
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    const onSaved = jest.fn();
+
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon,
+        planStyle: "memory",
+        outlineLookup,
+        generatedContent: {},
+        t,
+        setGeneratingIds,
+        onGenerated,
+        onSaved,
+      })
+    );
+
+    await act(async () => {
+      await result.current.generateSermonPointContent("p1");
+    });
+
+    expect(mockToast.error).toHaveBeenCalledWith("errors.aiOutOfTime");
+    expect(mockToast.error).not.toHaveBeenCalledWith("errors.failedToGenerateContent");
     expect(onGenerated).not.toHaveBeenCalled();
   });
 

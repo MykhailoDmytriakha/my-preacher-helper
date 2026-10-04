@@ -51,6 +51,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
+import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
@@ -1548,7 +1549,7 @@ useEffect(() => {
       return true;
     } catch (error) {
       console.error("transcribeHeld: Recording error:", error);
-      setTranscriptionError(error instanceof Error ? error.message : 'Unknown error occurred');
+      setTranscriptionError(ranOutOfTime(error) ? t('errors.aiOutOfTimeAudio') : error instanceof Error ? error.message : 'Unknown error occurred');
       await parkRecording(held);
       return false;
     }

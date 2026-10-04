@@ -633,7 +633,7 @@ export async function composePlanFromScratchStructured(
     sermon: Sermon,
     existingOutline?: SermonOutline,
     userId: string = sermon.userId
-): Promise<{ outline: ComposedPlanOutline; success: boolean; unplacedScratchNoteIds: string[] }> {
+): Promise<{ outline: ComposedPlanOutline; success: boolean; unplacedScratchNoteIds: string[]; timedOut?: boolean }> {
     const scratch = sermon.scratch ?? [];
     const outlineToAugment = existingOutline ?? sermon.outline;
     const baseOutline = normalizeExistingOutline(outlineToAugment);
@@ -743,7 +743,10 @@ Arrange every note. Return keys and headings only.`;
 
     if (!result.success || !result.data) {
         console.error("ERROR: Failed to compose plan from scratch:", result.error || result.refusal);
-        return { outline: baseOutline, success: false, unplacedScratchNoteIds: [] };
+        // Our own deadline is what fired: the route says so with a 504, and the screen can say
+        // "no answer in the time allowed" instead of a generic failure (.howto/raise-route-time-limit.md).
+        const timedOut = Boolean(result.error && (result.error.name === "APIConnectionTimeoutError" || /\btimed out\b/i.test(result.error.message)));
+        return { outline: baseOutline, success: false, unplacedScratchNoteIds: [], timedOut };
     }
 
     const { outline, unplacedScratchNoteIds, unknownNoteKeys } = normalizeKeyedComposePlan(

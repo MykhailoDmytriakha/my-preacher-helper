@@ -1322,7 +1322,9 @@
     "failedToSaveOutline": "Failed to save structure",
     "failedToSaveSermon": "Failed to save sermon",
     "savedOfflineWillSync": "Changes saved locally. They will sync when you are back online.",
-    "guestSignInFailed": "Guest sign-in error"
+    "guestSignInFailed": "Guest sign-in error",
+    "aiOutOfTime": "No answer arrived in the time allowed. Try again — if it happens again, shorten the text.",
+    "aiOutOfTimeAudio": "No answer about the recording arrived in the time allowed. The thought may still have been saved — check the list before recording again; if it is not there, record a shorter piece."
   },
   "createThought": {
     "title": "New Thought",

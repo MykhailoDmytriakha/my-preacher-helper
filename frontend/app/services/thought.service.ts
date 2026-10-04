@@ -6,6 +6,7 @@ import {
   deleteThoughtViaClient,
   updateThoughtViaClient,
 } from '@/services/sermons.client';
+import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getTranscriptionAuthorizationHeaders } from '@/utils/transcriptionRetryClient';
 
@@ -122,7 +123,7 @@ export const createAudioThought = async (
         ? `Transcription failed after all retries: ${errorText}${originalText ? `. Recognized text: "${originalText}"` : ''}`
         : buildTranscriptionFailureMessage({ errorText, originalText, retryCount, maxRetries });
 
-      throw new Error(failureMessage);
+      throw withStatus(new Error(failureMessage), response.status);
     }
 
     // Success - clear stored audio if available

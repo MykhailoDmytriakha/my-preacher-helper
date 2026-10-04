@@ -1,5 +1,6 @@
 import { recordAudioThought } from "@/components/column/audio";
 import { createAudioThought } from "@/services/thought.service";
+import { withStatus } from "@/utils/aiTimeFailure";
 import { UsageCapReachedError } from "@/services/usageLimits";
 import { toast } from "sonner";
 
@@ -86,6 +87,27 @@ describe("column audio helper", () => {
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: "thought-2" }, "conclusion");
     expect(toast.success).toHaveBeenCalledWith("Saved to conclusion");
+  });
+
+  it("says no answer came in time for a recording instead of printing HTTP 504", async () => {
+    const setIsRecordingAudio = jest.fn();
+    const setAudioError = jest.fn();
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    (createAudioThought as jest.Mock).mockRejectedValueOnce(withStatus(new Error("Transcription failed (attempt 1/4): HTTP 504"), 504));
+
+    await recordAudioThought({
+      audioBlob: new Blob(["audio"]),
+      sectionId: "ambiguous",
+      sermonId: "sermon-3",
+      setIsRecordingAudio,
+      setAudioError,
+      t,
+      errorContext: "audio helper failed",
+    });
+
+    expect(setAudioError).toHaveBeenCalledWith("errors.aiOutOfTimeAudio");
+    expect(toast.error).toHaveBeenCalledWith("errors.aiOutOfTimeAudio");
+    consoleWarnSpy.mockRestore();
   });
 
   it("returns null and reports the translated fallback on error", async () => {

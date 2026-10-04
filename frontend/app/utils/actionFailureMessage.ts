@@ -1,3 +1,5 @@
+import { ranOutOfTime } from '@/utils/aiTimeFailure';
+
 /**
  * WHAT A FAILURE SAYS ON SCREEN (.howto/show-an-error-once.md,
  * BUG-20261003-engine-error-sentence-on-screen).
@@ -50,6 +52,8 @@ export function saidError(message: string): Error {
 export function failureWords(error: unknown, fallbackKey: string): FailureWords {
   const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
   if (error instanceof Error && SAID.has(code) && error.message) return { said: error.message };
+  // An AI call cut by the 60 s ceiling or the client's clock (`ranOutOfTime`): "HTTP 504" is not words.
+  if (ranOutOfTime(error)) return { key: 'errors.aiOutOfTime' };
   const known = KNOWN.get(code);
   if (known) return { key: known };
   logFailureOnce(error);
@@ -59,7 +63,7 @@ export function failureWords(error: unknown, fallbackKey: string): FailureWords 
 /** For a refused action: an unknown refusal keeps the engine's own sentence, which may be an instruction. */
 export function refusalWords(error: unknown, fallbackKey: string): FailureWords {
   const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
-  if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code)) return { said: error.message };
+  if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
   return failureWords(error, fallbackKey);
 }
 
