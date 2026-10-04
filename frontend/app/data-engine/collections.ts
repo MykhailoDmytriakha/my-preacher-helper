@@ -58,6 +58,8 @@ export interface CollectionReaderOptions {
    * path: opening a list, returning to the tab and reconnecting sweep at once.
    */
   legacySweepIntervalMs?: number;
+  /** Automatic sweeps and retries while nobody is at the screen come at most this often. */
+  idleRefreshIntervalMs?: number;
 }
 
 type Listener = (state: CollectionState) => void;
@@ -89,6 +91,8 @@ interface CollectionEntry {
   sweptAt: number | null;
   refreshTimer: ReturnType<typeof setTimeout> | null;
   refreshFailures: number;
+  /** When the last automatic read failed: cooldowns count from here, so a return to the screen runs an overdue retry at once. */
+  failedAt: number | null;
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -119,6 +123,8 @@ export class CollectionReader {
   private readonly maxPages: number;
   private readonly retryIntervalMs: number;
   private readonly legacySweepIntervalMs: number;
+  private readonly idleRefreshIntervalMs: number;
+  private attended = true;
 
   constructor(private readonly options: CollectionReaderOptions) {
     this.pageSize = options.pageSize ?? 100;
@@ -127,9 +133,10 @@ export class CollectionReader {
     // Five minutes: one sweep of 20 rows costs ~24 reads, so a visible list costs ~300 reads an
     // hour instead of ~6,000 at the former 15 s — the free daily allowance is 50,000 for everyone.
     this.legacySweepIntervalMs = options.legacySweepIntervalMs ?? 300_000;
+    this.idleRefreshIntervalMs = options.idleRefreshIntervalMs ?? 1_800_000;
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1 || this.pageSize > 100
       || !Number.isInteger(this.maxPages) || this.maxPages < 1
-      || ![this.retryIntervalMs, this.legacySweepIntervalMs].every(delay => Number.isFinite(delay) && delay >= 1)) {
+      || ![this.retryIntervalMs, this.legacySweepIntervalMs, this.idleRefreshIntervalMs].every(delay => Number.isFinite(delay) && delay >= 1)) {
       throw failure('Invalid collection paging budget', 'invalid-argument');
     }
   }
@@ -155,6 +162,14 @@ export class CollectionReader {
     this.online = online;
     this.options.observer.setOnline(online);
     this.restart();
+  }
+
+  /** Nobody at the screen: automatic sweeps and failure retries slow to one per idleRefreshIntervalMs. */
+  setAttended(attended: boolean): void {
+    if (this.disposed || this.attended === attended) return;
+    this.attended = attended;
+    this.options.observer.setAttended(attended);
+    for (const entry of this.entries.values()) this.scheduleRefresh(entry);
   }
 
   setVisible(visible: boolean): void {
@@ -257,6 +272,7 @@ export class CollectionReader {
       if (entry.inFlight?.promise !== promise) return;
       entry.inFlight = null;
       entry.refreshFailures = failed ? entry.refreshFailures + 1 : 0;
+      if (failed) entry.failedAt = Date.now();
       this.scheduleRefresh(entry);
     };
     void promise.then(() => {
@@ -289,7 +305,7 @@ export class CollectionReader {
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
         loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
-        legacyOpen: false, asked: false, sweepDue: true, sweptAt: null, refreshTimer: null, refreshFailures: 0 };
+        legacyOpen: false, asked: false, sweepDue: true, sweptAt: null, refreshTimer: null, refreshFailures: 0, failedAt: null };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -579,11 +595,15 @@ export class CollectionReader {
     if (!this.current(entry, this.generation) || (!entry.legacyOpen && entry.refreshFailures === 0) || !this.online || !this.visible
       || !entry.listeners.size || entry.inFlight) return;
     const generation = this.generation;
-    const delay = entry.refreshFailures > 0
+    // Both clocks are absolute — the last failure, the last full listing — so feed reads after every
+    // autosave cannot keep pushing the sweep away, and a return to the screen runs an overdue retry now.
+    const failing = entry.refreshFailures > 0;
+    const interval = failing
       ? Math.min(Math.max(120_000, this.retryIntervalMs), this.retryIntervalMs * 2 ** Math.min(entry.refreshFailures, 16))
-      // Counted from the last full listing: feed reads after every autosave must not keep
-      // pushing the sweep away for as long as someone types.
-      : Math.max(0, (entry.sweptAt ?? Date.now()) + this.legacySweepIntervalMs - Date.now());
+      : this.legacySweepIntervalMs;
+    const now = Date.now();
+    const since = (failing ? entry.failedAt : entry.sweptAt) ?? now;
+    const delay = Math.max(0, since + (this.attended ? interval : Math.max(interval, this.idleRefreshIntervalMs)) - now);
     entry.refreshTimer = setTimeout(() => {
       entry.refreshTimer = null;
       if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {

@@ -22,6 +22,10 @@ import { createHttpEngineTransport } from './transport.client';
 
 import type { ResourceRef } from './types';
 
+/** A visible tab nobody has touched this long stops asking the server about quiet documents. */
+const ATTENTION_MS = 10 * 60_000;
+const ATTENTION_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
+
 export interface BrowserDataEngine {
   engine: DataEngine;
   dispose(): void;
@@ -52,14 +56,34 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   const online = () => navigator.onLine;
   const visible = () => document.visibilityState === 'visible';
   const connectivityChanged = () => { if (active) engine.setOnline(online()); };
-  const visibilityChanged = () => { if (active) engine.setVisible(visible()); };
+  // Someone at the screen. A hidden tab already reads nothing. On a computer a screen can stay lit
+  // all night and Chrome may call a covered window visible, so a visible tab nobody has touched for
+  // ATTENTION_MS pauses its server checks, and the first touch or return asks again at once
+  // (ResourceObserver.setAttended). A touch device never pauses: its screen goes dark by itself and
+  // its battery ends any session, while a lit iPad untouched for long is a preacher reading — the
+  // very case the checks are for, since there a listener can die without a word.
+  const pausesWhenUntouched = (navigator.maxTouchPoints ?? 0) <= 1;
+  let lastAttention = Date.now();
+  let attended = true;
+  const attentionSeen = () => {
+    lastAttention = Date.now();
+    if (active && !attended) { attended = true; collections.setAttended(true); }
+  };
+  const visibilityChanged = () => {
+    if (!active) return;
+    // Attention first, so the return to the tab is checked at once rather than after a backoff.
+    if (visible()) attentionSeen();
+    engine.setVisible(visible());
+  };
   // Apply browser restrictions before auth can synchronously activate delivery.
   connectivityChanged();
   visibilityChanged();
   window.addEventListener('online', connectivityChanged);
   window.addEventListener('offline', connectivityChanged);
   document.addEventListener('visibilitychange', visibilityChanged);
+  if (pausesWhenUntouched) for (const type of ATTENTION_EVENTS) window.addEventListener(type, attentionSeen, { capture: true, passive: true });
   const timer = window.setInterval(() => {
+    if (active && pausesWhenUntouched && attended && Date.now() - lastAttention >= ATTENTION_MS) { attended = false; collections.setAttended(false); }
     if (!active || !owner || !online() || !visible() || retrying) return;
     retrying = true;
     const started = generation;
@@ -75,6 +99,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     window.removeEventListener('online', connectivityChanged);
     window.removeEventListener('offline', connectivityChanged);
     document.removeEventListener('visibilitychange', visibilityChanged);
+    for (const type of ATTENTION_EVENTS) window.removeEventListener(type, attentionSeen, { capture: true });
     stopAuth?.();
     engine.dispose();
   };

@@ -10,6 +10,7 @@ import { createIndexedDbCollectionCursors } from '../collectionCursors.client';
 import { collectionHeadRef } from '../feed';
 import { createIndexedDbManualScopes } from '../manualScopes.client';
 import { createIndexedDbJournal } from '../journal.client';
+import { ResourceObserver } from '../observer';
 import { createIndexedDbSnapshots } from '../snapshots.client';
 import { createFirestoreObservationSource } from '../source.client';
 import { createHttpEngineTransport } from '../transport.client';
@@ -214,6 +215,43 @@ describe('Browser DataEngine lifecycle composition', () => {
     jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(4);
     expect([...s.records.values()][0].state).toBe('unknown');
     browser.dispose();
+  });
+
+  it('tells the observer nobody is at the screen after ten untouched minutes, and the first touch brings it back', async () => {
+    const attended = jest.spyOn(ResourceObserver.prototype, 'setAttended');
+    const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
+    jest.advanceTimersByTime(9 * 60_000); await settle();
+    window.dispatchEvent(new Event('keydown'));
+    jest.advanceTimersByTime(9 * 60_000); await settle();
+    expect(attended).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(2 * 60_000); await settle();
+    expect(attended.mock.calls).toEqual([[false]]);
+    window.dispatchEvent(new Event('pointermove')); window.dispatchEvent(new Event('pointerdown'));
+    expect(attended.mock.calls).toEqual([[false], [true]]);
+    // Returning to the tab is attention as well.
+    jest.advanceTimersByTime(11 * 60_000); await settle();
+    setVisible(false); document.dispatchEvent(new Event('visibilitychange'));
+    setVisible(true); document.dispatchEvent(new Event('visibilitychange'));
+    expect(attended.mock.calls).toEqual([[false], [true], [false], [true]]);
+    browser.dispose();
+    window.dispatchEvent(new Event('keydown'));
+    jest.advanceTimersByTime(11 * 60_000);
+    expect(attended).toHaveBeenCalledTimes(4);
+    attended.mockRestore();
+  });
+
+  it('never pauses on a touch device: its screen goes dark by itself and it is where the preacher reads', async () => {
+    const attended = jest.spyOn(ResourceObserver.prototype, 'setAttended');
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
+    try {
+      const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
+      jest.advanceTimersByTime(60 * 60_000); await settle();
+      expect(attended).not.toHaveBeenCalled();
+      browser.dispose();
+    } finally {
+      Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 });
+      attended.mockRestore();
+    }
   });
 
   it('fences logout and late auth callbacks and disposes all lifecycle listeners once', async () => {

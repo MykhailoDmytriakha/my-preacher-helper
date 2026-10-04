@@ -120,8 +120,19 @@ Healthy subscriptions receive a bounded HTTP freshness check after two quiet min
 A valid response renews that lease; inactivity is not a reason to permanently switch
 to fifteen-second polling. A failed/missing subscription or rejected freshness proof
 uses the shorter fallback interval, with backoff for request failures. Hidden/offline
-views suspend checks. These are safety bounds, not a claim of zero idle reads or of a
-measured production daily budget.
+views suspend checks. On a device reporting at most one touch point (`navigator.maxTouchPoints
+<= 1`: computers, ordinary headless browsers) a visible tab nobody has touched for ten minutes
+slows its automatic checks, collection retries and sweeps to one per half hour
+(`browser.client.ts` → `CollectionReader.setAttended` → `ResourceObserver.setAttended`): a
+computer screen can stay lit all night, and a forgotten tab used to cost a read every two
+minutes per watched document. The listener keeps delivering and the published freshness is
+left alone; the first touch or return to the tab asks at once whatever fell due, and a reader
+who never touches the screen still learns of a silently dead listener within half an hour.
+Touch devices (iPad, phone) keep the two-minute check: their screens usually go dark by
+themselves, and a lit iPad nobody touches is most often a preacher reading — where a WebKit
+listener can die silently. A touch device kept awake on a charger therefore keeps the
+two-minute rate (30 checks per hour per watched document). These are safety bounds, not a claim of zero idle reads or
+of a measured production daily budget.
 
 **One action on a document no screen has open** — a list-row menu, a link made from the other
 side of a relation, a sermon born from a note — uses `useDocumentActions()`: `commit(resource,

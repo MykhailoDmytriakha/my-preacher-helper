@@ -104,6 +104,70 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  /**
+   * A visible screen nobody is at — a tab forgotten overnight — used to cost a read every two
+   * minutes per document for as long as it stayed open. It now asks every half hour: a reader who
+   * never touches the screen still learns of a silently dead listener, and the first touch asks at
+   * once, so the person never works on a copy unchecked for long.
+   */
+  it('asks the server about a quiet document only every half hour while nobody is at the screen', async () => {
+    const h = harness(); h.watch(); h.next(snapshot());
+    h.observer.setAttended(false); h.observer.setAttended(false);
+    await jest.advanceTimersByTimeAsync(1_799_999);
+    expect(h.read).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1_800_001);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    // The pause is not news for the screen: the copy stays as fresh as the listener keeps it.
+    expect(h.state()).toMatchObject({ readiness: 'server', checking: false });
+    h.next(snapshot(2));
+    expect(h.state()).toMatchObject({ snapshot: snapshot(2), readiness: 'server' });
+    h.observer.dispose();
+  });
+
+  it('checks at once when someone comes back after the lease ran out', async () => {
+    const h = harness(); h.watch(); h.next(snapshot());
+    h.observer.setAttended(false);
+    await jest.advanceTimersByTimeAsync(600_000);
+    h.observer.setAttended(true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(119_999);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    h.observer.dispose();
+  });
+
+  it('keeps the running lease of a screen left and touched again before it ran out', async () => {
+    const h = harness(); h.watch(); h.next(snapshot());
+    await jest.advanceTimersByTimeAsync(30_000);
+    h.observer.setAttended(false);
+    await jest.advanceTimersByTimeAsync(30_000);
+    h.observer.setAttended(true);
+    await jest.advanceTimersByTimeAsync(59_999);
+    expect(h.read).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(1);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    h.observer.dispose();
+  });
+
+  it('slows polling a silent stream to the half-hour cadence while nobody is there and resumes on return', async () => {
+    const h = harness(); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    h.observer.setAttended(false);
+    await jest.advanceTimersByTimeAsync(600_000);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    h.observer.setAttended(true);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    // An explicit refresh is a person asking, and is never paused.
+    h.observer.setAttended(false);
+    await h.observer.refresh(resource);
+    expect(h.read).toHaveBeenCalledTimes(3);
+    h.observer.dispose();
+  });
+
   it('keeps checking a silent stream for remote updates and deletions after renewing its lease', async () => {
     const h = harness(); h.watch(); h.next(snapshot());
     await jest.advanceTimersByTimeAsync(120_000);

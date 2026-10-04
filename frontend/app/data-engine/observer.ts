@@ -40,6 +40,8 @@ export interface ResourceObserverOptions {
   pollIntervalMs?: number;
   leaseMs?: number;
   maxBackoffMs?: number;
+  /** Automatic checks while nobody is at the screen come at most this often. */
+  idleLeaseMs?: number;
 }
 
 type Listener = (observation: Observation) => void;
@@ -79,9 +81,12 @@ export class ResourceObserver {
   private readonly pollIntervalMs: number;
   private readonly leaseMs: number;
   private readonly maxBackoffMs: number;
+  private readonly idleLeaseMs: number;
   private owner: string | null = null;
   private online = true;
   private visible = true;
+  /** Someone is at the screen. Visible is not enough: a forgotten tab is visible all night. */
+  private attended = true;
   private disposed = false;
 
   constructor(private readonly options: ResourceObserverOptions) {
@@ -94,6 +99,7 @@ export class ResourceObserver {
     this.pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 15_000);
     this.leaseMs = Math.max(this.pollIntervalMs, options.leaseMs ?? 120_000);
     this.maxBackoffMs = Math.max(this.pollIntervalMs, options.maxBackoffMs ?? 120_000);
+    this.idleLeaseMs = Math.max(this.leaseMs, options.idleLeaseMs ?? 1_800_000);
   }
 
   watch(owner: string, resource: ResourceRef, listener: Listener): () => void {
@@ -151,6 +157,18 @@ export class ResourceObserver {
     if (this.visible === visible || this.disposed) return;
     this.visible = visible;
     this.restart();
+  }
+
+  /**
+   * Nobody at the screen: automatic HTTP checks slow to one per idleLeaseMs — enough for a reader
+   * who never touches the screen to learn of a silently dead listener, cheap for a tab forgotten
+   * overnight. Back at the screen: whatever fell due meanwhile is asked at once. The listener and
+   * the published freshness are left alone — slowing down is not news for the screen.
+   */
+  setAttended(attended: boolean): void {
+    if (this.attended === attended || this.disposed) return;
+    this.attended = attended;
+    for (const entry of this.entries.values()) this.schedule(entry);
   }
 
   /** Explicit user refresh is immediate; automatic retries obey the polling budget. */
@@ -233,11 +251,12 @@ export class ResourceObserver {
     if (!this.online || !this.eligible(entry) || !entry.active || entry.inFlight) return;
     const now = this.now();
     const retryDelay = Math.min(this.maxBackoffMs, this.pollIntervalMs * 2 ** Math.min(entry.failures, 16));
-    const target = entry.healthy && entry.lastServerAt !== null && !immediate
+    let target = entry.healthy && entry.lastServerAt !== null && !immediate
       ? entry.lastServerAt + this.leaseMs
       : entry.lastHttpAt === null
         ? (immediate ? now : entry.startedAt + this.silenceMs)
         : Math.max(now, entry.lastHttpAt + retryDelay);
+    if (!this.attended) target = Math.max(target, Math.max(entry.lastHttpAt ?? entry.startedAt, entry.lastServerAt ?? entry.startedAt) + this.idleLeaseMs);
     entry.timer = this.timers.setTimeout(() => {
       entry.timer = null;
       if (entry.healthy && entry.lastServerAt !== null && this.now() - entry.lastServerAt >= this.leaseMs) {

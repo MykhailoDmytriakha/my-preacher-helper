@@ -115,6 +115,26 @@ describe('CollectionReader durable read lifecycle', () => {
     stop(); s.reader.dispose();
   });
 
+  it('retries a failing feed only every half hour while nobody is at the screen, and resumes on return', async () => {
+    const s = setup(); s.seed(row('a'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.transport.changes).mockRejectedValue(new Error('quota unavailable'));
+    s.change(row('a', 2, 'new')); s.head(); await settle();
+    const calls = jest.mocked(s.transport.changes).mock.calls.length;
+    s.reader.setAttended(false);
+    await jest.advanceTimersByTimeAsync(30 * 60_000 - 1_000); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls);
+    await jest.advanceTimersByTimeAsync(2_000); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    await jest.advanceTimersByTimeAsync(10 * 60_000); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    // Back at the screen: the retry that fell due long ago runs now, not after another cooldown.
+    s.reader.setAttended(true);
+    await jest.advanceTimersByTimeAsync(0); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 2);
+    stop(); s.reader.dispose();
+  });
+
   it('hydrates every page and catches up from the first page anchor, including insertion behind the page cursor', async () => {
     const s = setup({ pageSize: 1 });
     jest.mocked(s.transport.list)
@@ -493,6 +513,22 @@ describe('a collection legacy writers may still change', () => {
       await jest.advanceTimersByTimeAsync(1_000);
     }
     // Five minutes of writes, one per minute: the listing still came due once.
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
+
+  it('keeps an unattended sweep on its own half-hour clock while engine writes keep arriving', async () => {
+    const s = mixed(); s.seed(row('a'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.transport.list).mockClear();
+    s.reader.setAttended(false);
+    for (let step = 1; step <= 7; step += 1) {
+      await jest.advanceTimersByTimeAsync(4 * 60_000);
+      s.change(row('a', step + 1, `step ${step}`)); s.head(); await settle();
+    }
+    // Twenty-eight minutes of writes: the listing is not due yet, and the writes did not push it away.
+    expect(s.transport.list).not.toHaveBeenCalled();
+    await jest.advanceTimersByTimeAsync(3 * 60_000); await settle();
     expect(s.transport.list).toHaveBeenCalledTimes(1);
     stop(); s.reader.dispose(); s.observer.dispose();
   });
