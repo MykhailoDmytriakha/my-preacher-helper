@@ -215,6 +215,9 @@ const remoteDeleted = (record: EditorRecord) => {
  * The server's copy of one document, read now through the engine's transport — for a screen that
  * must see proof from the server before it gives something up. Null without an engine; the read
  * refuses offline or on a hidden page rather than answering from this device.
+ * ⚠️ Not yet proof in the installed app: the service worker answers this GET from its `apis` cache
+ * when the network fails (BUG-20260908-cached-response-counts-as-live-connection), so the copy can
+ * be old. Retiring a person's text on it alone was refused in review (BUGS: confirmed draft).
  */
 export function useRemotePeek(): ((resource: ResourceRef) => Promise<ResourceSnapshot>) | null {
   const { browser } = useContext(EngineContext) ?? idleEngine;
