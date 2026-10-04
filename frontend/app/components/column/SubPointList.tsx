@@ -302,13 +302,16 @@ export const SubPointList: React.FC<SubPointListProps> = ({
           <DragDropContext onDragEnd={handleDragEnd}>
             <Droppable droppableId={`subpoints-${outlinePointId}`} renderClone={renderClone}>
               {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0.5">
+                // No sibling spacing here: the drag placeholder takes part in it and the drop lands
+                // a few pixels off. Each row carries its own gap instead (.howto/drag-and-drop.md).
+                <div ref={provided.innerRef} {...provided.droppableProps}>
                   {sorted.map((sp, index) => (
                     <Draggable key={sp.id} draggableId={`sp-drag-${sp.id}`} index={index}>
                       {(draggableProvided) => (
                         <div
                           ref={draggableProvided.innerRef}
                           {...draggableProvided.draggableProps}
+                          className="mb-0.5"
                           style={draggableProvided.draggableProps.style}
                         >
                           {renderSubPointItem(sp, draggableProvided.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>)}

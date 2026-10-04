@@ -654,14 +654,16 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
               }}
             >
               {(provided: DroppableProvided) => (
-                <ul {...provided.droppableProps} ref={provided.innerRef} className="space-y-2">
+                // No sibling spacing on the list: the drag placeholder copies the margins of the slot it
+                // was lifted from, and the drop lands off by the gap. Each point carries its own `mb-2`.
+                <ul {...provided.droppableProps} ref={provided.innerRef}>
                   {points.map((point, index) => (
                     <Draggable key={point.id} draggableId={point.id} index={index} isDragDisabled={isReadOnly}>
                       {(providedDraggable: DraggableProvided, snapshot: DraggableStateSnapshot) => (
                         <li
                           ref={providedDraggable.innerRef}
                           {...providedDraggable.draggableProps}
-                          className={`group rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : ''}`}
+                          className={`group mb-2 rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : ''}`}
                           style={providedDraggable.draggableProps.style}
                         >
                           <div className={`flex items-center group p-2 rounded ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>

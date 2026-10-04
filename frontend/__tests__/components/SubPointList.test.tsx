@@ -35,6 +35,29 @@ const t = (key: string, options?: Record<string, unknown>) =>
   typeof options?.defaultValue === 'string' ? options.defaultValue : key;
 
 describe('SubPointList', () => {
+  // A drag placeholder takes part in the list's sibling spacing, so a drop at the end landed a few
+  // pixels off (BUG-20260927-outline-dnd-spacing-late-snap). The gap belongs to each row.
+  it('carries the gap on each reorderable row, not on the list around them', () => {
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: 'First', position: 1000 }, { id: 'sub-2', text: 'Second', position: 2000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onReorder={jest.fn()}
+        t={t}
+      />
+    );
+
+    const list = screen.getByTestId('subpoint-droppable').firstElementChild as HTMLElement;
+    expect(list.className).not.toMatch(/space-y-/);
+    const rows = screen.getAllByTestId('subpoint-draggable').map((wrapper) => wrapper.firstElementChild as HTMLElement);
+    expect(rows).toHaveLength(2);
+    rows.forEach((row) => expect(row).toHaveClass('mb-0.5'));
+  });
+
   it('uses readable dark-mode styling for sub-point labels on colored focus backgrounds', () => {
     render(
       <SubPointList
