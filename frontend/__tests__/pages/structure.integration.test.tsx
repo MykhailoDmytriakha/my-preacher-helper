@@ -65,6 +65,9 @@ jest.mock('react-i18next', () => ({
       if (key === 'structure.addThoughtToSection' && options?.section) {
         return `Add thought to ${options.section}`;
       }
+      if (key === 'structure.addThoughtToPoint' && options?.point) {
+        return `Add thought to “${options.point}”`;
+      }
       if (options?.defaultValue) return options.defaultValue as string;
       return mockTranslations[key] || key;
     },
@@ -255,12 +258,37 @@ describe('Structure Page - Integration Tests', () => {
       </TestProviders>
     );
 
-      const addButton = await screen.findByTitle('Add thought to Introduction');
+      const addButton = await screen.findByTitle('Add thought to “Intro Point”');
       fireEvent.click(addButton);
 
-      // EditThoughtModal uses custom dropdown — verify the label appears
-      const label = await screen.findByText('editThought.outlinePointLabel');
-      expect(label).toBeInTheDocument();
+      // The modal opens on the point whose "+" was pressed, not merely with a point field.
+      expect(await screen.findByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Intro Point');
+    });
+
+    // BUG-20261004-point-add-thought-only-in-one-column: with all columns on screen the point "+" was missing.
+    it('preselects the outline point when adding from a point header on the full board', async () => {
+      searchParamsGetMock.mockImplementation((param: string) => (param === 'sermonId' ? 'sermon-123' : null));
+
+      const mockSermon = createMockSermon({
+        outline: {
+          introduction: [createMockSermonPoint({ id: 'op-intro', text: 'Intro Point' })],
+          main: [createMockSermonPoint({ id: 'op-main', text: 'Main Point' })],
+          conclusion: [],
+        },
+      });
+
+      mockedUseSermonStructureData.mockReturnValue(
+        createMockHookReturn(mockSermon, { introduction: [], main: [], conclusion: [], ambiguous: [] }, mockSermon.outline)
+      );
+
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
+
+      fireEvent.click(await screen.findByTitle('Add thought to “Main Point”'));
+      expect(await screen.findByLabelText('editThought.outlinePointLabel')).toHaveTextContent('Main Point');
     });
 
     it('clears pending section when closing modal before editing another section', async () => {

@@ -70,7 +70,7 @@ it('preserves focus actions, all-thought lock semantics, note ownership and AI g
   const onAddThought = jest.fn(); const onTogglePointLock = jest.fn(); const onAiSortPoint = jest.fn(); const onSetPointNote = jest.fn(); const onSetSubPointNote = jest.fn();
   const props = { ...base, pointItems: [item('first'), item('second')], isFocusMode: true, onAddThought, onTogglePointLock, onAiSortPoint, onSetPointNote, onSetSubPointNote, showNotes: true };
   const { rerender } = render(<OutlinePointCard {...props} />);
-  fireEvent.click(screen.getByRole('button', { name: 'structure.addThoughtToSection' }));
+  fireEvent.click(screen.getByRole('button', { name: 'structure.addThoughtToPoint' }));
   expect(onAddThought).toHaveBeenCalledWith('main', 'point');
   fireEvent.click(screen.getByTestId('outline-point-ai-sort-point'));
   expect(onAiSortPoint).toHaveBeenCalledWith('point');
@@ -152,6 +152,32 @@ it.each([
   const pointItems = Array.from({ length: count }, (_, index) => item(`thought-${index}`));
   render(<OutlinePointCard {...base} t={i18n.t.bind(i18n) as Translate} pointItems={pointItems} />);
   expect(screen.getByText(expected)).toBeInTheDocument();
+});
+
+// BUG-20261004-point-add-thought-only-in-one-column: the point's "+" opened manual entry only when one
+// column was on screen; with two or three columns the header kept the microphone and lost the "+".
+it.each([false, true])('offers manual entry of a thought into the point on any board (focus=%s)', isFocusMode => {
+  const onAddThought = jest.fn();
+  const { rerender } = render(<OutlinePointCard {...base} isFocusMode={isFocusMode} onAddThought={onAddThought} pointItems={[item('first')]} />);
+  fireEvent.click(screen.getByRole('button', { name: 'structure.addThoughtToPoint' }));
+  expect(onAddThought).toHaveBeenCalledWith('main', 'point');
+  rerender(<OutlinePointCard {...base} isFocusMode={isFocusMode} onAddThought={onAddThought} pointItems={[item('first', true)]} />);
+  expect(screen.getByRole('button', { name: 'All thoughts in this structure point are locked' })).toBeDisabled();
+});
+
+// BUG-20261004-point-title-crushed-on-phone: the title group started at zero width (flex-1), so the
+// header actions squeezed the title to "нач…". jsdom does not lay out, so this guards the mechanism;
+// the widths were measured live at 1280 and 386 px.
+it('lets the header actions take a second line instead of squeezing the title', () => {
+  render(<OutlinePointCard {...base} onAddThought={jest.fn()} pointItems={[item('first')]} />);
+  const title = screen.getByRole('heading', { name: 'Point' });
+  const row = title.closest('.flex-wrap');
+  expect(row).not.toBeNull();
+  const titleGroup = Array.from(row!.children).find((child) => child.contains(title))!;
+  expect(titleGroup).toHaveClass('grow');
+  expect(titleGroup).not.toHaveClass('flex-1');
+  const actions = Array.from(row!.children).find((child) => child.contains(screen.getByRole('button', { name: 'structure.addThoughtToPoint' })))!;
+  expect(actions).toHaveClass('ml-auto');
 });
 
 it.each([false, true])('collapses nested content and restores it without emitting writes (focus=%s)', isFocusMode => {

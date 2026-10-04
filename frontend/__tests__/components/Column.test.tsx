@@ -80,6 +80,7 @@ jest.mock('react-i18next', () => ({
           'structure.outlineSavedSuccess': 'SermonOutline saved',
           'structure.deletePointConfirm': options?.text ? `Are you sure you want to delete this outline point: "${options.text}"?` : 'Are you sure?',
           'structure.addThoughtToSection': options?.section ? `Add thought to ${options.section}` : 'Add thought',
+          'structure.addThoughtToPoint': options?.point ? `Add thought to “${options.point}”` : 'Add thought',
           'structure.sortButton': 'Сортировать',
           'structure.sorting': 'Сортировка...',
           'structure.sortInfo': 'Sorting only processes unassigned thoughts, up to 25 at a time.',
@@ -880,7 +881,7 @@ describe('Column Component', () => {
                   onAddThought={onAddThought}
                 />
               );
-              fireEvent.click(screen.getByTitle('Add thought to Introduction'));
+              fireEvent.click(screen.getByTitle('Add thought to “Introduction Point 1”'));
               expect(onAddThought).toHaveBeenCalledWith('introduction', 'point1');
             }
           },

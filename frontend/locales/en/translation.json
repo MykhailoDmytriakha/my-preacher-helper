@@ -1449,6 +1449,7 @@
     "outlineSavedSuccess": "Structure saved",
     "deletePointConfirm": "Are you sure you want to delete this structure point: \"{{text}}\"?",
     "addThoughtToSection": "Add thought to {{section}}",
+    "addThoughtToPoint": "Add thought to “{{point}}”",
     "editPointPlaceholder": "Edit structure point",
     "addPointPlaceholder": "Enter new structure point",
     "addPointButton": "Add structure point",

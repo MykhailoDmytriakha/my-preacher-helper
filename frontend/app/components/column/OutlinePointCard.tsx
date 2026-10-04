@@ -14,7 +14,7 @@ import { debugLog } from '@/utils/debugMode';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 
 import { recordAudioThought } from './audio';
-import { BG_GRAY_LIGHTER_DARK, INLINE_EDIT_ACTION_BUTTON_BASE_CLASS, TRANSLATION_COMMON_CANCEL, TRANSLATION_COMMON_DELETE, TRANSLATION_COMMON_SAVE, TRANSLATION_STRUCTURE_ADD_THOUGHT } from './constants';
+import { BG_GRAY_LIGHTER_DARK, INLINE_EDIT_ACTION_BUTTON_BASE_CLASS, TRANSLATION_COMMON_CANCEL, TRANSLATION_COMMON_DELETE, TRANSLATION_COMMON_SAVE } from './constants';
 import { SubPointList } from './SubPointList';
 import { PointThoughtLane } from './ThoughtLanes';
 import { getPlaceholderColors, getPointLockToggleLabel, getSectionIconClasses, isPointAudioSection, openPointEditor } from './utils';
@@ -37,7 +37,6 @@ export const OutlinePointCard: React.FC<{
   onAudioThoughtCreated?: OnAudioThoughtCreated;
   isFocusMode?: boolean;
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
-  sectionTitle?: string;
   audioError?: string | null;
   setAudioError: (error: string | null) => void;
   onClearAudioError: () => void;
@@ -77,7 +76,6 @@ export const OutlinePointCard: React.FC<{
   onAudioThoughtCreated,
   isFocusMode,
   onAddThought,
-  sectionTitle,
   audioError,
   setAudioError,
   onClearAudioError,
@@ -178,6 +176,10 @@ export const OutlinePointCard: React.FC<{
   };
 
   const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
+  // The point's own "+" names the point: the column header has a "+" for the whole section.
+  const addThoughtLabel = isPointLocked
+    ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' })
+    : t('structure.addThoughtToPoint', { point: point.text });
   const pointToggleHandler = onTogglePointLock ?? onToggleReviewed;
   const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
   const renderSubPointRecorder = canUseInlineRecorder
@@ -260,7 +262,10 @@ export const OutlinePointCard: React.FC<{
           className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
           style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
         >
-          <div className="flex items-center justify-between gap-1.5 w-full">
+          {/* The title group starts at its full width (grow, not flex-1), so when a narrow column
+              cannot hold the whole title beside the actions, the actions move to a second line
+              instead of squeezing the title to a few letters. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 w-full">
             {/* Drag handle for normal mode reordering */}
             {dragHandleProps && (
               <div
@@ -274,7 +279,7 @@ export const OutlinePointCard: React.FC<{
 
             {/* Inline edit form or click-to-edit title */}
             {isEditingLocally ? (
-              <div className="flex-1 flex items-center gap-1 min-w-0">
+              <div className="flex-1 flex items-center gap-1 min-w-[9rem]">
                 <input
                   ref={localEditRef}
                   type="text"
@@ -291,7 +296,7 @@ export const OutlinePointCard: React.FC<{
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 grow min-w-0">
                 {point.subPoints && point.subPoints.length > 0 && (
                   <button
                     onClick={(e) => {
@@ -365,7 +370,7 @@ export const OutlinePointCard: React.FC<{
             )}
 
             {/* Right-side actions and info */}
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
+            <div className="ml-auto flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
 
               {/* Locks every thought of the point: the same toggle a thought card draws for one thought */}
               {pointToggleHandler && hasItems && (
@@ -388,8 +393,8 @@ export const OutlinePointCard: React.FC<{
                 {pointItems.length} {t('structure.thoughts', { count: pointItems.length })}
               </span>
 
-              {/* Focus Recorder Button (per outline point) */}
-              {isFocusMode && onAddThought && (
+              {/* Manual entry of a thought into this point, on any board (one column or several) */}
+              {onAddThought && (
                 <button
                   onClick={() => {
                     debugLog('Structure: focus outline add clicked', {
@@ -402,8 +407,8 @@ export const OutlinePointCard: React.FC<{
                 }}
                   disabled={isPointLocked}
                   className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                  title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                  aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                  title={addThoughtLabel}
+                  aria-label={addThoughtLabel}
                 >
                   <PlusIcon className="h-4 w-4 text-white" />
                 </button>

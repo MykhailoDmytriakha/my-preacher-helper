@@ -264,7 +264,6 @@ export default function Column({
       transcriptionBlocked={transcriptionBlocked}
       transcriptionUnavailableLabel={transcriptionUnavailableLabel}
       onAddThought={onAddThought}
-      sectionTitle={title}
       audioError={pointAudioErrors[point.id] ?? null}
       setAudioError={(error) => setPointAudioError(point.id, error)}
       onClearAudioError={() => setPointAudioError(point.id, null)}

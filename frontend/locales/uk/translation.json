@@ -1459,6 +1459,7 @@
     "outlineSavedSuccess": "Структуру збережено",
     "deletePointConfirm": "Ви впевнені, що хочете видалити цей пункт структури: \"{{text}}\"?",
     "addThoughtToSection": "Додати думку до {{section}}",
+    "addThoughtToPoint": "Додати думку до пункту «{{point}}»",
     "editPointPlaceholder": "Редагувати пункт структури",
     "addPointPlaceholder": "Введіть новий пункт структури",
     "addPointButton": "Додати пункт структури",
