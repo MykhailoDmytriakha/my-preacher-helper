@@ -321,7 +321,9 @@ next signed-in account. Settings queries (`user-settings`) require the key owner
 the document ID; the optional legacy `userId` must agree too. All seven persisted settings
 mutation kinds retain their original payloads, keyed by their explicit `userId`, never replayed
 through the legacy writer while users is on the engine. A failed archive keeps the original cache untouched and holds
-workspace startup behind an explicit Retry.
+workspace startup behind an explicit Retry. A short wait shows nothing and a long one the shared start spinner, never a notice of its own: one
+stood in place of every page on every load, in English, since the language setup sits below the gate
+(BUG-20261004-reload-preserving-copies-flash).
 
 **A copy leaves the archive only when it is proven to be an echo of the server.**
 `LegacyQueryCopies` lists the owner's archive (read-only), then `retireLegacyEchoes` compares

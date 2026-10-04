@@ -8,7 +8,6 @@
     "releaseBack": "Release to go back"
   },
   "legacyRecovery": {
-    "preserving": "Preserving local copies from the previous version…",
     "preservationFailed": "Could not preserve previous local copies. The original cache has been kept. Retry before opening the workspace.",
     "cacheTitle": "Copies from the previous app version: {{count}}",
     "cacheBody": "These copies stayed on this device from the previous app version: they differ from what the server has now, or have not been compared with it yet. Open the list to see the difference. If the server has everything you need, accept the server version.",

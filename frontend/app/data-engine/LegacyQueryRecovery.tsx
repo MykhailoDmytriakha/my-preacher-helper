@@ -5,8 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Chip } from '@/components/ui/Chip';
+import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
+import { getCookieLanguage } from '@/services/userSettings.service';
 import { answerWithin } from '@/utils/deviceStorage';
+import { DEFAULT_LANGUAGE } from '@locales/constants';
+import { i18n } from '@locales/i18n';
 
 import {
   compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
@@ -27,6 +31,14 @@ function engineServerCopies(owner: string): ServerCopyReader {
 /** Documents the engine has not read yet are compared again later, a bounded number of times. */
 const ECHO_RETRY_MS = 30_000;
 const ECHO_RETRIES = 5;
+/** A wait shorter than this is part of an ordinary start and shows nothing; a longer one shows the start spinner. */
+const SLOW_START_MS = 400;
+
+/** The language the device's stored choice is shown in: itself, its base ('ru-RU' → 'ru'), or the default. */
+function storedLanguageShown(): string {
+  const stored = getCookieLanguage();
+  return [stored, stored.split('-')[0]].find(code => i18n.hasResourceBundle(code, 'translation')) ?? DEFAULT_LANGUAGE;
+}
 
 /** Mount before React Query: even expired caches must be archived before its restore can remove them. */
 export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (collection: string) => boolean; children: ReactNode }) {
@@ -34,6 +46,7 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<'pending' | 'ready' | 'failed'>('pending');
   const [lateFailure, setLateFailure] = useState(false);
+  const [slowStart, setSlowStart] = useState(false);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
   useEffect(() => {
@@ -53,6 +66,11 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
     }, () => { if (active) setState('failed'); });
     return () => { active = false; };
   }, [enabled, attempt]);
+  useEffect(() => {
+    if (state !== 'pending') return;
+    const timer = setTimeout(() => setSlowStart(true), SLOW_START_MS);
+    return () => { clearTimeout(timer); setSlowStart(false); };
+  }, [state]);
   const retryLate = () => {
     setLateFailure(false);
     preserveLegacyQueryCache(enabled).catch(() => { if (mounted.current) setLateFailure(true); });
@@ -64,10 +82,15 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
     </div>}
     {children}
   </>;
-  return <div role={state === 'failed' ? 'alert' : 'status'} className="m-4 rounded-xl border p-4">
-    {/* Rendered before the language is detected on the server, so the text differs by design. */}
-    <p suppressHydrationWarning>{t(state === 'failed' ? 'legacyRecovery.preservationFailed' : 'legacyRecovery.preserving')}</p>
-    {state === 'failed' && <button type="button" className="mt-3 rounded border px-3 py-2" onClick={() => setAttempt(value => value + 1)}>{t('dataSync.retry')}</button>}
+  // The wait is part of every start: a short one shows nothing, a long one the start spinner — never a
+  // notice of its own (BUG-20261004-reload-preserving-copies-flash). "Preserving local copies…" stood in
+  // place of every page on every load, in English, as the server and the language setup below this gate
+  // render it. A failure is the one thing to say, in the device's stored language, not applied here yet.
+  if (state === 'pending') return slowStart ? <PageSpinner /> : null;
+  const lng = storedLanguageShown();
+  return <div role="alert" lang={lng} className="m-4 rounded-xl border p-4">
+    <p>{i18n.t('legacyRecovery.preservationFailed', { lng })}</p>
+    <button type="button" className="mt-3 rounded border px-3 py-2" onClick={() => setAttempt(value => value + 1)}>{i18n.t('dataSync.retry', { lng })}</button>
   </div>;
 }
 

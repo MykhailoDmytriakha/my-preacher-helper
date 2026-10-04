@@ -5,6 +5,11 @@ import { toast } from 'sonner';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from '../LegacyQueryRecovery';
 import { compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
+import en from '@locales/en/translation.json';
+import ru from '@locales/ru/translation.json';
+
+// The real translations: a blocking failure is said through the i18n instance, in the stored language.
+jest.unmock('i18next');
 const actualClient = jest.requireActual('../legacyQueryRecovery.client') as typeof import('../legacyQueryRecovery.client');
 jest.mock('../legacyQueryRecovery.client', () => {
   const actual = jest.requireActual('../legacyQueryRecovery.client') as typeof import('../legacyQueryRecovery.client');
@@ -46,14 +51,54 @@ describe('legacy cache preservation UI', () => {
     let complete!: () => void;
     jest.mocked(preserveLegacyQueryCache).mockRejectedValueOnce(new Error('disk full')).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
     render(<LegacyQueryMigrationGate enabled={enabled}><Consumer /></LegacyQueryMigrationGate>);
-    expect(await screen.findByRole('alert')).toHaveTextContent('legacyRecovery.preservationFailed');
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.legacyRecovery.preservationFailed);
     expect(mounted).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'dataSync.retry' }));
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry }));
     await waitFor(() => expect(preserveLegacyQueryCache).toHaveBeenCalledTimes(2));
     expect(mounted).not.toHaveBeenCalled();
     await act(async () => complete());
     expect(screen.getByText('Workspace')).toBeVisible();
     expect(mounted).toHaveBeenCalledTimes(1);
+  });
+
+  // BUG-20261004-reload-preserving-copies-flash: the wait put "Preserving local copies…" in place of every
+  // page on every load — in the server's language, English, since the language setup sits below the gate.
+  it('renders nothing of its own on the server', () => {
+    jest.mocked(preserveLegacyQueryCache).mockReturnValue(new Promise(() => undefined));
+    // The Node build, as on the server: the browser build needs a MessageChannel that jsdom lacks.
+    const { renderToString } = jest.requireActual<typeof import('react-dom/server')>('react-dom/server.node');
+    expect(renderToString(<LegacyQueryMigrationGate enabled={enabled}><p>Workspace</p></LegacyQueryMigrationGate>)).toBe('');
+  });
+
+  it('says nothing during an ordinary wait, shows the start spinner on a long one, and keeps the workspace unmounted', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(preserveLegacyQueryCache).mockReturnValue(new Promise(() => undefined));
+      const { container } = render(<LegacyQueryMigrationGate enabled={enabled}><p>Workspace</p></LegacyQueryMigrationGate>);
+      await act(async () => { await jest.advanceTimersByTimeAsync(399); });
+      expect(container).toBeEmptyDOMElement();
+      await act(async () => { await jest.advanceTimersByTimeAsync(1); });
+      expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+      expect(screen.queryByRole('status')).toBeNull();
+      expect(screen.queryByText('Workspace')).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  // The language setup sits below the gate, so a blocking failure speaks the device's stored language itself.
+  it.each([
+    ['ru', 'ru', ru.legacyRecovery.preservationFailed, ru.dataSync.retry],
+    ['ru-RU', 'ru', ru.legacyRecovery.preservationFailed, ru.dataSync.retry],
+    ['de', 'en', en.legacyRecovery.preservationFailed, en.dataSync.retry],
+  ])('tells a blocking failure in the stored language %s, marked as %s', async (stored, shown, text, retry) => {
+    document.cookie = `lang=${stored}; path=/`;
+    try {
+      jest.mocked(preserveLegacyQueryCache).mockRejectedValue(new Error('disk full'));
+      render(<LegacyQueryMigrationGate enabled={enabled}><p>Workspace</p></LegacyQueryMigrationGate>);
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent(text);
+      expect(alert).toHaveAttribute('lang', shown);
+      expect(screen.getByRole('button', { name: retry })).toBeInTheDocument();
+    } finally { document.cookie = 'lang=; path=/; max-age=0'; }
   });
 
   it('says so above the app, with Retry, when the archive fails after the app went on', async () => {

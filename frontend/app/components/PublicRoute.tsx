@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useAuth } from '@/providers/AuthProvider';
 
 interface PublicRouteProps {
@@ -28,20 +29,12 @@ export default function PublicRoute({
 
   // Show loading spinner while checking authentication
   if (loading) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin" data-testid="loading-spinner"></div>
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   // Don't render children if user is authenticated
   if (user || localStorage.getItem('guestUser')) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-t-2 border-b-2 border-blue-500 rounded-full animate-spin" data-testid="loading-spinner"></div>
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   return <>{children}</>;
