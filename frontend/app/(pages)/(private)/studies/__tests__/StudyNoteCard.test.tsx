@@ -136,6 +136,48 @@ describe('StudyNoteCard', () => {
     expect(mockPush).toHaveBeenCalledWith('/studies/note-redirect');
   });
 
+  // A link in the collapsed preview (the note's own Markdown) belongs to that link — by key and
+  // by mouse. The card used to excuse only buttons, so Enter on a link opened the note instead.
+  describe('a link inside the card', () => {
+    // react-markdown is a text stub under jest (jest.setup.js), so a real anchor is put where the
+    // note's Markdown renders one; the card's handlers see exactly what they see in a browser.
+    const renderWithLink = () => {
+      render(
+        <StudyNoteCard
+          note={createTestNote({ id: 'note-link', title: 'Link Note', content: 'See the source' })}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+        />
+      );
+      const card = screen.getByRole('button', { name: /Link Note/i });
+      const link = document.createElement('a');
+      link.href = 'https://example.com/source';
+      link.textContent = 'the source';
+      screen.getByText('See the source').appendChild(link);
+      return { card, link };
+    };
+
+    it("leaves Enter on the link to the link, and still opens the note on the card's own Enter", () => {
+      const { card, link } = renderWithLink();
+      link.focus();
+      fireEvent.keyDown(link, { key: 'Enter' });
+      expect(mockPush).not.toHaveBeenCalled();
+
+      card.focus();
+      fireEvent.keyDown(card, { key: 'Enter' });
+      expect(mockPush).toHaveBeenCalledWith('/studies/note-link');
+    });
+
+    it('opens only the link when the link is clicked', () => {
+      const { link } = renderWithLink();
+      link.addEventListener('click', (event) => event.preventDefault());
+      fireEvent.click(link);
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
   it('applies responsive classes to the title', () => {
     const note = createTestNote({ id: 'note-4', title: 'A very long title that should wrap' });
 

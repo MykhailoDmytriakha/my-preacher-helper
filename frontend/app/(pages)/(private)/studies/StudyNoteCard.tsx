@@ -251,13 +251,14 @@ export default function StudyNoteCard({
           role="button"
           tabIndex={0}
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest('button')) return;
+            // A button or a link of the note's own Markdown (the collapsed preview) does its own job.
+            if ((e.target as HTMLElement).closest('button, a')) return;
             router.push(`/studies/${note.id}${window.location.search}`);
           }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' && e.key !== ' ') return;
-            const target = e.target as HTMLElement | null;
-            if (target?.closest('button')) return;
+            // A key pressed on an inner control (a button, a link in the preview) belongs to it.
+            if (e.target !== e.currentTarget) return;
             e.preventDefault();
             router.push(`/studies/${note.id}${window.location.search}`);
           }}

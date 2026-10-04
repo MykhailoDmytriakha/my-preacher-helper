@@ -138,12 +138,15 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     onConfirm(hours, minutes, seconds);
   };
 
+  // Escape is not handled here: it belongs to the shared modal layer below (only the topmost
+  // window answers it). Closing here as well closed twice, and the timer's shortcuts came back on
+  // mid-press, so the same Escape also left the preaching view.
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      onCancel();
-    } else if (e.key === 'Enter') {
-      handleConfirm();
-    }
+    if (e.key !== 'Enter') return;
+    // Enter on an inner control (Cancel, Back, a preset, the confirm button) is that control's
+    // own press; confirming here too ran the wrong action or confirmed twice.
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+    handleConfirm();
   };
 
   // Format time display
