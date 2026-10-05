@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { requireAdminEmail } from '@/api/admin/adminAuth';
 import { adminAuth, adminDb } from '@/config/firebaseAdminConfig';
+import { readReferralWarning } from '@/services/referral.server';
 import {
   normalizeUserEntitlementServerSide,
   resolveEffectiveTier,
@@ -78,6 +79,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           ? entitlementData.referredBy
           : null,
         referralCount: referralCounts.get(authUser.uid) ?? 0,
+        referralWarning: readReferralWarning(entitlementData?.referralWarning),
         effectiveTier: resolveEffectiveTier(entitlement, now),
       };
     }).sort((left, right) =>

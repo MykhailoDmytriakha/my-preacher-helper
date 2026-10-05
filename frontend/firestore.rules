@@ -209,10 +209,10 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
       allow create: if request.auth != null && request.auth.uid == uid && legacyIncoming()
-        && !request.resource.data.keys().hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
+        && !request.resource.data.keys().hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy', 'referralWarning', 'referralLedger']);
       allow update: if request.auth != null && request.auth.uid == uid && legacyExisting() && legacyIncoming()
         && !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
+          .hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy', 'referralWarning', 'referralLedger']);
     }
 
     match /_dataEngineHeads/{id} {

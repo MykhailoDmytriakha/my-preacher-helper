@@ -499,11 +499,6 @@
 ### Сменить пароль тестового аккаунта — он был публичным
 Пароль `testuser@example.com` лежал в боевом бандле до фикса BUG-20260919-test-account-password-in-production-bundle (коммит в `main`, 2026-09-19). Код его больше не отдаёт, но сам пароль уже публичный: сменить в Firebase Console → Authentication и затем в `frontend/app/utils/testLogin.ts` одним изменением. Делает владелец, после выкатки фикса на прод.
 
-### referral Sybil — фейк-аккаунты стакают промо
-**P1 (PLAUSIBLE)** · `frontend/app/.../referral.server.ts` → `computeReferralPromotion:25-29`
-Награда +30 дней tier1 за КАЖДОГО зарегавшегося и заклеймившего, кумулятивно. Защищает: email_verified + аккаунт младше 24 ч + клейм один раз + не self-referral. Sybil стоит N верифицированных email и N аккаунтов за сутки.
-Решение владельца: не авто-блок, а human-in-the-loop → фича F6 (на третьем реферале warning-флаг, письмо владельцу, контрол «отключить промо» в админке). Здесь остаётся как открытая security-заметка.
-
 ### env-var cleanup — гигиена
 Аудит Vercel-переменных, прочистка мёртвых `#`-строк в `.env.local` и `.env.example`. **Значения секретов и ключей не трогать.** Детали — `FEATURE_CONCEPTS.md` → C1.
 

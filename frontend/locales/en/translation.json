@@ -1144,7 +1144,12 @@
         "usage": "Usage",
         "role": "Role",
         "referredBy": "Referred by",
-        "invitedCount": "Users invited"
+        "invitedCount": "Users invited",
+        "referralWarning": "Referral check"
+      },
+      "referralWarning": {
+        "badge": "Check referrals",
+        "detail": "Flagged {{date}} at {{count}} invited — the promotion keeps accruing"
       }
     }
   },

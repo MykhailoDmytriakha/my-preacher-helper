@@ -1,4 +1,4 @@
-when: firestore.rules · security rules · client can write a server field · server-managed field · privilege field · paidTier · role · usage · promotion · referredBy · affectedKeys · diff · hasAny · keys() · client whitelist is not authorization · rules test · emulator · test:rules · rules-test.cjs · assertFails · _dataEngine marker · legacyExisting · permission-denied after a rules change · правила безопасности · правила Firestore · защитить поле · клиент пишет серверное поле · тариф · роль · запрет записи · тест правил · эмулятор · отказ в доступе после правки правил · выкатить правила · deploy rules · closure · closedToBrowserWrites · закрытие разделов
+when: firestore.rules · security rules · client can write a server field · server-managed field · privilege field · paidTier · role · usage · promotion · referredBy · referralWarning · referralLedger · affectedKeys · diff · hasAny · keys() · client whitelist is not authorization · rules test · emulator · test:rules · rules-test.cjs · assertFails · _dataEngine marker · legacyExisting · permission-denied after a rules change · правила безопасности · правила Firestore · защитить поле · клиент пишет серверное поле · тариф · роль · запрет записи · тест правил · эмулятор · отказ в доступе после правки правил · выкатить правила · deploy rules · closure · closedToBrowserWrites · закрытие разделов
 
 # Protect server-managed fields in Firestore rules
 
@@ -8,12 +8,12 @@ A field the browser must never set (tier, role, usage, referral, the engine mark
 
 - Create: `!request.resource.data.keys().hasAny([...protected])`.
 - Update: `!request.resource.data.diff(resource.data).affectedKeys().hasAny([...protected])`. On an update `request.resource.data` is the WHOLE future document, not only the fields sent, so a `keys()` check there would refuse every save of a document that already holds the field. The diff sees only what this write changes.
-- The live example is `match /users/{uid}`: `paidTier`, `promotion`, `usage`, `role`, `referredBy` are refused on create and update, while the settings the app really writes stay allowed (`frontend/app/services/userSettings.service.ts` keeps its own whitelist on top).
+- The live example is `match /users/{uid}`: `paidTier`, `promotion`, `usage`, `role`, `referredBy`, `referralWarning`, `referralLedger` are refused on create and update, while the settings the app really writes stay allowed (`frontend/app/services/userSettings.service.ts` keeps its own whitelist on top).
 - The same idea guards engine documents: `legacyExisting()` / `legacyIncoming()` refuse any browser write to a document carrying `_dataEngine`, and they check the EXISTING document too, so an old queued full `setDoc` cannot erase the marker.
 - Keep owner checks on both sides of an update: `ownsExisting('userId') && ownsIncoming('userId')`, so a document cannot be reassigned to someone else.
 - The Admin SDK bypasses rules. A server path that changes such a field is where its authorization lives, and a server writer of content must advance the `rev` counter itself.
 - Prove both directions: per protected field one `assertFails` on create and one on update; `assertSucceeds` for every UX field the app writes (language, the settings toggles, the `lastSeenAt` heartbeat through a merge `setDoc`). The suite runs under `firebase emulators:exec`; `frontend/rules-test-closed.cjs` covers collections closed to browser writes.
-- Rules deploy separately from the app bundle. Protective rules go out before the code that relies on them (engine rollout order: `docs/architecture/data-engine-migration-log.md`).
+- Rules deploy separately from the app bundle. Protective rules go out before the code that relies on them (engine rollout order: `docs/architecture/data-engine-migration-log.md`). A NEW server-managed field especially: the repository is public, so its name is known the moment the code is pushed, and until the rule ships a client can write it on its own profile — a value nothing can later tell from the server's. Deploy the rule from the working tree first (`npm run test:rules` green), confirm no user holds the field, then push (F6 referral fields, 2026-10-05).
 
 ## Traps
 

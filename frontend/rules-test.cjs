@@ -29,6 +29,8 @@ const SERVER_MANAGED_USER_FIELDS = {
   },
   role: 'admin',
   referredBy: 'someUid',
+  referralWarning: { at: '2026-07-12T12:00:00.000Z', referralCount: 3 },
+  referralLedger: { count: 3, invitees: [{ uid: 'x', at: '2026-07-12T12:00:00.000Z' }] },
 };
 
 (async () => {

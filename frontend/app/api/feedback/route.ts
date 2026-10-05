@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 
 import { getAuthenticatedIdentity } from '@/api/auth/getAuthenticatedIdentity.server';
 import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import {
+  createOwnerMailTransport,
+  escapeHtml,
+  OWNER_EMAIL,
+  ownerMailConfigured,
+  ownerMailFrom,
+} from '@/services/ownerMail.server';
 import {
   consumeSlidingWindowRateLimit,
   FEEDBACK_RATE_LIMIT_MAX_SUBMISSIONS,
@@ -31,29 +37,6 @@ interface FeedbackData {
   imageCount?: number; // stored in Firestore instead of raw Base64
 }
 
-interface EmailConfig {
-  host: string;
-  port: number;
-  secure: boolean;
-  auth: {
-    user: string;
-    pass: string;
-  };
-}
-
-// Email configuration
-const EMAIL_CONFIG: EmailConfig = {
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT || '587'),
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER || '',
-    pass: process.env.EMAIL_PASSWORD || '',
-  },
-};
-
-// The owner's email to receive feedback notifications
-const OWNER_EMAIL = process.env.OWNER_EMAIL || 'my@gmail.com';
 const NOT_PROVIDED = 'Not provided';
 const MAX_FEEDBACK_TYPE_LENGTH = 32;
 const ALLOWED_FEEDBACK_TYPES = new Set([
@@ -72,19 +55,6 @@ function resolveFeedbackType(value: unknown): string {
     return value;
   }
   return 'other';
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => {
-    const entities: Record<string, string> = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    };
-    return entities[character];
-  });
 }
 
 type ImageValidationResult =
@@ -122,13 +92,6 @@ function validateImages(images: unknown): ImageValidationResult {
   return { ok: true, images };
 }
 
-/**
- * Creates an email transporter with the configured settings
- */
-function createTransporter() {
-  console.log(`Creating email transporter with host: ${EMAIL_CONFIG.host}, port: ${EMAIL_CONFIG.port}`);
-  return nodemailer.createTransport(EMAIL_CONFIG);
-}
 
 /**
  * Builds inline image HTML for the email body using CID references.
@@ -174,7 +137,7 @@ async function sendEmailNotification(
 
   try {
     // If email credentials are not configured, skip sending email
-    if (!EMAIL_CONFIG.auth.user || !EMAIL_CONFIG.auth.pass) {
+    if (!ownerMailConfigured()) {
       console.log('Email credentials not configured, skipping email notification');
       return;
     }
@@ -188,11 +151,11 @@ async function sendEmailNotification(
         : userEmail;
 
     // Create a transporter for this specific email
-    const transporter = createTransporter();
+    const transporter = createOwnerMailTransport();
 
     // Prepare email content
     const emailContent = {
-      from: `"Preacher Helper" <${EMAIL_CONFIG.auth.user}>`,
+      from: ownerMailFrom(),
       to: OWNER_EMAIL,
       ...(userEmail !== NOT_PROVIDED && { replyTo: userEmail }),
       subject: `New Feedback (${type}) from Preacher Helper`,

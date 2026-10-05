@@ -61,6 +61,8 @@ type AdminUser = {
   role: Role | null;
   referredBy: string | null;
   referralCount: number;
+  /** F6: set by the third referral for a human look; the promotion keeps accruing. */
+  referralWarning?: { at: string; referralCount: number } | null;
 };
 
 type AdminUsersResponse = {
@@ -154,6 +156,13 @@ const isAdminUser = (value: unknown): value is AdminUser => {
     && isTier(value.promotion.tier)
     && typeof value.promotion.expiresAt === 'string'
   );
+  const referralWarningIsValid = value.referralWarning === undefined || value.referralWarning === null || (
+    isRecord(value.referralWarning)
+    && typeof value.referralWarning.at === 'string'
+    && !Number.isNaN(Date.parse(value.referralWarning.at))
+    && Number.isInteger(value.referralWarning.referralCount)
+    && (value.referralWarning.referralCount as number) >= 1
+  );
 
   return typeof value.uid === 'string'
     && isNullableString(value.email)
@@ -173,7 +182,8 @@ const isAdminUser = (value: unknown): value is AdminUser => {
     && isNullableString(value.referredBy)
     && typeof value.referralCount === 'number'
     && Number.isInteger(value.referralCount)
-    && value.referralCount >= 0;
+    && value.referralCount >= 0
+    && referralWarningIsValid;
 };
 
 const parseAdminUsersResponse = (value: unknown): AdminUsersResponse | null => {
@@ -334,6 +344,20 @@ function StatusBadge({ user }: { user: AdminUser }) {
   );
 }
 
+/** F6: an inviter flagged by the third referral, for the owner to look at — nothing is blocked. */
+function ReferralWarningBadge({ user }: { user: AdminUser }) {
+  const { t, i18n } = useTranslation();
+  if (!user.referralWarning) return null;
+  return (
+    <Chip weight="bold" tone="violet" title={t('admin.users.referralWarning.detail', {
+      count: user.referralWarning.referralCount,
+      date: formatDate(user.referralWarning.at, '—', i18n.language),
+    })}>
+      {t('admin.users.referralWarning.badge')}
+    </Chip>
+  );
+}
+
 function UsageMiniBar({ user }: { user: AdminUser }) {
   const baseLimit = AI_USAGE_LIMIT[user.effectiveTier];
   const cap = hardCap(baseLimit, 'discrete');
@@ -432,7 +456,7 @@ function UserList({ users, filteredUsers, filter, search, selectedUid, loading, 
             <col className="w-[16%]" />
           </colgroup>
           <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800"><tr className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500"><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.user')}</th><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.lastLogin')}</th><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.lastSeen')}</th><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.tier')}</th><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.status')}</th><th className="border-b border-slate-200 px-4 py-3 dark:border-slate-700" scope="col">{t('admin.users.columns.usage')}</th></tr></thead>
-          {loading ? <SkeletonRows /> : <tbody>{filteredUsers.map((user) => <tr aria-label={t('admin.users.openUser', { email: user.email ?? t(NO_EMAIL_KEY) })} className={`${selectedUid === user.uid ? 'bg-blue-50 dark:bg-blue-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'} cursor-pointer border-b border-slate-100 text-slate-800 outline-none transition focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:border-slate-800 dark:text-slate-100 dark:focus:bg-blue-950/40`} key={user.uid} onClick={() => onSelect(user)} onKeyDown={(event) => rowKeyDown(event, user)} tabIndex={0}><td className="px-4 py-3"><div className="flex items-center gap-3"><Avatar user={user} /><div className="min-w-0"><p className="truncate font-semibold">{user.email ?? t(NO_EMAIL_KEY)}</p><p className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500" title={user.uid}>{truncateUid(user.uid)}</p></div></div></td><td className="whitespace-nowrap px-4 py-3"><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={language} value={user.lastSignInTime} /></td><td className="whitespace-nowrap px-4 py-3"><ActivityTime fallback={t('admin.users.neverSeen')} language={language} value={resolveLastSeenAt(user)} /></td><td className="px-4 py-3"><TierBadge tier={user.effectiveTier} /></td><td className="px-4 py-3"><StatusBadge user={user} /></td><td className="px-4 py-3"><UsageMiniBar user={user} /></td></tr>)}</tbody>}
+          {loading ? <SkeletonRows /> : <tbody>{filteredUsers.map((user) => <tr aria-label={t('admin.users.openUser', { email: user.email ?? t(NO_EMAIL_KEY) })} className={`${selectedUid === user.uid ? 'bg-blue-50 dark:bg-blue-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'} cursor-pointer border-b border-slate-100 text-slate-800 outline-none transition focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 dark:border-slate-800 dark:text-slate-100 dark:focus:bg-blue-950/40`} key={user.uid} onClick={() => onSelect(user)} onKeyDown={(event) => rowKeyDown(event, user)} tabIndex={0}><td className="px-4 py-3"><div className="flex items-center gap-3"><Avatar user={user} /><div className="min-w-0"><p className="truncate font-semibold">{user.email ?? t(NO_EMAIL_KEY)}</p><p className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500" title={user.uid}>{truncateUid(user.uid)}</p></div></div></td><td className="whitespace-nowrap px-4 py-3"><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={language} value={user.lastSignInTime} /></td><td className="whitespace-nowrap px-4 py-3"><ActivityTime fallback={t('admin.users.neverSeen')} language={language} value={resolveLastSeenAt(user)} /></td><td className="px-4 py-3"><TierBadge tier={user.effectiveTier} /></td><td className="px-4 py-3"><div className="flex flex-wrap items-center gap-1.5"><StatusBadge user={user} /><ReferralWarningBadge user={user} /></div></td><td className="px-4 py-3"><UsageMiniBar user={user} /></td></tr>)}</tbody>}
         </table>
         {!loading && filteredUsers.length === 0 && <div className="px-6 py-16 text-center"><p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('admin.users.emptyFiltered')}</p><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t('admin.users.emptyFilteredHint')}</p></div>}
       </div>
@@ -655,7 +679,7 @@ function UserDrawer(props: DrawerProps) {
         </header>
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={props.onSubmit}>
           <div className="flex-1 overflow-y-auto px-5 py-4">
-            {user && <><h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{t('admin.users.profile')}</h2><dl className="grid grid-cols-2 gap-x-4 gap-y-3"><DetailItem label={t('admin.users.fields.email')}>{user.email ?? t(NO_EMAIL_KEY)}</DetailItem><DetailItem label={t('admin.users.fields.verified')}>{user.emailVerified ? t('admin.users.verified') : t('admin.users.unverified')}</DetailItem><DetailItem label={t('admin.users.fields.disabled')}>{user.disabled ? t('admin.users.disabled') : t('admin.users.enabled')}</DetailItem><DetailItem label={t('admin.users.fields.lastLogin')}><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={i18n.language} value={user.lastSignInTime} /></DetailItem><DetailItem label={t('admin.users.fields.lastSeen')}><ActivityTime fallback={t('admin.users.neverSeen')} language={i18n.language} value={resolveLastSeenAt(user)} /></DetailItem><DetailItem label={t('admin.users.fields.creation')}>{formatDate(user.creationTime, '—', i18n.language)}</DetailItem><DetailItem label={t('admin.users.fields.paidTier')}><TierBadge tier={user.paidTier} /></DetailItem><DetailItem label={t('admin.users.fields.effectiveTier')}><TierBadge tier={user.effectiveTier} /></DetailItem><DetailItem label={t('admin.users.fields.promotion')}>{promotion}</DetailItem><DetailItem label={t('admin.users.fields.referredBy')}>{user.referredBy ?? '—'}</DetailItem><DetailItem label={t('admin.users.fields.invitedCount')}>{user.referralCount}</DetailItem></dl></>}
+            {user && <><h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{t('admin.users.profile')}</h2><dl className="grid grid-cols-2 gap-x-4 gap-y-3"><DetailItem label={t('admin.users.fields.email')}>{user.email ?? t(NO_EMAIL_KEY)}</DetailItem><DetailItem label={t('admin.users.fields.verified')}>{user.emailVerified ? t('admin.users.verified') : t('admin.users.unverified')}</DetailItem><DetailItem label={t('admin.users.fields.disabled')}>{user.disabled ? t('admin.users.disabled') : t('admin.users.enabled')}</DetailItem><DetailItem label={t('admin.users.fields.lastLogin')}><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={i18n.language} value={user.lastSignInTime} /></DetailItem><DetailItem label={t('admin.users.fields.lastSeen')}><ActivityTime fallback={t('admin.users.neverSeen')} language={i18n.language} value={resolveLastSeenAt(user)} /></DetailItem><DetailItem label={t('admin.users.fields.creation')}>{formatDate(user.creationTime, '—', i18n.language)}</DetailItem><DetailItem label={t('admin.users.fields.paidTier')}><TierBadge tier={user.paidTier} /></DetailItem><DetailItem label={t('admin.users.fields.effectiveTier')}><TierBadge tier={user.effectiveTier} /></DetailItem><DetailItem label={t('admin.users.fields.promotion')}>{promotion}</DetailItem><DetailItem label={t('admin.users.fields.referredBy')}>{user.referredBy ?? '—'}</DetailItem><DetailItem label={t('admin.users.fields.invitedCount')}>{user.referralCount}</DetailItem>{user.referralWarning && <DetailItem label={t('admin.users.fields.referralWarning')}>{t('admin.users.referralWarning.detail', { count: user.referralWarning.referralCount, date: formatDate(user.referralWarning.at, '—', i18n.language) })}</DetailItem>}</dl></>}
             <h2 className={`${user ? 'mt-6' : ''} mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500`}>{t('admin.users.editSection')}</h2>
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300" htmlFor="target-uid">{t('admin.targetUid')}<input className={fieldClassName} id="target-uid" onChange={(event) => props.onTargetUidChange(event.target.value)} required value={props.targetUid} /></label>

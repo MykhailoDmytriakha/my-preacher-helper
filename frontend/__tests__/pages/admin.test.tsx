@@ -101,6 +101,27 @@ describe('Admin Page', () => {
     expect(fills[1]).toHaveClass('bg-blue-600', 'dark:bg-blue-400');
   });
 
+  // F6: an inviter flagged by the third referral stands out in the list and explains itself in
+  // the drawer; everyone else shows nothing new.
+  it('marks an inviter flagged for a referral check, in the row and in the drawer', async () => {
+    const flagged = [{ ...users[0], referralWarning: { at: '2026-07-12T12:00:00.000Z', referralCount: 3 } }, { ...users[1], referralWarning: null }];
+    fetchMock.mockResponses(
+      [JSON.stringify({ admin: true }), { status: 200 }],
+      [JSON.stringify({ users: flagged }), { status: 200 }],
+      [JSON.stringify(modelDefaults), { status: 200 }]
+    );
+    render(<AdminPage />);
+
+    const alphaRow = (await screen.findByText('alpha@example.com')).closest('tr') as HTMLTableRowElement;
+    const betaRow = screen.getByText('beta@example.com').closest('tr') as HTMLTableRowElement;
+    expect(within(alphaRow).getByText('admin.users.referralWarning.badge')).toBeInTheDocument();
+    expect(within(betaRow).queryByText('admin.users.referralWarning.badge')).not.toBeInTheDocument();
+
+    fireEvent.click(alphaRow);
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('admin.users.fields.referralWarning')).toBeInTheDocument();
+  });
+
   it('sticks the section menu below the measured app nav, not under it', async () => {
     mockAuthorizedList();
     render(<AdminPage />);

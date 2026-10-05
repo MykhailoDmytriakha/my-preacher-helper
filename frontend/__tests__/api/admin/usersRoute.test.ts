@@ -181,6 +181,35 @@ describe('GET /api/admin/users', () => {
     }));
   });
 
+  // F6: the flag a third referral puts on an inviter reaches the admin as it was set, or not at all.
+  it('returns the referral check flag in its stored shape and drops anything malformed', async () => {
+    mockListUsers.mockResolvedValue({
+      users: ['flagged', 'malformed', 'badDate', 'zero', 'plain'].map((uid) => ({
+        uid, email: `${uid}@example.com`, emailVerified: true, disabled: false,
+        metadata: { lastSignInTime: '2026-07-12T10:00:00.000Z', creationTime: '2026-01-01T10:00:00.000Z' },
+      })),
+    });
+    mockUsersGet.mockResolvedValue({
+      docs: [
+        { id: 'flagged', data: () => ({ referralWarning: { at: '2026-07-12T12:00:00.000Z', referralCount: 3, extra: 'x' } }) },
+        { id: 'malformed', data: () => ({ referralWarning: { at: 42, referralCount: 'three' } }) },
+        { id: 'badDate', data: () => ({ referralWarning: { at: 'garbage', referralCount: 3 } }) },
+        { id: 'zero', data: () => ({ referralWarning: { at: '2026-07-12T12:00:00.000Z', referralCount: -1 } }) },
+        { id: 'plain', data: () => ({}) },
+      ],
+    });
+    mockReferralEventsGet.mockResolvedValue({ docs: [] });
+
+    const body = await (await GET(createRequest())).json();
+    const byUid = Object.fromEntries(body.users.map((user: { uid: string }) => [user.uid, user]));
+
+    expect(byUid.flagged.referralWarning).toEqual({ at: '2026-07-12T12:00:00.000Z', referralCount: 3 });
+    expect(byUid.malformed.referralWarning).toBeNull();
+    expect(byUid.badDate.referralWarning).toBeNull();
+    expect(byUid.zero.referralWarning).toBeNull();
+    expect(byUid.plain.referralWarning).toBeNull();
+  });
+
   it('passes the forward page token to Firebase Auth unchanged', async () => {
     await GET(createRequest('opaque+/= token'));
 
