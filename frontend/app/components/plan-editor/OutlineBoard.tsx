@@ -152,7 +152,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const editingDirectly = directText && !isReadOnly;
   const noteIndex = useMemo(() => indexScratchNotes(scratch), [scratch]);
   const notesInContainer = (id: string) => noteIndex.get(id) ?? [];
-  const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, sensors,
+  const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, boardRef, sensors,
     collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
     handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag } = useOutlineBoardDrag(points, scratch, notesInContainer);
 
@@ -1082,7 +1082,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         onDragEnd={onDragEnd}
       >
         {scratch ? (
-          <div className="space-y-4">
+          <div ref={boardRef} data-outline-board className="space-y-4">
             <ScratchNotePool {...noteListProps} scratch={scratch} notes={notesInContainer(NOTE_POOL_ID)} activeDrag={activeDrag} />
             {boardColumns}
           </div>

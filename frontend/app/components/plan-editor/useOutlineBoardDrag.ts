@@ -50,6 +50,15 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
   const [keptNoteId, setKeptNoteId] = useState<string | null>(null);
   const overlayCardRef = useRef<HTMLDivElement | null>(null);
   /*
+   * THIS BOARD, NOT THE DOCUMENT. The structure editor is a dialog drawn over the page's own scratch
+   * board, with the same container ids and the same note cards, and the page comes first in the
+   * document. Every lookup by id and every hit under the pointer stays inside the board the drag
+   * started on — measured live: a note dropped on the dialog's pool went into the point that lies
+   * on the page behind it. Without a root (a board with no scratch notes) the document is the board.
+   */
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const boardScope = (): ParentNode => boardRef.current ?? document;
+  /*
    * A drag starts only after the pointer has travelled a few pixels, so a tap on
    * the handle still counts as a click and the card can be renamed or deleted
    * without the board thinking a move began. Touch is its own sensor: a finger
@@ -85,7 +94,7 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     if (subject?.kind === 'note' && typeof document !== 'undefined') {
       // The inner card, not its wrapper: in the pool grid the wrapper is stretched
       // to the tallest card of its row, and every slot would be cut to that.
-      const wrapper = document.querySelector<HTMLElement>(`[data-scratch-note="${subject.id}"]`);
+      const wrapper = boardScope().querySelector<HTMLElement>(`[data-scratch-note="${subject.id}"]`);
       const card = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
       const height = card ? card.getBoundingClientRect().height : 0;
       activeNoteHeightRef.current = height;
@@ -191,7 +200,7 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
    */
   const measureNoteContainer = (containerId: string, activeId: string | null): NoteContainerMeasure | null => {
     if (typeof document === 'undefined') return null;
-    const strip = document.querySelector<HTMLElement>(`[data-scratch-strip="${containerId}"]`);
+    const strip = boardScope().querySelector<HTMLElement>(`[data-scratch-strip="${containerId}"]`);
     if (!strip) return null;
     const cards: NoteContainerMeasure['cards'] = [];
     let slot: NoteContainerMeasure['slot'] = null;
@@ -234,8 +243,10 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return [];
     const seen = new Set<string>();
     const hits: { id: string }[] = [];
+    const board = boardRef.current;
     for (const el of document.elementsFromPoint(point.x, point.y)) {
       const container = (el as HTMLElement).closest?.('[data-note-container]') as HTMLElement | null;
+      if (container && board && !board.contains(container)) continue;
       const id = container?.dataset.noteContainer;
       if (id && !seen.has(id)) {
         seen.add(id);
@@ -245,16 +256,51 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     return hits;
   };
 
+  /**
+   * How far the flying copy of a clipped note is drawn below dnd-kit's rectangle: by the height it
+   * lost, so the handle row stays where it was grabbed — at the BOTTOM of a tall card on the sermon
+   * page, which is otherwise above the window. One reading for the copy (`keepHandleUnderFinger`)
+   * and for the keyboard's aim, so what the person sees and where the drop goes cannot part: they
+   * did by ~40px, and over a point's top edge Space dropped the note into the gap above it.
+   */
+  const handleShift = (): number => {
+    const overlayCard = overlayCardRef.current;
+    const fullHeight = activeNoteHeightRef.current;
+    if (!overlayCard || !fullHeight) return 0;
+    return Math.max(0, fullHeight - overlayCard.offsetHeight);
+  };
+
+  /**
+   * Every scroll the board sits in: the window's and that of any container holding its lists. The
+   * structure editor is a dialog that scrolls itself while the window stays put — a keyboard drag
+   * near its edge scrolls the dialog instead of moving the copy, and the cached answer then named
+   * whatever lay under the copy before the scroll: measured live, a note carried over a point by the
+   * arrows went back to the pool.
+   */
+  const scrollSignature = (): string => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return '';
+    const parts = [`${Math.round(window.scrollX)},${Math.round(window.scrollY)}`];
+    const visited = new Set<Element>();
+    boardScope().querySelectorAll('[data-note-container]').forEach((node) => {
+      for (let el: Element | null = node; el && !visited.has(el); el = el.parentElement) {
+        visited.add(el);
+        // The visit order names the element, so two scrollers trading their offsets still differ.
+        if (el.scrollTop || el.scrollLeft) parts.push(`${visited.size}:${Math.round(el.scrollLeft)},${Math.round(el.scrollTop)}`);
+      }
+    });
+    return parts.join('|');
+  };
+
   /*
    * A NOTE'S TARGET CHANGES ONLY WHEN THE POINTER MOVES — OR THE PAGE DOES.
    * dnd-kit recomputes collisions on every re-measure as well, and a slot that
    * opens above a sub-point shifts that row under a still pointer: parent → child
    * → the slot closes → the row shifts back → parent → … — an effect-driven loop
    * that froze the page. Between two pointer events the answer is the previous
-   * answer. The key also carries the window scroll: during auto-scroll the pointer
-   * rests while the board slides under it, and that IS a move. For a keyboard
-   * drag the centre of the flying copy stands in for the pointer, so the same
-   * rule holds there.
+   * answer. The key also carries every scroll the board sits in: during auto-scroll
+   * the pointer rests while the board slides under it, and that IS a move. For a
+   * keyboard drag the centre of the flying copy stands in for the pointer, so the
+   * same rule holds there.
    */
   const lastNoteKeyRef = useRef<string | null>(null);
   const lastNoteCollisionsRef = useRef<ReturnType<CollisionDetection> | null>(null);
@@ -266,11 +312,15 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
       return allowedCollisions(kind, hits);
     }
     const rect = args.collisionRect;
-    const fallbackPoint = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+    // No pointer (keyboard): the centre of the copy as drawn — dnd-kit's rectangle plus the handle shift.
+    const fallbackPoint = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 + handleShift() } : null;
     const point = args.pointerCoordinates ?? fallbackPoint;
-    const scroll = typeof window === 'undefined' ? '' : `${Math.round(window.scrollX)},${Math.round(window.scrollY)}`;
+    const scroll = scrollSignature();
     const key = point ? `${Math.round(point.x)},${Math.round(point.y)}|${scroll}` : null;
-    if (key && key === lastNoteKeyRef.current && lastNoteCollisionsRef.current) {
+    // "No target" is never held. It opens nothing; it can close the slot that was open, once, and
+    // that can slide a container under the still copy (measured on a phone) — asked again, the board
+    // finds it. A found target IS held, so the next answer cannot flip the layout back and forth.
+    if (key && key === lastNoteKeyRef.current && lastNoteCollisionsRef.current?.length) {
       return lastNoteCollisionsRef.current;
     }
     const hits = point ? noteContainersUnderPointer(point) : rectIntersection(args);
@@ -298,11 +348,9 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
   const keepHandleUnderFinger = useCallback<Modifier>(({ transform, active }) => {
     const kind = active ? parseDragId(String(active.id))?.kind : null;
     if (kind !== 'note') return transform;
-    const overlayCard = overlayCardRef.current;
-    const fullHeight = activeNoteHeightRef.current;
-    if (!overlayCard || !fullHeight) return transform;
-    const dy = fullHeight - overlayCard.offsetHeight;
+    const dy = handleShift();
     return dy > 0 ? { ...transform, y: transform.y + dy } : transform;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /*
@@ -330,7 +378,7 @@ export function useOutlineBoardDrag(outline: SermonOutline, scratch: ScratchLaye
     setHoveredDropId(null);
   };
   const cancelDrag = () => { clearActiveDrag(); resetNoteDrag(); };
-  return { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, sensors,
+  return { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, boardRef, sensors,
     collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
     handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag };
 }
