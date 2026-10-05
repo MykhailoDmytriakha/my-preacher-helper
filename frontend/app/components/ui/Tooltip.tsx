@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
+import { clampTooltipCentre } from '@/utils/tooltipPlacement';
+
 interface TooltipProps {
   children: React.ReactNode;
   content: React.ReactNode;
@@ -86,11 +88,7 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
       const tooltipRect = tooltipRef.current?.getBoundingClientRect();
       if (!triggerRect || !tooltipRect) return;
 
-      const horizontalPadding = 12;
-      const left = Math.min(
-        Math.max(triggerRect.left + triggerRect.width / 2, horizontalPadding + tooltipRect.width / 2),
-        window.innerWidth - horizontalPadding - tooltipRect.width / 2
-      );
+      const left = clampTooltipCentre(triggerRect.left + triggerRect.width / 2, tooltipRect.width, window.innerWidth);
       const top = triggerRect.top >= tooltipRect.height + 8
         ? triggerRect.top - tooltipRect.height - 8
         : triggerRect.bottom + 8;

@@ -14,7 +14,10 @@ export const TooltipStyles = () => (
       border-radius: 4px;
       padding: 4px 8px;
       font-size: 0.75rem;
-      white-space: nowrap;
+      /* One line while it fits; a long reason wraps instead of leaving the window. */
+      width: max-content;
+      max-width: calc(100vw - 24px); /* the shared edge padding (utils/tooltipPlacement.ts) on both sides */
+      white-space: normal;
       position: absolute;
       z-index: 1000;
     }
@@ -29,10 +32,11 @@ export const TooltipStyles = () => (
       to { opacity: 1; }
     }
 
+    /* --tooltip-shift: set on hover by keepTooltipOnScreen so a tooltip by the window's edge stays inside it. */
     .tooltiptext-top {
       bottom: calc(100% + 5px);
       left: 50%;
-      transform: translateX(-50%);
+      transform: translateX(calc(-50% + var(--tooltip-shift, 0px)));
     }
 
     .tooltiptext-right {
@@ -45,7 +49,7 @@ export const TooltipStyles = () => (
       content: "";
       position: absolute;
       top: 100%;
-      left: 50%;
+      left: calc(50% - var(--tooltip-shift, 0px));
       margin-left: -5px;
       border-width: 5px;
       border-style: solid;

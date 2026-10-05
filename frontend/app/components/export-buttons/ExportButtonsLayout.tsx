@@ -16,6 +16,7 @@ import {
   getWordTextButtonClassName,
 } from "./classNames";
 import { AUDIO_BUTTON_LABEL, LAYOUT_CLASS_BY_ORIENTATION, TOOLTIP_POSITION_BY_ORIENTATION } from "./constants";
+import { keepTooltipOnScreen } from "./tooltipShift";
 
 import type { ExportButtonsLayoutProps } from "./types";
 
@@ -74,7 +75,7 @@ export function ExportButtonsLayout({
 
     return (
       <div className={`flex flex-wrap ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
-        <div className="tooltip">
+        <div className="tooltip" onMouseEnter={keepTooltipOnScreen}>
           <button
             onClick={onTxtClick}
             className={`p-1.5 rounded-md transition-colors ${getTxtIconButtonClassName(isPreached)}`}
@@ -85,7 +86,7 @@ export function ExportButtonsLayout({
           <span className="tooltiptext tooltiptext-top">{txtButtonLabel}</span>
         </div>
 
-        <div className="tooltip">
+        <div className="tooltip" onMouseEnter={keepTooltipOnScreen}>
           <button
             onClick={onPdfClick}
             disabled={!isPdfAvailable}
@@ -97,7 +98,7 @@ export function ExportButtonsLayout({
           <span className="tooltiptext tooltiptext-top">{pdfTooltipText}</span>
         </div>
 
-        <div className="tooltip">
+        <div className="tooltip" onMouseEnter={keepTooltipOnScreen}>
           <button
             onClick={onWordClick}
             disabled={isWordDisabled || isWordExporting}
@@ -111,7 +112,7 @@ export function ExportButtonsLayout({
         </div>
 
         {isAudioEnabled && onAudioClick && (
-          <div className="tooltip">
+          <div className="tooltip" onMouseEnter={keepTooltipOnScreen}>
             <button
               onClick={onAudioClick}
               disabled={isAudioDisabled}
@@ -140,7 +141,7 @@ export function ExportButtonsLayout({
         </ActionButton>
       </div>
 
-      <div className={`tooltip ${textButtonSlotClassName}`}>
+      <div className={`tooltip ${textButtonSlotClassName}`} onMouseEnter={keepTooltipOnScreen}>
         <ActionButton
           onClick={onPdfClick}
           disabled={!isPdfAvailable}
@@ -152,7 +153,7 @@ export function ExportButtonsLayout({
         {!isPdfAvailable && <span className={`tooltiptext ${tooltipPositionClass}`}>{soonAvailableLabel}</span>}
       </div>
 
-      <div className={`tooltip ${textButtonSlotClassName}`}>
+      <div className={`tooltip ${textButtonSlotClassName}`} onMouseEnter={keepTooltipOnScreen}>
         <ActionButton
           onClick={onWordClick}
           disabled={isWordDisabled || isWordExporting}
@@ -166,7 +167,7 @@ export function ExportButtonsLayout({
       </div>
 
       {isAudioEnabled && onAudioClick && (
-        <div className={`tooltip ${textButtonSlotClassName}`}>
+        <div className={`tooltip ${textButtonSlotClassName}`} onMouseEnter={keepTooltipOnScreen}>
           <ActionButton
             onClick={onAudioClick}
             disabled={isAudioDisabled}
