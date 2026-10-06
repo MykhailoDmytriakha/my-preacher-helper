@@ -210,7 +210,7 @@ export class ManualScope {
   /** A completed form can start a fresh pinned stage without resetting its save identity. */
   restart(): Promise<void> {
     this.assertCurrent();
-    if (!equalValues(this.record.stage, this.record.savedSelection)) throw new Error('Resolve the unsaved manual stage before reopening');
+    if (!equalValues(this.record.stage, this.record.savedSelection)) throw Object.assign(new Error('Resolve the unsaved manual stage before reopening'), { code: 'unsent-form-first' });
     if (this.record.predecessor && !this.options.port.isSettled?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not settled');
     this.record = captureRecord(this.options, this.record.generation + 1);
     this.tail = null;

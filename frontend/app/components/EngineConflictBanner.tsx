@@ -9,6 +9,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, waitsForDecision } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useShellPathname } from '@/hooks/useShellPathname';
+import { refusalMessage } from '@/utils/actionFailureMessage';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 
 import type { EditorRecord } from '@/data-engine/controller';
@@ -180,7 +181,8 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     }
     catch (error) {
       console.error('Engine conflict could not be settled', error);
-      toast.error(t('common.saveError'));
+      // A refusal may be an instruction; it is said in words (BUG-20261003-engine-refusals-speak-english).
+      toast.error(refusalMessage(error, t, 'common.saveError'));
     } finally {
       setBusy(false);
       await refresh();

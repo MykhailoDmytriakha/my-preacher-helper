@@ -101,9 +101,9 @@ export async function forkCheckpoint(store: Pick<CheckpointRecoveryStore, 'read'
     || sourceId !== recoveryCheckpointId(owner, identity[1]) || !newEditorId || newEditorId === identity[1]) throw new Error('Invalid checkpoint recovery identity');
   for (let attempt = 0; ; attempt += 1) {
     const value = await store.read(owner, identity[1]);
-    if (!value) throw new Error('Recovery checkpoint no longer exists');
+    if (!value) throw Object.assign(new Error('Recovery checkpoint no longer exists'), { code: 'draft-gone' });
     const original = validateRecoveryRecord(value, owner, identity[1], resource);
-    if (!isRecoverableCheckpoint(original)) throw new Error('The checkpoint has no pending local work');
+    if (!isRecoverableCheckpoint(original)) throw Object.assign(new Error('The checkpoint has no pending local work'), { code: 'draft-done' });
     const forked = clone({ ...original, editorId: newEditorId });
     try { await store.create(forked); return clone(forked); }
     catch (error) {

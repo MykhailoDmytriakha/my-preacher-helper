@@ -57,7 +57,7 @@ function EngineGroupsPage() {
     recover: async id => {
       const records = await browser!.engine.listRecoverable();
       const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'groups');
-      if (!selected) throw new Error('Group draft no longer exists');
+      if (!selected) throw Object.assign(new Error('Group draft no longer exists'), { code: 'draft-gone' });
       setCreation({ id: selected.record.checkpoint.confirmed.resource.id, recoveryId: id });
     } });
   return <>

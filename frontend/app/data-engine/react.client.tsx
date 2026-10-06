@@ -626,6 +626,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   useEffect(() => { if (current) setCopied(null); }, [current]);
   // Only while the screen still asks for it: a view that switches to editing must not inherit it.
   const copy = readOnlyCopy && !current && copied?.base === base ? copied : null;
+  const editorError = current?.state.error ?? null, editorErrorCode = current?.state.errorCode ?? undefined;
+  const editorRefusal = editorError === null ? null
+    : say(refusalWords(Object.assign(new Error(editorError), { code: editorErrorCode }), DOCUMENT_FAILED));
   const isCurrent = useCallback(() => mounted.current && scope.current === identity, [identity]);
   const run = useCallback(async (action: (editor: ManagedEditor) => Promise<void>) => {
     if (!isCurrent()) throw new Error(EDITOR_CHANGED);
@@ -711,9 +714,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     readOnlyReason: copy ? readOnlyReason() : null,
     // A background failure elsewhere in the engine never reaches an open document or a copy shown
     // for reading: pages treat `error` as "could not load" (see useBackgroundFailure).
-    // The editor's own state error also holds refused actions (controller `enqueue`), so it keeps
-    // the engine's words, which may be an instruction (BUG-20261003-engine-refusals-speak-english).
-    error: error ?? current?.state.error ?? (copy || current ? null : backgroundFailure),
+    // The editor's own state error also holds refused actions (controller `enqueue`): a coded one is
+    // said in words, an unknown one keeps the engine's sentence, which may be an instruction
+    // (BUG-20261003-engine-refusals-speak-english).
+    error: error ?? editorRefusal ?? (copy || current ? null : backgroundFailure),
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
       return run(editor => editor.edit(value));

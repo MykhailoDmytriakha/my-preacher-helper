@@ -114,6 +114,18 @@ describe('React DataEngine contract', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  /** BUG-20261003-engine-refusals-speak-english: a refusal kept in the editor state is said in words when coded. */
+  it('says a coded refusal kept in the editor state in words, and an unknown one as the engine wrote it', async () => {
+    const editor = makeEditor(), browser = makeBrowser(editor.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);
+    const hook = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(hook.result.current.state).not.toBeNull());
+    act(() => editor.setState({ ...editor.state, error: 'Read the current document before resolving a generation mismatch', errorCode: 'fresh-read-required' }));
+    expect(hook.result.current.error).toBe('dataSync.failure.freshReadRequired');
+    act(() => editor.setState({ ...editor.state, error: 'Resolve the requested series before saving', errorCode: null }));
+    expect(hook.result.current.error).toBe('Resolve the requested series before saving');
+  });
+
   it('exposes asynchronous checkpoint failures and clears them after durable recovery', async () => {
     const editor = makeEditor(), browser = makeBrowser(editor.editor);
     jest.mocked(createBrowserDataEngine).mockReturnValue(browser.browser);

@@ -33,7 +33,7 @@ function WorkspaceRecovery() {
     }),
     recover: async id => {
       const record = (await actions.listRecoverable({ closedOnly: true })).find(record => record.scopeId === id);
-      if (!record) throw new Error('This draft is no longer available');
+      if (!record) throw Object.assign(new Error('This draft is no longer available'), { code: 'draft-gone' });
       setSelected({ identity: actions.recoveryIdentity, id, creation: Boolean(record.creation) });
     } });
   return <>

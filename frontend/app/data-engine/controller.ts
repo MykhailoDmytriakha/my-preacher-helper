@@ -58,6 +58,8 @@ export interface EditorState {
   checkpoint: SessionCheckpoint;
   durable: boolean;
   error: string | null;
+  /** The refusal's code, when it has one, so a screen can say it in words (actionFailureMessage). */
+  errorCode?: string | null;
   result: CommandResult | null;
   /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
   preparing?: boolean;
@@ -73,6 +75,7 @@ export class EditorController {
   private unfinalized: string[] = [];
   private durable = true;
   private error: string | null = null;
+  private errorCode: string | null = null;
   /** Requests a manual form handed to this editor (`adoptManualCommit`): resolved by the form, not here. */
   private manualRequests = new Set<string>();
   private result: CommandResult | null = null;
@@ -131,7 +134,7 @@ export class EditorController {
   getState(): EditorState {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
-    return { checkpoint, durable: this.durable, error: this.error, result: this.result, preparing: this.preparations > 0,
+    return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0,
       actionResolutionRequired: this.atomicPending.size > 0,
       manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
   }
@@ -210,9 +213,9 @@ export class EditorController {
   remove(): Promise<void> {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
-    if (Object.keys(checkpoint.pending).length || this.prepared || this.preparations) return Promise.reject(new Error('Resolve pending commands before deleting'));
+    if (Object.keys(checkpoint.pending).length || this.prepared || this.preparations) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: 'pending-delivery-first' }));
     if (!checkpoint.confirmed.value || checkpoint.confirmed.metadata?.deleted) return Promise.resolve();
-    if (!this.durable) return Promise.reject(new Error('Save the local draft before deleting'));
+    if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
     const persisting = this.edit(null);
     const deletion = this.session.checkpoint();
     return persisting.then(() => this.save(deletion));
@@ -292,7 +295,7 @@ export class EditorController {
     this.assertCurrent();
     if (selection && checkpoint.confirmed.value && checkpoint.draft && !equalValues(checkpoint.draft,
       projectManualSelection(checkpoint.confirmed.value, checkpoint.draft, selection))) {
-      throw new Error('Save or resolve other document changes before resolving this form');
+      throw Object.assign(new Error('Save or resolve other document changes before resolving this form'), { code: 'other-changes-first' });
     }
   }
 
@@ -332,6 +335,7 @@ export class EditorController {
     // Another keystroke may have arrived during the storage transaction.
     this.durable = this.session.getState().editGeneration === checkpoint.editGeneration;
     this.error = null;
+    this.errorCode = null;
     this.emit();
   }
 
@@ -383,6 +387,8 @@ export class EditorController {
       try { await action(); } catch (error) {
         this.durable = false;
         this.error = error instanceof Error ? error.message : 'Data engine storage failed';
+        const code = (error as { code?: unknown } | null)?.code;
+        this.errorCode = typeof code === 'string' ? code : null;
         this.emit();
         throw error;
       }

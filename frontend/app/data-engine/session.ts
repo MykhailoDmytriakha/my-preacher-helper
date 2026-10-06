@@ -196,7 +196,7 @@ export class DataSession {
 
   /** Replacing local intent is allowed only after each pending delivery is explicitly settled. */
   acceptRemote(): void {
-    if (Object.keys(this.state.pending).length) throw new Error('Resolve pending commands before accepting remote data');
+    if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before accepting remote data'), { code: 'pending-delivery-first' });
     if (!this.state.remoteCandidate) return;
     this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.draft = copy(this.state.remoteCandidate.value);
@@ -208,7 +208,7 @@ export class DataSession {
 
   /** Explicit conflict choice: keep edited fields and retain untouched remote siblings. */
   keepLocal(): void {
-    if (Object.keys(this.state.pending).length) throw new Error('Resolve pending commands before keeping local data');
+    if (Object.keys(this.state.pending).length) throw Object.assign(new Error('Resolve pending commands before keeping local data'), { code: 'pending-delivery-first' });
     const candidate = this.state.remoteCandidate;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });

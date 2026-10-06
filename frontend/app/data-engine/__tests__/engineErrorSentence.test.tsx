@@ -5,12 +5,16 @@ import '@testing-library/jest-dom';
 import { createBrowserDataEngine, type BrowserDataEngine } from '@/data-engine/browser.client';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { captureMembershipPins } from '@/data-engine/membershipCapture';
+import { DataSession } from '@/data-engine/session';
+import { preparePreachDate } from '@/components/calendar/preachDateForm';
 import { DataEngineProvider, useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { useRecoveryDiscovery } from '@/data-engine/useRecoveryDiscovery';
 import { actionFailureMessage, failureWords, refusalMessage, refusalWords, saidError } from '@/utils/actionFailureMessage';
 import { storageSilentError } from '@/utils/deviceStorage';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import en from '@locales/en/translation.json';
+import ru from '@locales/ru/translation.json';
+import uk from '@locales/uk/translation.json';
 
 import type { CollectionState } from '@/data-engine/collections';
 import type { SyncStatus } from '@/data-engine/status';
@@ -247,8 +251,40 @@ describe('failureWords', () => {
     expect(logged).not.toHaveBeenCalled();
   });
 
+  /** BUG-20261003-engine-refusals-speak-english: a refusal that is an instruction is said in the interface language. */
+  const instructions = [
+    ['preach-date-gone', 'dataSync.failure.preachDateGone'],
+    ['fresh-read-required', 'dataSync.failure.freshReadRequired'],
+    ['resolve-version-first', 'dataSync.failure.resolveVersionFirst'],
+    ['unsent-form-first', 'dataSync.failure.unsentFormFirst'],
+    ['not-on-device-yet', 'dataSync.failure.notOnDeviceYet'],
+    ['pending-delivery-first', 'dataSync.failure.pendingDeliveryFirst'],
+    ['other-changes-first', 'dataSync.failure.otherChangesFirst'],
+    ['draft-gone', 'dataSync.failure.draftGone'],
+    ['draft-done', 'dataSync.failure.draftDone'],
+    ['part-gone', 'dataSync.failure.partGone'],
+  ] as const;
+  it.each(instructions)('says the refusal %s by its code, in every language', (code, key) => {
+    expect(refusalWords(Object.assign(new Error('English for developers'), { code }), 'fallback')).toEqual({ key });
+    const path = key.split('.');
+    for (const locale of [en, ru, uk]) {
+      const words = path.reduce<unknown>((value, part) => (value as Record<string, unknown> | undefined)?.[part], locale);
+      expect(typeof words === 'string' && words.trim()).toBeTruthy();
+    }
+  });
+
+  it('gives a vanished preach date and a choice over unsent changes their codes where they are refused', () => {
+    const sermon = { userId: 'owner', title: 'T', preachDates: [] };
+    const row = { id: 'gone', date: '2026-10-01', status: 'planned', createdAt: 'now', church: { id: 'c', name: 'C', city: '' } };
+    expect(() => preparePreachDate(sermon as never, { kind: 'edit', dateId: 'gone' } as never, row as never)).toThrow(expect.objectContaining({ code: 'preach-date-gone' }));
+    const session = new DataSession({ resource: { collection: 'sermons', id: 's' }, value: { title: 'A' }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+    session.edit({ title: 'B' }); session.registerCommit('op', 1, { title: 'B' });
+    expect(() => session.acceptRemote()).toThrow(expect.objectContaining({ code: 'pending-delivery-first' }));
+    expect(() => session.keepLocal()).toThrow(expect.objectContaining({ code: 'pending-delivery-first' }));
+  });
+
   it('keeps the sentence of a refused action unless it is coded or already for the person', () => {
-    expect(refusalWords(new Error('Save or cancel the unsent form before resolving delivery'), 'fallback')).toEqual({ said: 'Save or cancel the unsent form before resolving delivery' });
+    expect(refusalWords(new Error('Resolve the requested series before saving'), 'fallback')).toEqual({ said: 'Resolve the requested series before saving' });
     expect(refusalWords(storageSilentError(), 'fallback')).toEqual({ key: 'dataSync.readOnly.storage' });
     expect(refusalMessage(saidError('Заполните поле'), t, 'fallback')).toBe('Заполните поле');
     expect(refusalMessage('rejected', t, 'fallback')).toBe('ru:fallback');

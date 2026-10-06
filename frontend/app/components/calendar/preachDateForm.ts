@@ -32,11 +32,14 @@ export function preachDateTarget(initial: Sermon | null, value: Sermon | null, a
 }
 
 /** Seed the action once, inside the pinned stage; never use a list-row copy as an ancestor. */
+/** The date was removed elsewhere while this window was open; said in words by its code. */
+const preachDateGone = () => Object.assign(new Error('The selected preach date is no longer available'), { code: 'preach-date-gone' });
+
 export function preparePreachDate(current: DocumentData, action: PreachDateAction, row: PreachDate): DocumentData {
   const sermon = current as unknown as Sermon, dates = sermon.preachDates ?? [];
   if (action.kind === 'unmark') return writeDates(sermon, dates.map(date => ({ ...date, status: 'planned' })));
   const existing = dates.find(date => date.id === row.id);
-  if ((action.kind === 'edit' || action.kind === 'delete') && !existing) throw new Error('The selected preach date is no longer available');
+  if ((action.kind === 'edit' || action.kind === 'delete') && !existing) throw preachDateGone();
   if (action.kind === 'delete') return writeDates(sermon, dates.filter(date => date.id !== row.id));
   const church = !isUnspecifiedChurch(existing?.church) ? existing!.church
     : !isUnspecifiedChurch(sermon.church) ? sermon.church! : { id: '', name: '', city: '' };
@@ -47,6 +50,6 @@ export function preparePreachDate(current: DocumentData, action: PreachDateActio
 
 export function patchPreachDate(current: DocumentData, id: string, patch: Partial<PreachDateValues>): DocumentData {
   const sermon = current as unknown as Sermon;
-  if (!sermon.preachDates?.some(date => date.id === id)) throw new Error('The selected preach date is no longer available');
+  if (!sermon.preachDates?.some(date => date.id === id)) throw preachDateGone();
   return writeDates(sermon, sermon.preachDates.map(date => date.id === id ? { ...date, ...patch } : date));
 }

@@ -370,7 +370,7 @@ export class DataEngine {
     if (opening) return opening;
     const restoring = (async () => {
       const record = await this.options.membershipScopes!.read(owner, scopeId); this.assertCurrent(owner, generation);
-      if (!record) throw new Error('Membership recovery no longer exists');
+      if (!record) throw Object.assign(new Error('Membership recovery no longer exists'), { code: 'draft-gone' });
       const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
       this.membershipForms.set(scopeId, scope); this.emitMembership(); return scope;
     })();
@@ -416,7 +416,7 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     const store = this.options.membershipScopes;
     const record = await store?.read(owner, scopeId); this.assertCurrent(owner, generation);
-    if (!record || record.phase !== 'submitted' || !record.requestIds.length) throw new Error('Resolve the pending Save before discarding this action');
+    if (!record || record.phase !== 'submitted' || !record.requestIds.length) throw Object.assign(new Error('Resolve the pending Save before discarding this action'), { code: 'pending-delivery-first' });
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
     if (record.requestIds.some(id => !requests.some(request => request.id === id && request.retentionScope === scopeId))) throw new Error('Membership action evidence changed');
     if (!record.requestIds.every(id => requests.some(request => request.id === id && request.state === 'cancelled'))) {
@@ -904,7 +904,7 @@ export class DataEngine {
         const records = await this.commits.list(); active();
         records.forEach(request => this.commitRecords.set(request.id, request));
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
-        if (sourceScopeId && !source?.record) throw new Error('Manual recovery record no longer exists');
+        if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
         if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
         const targetId = source ? JSON.stringify([parentEditorId, 'manual', slot, this.options.operationId()]) : state.scopeId;
         const existing = source ?? await store.read(owner, targetId); active();
@@ -962,7 +962,7 @@ export class DataEngine {
       }, signal)),
       save: updater => execute(async () => {
         if (this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state))) {
-          throw new Error('Resolve the failed delivery with Keep local or Accept remote before saving');
+          throw Object.assign(new Error('Resolve the failed delivery with Keep local or Accept remote before saving'), { code: 'resolve-version-first' });
         }
         const scope = requireScope();
         if (updater) { const staged = scope.update(updater); const saving = scope.save(); await Promise.all([staged, saving]); }
@@ -975,8 +975,8 @@ export class DataEngine {
         const scope = state.scope;
         const staged = scope?.getState();
         const failed = this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state));
-        if (staged?.dirty && (choice !== 'local' || !failed)) throw new Error('Save or cancel the unsent form before resolving delivery');
-        if (staged && !staged.durable) throw new Error('Persist the manual form before resolving delivery');
+        if (staged?.dirty && (choice !== 'local' || !failed)) throw Object.assign(new Error('Save or cancel the unsent form before resolving delivery'), { code: 'unsent-form-first' });
+        if (staged && !staged.durable) throw Object.assign(new Error('Persist the manual form before resolving delivery'), { code: 'not-on-device-yet' });
         const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
         parent.controller!.assertManualResolution(selection);
         // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.

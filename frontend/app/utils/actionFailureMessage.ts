@@ -30,6 +30,17 @@ const KNOWN = new Map<string, string>([
   ['use-new-copy', 'dataSync.failure.deleted'],
   ['series-list-incomplete', 'dataSync.failure.seriesListIncomplete'],
   ['series-changes-pending', 'dataSync.failure.seriesChangesPending'],
+  // Refusals that tell the person what to do first (BUG-20261003-engine-refusals-speak-english).
+  ['preach-date-gone', 'dataSync.failure.preachDateGone'],
+  ['fresh-read-required', 'dataSync.failure.freshReadRequired'],
+  ['resolve-version-first', 'dataSync.failure.resolveVersionFirst'],
+  ['unsent-form-first', 'dataSync.failure.unsentFormFirst'],
+  ['not-on-device-yet', 'dataSync.failure.notOnDeviceYet'],
+  ['pending-delivery-first', 'dataSync.failure.pendingDeliveryFirst'],
+  ['other-changes-first', 'dataSync.failure.otherChangesFirst'],
+  ['draft-gone', 'dataSync.failure.draftGone'],
+  ['draft-done', 'dataSync.failure.draftDone'],
+  ['part-gone', 'dataSync.failure.partGone'],
 ]);
 // One failure reaches several catches (a draft search and its document, the engine's background
 // report and the list that asked); the console hears it once.

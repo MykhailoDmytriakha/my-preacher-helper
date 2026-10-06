@@ -176,7 +176,17 @@
     "failure": {
       "deleted": "This record has been deleted. Copy your text to keep it.",
       "seriesListIncomplete": "The full list of series has not loaded yet. Connect to the internet and try again.",
-      "seriesChangesPending": "Changes to some series are still waiting to be saved or decided. Finish them, then try again."
+      "seriesChangesPending": "Changes to some series are still waiting to be saved or decided. Finish them, then try again.",
+      "preachDateGone": "This preaching date is no longer available.",
+      "freshReadRequired": "The current version has to be loaded first. Try again in a moment.",
+      "resolveVersionFirst": "First choose which version to keep: yours or the other one.",
+      "unsentFormFirst": "Save or cancel the changes in this form first.",
+      "notOnDeviceYet": "Your changes are not saved on this device yet. Try again.",
+      "pendingDeliveryFirst": "Earlier changes are not finished yet: wait until they are delivered or decide them, then try again.",
+      "otherChangesFirst": "Save or decide the other changes to this record first.",
+      "draftGone": "This draft is no longer available.",
+      "draftDone": "This draft has nothing left to recover.",
+      "partGone": "This part is no longer available."
     }
   },
   "diagnostics": {

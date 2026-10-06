@@ -147,7 +147,7 @@ export class CommitQueue {
       return clone(existing);
     }
     if (!intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
-    if (intent.conflicts.length) throw new Error('Resolve the conflict before saving');
+    if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
     const baseline = clone(intent.confirmed);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
@@ -279,7 +279,7 @@ export class CommitQueue {
     if (!wholeAction && records.some(record => record.atomic)) throw Object.assign(
       new Error('Resolve the complete action before replacing one participant'), { code: 'atomic-action-resolution-required' });
     const journal = await this.options.runtime.list();
-    if (!canCancelSavedIntent(records, journal)) throw new Error('Resolve pending commands before replacing saved intent');
+    if (!canCancelSavedIntent(records, journal)) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: 'pending-delivery-first' });
     if (wholeAction) return cancelActionCommits(orderRequests(records), this.atomicContext(owner, generation));
     for (const record of records) {
       if (record.command) await this.options.runtime.discard(record.command.operationId);

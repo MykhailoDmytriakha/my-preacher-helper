@@ -25,7 +25,7 @@ export function useGroupConductForm(groupId: string) {
       }).join('\n').slice(0, 500),
     })), recover: form.recover });
   const updateDuration = (id: string, durationMin: number | null) => form.update(current => {
-    if (!flow(current).some(item => item.id === id)) throw new Error('The meeting block no longer exists');
+    if (!flow(current).some(item => item.id === id)) throw Object.assign(new Error('The meeting block no longer exists'), { code: 'part-gone' });
     return { ...current, flow: flow(current).map(item => item.id === id ? { ...item, durationMin } : item) } as unknown as DocumentData;
   });
   return { form, flow: flow(form.data), updateDuration, recovery };
