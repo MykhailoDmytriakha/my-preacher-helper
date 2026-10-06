@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -9,6 +8,7 @@ import { toast } from 'sonner';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, waitsForDecision } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useShellPathname } from '@/hooks/useShellPathname';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 
 import type { EditorRecord } from '@/data-engine/controller';
@@ -131,7 +131,8 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
     onError: () => { toast.error(t('common.saveError')); },
   });
-  const pathname = usePathname();
+  // The offline shell's router stands at /~offline; the open screen is the window's address.
+  const pathname = useShellPathname();
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0);

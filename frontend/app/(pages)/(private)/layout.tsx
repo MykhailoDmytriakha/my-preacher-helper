@@ -3,90 +3,27 @@
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ReactNode, Suspense } from 'react';
 
-import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
-import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
-import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
-import { DraftStorageNotice } from '@/components/DraftStorageNotice';
-import { EngineConflictBanner } from '@/components/EngineConflictBanner';
-import { GuestBanner } from '@/components/GuestBanner';
-import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import DashboardNav from '@/components/navigation/DashboardNav';
-import DevQuickNav from '@/components/navigation/DevQuickNav';
-import PageGestures from '@/components/navigation/PageGestures';
-import { ShellTitlesProvider } from '@/components/navigation/shellTitles';
-import { OfflinePageMemory } from '@/components/OfflinePageMemory';
-import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
-import { OutboxDrain } from '@/components/OutboxDrain';
+import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 import ProtectedRoute from '@/components/ProtectedRoute';
-import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
-import { DataEngineWorkspace } from '@/data-engine/react.client';
-import { UserSettingsProvider, UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
-      <DataEngineWorkspace>
-      <UserSettingsProvider>
-      <TechnicalDetailsDialog />
-      <ShellTitlesProvider>
-      <Suspense fallback={null}>
-        <PrivateLayoutContent>{children}</PrivateLayoutContent>
-      </Suspense>
-      </ShellTitlesProvider>
-      </UserSettingsProvider>
-      </DataEngineWorkspace>
+      <PrivateWorkspace>
+        <Suspense fallback={null}>
+          <RoutedChrome>{children}</RoutedChrome>
+        </Suspense>
+      </PrivateWorkspace>
     </ProtectedRoute>
   );
 }
 
-function PrivateLayoutContent({ children }: { children: ReactNode }) {
+function RoutedChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const isStudyDetail = /^\/studies\/(?!share-links(?:\/|$))[^/]+\/?$/.test(pathname ?? '');
-  const isPreachingPlan = Boolean(
-    pathname?.startsWith('/sermons/') &&
-      pathname?.includes('/plan') &&
-      searchParams?.get('planView') === 'preaching'
-  );
-
   return (
-    // The page root itself moves under a swipe or a pull, so the gestures render it.
-    <PageGestures data-study-workspace={isStudyDetail ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900">
-      {/* Mounted OUTSIDE the conditional on purpose: the preaching-plan screen hides
-          the chrome, and while the queue worker lived inside the banner that screen
-          — the one a preacher keeps open for an hour — drained nothing at all. */}
-      <DiagnosticsRecorder pathname={pathname ?? '/'} />
-      <OfflinePageMemory address={`${pathname ?? '/'}?${searchParams?.toString() ?? ''}`} />
-      <OutboxDrain />
-      {!isPreachingPlan && (
-        <>
-          <DashboardNav />
-          <GuestBanner />
-          <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-            {/* An offline edit the server refused on replay. App-wide: the refusal
-                surfaces on reconnect, when the person may be on another screen.
-                Inside the existing gutter — its own container leaked into pages. */}
-            <OutboxConflictBanner />
-            {/* The same door for engine writes the server refused after this device kept them. */}
-            <EngineConflictBanner />
-            {/* Device storage that stopped answering: records are copies for reading until it does. */}
-            <DeviceStorageNotice />
-            <DraftStorageNotice />
-            <Breadcrumbs />
-          </div>
-        </>
-      )}
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><UserSettingsSyncStatus /></div>
-      <main
-        id="main-content"
-        tabIndex={-1}
-        role="main"
-        aria-live="polite"
-        className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6"
-      >
-        {children}
-      </main>
-      <DevQuickNav />
-    </PageGestures>
+    <PrivateChrome pathname={pathname ?? '/'} search={searchParams?.toString() ?? ''}>
+      {children}
+    </PrivateChrome>
   );
 }

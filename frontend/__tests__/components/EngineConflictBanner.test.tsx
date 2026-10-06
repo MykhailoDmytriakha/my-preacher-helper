@@ -240,6 +240,24 @@ describe('a late answer to a one-shot change of a sermon', () => {
     reopened.close({ flush: false });
   });
 
+  /** The offline shell's router stands at /~offline; the page the person opened is in the window. */
+  it('is silent about a screen\'s draft on that screen when the offline shell renders it', async () => {
+    mockPathname = '/~offline';
+    window.history.replaceState(null, '', '/sermons/sermon-1/plan');
+    try {
+      const harness = setupSermon();
+      await waitFor(() => expect(actions?.ready).toBe(true));
+      await screenDraftLeftBehind(harness);
+      const reopened = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'reopened'));
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); await settleEngine(); });
+      expect(screen.queryByText(/Typed on the sermon page/)).not.toBeInTheDocument();
+      expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument();
+      reopened.close({ flush: false });
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
   /** Codex, round 2: a screen opened before the request existed holds nothing and says nothing. */
   it('speaks on the screen when the editor open there does not hold the answer', async () => {
     mockPathname = '/sermons/sermon-1';

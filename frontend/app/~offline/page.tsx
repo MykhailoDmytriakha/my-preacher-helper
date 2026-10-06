@@ -11,8 +11,7 @@ import {
 } from 'react';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
-import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import DashboardNav from '@/components/navigation/DashboardNav';
+import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
 // document as the navigation fallback whenever an offline navigation misses the
@@ -32,8 +31,9 @@ import DashboardNav from '@/components/navigation/DashboardNav';
 // vs ~427kB for the dashboard alone) without losing graceful coverage.
 //
 // Safe by construction: this file renders ONLY on an offline document-miss (online
-// routes are untouched); the page bodies are self-contained w.r.t. providers (Auth,
-// the React Query client and the Firestore cache live in the ROOT layout). Only
+// routes are untouched). Auth and the React Query client live in the ROOT layout; the
+// data engine, the settings and the chrome come from the same PrivateWorkspace the
+// private layout renders its pages in. Only
 // paramless pages are wired; the Suspense boundary covers pages reading
 // useSearchParams (e.g. /sermons). Param detail routes (/sermons/[id] etc.) are
 // wired too: their pages read the id via useRouteId (useParams ?? location.pathname),
@@ -109,20 +109,15 @@ function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
   );
 }
 
-// Wraps an offline-rendered page in the same nav chrome the (private) layout gives
-// online (top nav + breadcrumbs + main container), so a never-visited page served by
-// the shell looks consistent with a visited one (served from the cached real route).
-// DashboardNav/Breadcrumbs read the real path via useShellPathname, so they're correct
-// here even though the router context is /~offline.
-function ShellChrome({ children }: { children: ReactNode }) {
+// A page rendered by the shell sits in the same workspace and chrome the private layout
+// gives it online. The router stands at /~offline here, so the address comes from the window.
+function ShellWorkspace({ pathname, children }: { pathname: string; children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
-      <DashboardNav />
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <Breadcrumbs />
-      </div>
-      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">{children}</main>
-    </div>
+    <PrivateWorkspace>
+      <PrivateChrome pathname={pathname} search={window.location.search.slice(1)}>
+        {children}
+      </PrivateChrome>
+    </PrivateWorkspace>
   );
 }
 
@@ -143,11 +138,11 @@ export default function OfflineShell() {
   // Dashboard: static, guaranteed offline (the home).
   if (requestedPath === '/dashboard' || requestedPath === '/') {
     return (
-      <Suspense fallback={null}>
-        <ShellChrome>
+      <ShellWorkspace pathname={requestedPath}>
+        <Suspense fallback={null}>
           <DashboardPage />
-        </ShellChrome>
-      </Suspense>
+        </Suspense>
+      </ShellWorkspace>
     );
   }
 
@@ -155,23 +150,14 @@ export default function OfflineShell() {
   const lazyMatch = LAZY_ROUTES.find((route) => route.test(requestedPath));
   if (lazyMatch) {
     const RouteComponent = lazyMatch.Component;
-    // The preaching plan is immersive online (the (private) layout hides the nav for
-    // ?planView=preaching) — match that offline by rendering without the chrome.
-    const isPreachingPlan =
-      /\/plan$/.test(requestedPath) &&
-      typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('planView') === 'preaching';
+    // The chrome hides itself for ?planView=preaching, offline as online.
     return (
       <OfflineRouteBoundary fallback={<GenericOfflineCard requestedPath={requestedPath} />}>
-        <Suspense fallback={null}>
-          {isPreachingPlan ? (
+        <ShellWorkspace pathname={requestedPath}>
+          <Suspense fallback={null}>
             <RouteComponent />
-          ) : (
-            <ShellChrome>
-              <RouteComponent />
-            </ShellChrome>
-          )}
-        </Suspense>
+          </Suspense>
+        </ShellWorkspace>
       </OfflineRouteBoundary>
     );
   }
