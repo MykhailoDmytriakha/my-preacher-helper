@@ -187,6 +187,14 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261006-screen-error-kept-as-translated-sentence · Ошибка, которую экран сам держит в своём состоянии, после смены языка остаётся на прежнем
+**Severity.** P3 — фраза понятна и исчезает при следующем действии; данные не затронуты. Остаток класса BUG-20261003-said-refusal-keeps-old-language (там исправлен общий путь «слов отказа»: `saidError`, отказ «только просмотр», поле `missing` в модалках серии).
+**Найден.** 2026-10-06 · прочёс класса при закрытии той записи (дело bugs-26), чтением кода; живьём не воспроизводилось.
+**Как должно работать для человека.** Сменил язык — всё, что сейчас на экране, звучит на новом языке, включая только что показанную ошибку.
+**Механизм.** Экран кладёт в своё состояние готовую переведённую строку (`setError(t(...))`, `throw new Error(t(...))`) вместо ключа и переводит её не при показе.
+**Места (`file:line` на 2026-10-06).** `care/orders/[id]/page.tsx:725` · `care/orders/page.tsx:174,182` · `studies/components/CreateSermonFromNoteModal.tsx:435,439` · `sermons/[id]/page.tsx:1334` · `sermons/[id]/plan/page.tsx:561,566` · `components/sermon/SermonOutline.tsx:276` · `components/sermon/ScratchPanel.tsx:681` · `components/prayer/AddUpdateModal.tsx:30` · `components/common/EditableTitle.tsx:59`.
+**Направление.** Хранить ключ (или `FailureWords` из `utils/actionFailureMessage.ts`) и переводить при показе — тем же путём, что `sayFailure`.
+
 ### BUG-20261006-calendar-legacy-date-modal-refuses-on-engine · Календарь: «добавить дату» у проповеди без даты проповеди сохраняет старым путём, и на движке сохранение отказывает
 **P3** — проповедник отмечает в календаре дату уже прочитанной проповеди и получает отказ; набранное (церковь, дата) остаётся в окне, данные не теряются · `frontend/app/(pages)/(private)/calendar/page.tsx:327` (старое `PreachDateModal`, `handleSaveDate` → `preachDatesService.addPreachDate`) · `frontend/app/services/preachDates.service.ts:37` (`assertLegacyClientWriteAllowed('sermons')` — на движке отказ `data-engine-required`) · `frontend/app/components/calendar/LegacyDataWarning.tsx:56` (кнопка) · `frontend/app/hooks/useCalendarSermons.ts:56` (кто попадает в блок).
 **Найден.** 2026-10-06 · агент чтением кода при перепроверке BUG-20261003-legacy-error-mutation-gone-after-five-minutes; живьём не воспроизводился.
