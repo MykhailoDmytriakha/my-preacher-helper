@@ -8,7 +8,6 @@ import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
-import { toDateOnlyKey } from '@/utils/dateOnly';
 
 import SermonFormDialog from './SermonFormDialog';
 import { SERMON_METADATA_SELECTION, sermonMetadataDateId, sermonMetadataPatch } from './sermonMetadataForm';
@@ -52,7 +51,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
   const cancel = async () => { await form.cancel(); await series.cancel(); onClose(); };
   return <SermonFormDialog heading={t('editSermon.editSermon')}
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
-      plannedDate: toDateOnlyKey(plannedDate?.date) || '', seriesId: series.seriesId }} onChange={change}
+      plannedDate: plannedDate?.date ?? '', seriesId: series.seriesId }} onChange={change}
     onSubmit={event => { event.preventDefault(); void save(); }} onDismiss={onClose}
     onCancel={() => { void cancel().catch(() => undefined); }} submitLabel={t('buttons.save')}
     saving={saving || form.busy} readOnly={loading || !form.active || form.status?.phase === 'deleted'}

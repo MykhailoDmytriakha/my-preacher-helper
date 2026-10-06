@@ -29,19 +29,6 @@ export const isDateOnlyKey = (value: string): boolean => {
 /** Shaped like a day, names none: "2026-02-31", "2026-13-01", "0000-01-01". */
 export const isMissingDay = (value: string): boolean => DATE_ONLY_REGEX.test(value) && !isDateOnlyKey(value);
 
-/** A full stored timestamp — a day, then a time — never text typed so far. */
-const STORED_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
-
-/**
- * The text a date field shows for a stored value: a stored timestamp shows its day, anything else
- * — a day, an empty value, text typed so far — exactly as it is. Meetings were once stored as
- * midnight UTC, and the field showed the whole timestamp, which its own pattern then refused
- * (BUG-20261003-old-meeting-date-format-shown-raw).
- */
-export const dayTextOf = (value: string): string => {
-  const match = value.match(STORED_TIMESTAMP_REGEX);
-  return match ? match[1] : value;
-};
 
 export const toDateOnlyKey = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
@@ -68,6 +55,19 @@ export const toDateOnlyKey = (value: string | null | undefined): string | null =
   }
 
   return toLocalYmd(parsed);
+};
+
+/** Full dates in formats older records used: a day, a day with a time, a day with the year last. */
+const FULL_STORED_DATE_REGEX = /^(?:\d{4}-\d{2}-\d{2}(?:[T ].*)?|\d{1,2}[./]\d{1,2}[./]\d{4})$/;
+
+/**
+ * The text a date field shows for a value it did not get from the person's typing: the day of a full
+ * stored date — a timestamp, an older format, padding — and anything else exactly as it is, so a
+ * partial value such as "2" never looks like a plausible day (BUG-20261003-date-form-accepts-impossible-day).
+ */
+export const shownDayOf = (value: string): string => {
+  const trimmed = value.trim();
+  return (FULL_STORED_DATE_REGEX.test(trimmed) ? toDateOnlyKey(trimmed) : null) ?? value;
 };
 
 export const parseDateOnlyAsLocalDate = (value: string | null | undefined): Date | null => {

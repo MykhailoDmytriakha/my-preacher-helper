@@ -130,6 +130,29 @@ describe('DataSyncStatus', () => {
     expect(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs })).toBeEnabled();
   });
 
+  /** BUG-20261003-date-form-accepts-impossible-day: "keep mine" sends the form, so the form's checks come first. */
+  it('keeps mine only when the surrounding form passes its own checks', async () => {
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    const keep = jest.fn();
+    const Form = ({ noValidate = false, valid }: { noValidate?: boolean; valid: boolean }) => <form noValidate={noValidate}>
+      <input aria-label="date" ref={input => input?.setCustomValidity(valid ? '' : 'There is no such day in the calendar')} />
+      <DataSyncStatus subject="doc" status={conflict} onKeepLocal={keep} onAcceptRemote={jest.fn()} />
+    </form>;
+    const { rerender } = render(<Form valid={false} />);
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    expect(keep).not.toHaveBeenCalled();
+    rerender(<Form valid />);
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    expect(keep).toHaveBeenCalledTimes(1);
+    // A form that checks itself is left to its own checks.
+    rerender(<Form noValidate valid={false} />);
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    expect(keep).toHaveBeenCalledTimes(2);
+  });
+
   /** BUG-20261003-document-retry-error-hidden: the failure stays said across the re-render it causes. */
   it('keeps saying that a retry failed when the screen re-renders with fresh callbacks', async () => {
     const trouble = status('unknown');

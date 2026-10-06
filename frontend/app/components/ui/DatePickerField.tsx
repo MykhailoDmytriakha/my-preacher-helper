@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
-import { dayTextOf, getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
+import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate, shownDayOf } from "@/utils/dateOnly";
 import { getWeekStartsOn } from "@/utils/weekStart";
 
 import "react-day-picker/dist/style.css";
@@ -40,10 +40,11 @@ interface DatePickerFieldProps {
    */
   finishedDatesOnly?: boolean;
   /**
-   * For a form that creates a record: refuse a day-shaped value that names no day ("2026-02-31"),
-   * as the browser's own date field did — the `pattern` checks only the shape. Not for a form that
-   * edits stored data: a record saved with such a day, or a recovered draft holding one, must still
-   * save its other fields (BUG-20261003-date-form-accepts-impossible-day).
+   * Refuse a day-shaped value that names no day ("2026-02-31") when the person typed it here, as the
+   * browser's own date field did — the `pattern` checks only the shape. A day that came from outside —
+   * a record saved with it, a recovered draft, another device's update — is not the person's typing
+   * in this field and is not refused, so the form still saves its other fields
+   * (BUG-20261003-date-form-accepts-impossible-day).
    */
   refuseMissingDays?: boolean;
 }
@@ -66,7 +67,11 @@ export default function DatePickerField({
 }: DatePickerFieldProps) {
   // What the field last handed over as typed: its echo stays exactly as typed, so the form judges it.
   const emittedRef = useRef<string | null>(null);
-  const value = storedValue === emittedRef.current ? storedValue : dayTextOf(storedValue);
+  // Typed text comes back as typed. A value from outside is shown as its day when it is a full date —
+  // a stored timestamp (meetings were once saved as midnight UTC, BUG-20261003-old-meeting-date-format-shown-raw),
+  // an older format or padding — so the field's own pattern does not refuse a record the person did not
+  // touch (BUG-20261003-date-form-accepts-impossible-day).
+  const value = storedValue === emittedRef.current ? storedValue : shownDayOf(storedValue);
   const generatedId = useId();
   const inputId = id || generatedId;
   const { t } = useTranslation();
@@ -109,9 +114,13 @@ export default function DatePickerField({
   }, [value]);
 
   useEffect(() => {
-    const refused = refuseMissingDays && isMissingDay(shown.trim());
+    // Typed here: the text the field holds unsent, or the value it handed over echoed back — also when
+    // the owner trims it before showing it, as the engine forms do.
+    const emitted = emittedRef.current;
+    const typedHere = finishedDatesOnly ? text !== value : emitted !== null && storedValue.trim() === emitted.trim();
+    const refused = refuseMissingDays && typedHere && isMissingDay(shown.trim());
     inputRef.current?.setCustomValidity(refused ? missingDayMessage : "");
-  }, [refuseMissingDays, shown, missingDayMessage]);
+  }, [refuseMissingDays, shown, missingDayMessage, finishedDatesOnly, text, value, storedValue]);
 
   useEffect(() => {
     const parsed = parseDateOnlyAsLocalDate(value);
@@ -206,6 +215,8 @@ export default function DatePickerField({
   // until the caller takes the new one, so a refused pick does not look accepted.
   const hand = (next: string) => {
     unsentRef.current = false;
+    // A picked day is not typing: what the person typed before is no longer in the field.
+    emittedRef.current = null;
     setText(valueRef.current);
     onChange(next);
   };

@@ -256,6 +256,7 @@ export default function SermonFormDialog({
                   id={fieldId('plannedDate')}
                   value={values.plannedDate}
                   onChange={(plannedDate) => onChange({ plannedDate })}
+                  refuseMissingDays
                   wrapperClassName="w-full"
                   inputClassName={`${FIELD_INPUT} mt-0 pr-12`}
                   disabled={locked}

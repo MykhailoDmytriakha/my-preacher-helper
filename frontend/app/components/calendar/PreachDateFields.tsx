@@ -20,7 +20,7 @@ export function PreachDateFields({ value, onChange, disabled = false }: {
     <div className={FIELD_ROW}>
       <label htmlFor="preach-date-input" className={FIELD_LABEL}>{t('calendar.date')}</label>
       <DatePickerField id="preach-date-input" value={value.date} onChange={date => onChange({ date })}
-        inputClassName={`${FIELD_INPUT} pr-12`} required />
+        inputClassName={`${FIELD_INPUT} pr-12`} required refuseMissingDays />
     </div>
     <ChurchAutocomplete value={value.church} onChange={church => onChange({ church })} />
     <div className={FIELD_ROW}>

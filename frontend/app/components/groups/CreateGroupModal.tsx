@@ -146,6 +146,7 @@ export function CreateGroupView({ title, setTitle, description, setDescription, 
               </span>
               <DatePickerField
                 disabled={saving}
+                refuseMissingDays
                 value={firstMeetingDate}
                 onChange={setFirstMeetingDate}
                 inputClassName={`${FORM_INPUT_CLASS} pr-12`}

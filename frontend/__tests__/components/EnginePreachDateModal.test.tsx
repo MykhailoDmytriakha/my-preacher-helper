@@ -40,6 +40,15 @@ function dates(harness: ReturnType<typeof membershipEngineHarness>) { return har
 function editNotes(value: string) { fireEvent.change(screen.getByLabelText('calendar.notes'), { target: { value } }); }
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+/** BUG-20261006-engine-date-typed-turns-into-2001, BUG-20261003-date-form-accepts-impossible-day */
+it('keeps a date typed by hand as typed, digit by digit', async () => {
+  const { view } = setup(); const field = await ready();
+  for (const typed of ['2', '20', '2026-0', '2026-03-10']) {
+    fireEvent.change(field, { target: { value: typed } }); await settle();
+    expect(screen.getByLabelText('Date')).toHaveValue(typed);
+  }
+  view.unmount();
+});
 it('stages fields and merges another remote row in one command', async () => {
   const { harness, view } = setup(); await ready(); editNotes('Mine'); await settle();
   harness.replace({ ...original, value: { ...original.value!, preachDates: [first, { ...second, notes: 'Remote sibling' }] }, metadata: { ...original.metadata!, revision: 2 } });

@@ -87,6 +87,15 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
     });
   };
   const keep = status?.canKeepLocal && onKeepLocal;
+  // "Keep mine" sends what the surrounding form holds, so it asks the form's own checks first, as its
+  // Save does — a day typed that is not in the calendar is not sent this way either
+  // (BUG-20261003-date-form-accepts-impossible-day). A form that checks itself (`noValidate`) is left to it.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const keepChecked = (callback: () => void | Promise<void>) => {
+    const form = rootRef.current?.closest('form');
+    if (form && !form.noValidate && !form.reportValidity()) return;
+    run(callback);
+  };
   const accept = status?.canAcceptRemote && onAcceptRemote;
   const conflictBanner = status?.phase === 'conflict' && keep && accept;
   // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
@@ -98,16 +107,16 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
   const said = [showPhase, showFreshness, readTrouble, failure, recoveryChoices.length, recoveryError, keep, accept, showRetry];
   if (!said.some(Boolean)) return null;
   const buttonClass = 'rounded-lg border border-current px-3 py-1.5 text-sm disabled:opacity-50';
-  return <div className={`space-y-3 text-sm ${className}`} {...(title ? { role: 'region', 'aria-label': title } : {})}>
+  return <div ref={rootRef} className={`space-y-3 text-sm ${className}`} {...(title ? { role: 'region', 'aria-label': title } : {})}>
     {title && <p className="font-medium">{title}</p>}
-    {conflictBanner ? <SaveConflictBanner onKeepMine={() => run(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
+    {conflictBanner ? <SaveConflictBanner onKeepMine={() => keepChecked(keep)} onTakeTheirs={() => run(accept)} busy={busy} /> : status && (showPhase || showFreshness || readTrouble) && <div role="status" aria-live="polite" className="text-gray-600 dark:text-gray-300">
       {showPhase && <p>{t(trouble ? `dataSync.phase.${status.phase}` : 'dataSync.unfinishedWork')}</p>}
       {showFreshness && <p className="mt-1 text-xs">{t(`dataSync.freshness.${status.freshness}`)}</p>}
       {readTrouble && <p className="mt-1 text-xs">{t('dataSync.readFailed')}</p>}
     </div>}
     {failure && <p role="alert" className="text-rose-700 dark:text-rose-300">{failure}</p>}
     {((!conflictBanner && (keep || accept)) || showRetry) && <div className="flex flex-wrap gap-2">
-      {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(keep)}>{t('dataSync.keepLocal')}</button>}
+      {!conflictBanner && keep && <button type="button" className={buttonClass} disabled={busy} onClick={() => keepChecked(keep)}>{t('dataSync.keepLocal')}</button>}
       {!conflictBanner && accept && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(accept)}>{t('dataSync.acceptRemote')}</button>}
       {showRetry && onRetry && <button type="button" className={buttonClass} disabled={busy} onClick={() => run(onRetry)}>{t('dataSync.retry')}</button>}
     </div>}
