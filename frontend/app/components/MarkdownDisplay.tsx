@@ -6,6 +6,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
+import { codeFenceFor } from '@/utils/markdownFence';
 import HighlightedText from '@components/HighlightedText';
 
 // Allow safe inline formatting tags that authors may embed as raw HTML in thought
@@ -36,7 +37,9 @@ const formatStructuredBlocks = (text: string) => {
     const blockRegex = /\[(Illustration|Application|Question|Quote|Definition):\s*([\s\S]*?)\]/g;
 
     return text.replace(blockRegex, (_match, type, content) => {
-        return `\n\`\`\`${type.toLowerCase()}\n${content.trim()}\n\`\`\`\n`;
+        const words = content.trim();
+        const fence = codeFenceFor(words);
+        return `\n${fence}${type.toLowerCase()}\n${words}\n${fence}\n`;
     });
 };
 

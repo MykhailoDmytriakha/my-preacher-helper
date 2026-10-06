@@ -46,3 +46,11 @@ describe('MarkdownDisplay sanitize schema (allow-list contract)', () => {
     expect(container.textContent).toContain('underlined');
   });
 });
+
+describe('MarkdownDisplay — a structured block whose words hold a fence', () => {
+  it('fences the quote longer than the backticks in its words, so it stays one block', () => {
+    const { getByTestId } = render(<MarkdownDisplay content={'[Quote: First line\n```\nSecond line]'} />);
+    // react-markdown is stubbed here to print the Markdown it is given.
+    expect(getByTestId('markdown').textContent?.trim()).toBe('````quote\nFirst line\n```\nSecond line\n````');
+  });
+});
