@@ -89,6 +89,44 @@ export function readPlanText(sermon: Sermon | null | undefined): PlanTextMap {
 }
 
 /**
+ * THE CELLS A PLAN EDITOR SHOWS ONCE STORAGE HAS SPOKEN — one rule for both plan editors.
+ *
+ * Storage wins, except for a cell the screen must keep: one being typed into, or one whose
+ * write is still queued. A cell storage no longer holds leaves the screen too. Merging the new
+ * text over the old screen kept it (BUG-20261003-plan-seeding-keeps-removed-cell): the editor
+ * showed text its document had lost, and the next save of that point was refused as a change
+ * from another device.
+ */
+export function mergeStoredPlanText(
+  screen: PlanTextMap,
+  stored: PlanTextMap,
+  keepScreen: (nodeId: string) => boolean
+): PlanTextMap {
+  const next: PlanTextMap = { ...stored };
+  Object.keys(screen).forEach((nodeId) => {
+    if (keepScreen(nodeId)) next[nodeId] = screen[nodeId];
+  });
+  return next;
+}
+
+/**
+ * The "saved" marks that go with `mergeStoredPlanText`: every stored cell counts as saved unless
+ * the screen already says otherwise, and a cell that left the screen leaves its mark behind —
+ * kept, it showed an empty card as filled and held its save button disabled.
+ */
+export function mergeStoredSavedFlags(
+  saved: Record<string, boolean>,
+  stored: PlanTextMap,
+  keepScreen: (nodeId: string) => boolean
+): Record<string, boolean> {
+  const next: Record<string, boolean> = Object.fromEntries(Object.keys(stored).map((nodeId) => [nodeId, true]));
+  Object.keys(saved).forEach((nodeId) => {
+    if (nodeId in stored || keepScreen(nodeId)) next[nodeId] = saved[nodeId];
+  });
+  return next;
+}
+
+/**
  * The document a preacher reads — assembled on the spot from structure plus text.
  *
  * Nothing here is persisted. That is deliberate: the stored assembled string was the copy

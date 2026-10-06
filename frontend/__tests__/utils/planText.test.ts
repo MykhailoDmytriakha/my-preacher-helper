@@ -5,6 +5,8 @@ import {
   renderPlan,
   renderPlanFromSermon,
   writtenSections,
+  mergeStoredPlanText,
+  mergeStoredSavedFlags,
 } from '@/utils/planText';
 import { planFreshnessProjection } from '@/utils/sermonFreshnessProjection';
 
@@ -349,5 +351,37 @@ describe('an old sermon whose text lives in one copy and not the other', () => {
     const sermon = { outline, plan: { introduction: { outline: 'Written in the plan' } }, draft: { introduction: { outline: '' } } } as unknown as Sermon;
     expect(writtenSections(sermon).introduction).toBe(true);
     expect(hasWrittenPlan(sermon)).toBe(true);
+  });
+});
+
+describe('mergeStoredPlanText', () => {
+  const keepNothing = () => false;
+
+  it('takes what storage holds for a cell nobody is typing into', () => {
+    expect(mergeStoredPlanText({ p1: 'Old on screen' }, { p1: 'Saved on the phone' }, keepNothing))
+      .toEqual({ p1: 'Saved on the phone' });
+  });
+
+  it('keeps a cell being typed into or waiting in the queue over what storage holds', () => {
+    const kept = new Set(['p1', 'p2']);
+    expect(mergeStoredPlanText({ p1: 'Typing', p2: 'Queued offline' }, { p1: 'Stored', p3: 'Other' }, (id) => kept.has(id)))
+      .toEqual({ p1: 'Typing', p2: 'Queued offline', p3: 'Other' });
+  });
+
+  it('drops a cell storage no longer holds, even when storage holds nothing at all', () => {
+    expect(mergeStoredPlanText({ p1: 'Removed on this device', p2: 'Kept' }, { p2: 'Kept' }, keepNothing))
+      .toEqual({ p2: 'Kept' });
+    expect(mergeStoredPlanText({ p1: 'Removed on this device' }, {}, keepNothing)).toEqual({});
+  });
+});
+
+describe('mergeStoredSavedFlags', () => {
+  it('marks stored cells saved, keeps what the screen says, and drops the mark of a cell that left', () => {
+    const kept = new Set(['typing']);
+    expect(mergeStoredSavedFlags(
+      { stored: false, typing: false, removed: true },
+      { stored: 'Text', fresh: 'New' },
+      (id) => kept.has(id)
+    )).toEqual({ stored: false, fresh: true, typing: false });
   });
 });

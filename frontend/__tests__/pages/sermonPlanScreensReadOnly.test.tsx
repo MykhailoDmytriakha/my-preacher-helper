@@ -273,6 +273,23 @@ describe('a plan screen when device storage answers again', () => {
     expect(timerMounts).toBe(1);
   });
 
+  /** The page stays mounted while preaching, so its cells must follow the editor's document. */
+  it('drops a cell the editor\'s document no longer holds while the AI plan is preached', () => {
+    mockSearchParams = new URLSearchParams('planView=preaching');
+    mockReadOnly = true;
+    mockSermon = sermonFixture({ planText: { p1: 'Text removed on this device', p2: 'He called on God' } } as Partial<Sermon>);
+    const view = renderPage(<AiPlanPage />);
+    expect(document.body.textContent).toContain('Text removed on this device');
+
+    mockReadOnly = false;
+    mockSermon = sermonFixture({ planText: { p2: 'He called on God' } } as Partial<Sermon>);
+    act(() => {
+      view.rerender(<QueryClientProvider client={new QueryClient()}><AiPlanPage /></QueryClientProvider>);
+    });
+    expect(document.body.textContent).not.toContain('Text removed on this device');
+    expect(document.body.textContent).toContain('He called on God');
+  });
+
   /**
    * The hand-written plan could not be preached from a copy at all (the reader replaced it). Now it
    * can; when storage answers, the preaching view opens afresh on the editor's document.

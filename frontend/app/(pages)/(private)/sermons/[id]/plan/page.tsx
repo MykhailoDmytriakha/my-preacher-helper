@@ -23,7 +23,7 @@ import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
-import { liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
+import { liveNodeIds, mergeStoredPlanText, mergeStoredSavedFlags, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
   planFreshnessProjection,
@@ -593,7 +593,6 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
     );
 
     const storedText = readPlanText(sermon);
-    if (Object.keys(storedText).length === 0) return;
 
     /**
      * STORAGE WINS EXCEPT WHERE SOMETHING IS BEING TYPED.
@@ -601,19 +600,14 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
      * Laying the screen's value over storage unconditionally (`{...stored, ...prev}`) meant
      * a refresh could never bring anything in: text saved on the phone arrived in `sermon`
      * and was immediately covered by the laptop's older copy, including for cards nobody
-     * had touched. Only a cell with unsaved edits may outrank what storage holds.
+     * had touched. Only a cell with unsaved edits may outrank what storage holds, and a cell
+     * storage no longer holds leaves the screen — the rule both plan editors share
+     * (`mergeStoredPlanText`). A queued cell needs no keeping here: its text is mirrored into the
+     * sermon, and keeping the screen's copy instead would hold a copy for reading over it.
      */
-    setGeneratedContent((prev) => {
-      const next = { ...prev, ...storedText };
-      Object.keys(prev).forEach((nodeId) => {
-        if (modifiedContent[nodeId]) next[nodeId] = prev[nodeId];
-      });
-      return next;
-    });
-    setSavedSermonPoints((prev) => ({
-      ...Object.fromEntries(Object.keys(storedText).map((nodeId) => [nodeId, true])),
-      ...prev,
-    }));
+    const keepScreen = (nodeId: string) => Boolean(modifiedContent[nodeId]);
+    setGeneratedContent((prev) => mergeStoredPlanText(prev, storedText, keepScreen));
+    setSavedSermonPoints((prev) => mergeStoredSavedFlags(prev, storedText, keepScreen));
   }, [sermon, modifiedContent, pendingPlanCells, planTextBaseline]);
 
   // Get thoughts for a specific outline point

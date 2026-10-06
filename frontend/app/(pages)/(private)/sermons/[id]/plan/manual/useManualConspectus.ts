@@ -7,7 +7,7 @@ import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { planTextConflictValues } from "@/services/sermons.client";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
-import { liveNodeIds, readPlanText } from "@/utils/planText";
+import { liveNodeIds, mergeStoredPlanText, mergeStoredSavedFlags, readPlanText } from "@/utils/planText";
 import { normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
@@ -152,7 +152,6 @@ export function useManualConspectus({
     );
 
     const stored = readPlanText(sermonRef.current);
-    if (Object.keys(stored).length === 0) return;
 
     /**
      * STORAGE WINS EXCEPT WHERE SOMETHING IS BEING TYPED.
@@ -162,26 +161,18 @@ export function useManualConspectus({
      * older copy, even for cards nobody had touched. Only a cell with unsaved edits may
      * outrank what storage holds.
      */
-    setContentByNodeId((previous) => {
-      const next = { ...previous, ...stored };
-      Object.keys(previous).forEach((nodeId) => {
-        /**
-         * QUEUED COUNTS THE SAME AS BEING TYPED INTO.
-         *
-         * Only "modified" used to survive here, so an offline save — which settles its cells —
-         * lost its protection the moment anything refreshed the sermon: storage handed back the
-         * older paragraph, the person rewrote it not knowing what they already had, and the
-         * replay then buried the first version. The baseline already knew about queued cells;
-         * the text on screen has to know it too, or the two disagree about the same cell.
-         */
-        if (modifiedRef.current[nodeId] || queued.has(nodeId)) next[nodeId] = previous[nodeId];
-      });
-      return next;
-    });
-    setSavedNodeIds((previous) => ({
-      ...Object.fromEntries(Object.keys(stored).map((id) => [id, true])),
-      ...previous,
-    }));
+    /**
+     * QUEUED COUNTS THE SAME AS BEING TYPED INTO.
+     *
+     * Only "modified" used to survive here, so an offline save — which settles its cells —
+     * lost its protection the moment anything refreshed the sermon: storage handed back the
+     * older paragraph, the person rewrote it not knowing what they already had, and the
+     * replay then buried the first version. The baseline already knew about queued cells;
+     * the text on screen has to know it too, or the two disagree about the same cell.
+     */
+    const keepScreen = (nodeId: string) => Boolean(modifiedRef.current[nodeId]) || queued.has(nodeId);
+    setContentByNodeId((previous) => mergeStoredPlanText(previous, stored, keepScreen));
+    setSavedNodeIds((previous) => mergeStoredSavedFlags(previous, stored, keepScreen));
   }, [baseline, refreshPending, sermon?.planText, sermon?.plan]);
 
   /**

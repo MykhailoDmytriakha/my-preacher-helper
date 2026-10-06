@@ -64,8 +64,15 @@ export function usePlanTextBaseline(sermonId: string | null | undefined): PlanTe
     sermon: Sermon | null | undefined,
     isModified: (nodeId: string) => boolean
   ) => {
-    const stored = sermon?.planText ?? {};
-    Object.keys(stored).forEach((nodeId) => {
+    if (!sermon) return;
+    const stored = sermon.planText ?? {};
+    /**
+     * A cell this screen remembers and storage no longer holds has `null` for a baseline — the
+     * truth about it now. Visiting only the stored keys kept the text it once had, and the next
+     * save of its point was refused as a change from another device
+     * (BUG-20261003-plan-seeding-keeps-removed-cell).
+     */
+    new Set([...Object.keys(stored), ...Object.keys(baselineRef.current)]).forEach((nodeId) => {
       if (isModified(nodeId)) return;
       baselineRef.current[nodeId] = stored[nodeId] ?? null;
     });
