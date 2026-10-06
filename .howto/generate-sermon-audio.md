@@ -29,3 +29,7 @@ Two server steps driven by `frontend/app/components/audio/StepByStepWizard.tsx`.
 - 2026-07-14: Google moved to even quality chunks with browser batching, behind the one-line `GOOGLE_SMALL_CHUNKING` switch.
 
 See also: `.howto/raise-route-time-limit.md` · `.howto/format-scripture-reference.md` · `.howto/handle-gemini-rate-limits.md`
+
+## Two sources, one stored set (wizard state)
+
+The server keeps ONE chunk set per sermon (`audioChunks` + `audioMetadata.mode`), while the wizard holds two sources (AI and original). After preparing the original, the AI text — and any edits to it — exists only in the wizard's cache. So every rule about a late answer breaks something: putting an older choice's answer into the cache overwrites newer edits; ignoring it loses the only copy of the AI text. Two review rounds failed on exactly this (`BUG-20261003-audio-wizard-source-mode-mismatch`, patch and 17 tests in `.cases/2026-10-06-bugs-26/artifacts/audio-wizard-r2.patch`). Before touching `mode`/`chunks` in `StepByStepWizard.tsx`, read that record: the proposed construction stores both sets with revisions on the server.
