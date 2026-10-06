@@ -387,6 +387,12 @@ step. See the migration log for the ordered rollout and its remaining device gat
     stays retryable. A queue that retries the impossible leaves the editor no way out.
 11. Closing an editor never strands a savable draft: with `flush` it becomes a durable request
     first (BUG-20260919-engine-leaving-strands-last-edit).
+12. A background failure says what it is about: `onError(error, about)` with the document or
+    collection. Work gathered from many operations — a drain, a retry — fails as `AddressedFailures`
+    (`failures.ts`), one entry per operation with its own address, and `DataEngine.reportFailure`
+    says each entry. A waiting screen is told only failures of its own address and those about
+    nothing in particular. Never mark the error object itself: storage hands one cached rejection to
+    many operations (BUG-20261003-background-failure-without-address).
 
 ## Verification and migration evidence
 

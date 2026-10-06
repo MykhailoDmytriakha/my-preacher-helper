@@ -1,4 +1,5 @@
 import { DataEngineRuntime } from '../runtime';
+import { AddressedFailures } from '../failures';
 import type { CommandResult, DataCommand, EngineTransport, JournalEntry, JournalStore } from '../types';
 const command = (operationId = 'operation-1', id = 'one', owner = 'owner'): DataCommand => ({ protocol: 1, operationId, owner, resource: { collection: 'studyNotes', id }, generation: null, dependsOn: [], kind: 'create', value: { content: 'mine' } });
 const ack = (c: DataCommand): CommandResult => ({ kind: 'acknowledged', operationId: c.operationId, snapshot: { resource: c.resource, value: { content: 'mine' }, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } } });
@@ -159,7 +160,10 @@ describe('DataEngineRuntime', () => {
     expect(records.get('operation-1')?.state).toBe('unknown');
     await runtime.submit(command('operation-2', 'two'));
     jest.mocked(journal.put).mockRejectedValueOnce(new Error('disk failure'));
-    await expect(runtime.drain()).rejects.toThrow('disk failure');
+    const failure = await runtime.drain().then(() => null, (error: unknown) => error);
+    expect(failure).toEqual(expect.objectContaining({ message: 'disk failure' }));
+    // Said about the document whose queue failed, not about everything (BUG-20261003-background-failure-without-address).
+    expect((failure as AddressedFailures).failures.map(entry => entry.about)).toEqual([{ collection: 'studyNotes', id: 'one' }]);
     expect(records.get('operation-2')?.state).toBe('acknowledged');
   });
 });

@@ -1,5 +1,6 @@
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
+import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { DataEngineRuntime } from './runtime';
@@ -232,7 +233,7 @@ export class CommitQueue {
     const run = async () => {
       let races = 0;
       const attempted = new Set<string>();
-      const failures = new Map<string, unknown>();
+      const failures = new Map<string, AddressedFailure>();
       do {
         this.requested = false;
         const records = await this.options.store.list(owner);
@@ -249,7 +250,8 @@ export class CommitQueue {
         }
         this.requested = this.requested || changed;
       } while (this.requested && this.current(owner, generation));
-      if (failures.size) throw failures.values().next().value;
+      // Every request that failed, each about its own document (BUG-20261003-background-failure-without-address).
+      if (failures.size) throw new AddressedFailures([...failures.values()]);
     };
     this.runningGeneration = generation;
     this.running = run();
@@ -288,7 +290,7 @@ export class CommitQueue {
     }
   }
 
-  private async advanceBatch(records: CommitRequest[], owner: string, generation: number, failures: Map<string, unknown>, races: number) {
+  private async advanceBatch(records: CommitRequest[], owner: string, generation: number, failures: Map<string, AddressedFailure>, races: number) {
     let changed = false;
     const advancedOperations = new Set<string>();
     for (const record of records) {
@@ -303,7 +305,7 @@ export class CommitQueue {
       catch (error) {
         if ((error as { code?: string }).code === 'commit-changed' && ++races < 100) { changed = true; continue; }
         if (!this.current(owner, generation)) throw error;
-        for (const participant of atomicParticipants(record, records)) failures.set(participant.id, error);
+        for (const participant of atomicParticipants(record, records)) failures.set(participant.id, { error, about: participant.baseline.resource });
       }
     }
     return { changed, races };

@@ -33,7 +33,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
     await api.save();
   });
   jest.mocked(useDataDocument).mockImplementation(() => api);
-  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null, failureCount: 0 });
+  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
   jest.mocked(useDataForm).mockImplementation(() => ({
     data: api.data, initialData: api.data, openingData: api.data, recoveryIdentity: {}, readOnly: false, active: false, busy: false, loading: false, durable: true, dirty: false, status: null, error: null,
     propose: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(), begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(),
@@ -147,9 +147,9 @@ describe('useSermonCoreDataDocument', () => {
     rerender(); expect(result.current.isReadOnly).toBe(true);
     s.api.confirmed = null; s.api.remote = { resource: { collection: 'sermons', id: 'sermon' }, value: s.api.data, metadata: { protocol: 1, generation: 'g', revision: 2, deleted: true } };
     rerender(); expect(result.current.isReadOnly).toBe(true);
-    s.api.remote = null; jest.mocked(useDataEngine).mockReturnValue({ owner: 'other', browser: null, error: null, failureCount: 0 });
+    s.api.remote = null; jest.mocked(useDataEngine).mockReturnValue({ owner: 'other', browser: null, failures: {} });
     rerender(); expect(result.current.isReadOnly).toBe(true);
-    jest.mocked(useDataEngine).mockReturnValue({ owner: null, browser: null, error: null, failureCount: 0 });
+    jest.mocked(useDataEngine).mockReturnValue({ owner: null, browser: null, failures: {} });
     rerender(); expect(result.current.isReadOnly).toBe(true);
     expect(s.api.update).not.toHaveBeenCalled();
   });

@@ -7,6 +7,12 @@ export interface ResourceRef {
   id: string;
 }
 
+/** What a background failure is about: a document, a whole collection, or — absent — nothing in particular. */
+export interface FailureAddress {
+  collection: string;
+  id?: string;
+}
+
 export interface FieldValue {
   exists: boolean;
   value?: Json;

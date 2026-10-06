@@ -1,3 +1,4 @@
+import { AddressedFailures } from './failures';
 import { commandFingerprint, validateCommand } from './protocol';
 
 import type { CommandResult, DataCommand, EngineTransport, JournalEntry, JournalStore } from './types';
@@ -146,8 +147,11 @@ export class DataEngineRuntime {
       }
     }));
     await this.publishJournal(owner, generation);
-    const failure = outcomes.find((outcome) => outcome.status === 'rejected');
-    if (failure?.status === 'rejected') throw failure.reason;
+    // Each document's queue fails about that document (BUG-20261003-background-failure-without-address).
+    const queues = [...resources.values()];
+    const failures = outcomes.flatMap((outcome, index) => (outcome.status === 'rejected'
+      ? [{ error: outcome.reason as unknown, about: queues[index][0].command.resource }] : []));
+    if (failures.length) throw new AddressedFailures(failures);
   }
 
   private async deliver(entry: JournalEntry, owner: string, generation: number): Promise<void> {

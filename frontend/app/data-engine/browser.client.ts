@@ -20,7 +20,7 @@ import { createIndexedDbSnapshots } from './snapshots.client';
 import { createFirestoreObservationSource } from './source.client';
 import { createHttpEngineTransport } from './transport.client';
 
-import type { ResourceRef } from './types';
+import type { FailureAddress, ResourceRef } from './types';
 
 /** A visible tab nobody has touched this long stops asking the server about quiet documents. */
 const ATTENTION_MS = 10 * 60_000;
@@ -34,7 +34,7 @@ export interface BrowserDataEngine {
 }
 
 /** Create once per mounted provider and dispose on unmount. No module-level browser state. */
-export function createBrowserDataEngine({ onError }: { onError?: (error: unknown) => void } = {}): BrowserDataEngine {
+export function createBrowserDataEngine({ onError }: { onError?: (error: unknown, about?: FailureAddress) => void } = {}): BrowserDataEngine {
   if (typeof window === 'undefined' || typeof document === 'undefined') throw new Error('DataEngine requires a browser');
   const report = onError ?? ((error: unknown) => { console.error('DataEngine background operation failed', error); });
   const tabId = newClientId();
@@ -88,7 +88,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     retrying = true;
     const started = generation;
     void engine.retry().catch(error => {
-      if (active && generation === started) report(error);
+      // Said through the engine, so each failure keeps what it was about (BUG-20261003-background-failure-without-address).
+      if (active && generation === started) engine.reportFailure(error);
     }).finally(() => { retrying = false; });
   }, 60_000);
   const dispose = () => {

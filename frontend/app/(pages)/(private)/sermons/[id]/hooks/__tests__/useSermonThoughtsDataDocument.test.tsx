@@ -33,7 +33,7 @@ function setup(value: ResourceSnapshot = snapshot()) {
     await api.save();
   });
   jest.mocked(useDataDocument).mockReturnValue(api);
-  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, error: null, failureCount: 0 });
+  jest.mocked(useDataEngine).mockReturnValue({ owner: 'owner', browser: null, failures: {} });
   const hook = renderHook(() => useSermonThoughtsDataDocument('sermon'));
   return { session, api, ...hook };
 }

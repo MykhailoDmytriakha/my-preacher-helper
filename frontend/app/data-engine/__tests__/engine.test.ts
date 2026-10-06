@@ -1,5 +1,6 @@
 import { DataEngine, canReplaceSnapshot, type SnapshotStore } from '../engine';
 import { createMemoryCommitStore } from '../commits';
+import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
@@ -260,6 +261,23 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+  /** Review of BUG-20261003-background-failure-without-address: a hanging repair must not hold a failed retry. */
+  it('ends a retry at the first editor that cannot repair, without waiting for one that hangs', async () => {
+    const s = setup({ online: false });
+    try {
+      const first = await s.engine.openEditor(resource, 'tab'), second = await s.engine.openEditor(resource, 'tab2');
+      jest.mocked(s.checkpoints.put).mockRejectedValueOnce(new Error('disk')).mockRejectedValueOnce(new Error('disk'));
+      await expect(first.edit({ ...first.getState().checkpoint.draft, content: 'first' })).rejects.toThrow('disk');
+      await expect(second.edit({ ...second.getState().checkpoint.draft, content: 'second' })).rejects.toThrow('disk');
+      jest.mocked(s.checkpoints.put).mockRejectedValueOnce(new Error('still failing')).mockImplementationOnce(() => new Promise(() => undefined));
+      let settled: unknown = 'pending';
+      void s.engine.retry().then(() => { settled = 'resolved'; }, (failure: unknown) => { settled = failure; });
+      await drainMicrotasks();
+      expect(settled).toBeInstanceOf(AddressedFailures);
+      expect((settled as AddressedFailures).failures).toEqual([{ error: new Error('still failing'), about: resource }]);
+    } finally { s.engine.dispose(); }
+  });
+
   it('retries a failed draft checkpoint offline without requiring another keystroke', async () => {
     const s = setup({ online: false });
     try {
@@ -283,7 +301,10 @@ describe('DataEngine composition', () => {
       await editor.save();
       const prepared = (await s.commits.list('owner'))[0].command;
       expect(prepared?.operationId).toBe('operation-1');
-      expect(s.onError).toHaveBeenCalledWith(new Error('temporary journal failure'));
+      // Preparing this document's delivery failed: said about this document on every road that
+      // reports it — preparation and background delivery (BUG-20261003-background-failure-without-address).
+      expect(s.onError).toHaveBeenCalledWith(new Error('temporary journal failure'), resource);
+      expect(s.onError.mock.calls.every(([, about]) => JSON.stringify(about) === JSON.stringify(resource))).toBe(true);
       if (laterTyping) {
         await editor.edit({ ...editor.getState().checkpoint.draft, content: 'Typed after the journal failed' });
         expect(editor.getState().durable).toBe(true);
@@ -446,7 +467,8 @@ describe('DataEngine composition', () => {
     const recovered = await s.engine.openEditor(resource, 'tab');
     expect(recovered.getState().checkpoint).toMatchObject({ draft: { content: 'recover me' }, dirty: true });
     expect(s.transport.read).not.toHaveBeenCalled();
-    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'The document is not available in the local cache' }));
+    // Said with the document it concerns (BUG-20261003-background-failure-without-address).
+    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'The document is not available in the local cache' }), resource);
     s.engine.dispose();
   });
 
@@ -681,6 +703,26 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+  /** BUG-20261003-background-failure-without-address: a retry gathers it, still about the same document. */
+  it('keeps the document of a snapshot write that fails under a retry', async () => {
+    const s = setup(); s.cache.clear();
+    const disk = deferred<void>();
+    jest.mocked(s.snapshots.put).mockReturnValueOnce(disk.promise);
+    const reading = s.engine.read(resource).then(() => null, (failure: unknown) => failure);
+    await drainMicrotasks();
+    // The write is still pending when the retry starts, and fails under it.
+    const retried = s.engine.retry().then(() => null, (failure: unknown) => failure);
+    await drainMicrotasks();
+    disk.reject(new Error('Disk full')); await drainMicrotasks();
+    expect(await reading).toEqual(new Error('Disk full'));
+    const failure = await retried;
+    expect(failure).toBeInstanceOf(AddressedFailures);
+    expect((failure as AddressedFailures).failures).toEqual([{ error: new Error('Disk full'), about: resource }]);
+    // A person whose Retry failed reads the same words as before.
+    expect((failure as Error).message).toBe('Disk full');
+    s.engine.dispose();
+  });
+
   it('still reports an actual observation persistence failure after editor closure', async () => {
     const s = setup(); const editor = await s.engine.openEditor(resource, 'old');
     await drainMicrotasks(); s.onError.mockClear();
@@ -688,7 +730,7 @@ describe('DataEngine composition', () => {
     jest.mocked(s.checkpoints.put).mockReturnValueOnce(disk.promise);
     s.next(initial(2, 'remote')); await drainMicrotasks();
     editor.close(); disk.reject(new Error('Disk full')); await drainMicrotasks();
-    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }));
+    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }), resource);
     s.engine.dispose();
   });
 
@@ -700,6 +742,7 @@ describe('DataEngine composition', () => {
     expect(editor.getState().durable).toBe(false);
     jest.spyOn(s.runtime, 'drain').mockRejectedValueOnce(new Error('Journal unavailable'));
     s.engine.setOnline(false); s.engine.setOnline(true); await drainMicrotasks();
+    // The whole delivery queue, about no document in particular: every waiting screen may be told.
     expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Journal unavailable' }));
     s.engine.dispose();
   });

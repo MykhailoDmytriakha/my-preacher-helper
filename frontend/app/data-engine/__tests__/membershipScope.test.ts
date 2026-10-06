@@ -303,7 +303,7 @@ describe('membership opening capture', () => {
 });
 
 describe('DataEngine membership ownership', () => {
-  function engineFixture() {
+  function engineFixture(onError?: (error: unknown, about?: unknown) => void) {
     const t = fixture();
     const cache = new Map(pins().map(pin => [pin.baseline.resource.id, pin.baseline]));
     const snapshots = { read: async (_owner: string, resource: { id: string }) => clone(cache.get(resource.id)),
@@ -317,7 +317,7 @@ describe('DataEngine membership ownership', () => {
     let id = 0;
     const runtime = new DataEngineRuntime({ transport, journal: { list: async () => [], put: async () => undefined, remove: async () => undefined } });
     const engine = new DataEngine({ runtime, observer, transport, snapshots, collections, checkpoints: createIndexedDbCheckpoints(),
-      commits: t.commits, membershipScopes: t.scopes, operationId: () => `engine-${++id}` });
+      commits: t.commits, membershipScopes: t.scopes, operationId: () => `engine-${++id}`, onError });
     engine.setOnline(false); engine.setOwner('owner');
     return { ...t, engine, cache, collections };
   }
@@ -427,6 +427,22 @@ describe('DataEngine membership ownership', () => {
     expect(await recovered.save()).toHaveLength(2);
     t.engine.releaseMembership('missing'); t.engine.dispose();
   });
+  /** BUG-20261003-background-failure-without-address: a stage is about series membership, never about everything. */
+  it('says what a failed release was about: series membership, or the document a creation stage makes', async () => {
+    const onError = jest.fn(), t = engineFixture(onError);
+    jest.spyOn(t.scopes, 'compact').mockRejectedValue(new Error('Disk full'));
+    const membership = await t.engine.beginMembership();
+    t.engine.releaseMembership(membership.getState().record.scopeId);
+    const creation = await t.engine.beginMemberCreation('sermons', { title: '', verse: '', date: 'now', thoughts: [] });
+    const created = creation.getState().record.creation!.resource;
+    t.engine.releaseMembership(creation.getState().record.scopeId);
+    for (let index = 0; index < 80; index++) await Promise.resolve();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }), { collection: 'series' });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }), created);
+    expect(onError.mock.calls.every(([, about]) => about !== undefined)).toBe(true);
+    t.engine.dispose();
+  });
+
   it('releases pristine scopes without retaining payloads and retains unfinished choices', async () => {
     const t = engineFixture(), pristine = await t.engine.beginMembership();
     const firstId = pristine.getState().record.scopeId; t.engine.releaseMembership(firstId);

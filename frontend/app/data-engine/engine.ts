@@ -2,6 +2,7 @@ import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
 import { editorSlot } from './editorIdentity';
+import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
@@ -18,7 +19,7 @@ import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint } from './session';
-import type { DocumentData, EngineMetadata, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, EngineMetadata, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -41,7 +42,8 @@ export interface DataEngineOptions {
   commits: CommitStore;
   manualScopes?: ManualScopeStore;
   membershipScopes?: MembershipScopeStore;
-  onError?: (error: unknown) => void;
+  /** A failure of background work, with the document or collection it concerns when there is one. */
+  onError?: (error: unknown, about?: FailureAddress) => void;
 }
 
 export interface ManagedManualForm {
@@ -99,6 +101,11 @@ interface EditorEntry {
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+/** Work for one document fails about that document; a list gathered further down keeps its own addresses. */
+const about = <T,>(resource: FailureAddress, work: Promise<T>): Promise<T> =>
+  work.catch((error: unknown) => { throw error instanceof AddressedFailures ? error : new AddressedFailures([{ error, about: resource }]); });
+const aboutEditor = <T,>(controller: EditorController, work: Promise<T>): Promise<T> =>
+  about(controller.getState().checkpoint.confirmed.resource, work);
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const hasFormWork = (owner: string, resource: ResourceRef, requests: readonly CommitRequest[]) => requests.some(request => request.owner === owner
   && sameResource(request.baseline.resource, resource) && !['acknowledged', 'cancelled'].includes(request.state) && editorSlot(request.editorId) === null);
@@ -115,7 +122,7 @@ export class DataEngine {
   private disposed = false;
   private readonly editors = new Map<string, EditorEntry>();
   private readonly recovering = new Map<string, object>();
-  private readonly cacheWrites = new Map<string, { owner: string; generation: number; operation: Promise<ResourceSnapshot> }>();
+  private readonly cacheWrites = new Map<string, { owner: string; generation: number; resource: ResourceRef; operation: Promise<ResourceSnapshot> }>();
   private readonly reads = new Map<string, Promise<ResourceSnapshot>>();
   private pending: JournalEntry[] = [];
   private pendingVersion = 0;
@@ -141,14 +148,14 @@ export class DataEngine {
       this.commitRecords.set(request.id, request);
       const manual = [...this.manualForms.values()].find(item => item.scopeId === request.editorId && !item.parent.closed);
       if (manual?.parent.controller && request.state !== 'cancelled') {
-        try { this.background(manual.parent.controller.adoptManualCommit(request, manual.selection), request.owner, this.generation); }
-        catch (error) { this.options.onError?.(error); }
+        try { this.background(manual.parent.controller.adoptManualCommit(request, manual.selection), request.owner, this.generation, request.baseline.resource); }
+        catch (error) { this.reportFailure(error, request.baseline.resource); }
         manual.emit();
       }
       if (manual && ['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
-        this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation);
+        this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation, request.baseline.resource);
       }
-      if (request.result?.kind === 'acknowledged') this.background(this.persistSnapshot(request.owner, this.generation, request.result.snapshot), request.owner, this.generation);
+      if (request.result?.kind === 'acknowledged') this.background(this.persistSnapshot(request.owner, this.generation, request.result.snapshot), request.owner, this.generation, request.result.snapshot.resource);
       for (const [editorId, entry] of this.editors) if (!entry.closed && editorId === request.editorId) this.emit(entry);
     });
     this.stopRuntime = options.runtime.subscribe(event => this.onRuntime(event));
@@ -379,6 +386,8 @@ export class DataEngine {
     const owner = this.owner, generation = this.generation;
     this.membershipForms.delete(scopeId);
     this.membershipReleases.set(scopeId, scope);
+    // A stage is about the document it creates, or about series membership — never about everything.
+    const about = scope.getState().record.creation?.resource ?? { collection: 'series' };
     this.background(scope.settled().then(async () => {
       this.assertCurrent(owner, generation);
       const record = scope.getState().record;
@@ -388,7 +397,7 @@ export class DataEngine {
       scope.dispose();
       if (this.membershipReleases.get(scopeId) === scope) this.membershipReleases.delete(scopeId);
       if (this.current(owner, generation)) this.emitMembership();
-    }), owner, generation);
+    }), owner, generation, about);
   }
 
   async listMembershipRecovery({ closedOnly = false }: { closedOnly?: boolean } = {}): Promise<MembershipScopeRecord[]> {
@@ -599,22 +608,24 @@ export class DataEngine {
     const generation = this.generation;
     // Repair local ownership even offline. A failed first checkpoint or journal
     // insertion has no queued remote result that could repair it through replay.
+    // The first failure ends the retry, as it always did, and stays about its own document
+    // (BUG-20261003-background-failure-without-address).
     await Promise.all([...this.editors.values()].map(entry => {
       const controller = entry.controller;
-      return controller?.needsPersistenceRetry() ? controller.retryPersistence() : undefined;
+      return controller?.needsPersistenceRetry() ? aboutEditor(controller, controller.retryPersistence()) : undefined;
     }));
     this.assertCurrent(owner, generation);
     await this.commits.drain(this.canDeliver());
     this.assertCurrent(owner, generation);
     // Only an explicit document retry requests a fresh read; the background
     // delivery timer must not turn into an extra polling loop for every editor.
-    if (resource) await this.options.observer.refresh(resource);
+    if (resource) await about(resource, this.options.observer.refresh(resource));
     this.assertCurrent(owner, generation);
-    await Promise.all([...this.editors.values()].map(entry => entry.controller?.settled()));
+    await Promise.all([...this.editors.values()].map(entry => entry.controller && aboutEditor(entry.controller, entry.controller.settled())));
     this.assertCurrent(owner, generation);
     await Promise.all([...this.cacheWrites.values()]
       .filter(write => write.owner === owner && write.generation === generation)
-      .map(write => write.operation));
+      .map(write => about(write.resource, write.operation)));
   }
 
   listPending(): Promise<JournalEntry[]> {
@@ -753,7 +764,7 @@ export class DataEngine {
           lastConfirmed = confirmed;
           // A new, unsubmitted editor's absence is not evidence of a server deletion.
           if ((!creating && !resumingCreation) || confirmed.metadata || confirmed.value !== null) {
-            this.background(this.persistSnapshot(owner, generation, confirmed), owner, generation);
+            this.background(this.persistSnapshot(owner, generation, confirmed), owner, generation, frozen);
           }
         }
         // Watching an existing ID before create acknowledgement could turn create into update.
@@ -763,8 +774,8 @@ export class DataEngine {
             entry.observation = observation;
             this.emit(entry);
             if (!observation.snapshot || !observation.source) return;
-            this.background(controller.observe(observation.snapshot, observation.source), owner, generation);
-            this.background(this.persistSnapshot(owner, generation, observation.snapshot), owner, generation);
+            this.background(controller.observe(observation.snapshot, observation.source), owner, generation, frozen);
+            this.background(this.persistSnapshot(owner, generation, observation.snapshot), owner, generation, frozen);
           });
           if (entry.closed || !this.current(owner, generation)) stopObservation();
           else entry.stopObservation = stopObservation;
@@ -815,7 +826,7 @@ export class DataEngine {
           // The request belongs to the engine's queue, not to the controller that just closed:
           // it is delivered by any editor or tab of this owner, now or after a reload.
           this.background(this.commits.save(editorId, leaving.checkpoint, leaving.predecessorId ? { predecessorId: leaving.predecessorId } : undefined)
-            .then(() => { this.backgroundDrain(); }), owner, generation);
+            .then(() => { this.backgroundDrain(); }), owner, generation, frozen);
         },
       };
       this.backgroundDrain();
@@ -1001,10 +1012,10 @@ export class DataEngine {
     if (event.kind === 'journal') {
       this.publishPending(event.entries);
     } else if (event.result.kind === 'acknowledged') {
-      this.background(this.refreshAcknowledged(event.result.operationId, event.result.snapshot, event.owner, this.generation), event.owner, this.generation);
+      this.background(this.refreshAcknowledged(event.result.operationId, event.result.snapshot, event.owner, this.generation), event.owner, this.generation, event.result.snapshot.resource);
       if (this.options.collections) this.background(this.refreshAcknowledgedCollections(event.result.operationId,
         [event.result.snapshot.resource.collection, ...(event.result.affected ?? []).map(effect => effect.resource.collection)],
-        event.owner, this.generation), event.owner, this.generation);
+        event.owner, this.generation), event.owner, this.generation, { collection: event.result.snapshot.resource.collection });
     }
   }
 
@@ -1078,7 +1089,7 @@ export class DataEngine {
       if (!saved) throw error;
       if (!sameResource(saved.checkpoint.confirmed.resource, resource)) throw new Error('Checkpoint identity mismatch');
       // Controller.open owns restoration and independently validates the full identity.
-      this.options.onError?.(error);
+      this.options.onError?.(error, resource);
       return saved.checkpoint.confirmed;
     }
   }
@@ -1096,7 +1107,7 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       return frozen;
     });
-    this.cacheWrites.set(key, { owner, generation, operation });
+    this.cacheWrites.set(key, { owner, generation, resource: frozen.resource, operation });
     void operation.finally(() => {
       if (this.cacheWrites.get(key)?.operation === operation) this.cacheWrites.delete(key);
     }).catch(() => undefined);
@@ -1132,14 +1143,21 @@ export class DataEngine {
   private async prepareCommits(): Promise<void> {
     // The request is already durable. Preparation failures remain retryable work,
     // rather than misreporting that the user's Save was discarded.
-    try { await this.commits.drain(false); } catch (error) { this.options.onError?.(error); }
+    try { await this.commits.drain(false); } catch (error) { this.reportFailure(error); }
   }
 
-  private background(operation: Promise<unknown>, owner: string, generation: number): void {
-    void operation.catch(error => {
+  private background(operation: Promise<unknown>, owner: string, generation: number, about?: FailureAddress): void {
+    void operation.catch(error => { if (this.current(owner, generation)) this.reportFailure(error, about); });
+  }
+
+  /** Say each failure once, with what it was about; a list gathered from many operations is said entry by entry. */
+  reportFailure(error: unknown, about?: FailureAddress): void {
+    for (const failure of eachFailure(error, about)) {
       // Editor queues can settle after normal form closure. Keep real I/O failures visible.
-      if (!(error instanceof InactiveEditorError) && this.current(owner, generation)) this.options.onError?.(error);
-    });
+      if (failure.error instanceof InactiveEditorError) continue;
+      if (failure.about) this.options.onError?.(failure.error, failure.about);
+      else this.options.onError?.(failure.error);
+    }
   }
 
   private canDeliver(): boolean {

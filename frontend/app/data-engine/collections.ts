@@ -5,7 +5,7 @@ import { canReplaceSnapshot } from './snapshotFreshness';
 import type { CollectionDocumentView } from './collectionView';
 import type { SnapshotStore } from './engine';
 import type { Observation, ResourceObserver } from './observer';
-import type { CollectionChanges, CollectionPage, CollectionTransport, ResourceSnapshot } from './types';
+import type { CollectionChanges, CollectionPage, CollectionTransport, FailureAddress, ResourceSnapshot } from './types';
 
 export interface CollectionCursor {
   version: number;
@@ -46,7 +46,7 @@ export interface CollectionReaderOptions {
   snapshots: CollectionSnapshotStore;
   cursors: CollectionCursorStore;
   observer: ResourceObserver;
-  onError?: (error: unknown) => void;
+  onError?: (error: unknown, about?: FailureAddress) => void;
   pageSize?: number;
   /** Protect against an endless or damaged feed without silently truncating a collection. */
   maxPages?: number;
@@ -642,7 +642,7 @@ export class CollectionReader {
     entry.state = { ...entry.state, checking: false, freshness: entry.state.snapshots.length || entry.state.complete ? 'cache' : 'unknown',
       error: error instanceof Error ? error.message : 'Collection synchronization failed' };
     this.emit(entry);
-    try { this.options.onError?.(error); } catch { /* Diagnostics never change the durable cursor. */ }
+    try { this.options.onError?.(error, { collection: entry.collection }); } catch { /* Diagnostics never change the durable cursor. */ }
   }
 
   private emit(entry: CollectionEntry): void {

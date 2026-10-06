@@ -23,21 +23,25 @@ import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
-import type { DocumentData, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
 interface EngineContextValue {
   browser: BrowserDataEngine | null;
   owner: string | null;
-  /** The last background failure of this owner's engine; see `useBackgroundFailure` for who may show it. */
-  error: string | null;
-  /** Counts background failures; a screen compares it with the count when it started waiting. */
-  failureCount: number;
+  /**
+   * Background failures of this owner's engine, counted by what they were about (`failureKey`);
+   * a waiting screen compares the counts of its own address with those when it started waiting.
+   * See `useBackgroundFailure` for who may show them.
+   */
+  failures: Readonly<Record<string, number>>;
 }
+/** The count a failure about nothing in particular is kept under. */
+const ANY_ADDRESS = '*';
+const failureKey = (about?: FailureAddress) => (about ? (about.id ? `${about.collection}/${about.id}` : about.collection) : ANY_ADDRESS);
+const NO_FAILURES: Readonly<Record<string, number>> = {};
 const EngineContext = createContext<EngineContextValue | null>(null);
-/** Only whether the provider failed and how often; `useBackgroundFailure` says it in words. */
-const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
 const EDITOR_CHANGED = 'The active editor changed';
 const ENGINE_NOT_READY = 'The data engine is not ready';
 /** What a list, or a screen waiting on the engine's background work, says when that work failed. */
@@ -150,13 +154,14 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const owner = user?.uid ?? null;
   const [mounted, setMounted] = useState<{ owner: string | null; browser: BrowserDataEngine } | null>(null);
-  const [failure, setFailure] = useState<{ owner: string | null; message: string; count: number } | null>(null);
+  const [failure, setFailure] = useState<{ owner: string | null; counts: Readonly<Record<string, number>> } | null>(null);
   useEffect(() => {
     let active = true;
-    const instance = createBrowserDataEngine({ onError: error => {
+    const instance = createBrowserDataEngine({ onError: (error, about) => {
       // The engine's own sentence is for developers; a screen that shows this failure says it in words.
       logFailureOnce(error, 'DataEngine background operation failed');
-      if (active) setFailure(previous => ({ owner, message: message(error), count: (previous?.count ?? 0) + 1 }));
+      const key = failureKey(about);
+      if (active) setFailure(previous => ({ owner, counts: { ...previous?.counts, [key]: (previous?.counts[key] ?? 0) + 1 } }));
     } });
     instance.engine.setOwner(owner);
     setFailure(null);
@@ -164,9 +169,8 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
     return () => { active = false; instance.dispose(); };
   }, [owner]);
   const browser = mounted?.owner === owner ? mounted.browser : null;
-  const error = failure?.owner === owner ? failure.message : null;
-  const failureCount = failure?.owner === owner ? failure.count : 0;
-  const value = useMemo(() => ({ browser, owner, error, failureCount }), [browser, owner, error, failureCount]);
+  const failures = failure?.owner === owner ? failure.counts : NO_FAILURES;
+  const value = useMemo(() => ({ browser, owner, failures }), [browser, owner, failures]);
   return <EngineContext.Provider value={value}>{children}</EngineContext.Provider>;
 }
 
@@ -308,7 +312,7 @@ export function useDocumentActions() {
  * missing provider there is a mistake — but a collection read from a screen that also runs
  * without the engine is an absence of rows, not a programming error.
  */
-const idleEngine: EngineContextValue = { browser: null, owner: null, error: null, failureCount: 0 };
+const idleEngine: EngineContextValue = { browser: null, owner: null, failures: NO_FAILURES };
 
 /*
  * A BACKGROUND FAILURE EXPLAINS ONLY A WAIT IT HAPPENED DURING
@@ -322,16 +326,19 @@ const idleEngine: EngineContextValue = { browser: null, owner: null, error: null
  * told reads a sentence in words, not the engine's. A list's own failure still reaches that list
  * through its own state.
  */
-function useBackgroundFailure(waitIdentity: object | null): string | null {
+function useBackgroundFailure(waitIdentity: object | null, address: FailureAddress | null): string | null {
   const { t } = useTranslation();
-  const { error, failureCount } = useContext(EngineContext) ?? idleEngine;
+  const { failures } = useContext(EngineContext) ?? idleEngine;
+  // Its own address and failures about nothing in particular; another document's or list's never
+  // explain this wait (BUG-20261003-background-failure-without-address).
+  const failureCount = address ? (failures[failureKey(address)] ?? 0) + (failures[ANY_ADDRESS] ?? 0) : 0;
   const [since, setSince] = useState<{ identity: object; count: number } | null>(null);
   const latestCount = useRef(failureCount);
   latestCount.current = failureCount;
   useEffect(() => {
     if (waitIdentity) setSince({ identity: waitIdentity, count: latestCount.current });
   }, [waitIdentity]);
-  return error && waitIdentity && since?.identity === waitIdentity && failureCount > since.count
+  return waitIdentity && since?.identity === waitIdentity && failureCount > since.count
     ? t(BACKGROUND_FAILED)
     : null;
 }
@@ -567,7 +574,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   // Owner and resource identity gate rendering before effect cleanup can run.
   const current = opened?.identity === identity ? opened : null;
-  const backgroundFailure = useBackgroundFailure(browser && owner && collection && id ? identity : null);
+  const backgroundFailure = useBackgroundFailure(browser && owner && collection && id ? identity : null, collection && id ? { collection, id } : null);
 
   /*
    * AN OPENING THAT DOES NOT ANSWER IS NOT WAITED ON IN FRONT OF THE PERSON
@@ -763,7 +770,7 @@ export function useDataCollection(collection: string | null) {
   const { browser, owner } = useContext(EngineContext) ?? idleEngine;
   const [attempt, setAttempt] = useState(0);
   const identity = useMemo(() => ({ owner, browser, collection, attempt }), [owner, browser, collection, attempt]);
-  const backgroundFailure = useBackgroundFailure(browser && owner && collection ? identity : null);
+  const backgroundFailure = useBackgroundFailure(browser && owner && collection ? identity : null, collection ? { collection } : null);
   const say = useSayFailure();
   const scope = useRef(identity); scope.current = identity;
   const subscription = useRef<{ identity: object; watching: boolean } | null>(null);

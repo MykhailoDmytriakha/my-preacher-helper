@@ -813,6 +813,40 @@ describe('a background failure elsewhere in the engine (BUG-20260927-engine-back
     expect(result.current.loading).toBe(true);
   });
 
+  /** BUG-20261003-background-failure-without-address */
+  describe('by what it was about', () => {
+    const failAbout = (about: { collection: string; id?: string }) => act(async () => {
+      jest.mocked(createBrowserDataEngine).mock.calls.at(-1)?.[0]?.onError?.(new Error('delivery failed'), about);
+    });
+
+    it('does not explain a waiting list with another collection\'s failure, and does with its own', async () => {
+      const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+      const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+      await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+
+      await failAbout({ collection: 'sermons', id: 'sermon-1' });
+      await failAbout({ collection: 'sermons' });
+      expect(result.current.error).toBeNull();
+
+      await failAbout({ collection: 'studyNotes' });
+      expect(result.current.error).toBe('dataSync.backgroundFailure');
+    });
+
+    it('does not explain a waiting document with another document\'s failure, and does with its own', async () => {
+      const b = makeBrowser(); b.engine.openEditor.mockImplementation(() => new Promise(() => undefined));
+      jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+      const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+      await waitFor(() => expect(b.engine.openEditor).toHaveBeenCalled());
+
+      await failAbout({ collection: resource.collection, id: 'another-document' });
+      await failAbout({ collection: resource.collection });
+      expect(result.current.error).toBeNull();
+
+      await failAbout(resource);
+      expect(result.current.error).toBe('dataSync.backgroundFailure');
+    });
+  });
+
   it('still explains a list that is waiting when it happens', async () => {
     const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });

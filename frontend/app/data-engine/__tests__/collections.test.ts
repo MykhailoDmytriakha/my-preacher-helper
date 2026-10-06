@@ -225,7 +225,8 @@ describe('CollectionReader durable read lifecycle', () => {
     await expect(s.reader.refresh(collection)).rejects.toThrow('Disk full');
     expect(s.cursorRecords.get(cursorKey('owner'))).toEqual({ version: 0, initialized: false, revision: 1 });
     expect(jest.mocked(s.cursors.put).mock.calls.every(call => call[3].initialized === false)).toBe(true);
-    expect(s.onError).toHaveBeenCalled();
+    // Said with the list it concerns, so only that list's waiting screen is told (BUG-20261003-background-failure-without-address).
+    expect(s.onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Disk full' }), { collection });
     expect(await s.reader.refresh(collection)).toMatchObject({ complete: true, freshness: 'server' }); s.reader.dispose();
   });
 

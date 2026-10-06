@@ -12,6 +12,7 @@ import { submittedWorkCheckpoint } from '../submittedWork';
 import { reconcileRecoveryRecord } from '../recovery.client';
 import { installStorageHarness } from './storageHarness';
 import type { CommandResult, EngineTransport, JournalEntry, ResourceSnapshot } from '../types';
+import { AddressedFailures } from '../failures';
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const member = { id: 'member', type: 'group', refId: 'group', position: 1 };
@@ -139,7 +140,11 @@ it('holds the ACK journal when atomic result persistence fails and projects neit
   const failing = jest.spyOn(s.requests, 'compareAndSetBatch').mockImplementation(async changes => {
     if (changes.some(change => change.next.state === 'acknowledged')) throw new Error('disk full'); return cas(changes);
   });
-  await expect(queue.drain(true)).rejects.toThrow('disk full');
+  const failure = await queue.drain(true).then(() => null, (error: unknown) => error);
+  expect(failure).toEqual(expect.objectContaining({ message: 'disk full' }));
+  // Each participant's failure is about its own document (BUG-20261003-background-failure-without-address).
+  expect((failure as AddressedFailures).failures.map(entry => entry.about)).toEqual([
+    { collection: 'series', id: 'a' }, { collection: 'series', id: 'b' }]);
   expect((await queue.list()).map(row => row.state)).toEqual(['prepared', 'prepared']);
   expect([...s.entries.values()].map(entry => entry.state)).toEqual(['acknowledged']);
   failing.mockRestore(); await queue.drain(true);
