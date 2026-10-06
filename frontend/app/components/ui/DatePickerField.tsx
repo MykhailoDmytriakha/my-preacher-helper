@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
-import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
+import { dayTextOf, getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
 import { getWeekStartsOn } from "@/utils/weekStart";
 
 import "react-day-picker/dist/style.css";
@@ -53,7 +53,7 @@ const getDefaultInputClassName = () =>
 
 export default function DatePickerField({
   id,
-  value,
+  value: storedValue,
   onChange,
   required = false,
   disabled = false,
@@ -64,6 +64,9 @@ export default function DatePickerField({
   finishedDatesOnly = false,
   refuseMissingDays = false,
 }: DatePickerFieldProps) {
+  // What the field last handed over as typed: its echo stays exactly as typed, so the form judges it.
+  const emittedRef = useRef<string | null>(null);
+  const value = storedValue === emittedRef.current ? storedValue : dayTextOf(storedValue);
   const generatedId = useId();
   const inputId = id || generatedId;
   const { t } = useTranslation();
@@ -209,6 +212,7 @@ export default function DatePickerField({
 
   const handleType = (raw: string) => {
     if (!finishedDatesOnly) {
+      emittedRef.current = raw;
       onChange(raw);
       return;
     }

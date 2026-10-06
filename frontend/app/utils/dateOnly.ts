@@ -29,6 +29,20 @@ export const isDateOnlyKey = (value: string): boolean => {
 /** Shaped like a day, names none: "2026-02-31", "2026-13-01", "0000-01-01". */
 export const isMissingDay = (value: string): boolean => DATE_ONLY_REGEX.test(value) && !isDateOnlyKey(value);
 
+/** A full stored timestamp — a day, then a time — never text typed so far. */
+const STORED_TIMESTAMP_REGEX = /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/;
+
+/**
+ * The text a date field shows for a stored value: a stored timestamp shows its day, anything else
+ * — a day, an empty value, text typed so far — exactly as it is. Meetings were once stored as
+ * midnight UTC, and the field showed the whole timestamp, which its own pattern then refused
+ * (BUG-20261003-old-meeting-date-format-shown-raw).
+ */
+export const dayTextOf = (value: string): string => {
+  const match = value.match(STORED_TIMESTAMP_REGEX);
+  return match ? match[1] : value;
+};
+
 export const toDateOnlyKey = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') {
     return null;
