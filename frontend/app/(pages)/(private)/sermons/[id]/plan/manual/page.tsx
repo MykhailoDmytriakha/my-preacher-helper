@@ -338,6 +338,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source?: Sermon
     contentByNodeId: conspectus.contentByNodeId,
     modifiedNodeIds: conspectus.modifiedNodeIds,
     pendingNodeIds: conspectus.pendingNodeIds,
+    pendingText: conspectus.pendingText,
     liveNodeIds: livePlanNodes,
     frozen: readOnly,
   });

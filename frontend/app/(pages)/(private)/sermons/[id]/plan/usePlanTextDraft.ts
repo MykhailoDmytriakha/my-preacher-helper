@@ -77,6 +77,7 @@ export default function usePlanTextDraft({
   contentByNodeId,
   modifiedNodeIds,
   pendingNodeIds,
+  pendingText = {},
   liveNodeIds,
   frozen = false,
 }: {
@@ -86,6 +87,8 @@ export default function usePlanTextDraft({
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed, however clean the screen looks. */
   pendingNodeIds: Set<string>;
+  /** Their queued words (`pendingPlanText`): the draft keeps these, not what the screen shows. */
+  pendingText?: Record<string, string>;
   /** Nodes the outline still has. A draft for anything else has nowhere to be shown. */
   liveNodeIds: Set<string>;
   /**
@@ -99,6 +102,25 @@ export default function usePlanTextDraft({
   const enabled = Boolean(uid && sermonId) && !frozen;
 
   /**
+   * Cells whose current words were typed on this screen — the only ones it may lay over a draft it
+   * did not write. A cell joins when typed into and stays while its edit is open or its save is
+   * queued (a save queued before the debounce clears the edit mark); it leaves once that edit has
+   * settled, so this screen never reaches later over words another tab has stored since.
+   */
+  const typedHereRef = useRef<Set<string>>(new Set());
+  const typedForRef = useRef(`${uid}:${sermonId}`);
+  if (typedForRef.current !== `${uid}:${sermonId}`) {
+    typedForRef.current = `${uid}:${sermonId}`;
+    typedHereRef.current = new Set();
+  }
+  Object.entries(modifiedNodeIds).forEach(([nodeId, isDirty]) => {
+    if (isDirty) typedHereRef.current.add(nodeId);
+  });
+  typedHereRef.current.forEach((nodeId) => {
+    if (!modifiedNodeIds[nodeId] && !pendingNodeIds.has(nodeId)) typedHereRef.current.delete(nodeId);
+  });
+
+  /**
    * UNCONFIRMED MEANS TWO THINGS, and both belong here: being typed right now, and sitting in
    * the offline queue — which is precisely "written, but no server has seen it". The second is
    * the one that used to be missed, and missing it is how the words written on a train stopped
@@ -106,14 +128,25 @@ export default function usePlanTextDraft({
    */
   const unconfirmed = useMemo(() => {
     const cells: Record<string, string> = {};
+    /**
+     * A queued cell this screen did not type into keeps its QUEUED words, not the screen's: the
+     * screen may hold a copy's words or a document's older ones, and storing those laid them over
+     * the person's unsent text (BUG-20261003-preaching-on-copy-stores-copy-words-as-draft). Typing
+     * wins below.
+     */
+    pendingNodeIds.forEach((nodeId) => {
+      // Only a cell with a card: a gone node's text is shown as an orphan and is the person's to let go.
+      if (!liveNodeIds.has(nodeId) && !(nodeId in contentByNodeId)) return;
+      // A cell typed here stores what was typed here — the newest queue entry may be another tab's.
+      if (typedHereRef.current.has(nodeId) && nodeId in contentByNodeId) cells[nodeId] = contentByNodeId[nodeId];
+      else if (nodeId in pendingText) cells[nodeId] = pendingText[nodeId];
+      else if (nodeId in contentByNodeId) cells[nodeId] = contentByNodeId[nodeId];
+    });
     Object.entries(modifiedNodeIds).forEach(([nodeId, isDirty]) => {
       if (isDirty) cells[nodeId] = contentByNodeId[nodeId] ?? "";
     });
-    pendingNodeIds.forEach((nodeId) => {
-      if (nodeId in contentByNodeId) cells[nodeId] = contentByNodeId[nodeId];
-    });
     return cells;
-  }, [contentByNodeId, modifiedNodeIds, pendingNodeIds]);
+  }, [contentByNodeId, liveNodeIds, modifiedNodeIds, pendingNodeIds, pendingText]);
 
   /** What THIS screen last stored per cell, so it can retire its own writes and no one else's. */
   const oursRef = useRef<Record<string, string>>({});
@@ -133,8 +166,19 @@ export default function usePlanTextDraft({
     const cells = unconfirmedRef.current;
     Object.entries(cells).forEach(([nodeId, text]) => {
       if (oursRef.current[nodeId] === text) return;
+      const key = cellKey(owner, docId, nodeId);
+      /**
+       * A DRAFT THIS SCREEN DID NOT WRITE IS NOT ITS TO REPLACE until the person types into the cell.
+       * It may hold words newer than anything queued — typed after the queue entry, then the page
+       * closed — and it stays for the person to restore or let go
+       * (BUG-20261003-preaching-on-copy-stores-copy-words-as-draft).
+       */
+      if (!typedHereRef.current.has(nodeId)) {
+        const stored = readDraft<string>(key)?.value;
+        if (typeof stored === "string" && stored !== text && stored !== oursRef.current[nodeId]) return;
+      }
       // Only a copy that landed is ours; a refused one is tried again on the next pass.
-      if (saveDraft(cellKey(owner, docId, nodeId), text)) {
+      if (saveDraft(key, text)) {
         oursRef.current[nodeId] = text;
         delete owedRef.current[nodeId];
       } else {

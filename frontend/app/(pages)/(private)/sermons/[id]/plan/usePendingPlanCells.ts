@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { OUTBOX_CHANGED_EVENT } from "@/components/OutboxDrain";
-import { pendingPlanTextNodeIds } from "@/services/sermons.client";
+import { pendingPlanText, pendingPlanTextNodeIds } from "@/services/sermons.client";
 
 import type { Sermon } from "@/models/models";
 
@@ -23,6 +23,8 @@ import type { Sermon } from "@/models/models";
  */
 export interface PendingPlanCells {
   nodeIds: Set<string>;
+  /** The queued words of each cell, newest intent per cell — what the device draft keeps. */
+  text: Record<string, string>;
   /** Always current, for predicates that must not re-run an effect to stay fresh. */
   ref: React.MutableRefObject<Set<string>>;
   /**
@@ -38,9 +40,15 @@ export interface PendingPlanCells {
 }
 
 const EMPTY: Set<string> = new Set();
+const NO_TEXT: Record<string, string> = {};
+
+const sameText = (a: Record<string, string>, b: Record<string, string>) =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([nodeId, words]) => b[nodeId] === words);
 
 export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingPlanCells {
   const [nodeIds, setNodeIds] = useState<Set<string>>(EMPTY);
+  const [text, setText] = useState<Record<string, string>>(NO_TEXT);
+  const textRef = useRef(text);
   const ref = useRef(nodeIds);
   useEffect(() => {
     ref.current = nodeIds;
@@ -61,6 +69,12 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
     // The ref moves NOW, not after a render: callers ask again within the same effect.
     ref.current = answer;
     if (!unchanged) setNodeIds(answer);
+    // The words move with the ids: a cell queued again with new words keeps its id.
+    const words = pendingPlanText(current?.userId, current?.id);
+    if (!sameText(words, textRef.current)) {
+      textRef.current = words;
+      setText(words);
+    }
     return answer;
   }, []);
 
@@ -85,5 +99,5 @@ export function usePendingPlanCells(sermon: Sermon | null | undefined): PendingP
    * sets state, which renders, which runs it again. The same trap already killed the baseline
    * hook once, with the page dying of an exhausted heap before anything reached storage.
    */
-  return useMemo(() => ({ nodeIds, ref, refresh }), [nodeIds, refresh]);
+  return useMemo(() => ({ nodeIds, text, ref, refresh }), [nodeIds, text, refresh]);
 }

@@ -329,6 +329,7 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
     contentByNodeId: generatedContent,
     modifiedNodeIds: modifiedContent,
     pendingNodeIds: pendingPlanCells.nodeIds,
+    pendingText: pendingPlanCells.text,
     liveNodeIds: livePlanNodes,
     frozen: readOnly,
   });

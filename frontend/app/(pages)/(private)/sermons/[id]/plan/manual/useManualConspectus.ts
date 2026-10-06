@@ -50,6 +50,8 @@ export interface ManualConspectus {
   modifiedNodeIds: Record<string, boolean>;
   /** Cells whose write is queued offline — unconfirmed however clean the screen looks. */
   pendingNodeIds: Set<string>;
+  /** The queued words of those cells — see `usePendingPlanCells`. */
+  pendingText: Record<string, string>;
   setNodeContent: (nodeId: string, text: string) => void;
   /** Put recovered cells back into the editor, marked unsaved so they will be written. */
   restoreCells: (cells: Record<string, string>) => void;
@@ -84,7 +86,7 @@ export function useManualConspectus({
   const baseline = usePlanTextBaseline(sermon?.id);
 
   /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
-  const { nodeIds: pendingNodeIds, refresh: refreshPending } =
+  const { nodeIds: pendingNodeIds, text: pendingText, refresh: refreshPending } =
     usePendingPlanCells(sermon);
 
   const sermonRef = useRef<Sermon | null>(sermon);
@@ -778,6 +780,7 @@ export function useManualConspectus({
     savedNodeIds,
     modifiedNodeIds,
     pendingNodeIds,
+    pendingText,
     setNodeContent,
     restoreCells,
     discardCells,

@@ -483,3 +483,89 @@ describe('drafts across copy and editor', () => {
     expect(draftOf('p1')).toBeUndefined();
   });
 });
+
+/**
+ * BUG-20261003-preaching-on-copy-stores-copy-words-as-draft. A queued cell's words live in the queue;
+ * the screen may hold other words for it — a copy's, or a document that never saw a write queued
+ * before its collection moved to the engine. The device draft must keep the queued words.
+ */
+describe('a device draft of a queued cell', () => {
+  const key = 'draft:v1:user-1:sermon-1:plan:p1';
+  const queue = (words: string) => window.localStorage.setItem('outbox:v1:intent', JSON.stringify({
+    id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1', aggregate: 'plan',
+    patch: { 'planText.p1': words }, baseRevision: 0, status: 'migration-required', savedAt: Date.now(),
+  }));
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    writes.length = 0;
+    mockReadOnly = false;
+    mockSearchParams = new URLSearchParams();
+    window.localStorage.clear();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('keeps the queued words when the document holds older ones (%s)', (_name, Page) => {
+    window.localStorage.setItem(key, JSON.stringify({ value: 'Unsent local words', savedAt: Date.now() }));
+    queue('Unsent local words');
+    mockSermon = sermonFixture({ planText: { p1: 'Older server words', p2: 'Other paragraph' } } as Partial<Sermon>);
+    const view = renderPage(<Page />);
+    act(() => { jest.advanceTimersByTime(350); });
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Unsent local words');
+    view.unmount();
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Unsent local words');
+  });
+
+  /** Codex: words typed after the queue entry, then the page closed — the draft is the newest. */
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('keeps a draft newer than the queue (%s)', (_name, Page) => {
+    window.localStorage.setItem(key, JSON.stringify({ value: 'Later unsent draft', savedAt: Date.now() }));
+    queue('Earlier queued words');
+    mockSermon = sermonFixture({ planText: { p1: 'Older server words', p2: 'Other paragraph' } } as Partial<Sermon>);
+    const view = renderPage(<Page />);
+    act(() => { jest.advanceTimersByTime(350); });
+    view.unmount();
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Later unsent draft');
+  });
+
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('stores the queued words when no draft holds the cell (%s)', (_name, Page) => {
+    queue('Queued words only');
+    mockSermon = sermonFixture({ planText: { p1: 'Older server words', p2: 'Other paragraph' } } as Partial<Sermon>);
+    const view = renderPage(<Page />);
+    act(() => { jest.advanceTimersByTime(350); });
+    view.unmount();
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Queued words only');
+  });
+});
+
+describe('a device draft while a plan is preached from a copy', () => {
+  const key = 'draft:v1:user-1:sermon-1:plan:p1';
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    writes.length = 0;
+    mockReadOnly = true;
+    mockSearchParams = new URLSearchParams('planView=preaching');
+    window.localStorage.clear();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it.each([['AI plan', AiPlanPage], ['hand-written plan', ManualConspectusPage]])('keeps the unsent local words over the copy\'s (%s)', (_name, Page) => {
+    window.localStorage.setItem(key, JSON.stringify({ value: 'Unsent local words', savedAt: Date.now() }));
+    window.localStorage.setItem('outbox:v1:intent', JSON.stringify({
+      id: 'intent', uid: 'user-1', collection: 'sermons', docId: 'sermon-1', aggregate: 'plan',
+      patch: { 'planText.p1': 'Unsent local words' }, baseRevision: 0, status: 'migration-required', savedAt: Date.now(),
+    }));
+    mockSermon = sermonFixture({ planText: { p1: 'Old copy words', p2: 'Other paragraph' } } as Partial<Sermon>);
+    const view = renderPage(<Page />);
+    act(() => { jest.advanceTimersByTime(350); });
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Unsent local words');
+
+    mockReadOnly = false;
+    mockSermon = sermonFixture({ planText: { p1: 'Unsent local words', p2: 'Other paragraph' } } as Partial<Sermon>);
+    act(() => {
+      view.rerender(<QueryClientProvider client={new QueryClient()}><Page /></QueryClientProvider>);
+    });
+    act(() => { jest.advanceTimersByTime(350); });
+    expect(JSON.parse(window.localStorage.getItem(key)!).value).toBe('Unsent local words');
+  });
+});

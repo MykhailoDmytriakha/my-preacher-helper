@@ -22,20 +22,30 @@ const storeCells = (cells: Record<string, string>) =>
   Object.entries(cells).forEach(([nodeId, text]) => saveDraft(cellKey(nodeId), text));
 const storedCell = (nodeId: string) => readDraft<string>(cellKey(nodeId))?.value;
 
+type HookProps = {
+  content: Record<string, string>;
+  modified: Record<string, boolean>;
+  pending: Set<string>;
+  pendingText?: Record<string, string>;
+  live: Set<string>;
+};
+
 const render = (props: {
   content?: Record<string, string>;
   modified?: Record<string, boolean>;
   pending?: Set<string>;
+  pendingText?: Record<string, string>;
   live?: Set<string>;
 }) =>
   renderHook(
-    ({ content, modified, pending, live }) =>
+    ({ content, modified, pending, pendingText, live }: HookProps) =>
       usePlanTextDraft({
         uid: UID,
         sermonId: SERMON,
         contentByNodeId: content ?? {},
         modifiedNodeIds: modified ?? {},
         pendingNodeIds: pending ?? new Set(),
+        pendingText: pendingText ?? {},
         liveNodeIds: live ?? new Set(['p1', 'p2']),
       }),
     {
@@ -43,8 +53,9 @@ const render = (props: {
         content: props.content ?? {},
         modified: props.modified ?? {},
         pending: props.pending ?? new Set<string>(),
+        pendingText: props.pendingText ?? {},
         live: props.live ?? new Set(['p1', 'p2']),
-      },
+      } as HookProps,
     }
   );
 
@@ -241,5 +252,64 @@ describe('the plan draft', () => {
       expect(storedCell('p1')).toBeUndefined();
       expect(storedCell('gone')).toBe('node was deleted elsewhere');
     });
+  });
+});
+
+/** BUG-20261003-preaching-on-copy-stores-copy-words-as-draft — the queue and a draft found at open. */
+describe('a queued cell and a draft this screen did not write', () => {
+  it('stores the queued words even before the screen holds the cell', () => {
+    render({ pending: new Set(['p1']), pendingText: { p1: 'Queued words' } });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(storedCell('p1')).toBe('Queued words');
+  });
+
+  it('leaves a draft it did not write alone until the person types into the cell', () => {
+    storeCells({ p1: 'Newer than the queue' });
+    render({ content: { p1: 'Older words' }, pending: new Set(['p1']), pendingText: { p1: 'Queued words' } });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(storedCell('p1')).toBe('Newer than the queue');
+  });
+
+  it('stores its own typed words, not another tab\'s newer queue entry, while its save is queued', () => {
+    const view = render({ content: { p1: 'Typed in tab A' }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(300); });
+    // A saved offline; tab B queued newer words and kept a still newer draft of its own.
+    storeCells({ p1: 'Draft of tab B' });
+    view.rerender({ content: { p1: 'Typed in tab A' }, modified: {}, pending: new Set(['p1']), pendingText: { p1: 'Queued in tab B' }, live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(storedCell('p1')).toBe('Draft of tab B');
+  });
+
+  it('stops reaching over other drafts once its own edit has settled', () => {
+    const view = render({ content: { p1: 'Typed here' }, modified: { p1: true } });
+    act(() => { jest.advanceTimersByTime(300); });
+    // Saved and confirmed: neither edited nor queued any more.
+    view.rerender({ content: { p1: 'Typed here' }, modified: {}, pending: new Set(), live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    // Another tab queues its words and keeps a newer draft of them.
+    storeCells({ p1: 'Newer in another tab' });
+    view.rerender({ content: { p1: 'Typed here' }, modified: {}, pending: new Set(['p1']), pendingText: { p1: 'Queued in another tab' }, live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(storedCell('p1')).toBe('Newer in another tab');
+  });
+
+  it('does not bring back a queued orphan the person let go', () => {
+    storeCells({ gone: 'Orphan words' });
+    const view = render({ content: { gone: 'Orphan words' }, pending: new Set(['gone']), pendingText: { gone: 'Orphan words' } });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { view.result.current.forget({ gone: 'Orphan words' }); });
+    view.rerender({ content: {}, modified: {}, pending: new Set(['gone']), pendingText: { gone: 'Orphan words' }, live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    view.unmount();
+    expect(storedCell('gone')).toBeUndefined();
+  });
+
+  it('keeps storing what was typed here after the queue takes it over', () => {
+    storeCells({ p1: 'Found at open' });
+    const view = render({ content: { p1: 'Typed here' }, modified: { p1: true } });
+    // Saved offline before the debounce: the cell is queued and no longer marked as edited.
+    view.rerender({ content: { p1: 'Typed here' }, modified: {}, pending: new Set(['p1']), pendingText: { p1: 'Typed here' }, live: new Set(['p1', 'p2']) });
+    act(() => { jest.advanceTimersByTime(300); });
+    expect(storedCell('p1')).toBe('Typed here');
   });
 });

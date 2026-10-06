@@ -1346,6 +1346,28 @@ export function pendingPlanTextNodeIds(
   return waiting;
 }
 
+/**
+ * THE WORDS STILL WAITING IN THE QUEUE, per plan cell — the newest intent wins, as replay would
+ * make it. The queue is the fact about them: a screen may hold other words for the same cell (a
+ * copy for reading, or an engine document that never saw a write queued before its collection
+ * moved), and the device draft keeps these (BUG-20261003-preaching-on-copy-stores-copy-words-as-draft).
+ */
+export function pendingPlanText(
+  uid: string | null | undefined,
+  sermonId: string | null | undefined
+): Record<string, string> {
+  const waiting: Record<string, string> = {};
+  if (!uid || !sermonId) return waiting;
+  listOutbox(uid)
+    .filter((entry) => entry.docId === sermonId && entry.aggregate === SERMON_PLAN_AGGREGATE)
+    .forEach((entry) => {
+      Object.entries(entry.patch ?? {}).forEach(([field, value]) => {
+        if (field.startsWith('planText.') && typeof value === 'string') waiting[field.slice('planText.'.length)] = value;
+      });
+    });
+  return waiting;
+}
+
 export async function savePlanTextViaClient(
   sermonId: string,
   changedText: Record<string, string>,
