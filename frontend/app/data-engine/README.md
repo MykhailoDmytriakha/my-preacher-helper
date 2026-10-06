@@ -202,6 +202,10 @@ stage without sending it; `save()` submits that stage; `cancel()` retires only
 unsaved typing. `initialData` is the pinned ancestor (possibly an earlier queued
 Save, not a server confirmation). The form's own `status`, `error` and `durable`
 describe that stage, including remote changes while it is open.
+`data` is the form's stage only while it has one — open, or holding unsaved
+words; closed and clean, it is the document, which carries a Save still on its way.
+A closed form showing its last Save kept a version the person had just discarded
+with "take theirs" (BUG-20261003-take-theirs-title-keeps-discarded-text).
 
 Use its `recoveryIdentity`, `listRecoverable` and `recover` with the public
 `useRecoveryDiscovery`. A reload offers unfinished work for explicit recovery;

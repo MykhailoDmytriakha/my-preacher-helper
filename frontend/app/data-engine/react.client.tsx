@@ -894,10 +894,17 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   const proposals = useMemo(() => ({ identity, pending: new Set<AbortController>() }), [identity]);
   useEffect(() => () => { proposals.pending.forEach(controller => controller.abort()); }, [proposals]);
   const error = failure?.identity === identity ? say(failure.words) : readOnly ? document.readOnlyReason : document.error;
+  /*
+   * A form shows its own stage only while it has one: open for editing, or holding words not yet
+   * saved. Closed and clean, it has nothing of its own, and its last Save may no longer be the
+   * document's — "take theirs" cancels it — so it shows the document, which carries a Save still
+   * on its way as well (BUG-20261003-take-theirs-title-keeps-discarded-text).
+   */
+  const ownStage = target?.state && (target.state.record.active || target.state.dirty) ? target.state.value : null;
   return {
     readOnly,
     active: target?.state?.record.active ?? false,
-    data: target?.state?.value ?? document.data,
+    data: ownStage ?? document.data,
     // The opening may include submitted predecessors; it is never a confirmed snapshot.
     openingData: target?.state?.openingValue ?? null,
     // This may be a previously saved intent, so it is deliberately not called confirmed.
