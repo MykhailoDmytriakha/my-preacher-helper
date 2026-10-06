@@ -86,7 +86,8 @@ it('recovers an edited AI proposal and its consumed-note intent after restart wi
   expect(screen.queryByRole('combobox', { name: 'scratch.card.placeInto: Source note' })).not.toBeInTheDocument();
   await save(); await deliver(harness); expect(harness.read(resource).value?.scratch).toEqual([]);
   expect(JSON.stringify(harness.read(resource))).toContain('Edited proposal'); restored.unmount();
-});
+// About 1.2 s in a full local run; one full run once took over 15 s here (BUG-20261003-scratch-proposal-restart-test-flaky).
+}, 3 * BUILD_MACHINE_WAIT_MS);
 it('cancels a manual placement without deleting its source note or altering the outline', async () => {
   const { harness, view } = setup(); await ready(); manualPlace(); await settle();
   expect(harness.transport.send).not.toHaveBeenCalled();
