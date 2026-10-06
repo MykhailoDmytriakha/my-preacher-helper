@@ -732,19 +732,17 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // After a refusal this also drops the refused change (EditorController.acceptRemote).
     acceptRemote: () => run(editor => editor.acceptRemote()),
     keepLocal: () => run(editor => editor.keepLocal()),
+    /*
+     * The draft search owns what it finds and how it fails (`useRecoveryDiscovery` says it): its
+     * failure is not the document's, and its success does not clear the document's own failure
+     * (BUG-20261003-draft-search-failure-shown-twice).
+     */
     listRecoverable: async () => {
       if (!isCurrent() || !browser || !owner || !collection || !id) throw new Error(EDITOR_CHANGED);
-      try {
-        // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
-        const records = await untilStorageSilent(browser.engine.listRecoverable({ collection, id }), () => undefined, readOnlyReason(true));
-        if (!isCurrent()) throw new Error(EDITOR_CHANGED);
-        setError(null);
-        return records;
-      } catch (failure) {
-        // Silent storage is not a failure of this document: the search reports it, the editor stays as it is.
-        if (isCurrent() && (failure as { code?: string }).code !== 'storage-silent') setError(failure, 'read');
-        throw failure;
-      }
+      // Listing drafts reads the editor's storage; when it is silent the search says so instead of spinning.
+      const records = await untilStorageSilent(browser.engine.listRecoverable({ collection, id }), () => undefined, readOnlyReason(true));
+      if (!isCurrent()) throw new Error(EDITOR_CHANGED);
+      return records;
     },
     recover,
     retry: async () => {

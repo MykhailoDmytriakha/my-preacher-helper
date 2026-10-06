@@ -5,6 +5,7 @@ import { useAuth } from '@/providers/AuthProvider';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
 import { DataSyncStatus } from '../DataSyncStatus';
+import { useRecoveryDiscovery } from '../useRecoveryDiscovery';
 import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
 import type { CollectionState } from '../collections';
@@ -376,6 +377,49 @@ describe('React DataEngine contract', () => {
     await act(async () => { await document.retry(); });
     expect(document.error).toBeNull();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  /** BUG-20261003-draft-search-failure-shown-twice: the draft search owns its failure. */
+  describe('a draft search', () => {
+    it('leaves its failure to the search: the document does not say it', async () => {
+      const s = makeEditor(); const b = makeBrowser(s.editor);
+      b.engine.listRecoverable.mockRejectedValue(new Error('drafts unreadable'));
+      jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+      const { result } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
+      await act(async () => { await expect(result.current.listRecoverable()).rejects.toThrow('drafts unreadable'); });
+      expect(result.current.error).toBeNull();
+    });
+
+    it('does not erase the document\'s own failure when it succeeds', async () => {
+      const s = makeEditor(); const b = makeBrowser(s.editor);
+      jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+      const { result } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper: Wrapper });
+      await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
+      jest.mocked(s.editor.save).mockRejectedValueOnce(new Error('save refused'));
+      await act(async () => { await result.current.save().catch(() => undefined); });
+      const failure = result.current.error;
+      expect(failure).toBeTruthy();
+      await act(async () => { await result.current.listRecoverable(); });
+      expect(result.current.error).toBe(failure);
+    });
+
+    it('is said once under the block when it fails', async () => {
+      const s = makeEditor(); const b = makeBrowser(s.editor);
+      b.engine.listRecoverable.mockRejectedValue(new Error('drafts unreadable'));
+      jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+      function Screen() {
+        const document = useDataDocument(resource, { autoSave: false });
+        const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity, enabled: !document.loading, version: '1',
+          list: async () => (await document.listRecoverable()).map(({ id }) => ({ id, title: id })), recover: document.recover });
+        return <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error}
+          recoveryChoices={recovery.choices} recoveryError={recovery.error} />;
+      }
+      render(<Wrapper><Screen /></Wrapper>);
+      await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
+      await act(async () => { await Promise.resolve(); });
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+    });
   });
 
   it('disposes an editor that finishes opening after unmount', async () => {
