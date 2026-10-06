@@ -1649,7 +1649,8 @@
     "unknown": "Unknown",
     "saveError": "Failed to save. Please try again.",
     "clickToEdit": "Click to edit",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "closeNotification": "Close notification"
   },
   "shareNotes": {
     "title": "Shared note",

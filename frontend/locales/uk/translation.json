@@ -1661,7 +1661,8 @@
     "unknown": "Невідомо",
     "saveError": "Помилка збереження. Будь ласка, спробуйте ще раз.",
     "clickToEdit": "Натисніть, щоб редагувати",
-    "notifications": "Сповіщення"
+    "notifications": "Сповіщення",
+    "closeNotification": "Закрити сповіщення"
   },
   "shareNotes": {
     "title": "Нотатка за посиланням",
