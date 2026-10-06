@@ -17,13 +17,13 @@ const deferred = () => { let resolve!: () => void; let reject!: (reason: unknown
 
 describe('DataSyncStatus', () => {
   it('makes earlier unfinished drafts visible beside an otherwise saved document', () => {
-    render(<DataSyncStatus status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
+    render(<DataSyncStatus subject="doc" status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.unfinishedWork);
     expect(screen.queryByText(en.dataSync.phase.saved)).not.toBeInTheDocument();
   });
   const phases = Object.keys(en.dataSync.phase) as SyncPhase[];
   it.each(phases.filter(isSyncTrouble))('renders the trouble phase %s with translated copy', phase => {
-    render(<DataSyncStatus status={status(phase)} />);
+    render(<DataSyncStatus subject="doc" status={status(phase)} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase[phase]);
     for (const locale of [en, ru, uk]) expect(locale.dataSync.phase[phase]).toBeTruthy();
   });
@@ -32,17 +32,17 @@ describe('DataSyncStatus', () => {
    * engine screen and the line came and went with each keystroke, moving the page.
    */
   it.each(phases.filter(phase => !isSyncTrouble(phase)))('says nothing in the ordinary %s phase', phase => {
-    const { container } = render(<DataSyncStatus status={status(phase)} onRetry={jest.fn()} />);
+    const { container } = render(<DataSyncStatus subject="doc" status={status(phase)} onRetry={jest.fn()} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('never offers discard or overwrite actions for an unknown pending command or a deleted resource', () => {
     const keep = jest.fn(), accept = jest.fn(), retry = jest.fn();
-    const { rerender } = render(<DataSyncStatus status={status('unknown')} onKeepLocal={keep} onAcceptRemote={accept} onRetry={retry} />);
+    const { rerender } = render(<DataSyncStatus subject="doc" status={status('unknown')} onKeepLocal={keep} onAcceptRemote={accept} onRetry={retry} />);
     expect(screen.queryByText(en.dataSync.keepLocal)).not.toBeInTheDocument();
     expect(screen.queryByText(en.dataSync.acceptRemote)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeEnabled();
-    rerender(<DataSyncStatus status={status('deleted', { canAcceptRemote: true })} onKeepLocal={keep} onAcceptRemote={accept} />);
+    rerender(<DataSyncStatus subject="doc" status={status('deleted', { canAcceptRemote: true })} onKeepLocal={keep} onAcceptRemote={accept} />);
     expect(screen.queryByText(en.dataSync.keepLocal)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: en.dataSync.acceptRemote })).toBeEnabled();
     expect(keep).not.toHaveBeenCalled(); expect(accept).not.toHaveBeenCalled();
@@ -50,7 +50,7 @@ describe('DataSyncStatus', () => {
 
   it('reuses the conflict banner when both explicit resolutions are allowed and prevents duplicate actions', async () => {
     const waiting = deferred(), keep = jest.fn(() => waiting.promise), accept = jest.fn();
-    render(<DataSyncStatus status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={keep} onAcceptRemote={accept} />);
+    render(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={keep} onAcceptRemote={accept} />);
     expect(screen.getByRole('alert')).toHaveTextContent(en.freshness.conflictTitle);
     const button = screen.getByRole('button', { name: en.freshness.conflictKeepMine });
     fireEvent.click(button); fireEvent.click(button);
@@ -66,27 +66,86 @@ describe('DataSyncStatus', () => {
     // of the action (the engine still reporting while the person clicks) used to drop the click.
     const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
     const keep = jest.fn(), accept = jest.fn(), keepNext = jest.fn(), acceptNext = jest.fn();
-    const { rerender } = render(<DataSyncStatus status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
+    const { rerender } = render(<DataSyncStatus subject="doc" status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
-      rerender(<DataSyncStatus status={conflict} onKeepLocal={keepNext} onAcceptRemote={acceptNext} />);
+      rerender(<DataSyncStatus subject="doc" status={conflict} onKeepLocal={keepNext} onAcceptRemote={acceptNext} />);
     });
     await act(async () => { await Promise.resolve(); });
     expect(keep).toHaveBeenCalledTimes(1); expect(keepNext).not.toHaveBeenCalled();
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs }));
-      rerender(<DataSyncStatus status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
+      rerender(<DataSyncStatus subject="doc" status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
     });
     await act(async () => { await Promise.resolve(); });
     expect(acceptNext).toHaveBeenCalledTimes(1); expect(accept).not.toHaveBeenCalled();
   });
 
+  /** BUG-20261003-sync-actions-unlock-on-rerender: the lock belongs to the subject, not to the callbacks. */
+  it('keeps every action locked while one runs, even when the screen passes fresh callbacks', async () => {
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    const waiting = deferred(), keep = jest.fn(() => waiting.promise), acceptNext = jest.fn();
+    const { rerender } = render(<DataSyncStatus subject="sermon-1" status={conflict} onKeepLocal={keep} onAcceptRemote={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    rerender(<DataSyncStatus subject="sermon-1" status={conflict} onKeepLocal={jest.fn()} onAcceptRemote={acceptNext} />);
+    const theirs = screen.getByRole('button', { name: en.freshness.conflictTakeTheirs });
+    expect(theirs).toBeDisabled();
+    fireEvent.click(theirs); await act(async () => { await Promise.resolve(); });
+    expect(acceptNext).not.toHaveBeenCalled();
+    await act(async () => waiting.resolve());
+    expect(theirs).toBeEnabled();
+    fireEvent.click(theirs); await act(async () => { await Promise.resolve(); });
+    expect(acceptNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('frees the actions of another subject at once, whatever still hangs for the previous one', async () => {
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    const hanging = deferred(), acceptOther = jest.fn();
+    const { rerender } = render(<DataSyncStatus subject="sermon-1" status={conflict} onKeepLocal={() => hanging.promise} onAcceptRemote={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    rerender(<DataSyncStatus subject="sermon-2" status={conflict} onKeepLocal={jest.fn()} onAcceptRemote={acceptOther} />);
+    const theirs = screen.getByRole('button', { name: en.freshness.conflictTakeTheirs });
+    expect(theirs).toBeEnabled();
+    fireEvent.click(theirs); await act(async () => { await Promise.resolve(); });
+    expect(acceptOther).toHaveBeenCalledTimes(1);
+    // The previous subject's late failure is not this one's.
+    await act(async () => hanging.reject(new Error('Old sermon failure')));
+    expect(screen.queryByRole('alert', { name: /Old sermon/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(en.dataSync.actionFailed)).not.toBeInTheDocument();
+  });
+
+  it('keeps a subject locked when the block comes back to it while its action still runs', async () => {
+    const conflict = status('conflict', { canKeepLocal: true, canAcceptRemote: true });
+    const hanging = deferred(), accept = jest.fn();
+    const view = (subject: string) => <DataSyncStatus subject={subject} status={conflict} onKeepLocal={() => hanging.promise} onAcceptRemote={accept} />;
+    const { rerender } = render(view('sermon-1'));
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await act(async () => { await Promise.resolve(); });
+    rerender(view('sermon-2'));
+    rerender(view('sermon-1'));
+    expect(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs })).toBeDisabled();
+    await act(async () => hanging.resolve());
+    expect(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs })).toBeEnabled();
+  });
+
+  /** BUG-20261003-document-retry-error-hidden: the failure stays said across the re-render it causes. */
+  it('keeps saying that a retry failed when the screen re-renders with fresh callbacks', async () => {
+    const trouble = status('unknown');
+    const { rerender } = render(<DataSyncStatus subject="sermon-1" status={trouble} onRetry={jest.fn().mockRejectedValue(new Error('Queue unreadable'))} />);
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry }));
+    rerender(<DataSyncStatus subject="sermon-1" status={trouble} onRetry={jest.fn()} />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByRole('alert')).toHaveTextContent('Queue unreadable');
+  });
+
   it('keeps refusal correction and remote acceptance separate from conflict detection', async () => {
     const keep = jest.fn(), accept = jest.fn();
-    const { rerender } = render(<DataSyncStatus status={status('refused', { canKeepLocal: true })} onKeepLocal={keep} />);
+    const { rerender } = render(<DataSyncStatus subject="doc" status={status('refused', { canKeepLocal: true })} onKeepLocal={keep} />);
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.keepLocal }));
     await act(async () => { await Promise.resolve(); }); expect(keep).toHaveBeenCalledTimes(1);
-    rerender(<DataSyncStatus status={status('remoteChanged', { canAcceptRemote: true })} onAcceptRemote={accept} />);
+    rerender(<DataSyncStatus subject="doc" status={status('remoteChanged', { canAcceptRemote: true })} onAcceptRemote={accept} />);
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.acceptRemote }));
     await act(async () => { await Promise.resolve(); }); expect(accept).toHaveBeenCalledTimes(1);
   });
@@ -94,7 +153,7 @@ describe('DataSyncStatus', () => {
   it('reports local storage and read failures, and surfaces a failed retry without claiming a save', async () => {
     jest.useFakeTimers();
     const retry = jest.fn().mockRejectedValue(new Error('Storage full'));
-    render(<DataSyncStatus status={status('localFailure', { freshness: 'cache', checking: true, readFailed: true })} error="Draft not durable" onRetry={retry} />);
+    render(<DataSyncStatus subject="doc" status={status('localFailure', { freshness: 'cache', checking: true, readFailed: true })} error="Draft not durable" onRetry={retry} />);
     expect(screen.getByRole('alert')).toHaveTextContent('Draft not durable');
     // Freshness and read trouble are said once they last, not on every passing check.
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
@@ -108,13 +167,13 @@ describe('DataSyncStatus', () => {
   it('requires an explicit human-labeled recovery choice and never selects a draft by itself', async () => {
     const recover = jest.fn();
     const choices = [{ id: 'first', title: 'Yesterday’s sermon', preview: 'A recognizable opening' }, { id: 'second', title: 'This morning’s draft' }];
-    const { rerender } = render(<DataSyncStatus status={status('draft')} recoveryChoices={choices} onRecover={recover} />);
+    const { rerender } = render(<DataSyncStatus subject="doc" status={status('draft')} recoveryChoices={choices} onRecover={recover} />);
     expect(recover).not.toHaveBeenCalled();
     const button = screen.getByRole('button', { name: en.dataSync.recover }); expect(button).toBeDisabled();
     fireEvent.change(screen.getByLabelText(en.dataSync.recoveryLabel), { target: { value: 'first' } });
     expect(screen.getByText('A recognizable opening')).toBeInTheDocument();
     fireEvent.click(button); await act(async () => { await Promise.resolve(); }); expect(recover).toHaveBeenCalledWith('first');
-    rerender(<DataSyncStatus status={status('draft')} recoveryChoices={[choices[1]]} onRecover={recover} recoveryLoading recoveryError="Could not read another draft" />);
+    rerender(<DataSyncStatus subject="doc" status={status('draft')} recoveryChoices={[choices[1]]} onRecover={recover} recoveryLoading recoveryError="Could not read another draft" />);
     expect(screen.getByRole('button', { name: en.dataSync.recover })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('Could not read another draft');
   });
@@ -125,41 +184,41 @@ describe('DataSyncStatus', () => {
    * (owner, 2026-09-29: "непонятная кнопка … везде показывается").
    */
   it('offers no button to search for drafts; found drafts appear on their own', () => {
-    const { container, rerender } = render(<DataSyncStatus status={status('saved')} />);
+    const { container, rerender } = render(<DataSyncStatus subject="doc" status={status('saved')} />);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
     expect(container).toBeEmptyDOMElement();
-    rerender(<DataSyncStatus status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
+    rerender(<DataSyncStatus subject="doc" status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.unfinishedWork);
     expect(screen.getByRole('option', { name: 'Unfinished draft' })).toBeInTheDocument();
   });
 
   it('stays quiet while a change travels as expected, and speaks as soon as the app cannot resolve it', () => {
     const retry = jest.fn();
-    const { rerender } = render(<DataSyncStatus status={status('draft')} onRetry={retry} />);
+    const { rerender } = render(<DataSyncStatus subject="doc" status={status('draft')} onRetry={retry} />);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: en.dataSync.retry })).not.toBeInTheDocument();
-    rerender(<DataSyncStatus status={status('unknown')} onRetry={retry} />);
+    rerender(<DataSyncStatus subject="doc" status={status('unknown')} onRetry={retry} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase.unknown);
     expect(screen.getByRole('button', { name: en.dataSync.retry })).toBeInTheDocument();
-    rerender(<DataSyncStatus status={status('saved')} error="Disk full" />);
+    rerender(<DataSyncStatus subject="doc" status={status('saved')} error="Disk full" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Disk full');
   });
 
   it('names its subject only together with something worth saying', () => {
-    const { container, rerender } = render(<DataSyncStatus title="Settings" status={status('saved', { freshness: 'cache' })} />);
+    const { container, rerender } = render(<DataSyncStatus subject="doc" title="Settings" status={status('saved', { freshness: 'cache' })} />);
     expect(container).toBeEmptyDOMElement();
-    rerender(<DataSyncStatus title="Settings" status={status('refused')} />);
+    rerender(<DataSyncStatus subject="doc" title="Settings" status={status('refused')} />);
     expect(screen.getByRole('region', { name: 'Settings' })).toHaveTextContent('Settings');
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase.refused);
   });
 
-  it('reports action errors, ignores late errors after callback replacement, and renders nothing without information', async () => {
-    const { container, rerender, unmount } = render(<DataSyncStatus status={null} />); expect(container).toBeEmptyDOMElement();
+  it('reports action errors, ignores late errors of a subject no longer shown, and renders nothing without information', async () => {
+    const { container, rerender, unmount } = render(<DataSyncStatus subject="doc" status={null} />); expect(container).toBeEmptyDOMElement();
     const old = deferred(), retry = jest.fn(() => old.promise);
-    rerender(<DataSyncStatus status={status('unknown', { freshness: 'unknown' })} onRetry={retry} />);
+    rerender(<DataSyncStatus subject="old-account" status={status('unknown', { freshness: 'unknown' })} onRetry={retry} />);
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry })); await act(async () => { await Promise.resolve(); });
     const fresh = jest.fn().mockRejectedValue(undefined);
-    rerender(<DataSyncStatus status={status('unknown')} onRetry={fresh} />);
+    rerender(<DataSyncStatus subject="new-account" status={status('unknown')} onRetry={fresh} />);
     await act(async () => old.reject(new Error('Old account failure'))); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry })); await act(async () => { await Promise.resolve(); });
     expect(screen.getByRole('alert')).toHaveTextContent(en.dataSync.actionFailed);
@@ -178,32 +237,32 @@ describe('background checks leave the page still', () => {
   afterEach(() => { jest.useRealTimers(); });
 
   it('says nothing about a routine check', () => {
-    const { container, rerender } = render(<DataSyncStatus status={status('saved')} />);
+    const { container, rerender } = render(<DataSyncStatus subject="doc" status={status('saved')} />);
     const still = container.textContent;
-    rerender(<DataSyncStatus status={status('saved', { checking: true })} />);
+    rerender(<DataSyncStatus subject="doc" status={status('saved', { checking: true })} />);
     expect(container.textContent).toBe(still);
   });
 
   it('does not flash freshness or read trouble that passes within the check', () => {
-    const { container, rerender } = render(<DataSyncStatus status={status('saved')} onRetry={jest.fn()} />);
+    const { container, rerender } = render(<DataSyncStatus subject="doc" status={status('saved')} onRetry={jest.fn()} />);
     const still = container.textContent;
-    rerender(<DataSyncStatus status={status('saved', { freshness: 'unknown', checking: true, readFailed: true })} onRetry={jest.fn()} />);
+    rerender(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', checking: true, readFailed: true })} onRetry={jest.fn()} />);
     expect(container.textContent).toBe(still);
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS - 1); });
-    rerender(<DataSyncStatus status={status('saved')} onRetry={jest.fn()} />);
+    rerender(<DataSyncStatus subject="doc" status={status('saved')} onRetry={jest.fn()} />);
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
     expect(container.textContent).toBe(still);
   });
 
   it('does not announce an unconfirmed copy while the app is still checking without a failure', () => {
-    const { container } = render(<DataSyncStatus status={status('saved', { freshness: 'unknown' })} onRetry={jest.fn()} />);
+    const { container } = render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown' })} onRetry={jest.fn()} />);
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS * 3); });
     expect(container).toBeEmptyDOMElement();
   });
 
   it('says so once the device copy or a failed check lasts', () => {
     const retry = jest.fn();
-    render(<DataSyncStatus status={status('saved', { freshness: 'cache', readFailed: true })} onRetry={retry} />);
+    render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'cache', readFailed: true })} onRetry={retry} />);
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
     expect(screen.getByText(en.dataSync.freshness.cache)).toBeInTheDocument();
     expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();

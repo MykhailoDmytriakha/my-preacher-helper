@@ -64,7 +64,7 @@ function EngineSettingsStatus() {
   // Whether there is anything to say is the status's own rule (isSyncTrouble); it names the settings only then.
   // A copy for reading is not a failure: DeviceStorageNotice already says why above every page, and a
   // retry cannot wake the device storage — passed as an error it stood there as a dead button.
-  return <DataSyncStatus title={title} className="my-3" status={document.status} error={document.error}
+  return <DataSyncStatus subject={document.recoveryIdentity} title={title} className="my-3" status={document.status} error={document.error}
     onRetry={document.retry} onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} />;

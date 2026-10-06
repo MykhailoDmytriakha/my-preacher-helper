@@ -38,6 +38,8 @@ import type { Sermon, Series } from '@/models/models';
 
 
 export interface SermonHeaderEditor {
+  /** What its sync block speaks about: the document's `recoveryIdentity`. */
+  subject: unknown;
   values: Pick<Sermon, 'title' | 'verse'>;
   isReadOnly: boolean;
   status: SyncStatus | null;
@@ -242,7 +244,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     <div className="flex flex-col gap-4">
       {/* A save was TURNED AWAY. The editor has already closed and reverted, so the
           refused text lives here — shown, not just promised — until it is resolved. */}
-      {editor && <DataSyncStatus status={editor.status} error={editor.error}
+      {editor && <DataSyncStatus subject={editor.subject} status={editor.status} error={editor.error}
         onKeepLocal={editor.keepLocal} onAcceptRemote={editor.acceptRemote} onRetry={editor.retry} />}
       {!editor && conflict && (
         <SaveConflictBanner

@@ -58,7 +58,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
     || (scratch.remote && scratch.remote.value === null) || scratch.remote?.metadata?.deleted);
 
   return <section className="space-y-4" data-testid="engine-scratch-workspace">
-    <DataSyncStatus status={scratch.status} error={scratch.error} onKeepLocal={keepLocal} onAcceptRemote={acceptRemote} onRetry={retry}
+    <DataSyncStatus subject={scratch.recoveryIdentity} status={scratch.status} error={scratch.error} onKeepLocal={keepLocal} onAcceptRemote={acceptRemote} onRetry={retry}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel

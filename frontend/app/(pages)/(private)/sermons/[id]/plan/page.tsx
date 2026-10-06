@@ -159,7 +159,7 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   // It offers nothing the copy could not keep; why is said once, for the app, by DeviceStorageNotice.
   const onCopy = document.readOnly && !preaching;
   return <PlanWriterContext.Provider value={writer}>
-    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
     <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={onCopy} />
   </PlanWriterContext.Provider>;

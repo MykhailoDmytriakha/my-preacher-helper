@@ -1951,7 +1951,7 @@ useEffect(() => {
         />
       )}
       <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} editor={core ? {
-        values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error,
+        subject: core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error,
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       } : undefined} />

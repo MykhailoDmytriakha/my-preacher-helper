@@ -53,7 +53,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
       submitLabel={t(action.kind === 'delete' ? 'common.delete' : 'buttons.save')} savingLabel={t('buttons.saving')}
       saving={form.busy} cancelDisabled={form.busy} submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
-    <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
+    <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
       onRecover={recovery.recover} />

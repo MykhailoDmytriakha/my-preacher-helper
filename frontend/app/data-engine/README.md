@@ -54,7 +54,8 @@ function NoteContent({ id }: { id: string }) {
   const note = useDataDocument({ collection: 'studyNotes', id });
   // Wire fields to note.data and note.update(current => next).
   // Catch rejected actions; note.error also exposes the failure to this banner.
-  return <DataSyncStatus status={note.status} error={note.error}
+  // `subject` tells the banner a re-render (fresh callbacks) from a switch to another document.
+  return <DataSyncStatus subject={note.recoveryIdentity} status={note.status} error={note.error}
     onRetry={note.retry} onKeepLocal={note.keepLocal}
     onAcceptRemote={note.acceptRemote} />;
 }

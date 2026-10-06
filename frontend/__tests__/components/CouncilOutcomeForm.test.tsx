@@ -64,7 +64,7 @@ function setup() {
   let document!: ReturnType<typeof useDataDocument>;
   function Parent() {
     document = useDataDocument(resource);
-    return <DataSyncStatus status={document.status} error={document.error}
+    return <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />;
   }
   const onClose = jest.fn();

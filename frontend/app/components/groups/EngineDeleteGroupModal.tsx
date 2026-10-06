@@ -21,7 +21,7 @@ export function EngineDeleteGroupModal({ groupId, onClose }: { groupId: string; 
   return <FormDialog title={t('workspaces.groups.actions.deleteConfirmTitle')} onClose={onClose} tone="emerald">
     <div className="space-y-4">
       <p>{t('workspaces.groups.actions.deleteConfirm')} {data.group?.title}</p>
-      <DataSyncStatus status={data.status} error={data.error} onRetry={data.refresh}
+      <DataSyncStatus subject={data.document.recoveryIdentity} status={data.status} error={data.error} onRetry={data.refresh}
         onAcceptRemote={data.acceptRemote} onKeepLocal={data.keepLocal} />
       <button type="button" disabled={busy || data.loading || !data.status?.canRemove}
         className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50" onClick={() => { void remove(); }}>

@@ -115,6 +115,8 @@ export function useCouncilDataDocument(councilId: string) {
     readOnly: document.readOnly,
     error: document.error,
     status: document.status,
+    /** What the sync block speaks about (DataSyncStatus `subject`). */
+    recoveryIdentity: document.recoveryIdentity,
     confirmed: document.confirmed,
     remote: document.remote,
     refresh: document.retry,

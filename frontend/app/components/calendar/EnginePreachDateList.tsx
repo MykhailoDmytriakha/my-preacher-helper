@@ -26,7 +26,7 @@ function DateHistory({ sermonId }: { sermonId: string }) {
   const disabled = document.readOnly || document.loading || !sermon || document.status?.phase === 'deleted';
   return <div className="space-y-4">
     {document.readOnly && <p role="status">{document.readOnlyReason}</p>}
-    <DataSyncStatus status={document.status} error={document.error} onRetry={document.retry} />
+    <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry} />
     <div className="flex items-center justify-between">
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
         <CalendarDaysIcon className="w-4 h-4" />{t('calendar.title')}

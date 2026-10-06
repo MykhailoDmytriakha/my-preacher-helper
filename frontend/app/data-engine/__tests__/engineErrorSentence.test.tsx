@@ -59,7 +59,7 @@ function fakeEditor(resource: { collection: string; id: string }) {
 
 function Screen({ id }: { id: string }) {
   const document = useDataDocument({ collection: 'sermons', id });
-  return <DataSyncStatus status={document.status} error={document.error} onRetry={document.retry} />;
+  return <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry} />;
 }
 
 describe('a failure is said in words where it is caught', () => {
@@ -194,35 +194,35 @@ describe('the status panel prints the words it is given', () => {
     ['the explanation of silent device storage', en.dataSync.readOnly.storage],
     ['an unaddressed background failure', en.dataSync.backgroundFailure],
   ])('%s', (_name, words) => {
-    render(<DataSyncStatus status={null} error={words} />);
+    render(<DataSyncStatus subject="doc" status={null} error={words} />);
     expect(screen.getByRole('alert')).toHaveTextContent(words);
   });
 
   it('the storage explanation from a draft search', () => {
-    render(<DataSyncStatus status={null} recoveryError={en.dataSync.readOnly.storage} />);
+    render(<DataSyncStatus subject="doc" status={null} recoveryError={en.dataSync.readOnly.storage} />);
     expect(screen.getByRole('alert')).toHaveTextContent(en.dataSync.readOnly.storage);
   });
 
   it('keeps the instruction of a refused choice', async () => {
     const instruction = 'Read the current document before resolving a generation mismatch';
-    render(<DataSyncStatus status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={() => { throw new Error(instruction); }} />);
+    render(<DataSyncStatus subject="doc" status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={() => { throw new Error(instruction); }} />);
     await act(async () => { fireEvent.click(screen.getByText('ru:dataSync.keepLocal')); await Promise.resolve(); await Promise.resolve(); });
     expect(screen.getByRole('alert')).toHaveTextContent(instruction);
   });
 
   it('says the action line for a choice that failed without words, in the current language', async () => {
     const keep = () => { throw 'rejected'; };
-    const view = render(<DataSyncStatus status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={keep} />);
+    const view = render(<DataSyncStatus subject="doc" status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={keep} />);
     await act(async () => { fireEvent.click(screen.getByText('ru:dataSync.keepLocal')); await Promise.resolve(); await Promise.resolve(); });
     expect(screen.getByRole('alert')).toHaveTextContent('ru:dataSync.actionFailed');
     language = 'en';
-    view.rerender(<DataSyncStatus status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={keep} />);
+    view.rerender(<DataSyncStatus subject="doc" status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={keep} />);
     expect(screen.getByRole('alert')).toHaveTextContent('en:dataSync.actionFailed');
   });
 
   it('keeps a read-only refusal from a choice', async () => {
     const refusal = Object.assign(new Error('Память устройства не отвечает'), { code: 'read-only' });
-    render(<DataSyncStatus status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={() => { throw refusal; }} />);
+    render(<DataSyncStatus subject="doc" status={{ ...status, phase: 'refused', canKeepLocal: true }} onKeepLocal={() => { throw refusal; }} />);
     await act(async () => { fireEvent.click(screen.getByText('ru:dataSync.keepLocal')); await Promise.resolve(); await Promise.resolve(); });
     expect(screen.getByRole('alert')).toHaveTextContent('Память устройства не отвечает');
   });

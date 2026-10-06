@@ -58,7 +58,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
-      <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
+      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} />

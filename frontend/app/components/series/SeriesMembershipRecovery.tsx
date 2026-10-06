@@ -39,7 +39,7 @@ function WorkspaceRecovery() {
   return <>
     {!id && (recovery.choices.length > 0 || recovery.error) && <section className="mb-4 space-y-2 rounded-lg border border-amber-200 p-3 dark:border-amber-700">
       <h2 className="font-semibold">{t('workspaces.series.membershipRecovery')}</h2>
-      <DataSyncStatus status={null} recoveryChoices={recovery.choices} recoveryLoading={recovery.loading}
+      <DataSyncStatus subject={actions.recoveryIdentity} status={null} recoveryChoices={recovery.choices} recoveryLoading={recovery.loading}
         recoveryError={recovery.error} onRecover={recovery.recover} />
     </section>}
     {id && (selected?.creation ? <EngineCreateSermonModal key={id} recoveryId={id}

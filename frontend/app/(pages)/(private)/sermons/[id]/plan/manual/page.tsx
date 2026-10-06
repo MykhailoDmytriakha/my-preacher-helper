@@ -282,7 +282,7 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   // included — and as its own tree, so every switch mounts the other one fresh, as the swap did.
   // A copy for reading is still this page, preaching included; DeviceStorageNotice says why it is read-only.
   return <PlanWriterContext.Provider value={writer}>
-    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
+    {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
     <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={document.readOnly} />
   </PlanWriterContext.Provider>;

@@ -59,7 +59,7 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
       edit(current => ({ ...current, meetingDates: date ? [{ ...(current.meetingDates?.[0] ?? { id, createdAt }), date }] : [] }));
     }} saving={saving || document.loading || !restored} onClose={onClose}
     handleSubmit={event => { event.preventDefault(); void create(); }}
-    feedback={<DataSyncStatus status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
+    feedback={<DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
       if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
       else await document.retry();
     }} />} />;

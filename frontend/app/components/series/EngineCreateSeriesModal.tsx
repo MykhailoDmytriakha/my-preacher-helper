@@ -71,7 +71,7 @@ export function EngineCreateSeriesModal({ seriesId, recoveryId, onClose, onQueue
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.newSeries')} />
       </fieldset>
       {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
-      <DataSyncStatus status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {
         if (recoveryId && !restored) { await document.recover(recoveryId); setRestored(true); setFailure(null); }
         else await document.retry();
       }} />

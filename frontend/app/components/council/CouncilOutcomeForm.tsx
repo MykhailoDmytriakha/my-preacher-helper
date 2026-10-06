@@ -49,7 +49,7 @@ export function CouncilOutcomeForm({ councilId, topicId, onClose }: {
   };
   const close = (action: () => Promise<void>) => { void action().then(onClose).catch(() => undefined); };
   return <div className="space-y-3">
-    <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
+    <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
       onRecover={recovery.recover} />

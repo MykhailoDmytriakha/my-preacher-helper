@@ -25,7 +25,7 @@ describe('SermonHeader canonical editor injection', () => {
   const sermon: Sermon = { id: 'canonical-sermon', userId: 'owner', title: 'Legacy title', verse: 'Legacy verse', date: '2026-09-12', thoughts: [] };
   const editor = () => {
     const canonical: SermonHeaderEditor & { changed: () => void } = {
-      values: { title: 'Canonical title', verse: 'Canonical verse' }, isReadOnly: false,
+      subject: 'canonical-sermon', values: { title: 'Canonical title', verse: 'Canonical verse' }, isReadOnly: false,
       status: { phase: 'queued', freshness: 'cache', checking: false, readFailed: false, hasForeignChange: false, canSave: false, canAcceptRemote: false, canKeepLocal: false, canRemove: false },
       error: null, changed: () => undefined,
       titleForm: form('Canonical title'), verseForm: form('Canonical verse'),

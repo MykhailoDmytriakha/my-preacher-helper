@@ -53,7 +53,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
         submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
         submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
     <div className="space-y-4">
-      <DataSyncStatus status={form.status} error={form.error} onRetry={form.retry}
+      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
         onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} />

@@ -1,9 +1,10 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { useAuth } from '@/providers/AuthProvider';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
+import { DataSyncStatus } from '../DataSyncStatus';
 import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
 import type { CollectionState } from '../collections';
@@ -341,6 +342,40 @@ describe('React DataEngine contract', () => {
     expect(b.engine.retry).toHaveBeenCalledTimes(1); expect(s.editor.acceptRemote).toHaveBeenCalledTimes(1);
     rerender({ create: true });
     await waitFor(() => expect(b.engine.createEditor).toHaveBeenCalledTimes(1));
+  });
+
+  /** BUG-20261003-document-retry-error-hidden */
+  it('says why a retry of an open document failed, and clears it once a retry succeeds', async () => {
+    const s = makeEditor(); const b = makeBrowser(s.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
+    b.engine.retry.mockRejectedValueOnce(new Error('queue unreadable'));
+    await act(async () => { await expect(result.current.retry()).rejects.toThrow('queue unreadable'); });
+    expect(result.current.error).toBeTruthy();
+    await act(async () => { await result.current.retry(); });
+    expect(result.current.error).toBeNull();
+  });
+
+  /** Review of BUG-20261003-document-retry-error-hidden: the screen's own retry elsewhere ends the message. */
+  it('stops saying a failed retry once a retry from elsewhere on the screen succeeds', async () => {
+    const s = makeEditor(); const b = makeBrowser(s.editor);
+    jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    let document!: ReturnType<typeof useDataDocument>;
+    function Screen() {
+      document = useDataDocument(resource, { autoSave: false });
+      // A status with trouble, so the block offers its Retry beside the page's own Refresh.
+      const status = document.status && { ...document.status, phase: 'unknown' as const };
+      return <DataSyncStatus subject={document.recoveryIdentity} status={status} error={document.error} onRetry={document.retry} />;
+    }
+    render(<Wrapper><Screen /></Wrapper>);
+    await waitFor(() => expect(document.data).toEqual({ content: 'base' }));
+    b.engine.retry.mockRejectedValueOnce(new Error('queue unreadable'));
+    fireEvent.click(await screen.findByRole('button', { name: 'dataSync.retry' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    await act(async () => { await document.retry(); });
+    expect(document.error).toBeNull();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('disposes an editor that finishes opening after unmount', async () => {

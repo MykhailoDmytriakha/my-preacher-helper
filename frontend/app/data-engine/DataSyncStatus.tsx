@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -19,6 +19,13 @@ export interface RecoveryChoice {
   preview?: string;
 }
 export interface DataSyncStatusProps {
+  /**
+   * What this status speaks about: the hook's `recoveryIdentity`, or any value that changes exactly
+   * when the block starts speaking about something else. Screens pass fresh callbacks on every
+   * render, so the callbacks cannot tell a re-render from a switch; the subject does
+   * (BUG-20261003-sync-actions-unlock-on-rerender).
+   */
+  subject: unknown;
   status: SyncStatus | null;
   error?: string | null;
   onKeepLocal?: () => void | Promise<void>;
@@ -35,35 +42,49 @@ export interface DataSyncStatusProps {
 }
 
 
+/** No subject is ever this: the block was taken off the screen. */
+const GONE = Symbol('gone');
+
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
-  const scope = useMemo(() => ({ onKeepLocal, onAcceptRemote, onRetry, onRecover }), [onKeepLocal, onAcceptRemote, onRetry, onRecover]);
-  // The callbacks shown on screen now; set at commit, so a render React throws away never moves it.
-  const currentScope = useRef<object>(scope);
-  useLayoutEffect(() => { currentScope.current = scope; return () => { currentScope.current = {}; }; }, [scope]);
-  const [action, setAction] = useState<{ scope: object; busy: boolean; error: FailureWords | null } | null>(null);
-  const running = useRef<object | null>(null);
+  // The subject shown on screen now; set at commit, so a render React throws away never moves it.
+  const currentSubject = useRef<unknown>(subject);
+  useLayoutEffect(() => { currentSubject.current = subject; return () => { currentSubject.current = GONE; }; }, [subject]);
+  // Subjects with an action under way: the ref guards a second click in the same moment, the state
+  // draws the lock. Per subject, so switching away and back while one hangs keeps it locked.
+  const runningFor = useRef(new Set<unknown>());
+  const [busyFor, setBusyFor] = useState<ReadonlySet<unknown>>(() => new Set());
+  const [failed, setFailed] = useState<{ subject: unknown; words: FailureWords } | null>(null);
+  // The block's own words are a fallback for an action whose owner said nothing about its failure.
+  // Once the owner's `error` changes — it said the failure, or a retry elsewhere ended it — the
+  // fallback is over; reset in render, so the old words never stand for a frame.
+  const [ownerSaid, setOwnerSaid] = useState(error);
+  if (ownerSaid !== error) {
+    setOwnerSaid(error);
+    if (failed) setFailed(null);
+  }
   const [selectedId, setSelectedId] = useState('');
   const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server'));
   const readTrouble = useLasting(Boolean(status?.readFailed));
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
-  const busy = action?.scope === scope && action.busy;
+  const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
   // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
-  const failure = error ?? (action?.scope === scope && action.error ? sayFailure(action.error, t) : null);
+  const failure = error ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
   const run = (callback: () => void | Promise<void>) => {
-    if (running.current === scope) return;
-    running.current = scope;
-    setAction({ scope, busy: true, error: null });
-    // The click runs the callback the person saw. Screens pass fresh callbacks on every render, so a
-    // re-render before the start is not a different subject; a stale one refuses inside the callback.
-    // Only reporting is limited to the callbacks still shown: a late result of replaced ones stays quiet.
-    void Promise.resolve().then(callback).then(() => {
-      if (currentScope.current === scope) setAction({ scope, busy: false, error: null });
-    }, caught => {
-      if (currentScope.current === scope) setAction({ scope, busy: false, error: refusalWords(caught, 'dataSync.actionFailed') });
-    }).finally(() => { if (running.current === scope) running.current = null; });
+    if (runningFor.current.has(subject)) return;
+    runningFor.current.add(subject);
+    setBusyFor(new Set(runningFor.current));
+    setFailed(now => (now?.subject === subject ? null : now));
+    // The click runs the callback the person saw, even when the screen re-renders before it starts;
+    // a stale one refuses inside the callback. A late failure of a subject no longer shown stays quiet.
+    void Promise.resolve().then(callback).then(() => undefined, caught => {
+      if (currentSubject.current === subject) setFailed({ subject, words: refusalWords(caught, 'dataSync.actionFailed') });
+    }).finally(() => {
+      runningFor.current.delete(subject);
+      setBusyFor(new Set(runningFor.current));
+    });
   };
   const keep = status?.canKeepLocal && onKeepLocal;
   const accept = status?.canAcceptRemote && onAcceptRemote;

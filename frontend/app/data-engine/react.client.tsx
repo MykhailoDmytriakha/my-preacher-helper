@@ -743,8 +743,16 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     retry: async () => {
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
       setError(null);
-      if (current && browser && collection && id) await browser.engine.retry({ collection, id });
-      else if (recovery) await recover(recovery.sourceId);
+      if (current && browser && collection && id) {
+        // Said like any other action's failure (`run`): a retry that fails silently looks like a
+        // button that does nothing (BUG-20261003-document-retry-error-hidden).
+        try {
+          await browser.engine.retry({ collection, id });
+        } catch (failure) {
+          if (isCurrent()) setError(failure);
+          throw failure;
+        }
+      } else if (recovery) await recover(recovery.sourceId);
       else setAttempt(value => value + 1);
     },
   };
