@@ -123,20 +123,60 @@ async function executeStructuredTarget<T extends z.ZodType>(
  */
 const SAME_TARGET_RETRY_PAUSE_MS = 500;
 const SAME_TARGET_RETRY_MIN_BUDGET_MS = 10_000;
+/** Under this much left of the caller's deadline a request is not sent: no model could answer in time. */
+const DISPATCH_MIN_BUDGET_MS = 2_000;
+
+/**
+ * The caller's deadline ran out before the chain could finish: refused before the platform wall, in
+ * the words the routes already read as a timeout ("timed out"), so they answer with their own 504.
+ */
+export class ChainDeadlineError extends Error {
+  readonly cause?: unknown;
+  constructor(stage: string, cause?: unknown) {
+    super(`AI call timed out: the deadline ran out ${stage}`);
+    this.name = 'ChainDeadlineError';
+    this.cause = cause;
+  }
+}
 
 type RequestOptions = StructuredOutputOptions['requestOptions'];
 
-/** The caller owns retries when it switched the SDK's off and set its own deadline. */
-function ownRetryDeadline(requestOptions: RequestOptions): number | null {
+/**
+ * ONE DEADLINE FOR THE WHOLE CHAIN (BUG-20261003-ai-chain-deadline-not-whole-chain). The caller owns
+ * retries when it switched the SDK's off and set its own deadline; that deadline is the whole call's —
+ * reading the plan, every model, a fallback, a retry — counted from the moment the call starts, so
+ * the chain answers or refuses before the 60 s platform wall instead of being killed by it.
+ */
+function ownChainDeadline(requestOptions: RequestOptions): number | null {
   return requestOptions?.maxRetries === 0 && typeof requestOptions.timeout === 'number'
     ? performance.now() + requestOptions.timeout
     : null;
 }
 
-/** A same-model retry gets only what is left of the caller's deadline — whole milliseconds, as the SDK requires. */
-function requestOptionsForAttempt(requestOptions: RequestOptions, retryDeadline: number | null, isSameTargetRetry: boolean): RequestOptions {
-  return isSameTargetRetry && retryDeadline !== null
-    ? { ...requestOptions, timeout: Math.floor(retryDeadline - performance.now()) }
+/**
+ * Preparation work (reading the plan, choosing the models) is started only while the deadline lasts
+ * and waited for only until it runs out; work that loses the race still has its outcome handled.
+ */
+async function withinChainDeadline<T>(start: () => Promise<T>, chainDeadline: number | null, stage: string): Promise<T> {
+  if (chainDeadline === null) return start();
+  const left = chainDeadline - performance.now();
+  if (left <= 0) throw new ChainDeadlineError(stage);
+  const work = start();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new ChainDeadlineError(stage)), left); }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+/** Every attempt gets only what is left of the caller's deadline — whole milliseconds, as the SDK requires. */
+function requestOptionsForAttempt(requestOptions: RequestOptions, chainDeadline: number | null): RequestOptions {
+  return chainDeadline !== null
+    ? { ...requestOptions, timeout: Math.max(1, Math.floor(chainDeadline - performance.now())) }
     : requestOptions;
 }
 
@@ -162,15 +202,21 @@ async function runWithFallback<TResult>(
   isSameTargetRetry = false
 ): Promise<TResult> {
   const target = targets[index] as ModelTarget;
+  // A request is not sent with no time left for its answer: the chain refuses before the wall instead.
+  if (retryDeadline !== null && retryDeadline - performance.now() < DISPATCH_MIN_BUDGET_MS) {
+    throw new ChainDeadlineError('before a model could be asked');
+  }
   onAttempt(target);
 
   try {
     return await execute(target, isSameTargetRetry);
   } catch (error) {
     const disposition = providerAdapters[target.providerId].classifyError(error);
-    const canTryNext = disposition !== 'terminal' && index < targets.length - 1;
+    const hasNext = disposition !== 'terminal' && index < targets.length - 1;
+    // A next model inherits what is left of the deadline, not a fresh one — sent while any real time is left.
+    const canTryNext = hasNext && (retryDeadline === null || retryDeadline - performance.now() >= DISPATCH_MIN_BUDGET_MS);
     const budgetLeftMs = retryDeadline === null ? 0 : retryDeadline - performance.now() - SAME_TARGET_RETRY_PAUSE_MS;
-    const willRetrySameTarget = !canTryNext && !isSameTargetRetry
+    const willRetrySameTarget = !hasNext && !isSameTargetRetry
       && disposition === 'retrySameProvider' && budgetLeftMs >= SAME_TARGET_RETRY_MIN_BUDGET_MS;
     onFailure({ target, error, disposition, attempt: index + 1, willTryNext: canTryNext, willRetrySameTarget });
     if (willRetrySameTarget) {
@@ -179,8 +225,10 @@ async function runWithFallback<TResult>(
       if (retryDeadline === null || retryDeadline - performance.now() < SAME_TARGET_RETRY_MIN_BUDGET_MS) throw error;
       return runWithFallback(targets, execute, onAttempt, onFailure, retryDeadline, index, true);
     }
-    if (!canTryNext) throw error;
-    return runWithFallback(targets, execute, onAttempt, onFailure, retryDeadline, index + 1);
+    if (canTryNext) return runWithFallback(targets, execute, onAttempt, onFailure, retryDeadline, index + 1);
+    // Recovery stopped only because the deadline ran out: said as the timeout it is.
+    if (hasNext) throw new ChainDeadlineError('before the next model could be asked', error);
+    throw error;
   }
 }
 
@@ -238,6 +286,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   }
 
   const startTime = performance.now();
+  // Counted from here: reading the plan and the opening telemetry spend the same deadline as the models.
+  const chainDeadline = ownChainDeadline(options.requestOptions);
   // Объявлено вне try: ветка ошибки обязана дописать ТУ ЖЕ карточку, а не создать
   // вторую. Остаётся null, если падение случилось раньше отметки входа.
   let telemetryEventId: string | null = null;
@@ -257,17 +307,18 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         import('@/services/usageLimits.server'),
       ]);
       const now = new Date();
-      const entitlement = await getUserEntitlementServerSide(options.userId, {
+      const userId = options.userId;
+      const entitlement = await withinChainDeadline(() => getUserEntitlementServerSide(userId, {
         includeTextPreference: true,
-      });
+      }), chainDeadline, 'while reading the plan');
       if (!isUsageAdmitted(options.usageAdmission, options.userId, 'ai')) {
         assertAiUsageAvailable(entitlement, now);
       }
-      targets = await resolveUserTextTargets(entitlement, {
+      targets = await withinChainDeadline(() => resolveUserTextTargets(entitlement, {
         // Legacy fields remain a fallback for existing user documents.
         providerId: entitlement.preferredText?.providerId ?? entitlement.preferredProviderId,
         modelId: entitlement.preferredText?.modelId ?? entitlement.preferredModelId,
-      }, now);
+      }, now), chainDeadline, 'while choosing the models');
       consumeSuccessfulAiCall = () => consumeAiUsage(options.userId as string, now);
     }
 
@@ -276,6 +327,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     // `started`, и есть тот вызов, который не вернулся. Ждём её намеренно —
     // fire-and-forget не успел бы отправиться из умирающего процесса.
     intendedTarget = targets[0];
+    // Counted in the deadline but not cut by it: a raced opening that lands late would leave a record
+    // stuck at `started` beside the error one (BUG-20261006-ai-call-outlives-the-wall).
     telemetryEventId = await openStructuredTelemetryEvent({
       provider: intendedTarget.providerId.toUpperCase(),
       model: intendedTarget.modelId,
@@ -284,15 +337,14 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       logContext,
     });
 
-    const retryDeadline = ownRetryDeadline(options.requestOptions);
     const completion = await runWithFallback(
       targets,
-      (target, isSameTargetRetry) => executeStructuredTarget(target, {
+      (target) => executeStructuredTarget(target, {
         systemPrompt: promptBlueprint.systemPrompt,
         userMessage: promptBlueprint.userMessage,
         schema,
         formatName,
-        requestOptions: requestOptionsForAttempt(options.requestOptions, retryDeadline, isSameTargetRetry),
+        requestOptions: requestOptionsForAttempt(options.requestOptions, chainDeadline),
       }),
       (target) => {
         executionState.target = target;
@@ -313,7 +365,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
           }
         );
       },
-      retryDeadline
+      chainDeadline
     );
     const target = executionState.target;
     if (!target) throw new Error('Structured-output target was not executed');

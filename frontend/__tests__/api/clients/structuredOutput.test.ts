@@ -470,6 +470,141 @@ describe('structuredOutput client', () => {
     }));
   });
 
+  /**
+   * ONE DEADLINE FOR THE WHOLE CHAIN (BUG-20261003-ai-chain-deadline-not-whole-chain). A caller behind
+   * the 60 s wall sets its own deadline; the chain — reading the plan, the first model, a fallback, a
+   * retry — fits inside it, or refuses before the wall instead of being killed by it.
+   */
+  describe('one deadline for the whole chain', () => {
+    const answer = { choices: [{ message: { parsed: { answer: 'fallback' } } }], usage: undefined };
+    let clock = 0;
+    let now: jest.SpyInstance;
+    beforeEach(() => {
+      clock = 0;
+      now = jest.spyOn(performance, 'now').mockImplementation(() => clock);
+      mockGetUserEntitlementServerSide.mockResolvedValue({
+        paidTier: 'tier3',
+        preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
+      });
+    });
+    afterEach(() => now.mockRestore());
+    const timeoutOf = (call: number) => (openRouterParseMock.mock.calls[call][1] as { timeout: number }).timeout;
+
+    it('gives the next model only what is left of the deadline', async () => {
+      openRouterParseMock
+        .mockImplementationOnce(async () => { clock += 10_000; throw { status: 429, code: 'rate_limit_exceeded' }; })
+        .mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(true);
+      expect(openRouterParseMock).toHaveBeenCalledTimes(2);
+      expect(Number.isInteger(timeoutOf(1))).toBe(true);
+      expect(timeoutOf(1)).toBeLessThanOrEqual(35_000);
+      expect(timeoutOf(1)).toBeGreaterThan(30_000);
+    });
+
+    it('still asks the next model with a few seconds left, within them', async () => {
+      openRouterParseMock
+        .mockImplementationOnce(async () => { clock += 37_000; throw { status: 429, code: 'rate_limit_exceeded' }; })
+        .mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(true);
+      expect(timeoutOf(1)).toBeLessThanOrEqual(8_000);
+    });
+
+    it('asks no other model when no real time is left, and says it timed out', async () => {
+      openRouterParseMock
+        .mockImplementationOnce(async () => { clock += 44_500; throw { status: 429, code: 'rate_limit_exceeded' }; })
+        .mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(false);
+      expect(openRouterParseMock).toHaveBeenCalledTimes(1);
+      expect(String(result.error?.message)).toMatch(/timed out/);
+    });
+
+    it('sends no request with only half a second of the deadline left', async () => {
+      // Preparation ends inside the deadline, but with no real time left for an answer.
+      openStructuredTelemetryEvent.mockImplementation(async () => { clock += 44_500; return 'evt-open-1'; });
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(false);
+      expect(openRouterParseMock).not.toHaveBeenCalled();
+      expect(String(result.error?.message)).toMatch(/timed out/);
+    });
+
+    it('does not even start reading the plan once the deadline has run out', async () => {
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 0, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(false);
+      expect(mockGetUserEntitlementServerSide).not.toHaveBeenCalled();
+      expect(String(result.error?.message)).toMatch(/timed out/);
+    });
+
+    it('does not wait for a plan read longer than the deadline', async () => {
+      mockGetUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+
+      const mod = await import('@/api/clients/structuredOutput');
+      const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 50, maxRetries: 0 },
+      });
+
+      expect(result.success).toBe(false);
+      expect(openRouterParseMock).not.toHaveBeenCalled();
+      expect(String(result.error?.message)).toMatch(/timed out/);
+    });
+
+    it('counts reading the plan inside the deadline', async () => {
+      mockGetUserEntitlementServerSide.mockImplementation(async () => {
+        clock += 30_000;
+        return { paidTier: 'tier3', preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' } };
+      });
+      openRouterParseMock.mockResolvedValueOnce(answer);
+
+      const mod = await import('@/api/clients/structuredOutput');
+      await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        userId: 'paid-user',
+        requestOptions: { timeout: 45_000, maxRetries: 0 },
+      });
+
+      expect(timeoutOf(0)).toBeLessThanOrEqual(15_000);
+      expect(timeoutOf(0)).toBeGreaterThan(10_000);
+    });
+  });
+
   describe('a passing provider hiccup (BUG-20260905-ai-chain-never-retries-same-model)', () => {
     const hiccup = { status: 503, message: 'Service Unavailable' };
     const answer = { choices: [{ message: { parsed: { answer: 'second try' } } }], usage: undefined };
