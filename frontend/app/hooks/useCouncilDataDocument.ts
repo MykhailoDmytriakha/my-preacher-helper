@@ -33,8 +33,15 @@ export function useCouncilDataDocument(councilId: string) {
   const apply = useCallback((mutate: (current: Council) => Council) => (current: DocumentData | null): DocumentData => {
     if (!current) throw missing();
     // The id addresses the document; it never travels inside the stored fields.
-    const { id: _id, ...next } = mutate(hydrateCouncil(current as Record<string, unknown>, councilId));
-    return { ...next, updatedAt: new Date().toISOString() } as unknown as DocumentData;
+    const { id: _id, rev: _rev, ...next } = mutate(hydrateCouncil(current as Record<string, unknown>, councilId));
+    /*
+     * The revision is the server's: it travels exactly as stored, or not at all. The 0 the reader
+     * fills in for a council written before it had one became a change to a field no editor may
+     * write, and every edit of such a council was refused on this device
+     * (BUG-20261004-council-without-rev-refuses-title). The server gives it a counter on its first write.
+     */
+    const kept = 'rev' in current ? { rev: current.rev } : {};
+    return { ...next, ...kept, updatedAt: new Date().toISOString() } as unknown as DocumentData;
   }, [councilId]);
 
   /** Typing: persisted locally at once, delivered by the shared autosave. */
