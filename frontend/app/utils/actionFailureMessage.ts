@@ -21,7 +21,9 @@ import { ranOutOfTime } from '@/utils/aiTimeFailure';
  * Hooks keep the `FailureWords` and translate a key when they render, so a language switch re-says
  * a failure said by key; a toast, shown once, uses `actionFailureMessage` or `refusalMessage`.
  */
-export type FailureWords = { said: string } | { key: string };
+/** A value in a sentence: words as they are, or a key said in the current language (a field's name). */
+export type FailureValue = string | { key: string };
+export type FailureWords = { said: string } | { key: string; values?: Record<string, FailureValue> };
 
 const SAID = new Set(['read-only', 'said']);
 // A Map, not an object: a code such as 'constructor' must not find the prototype.
@@ -55,13 +57,32 @@ export function logFailureOnce(error: unknown, ...context: unknown[]): void {
   console.error(...context, error);
 }
 
-/** An error whose message is a sentence for the person, already translated; it is shown as it is. */
-export function saidError(message: string): Error {
-  return Object.assign(new Error(message), { code: 'said' });
+/**
+ * An error the screen says to the person itself: a key and its values, said in the current language
+ * when shown, so a language switch re-says it (BUG-20261003-said-refusal-keeps-old-language).
+ */
+export function saidError(key: string, values?: Record<string, FailureValue>): Error {
+  return Object.assign(new Error(key), { code: 'said', say: { key, ...(values ? { values } : {}) } });
 }
+
+/** "Fill in <field>", kept as keys: the words a form shows, and the refusal it throws. */
+export const fillRequiredField = (fieldKey: string): FailureWords => ({ key: 'common.fillRequiredField', values: { field: { key: fieldKey } } });
+export const fillRequiredFieldError = (fieldKey: string): Error => saidError('common.fillRequiredField', { field: { key: fieldKey } });
+
+/** A change refused because the screen shows a copy for reading; the reason is said when shown. */
+export function readOnlyError(key: string): Error {
+  return Object.assign(new Error(key), { code: 'read-only', say: { key } });
+}
+
+const sayOf = (error: unknown): FailureWords | null => {
+  const say = (error as { say?: unknown } | null)?.say as { key?: unknown; values?: Record<string, FailureValue> } | undefined;
+  return say && typeof say.key === 'string' && say.key ? { key: say.key, ...(say.values ? { values: say.values } : {}) } : null;
+};
 
 export function failureWords(error: unknown, fallbackKey: string): FailureWords {
   const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
+  const said = SAID.has(code) ? sayOf(error) : null;
+  if (said) return said;
   if (error instanceof Error && SAID.has(code) && error.message) return { said: error.message };
   // An AI call cut by the 60 s ceiling or the client's clock (`ranOutOfTime`): "HTTP 504" is not words.
   if (ranOutOfTime(error)) return { key: 'errors.aiOutOfTime' };
@@ -78,16 +99,21 @@ export function refusalWords(error: unknown, fallbackKey: string): FailureWords 
   return failureWords(error, fallbackKey);
 }
 
-export function sayFailure(words: FailureWords, t: (key: string) => string): string {
-  return 'said' in words ? words.said : t(words.key);
+type Translate = (key: string, values?: Record<string, string>) => string;
+
+export function sayFailure(words: FailureWords, t: Translate): string {
+  if ('said' in words) return words.said;
+  if (!words.values) return t(words.key);
+  const values = Object.fromEntries(Object.entries(words.values).map(([name, value]) => [name, typeof value === 'string' ? value : t(value.key)]));
+  return t(words.key, values);
 }
 
 /** For a message shown once, such as a toast: the words of `failureWords`, translated now. */
-export function actionFailureMessage(error: unknown, t: (key: string) => string, fallbackKey: string): string {
+export function actionFailureMessage(error: unknown, t: Translate, fallbackKey: string): string {
   return sayFailure(failureWords(error, fallbackKey), t);
 }
 
 /** For a refused action shown once, such as a toast: the words of `refusalWords`, translated now. */
-export function refusalMessage(error: unknown, t: (key: string) => string, fallbackKey: string): string {
+export function refusalMessage(error: unknown, t: Translate, fallbackKey: string): string {
   return sayFailure(refusalWords(error, fallbackKey), t);
 }

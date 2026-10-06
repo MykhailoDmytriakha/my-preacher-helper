@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
-import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { fillRequiredFieldError, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
@@ -45,7 +45,7 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
     try {
       await document.commit(current => {
         const next = (current ?? initial) as unknown as Omit<Group, 'id'>;
-        if (!next.title.trim()) throw saidError(t('common.fillRequiredField', { field: t('workspaces.groups.form.title') }));
+        if (!next.title.trim()) throw fillRequiredFieldError('workspaces.groups.form.title');
         return deepCleanUndefined({ ...next, title: next.title.trim(), description: next.description?.trim() || undefined }) as unknown as DocumentData;
       });
       if (mounted.current) onQueued(groupId);

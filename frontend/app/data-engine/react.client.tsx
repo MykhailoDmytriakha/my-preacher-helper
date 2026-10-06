@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/providers/AuthProvider';
-import { failureWords, logFailureOnce, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { failureWords, logFailureOnce, readOnlyError, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
 
@@ -51,6 +51,9 @@ const BACKGROUND_FAILED = 'dataSync.backgroundFailure';
  * Why a copy shown for reading cannot take this change, in the person's words: when the device's
  * storage is silent, editing returns by itself once it answers; otherwise the editor is still opening.
  */
+/** Why changes are refused over a copy for reading, as a key: said in the current language when shown. */
+const readOnlyReasonKey = (storage = isStorageSilent()) => (storage ? 'dataSync.readOnly.storage' : 'dataSync.readOnly.opening');
+
 function useReadOnlyReason() {
   const { t } = useTranslation();
   // Re-render when storage goes silent or answers, so a reason already on the screen stays true.
@@ -59,7 +62,7 @@ function useReadOnlyReason() {
   // between renders would reopen forms in a loop.
   const translate = useRef(t);
   translate.current = t;
-  return useCallback((storage = isStorageSilent()) => translate.current(storage ? 'dataSync.readOnly.storage' : 'dataSync.readOnly.opening'), []);
+  return useCallback((storage = isStorageSilent()) => translate.current(readOnlyReasonKey(storage)), []);
 }
 
 /*
@@ -116,7 +119,6 @@ function useLookWhileSilent(active: boolean, databases: readonly string[], look:
     };
   }, [active, databases]);
 }
-const readOnlyRefusal = (reason: string) => Object.assign(new Error(reason), { code: 'read-only' });
 
 /** Public recovery UI seam; storage and owner fencing remain inside the engine. */
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
@@ -632,7 +634,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const isCurrent = useCallback(() => mounted.current && scope.current === identity, [identity]);
   const run = useCallback(async (action: (editor: ManagedEditor) => Promise<void>) => {
     if (!isCurrent()) throw new Error(EDITOR_CHANGED);
-    if (!current) throw copy ? readOnlyRefusal(readOnlyReason()) : new Error('The editor is not ready');
+    if (!current) throw copy ? readOnlyError(readOnlyReasonKey()) : new Error('The editor is not ready');
     try {
       await action(current.editor);
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
@@ -694,7 +696,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   const manualEditor = current?.editor;
   const getManualForm = useCallback((formSlot: string, fields: readonly ManualPath[], recovery?: ManualRecoveryPolicy) => {
-    if (!manualEditor && copy) throw readOnlyRefusal(readOnlyReason());
+    if (!manualEditor && copy) throw readOnlyError(readOnlyReasonKey());
     if (!manualEditor || !isCurrent()) throw new Error(EDITOR_CHANGED);
     return manualEditor.form(formSlot, fields, recovery);
   }, [manualEditor, copy, readOnlyReason, isCurrent]);
@@ -894,7 +896,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   const readOnly = !targetForm && document.readOnly;
   const run = useCallback(async (action: (form: ManagedManualForm) => Promise<void>, busy = true) => {
     // A form over a copy shown for reading cannot stage anything; say why instead of "not ready".
-    if (!current() || !targetForm) throw readOnly ? readOnlyRefusal(document.readOnlyReason ?? '') : new Error('The manual form is not ready');
+    if (!current() || !targetForm) throw readOnly ? readOnlyError(readOnlyReasonKey()) : new Error('The manual form is not ready');
     if (busy) setWorking(value => ({ identity, count: value.identity === identity ? value.count + 1 : 1 }));
     try {
       await action(targetForm);

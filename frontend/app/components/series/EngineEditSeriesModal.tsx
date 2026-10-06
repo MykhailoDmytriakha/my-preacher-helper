@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
-import { saidError } from '@/utils/actionFailureMessage';
+import { fillRequiredField, fillRequiredFieldError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 import SeriesFormFields, { missingSeriesField, seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
@@ -29,19 +29,20 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     recover: form.recover });
   const values = seriesFormValues(form.data as unknown as Series | undefined);
   // An empty required field is the form's own message; the sync status speaks only of delivery.
-  const [missing, setMissing] = useState<string | null>(null);
+  // Kept as words, so a language switch re-says it (BUG-20261003-said-refusal-keeps-old-language).
+  const [missing, setMissing] = useState<FailureWords | null>(null);
   const change = (patch: Partial<SeriesFormValues>) => {
     setMissing(null);
     void form.update(current => ({ ...current, ...patch, ...('title' in patch ? { theme: patch.title! } : {}) }) as DocumentData).catch(() => undefined);
   };
   const save = async () => {
     const empty = missingSeriesField(values);
-    setMissing(empty ? t('common.fillRequiredField', { field: t(empty) }) : null);
+    setMissing(empty ? fillRequiredField(empty) : null);
     if (empty) return;
     await form.save(current => {
       const values = seriesFormValues(current as unknown as Series);
       const emptyNow = missingSeriesField(values);
-      if (emptyNow) throw saidError(t('common.fillRequiredField', { field: t(emptyNow) }));
+      if (emptyNow) throw fillRequiredFieldError(emptyNow);
       return deepCleanUndefined({ ...current, ...seriesFormPatch(values) }) as DocumentData;
     });
     onClose();
@@ -57,7 +58,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
       <fieldset disabled={loading || !form.active || form.busy}>
         <SeriesFormFields values={values} onChange={change} colorPickerTitle={t('workspaces.series.editSeries')} />
       </fieldset>
-      {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{missing}</p>}
+      {missing && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{sayFailure(missing, t)}</p>}
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}

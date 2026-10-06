@@ -9,7 +9,7 @@ import { DataSession } from '@/data-engine/session';
 import { preparePreachDate } from '@/components/calendar/preachDateForm';
 import { DataEngineProvider, useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { useRecoveryDiscovery } from '@/data-engine/useRecoveryDiscovery';
-import { actionFailureMessage, failureWords, refusalMessage, refusalWords, saidError } from '@/utils/actionFailureMessage';
+import { actionFailureMessage, failureWords, fillRequiredField, fillRequiredFieldError, readOnlyError, refusalMessage, refusalWords, saidError, sayFailure } from '@/utils/actionFailureMessage';
 import { storageSilentError } from '@/utils/deviceStorage';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import en from '@locales/en/translation.json';
@@ -91,11 +91,14 @@ describe('a failure is said in words where it is caught', () => {
       return hook;
     };
 
-    it('keeps the words the screen wrote for the person', async () => {
-      const { result, unmount } = await open();
-      const said = 'Заполните поле «Название»';
-      await act(async () => { await result.current.commit(() => { throw saidError(said); }).catch(() => undefined); await settleEngine(); });
-      expect(result.current.error).toBe(said);
+    /** BUG-20261003-said-refusal-keeps-old-language */
+    it('says the words the screen wrote for the person in the current language, after a switch too', async () => {
+      const { result, rerender, unmount } = await open();
+      await act(async () => { await result.current.commit(() => { throw saidError('common.fillRequiredField', { field: { key: 'workspaces.groups.form.title' } }); }).catch(() => undefined); await settleEngine(); });
+      expect(result.current.error).toBe('ru:common.fillRequiredField');
+      language = 'en';
+      rerender();
+      expect(result.current.error).toBe('en:common.fillRequiredField');
       unmount();
     });
 
@@ -232,10 +235,30 @@ describe('the status panel prints the words it is given', () => {
   });
 });
 
+/** BUG-20261003-said-refusal-keeps-old-language: what the screen says is kept as keys and said when shown. */
+describe('a refusal the screen says itself', () => {
+  const spoken = (key: string, values?: Record<string, string>) => `${language}:${key}${values ? JSON.stringify(values) : ''}`;
+
+  it('is said again in the new language, the field name too', () => {
+    const words = refusalWords(fillRequiredFieldError('workspaces.groups.form.title'), 'fallback');
+    expect(sayFailure(words, spoken)).toBe('ru:common.fillRequiredField{"field":"ru:workspaces.groups.form.title"}');
+    language = 'en';
+    expect(sayFailure(words, spoken)).toBe('en:common.fillRequiredField{"field":"en:workspaces.groups.form.title"}');
+    expect(sayFailure(fillRequiredField('workspaces.series.form.title'), spoken)).toBe('en:common.fillRequiredField{"field":"en:workspaces.series.form.title"}');
+    expect(logged).not.toHaveBeenCalled();
+  });
+
+  it('says a read-only refusal by its reason, in the current language', () => {
+    const words = failureWords(readOnlyError('dataSync.readOnly.storage'), 'fallback');
+    expect(sayFailure(words, spoken)).toBe('ru:dataSync.readOnly.storage');
+    language = 'uk';
+    expect(sayFailure(words, spoken)).toBe('uk:dataSync.readOnly.storage');
+  });
+});
+
 describe('failureWords', () => {
   it.each([
-    ['a read-only refusal', Object.assign(new Error('Только просмотр'), { code: 'read-only' })],
-    ['a screen refusal', saidError('Заполните поле')],
+    ['a read-only refusal written as a sentence', Object.assign(new Error('Только просмотр'), { code: 'read-only' })],
   ])('keeps %s without logging it', (_name, error) => {
     expect(actionFailureMessage(error, t, 'fallback')).toBe(error.message);
     expect(logged).not.toHaveBeenCalled();
@@ -286,7 +309,7 @@ describe('failureWords', () => {
   it('keeps the sentence of a refused action unless it is coded or already for the person', () => {
     expect(refusalWords(new Error('Resolve the requested series before saving'), 'fallback')).toEqual({ said: 'Resolve the requested series before saving' });
     expect(refusalWords(storageSilentError(), 'fallback')).toEqual({ key: 'dataSync.readOnly.storage' });
-    expect(refusalMessage(saidError('Заполните поле'), t, 'fallback')).toBe('Заполните поле');
+    expect(refusalMessage(saidError('common.fillRequiredField'), t, 'fallback')).toBe('ru:common.fillRequiredField');
     expect(refusalMessage('rejected', t, 'fallback')).toBe('ru:fallback');
     expect(logged.mock.calls.filter(([value]) => value === 'rejected')).toHaveLength(1);
   });
