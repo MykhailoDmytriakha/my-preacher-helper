@@ -33,13 +33,40 @@ const withList = (
 const renumber = (subPoints: SubPoint[]): SubPoint[] =>
   subPoints.map((sp, index) => ({ ...sp, position: index }));
 
-/** A point's or sub-point's own words, cut to what a screen reader says aloud; '' when it is gone. */
+const SPOKEN_LIMIT = 60;
+const spoken = (text: string) => (text.length > SPOKEN_LIMIT ? `${text.slice(0, SPOKEN_LIMIT - 3).trimEnd()}…` : text);
+
+/**
+ * A point's or sub-point's own words, cut to what a screen reader says aloud; '' when it is gone.
+ * Two points that would sound alike get their order among them ("Grace (2)"): a live region does
+ * not repeat a sentence it has just said, so the second place would go silent
+ * (BUG-20261006-drag-announcement-place-imprecise).
+ */
 export function outlinePointText(outline: SermonOutline, id: string): string {
+  const entries: { id: string; label: string }[] = [];
   for (const section of ['introduction', 'main', 'conclusion'] as const) {
     for (const point of outline[section] ?? []) {
-      const text = point.id === id ? point.text : point.subPoints?.find(sub => sub.id === id)?.text;
-      if (text !== undefined) return text.length > 60 ? `${text.slice(0, 57).trimEnd()}…` : text;
+      entries.push({ id: point.id, label: spoken(point.text) });
+      for (const sub of point.subPoints ?? []) entries.push({ id: sub.id, label: spoken(sub.text) });
     }
+  }
+  if (!entries.some(entry => entry.id === id)) return '';
+  // Every final label is unique: a number for words said alike skips any label already taken,
+  // including a point whose own words happen to read "Grace (1)".
+  const count = new Map<string, number>();
+  entries.forEach(entry => count.set(entry.label, (count.get(entry.label) ?? 0) + 1));
+  const taken = new Set(entries.filter(entry => count.get(entry.label) === 1).map(entry => entry.label));
+  const next = new Map<string, number>();
+  for (const entry of entries) {
+    let label = entry.label;
+    if (count.get(entry.label)! > 1) {
+      let n = next.get(entry.label) ?? 1;
+      while (taken.has(`${entry.label} (${n})`)) n += 1;
+      label = `${entry.label} (${n})`;
+      next.set(entry.label, n + 1);
+      taken.add(label);
+    }
+    if (entry.id === id) return label;
   }
   return '';
 }

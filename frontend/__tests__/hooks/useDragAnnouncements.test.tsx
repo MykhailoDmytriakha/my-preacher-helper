@@ -67,6 +67,14 @@ describe('drag announcements that name where the item goes', () => {
       .toBe('ru:dragAndDrop.movedTo{"place":"конец раздела «Основная часть»"}');
   });
 
+  it('says a place the carried card cannot land in as such, not as a place', () => {
+    const { result } = renderHook(() => useDndKitAccessibility({ placeOf: () => null }));
+    const { announcements } = result.current;
+    const active = { id: 'point:p1', data: { current: {} } } as unknown as Active, over = { id: 'subgap:p1:0', data: { current: {} } } as unknown as Over;
+    expect(announcements.onDragOver({ active, over })).toBe('ru:dragAndDrop.outside');
+    expect(announcements.onDragEnd({ active, over })).toBe('ru:dragAndDrop.droppedOutside');
+  });
+
   it('names the list a sortable item moves into, and only then', () => {
     const { result } = renderHook(() => useDndKitAccessibility({ containerName: id => (id === 'main' ? 'Основная часть' : undefined) }));
     const { announcements } = result.current;

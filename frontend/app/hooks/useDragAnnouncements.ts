@@ -24,8 +24,11 @@ const sortablePosition = (entry: Active | Over | null | undefined): number | nul
 };
 
 export interface DndKitPlaces {
-  /** A board whose targets are places of their own (a section, a gap, a point): the place, in words. */
-  placeOf?: (over: Over) => string | undefined;
+  /**
+   * A board whose targets are places of their own (a section, a gap, a point): the place, in words;
+   * null when the carried card cannot land there (the drop would do nothing); undefined to say nothing special.
+   */
+  placeOf?: (over: Over, active: Active) => string | null | undefined;
   /** Sortable lists side by side (columns): a list's name, said when the item moves to another list. */
   containerName?: (containerId: UniqueIdentifier) => string | undefined;
 }
@@ -33,7 +36,8 @@ export interface DndKitPlaces {
 function dndKitWords(t: Translate, { placeOf, containerName }: DndKitPlaces) {
   const at = (key: string, position: number | null) => (position === null ? t(`dragAndDrop.${key}`) : t(`dragAndDrop.${key}At`, { position }));
   const where = (key: 'moved' | 'dropped', active: Active, over: Over) => {
-    const place = placeOf?.(over);
+    const place = placeOf?.(over, active);
+    if (place === null) return t(key === 'moved' ? 'dragAndDrop.outside' : 'dragAndDrop.droppedOutside');
     if (place) return t(`dragAndDrop.${key}To`, { place });
     const from = sortableOf(active)?.containerId, to = sortableOf(over)?.containerId;
     const list = to !== undefined && to !== from ? containerName?.(to) : undefined;

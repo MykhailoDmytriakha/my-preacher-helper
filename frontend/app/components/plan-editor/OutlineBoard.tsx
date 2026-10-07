@@ -5,6 +5,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
   type DragEndEvent,
+  type Active,
   type Over,
 } from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
@@ -158,9 +159,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   // (BUG-20261006-library-screen-reader-words-english): this board's targets carry no list position.
   const outlineRef = useRef(value);
   outlineRef.current = value;
-  const placeOf = useCallback((over: Over) => {
-    const place = describeDropPlace(String(over.id), outlineRef.current);
+  const placeOf = useCallback((over: Over, active: Active) => {
+    const place = describeDropPlace(String(over.id), outlineRef.current, parseDragId(String(active.id)) ?? undefined);
     if (!place) return undefined;
+    if (place.kind === 'nowhere') return null;
     if (place.kind === 'pool') return t('dragAndDrop.placePool');
     if (place.kind === 'notes') return t('dragAndDrop.placeNotes', { point: place.point });
     if (place.kind === 'inside') return place.position === undefined ? t('dragAndDrop.placeInPoint', { point: place.point })

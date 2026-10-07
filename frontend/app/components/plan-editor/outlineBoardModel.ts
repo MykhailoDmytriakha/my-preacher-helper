@@ -46,20 +46,43 @@ export type DropPlace =
   | { kind: 'sectionAt'; section: SectionKey; position: number }
   | { kind: 'inside'; point: string; position?: number }
   | { kind: 'notes'; point: string }
-  | { kind: 'pool' };
+  | { kind: 'pool' }
+  /** The carried card cannot land here (a point into itself): the drop would do nothing. */
+  | { kind: 'nowhere' };
 
-export function describeDropPlace(raw: string, outline: SermonOutline): DropPlace | null {
+/**
+ * The place a drop would land, said for the card being carried when there is one: its position
+ * after it leaves its own place, read from the same move the drop makes — not from the gap's index
+ * (BUG-20261006-drag-announcement-place-imprecise).
+ */
+export function describeDropPlace(raw: string, outline: SermonOutline, subject?: DragSubject): DropPlace | null {
   const container = parseNoteContainerId(raw);
   if (container) return container.kind === 'pool' ? { kind: 'pool' }
     : { kind: 'notes', point: outlinePointText(outline, container.kind === 'point' ? container.pointId : container.subPointId) };
   const target = parseTarget(raw, outline);
   if (!target) return null;
+  const carried = subject && subject.kind !== 'note' ? subject : null;
+  const landed = carried ? landingIndex(outline, carried, target) : null;
+  if (carried && landed === null) return { kind: 'nowhere' };
   if (target.kind === 'inside') {
     const point = outlinePointText(outline, target.pointId);
-    return target.index === undefined ? { kind: 'inside', point } : { kind: 'inside', point, position: target.index + 1 };
+    if (target.index === undefined) return { kind: 'inside', point };
+    return { kind: 'inside', point, position: (landed ?? target.index) + 1 };
   }
   return raw.startsWith(DROP_PREFIX.section) ? { kind: 'sectionEnd', section: target.section }
-    : { kind: 'sectionAt', section: target.section, position: target.index + 1 };
+    : { kind: 'sectionAt', section: target.section, position: (landed ?? target.index) + 1 };
+}
+
+/** Where the carried point or sub-point stands once the drop's own move is made; null when it would not move there. */
+function landingIndex(outline: SermonOutline, subject: DragSubject, target: DropTarget): number | null {
+  const next = moveSubject(outline, subject, target);
+  if (target.kind === 'section') {
+    const index = (next[target.section] ?? []).findIndex(point => point.id === subject.id);
+    return index < 0 ? null : index;
+  }
+  const parent = (['introduction', 'main', 'conclusion'] as const).flatMap(section => next[section] ?? []).find(point => point.id === target.pointId);
+  const index = parent?.subPoints?.findIndex(sub => sub.id === subject.id) ?? -1;
+  return index < 0 ? null : index;
 }
 
 function moveSubject(outline: SermonOutline, subject: DragSubject, target: DropTarget) {

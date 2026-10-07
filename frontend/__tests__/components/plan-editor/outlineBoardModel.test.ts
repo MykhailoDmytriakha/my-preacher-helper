@@ -70,3 +70,45 @@ describe('describeDropPlace', () => {
     expect(describeDropPlace('something-else', outline)).toBeNull();
   });
 });
+
+// BUG-20261006-drag-announcement-place-imprecise: the place said is where the card will land, and two places never sound alike.
+describe('describeDropPlace for the card being carried', () => {
+  const outline = {
+    introduction: [],
+    main: [
+      { id: 'a', text: 'Grace', subPoints: [] },
+      { id: 'b', text: 'Faith', subPoints: [{ id: 's1', text: 'Same words', position: 1 }, { id: 's2', text: 'Same words', position: 2 }] },
+      { id: 'c', text: 'Hope', subPoints: [] },
+    ],
+    conclusion: [{ id: 'd', text: 'Love', subPoints: [] }],
+  } as unknown as SermonOutline;
+
+  it('says the position the carried point will take, after leaving its own place', () => {
+    expect(describeDropPlace('gap:main:2', outline, { kind: 'point', id: 'a' })).toEqual({ kind: 'sectionAt', section: 'main', position: 2 });
+    expect(describeDropPlace('gap:main:2', outline, { kind: 'point', id: 'd' })).toEqual({ kind: 'sectionAt', section: 'main', position: 3 });
+  });
+
+  it('says the position a carried sub-point will take among its new neighbours', () => {
+    expect(describeDropPlace('subgap:b:2', outline, { kind: 'sub', id: 's1' })).toEqual({ kind: 'inside', point: 'Faith', position: 2 });
+  });
+
+  it('says a place the carried point cannot land in as nowhere', () => {
+    expect(describeDropPlace('subgap:a:0', outline, { kind: 'point', id: 'a' })).toEqual({ kind: 'nowhere' });
+    expect(describeDropPlace('into-point:a', outline, { kind: 'point', id: 'a' })).toEqual({ kind: 'nowhere' });
+  });
+
+  it('never numbers two points into a label another point already reads as', () => {
+    const alike = {
+      introduction: [{ id: 'x', text: 'Same words', subPoints: [] }, { id: 'y', text: 'Same words', subPoints: [] }, { id: 'z', text: 'Same words (1)', subPoints: [] }],
+      main: [], conclusion: [],
+    } as unknown as SermonOutline;
+    const labels = ['x', 'y', 'z'].map(id => describeDropPlace(`note-point:${id}`, alike));
+    expect(new Set(labels.map(place => JSON.stringify(place))).size).toBe(3);
+    expect(labels[2]).toEqual({ kind: 'notes', point: 'Same words (1)' });
+  });
+
+  it('tells apart two points with the same words', () => {
+    expect(describeDropPlace('note-sub:s1', outline)).toEqual({ kind: 'notes', point: 'Same words (1)' });
+    expect(describeDropPlace('note-sub:s2', outline)).toEqual({ kind: 'notes', point: 'Same words (2)' });
+  });
+});
