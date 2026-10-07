@@ -90,7 +90,7 @@ export default function PreachCalendar({
     shown,
     onToggleKind
 }: PreachCalendarProps) {
-    const { dateLocale } = useAppLocale();
+    const { dayPickerLocale } = useAppLocale();
     const { user } = useAuth();
     const { settings } = useUserSettings(user?.uid);
     const weekStartsOn = getWeekStartsOn(settings?.firstDayOfWeek);
@@ -179,7 +179,7 @@ export default function PreachCalendar({
                 onSelect={(date) => date && onDateSelect(date)}
                 month={currentMonth || selectedDate}
                 onMonthChange={onMonthChange}
-                locale={dateLocale}
+                locale={dayPickerLocale}
                 weekStartsOn={weekStartsOn}
                 components={DAY_COMPONENTS}
                 className="w-full flex justify-center"

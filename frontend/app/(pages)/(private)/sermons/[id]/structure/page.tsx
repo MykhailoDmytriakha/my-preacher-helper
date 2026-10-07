@@ -1,6 +1,6 @@
 "use client";
 
-import { DndContext, DragOverlay, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, type DragEndEvent, type Over } from "@dnd-kit/core";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
@@ -19,6 +19,7 @@ import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/dat
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData, type StructureEngineSource } from "@/hooks/useSermonStructureData";
@@ -27,6 +28,7 @@ import "@locales/i18n";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { newClientId } from "@/utils/clientId";
 import { getExportContent } from "@/utils/exportContent";
+import { outlinePointText } from '@/utils/outlineDnd';
 import {
   awaitAcceptance,
   queuedMutation,
@@ -299,6 +301,21 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     await refreshAiUsage();
   }, [handleAiSort, refreshAiUsage]);
 
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  // A thought is said by where it would land: the point, or the section when it has none, and its place there.
+  const outlineRef = useRef(sermon?.outline);
+  outlineRef.current = sermon?.outline;
+  const placeOfThought = useCallback((over: Over) => {
+    const data = over.data.current as { container?: string; outlinePointId?: string | null; subPointId?: string | null; sortable?: { index?: number } } | undefined;
+    if (!data?.container) return undefined;
+    const position = typeof data.sortable?.index === 'number' ? data.sortable.index + 1 : undefined;
+    const pointId = data.subPointId ?? data.outlinePointId;
+    const point = pointId && outlineRef.current ? outlinePointText(outlineRef.current, pointId) : '';
+    if (point) return position === undefined ? t('dragAndDrop.placeInPoint', { point }) : t('dragAndDrop.placeInPointAt', { point, position });
+    const section = columnTitles[data.container] ?? data.container;
+    return position === undefined ? t('dragAndDrop.placeSection', { section }) : t('dragAndDrop.placeSectionAt', { section, position });
+  }, [t, columnTitles]);
+  const dndAccessibility = useDndKitAccessibility({ placeOf: placeOfThought });
   // DnD hook
   const {
     sensors: dndSensors,
@@ -931,6 +948,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
           isVerticalLayout={isVerticalLayout}
         /> : <DndContext
           data-testid="dnd-context"
+          accessibility={dndAccessibility}
           sensors={dndSensors}
           collisionDetection={collisionDetector}
           onDragStart={(event) => { resetCollision(); onDragStartHook(event); }}

@@ -5,15 +5,17 @@ import {
   DragOverlay,
   MeasuringStrategy,
   type DragEndEvent,
+  type Over,
 } from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, LightBulbIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import PointNote from '@/components/PointNote';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import {
   NOTE_POOL_ID,
   notePointContainerId,
@@ -26,7 +28,7 @@ import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 
 import { DraggableCard, DropZone } from './BoardDragPrimitives';
-import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop } from './outlineBoardModel';
+import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';
 import { indexScratchNotes } from './outlineBoardNotes';
 import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
 import { useOutlineBoardDrag } from './useOutlineBoardDrag';
@@ -152,6 +154,22 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const editingDirectly = directText && !isReadOnly;
   const noteIndex = useMemo(() => indexScratchNotes(scratch), [scratch]);
   const notesInContainer = (id: string) => noteIndex.get(id) ?? [];
+  // The drag hint and announcements in the interface language, naming the place a card would land
+  // (BUG-20261006-library-screen-reader-words-english): this board's targets carry no list position.
+  const outlineRef = useRef(value);
+  outlineRef.current = value;
+  const placeOf = useCallback((over: Over) => {
+    const place = describeDropPlace(String(over.id), outlineRef.current);
+    if (!place) return undefined;
+    if (place.kind === 'pool') return t('dragAndDrop.placePool');
+    if (place.kind === 'notes') return t('dragAndDrop.placeNotes', { point: place.point });
+    if (place.kind === 'inside') return place.position === undefined ? t('dragAndDrop.placeInPoint', { point: place.point })
+      : t('dragAndDrop.placeInPointAt', { point: place.point, position: place.position });
+    const section = getSectionLabel(t, place.section);
+    return place.kind === 'sectionEnd' ? t('dragAndDrop.placeSection', { section })
+      : t('dragAndDrop.placeSectionAt', { section, position: place.position });
+  }, [t]);
+  const dndAccessibility = useDndKitAccessibility({ placeOf });
   const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, keptNoteId, overlayCardRef, boardRef, sensors,
     collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
     handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag } = useOutlineBoardDrag(points, scratch, notesInContainer);
@@ -1048,6 +1066,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   return (
     <>
       <DndContext
+        accessibility={dndAccessibility}
         sensors={sensors}
         /*
          * `pointerWithin` and not the default: a card sits INSIDE a column, and a

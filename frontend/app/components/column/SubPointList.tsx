@@ -13,6 +13,7 @@ import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from
 import React, { useEffect, useRef, useState } from "react";
 
 import PointNote from "@/components/PointNote";
+import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from "@/utils/subPoints";
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
@@ -94,6 +95,8 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   t,
   isSidebar = false,
 }) => {
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dragWords = usePangeaAnnouncements();
   const [isAdding, setIsAdding] = useState(false);
   const [addText, setAddText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -299,7 +302,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     <ListTag className={containerClass}>
       {sorted.length > 0 && (
         canReorder ? (
-          <DragDropContext onDragEnd={handleDragEnd}>
+          <DragDropContext dragHandleUsageInstructions={dragWords.dragHandleUsageInstructions}
+            onDragStart={dragWords.announceStart} onDragUpdate={dragWords.announceUpdate}
+            onDragEnd={(result, provided) => { dragWords.announceEnd(result, provided); handleDragEnd(result); }}>
             <Droppable droppableId={`subpoints-${outlinePointId}`} renderClone={renderClone}>
               {(provided) => (
                 // No sibling spacing here: the drag placeholder takes part in it and the drop lands

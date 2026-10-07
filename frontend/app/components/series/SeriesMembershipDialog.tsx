@@ -10,6 +10,7 @@ import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { useDataMembership } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useAuth } from '@/providers/AuthProvider';
 import { hydrateSeries } from '@/utils/seriesDocument';
@@ -113,13 +114,15 @@ function MemberChoices({ type, rows, loading, error, current, selected, onChange
 function ReorderChoices({ items, disabled, onChange }: { items: SeriesItem[]; disabled: boolean; onChange: (ids: string[]) => Promise<void> }) {
   const { t } = useTranslation(), { user } = useAuth();
   const sermons = useDashboardSermons(), groups = useGroupsRead(user?.uid ?? null);
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const move = (from: number, to: number) => {
     if (disabled || from < 0 || to < 0 || to >= items.length || from === to) return;
     void onChange(arrayMove(items, from, to).map(item => item.id)).catch(() => undefined);
   };
-  return <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
+  return <DndContext accessibility={dndAccessibility} sensors={sensors} collisionDetection={closestCenter} onDragEnd={({ active, over }) => {
     if (over) move(items.findIndex(item => item.id === active.id), items.findIndex(item => item.id === over.id));
   }}><SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
     <div className="space-y-2">{items.map((item, index) => <ReorderRow key={item.id} id={item.id} index={index}

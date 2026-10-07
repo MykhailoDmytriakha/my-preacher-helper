@@ -47,6 +47,7 @@ import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
@@ -192,6 +193,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const [activeId, setActiveId] = useState<string | null>(null);
   // The same dnd-kit setup as the orders of service: eight pixels before a drag starts, so a
   // tap stays a tap; the keyboard sensor lets it be done without a pointer at all.
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -428,6 +431,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
 
         {reordering ? (
           <DndContext
+            accessibility={dndAccessibility}
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragStart={(event) => setActiveId(String(event.active.id))}

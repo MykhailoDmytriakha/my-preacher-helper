@@ -44,6 +44,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Chip } from '@/components/ui/Chip';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
@@ -156,6 +157,8 @@ export default function ServiceOrdersPage() {
    * not a second one written here. Eight pixels before a drag starts, so a tap on a row is a
    * tap; the keyboard sensor is what lets this be done without a mouse at all.
    */
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -344,6 +347,7 @@ export default function ServiceOrdersPage() {
         />
       ) : (
         <DndContext
+          accessibility={dndAccessibility}
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragStart={({ active }) => setActiveId(String(active.id))}

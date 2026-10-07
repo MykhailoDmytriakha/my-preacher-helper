@@ -44,6 +44,7 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
 import Select from '@/components/ui/Select';
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useLegacyGroupPageEditor } from '@/hooks/useLegacyGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -107,6 +108,8 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
 
   const [isSeriesSelectorOpen, setIsSeriesSelectorOpen] = useState(false);
   const [engineRemovalOpen, setEngineRemovalOpen] = useState(false);
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -472,6 +475,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
 
             <div className="space-y-2">
               <DndContext
+                accessibility={dndAccessibility}
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragEnd={handleDragEnd}

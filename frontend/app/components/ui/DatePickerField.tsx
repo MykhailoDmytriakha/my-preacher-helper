@@ -75,7 +75,7 @@ export default function DatePickerField({
   const generatedId = useId();
   const inputId = id || generatedId;
   const { t } = useTranslation();
-  const { dateLocale } = useAppLocale();
+  const { dayPickerLocale } = useAppLocale();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const selectedDate = parseDateOnlyAsLocalDate(value);
@@ -347,7 +347,7 @@ export default function DatePickerField({
               month={month}
               onMonthChange={setMonth}
               onSelect={handleSelect}
-              locale={dateLocale}
+              locale={dayPickerLocale}
               weekStartsOn={weekStartsOn}
             />
           </div>

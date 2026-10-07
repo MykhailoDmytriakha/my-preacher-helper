@@ -1,4 +1,4 @@
-import { dragIdFor, parseDragId, gapDropId, sectionDropId, intoPointDropId, subGapDropId, resolveOutlineDrop } from '@/components/plan-editor/outlineBoardModel';
+import { dragIdFor, parseDragId, gapDropId, sectionDropId, intoPointDropId, subGapDropId, resolveOutlineDrop, describeDropPlace } from '@/components/plan-editor/outlineBoardModel';
 import { indexScratchNotes } from '@/components/plan-editor/outlineBoardNotes';
 import { NOTE_POOL_ID, notePointContainerId, noteSubContainerId } from '@/utils/boardDnd';
 import type { ScratchNote, SermonOutline } from '@/models/models';
@@ -51,4 +51,22 @@ it('indexes once without losing caller order, object identity, or orphan placeme
   expect(index.get(noteSubContainerId('orphan-sub'))).toEqual([notes[4]]);
   expect(index.size).toBe(3);
   expect(indexScratchNotes().size).toBe(0);
+});
+
+describe('describeDropPlace', () => {
+  const outline = {
+    introduction: [],
+    main: [{ id: 'p1', text: 'Grace before law', subPoints: [{ id: 's1', text: 'The promise to Abraham', position: 1 }] }],
+    conclusion: [],
+  } as unknown as SermonOutline;
+
+  it('names every target of the board the way a screen reader can say it', () => {
+    expect(describeDropPlace('section:main', outline)).toEqual({ kind: 'sectionEnd', section: 'main' });
+    expect(describeDropPlace('gap:main:0', outline)).toEqual({ kind: 'sectionAt', section: 'main', position: 1 });
+    expect(describeDropPlace('into-point:p1', outline)).toEqual({ kind: 'inside', point: 'Grace before law' });
+    expect(describeDropPlace('subgap:p1:1', outline)).toEqual({ kind: 'inside', point: 'Grace before law', position: 2 });
+    expect(describeDropPlace('note-sub:s1', outline)).toEqual({ kind: 'notes', point: 'The promise to Abraham' });
+    expect(describeDropPlace('scratch-note-pool', outline)).toEqual({ kind: 'pool' });
+    expect(describeDropPlace('something-else', outline)).toBeNull();
+  });
 });

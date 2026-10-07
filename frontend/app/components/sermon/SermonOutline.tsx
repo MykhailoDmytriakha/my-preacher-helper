@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
+import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -71,6 +72,12 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  // A point moved to another section is said with that section's name, as the library's own sentence did.
+  const sectionListName = React.useCallback((droppableId: string) => (
+    droppableId === 'introduction' || droppableId === 'mainPart' || droppableId === 'conclusion' ? getSectionLabel(t, droppableId) : undefined
+  ), [t]);
+  const dragWords = usePangeaAnnouncements(sectionListName);
   const { confirm, confirmDialog } = useConfirm();
   const writer = useStructureWriter();
 
@@ -756,7 +763,9 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   };
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext dragHandleUsageInstructions={dragWords.dragHandleUsageInstructions}
+      onDragStart={dragWords.announceStart} onDragUpdate={dragWords.announceUpdate}
+      onDragEnd={(result, provided) => { dragWords.announceEnd(result, provided); onDragEnd(result); }}>
       <div
         className="mt-4"
         onFocusCapture={(event) => {

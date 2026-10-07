@@ -33,6 +33,17 @@ const withList = (
 const renumber = (subPoints: SubPoint[]): SubPoint[] =>
   subPoints.map((sp, index) => ({ ...sp, position: index }));
 
+/** A point's or sub-point's own words, cut to what a screen reader says aloud; '' when it is gone. */
+export function outlinePointText(outline: SermonOutline, id: string): string {
+  for (const section of ['introduction', 'main', 'conclusion'] as const) {
+    for (const point of outline[section] ?? []) {
+      const text = point.id === id ? point.text : point.subPoints?.find(sub => sub.id === id)?.text;
+      if (text !== undefined) return text.length > 60 ? `${text.slice(0, 57).trimEnd()}…` : text;
+    }
+  }
+  return '';
+}
+
 export const findPointSection = (
   outline: SermonOutline,
   pointId: string

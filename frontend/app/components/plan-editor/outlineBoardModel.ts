@@ -1,5 +1,5 @@
-import { DROP_PREFIX, type DragKind } from '@/utils/boardDnd';
-import { findPointSection, findSubPointParent, movePoint, moveSubPoint, nestPointUnderPoint, nestPointUnderPointAt, outdentSubPoint, type SectionKey } from '@/utils/outlineDnd';
+import { DROP_PREFIX, parseNoteContainerId, type DragKind } from '@/utils/boardDnd';
+import { findPointSection, findSubPointParent, movePoint, moveSubPoint, outlinePointText, nestPointUnderPoint, nestPointUnderPointAt, outdentSubPoint, type SectionKey } from '@/utils/outlineDnd';
 import { remapAfterNest, remapAfterOutdent, remapAfterSubPointReparent, type PlacementMap } from '@/utils/scratchPlacementRemap';
 
 import type { SermonOutline } from '@/models/models';
@@ -38,6 +38,28 @@ function parseTarget(raw: string, outline: SermonOutline): DropTarget | null {
     return isSection(section) ? { kind: 'section', section, index: outline[section]?.length ?? 0 } : null;
   }
   return null;
+}
+
+/** Where a drop would land, for words a screen reader says (BUG-20261006-library-screen-reader-words-english). */
+export type DropPlace =
+  | { kind: 'sectionEnd'; section: SectionKey }
+  | { kind: 'sectionAt'; section: SectionKey; position: number }
+  | { kind: 'inside'; point: string; position?: number }
+  | { kind: 'notes'; point: string }
+  | { kind: 'pool' };
+
+export function describeDropPlace(raw: string, outline: SermonOutline): DropPlace | null {
+  const container = parseNoteContainerId(raw);
+  if (container) return container.kind === 'pool' ? { kind: 'pool' }
+    : { kind: 'notes', point: outlinePointText(outline, container.kind === 'point' ? container.pointId : container.subPointId) };
+  const target = parseTarget(raw, outline);
+  if (!target) return null;
+  if (target.kind === 'inside') {
+    const point = outlinePointText(outline, target.pointId);
+    return target.index === undefined ? { kind: 'inside', point } : { kind: 'inside', point, position: target.index + 1 };
+  }
+  return raw.startsWith(DROP_PREFIX.section) ? { kind: 'sectionEnd', section: target.section }
+    : { kind: 'sectionAt', section: target.section, position: target.index + 1 };
 }
 
 function moveSubject(outline: SermonOutline, subject: DragSubject, target: DropTarget) {

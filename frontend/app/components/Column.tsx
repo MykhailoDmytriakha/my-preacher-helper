@@ -10,6 +10,7 @@ import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
@@ -106,6 +107,8 @@ export default function Column({
   // State for responsive sidebar visibility on small screens
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
 
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dragWords = usePangeaAnnouncements();
   // Calculate counts for assigned and unassigned items
   const itemIndex = React.useMemo(() => buildColumnItemIndex(items), [items]);
   const unassignedItems = itemIndex.unassigned.length;
@@ -467,7 +470,9 @@ export default function Column({
           </button>
         )}
       </div>
-      <DragDropContext onDragEnd={handleDragEnd}>
+      <DragDropContext dragHandleUsageInstructions={dragWords.dragHandleUsageInstructions}
+        onDragStart={dragWords.announceStart} onDragUpdate={dragWords.announceUpdate}
+        onDragEnd={(result, provided) => { dragWords.announceEnd(result, provided); handleDragEnd(result); }}>
         <Droppable droppableId={`outline-${id}`}>
           {(provided) => (
             <ul
@@ -921,7 +926,9 @@ export default function Column({
         {localSermonPoints && localSermonPoints.length > 0 ? (
           <div className="space-y-6">
             {/* Render placeholders wrapped in DragDropContext for reordering */}
-            <DragDropContext onDragEnd={handleDragEnd}>
+            <DragDropContext dragHandleUsageInstructions={dragWords.dragHandleUsageInstructions}
+              onDragStart={dragWords.announceStart} onDragUpdate={dragWords.announceUpdate}
+              onDragEnd={(result, provided) => { dragWords.announceEnd(result, provided); handleDragEnd(result); }}>
               <Droppable droppableId={`normal-outline-${id}`}>
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef}>

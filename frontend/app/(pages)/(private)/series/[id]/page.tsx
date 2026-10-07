@@ -35,6 +35,7 @@ import SeriesItemCard from '@/components/series/SeriesItemCard';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
@@ -214,6 +215,8 @@ function LegacySeriesDetailPage() {
   const closeModals = () => setModalState(null);
   const cancelCreateSermon = () => setModalState(MODAL_STATES.ADD_SERMON);
 
+  // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
+  const dndAccessibility = useDndKitAccessibility();
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -370,6 +373,7 @@ function LegacySeriesDetailPage() {
       )}
 </>}
       itemsContent={<DndContext
+            accessibility={dndAccessibility}
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
