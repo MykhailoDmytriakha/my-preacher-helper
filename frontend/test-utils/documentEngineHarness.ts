@@ -15,10 +15,14 @@ import type { CommandResult, DocumentData, EngineTransport, JournalEntry, Resour
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export const settleEngine = async () => { for (let i = 0; i < 150; i++) await Promise.resolve(); };
 
-/** Actual editor/runtime/IndexedDB contracts, with only the server and browser transport replaced. */
-export function documentEngineHarness(initial: ResourceSnapshot) {
+/**
+ * Actual editor/runtime/IndexedDB contracts, with only the server and browser transport replaced.
+ * `cached: false` starts with no copy of the document on this device, as a link opened for the first time.
+ */
+export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDevice = true }: { cached?: boolean } = {}) {
   installStorageHarness();
-  let server = copy(initial), cached = copy(initial), sequence = 0;
+  let server = copy(initial), sequence = 0;
+  let cached: ResourceSnapshot | null = onDevice ? copy(initial) : null;
   const journal = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
   const transport: EngineTransport = {
     read: jest.fn(async () => copy(server)),
@@ -41,8 +45,8 @@ export function documentEngineHarness(initial: ResourceSnapshot) {
     } });
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const snapshots = {
-      read: async () => copy(cached), put: async (_owner: string, value: ResourceSnapshot) => { cached = copy(value); },
-      list: async (owner: string, collection: string) => cached.resource.collection === collection && cached.value?.userId === owner ? [copy(cached)] : [],
+      read: async () => (cached ? copy(cached) : undefined), put: async (_owner: string, value: ResourceSnapshot) => { cached = copy(value); },
+      list: async (owner: string, collection: string) => cached && cached.resource.collection === collection && cached.value?.userId === owner ? [copy(cached)] : [],
     };
     let cursor: CollectionCursor | undefined;
     const collections = options?.withCollections ? new CollectionReader({ observer, snapshots, cursors: {

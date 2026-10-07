@@ -11,6 +11,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { editorSlot } from './editorIdentity';
+import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -546,7 +547,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     if (!browser || !owner || !collection || !id) return;
     let active = true;
     let editor: ManagedEditor | undefined;
-    let stop: (() => void) | undefined;
+    let stop: (() => void) | undefined, stopWaiting: (() => void) | undefined;
     const ref = { collection, id };
     const editorId = recovery?.editorId ?? browser.editorId(ref, slot);
     const cancellation = new AbortController();
@@ -568,10 +569,18 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       publish();
       recovery?.resolve();
     // Recovering a draft is the person's action; its refusal may explain itself ("no longer exists").
-    }).catch(failure => { recovery?.reject(failure); if (active) setError(failure, recovery ? 'refused' : 'read'); });
+    }).catch(failure => {
+      recovery?.reject(failure);
+      if (!active) return;
+      setError(failure, recovery ? 'refused' : 'read');
+      // Refused only because this tab could not ask the server — hidden, or offline with no copy here:
+      // read again once it can (BUG-20261006-hidden-tab-document-read-not-retried). Recovering a draft
+      // is the person's action and is never repeated behind the person's back.
+      if (!recovery && needsConnection(failure)) stopWaiting = browser.engine.onceReachable(() => { if (active) setAttempt(value => value + 1); });
+    });
     // Leaving the screen is a moment to save, not to forget (BUG-20260919-engine-leaving-strands-last-edit):
     // with autosave, whatever the debounce had not sent yet becomes a durable request as the editor closes.
-    return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); editor?.close({ flush: autoSaveRef.current }); };
+    return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); stopWaiting?.(); editor?.close({ flush: autoSaveRef.current }); };
   }, [browser, owner, collection, id, slot, create, key, attempt, setError, identity, recovery]);
 
   // Owner and resource identity gate rendering before effect cleanup can run.

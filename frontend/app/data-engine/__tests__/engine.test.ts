@@ -474,11 +474,31 @@ describe('DataEngine composition', () => {
 
   it('does not invent an empty baseline when an offline editor has neither cache nor checkpoint', async () => {
     const s = setup({ online: false, cached: false });
-    await expect(s.engine.openEditor(resource, 'tab')).rejects.toThrow('local cache');
+    // Named, so a screen reads it again once the server can be asked (BUG-20261006-hidden-tab-document-read-not-retried).
+    await expect(s.engine.openEditor(resource, 'tab')).rejects.toMatchObject({ message: expect.stringContaining('local cache'), code: 'needs-connection' });
     expect(s.source.listen).not.toHaveBeenCalled();
     s.engine.dispose();
   });
 
+
+  it('calls a waiting screen once when the tab can ask the server, never while it cannot, and not after it stops waiting', async () => {
+    const s = setup({ online: false });
+    const waiting = jest.fn(), stopped = jest.fn();
+    s.engine.onceReachable(waiting); const stop = s.engine.onceReachable(stopped); stop();
+    s.engine.setVisible(false); s.engine.setOnline(true); await drainMicrotasks();
+    expect(waiting).not.toHaveBeenCalled();
+    s.engine.setVisible(true); s.engine.setOnline(false); s.engine.setOnline(true); await drainMicrotasks();
+    expect(waiting).toHaveBeenCalledTimes(1); expect(stopped).not.toHaveBeenCalled();
+    const now = jest.fn(); s.engine.onceReachable(now); await drainMicrotasks();
+    expect(now).toHaveBeenCalledTimes(1);
+    // Reachable when asked, gone before the call: it waits for the next time instead of firing late.
+    const late = jest.fn(); s.engine.onceReachable(late); s.engine.setOnline(false); await drainMicrotasks();
+    expect(late).not.toHaveBeenCalled();
+    s.engine.setOnline(true); await drainMicrotasks();
+    expect(late).toHaveBeenCalledTimes(1);
+    const disposed = jest.fn(); s.engine.onceReachable(disposed); s.engine.dispose(); await drainMicrotasks();
+    expect(disposed).not.toHaveBeenCalled();
+  });
   it('saves through the controller and real runtime, then caches only its accepted projection', async () => {
     const s = setup(); const editor = await s.engine.openEditor(resource, 'tab');
     const listener = jest.fn(); const stop = editor.subscribe(listener);

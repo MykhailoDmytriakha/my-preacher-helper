@@ -110,6 +110,9 @@ const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.coll
 const hasFormWork = (owner: string, resource: ResourceRef, requests: readonly CommitRequest[]) => requests.some(request => request.owner === owner
   && sameResource(request.baseline.resource, resource) && !['acknowledged', 'cancelled'].includes(request.state) && editorSlot(request.editorId) === null);
 const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
+/** A read refused only because this device holds no copy and the server cannot be asked now (hidden tab, offline). */
+const NEEDS_CONNECTION = 'needs-connection';
+export const needsConnection = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 
@@ -127,6 +130,7 @@ export class DataEngine {
   private pending: JournalEntry[] = [];
   private pendingVersion = 0;
   private readonly pendingListeners = new Set<() => void>();
+  private readonly reachableListeners = new Set<() => void>();
   private readonly refreshedOperations = new Set<string>();
   private readonly refreshedCollectionOperations = new Set<string>();
   private readonly stopRuntime: () => void;
@@ -199,6 +203,7 @@ export class DataEngine {
     this.options.collections?.setVisible(visible);
     this.options.observer.setVisible(visible);
     if (visible) this.backgroundDrain();
+    this.notifyReachable();
   }
 
   setOnline(online: boolean): void {
@@ -207,6 +212,32 @@ export class DataEngine {
     this.options.collections?.setOnline(online);
     this.options.observer.setOnline(online);
     if (online) this.backgroundDrain();
+    this.notifyReachable();
+  }
+
+  /**
+   * Call `listener` once, when this tab can ask the server — now or after it becomes visible and
+   * online. A screen whose document was refused only for want of the server (`needsConnection`)
+   * reads it again then, instead of waiting for the person to press Retry
+   * (BUG-20261006-hidden-tab-document-read-not-retried). Returns a function that cancels the call.
+   */
+  onceReachable(listener: () => void): () => void {
+    if (this.disposed) return () => undefined;
+    const call = () => {
+      // Asked again when called: since the promise was queued the tab may have gone hidden or offline,
+      // the engine may be disposed (which empties the set), or the screen may have stopped waiting.
+      if (!this.reachableListeners.has(call) || !this.canDeliver()) return;
+      this.reachableListeners.delete(call);
+      listener();
+    };
+    this.reachableListeners.add(call);
+    if (this.canDeliver()) void Promise.resolve().then(call);
+    return () => { this.reachableListeners.delete(call); };
+  }
+
+  private notifyReachable(): void {
+    if (!this.canDeliver()) return;
+    for (const call of [...this.reachableListeners]) { try { call(); } catch { /* A screen's retry cannot change the engine. */ } }
   }
 
   read(resource: ResourceRef): Promise<ResourceSnapshot> {
@@ -650,6 +681,7 @@ export class DataEngine {
     this.commits.setOwner(null);
     this.pendingListeners.clear();
     this.membershipListeners.clear();
+    this.reachableListeners.clear();
     this.options.collections?.dispose();
     this.options.observer.dispose();
   }
@@ -672,7 +704,7 @@ export class DataEngine {
       if (!sameResource(cached.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
       return cached;
     }
-    if (!this.online || !this.visible) throw new Error('The document is not available in the local cache');
+    if (!this.online || !this.visible) throw Object.assign(new Error('The document is not available in the local cache'), { code: NEEDS_CONNECTION });
     const server = await this.options.transport.read(owner, resource);
     this.assertCurrent(owner, generation);
     if (!sameResource(server.resource, resource)) throw new Error('Server snapshot identity mismatch');

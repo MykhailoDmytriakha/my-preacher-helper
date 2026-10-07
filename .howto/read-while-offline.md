@@ -1,4 +1,4 @@
-when: offline · read offline · page empty offline · skeleton forever offline · navigator.onLine · isBrowserOffline · useOnlineStatus · getConnectivityStatus · useDeviceOnline · networkMode offlineFirst · enabled false offline · Wi-Fi on but server down · captive portal · UX blocks on network · persisted React Query cache · reportServerUnreachable · isUnreachableWriteError · deleted or just not loaded · офлайн · без сети · чтение офлайн · страница пустая без интернета · вечный скелетон без сети · Wi-Fi есть а сервер недоступен · показать кэш · нет соединения
+when: offline · read offline · page empty offline · skeleton forever offline · navigator.onLine · isBrowserOffline · useOnlineStatus · getConnectivityStatus · useDeviceOnline · networkMode offlineFirst · enabled false offline · Wi-Fi on but server down · captive portal · UX blocks on network · persisted React Query cache · reportServerUnreachable · isUnreachableWriteError · deleted or just not loaded · офлайн · без сети · чтение офлайн · страница пустая без интернета · вечный скелетон без сети · Wi-Fi есть а сервер недоступен · показать кэш · нет соединения · The document is not available in the local cache · needs-connection · onceReachable · hidden tab · документ не открылся в скрытой вкладке · «С этой записью что-то пошло не так» после возврата сети
 
 # Read data while offline
 
@@ -17,6 +17,7 @@ Show what the persisted cache holds at once; connectivity decides only whether t
 ## Traps
 
 - A single `getDoc` offline rejects when the document is not in the local cache, while a query returns whatever the cache holds (`frontend/app/services/atomicUpdate.client.ts`).
+- The data engine refuses to open a document this device holds no copy of while the tab is hidden or offline (`readSnapshot`, `code: 'needs-connection'`). That refusal is temporary: `useDataDocument` asks `engine.onceReachable` and opens again when the tab is visible and online (BUG-20261006-hidden-tab-document-read-not-retried). An opening of your own outside that hook must do the same; a person's action (a menu action, recovering a draft) is never repeated by itself. To see it live, delete the document's key from the `snapshots` store of `preacher-data-engine-snapshots-v1` (the list refills it once the tab is visible) and load the page in the hidden automation tab.
 - No offline icon in a session started with Wi-Fi off → a single flag that moved only on a failed request never moved; device and server evidence now live in separate fields of `connectivity.ts`.
 - A cached "online" earned before a gap → the server field resets to `unknown` when watching restarts; only a real request moves it.
 
