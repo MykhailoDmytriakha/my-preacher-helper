@@ -151,7 +151,8 @@ describe('Column mic popover and focus button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Complete audio' }));
 
     const recorder = await screen.findByTestId('audio-recorder-stub');
-    expect(recorder).toHaveAttribute('data-transcription-error', 'Transcription failed');
+    // A developer's sentence is not shown: the screen's own line is (BUG-20261006-recorder-panel-shows-developer-sentence).
+    expect(recorder).toHaveAttribute('data-transcription-error', 'errors.audioProcessing');
 
     fireEvent.mouseDown(document.body);
     expect(screen.getByTestId('audio-recorder-stub')).toBeInTheDocument();

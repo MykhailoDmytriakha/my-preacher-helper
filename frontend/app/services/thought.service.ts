@@ -1,4 +1,3 @@
-import { toast } from 'sonner';
 
 import { Thought } from '@/models/models';
 import {
@@ -6,6 +5,7 @@ import {
   deleteThoughtViaClient,
   updateThoughtViaClient,
 } from '@/services/sermons.client';
+import { logFailureOnce } from '@/utils/actionFailureMessage';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getTranscriptionAuthorizationHeaders } from '@/utils/transcriptionRetryClient';
@@ -18,6 +18,8 @@ type AudioThoughtErrorResponse = {
   originalText?: string;
   retryable?: boolean;
   phase?: string;
+  /** What kind of failure it was, for the screen to say in its own words. */
+  kind?: string;
 };
 
 function wait(ms: number): Promise<void> {
@@ -91,12 +93,14 @@ export const createAudioThought = async (
       let originalText = null;
       let retryable = false;
       let phase: string | undefined;
+      let kind: string | undefined;
       try {
         const errorResponse = await response.json() as AudioThoughtErrorResponse;
         errorText = errorResponse.error || errorText;
         originalText = errorResponse.originalText || null;
         retryable = Boolean(errorResponse.retryable);
         phase = errorResponse.phase;
+        kind = errorResponse.kind;
       } catch {
         // If we can't parse JSON, use the status text
         errorText = response.statusText || errorText;
@@ -123,7 +127,7 @@ export const createAudioThought = async (
         ? `Transcription failed after all retries: ${errorText}${originalText ? `. Recognized text: "${originalText}"` : ''}`
         : buildTranscriptionFailureMessage({ errorText, originalText, retryCount, maxRetries });
 
-      throw withStatus(new Error(failureMessage), response.status);
+      throw Object.assign(withStatus(new Error(failureMessage), response.status), kind ? { kind } : {});
     }
 
     // Success - clear stored audio if available
@@ -135,14 +139,11 @@ export const createAudioThought = async (
     // Возвращаем полный объект с текстом, тегами и т.д.
     const thought = await response.json();
     console.log("transcribeAudio: Transcription succeeded. Thought:", thought);
-    
-    // Show success message
-    toast.success("Аудио успешно обработано!");
-    
+    // Success is announced by the screen, in its language: this one was a second toast, always in Russian.
     return thought;
   } catch (error) {
-    console.warn("createAudioThought: Error creating thought", error);
-    
+    // Once per error: each retry level rethrows the same one, and the screen's catch logs through the same door.
+    logFailureOnce(error, "createAudioThought: Error creating thought");
     throw error;
   }
 };
@@ -176,7 +177,7 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
       headers,
     });
 
-    let data: { success?: boolean; polishedText?: string; originalText?: string; warning?: string; error?: string } | null = null;
+    let data: { success?: boolean; polishedText?: string; originalText?: string; warning?: string; error?: string; kind?: string } | null = null;
     try {
       data = await response.json();
     } catch {
@@ -185,7 +186,7 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
 
     if (!response.ok || !data?.success) {
       const errorMessage = data?.error || response.statusText || `HTTP ${response.status}`;
-      throw new Error(errorMessage);
+      throw Object.assign(withStatus(new Error(errorMessage), response.status), data?.kind ? { kind: data.kind } : {});
     }
 
     return {
@@ -194,7 +195,7 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
       warning: data.warning,
     };
   } catch (error) {
-    console.error("transcribeThoughtAudio: Error transcribing audio", error);
+    logFailureOnce(error, "transcribeThoughtAudio: Error transcribing audio");
     throw error;
   }
 };

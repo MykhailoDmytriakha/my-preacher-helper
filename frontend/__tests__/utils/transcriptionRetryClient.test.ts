@@ -2,6 +2,7 @@ import {
   getTranscriptionAuthorizationHeaders,
   transcribeAudioWithRetry,
   TranscriptionClientError,
+  transcriptionFailureWords,
 } from '@/utils/transcriptionRetryClient';
 import { UsageCapReachedError } from '@/services/usageLimits';
 
@@ -211,5 +212,35 @@ describe('transcribeAudioWithRetry', () => {
 
     const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl });
     expect(result.polishedText).toBe('real text');
+  });
+});
+
+describe('transcriptionFailureWords', () => {
+  it('says the kind a route answered with, in the language on screen', () => {
+    const answered = Object.assign(new Error('Transcription failed (attempt 1/4): Audio recording is too short.'), { kind: 'invalid_audio' });
+    expect(transcriptionFailureWords(answered, 'errors.audioProcessing')).toEqual({ key: 'audio.transcribeError.invalid_audio' });
+  });
+
+  it('says a recording longer than allowed as such', () => {
+    expect(transcriptionFailureWords(Object.assign(new Error('Audio duration (132.0s) exceeds maximum allowed (97s).'), { kind: 'too_long' }), 'scratch.voice.error'))
+      .toEqual({ key: 'audio.transcribeError.too_long' });
+  });
+
+  it('says no answer in the time allowed as such, not as a generic failure', () => {
+    expect(transcriptionFailureWords(Object.assign(new Error('Gateway Timeout'), { status: 504 }), 'scratch.voice.error'))
+      .toEqual({ key: 'errors.aiOutOfTime' });
+  });
+
+  it('says the screen\'s own line, never a developer sentence, and logs that sentence once', () => {
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const raw = new Error('Transcription failed (attempt 1/4): HTTP 500');
+      expect(transcriptionFailureWords(raw, 'scratch.voice.error')).toEqual({ key: 'scratch.voice.error' });
+      expect(transcriptionFailureWords(raw, 'scratch.voice.error')).toEqual({ key: 'scratch.voice.error' });
+      expect(transcriptionFailureWords(Object.assign(new Error('x'), { kind: 'not-a-kind' }))).toEqual({ key: 'audio.transcribeError.unknown' });
+      expect(error.mock.calls.filter(call => call.includes(raw))).toHaveLength(1);
+    } finally {
+      error.mockRestore();
+    }
   });
 });

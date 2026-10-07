@@ -26,6 +26,7 @@ import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
+import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { getSectionLabel } from "@lib/sections";
 
 import {
@@ -352,8 +353,9 @@ export default function ScratchPanel({
         clearComposition();
         toast.success(t("scratch.voice.success"), SCRATCH_TOAST_OPTIONS);
       } catch (error) {
-        setVoiceError(error instanceof Error ? { said: error.message } : { key: VOICE_ERROR_KEY });
-        toast.error(t(VOICE_ERROR_KEY));
+        const words = transcriptionFailureWords(error, VOICE_ERROR_KEY);
+        setVoiceError(words);
+        toast.error(sayFailure(words, t));
       } finally {
         setIsVoiceProcessing(false);
       }

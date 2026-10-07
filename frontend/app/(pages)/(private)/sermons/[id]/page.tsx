@@ -51,7 +51,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
-import { saidError, type FailureWords } from '@/utils/actionFailureMessage';
+import { logFailureOnce, saidError, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
@@ -61,6 +61,7 @@ import {
   sermonFreshnessProjection,
   type SermonFreshnessProjection,
 } from '@/utils/sermonFreshnessProjection';
+import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import {
   recoveryText,
   reportLateRefusal,
@@ -1548,10 +1549,11 @@ useEffect(() => {
       // Placing re-reads THIS page's sermon; a recording for another one was stored by the server.
       if (sermonRef.current?.id === held.sermonId) await placeAudioThought({ ...thoughtResponse });
       releaseRecording(held);
+      toast.success(t('manualThought.addedSuccess'));
       return true;
     } catch (error) {
-      console.error("transcribeHeld: Recording error:", error);
-      setTranscriptionError(ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : error instanceof Error ? { said: error.message } : { key: 'errors.audioProcessing' });
+      logFailureOnce(error, "transcribeHeld: Recording error:");
+      setTranscriptionError(ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : transcriptionFailureWords(error, 'errors.audioProcessing'));
       await parkRecording(held);
       return false;
     }
@@ -1602,6 +1604,7 @@ useEffect(() => {
     try {
       const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
       await placeAudioThought({ ...thoughtResponse });
+      toast.success(t('manualThought.addedSuccess'));
       return true;
     } catch (error) {
       console.error("resendParkedRecording: Recording error:", error);

@@ -1271,6 +1271,7 @@
       "rate_limit": "Too many requests right now. Please try again in a moment.",
       "auth": "Transcription service authentication failed. Please contact support.",
       "invalid_audio": "The recording seems invalid or too short. Please record again.",
+      "too_long": "The recording is longer than allowed. Record a shorter piece.",
       "bad_request": "This audio couldn't be processed. Please record again.",
       "server": "The transcription service had an error. Please try again.",
       "unknown": "Transcription failed. Please try again.",

@@ -19,6 +19,7 @@ export type TranscriptionErrorKind =
   | 'rate_limit'     // 429 rate_limit_exceeded — funded but throttled; retryable
   | 'auth'           // 401 invalid_api_key; NOT retryable
   | 'invalid_audio'  // corrupted / empty / too short; NOT retryable
+  | 'too_long'       // longer than the route accepts; NOT retryable (set by the routes, never by classification)
   | 'bad_request'    // 400 / invalid_request_error; NOT retryable
   | 'network'        // ECONNRESET / socket hang up / fetch failed / timeout; retryable
   | 'server'         // 5xx / temporarily unavailable; retryable

@@ -274,7 +274,7 @@ describe('Thoughts API route additional coverage', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'Invalid audio format' });
+      expect(data).toEqual({ error: 'Invalid audio format', kind: 'invalid_audio' });
       expect(createTranscriptionMock).not.toHaveBeenCalled();
     });
 
@@ -295,7 +295,8 @@ describe('Thoughts API route additional coverage', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'Audio duration (132.0s) exceeds maximum allowed (97s).' });
+      // The kind lets the screen say "too long" in its own language.
+      expect(data).toEqual({ error: 'Audio duration (132.0s) exceeds maximum allowed (97s).', kind: 'too_long' });
       expect(createTranscriptionMock).not.toHaveBeenCalled();
     });
 
@@ -370,20 +371,24 @@ describe('Thoughts API route additional coverage', () => {
       {
         message: 'Audio file might be corrupted or unsupported',
         expected: 'Audio file might be corrupted or unsupported. Please try recording again.',
+        kind: 'invalid_audio',
       },
       {
         message: 'Audio file is empty',
         expected: 'Audio recording failed - file is empty. Please try recording again.',
+        kind: 'invalid_audio',
       },
       {
         message: 'Audio file is too small',
         expected: 'Audio recording is too short. Please record for at least 1 second.',
+        kind: 'invalid_audio',
       },
       {
         message: '400 invalid_request_error',
         expected: 'Audio file format not supported. Please try recording again.',
+        kind: 'bad_request',
       },
-    ])('returns 400 for transcription error: $message', async ({ message, expected }) => {
+    ])('returns 400 for transcription error: $message', async ({ message, expected, kind }) => {
       createTranscriptionMock.mockRejectedValueOnce(new Error(message));
 
       const formData = new FormData();
@@ -395,7 +400,8 @@ describe('Thoughts API route additional coverage', () => {
       const data = await response.json();
 
       expect(response.status).toBe(400);
-      expect(data).toEqual({ error: expected });
+      // The kind lets the screen say it in its own language; the sentence stays for the console.
+      expect(data).toEqual({ error: expected, kind });
     });
 
     it('does NOT retry server-side; a transient error yields a retryable 503 after ONE attempt (client re-posts as a fresh request)', async () => {
@@ -435,6 +441,7 @@ describe('Thoughts API route additional coverage', () => {
         error: RETRYABLE_ERROR_MESSAGE,
         retryable: true,
         phase: 'transcribe_audio',
+        kind: 'network',
       });
     });
 

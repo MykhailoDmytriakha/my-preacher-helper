@@ -113,7 +113,7 @@ describe("column audio helper", () => {
   it("returns null and reports the translated fallback on error", async () => {
     const setIsRecordingAudio = jest.fn();
     const setAudioError = jest.fn();
-    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
     (createAudioThought as jest.Mock).mockRejectedValueOnce("boom");
 
@@ -130,9 +130,9 @@ describe("column audio helper", () => {
     expect(result).toBeNull();
     expect(setAudioError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
     expect(toast.error).toHaveBeenCalledWith("Audio processing failed");
-    expect(consoleWarnSpy).toHaveBeenCalledWith("audio helper failed", "boom");
+    expect(consoleErrorSpy).toHaveBeenCalledWith("audio helper failed", "boom");
 
-    consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 
   /**

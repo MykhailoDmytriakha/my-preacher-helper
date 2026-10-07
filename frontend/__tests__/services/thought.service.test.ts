@@ -201,6 +201,13 @@ describe('Thought Service', () => {
       );
     });
 
+    it('carries the kind the route answered with, so the screen can say it in its own language', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 400, statusText: 'Bad Request',
+        json: jest.fn().mockResolvedValue({ error: 'Audio recording is too short. Please record for at least 1 second.', kind: 'invalid_audio' }) });
+
+      await expect(createAudioThought(mockBlob, mockSermonId, 0, 1)).rejects.toMatchObject({ status: 400, kind: 'invalid_audio' });
+    });
+
     it('carries the status of a bare 504, so the screen can say the call ran out of time', async () => {
       mockFetch.mockResolvedValue({ ok: false, status: 504, statusText: 'Gateway Timeout', json: jest.fn().mockRejectedValue(new Error('Invalid JSON')) });
 

@@ -138,7 +138,7 @@ async function handleAutoPost(request: Request, uid: string) {
   const errorResponse = (
     errorMessage: string,
     status: number,
-    extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase'>
+    extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase' | 'kind'>
   ) => {
     tracker.emit({
       status: "error",
@@ -170,7 +170,7 @@ async function handleAutoPost(request: Request, uid: string) {
 
     if (!(audioFile instanceof Blob)) {
       console.error("Thoughts route: Invalid audio format received.");
-      return errorResponse('Invalid audio format', 400);
+      return errorResponse('Invalid audio format', 400, { kind: 'invalid_audio' });
     }
 
     const sermon = await tracker.timePhase(
@@ -206,7 +206,7 @@ async function handleAutoPost(request: Request, uid: string) {
     });
     if (!durationValidation.valid) {
       console.error("Thoughts route: Audio duration validation failed.", durationValidation);
-      return errorResponse(durationValidation.error || 'Audio file is too long', 400);
+      return errorResponse(durationValidation.error || 'Audio file is too long', 400, { kind: 'too_long' });
     }
 
     const usageSeconds = Math.ceil(
@@ -266,6 +266,7 @@ async function handleAutoPost(request: Request, uid: string) {
         return errorResponse(mappedError.error, mappedError.status, {
           retryable: mappedError.retryable,
           phase: mappedError.phase,
+          kind: mappedError.kind,
         });
       }
       return errorResponse('Failed to transcribe audio. Please try again.', 500);

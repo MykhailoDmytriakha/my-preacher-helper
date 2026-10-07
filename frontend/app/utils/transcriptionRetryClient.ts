@@ -1,7 +1,8 @@
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
+import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 
-import type { FailureWords } from '@/utils/actionFailureMessage';
 
 const rethrowUsageCapReached = (error: unknown): void => {
   if (isUsageCapReachedError(error)) throw error;
@@ -46,6 +47,7 @@ export type TranscriptionErrorKind =
   | 'rate_limit'
   | 'auth'
   | 'invalid_audio'
+  | 'too_long'
   | 'bad_request'
   | 'network'
   | 'server'
@@ -75,6 +77,7 @@ const KIND_SEVERITY: readonly TranscriptionErrorKind[] = [
   'billing',
   'auth',
   'invalid_audio',
+  'too_long',
   'bad_request',
   'rate_limit',
   'server',
@@ -262,14 +265,26 @@ export function describeTranscriptionError(error: unknown): TranscriptionErrorDi
 }
 
 /**
- * The words of a transcription failure: each distinct kind's sentence, then the billing hint when
- * warranted. Kept as words and said where shown (`sayFailure` joins them and says a repeat once), so
- * a language switch re-says them (BUG-20261006-recorder-error-channel-keeps-sentence).
+ * The words of a transcription failure, kept as words and said where shown (`sayFailure` joins
+ * several and says a repeat once), so a language switch re-says them
+ * (BUG-20261006-recorder-error-channel-keeps-sentence). A failure after retries: each distinct kind's
+ * sentence, then the billing hint when warranted. No answer in the time allowed (a 504, 408 or the
+ * client's own timeout) is said as such. A route's answer carries its `kind`, said by it.
+ * Anything else is the screen's own line: an error's message is a sentence for developers
+ * ("Transcription failed (attempt 1/4): HTTP 500") and goes to the console once
+ * (BUG-20261006-recorder-panel-shows-developer-sentence).
  */
-export function transcriptionFailureWords(error: unknown): FailureWords {
-  const { messageKeys, showBillingHint } = describeTranscriptionError(error);
-  const keys = showBillingHint ? [...messageKeys, 'audio.transcribeError.billingHint'] : messageKeys;
-  return keys.length === 1 ? { key: keys[0] } : { parts: keys.map(key => ({ key })) };
+export function transcriptionFailureWords(error: unknown, fallbackKey = 'audio.transcribeError.unknown'): FailureWords {
+  if (error instanceof TranscriptionClientError) {
+    const { messageKeys, showBillingHint } = describeTranscriptionError(error);
+    const keys = showBillingHint ? [...messageKeys, 'audio.transcribeError.billingHint'] : messageKeys;
+    return keys.length === 1 ? { key: keys[0] } : { parts: keys.map(key => ({ key })) };
+  }
+  if (ranOutOfTime(error)) return { key: 'errors.aiOutOfTime' };
+  const kind = (error as { kind?: unknown } | null)?.kind;
+  if (KIND_SEVERITY.includes(kind as TranscriptionErrorKind)) return { key: `audio.transcribeError.${kind as string}` };
+  logFailureOnce(error);
+  return { key: fallbackKey };
 }
 
 function buildTranscriptionFormData(blob: Blob, fields: TranscribeWithRetryOptions['fields']): FormData {

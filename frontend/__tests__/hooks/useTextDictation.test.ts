@@ -42,7 +42,7 @@ it('publishes original text when polish is absent, refreshes usage after publish
 });
 
 it.each([
-  [new Error('Transport stopped'), { said: 'Transport stopped' }],
+  [new Error('Transport stopped'), { key: 'custom.fallback' }],
   ['untyped failure', { key: 'custom.fallback' }],
   [new TranscriptionClientError([{ kind: 'server', status: 503, message: 'Raw server failure' }]), { key: 'audio.transcribeError.server' }],
 ])('retains recoverable audio for %s and discards it explicitly', async (error, words) => {

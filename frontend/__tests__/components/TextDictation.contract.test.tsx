@@ -58,7 +58,7 @@ describe.each(variants)('%s dictation contract', kind => {
     const editor = screen.getByRole('textbox');
     fireEvent.change(editor, { target: { value: 'Before ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Record' }));
-    await waitFor(() => expect(voiceState().transcriptionError).toEqual({ said: 'Network unavailable' }));
+    await waitFor(() => expect(voiceState().transcriptionError).toEqual({ key: kind === 'prayer' ? 'prayer.update.dictationError' : 'errors.audioProcessing' }));
     expect(editor).toHaveValue('Before ');
     const originalBlob = transcribe.mock.calls[0][0];
     let resolve!: (value: { polishedText: string; originalText: string }) => void;

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { isUsageCapReachedError } from '@/services/usageLimits';
-import { transcribeAudioWithRetry, TranscriptionClientError, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
+import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 
 import type { FailureWords } from '@/utils/actionFailureMessage';
 
@@ -51,9 +51,7 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
       // Usage-cap presentation belongs to the global handler, without a second local error.
       if (isUsageCapReachedError(cause)) return;
       storedBlob.current = blob;
-      const words: FailureWords = cause instanceof TranscriptionClientError
-        ? transcriptionFailureWords(cause)
-        : cause instanceof Error ? { said: cause.message } : { key: fallbackErrorKey };
+      const words = transcriptionFailureWords(cause, fallbackErrorKey);
       setError(words);
       onError?.(words);
     } finally {

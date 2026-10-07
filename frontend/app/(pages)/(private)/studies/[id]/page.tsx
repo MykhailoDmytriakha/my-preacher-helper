@@ -46,7 +46,7 @@ import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraft
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
-import { transcribeAudioWithRetry, TranscriptionClientError, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
+import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
@@ -334,7 +334,7 @@ function useNoteAIAssistant({
             // Never lose the thought: keep the recording (in-session recovery panel)
             // AND persist it to IndexedDB so it survives a reload / tab close.
             storedVoiceBlobRef.current = audioBlob;
-            setVoiceError(err instanceof TranscriptionClientError ? transcriptionFailureWords(err) : { key: 'errors.audioProcessing' });
+            setVoiceError(transcriptionFailureWords(err, 'errors.audioProcessing'));
             // A resend of an already-persisted draft passes persistOnFailure:false to avoid duplicates.
             // Skip persistence for a brand-new note ('new'): its contextId would collide across every
             // unsaved note, and the draft becomes unreachable once the real id is assigned.

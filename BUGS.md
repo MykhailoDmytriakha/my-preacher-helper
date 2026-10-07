@@ -196,21 +196,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261006-recorder-panel-shows-developer-sentence · Панель неудачной записи показывает сырую фразу ошибки: «Transcription failed (attempt 1/4): HTTP 500», «Empty transcription»
-**Severity.** P3 — запись не теряется, повтор работает; но под кнопкой записи человек читает английскую фразу для разработчика, часто рядом с переведённым тостом о той же беде.
-**Найден.** 2026-10-06 · агент, по коду при закрытии BUG-20261006-recorder-error-channel-keeps-sentence (там поведение сознательно сохранено как `{ said: error.message }`); живьём не воспроизводилось.
-**Как должно работать для человека.** Не удалась расшифровка — под кнопкой одна понятная фраза на языке интерфейса (нет связи · сервер не ответил · время вышло · ничего не распознано), та же, что в тосте. Сырая фраза идёт только в консоль.
-**Получилось (по коду).** Ошибка, которая не `TranscriptionClientError` и не таймаут, показывается своим `message`: `services/thought.service.ts:36` бросает «Transcription failed (attempt N/M): …», `:53` «…after all retries…», `components/sermon/ScratchPanel.tsx:334` «Empty transcription».
-**Карта класса (механизм: экран показывает `error.message` ошибки расшифровки как слова человеку).**
-| место | вердикт | почему |
-|---|---|---|
-| `components/column/audio.ts:88` (колонка, пункт, подпункт) | поражено | `createAudioThought` бросает фразу `thought.service.ts:36` |
-| `(pages)/(private)/sermons/[id]/page.tsx:1554` (`transcribeHeld`) | поражено | тот же `createAudioThought` |
-| `components/sermon/ScratchPanel.tsx:355` (голос в набросках) | поражено | панель — сырая фраза, тост — переведённый `scratch.voice.error` |
-| `hooks/useTextDictation.ts:56` (мысль, молитва) | не проверено | `transcribeAudioWithRetry` бросает `TranscriptionClientError`; какие иные `Error` доходят сюда — не выяснено |
-| `components/sermon/ScratchPanel.tsx:628` (сборка плана) | не поражено этим классом | это не расшифровка; фраза движка/сервера — отдельный вопрос `.howto/show-an-error-once.md` |
-**Направление.** Сначала выяснить, какие фразы сервера `/api/thoughts/transcribe` и `/api/thoughts` (аудио) адресованы человеку (если есть — переводить их по коду, как `refusalWords`); остальное — ключ по виду отказа через `describeTranscriptionError`/`failureWords`, сырая фраза — в консоль один раз (`logFailureOnce`).
-
 ### BUG-20261006-recovery-list-offers-resolved-and-live-drafts · «Сохранённый черновик» предлагает текст, который человек уже отбросил, и редактор, живой в соседней вкладке
 **Severity.** P3 — текст не теряется и сам никуда не отправляется; но выбор человека («взять чужую версию») не исполнен до конца: отброшенный текст висит предложением без срока, и убрать его нечем.
 **Найден.** 2026-10-06 · агент, живьём на localhost при проверке BUG-20261006-sermon-conflict-choice-shown-twice (демо-проповедь `demo-note-thoughts-scratch`, две вкладки).

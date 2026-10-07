@@ -2,8 +2,9 @@
 import { toast } from "sonner";
 
 import { isUsageCapReachedError } from "@/services/usageLimits";
-import { sayFailure, type FailureWords } from "@/utils/actionFailureMessage";
+import { logFailureOnce, sayFailure, type FailureWords } from "@/utils/actionFailureMessage";
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
+import { transcriptionFailureWords } from "@/utils/transcriptionRetryClient";
 
 import { isPointAudioSection } from "./utils";
 
@@ -65,7 +66,8 @@ export const recordAudioThought = async ({
     );
     return newThought;
   } catch (error) {
-    console.warn(errorContext, error);
+    // Once per error: the service that threw it may already have logged it through the same door.
+    logFailureOnce(error, errorContext);
 
     /**
      * BEING REFUSED IS NOT A FAILURE, AND IT ALREADY HAS A VOICE.
@@ -85,7 +87,7 @@ export const recordAudioThought = async ({
     // Out of time is said in words; "Transcription failed (attempt 1/4): HTTP 504" is for developers.
     const words: FailureWords = ranOutOfTime(error)
       ? { key: "errors.aiOutOfTimeAudio" }
-      : error instanceof Error ? { said: error.message } : { key: "errors.audioProcessing" };
+      : transcriptionFailureWords(error, "errors.audioProcessing");
     setAudioError(words);
     toast.error(sayFailure(words, t));
     return null;

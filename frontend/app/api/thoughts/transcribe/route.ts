@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     // Validate audio file
     if (!(audioFile instanceof Blob)) {
       console.error("Thoughts transcribe route: Invalid audio format received.");
-      return errorResponse('Invalid audio format', 400);
+      return errorResponse('Invalid audio format', 400, { kind: 'invalid_audio' });
     }
 
     tracker.addContext({
@@ -77,7 +77,7 @@ export async function POST(request: Request) {
 
     if (audioFile.size === 0) {
       console.error("Thoughts transcribe route: Empty audio file.");
-      return errorResponse('Audio file is empty', 400);
+      return errorResponse('Audio file is empty', 400, { kind: 'invalid_audio' });
     }
 
     // Validate audio duration
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     });
     if (!durationValidation.valid) {
       console.error("Thoughts transcribe route: Audio duration validation failed.", durationValidation);
-      return errorResponse(durationValidation.error || 'Audio file is too long', 400);
+      return errorResponse(durationValidation.error || 'Audio file is too long', 400, { kind: 'too_long' });
     }
 
     const usageSeconds = Math.ceil(
