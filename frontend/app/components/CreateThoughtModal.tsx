@@ -85,8 +85,8 @@ export default function CreateThoughtModal({
     if (isDirty) {
       // Not destructive-looking: closing is the person's choice, the question only makes sure.
       const close = await confirm({
-        title: t('createThought.dirtyGuard'),
-        confirmText: t('createThought.dirtyGuardConfirm'),
+        title: { key: 'createThought.dirtyGuard' },
+        confirmText: { key: 'createThought.dirtyGuardConfirm' },
         destructive: false,
       });
       if (!close) return;

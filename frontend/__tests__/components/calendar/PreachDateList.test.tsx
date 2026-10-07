@@ -8,10 +8,13 @@ jest.mock('@/hooks/usePreachDates', () => ({
   usePreachDates: jest.fn(),
 }));
 
+// English says the key itself; another language prefixes it, so a test can switch the language.
+let mockLanguage = 'en';
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue || key,
-    i18n: { language: 'en' },
+    t: (key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue || (mockLanguage === 'en' ? key : `${mockLanguage}:${key}`),
+    i18n: { language: mockLanguage },
   }),
 }));
 
@@ -56,6 +59,7 @@ describe('PreachDateList', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockLanguage = 'en';
 
     mockedUsePreachDates.mockReturnValue({
       preachDates: [],
@@ -165,6 +169,37 @@ describe('PreachDateList', () => {
     await waitFor(() => {
       expect(deleteDate).toHaveBeenCalledWith('pd-delete');
     });
+  });
+
+  it('re-says an open delete question in the language switched to while it is open', async () => {
+    mockedUsePreachDates.mockReturnValue({
+      preachDates: [
+        {
+          id: 'pd-delete',
+          date: '2026-02-17',
+          church: { id: 'c1', name: 'Grace Church', city: '' },
+          createdAt: '2026-02-01T00:00:00.000Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+      addDate,
+      updateDate,
+      deleteDate,
+      isAdding: false,
+      isUpdating: false,
+      isDeleting: false,
+    });
+
+    const view = render(<PreachDateList sermonId="s1" />);
+    fireEvent.click(screen.getByTitle('common.delete'));
+    await screen.findByRole('dialog', { name: 'calendar.deleteConfirm' });
+
+    mockLanguage = 'ru';
+    view.rerender(<PreachDateList sermonId="s1" />);
+
+    const question = screen.getByRole('dialog', { name: 'ru:calendar.deleteConfirm' });
+    expect(within(question).getByRole('button', { name: 'ru:common.delete' })).toBeInTheDocument();
   });
 
   it('does not delete when confirmation is cancelled', async () => {

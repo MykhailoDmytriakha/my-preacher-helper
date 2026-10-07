@@ -50,7 +50,7 @@ export function useScratchNoteLabels() {
       placeholder: t("scratch.card.placeholder"),
       clear: t("scratch.card.delete"),
       add: t("scratch.card.add"),
-      deleteConfirm: t("scratch.card.deleteConfirmTitle"),
+      deleteConfirm: { key: "scratch.card.deleteConfirmTitle" },
     }),
     [t]
   );

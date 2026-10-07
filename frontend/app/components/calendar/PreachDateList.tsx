@@ -43,7 +43,7 @@ function LegacyPreachDateList({ sermonId }: PreachDateListProps) {
     };
 
     const handleDeleteClick = async (dateId: string) => {
-        if (await confirm({ title: t('calendar.deleteConfirm'), confirmText: t('common.delete') })) {
+        if (await confirm({ title: { key: 'calendar.deleteConfirm' }, confirmText: { key: 'common.delete' } })) {
             try {
                 // usePreachDates' delete recovery descriptor reports a late refusal while this screen is mounted.
                 await awaitAcceptance(deleteDate(dateId), () => undefined);

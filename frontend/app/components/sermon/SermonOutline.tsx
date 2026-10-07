@@ -350,8 +350,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const handleDeletePoint = async (pointToDelete: SermonPoint) => {
     if (isReadOnly) return;
     const confirmed = await confirm({
-      title: t('structure.deletePointConfirm', { text: pointToDelete.text }),
-      confirmText: t('common.delete'),
+      title: { key: 'structure.deletePointConfirm', values: { text: pointToDelete.text } },
+      confirmText: { key: 'common.delete' },
     });
     if (confirmed) {
       const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {

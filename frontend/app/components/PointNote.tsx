@@ -5,7 +5,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
-import { useConfirm } from '@/hooks/useConfirm';
+import { useConfirm, type ConfirmKey } from '@/hooks/useConfirm';
 
 interface PointNoteProps {
   /** Current note text (undefined/empty = no note). */
@@ -43,8 +43,8 @@ interface PointNoteProps {
     clear?: string;
     /** Text of the empty "+ note" affordance. */
     add?: string;
-    /** Title of the question asked before the × clears the note. */
-    deleteConfirm?: string;
+    /** Title of the question asked before the × clears the note, said when the question is shown. */
+    deleteConfirm?: ConfirmKey;
   };
 }
 
@@ -124,9 +124,9 @@ const PointNote: React.FC<PointNoteProps> = ({
     const ticket = { text: note ?? '' };
     askedRef.current = ticket;
     const confirmed = await confirm({
-      title: labels?.deleteConfirm ?? t('planEditor.note.deleteConfirm'),
-      description: ticket.text,
-      confirmText: t('common.delete'),
+      title: labels?.deleteConfirm ?? { key: 'planEditor.note.deleteConfirm' },
+      description: { said: ticket.text },
+      confirmText: { key: 'common.delete' },
     });
     if (askedRef.current !== ticket) return;
     askedRef.current = null;

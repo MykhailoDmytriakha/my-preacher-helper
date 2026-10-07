@@ -162,7 +162,7 @@ function useNoteInitialization({
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
     return async () => {
-        if (await confirm({ title: t('studiesWorkspace.deleteConfirm'), confirmText: t('common.delete') })) {
+        if (await confirm({ title: { key: 'studiesWorkspace.deleteConfirm' }, confirmText: { key: 'common.delete' } })) {
             if (noteId && !isNew && uid) {
                 try {
                     // useStudyNotes' delete recovery descriptor reports a late refusal while this screen is mounted.

@@ -900,7 +900,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   };
 
   const remove = async () => {
-    if (!(await confirm({ title: t('serviceOrders.deleteConfirm') as string, confirmText: t('common.delete') }))) return;
+    if (!(await confirm({ title: { key: 'serviceOrders.deleteConfirm' }, confirmText: { key: 'common.delete' } }))) return;
     // Same rule as a removed step: whatever was typed is sent before the document goes, so a
     // refused deletion cannot swallow it.
     pending.current.forEach((_entry, key) => flush(key));

@@ -1,8 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 
 /**
  * "ARE YOU SURE?" AS AN AWAITABLE QUESTION, in the app's own window.
@@ -15,7 +17,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
  * `window.confirm` answers synchronously; a window answers later. So the question is a promise:
  *
  *   const { confirm, confirmDialog } = useConfirm();
- *   if (!(await confirm({ title: t('…') }))) return;
+ *   if (!(await confirm({ title: { key: '…' } }))) return;
  *   …
  *   return <>{…}{confirmDialog}</>;
  *
@@ -25,11 +27,23 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
  * `withdraw()` takes back a question that no longer applies — the thing it asked about changed
  * under it — and answers it "no".
  */
+/**
+ * What the window says, kept as words and said each time it is drawn: a language switched while
+ * the question is open re-says it (BUG-20261006-confirm-dialog-text-frozen-on-language-switch).
+ * The shape a kept failure uses, said by the same `sayFailure`.
+ *
+ * The question and its buttons are always the app's own words, so they take a key only — a
+ * sentence translated before asking does not fit them. The description may be the person's own
+ * text (the note about to be cleared), so it also takes `{ said }`.
+ */
+export type ConfirmKey = Extract<FailureWords, { key: string }>;
+export type ConfirmWords = FailureWords;
+
 export interface ConfirmOptions {
-  title: string;
-  description?: string;
-  confirmText?: string;
-  cancelText?: string;
+  title: ConfirmKey;
+  description?: ConfirmWords;
+  confirmText?: ConfirmKey;
+  cancelText?: ConfirmKey;
   /** Red and with a warning icon. On by default: this question is almost always before a deletion. */
   destructive?: boolean;
 }
@@ -41,6 +55,7 @@ export function useConfirm(): {
   confirmDialog: React.ReactElement;
   withdraw: () => void;
 } {
+  const { t } = useTranslation();
   const [request, setRequest] = useState<Pending | null>(null);
   // The live request, outside state: resolving inside a state updater would run twice.
   const pending = useRef<Pending | null>(null);
@@ -70,13 +85,14 @@ export function useConfirm(): {
   // A component that leaves while it is asking has its question answered "no".
   useEffect(() => () => pending.current?.resolve(false), []);
 
+  const say = (words: ConfirmWords | undefined) => (words ? sayFailure(words, t) : undefined);
   const confirmDialog = (
     <ConfirmModal
       isOpen={request !== null}
-      title={request?.title ?? ''}
-      description={request?.description}
-      confirmText={request?.confirmText}
-      cancelText={request?.cancelText}
+      title={say(request?.title) ?? ''}
+      description={say(request?.description)}
+      confirmText={say(request?.confirmText)}
+      cancelText={say(request?.cancelText)}
       isDestructive={request?.destructive ?? true}
       onConfirm={() => settle(true)}
       onClose={() => settle(false)}

@@ -4,8 +4,17 @@ import React from 'react';
 import { useConfirm, type ConfirmOptions } from '@/hooks/useConfirm';
 import '@testing-library/jest-dom';
 
+// English says the default or the key; another language prefixes the key and lists the values,
+// so a test can switch the language under an open question.
+let mockLanguage = 'en';
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, o?: { defaultValue?: string }) => o?.defaultValue ?? key }),
+  useTranslation: () => ({
+    t: (key: string, o?: Record<string, string>) => {
+      if (mockLanguage === 'en') return o?.defaultValue ?? key;
+      const values = Object.entries(o ?? {}).filter(([name]) => name !== 'defaultValue').map(([name, value]) => ` ${name}=${value}`);
+      return `${mockLanguage}:${key}${values.join('')}`;
+    },
+  }),
 }));
 
 /**
@@ -23,7 +32,7 @@ function Asker({ options, onAnswer }: { options: ConfirmOptions; onAnswer: (answ
   );
 }
 
-const ask = async (options: ConfirmOptions = { title: 'Удалить проповедь?' }) => {
+const ask = async (options: ConfirmOptions = { title: { key: 'Удалить проповедь?' } }) => {
   const onAnswer = jest.fn();
   const view = render(<Asker options={options} onAnswer={onAnswer} />);
   await act(async () => {
@@ -33,16 +42,41 @@ const ask = async (options: ConfirmOptions = { title: 'Удалить пропо
 };
 
 describe('useConfirm', () => {
+  afterEach(() => {
+    mockLanguage = 'en';
+  });
+
   it('shows nothing until it is asked', () => {
-    render(<Asker options={{ title: 'Удалить?' }} onAnswer={jest.fn()} />);
+    render(<Asker options={{ title: { key: 'Удалить?' } }} onAnswer={jest.fn()} />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('asks in a window, with the words it was given', async () => {
-    await ask({ title: 'Удалить проповедь?', description: 'Это нельзя отменить.' });
+    await ask({ title: { key: 'Удалить проповедь?' }, description: { said: 'Это нельзя отменить.' } });
 
     expect(screen.getByRole('dialog', { name: 'Удалить проповедь?' })).toBeInTheDocument();
     expect(screen.getByText('Это нельзя отменить.')).toBeInTheDocument();
+  });
+
+  it('says a question asked by key in the language switched to while it is open', async () => {
+    const options: ConfirmOptions = {
+      title: { key: 'sermon.deleteThoughtConfirm', values: { text: 'Мысль' } },
+      description: { said: 'Мысль целиком' },
+      confirmText: { key: 'common.delete' },
+    };
+    const onAnswer = jest.fn();
+    const view = render(<Asker options={options} onAnswer={onAnswer} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'ask' }));
+    });
+    expect(screen.getByRole('dialog', { name: 'sermon.deleteThoughtConfirm' })).toBeInTheDocument();
+
+    mockLanguage = 'ru';
+    view.rerender(<Asker options={options} onAnswer={onAnswer} />);
+
+    const question = screen.getByRole('dialog', { name: 'ru:sermon.deleteThoughtConfirm text=Мысль' });
+    expect(question).toHaveTextContent('Мысль целиком');
+    expect(screen.getByRole('button', { name: 'ru:common.delete' })).toBeInTheDocument();
   });
 
   it('answers yes when the person confirms, and closes', async () => {
@@ -92,10 +126,10 @@ describe('useConfirm', () => {
       const { confirm, confirmDialog } = useConfirm();
       return (
         <>
-          <button type="button" onClick={async () => onAnswer('first', await confirm({ title: 'First?' }))}>
+          <button type="button" onClick={async () => onAnswer('first', await confirm({ title: { key: 'First?' } }))}>
             first
           </button>
-          <button type="button" onClick={async () => onAnswer('second', await confirm({ title: 'Second?' }))}>
+          <button type="button" onClick={async () => onAnswer('second', await confirm({ title: { key: 'Second?' } }))}>
             second
           </button>
           {confirmDialog}
@@ -123,7 +157,7 @@ describe('useConfirm', () => {
   });
 
   it('uses the caller\'s own button words when given', async () => {
-    await ask({ title: 'Убрать из серии?', confirmText: 'Убрать', cancelText: 'Оставить' });
+    await ask({ title: { key: 'Убрать из серии?' }, confirmText: { key: 'Убрать' }, cancelText: { key: 'Оставить' } });
 
     expect(screen.getByRole('button', { name: 'Убрать' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Оставить' })).toBeInTheDocument();
@@ -141,7 +175,7 @@ describe('useConfirm', () => {
       const { confirm, confirmDialog, withdraw } = useConfirm();
       return (
         <>
-          <button type="button" onClick={async () => onAnswer(await confirm({ title: 'Удалить?' }))}>ask</button>
+          <button type="button" onClick={async () => onAnswer(await confirm({ title: { key: 'Удалить?' } }))}>ask</button>
           <button type="button" onClick={withdraw}>withdraw</button>
           {confirmDialog}
         </>

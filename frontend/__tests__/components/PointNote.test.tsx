@@ -138,7 +138,7 @@ describe('PointNote editing', () => {
   });
 
   it('asks in the host\'s own words when the host renames the note', async () => {
-    render(<PointNote note="Scratch idea" onChange={jest.fn()} labels={{ clear: 'Delete scratch', deleteConfirm: 'Delete this scratch?' }} />);
+    render(<PointNote note="Scratch idea" onChange={jest.fn()} labels={{ clear: 'Delete scratch', deleteConfirm: { key: 'Delete this scratch?' } }} />);
     fireEvent.click(screen.getByLabelText('Delete scratch'));
     expect(await screen.findByRole('dialog', { name: 'Delete this scratch?' })).toBeInTheDocument();
   });

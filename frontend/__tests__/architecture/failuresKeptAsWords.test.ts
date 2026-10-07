@@ -14,12 +14,20 @@ import { join, relative } from 'path';
  * sentence also arrived through a variable, a ternary or a helper, which no pattern of the call
  * catches. So the second check is on the state itself: an error, failure, notice or warning kept in
  * React state is not a string.
+ *
+ * The same holds for a question an open window keeps: `useConfirm` takes words and says them when the
+ * window is drawn (BUG-20261006-confirm-dialog-text-frozen-on-language-switch), its question and
+ * buttons by key only. The third check is the way around any kept words: `{ said: t(…) }`, or a value
+ * translated beforehand where `{ key }` says it in the current language. A tripwire for the plain
+ * forms — an alias of `t` passes it; the types are the guarantee.
  */
 const APP = join(__dirname, '..', '..', 'app');
 const SET_SENTENCE = /\bset[A-Za-z]*(?:Error|Failure|Warning|Notice)\(\s*(?:i18n\.)?t\(/g;
 const THROW_SENTENCE = /\bthrow new Error\(\s*(?:i18n\.)?t\(/g;
 const STRING_STATE = /const \[(\w+), set\w+\] = (?:React\.)?useState(?:<string(?: \| null)?>\((?:null|''|"")?\)|\((?:''|"")\))/g;
 const FAILURE_NAME = /(?:Error|Failure|Notice|Warning)$|^(?:error|failure|notice|warning)$/;
+const SAID_SENTENCE = /\bsaid:\s*(?:i18n\.)?t\s*\(/g;
+const VALUE_SENTENCE = /\bvalues:\s*\{[^{}]*?\b(?:i18n\.)?t\s*\(/g;
 
 /**
  * Known, and each with its reason. The recorder hands its parent a translated sentence
@@ -65,6 +73,12 @@ describe('failures a screen keeps are kept as words', () => {
     const offenders = files.flatMap(({ path, source }) => [...source.matchAll(STRING_STATE)]
       .filter(match => FAILURE_NAME.test(match[1]) && !KNOWN[path]?.names.includes(match[1]))
       .map(match => `${path}:${lineOf(source, match.index ?? 0)} ${match[1]}`));
+    expect(offenders).toEqual([]);
+  });
+
+  it('keeps no words made from a sentence already translated', () => {
+    const offenders = files.flatMap(({ path, source }) => [...source.matchAll(SAID_SENTENCE), ...source.matchAll(VALUE_SENTENCE)]
+      .map(match => `${path}:${lineOf(source, match.index ?? 0)} ${match[0]}`));
     expect(offenders).toEqual([]);
   });
 

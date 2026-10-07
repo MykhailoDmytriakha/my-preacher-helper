@@ -61,6 +61,8 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
       if (options?.defaultValue) return options.defaultValue as string;
+      // A sentence naming a thought carries its text, as the real one does.
+      if (typeof options?.text === 'string') return `${key}: ${options.text}`;
       return key;
     },
   }),
@@ -317,7 +319,7 @@ describe('StructurePage handlers', () => {
 
     // The ambiguous thought is only deleted after the person says yes in the app's own window.
     const question = await screen.findByTestId('confirm-modal');
-    expect(question).toHaveTextContent('"Ambiguous"');
+    expect(question).toHaveTextContent('sermon.deleteThoughtConfirm: Ambiguous');
     expect(deleteThought).not.toHaveBeenCalled();
     fireEvent.click(within(question).getByRole('button', { name: 'common.delete' }));
 

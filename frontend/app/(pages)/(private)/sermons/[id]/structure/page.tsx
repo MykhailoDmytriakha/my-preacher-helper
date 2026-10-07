@@ -495,11 +495,8 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       return;
     }
 
-    const confirmMessage = t('sermon.deleteThoughtConfirm', {
-      defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`,
-      text: thoughtToDelete.text
-    });
-    if (!(await confirm({ title: confirmMessage, confirmText: t('common.delete') }))) {
+    const question = { key: 'sermon.deleteThoughtConfirm', values: { text: thoughtToDelete.text } };
+    if (!(await confirm({ title: question, confirmText: { key: 'common.delete' } }))) {
       return;
     }
     const submission = handleDeleteThought(itemId);

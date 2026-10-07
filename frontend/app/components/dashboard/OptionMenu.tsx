@@ -150,8 +150,8 @@ export default function OptionMenu({
     e.stopPropagation();
     if (isSyncPending) return;
     const confirmed = await confirm({
-      title: t('optionMenu.deleteConfirm'),
-      confirmText: t('common.delete'),
+      title: { key: 'optionMenu.deleteConfirm' },
+      confirmText: { key: 'common.delete' },
     });
     if (!confirmed) return;
 
@@ -438,9 +438,9 @@ export default function OptionMenu({
     // The answer button repeats the menu item the person just chose, and the note says the sermon
     // stays: "remove" next to a sermon otherwise reads as deleting it.
     const confirmed = await confirm({
-      title: t('workspaces.series.actions.removeFromSeriesConfirm', { series: currentSeries.title }),
-      description: t('workspaces.series.actions.removeFromSeriesKeepsSermon'),
-      confirmText: t('workspaces.series.actions.removeFromSeries'),
+      title: { key: 'workspaces.series.actions.removeFromSeriesConfirm', values: { series: currentSeries.title ?? '' } },
+      description: { key: 'workspaces.series.actions.removeFromSeriesKeepsSermon' },
+      confirmText: { key: 'workspaces.series.actions.removeFromSeries' },
     });
     if (!confirmed) return;
     // Sweep-all: drop this sermon from every series it sits in. Fire-and-forget +
