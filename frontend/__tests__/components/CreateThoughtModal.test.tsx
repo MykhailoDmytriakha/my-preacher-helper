@@ -54,12 +54,12 @@ jest.mock('@components/FocusRecorderButton', () => ({
             <button
                 data-testid="focus-recorder-error"
                 disabled={disabled}
-                onClick={() => onError?.('Recorder failed')}
+                onClick={() => onError?.({ key: 'errors.microphoneUnavailable' })}
             >
                 Recorder Error
             </button>
             <button data-testid="focus-recorder-retry" onClick={() => onRetry?.()}>Retry</button>
-            {transcriptionError ? <span>{transcriptionError}</span> : null}
+            {transcriptionError ? <span>{jest.requireActual('@/utils/actionFailureMessage').sayFailure(transcriptionError, (key: string) => key)}</span> : null}
         </div>
     ),
 }));
@@ -300,7 +300,7 @@ describe('CreateThoughtModal', () => {
     it('shows toast when recorder reports an error', () => {
         render(<CreateThoughtModal {...defaultProps} />);
         fireEvent.click(screen.getByTestId('focus-recorder-error'));
-        expect(toast.error).toHaveBeenCalledWith('Recorder failed');
+        expect(toast.error).toHaveBeenCalledWith('errors.microphoneUnavailable');
     });
 
     it('lets the global handler own usage-cap errors without raw UI or a recovery blob', async () => {

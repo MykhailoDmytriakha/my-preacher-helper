@@ -46,7 +46,7 @@ import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraft
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
-import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
+import { transcribeAudioWithRetry, TranscriptionClientError, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
@@ -222,7 +222,8 @@ function useNoteAIAssistant({
     const isAnalyzing = analyzingSource !== null;
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
     // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
-    const [voiceError, setVoiceError] = useState<string | null>(null);
+    // Kept as words: the recorder says them in the language on screen.
+    const [voiceError, setVoiceError] = useState<FailureWords | null>(null);
     const [voiceRetryCount, setVoiceRetryCount] = useState(0);
     const storedVoiceBlobRef = useRef<Blob | null>(null);
     const voiceDraftIdRef = useRef<string | null>(null);
@@ -333,10 +334,7 @@ function useNoteAIAssistant({
             // Never lose the thought: keep the recording (in-session recovery panel)
             // AND persist it to IndexedDB so it survives a reload / tab close.
             storedVoiceBlobRef.current = audioBlob;
-            const message = err instanceof TranscriptionClientError
-                ? buildTranscriptionErrorMessage(err, t)
-                : (t('errors.audioProcessing'));
-            setVoiceError(message);
+            setVoiceError(err instanceof TranscriptionClientError ? transcriptionFailureWords(err) : { key: 'errors.audioProcessing' });
             // A resend of an already-persisted draft passes persistOnFailure:false to avoid duplicates.
             // Skip persistence for a brand-new note ('new'): its contextId would collide across every
             // unsaved note, and the draft becomes unreachable once the real id is assigned.
@@ -1429,7 +1427,7 @@ export default function StudyNoteEditorPage() {
                                     isProcessing={isVoiceProcessing}
                                     disabled={dictationBlocked}
                                     title={dictationBlockedKey ? t(dictationBlockedKey) : undefined}
-                                    onError={(err: unknown) => toast.error(String(err) || 'Error')}
+                                    onError={(words) => toast.error(sayFailure(words, t))}
                                     transcriptionError={voiceError}
                                     onRetry={handleRetryVoice}
                                     retryCount={voiceRetryCount}

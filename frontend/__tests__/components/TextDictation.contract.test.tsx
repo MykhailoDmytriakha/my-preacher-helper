@@ -6,6 +6,8 @@ import EditThoughtModal from '@/components/EditThoughtModal';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 
+import type { FailureWords } from '@/utils/actionFailureMessage';
+
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isOnline: true, isMagicAvailable: true }) }));
@@ -19,13 +21,13 @@ jest.mock('@/utils/transcriptionRetryClient', () => ({
 jest.mock('@/components/FocusRecorderButton', () => ({
   FocusRecorderButton: ({ onRecordingComplete, onRetry, onClearError, onError, isProcessing, transcriptionError, retryCount }: {
     onRecordingComplete: (blob: Blob) => void; onRetry: () => void; onClearError: () => void;
-    onError: (message: string) => void;
-    isProcessing: boolean; transcriptionError: string | null; retryCount: number;
+    onError: (words: FailureWords) => void;
+    isProcessing: boolean; transcriptionError: FailureWords | null; retryCount: number;
   }) => <div>
     <button type="button" onClick={() => onRecordingComplete(new Blob(['original audio']))}>Record</button>
     <button type="button" onClick={onRetry}>Retry</button>
     <button type="button" onClick={onClearError}>Discard audio</button>
-    <button type="button" onClick={() => onError('Microphone unavailable')}>Recorder error</button>
+    <button type="button" onClick={() => onError({ key: 'errors.microphoneUnavailable' })}>Recorder error</button>
     <output data-testid="voice-state">{JSON.stringify({ isProcessing, transcriptionError, retryCount })}</output>
   </div>,
 }));
@@ -43,7 +45,7 @@ beforeEach(() => { transcribe.mockReset(); jest.mocked(toast.error).mockClear();
 it('keeps prayer recorder errors inline without invoking transcription', () => {
   renderVariant('prayer');
   fireEvent.click(screen.getByRole('button', { name: 'Recorder error' }));
-  expect(screen.getByText('Microphone unavailable')).toBeInTheDocument();
+  expect(screen.getByText('errors.microphoneUnavailable')).toBeInTheDocument();
   expect(voiceState().isProcessing).toBe(false);
   expect(transcribe).not.toHaveBeenCalled();
   expect(toast.error).not.toHaveBeenCalled();
@@ -56,7 +58,7 @@ describe.each(variants)('%s dictation contract', kind => {
     const editor = screen.getByRole('textbox');
     fireEvent.change(editor, { target: { value: 'Before ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Record' }));
-    await waitFor(() => expect(voiceState().transcriptionError).toBe('Network unavailable'));
+    await waitFor(() => expect(voiceState().transcriptionError).toEqual({ said: 'Network unavailable' }));
     expect(editor).toHaveValue('Before ');
     const originalBlob = transcribe.mock.calls[0][0];
     let resolve!: (value: { polishedText: string; originalText: string }) => void;

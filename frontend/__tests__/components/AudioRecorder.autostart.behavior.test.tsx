@@ -302,7 +302,7 @@ describe('AudioRecorder interactions and errors', () => {
     render(
       <AudioRecorder
         onRecordingComplete={jest.fn()}
-        transcriptionError="transcription failed"
+        transcriptionError={{ said: "transcription failed" }}
         onClearError={onClearError}
       />
     );
@@ -333,7 +333,7 @@ describe('AudioRecorder interactions and errors', () => {
       <AudioRecorder
         variant="standard"
         onRecordingComplete={onComplete}
-        transcriptionError="transcription failed"
+        transcriptionError={{ said: "transcription failed" }}
         onClearError={onClearError}
       />
     );

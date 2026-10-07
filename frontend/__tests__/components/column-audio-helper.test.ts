@@ -105,7 +105,7 @@ describe("column audio helper", () => {
       errorContext: "audio helper failed",
     });
 
-    expect(setAudioError).toHaveBeenCalledWith("errors.aiOutOfTimeAudio");
+    expect(setAudioError).toHaveBeenCalledWith({ key: "errors.aiOutOfTimeAudio" });
     expect(toast.error).toHaveBeenCalledWith("errors.aiOutOfTimeAudio");
     consoleWarnSpy.mockRestore();
   });
@@ -128,7 +128,7 @@ describe("column audio helper", () => {
     });
 
     expect(result).toBeNull();
-    expect(setAudioError).toHaveBeenCalledWith("Audio processing failed");
+    expect(setAudioError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
     expect(toast.error).toHaveBeenCalledWith("Audio processing failed");
     expect(consoleWarnSpy).toHaveBeenCalledWith("audio helper failed", "boom");
 
@@ -164,10 +164,10 @@ describe("column audio helper", () => {
 
     expect(result).toBeNull();
     expect(setLimitReached).toHaveBeenLastCalledWith(true);
-    expect(setAudioError).toHaveBeenLastCalledWith("audio.limitReached");
+    expect(setAudioError).toHaveBeenLastCalledWith({ key: "audio.limitReached" });
     // The dialog is the announcement; a red toast here is the second one.
     expect(toast.error).not.toHaveBeenCalled();
-    expect(setAudioError).not.toHaveBeenCalledWith(expect.stringContaining("Usage cap reached"));
+    expect(JSON.stringify(setAudioError.mock.calls)).not.toContain("Usage cap reached");
   });
 
   it("clears a previous refusal when a new recording starts", async () => {

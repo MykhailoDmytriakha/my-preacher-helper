@@ -1,6 +1,8 @@
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 
+import type { FailureWords } from '@/utils/actionFailureMessage';
+
 const rethrowUsageCapReached = (error: unknown): void => {
   if (isUsageCapReachedError(error)) throw error;
 };
@@ -260,20 +262,14 @@ export function describeTranscriptionError(error: unknown): TranscriptionErrorDi
 }
 
 /**
- * Build one human-readable message from a transcription failure. Joins the
- * distinct-kind messages (deduped once resolved) and appends the billing hint
- * when warranted — ready to drop into a toast or the recovery panel.
+ * The words of a transcription failure: each distinct kind's sentence, then the billing hint when
+ * warranted. Kept as words and said where shown (`sayFailure` joins them and says a repeat once), so
+ * a language switch re-says them (BUG-20261006-recorder-error-channel-keeps-sentence).
  */
-export function buildTranscriptionErrorMessage(
-  error: unknown,
-  t: (key: string) => string
-): string {
+export function transcriptionFailureWords(error: unknown): FailureWords {
   const { messageKeys, showBillingHint } = describeTranscriptionError(error);
-  const parts = messageKeys.map((key) => t(key));
-  if (showBillingHint) {
-    parts.push(t('audio.transcribeError.billingHint'));
-  }
-  return Array.from(new Set(parts)).join(' ');
+  const keys = showBillingHint ? [...messageKeys, 'audio.transcribeError.billingHint'] : messageKeys;
+  return keys.length === 1 ? { key: keys[0] } : { parts: keys.map(key => ({ key })) };
 }
 
 function buildTranscriptionFormData(blob: Blob, fields: TranscribeWithRetryOptions['fields']): FormData {

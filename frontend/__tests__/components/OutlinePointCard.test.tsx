@@ -6,6 +6,7 @@ import React from 'react';
 import { OutlinePointCard } from '@/components/column/OutlinePointCard';
 import { SortableItemActions } from '@/components/SortableItem';
 import { createAudioThought } from '@/services/thought.service';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import en from '@locales/en/translation.json';
 import ru from '@locales/ru/translation.json';
 import uk from '@locales/uk/translation.json';
@@ -24,12 +25,12 @@ jest.mock('@/components/SermonGuidanceTooltips', () => ({ OutlinePointGuidanceTo
 jest.mock('@/components/PointNote', () => ({ __esModule: true, default: ({ note, onChange, isReadOnly }: { note?: string; onChange: (note: string) => void; isReadOnly: boolean }) =>
   <input aria-label="Note" value={note ?? ''} onChange={event => onChange(event.target.value)} readOnly={isReadOnly} /> }));
 
-type RecorderProps = { disabled?: boolean; isProcessing?: boolean; transcriptionError?: string; onClearError: () => void; onError: (message: string) => void; onRecordingComplete: (blob: Blob) => void };
+type RecorderProps = { disabled?: boolean; isProcessing?: boolean; transcriptionError?: FailureWords | null; onClearError: () => void; onError: (words: FailureWords) => void; onRecordingComplete: (blob: Blob) => void };
 function mockRecorder(label: string, props: RecorderProps) {
   return <div>
     <button type="button" disabled={props.disabled} aria-busy={props.isProcessing} onClick={() => props.onRecordingComplete(new Blob(['audio']))}>{label} record</button>
-    <button type="button" onClick={() => props.onError('Device error')}>{label} error</button>
-    {props.transcriptionError && <button type="button" onClick={props.onClearError}>{label} clear: {props.transcriptionError}</button>}
+    <button type="button" onClick={() => props.onError({ said: 'Device error' })}>{label} error</button>
+    {props.transcriptionError && <button type="button" onClick={props.onClearError}>{label} clear: {sayFailure(props.transcriptionError, key => key)}</button>}
   </div>;
 }
 jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: (props: RecorderProps) => mockRecorder('Point', props) }));
@@ -92,7 +93,7 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   const onAudioThoughtCreated = jest.fn();
   let resolveAudio!: (value: Awaited<ReturnType<typeof createAudioThought>>) => void;
   jest.mocked(createAudioThought).mockImplementationOnce(() => new Promise(resolve => { resolveAudio = resolve; }) as ReturnType<typeof createAudioThought>);
-  render(<OutlinePointCard {...base} sermonId="sermon" onAudioThoughtCreated={onAudioThoughtCreated} audioError="Point failure" />);
+  render(<OutlinePointCard {...base} sermonId="sermon" onAudioThoughtCreated={onAudioThoughtCreated} audioError={{ said: 'Point failure' }} />);
   fireEvent.click(screen.getByRole('button', { name: 'Point record' }));
   await waitFor(() => expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point'));
   expect(screen.getByRole('button', { name: 'Point record' })).toHaveAttribute('aria-busy', 'true');
@@ -102,7 +103,7 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   fireEvent.click(screen.getByRole('button', { name: 'Point clear: Point failure' }));
   expect(base.onClearAudioError).toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Point error' }));
-  expect(base.setAudioError).toHaveBeenLastCalledWith('Device error');
+  expect(base.setAudioError).toHaveBeenLastCalledWith({ said: 'Device error' });
   jest.mocked(createAudioThought).mockResolvedValueOnce({ id: 'sub-created' } as Awaited<ReturnType<typeof createAudioThought>>);
   fireEvent.click(screen.getByRole('button', { name: 'Sub record' }));
   await waitFor(() => expect(createAudioThought).toHaveBeenLastCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', 'sub'));

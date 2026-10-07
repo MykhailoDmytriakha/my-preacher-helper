@@ -51,7 +51,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
-import { saidError } from '@/utils/actionFailureMessage';
+import { saidError, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
@@ -660,7 +660,8 @@ useEffect(() => {
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  // Kept as words: the recorder says them in the language on screen.
+  const [transcriptionError, setTranscriptionError] = useState<FailureWords | null>(null);
   const [editingModalData, setEditingModalData] = useState<EditingModalData | null>(null);
   const rejectedEditQueueRef = useRef<EditingModalData[]>([]);
   // Whether this screen is still on the person's display. A write outlives the page
@@ -1550,7 +1551,7 @@ useEffect(() => {
       return true;
     } catch (error) {
       console.error("transcribeHeld: Recording error:", error);
-      setTranscriptionError(ranOutOfTime(error) ? t('errors.aiOutOfTimeAudio') : error instanceof Error ? error.message : 'Unknown error occurred');
+      setTranscriptionError(ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : error instanceof Error ? { said: error.message } : { key: 'errors.audioProcessing' });
       await parkRecording(held);
       return false;
     }

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { sayFailure } from '@/utils/actionFailureMessage';
 
 import type { useTextDictation } from '@/hooks/useTextDictation';
 
@@ -28,7 +29,7 @@ export function ThoughtTextHeader({ dictation, available, saving, readOnly = fal
         <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing}
           disabled={saving || disabled} title={quotaLabel} transcriptionError={dictation.error} onRetry={dictation.retry}
           retryCount={dictation.retryCount} maxRetries={dictation.maxRetries} onClearError={dictation.clear}
-          onError={message => { toast.error(message); dictation.stopProcessing(); }} />
+          onError={words => { toast.error(sayFailure(words, t)); dictation.stopProcessing(); }} />
       </div>
     </div>}
   </div>;

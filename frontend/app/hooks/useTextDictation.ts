@@ -1,26 +1,29 @@
 import { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { isUsageCapReachedError } from '@/services/usageLimits';
-import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
+import { transcribeAudioWithRetry, TranscriptionClientError, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
+
+import type { FailureWords } from '@/utils/actionFailureMessage';
 
 interface TextDictationOptions {
   onText: (text: string) => void;
   onEmpty: () => void;
-  onError?: (message: string) => void;
+  onError?: (words: FailureWords) => void;
   onStart?: () => void;
   fallbackErrorKey?: string;
 }
 
-/** Transcription and in-session audio recovery; each editor owns how text and errors are presented. */
+/**
+ * Transcription and in-session audio recovery; each editor owns how text and errors are presented.
+ * A failure is kept as words and said where shown, so a language switch re-says it.
+ */
 export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackErrorKey = 'errors.audioProcessing' }: TextDictationOptions) {
-  const { t } = useTranslation();
   const { blocked, blockedLabelKey, refresh } = useAiUsage();
   // The same two-resource rule: a dictation request is admitted for transcription AND ai.
   const transcriptionBlocked = blocked('dictation');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const storedBlob = useRef<Blob | null>(null);
 
@@ -48,11 +51,11 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
       // Usage-cap presentation belongs to the global handler, without a second local error.
       if (isUsageCapReachedError(cause)) return;
       storedBlob.current = blob;
-      const message = cause instanceof TranscriptionClientError
-        ? buildTranscriptionErrorMessage(cause, t)
-        : cause instanceof Error ? cause.message : t(fallbackErrorKey);
-      setError(message);
-      onError?.(message);
+      const words: FailureWords = cause instanceof TranscriptionClientError
+        ? transcriptionFailureWords(cause)
+        : cause instanceof Error ? { said: cause.message } : { key: fallbackErrorKey };
+      setError(words);
+      onError?.(words);
     } finally {
       setIsProcessing(false);
     }

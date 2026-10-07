@@ -10,6 +10,7 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { Thought, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
+import { sayFailure } from '@/utils/actionFailureMessage';
 import {
   announceIfPersisted,
   awaitAcceptance,
@@ -68,7 +69,7 @@ export default function CreateThoughtModal({
   const dictation = useTextDictation({
     onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
     onEmpty: () => toast.error(t('errors.audioProcessing')),
-    onError: message => toast.error(message),
+    onError: words => toast.error(sayFailure(words, t)),
   });
   useScrollLock(isOpen);
 

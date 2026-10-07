@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildRecordingFilename, downloadBlobToDevice, getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
@@ -19,14 +20,16 @@ interface FocusRecorderButtonProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing?: boolean;
   maxDuration?: number; // in seconds, default 90
-  onError?: (error: string) => void;
+  /** A failure of the recorder itself, as words the host says where it shows them. */
+  onError?: (error: FailureWords) => void;
   disabled?: boolean;
   title?: string;
   size?: 'normal' | 'small'; // Size variant for different contexts
   onRetry?: () => void;
   retryCount?: number;
   maxRetries?: number;
-  transcriptionError?: string | null;
+  /** Kept as words and said here, in the language on screen when drawn. */
+  transcriptionError?: FailureWords | null;
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
@@ -405,11 +408,10 @@ export const FocusRecorderButton = ({
   // Error handler
   const handleError = useCallback((error: Error, messageKey: string) => {
     console.error("FocusRecorderButton error:", error);
-    const errorMessage = t(messageKey);
     if (onError) {
-      onError(errorMessage);
+      onError({ key: messageKey });
     } else {
-      alert(errorMessage);
+      alert(t(messageKey));
     }
     cleanup();
     setIsRecording(false);
@@ -763,7 +765,7 @@ export const FocusRecorderButton = ({
         limitReached={transcriptionLimitReached}
         show={shouldShowRecovery}
         audioUrl={storedAudioUrl}
-        errorMessage={transcriptionError ?? null}
+        errorMessage={transcriptionError ? sayFailure(transcriptionError, t) : null}
         appliedVariant="mini"
         retryCount={retryCount}
         maxRetries={maxRetries}

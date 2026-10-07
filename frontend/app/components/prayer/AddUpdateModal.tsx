@@ -72,7 +72,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
               disabled={saving || dictation.transcriptionBlocked} title={transcriptionUnavailableLabel}
               transcriptionError={dictation.error} onRetry={dictation.retry} retryCount={dictation.retryCount}
               maxRetries={dictation.maxRetries} onClearError={dictation.clear}
-              onError={message => { setError({ said: message }); dictation.stopProcessing(); }} />
+              onError={words => { setError(words); dictation.stopProcessing(); }} />
           </div>
         </div>
         <TextareaAutosize value={text} onChange={event => setText(event.target.value)}

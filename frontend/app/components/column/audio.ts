@@ -2,6 +2,7 @@
 import { toast } from "sonner";
 
 import { isUsageCapReachedError } from "@/services/usageLimits";
+import { sayFailure, type FailureWords } from "@/utils/actionFailureMessage";
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 
 import { isPointAudioSection } from "./utils";
@@ -14,7 +15,8 @@ interface RecordAudioThoughtArgs {
   sectionId: string;
   sermonId: string;
   setIsRecordingAudio: React.Dispatch<React.SetStateAction<boolean>>;
-  setAudioError: (error: string | null) => void;
+  /** The failure is kept as words and said where the recorder shows it. */
+  setAudioError: (error: FailureWords | null) => void;
   /** Told apart from a failure: the month's allowance is spent, so retrying cannot help. */
   setLimitReached?: (limitReached: boolean) => void;
   onAudioThoughtCreated?: OnAudioThoughtCreated;
@@ -76,16 +78,16 @@ export const recordAudioThought = async ({
      */
     if (isUsageCapReachedError(error)) {
       setLimitReached?.(true);
-      setAudioError(t("audio.limitReached"));
+      setAudioError({ key: "audio.limitReached" });
       return null;
     }
 
     // Out of time is said in words; "Transcription failed (attempt 1/4): HTTP 504" is for developers.
-    const errorMessage = ranOutOfTime(error)
-      ? t("errors.aiOutOfTimeAudio")
-      : error instanceof Error ? error.message : t("errors.audioProcessing");
-    setAudioError(String(errorMessage));
-    toast.error(String(errorMessage));
+    const words: FailureWords = ranOutOfTime(error)
+      ? { key: "errors.aiOutOfTimeAudio" }
+      : error instanceof Error ? { said: error.message } : { key: "errors.audioProcessing" };
+    setAudioError(words);
+    toast.error(sayFailure(words, t));
     return null;
   } finally {
     setIsRecordingAudio(false);

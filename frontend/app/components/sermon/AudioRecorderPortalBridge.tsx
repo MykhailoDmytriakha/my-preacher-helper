@@ -5,7 +5,9 @@ import { Pencil } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import type { FailureWords } from "@/utils/actionFailureMessage";
 import type { ReactNode } from "react";
+
 
 interface RecorderLikeProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -15,7 +17,7 @@ interface RecorderLikeProps {
   onRetry?: () => void;
   retryCount?: number;
   maxRetries?: number;
-  transcriptionError?: string | null;
+  transcriptionError?: FailureWords | null;
   onClearError?: () => void;
   onDiscardRecording?: () => void;
   hideKeyboardShortcuts?: boolean;
@@ -34,7 +36,7 @@ interface AudioRecorderPortalBridgeProps {
   onRetry: () => void;
   retryCount: number;
   maxRetries?: number;
-  transcriptionError: string | null;
+  transcriptionError: FailureWords | null;
   onClearError: () => void;
   onDiscardRecording?: () => void;
   hideKeyboardShortcuts: boolean;

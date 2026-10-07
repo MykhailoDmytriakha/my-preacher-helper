@@ -13,19 +13,20 @@ import { AudioRecoveryPanel, ErrorBanner } from "./audio-recorder/AudioRecorderC
 import { useAudioRecorderLifecycle } from "./audio-recorder/useAudioRecorderLifecycle";
 
 import type { RecordingState, TranslationFn } from "./audio-recorder/types";
+import type { FailureWords } from "@/utils/actionFailureMessage";
 
 interface FlatRecorderButtonProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing?: boolean;
   maxDuration?: number;
-  onError?: (error: string) => void;
+  onError?: (error: FailureWords) => void;
   disabled?: boolean;
   title?: string;
   className?: string;
   onRetry?: () => void;
   retryCount?: number;
   maxRetries?: number;
-  transcriptionError?: string | null;
+  transcriptionError?: FailureWords | null;
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;

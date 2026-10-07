@@ -1,4 +1,6 @@
+import type { FailureWords } from "@/utils/actionFailureMessage";
 import type { ReactNode } from "react";
+
 
 export type TranslationFn = (key: string) => string;
 export type RecorderVariant = "standard" | "mini";
@@ -8,14 +10,14 @@ export interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing?: boolean;
   maxDuration?: number;
-  onError?: (error: string) => void;
+  onError?: (error: FailureWords) => void;
   disabled?: boolean;
   title?: string;
   className?: string;
   onRetry?: () => void;
   retryCount?: number;
   maxRetries?: number;
-  transcriptionError?: string | null;
+  transcriptionError?: FailureWords | null;
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
@@ -132,10 +134,10 @@ export interface UseAudioRecorderLifecycleArgs {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing: boolean;
   maxDuration: number;
-  onError?: (error: string) => void;
+  onError?: (error: FailureWords) => void;
   disabled: boolean;
   onRetry?: () => void;
-  transcriptionError?: string | null;
+  transcriptionError?: FailureWords | null;
   onClearError?: () => void;
   autoStart: boolean;
   hideKeyboardShortcuts: boolean;

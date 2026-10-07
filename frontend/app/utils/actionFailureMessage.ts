@@ -23,7 +23,11 @@ import { ranOutOfTime } from '@/utils/aiTimeFailure';
  */
 /** A value in a sentence: words as they are, or a key said in the current language (a field's name). */
 export type FailureValue = string | { key: string };
-export type FailureWords = { said: string } | { key: string; values?: Record<string, FailureValue> };
+/** One sentence — by key, or words as they are — or several said one after another (`parts`). */
+export type FailureWords =
+  | { said: string }
+  | { key: string; values?: Record<string, FailureValue> }
+  | { parts: FailureWords[] };
 
 const SAID = new Set(['read-only', 'said']);
 // A Map, not an object: a code such as 'constructor' must not find the prototype.
@@ -101,8 +105,14 @@ export function refusalWords(error: unknown, fallbackKey: string): FailureWords 
 
 type Translate = (key: string, values?: Record<string, string>) => string;
 
+/** Each sentence of the words, in order, however the parts are nested. */
+const sentencesOf = (words: FailureWords, t: Translate): string[] =>
+  'parts' in words ? words.parts.flatMap(part => sentencesOf(part, t)) : [sayFailure(words, t)];
+
 export function sayFailure(words: FailureWords, t: Translate): string {
   if ('said' in words) return words.said;
+  // Two causes that read the same in this language are said once.
+  if ('parts' in words) return [...new Set(sentencesOf(words, t))].join(' ');
   if (!words.values) return t(words.key);
   const values = Object.fromEntries(Object.entries(words.values).map(([name, value]) => [name, typeof value === 'string' ? value : t(value.key)]));
   return t(words.key, values);

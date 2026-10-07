@@ -409,7 +409,7 @@ describe('FocusRecorderButton', () => {
       rerender(
         <FocusRecorderButton
           onRecordingComplete={onRecordingComplete}
-          transcriptionError="transcription failed"
+          transcriptionError={{ said: "transcription failed" }}
           onClearError={onClearError}
         />
       );
@@ -450,7 +450,7 @@ describe('FocusRecorderButton', () => {
         <FocusRecorderButton
           onRecordingComplete={onRecordingComplete}
           onRetry={onRetry}
-          transcriptionError="transcription failed"
+          transcriptionError={{ said: "transcription failed" }}
           onClearError={onClearError}
         />
       );
@@ -560,7 +560,7 @@ describe('FocusRecorderButton', () => {
       fireEvent.click(button);
 
       await waitFor(() => {
-        expect(onError).toHaveBeenCalledWith('errors.microphoneUnavailable');
+        expect(onError).toHaveBeenCalledWith({ key: 'errors.microphoneUnavailable' });
       });
     });
 

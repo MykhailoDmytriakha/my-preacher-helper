@@ -187,24 +187,20 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261006-recorder-error-channel-keeps-sentence · Ошибка записи голоса передаётся и хранится готовой фразой: после смены языка остаётся на прежнем
-**Severity.** P3 — фраза понятна и уходит при следующей записи; голос и текст не теряются. Остаток класса BUG-20261006-screen-error-kept-as-translated-sentence (там экраны переведены на «слова отказа»; этот канал требует смены контракта общего компонента).
-**Найден.** 2026-10-06 · агент, прочёс класса при закрытии той записи, чтением кода; живьём не воспроизводилось.
-**Как должно работать для человека.** Сменил язык — подпись под кнопкой записи о неудачной расшифровке звучит на новом языке, как и всё на экране.
-**Механизм.** Рекордер сам переводит причину и отдаёт родителю строку (`components/FocusRecorderButton.tsx:407` `handleError` → `onError(t(messageKey))`; проп `transcriptionError: string`), а расшифровка строит фразу заранее (`utils/transcriptionRetryClient.ts:267` `buildTranscriptionErrorMessage(err, t)`). Родители держат её в состоянии.
-**Карта класса.**
+### BUG-20261006-recorder-panel-shows-developer-sentence · Панель неудачной записи показывает сырую фразу ошибки: «Transcription failed (attempt 1/4): HTTP 500», «Empty transcription»
+**Severity.** P3 — запись не теряется, повтор работает; но под кнопкой записи человек читает английскую фразу для разработчика, часто рядом с переведённым тостом о той же беде.
+**Найден.** 2026-10-06 · агент, по коду при закрытии BUG-20261006-recorder-error-channel-keeps-sentence (там поведение сознательно сохранено как `{ said: error.message }`); живьём не воспроизводилось.
+**Как должно работать для человека.** Не удалась расшифровка — под кнопкой одна понятная фраза на языке интерфейса (нет связи · сервер не ответил · время вышло · ничего не распознано), та же, что в тосте. Сырая фраза идёт только в консоль.
+**Получилось (по коду).** Ошибка, которая не `TranscriptionClientError` и не таймаут, показывается своим `message`: `services/thought.service.ts:36` бросает «Transcription failed (attempt N/M): …», `:53` «…after all retries…», `components/sermon/ScratchPanel.tsx:334` «Empty transcription».
+**Карта класса (механизм: экран показывает `error.message` ошибки расшифровки как слова человеку).**
 | место | вердикт | почему |
 |---|---|---|
-| `hooks/useTextDictation.ts:23,54` (`dictation.error`) | поражено | строка из `buildTranscriptionErrorMessage` в состоянии |
-| `components/column/audio.ts:79,87` → `components/Column.tsx:177-178` | поражено | `setAudioError(t(…))` в состояние колонки; исключение стража `failuresKeptAsWords` ссылается на эту запись |
-| `components/column/OutlinePointCard.tsx:127` (`subPointAudioErrors`), `:40` (`audioError`) | поражено | строки в состоянии и пропе |
-| `(pages)/(private)/studies/[id]/page.tsx:224` (`voiceError`) | поражено | строка из `buildTranscriptionErrorMessage` |
-| `(pages)/(private)/sermons/[id]/page.tsx:663,1553` (`transcriptionError`) | поражено | `t('errors.aiOutOfTimeAudio')` или сообщение ошибки в состоянии |
-| `components/sermon/ScratchPanel.tsx:145` (`voiceError`) | поражено | фраза расшифровки в состоянии |
-| `components/audio-recorder/useAudioRecorderLifecycle.ts:44` (`transcriptionErrorState`) | поражено | строка ошибки рекордера в состоянии |
-| `components/prayer/AddUpdateModal.tsx:75` | частично | своё «пусто» — ключ; фраза рекордера хранится как есть (`{ said }`) до смены контракта |
-| `components/thought/ThoughtTextHeader.tsx:31` | не поражено | фраза рекордера уходит в тост — сказана один раз |
-**Направление.** Рекордер отдаёт `FailureWords` (`onError(words)`, `transcriptionError: FailureWords | null`), `buildTranscriptionErrorMessage` возвращает слова, а не фразу; переводит тот, кто показывает (`sayFailure`). После — убрать исключения этой записи из `KNOWN` в `__tests__/architecture/failuresKeptAsWords.test.ts` (страж сам скажет, если исключение пережило правку).
+| `components/column/audio.ts:88` (колонка, пункт, подпункт) | поражено | `createAudioThought` бросает фразу `thought.service.ts:36` |
+| `(pages)/(private)/sermons/[id]/page.tsx:1554` (`transcribeHeld`) | поражено | тот же `createAudioThought` |
+| `components/sermon/ScratchPanel.tsx:355` (голос в набросках) | поражено | панель — сырая фраза, тост — переведённый `scratch.voice.error` |
+| `hooks/useTextDictation.ts:56` (мысль, молитва) | не проверено | `transcribeAudioWithRetry` бросает `TranscriptionClientError`; какие иные `Error` доходят сюда — не выяснено |
+| `components/sermon/ScratchPanel.tsx:628` (сборка плана) | не поражено этим классом | это не расшифровка; фраза движка/сервера — отдельный вопрос `.howto/show-an-error-once.md` |
+**Направление.** Сначала выяснить, какие фразы сервера `/api/thoughts/transcribe` и `/api/thoughts` (аудио) адресованы человеку (если есть — переводить их по коду, как `refusalWords`); остальное — ключ по виду отказа через `describeTranscriptionError`/`failureWords`, сырая фраза — в консоль один раз (`logFailureOnce`).
 
 ### BUG-20261006-recovery-list-offers-resolved-and-live-drafts · «Сохранённый черновик» предлагает текст, который человек уже отбросил, и редактор, живой в соседней вкладке
 **Severity.** P3 — текст не теряется и сам никуда не отправляется; но выбор человека («взять чужую версию») не исполнен до конца: отброшенный текст висит предложением без срока, и убрать его нечем.

@@ -142,7 +142,8 @@ export default function ScratchPanel({
   const [isComposing, setIsComposing] = useState(false);
   const [placements, setPlacements] = useState<Record<string, ScratchPlacement>>({});
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // Kept as words: the recovery panel says them in the language on screen.
+  const [voiceError, setVoiceError] = useState<FailureWords | null>(null);
   const [voiceRetryCount, setVoiceRetryCount] = useState(0);
   const [voiceRecoveryUrl, setVoiceRecoveryUrl] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
@@ -310,9 +311,8 @@ export default function ScratchPanel({
   }, [handleAddManualNote, manualDraft, t]);
 
   const surfaceVoiceApplyRecovery = useCallback(() => {
-    const message = t("scratch.voice.applyInProgress");
-    setVoiceError(message);
-    toast.error(message);
+    setVoiceError({ key: "scratch.voice.applyInProgress" });
+    toast.error(t("scratch.voice.applyInProgress"));
   }, [t]);
 
   const runVoiceTranscription = useCallback(
@@ -341,9 +341,8 @@ export default function ScratchPanel({
 
         const note = addScratchNote(polishedText);
         if (!note) {
-          const message = t(VOICE_ERROR_KEY);
-          setVoiceError(message);
-          toast.error(message);
+          setVoiceError({ key: VOICE_ERROR_KEY });
+          toast.error(t(VOICE_ERROR_KEY));
           return;
         }
 
@@ -353,8 +352,7 @@ export default function ScratchPanel({
         clearComposition();
         toast.success(t("scratch.voice.success"), SCRATCH_TOAST_OPTIONS);
       } catch (error) {
-        const message = error instanceof Error ? error.message : t(VOICE_ERROR_KEY);
-        setVoiceError(message);
+        setVoiceError(error instanceof Error ? { said: error.message } : { key: VOICE_ERROR_KEY });
         toast.error(t(VOICE_ERROR_KEY));
       } finally {
         setIsVoiceProcessing(false);
@@ -829,7 +827,7 @@ export default function ScratchPanel({
     <AudioRecoveryPanel
       show={Boolean(voiceError && storedVoiceBlobRef.current && voiceRecoveryUrl)}
       audioUrl={voiceRecoveryUrl}
-      errorMessage={voiceError}
+      errorMessage={voiceError ? sayFailure(voiceError, t) : null}
       appliedVariant="standard"
       retryCount={voiceRetryCount}
       maxRetries={3}

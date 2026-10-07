@@ -78,7 +78,7 @@ export default function EditThoughtModal({
   const dictation = useTextDictation({
     onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
     onEmpty: () => toast.error(t('errors.audioProcessing')),
-    onError: message => toast.error(message),
+    onError: words => toast.error(sayFailure(words, t)),
   });
 
   useScrollLock(true);

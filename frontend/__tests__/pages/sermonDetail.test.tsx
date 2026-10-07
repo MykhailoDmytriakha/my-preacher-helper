@@ -59,7 +59,7 @@ jest.mock('@/utils/recordingDraftStore', () => ({
 jest.mock('@components/AudioRecorder', () => ({
   AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, onDiscardRecording, splitLeft, transcriptionError }: any) => (
     <div data-testid={splitLeft ? "classic-audio-recorder" : "scratch-audio-recorder"}>
-      {transcriptionError && <p data-testid="transcription-error">{transcriptionError}</p>}
+      {transcriptionError && <p data-testid="transcription-error">{jest.requireActual('@/utils/actionFailureMessage').sayFailure(transcriptionError, (key: string) => key)}</p>}
       <button onClick={() => onRecordingComplete?.(new Blob(['test']))}>Mock Record</button>
       <button onClick={() => onRetry?.()}>Mock Retry</button>
       <button onClick={() => onClearError?.()}>Mock Clear</button>

@@ -21,6 +21,7 @@ import { getPlaceholderColors, getPointLockToggleLabel, getSectionIconClasses, i
 
 import type { OnAudioThoughtCreated, ThoughtItemRenderer, Translate } from './types';
 import type { Item, SermonPoint, SubPoint } from '@/models/models';
+import type { FailureWords } from '@/utils/actionFailureMessage';
 
 // Component for rendering outline point placeholder with thoughts
 export const OutlinePointCard: React.FC<{
@@ -37,8 +38,8 @@ export const OutlinePointCard: React.FC<{
   onAudioThoughtCreated?: OnAudioThoughtCreated;
   isFocusMode?: boolean;
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
-  audioError?: string | null;
-  setAudioError: (error: string | null) => void;
+  audioError?: FailureWords | null;
+  setAudioError: (error: FailureWords | null) => void;
   onClearAudioError: () => void;
   onAiSortPoint?: (outlinePointId: string) => void;
   isOnline: boolean;
@@ -124,7 +125,7 @@ export const OutlinePointCard: React.FC<{
   // Local state for audio recording (per outline point)
   const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
   const [subPointProcessingTarget, setSubPointProcessingTarget] = React.useState<string | null>(null);
-  const [subPointAudioErrors, setSubPointAudioErrors] = React.useState<Record<string, string>>({});
+  const [subPointAudioErrors, setSubPointAudioErrors] = React.useState<Record<string, FailureWords>>({});
 
   const createSubPointProcessingSetter = React.useCallback((subPointId: string): React.Dispatch<React.SetStateAction<boolean>> => {
     return (value) => {
@@ -136,7 +137,7 @@ export const OutlinePointCard: React.FC<{
     };
   }, []);
 
-  const setSubPointAudioError = React.useCallback((subPointId: string, error: string | null) => {
+  const setSubPointAudioError = React.useCallback((subPointId: string, error: FailureWords | null) => {
     setSubPointAudioErrors((previous) => {
       if (!error) {
         const next = { ...previous };

@@ -29,20 +29,8 @@ const FAILURE_NAME = /(?:Error|Failure|Notice|Warning)$|^(?:error|failure|notice
 const SAID_SENTENCE = /\bsaid:\s*(?:i18n\.)?t\s*\(/g;
 const VALUE_SENTENCE = /\bvalues:\s*\{[^{}]*?\b(?:i18n\.)?t\s*\(/g;
 
-/**
- * Known, and each with its reason. The recorder hands its parent a translated sentence
- * (`FocusRecorderButton` `onError(message)`, `transcriptionError: string`) and the dictation states
- * around it keep it; changing that contract is its own work: BUG-20261006-recorder-error-channel-keeps-sentence.
- */
-const RECORDER = 'BUG-20261006-recorder-error-channel-keeps-sentence';
+/** Known, and each with its reason. */
 const KNOWN: Record<string, { names: string[]; direct?: boolean; why: string }> = {
-  [join('components', 'column', 'audio.ts')]: { names: [], direct: true, why: RECORDER },
-  [join('components', 'Column.tsx')]: { names: ['sectionAudioError', 'normalAudioError'], why: RECORDER },
-  [join('components', 'sermon', 'ScratchPanel.tsx')]: { names: ['voiceError'], why: RECORDER },
-  [join('components', 'audio-recorder', 'useAudioRecorderLifecycle.ts')]: { names: ['transcriptionErrorState'], why: RECORDER },
-  [join('hooks', 'useTextDictation.ts')]: { names: ['error'], why: RECORDER },
-  [join('(pages)', '(private)', 'studies', '[id]', 'page.tsx')]: { names: ['voiceError'], why: RECORDER },
-  [join('(pages)', '(private)', 'sermons', '[id]', 'page.tsx')]: { names: ['transcriptionError'], why: RECORDER },
   // An exception's own message for the caller to word; nothing translated is kept.
   [join('hooks', 'useClipboard.ts')]: { names: ['error'], why: 'raw message' },
   // Holds a translation key ('common.saveError'), said where it is shown.

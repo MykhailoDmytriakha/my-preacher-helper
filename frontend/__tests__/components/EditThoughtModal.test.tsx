@@ -45,7 +45,7 @@ jest.mock('@components/FocusRecorderButton', () => ({
       <button type="button"
         data-testid="focus-recorder-error"
         disabled={disabled}
-        onClick={() => onError?.('Recorder error')}
+        onClick={() => onError?.({ key: 'errors.microphoneUnavailable' })}
       >
         Recorder Error
       </button>
@@ -462,7 +462,7 @@ describe('EditThoughtModal Component', () => {
 
     fireEvent.click(screen.getByTestId('focus-recorder-error'));
 
-    expect(toast.error).toHaveBeenCalledWith('Recorder error');
+    expect(toast.error).toHaveBeenCalledWith('errors.microphoneUnavailable');
     expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false');
   });
 

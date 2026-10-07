@@ -9,6 +9,7 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { useConnection } from '@/providers/ConnectionProvider';
+import { sayFailure } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { addSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
@@ -85,7 +86,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
         return json(existing ? patchSermonThought(value, existing.id, patch) : addSermonThought(value, { ...newThought, ...patch }));
       }).catch(() => undefined);
     },
-    onEmpty: () => toast.error(t('errors.audioProcessing')), onError: message => toast.error(message),
+    onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,

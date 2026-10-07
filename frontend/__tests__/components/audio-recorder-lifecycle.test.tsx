@@ -216,7 +216,7 @@ describe("useAudioRecorderLifecycle", () => {
       expect(result.current.storedAudioUrl).toBe("blob:stored-audio");
     });
 
-    rerender(createArgs({ ...args, transcriptionError: "boom" }));
+    rerender(createArgs({ ...args, transcriptionError: { said: "boom" } }));
     expect(result.current.transcriptionErrorMessage).toBe("boom");
 
     act(() => {
@@ -270,7 +270,7 @@ describe("useAudioRecorderLifecycle", () => {
       expect(args.onRecordingComplete).toHaveBeenCalledTimes(1);
     });
 
-    rerender(createArgs({ ...args, onRetry: undefined, transcriptionError: "transcription failed" }));
+    rerender(createArgs({ ...args, onRetry: undefined, transcriptionError: { said: "transcription failed" } }));
 
     const onClearError = args.onClearError as jest.Mock;
     const clearCallsBeforeRetry = onClearError.mock.calls.length;
@@ -315,7 +315,7 @@ describe("useAudioRecorderLifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(args.onError).toHaveBeenCalledWith("errors.audioProcessing");
+      expect(args.onError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
     });
     expect(warnSpy).toHaveBeenCalled();
 
@@ -341,7 +341,7 @@ describe("useAudioRecorderLifecycle", () => {
     act(() => {
       result.current.pauseRecording();
     });
-    expect(args.onError).toHaveBeenCalledWith("errors.audioProcessing");
+    expect(args.onError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
 
     await startRecording(result);
     act(() => {
@@ -353,7 +353,7 @@ describe("useAudioRecorderLifecycle", () => {
     act(() => {
       result.current.resumeRecording();
     });
-    expect(args.onError).toHaveBeenCalledWith("errors.audioProcessing");
+    expect(args.onError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
 
     await startRecording(result);
     recorder.stop.mockImplementationOnce(() => {
@@ -362,7 +362,7 @@ describe("useAudioRecorderLifecycle", () => {
     act(() => {
       result.current.stopRecording();
     });
-    expect(args.onError).toHaveBeenCalledWith("errors.audioProcessing");
+    expect(args.onError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
 
     await startRecording(result);
     recorder.stop.mockImplementationOnce(() => {
@@ -453,7 +453,7 @@ describe("useAudioRecorderLifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(args.onError).toHaveBeenCalledWith("errors.audioProcessing");
+      expect(args.onError).toHaveBeenCalledWith({ key: "errors.audioProcessing" });
     });
     expect(args.onRecordingComplete).not.toHaveBeenCalled();
   });

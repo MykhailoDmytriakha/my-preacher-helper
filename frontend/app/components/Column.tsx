@@ -50,6 +50,7 @@ import { SermonSectionGuidanceTooltip } from "./SermonGuidanceTooltips";
 import SortableItem from "./SortableItem";
 
 import type { ColumnProps, ThoughtItemRenderer } from "./column/types";
+import type { FailureWords } from "@/utils/actionFailureMessage";
 
 type ColumnComponentProps = ColumnProps & { showNotes?: boolean };
 
@@ -177,21 +178,22 @@ export default function Column({
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
-  const [sectionAudioError, setSectionAudioError] = useState<string | null>(null);
-  const [normalAudioError, setNormalAudioError] = useState<string | null>(null);
-  const [pointAudioErrors, setPointAudioErrors] = useState<Record<string, string>>({});
+  // Kept as words: the recorder says them in the language on screen.
+  const [sectionAudioError, setSectionAudioError] = useState<FailureWords | null>(null);
+  const [normalAudioError, setNormalAudioError] = useState<FailureWords | null>(null);
+  const [pointAudioErrors, setPointAudioErrors] = useState<Record<string, FailureWords>>({});
   // One flag for the whole column: the monthly allowance is an account-wide fact, not a
   // property of the recording that happened to meet it.
   const [audioLimitReached, setAudioLimitReached] = useState(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
-  const normalAudioErrorRef = useRef<string | null>(null);
+  const normalAudioErrorRef = useRef<FailureWords | null>(null);
 
-  const setNormalAudioErrorSafely = useCallback((error: string | null) => {
+  const setNormalAudioErrorSafely = useCallback((error: FailureWords | null) => {
     normalAudioErrorRef.current = error;
     setNormalAudioError(error);
   }, []);
 
-  const setPointAudioError = useCallback((pointId: string, error: string | null) => {
+  const setPointAudioError = useCallback((pointId: string, error: FailureWords | null) => {
     setPointAudioErrors((previous) => {
       if (!error) {
         const next = { ...previous };

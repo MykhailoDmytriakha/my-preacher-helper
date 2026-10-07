@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { UsageCapReachedError } from '@/services/usageLimits';
+import { sayFailure } from '@/utils/actionFailureMessage';
 import { transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 
 const mockRefresh = jest.fn();
@@ -9,14 +10,16 @@ let mockBlocked = false;
 jest.mock('@/hooks/useAiUsage', () => ({
   useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ transcriptionBlocked: mockBlocked, refresh: mockRefresh }),
 }));
-jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+// English says the key; another language prefixes it, so a test can switch the language.
+let mockLanguage = 'en';
+jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => (mockLanguage === 'en' ? key : `${mockLanguage}:${key}`) }) }));
 jest.mock('@/utils/transcriptionRetryClient', () => ({
   ...jest.requireActual('@/utils/transcriptionRetryClient'), transcribeAudioWithRetry: jest.fn(),
 }));
 const transcribe = jest.mocked(transcribeAudioWithRetry);
 const blob = new Blob(['recording']);
 const options = () => ({ onText: jest.fn(), onEmpty: jest.fn(), onError: jest.fn(), onStart: jest.fn() });
-beforeEach(() => { transcribe.mockReset(); mockRefresh.mockReset().mockResolvedValue(undefined); mockBlocked = false; });
+beforeEach(() => { transcribe.mockReset(); mockRefresh.mockReset().mockResolvedValue(undefined); mockBlocked = false; mockLanguage = 'en'; });
 
 it('publishes original text when polish is absent, refreshes usage after publishing, and exposes quota state', async () => {
   const callbacks = options();
@@ -39,16 +42,16 @@ it('publishes original text when polish is absent, refreshes usage after publish
 });
 
 it.each([
-  [new Error('Transport stopped'), 'Transport stopped'],
-  ['untyped failure', 'custom.fallback'],
-  [new TranscriptionClientError([{ kind: 'server', status: 503, message: 'Raw server failure' }]), 'audio.transcribeError.server'],
-])('retains recoverable audio for %s and discards it explicitly', async (error, message) => {
+  [new Error('Transport stopped'), { said: 'Transport stopped' }],
+  ['untyped failure', { key: 'custom.fallback' }],
+  [new TranscriptionClientError([{ kind: 'server', status: 503, message: 'Raw server failure' }]), { key: 'audio.transcribeError.server' }],
+])('retains recoverable audio for %s and discards it explicitly', async (error, words) => {
   transcribe.mockRejectedValue(error);
   const callbacks = options();
   const { result } = renderHook(() => useTextDictation({ ...callbacks, fallbackErrorKey: 'custom.fallback' }));
   act(() => result.current.complete(blob));
-  await waitFor(() => expect(result.current.error).toBe(message));
-  expect(callbacks.onError).toHaveBeenCalledWith(message);
+  await waitFor(() => expect(result.current.error).toEqual(words));
+  expect(callbacks.onError).toHaveBeenCalledWith(words);
   expect(callbacks.onText).not.toHaveBeenCalled();
   expect(mockRefresh).not.toHaveBeenCalled();
   act(() => result.current.retry());
@@ -85,5 +88,20 @@ it('handles empty results without refreshing usage and allows callers with no op
   expect(mockRefresh).not.toHaveBeenCalled();
   transcribe.mockRejectedValueOnce('untyped failure');
   act(() => result.current.complete(blob));
-  await waitFor(() => expect(result.current.error).toBe('errors.audioProcessing'));
+  await waitFor(() => expect(result.current.error).toEqual({ key: 'errors.audioProcessing' }));
+});
+
+it('keeps a failed transcription as words a recorder says in the language on screen', async () => {
+  transcribe.mockRejectedValue(new TranscriptionClientError([
+    { kind: 'network', status: 0, message: 'reset' }, { kind: 'network', status: 0, message: 'reset' },
+  ]));
+  const { result, rerender } = renderHook(() => useTextDictation(options()));
+  act(() => result.current.complete(blob));
+  await waitFor(() => expect(result.current.error).not.toBeNull());
+
+  mockLanguage = 'uk';
+  rerender();
+
+  // What a recorder shows for the kept failure now: words are said with the current language.
+  expect(sayFailure(result.current.error!, key => `uk:${key}`)).toBe('uk:audio.transcribeError.network uk:audio.transcribeError.billingHint');
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { sayFailure, type FailureWords } from "@/utils/actionFailureMessage";
 import {
   buildRecordingFilename,
   createConfiguredMediaRecorder,
@@ -41,7 +42,7 @@ export function useAudioRecorderLifecycle({
   const [isInitializing, setIsInitializing] = useState(false);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [storedAudioUrl, setStoredAudioUrl] = useState<string | null>(null);
-  const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
+  const [transcriptionErrorState, setTranscriptionErrorState] = useState<FailureWords | null>(null);
   const gracePeriodDuration = getAudioGracePeriod();
   const [isInGracePeriod, setIsInGracePeriod] = useState(false);
   const [gracePeriodRemaining, setGracePeriodRemaining] = useState(gracePeriodDuration);
@@ -93,11 +94,10 @@ export function useAudioRecorderLifecycle({
   const handleError = useCallback(
     (error: Error, messageKey: string) => {
       console.error("AudioRecorder error:", error);
-      const errorMessage = t(messageKey);
       if (onError) {
-        onError(errorMessage);
+        onError({ key: messageKey });
       } else {
-        alert(errorMessage);
+        alert(t(messageKey));
       }
       isRecordingRef.current = false;
       isPausedRef.current = false;
@@ -592,6 +592,7 @@ export function useAudioRecorderLifecycle({
     return "idle";
   }, [isInitializing, isPaused, isProcessing, isRecording]);
 
+  const keptError = transcriptionErrorState ?? transcriptionError ?? null;
   return {
     recordingTime,
     isRecording,
@@ -601,7 +602,8 @@ export function useAudioRecorderLifecycle({
     isInGracePeriod,
     gracePeriodRemaining,
     recordingState,
-    transcriptionErrorMessage: transcriptionErrorState || transcriptionError || null,
+    // Kept as words, said now: a language switch re-says the failure on screen.
+    transcriptionErrorMessage: keptError ? sayFailure(keptError, t) : null,
     hasStoredAudio: Boolean(storedAudioBlob),
     storedAudioUrl,
     startRecording,

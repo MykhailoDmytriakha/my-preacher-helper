@@ -24,7 +24,7 @@ jest.mock('@/components/AudioRecorder', () => ({
     <div
       data-testid="audio-recorder-stub"
       data-autostart={String(!!props.autoStart)}
-      data-transcription-error={props.transcriptionError ?? ''}
+      data-transcription-error={props.transcriptionError ? jest.requireActual('@/utils/actionFailureMessage').sayFailure(props.transcriptionError, (key: string) => key) : ''}
     >
       <button type="button" onClick={() => props.onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}>
         Complete audio
