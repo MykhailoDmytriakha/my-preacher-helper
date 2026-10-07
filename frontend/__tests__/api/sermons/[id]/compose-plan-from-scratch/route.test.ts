@@ -116,8 +116,46 @@ describe('compose-plan-from-scratch route', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline, 'user-1');
+    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline, 'user-1', expect.any(Number));
     expect(body).toEqual({ outline });
+  });
+
+  it('answers its own 504 in time when reading the sermon stalls past the deadline', async () => {
+    jest.useFakeTimers();
+    try {
+      (adminAuth.verifyIdToken as jest.Mock).mockResolvedValueOnce({ uid: 'user-1' });
+      (sermonsRepository.fetchSermonById as jest.Mock).mockImplementationOnce(() => new Promise(() => undefined));
+      let response: Response | undefined;
+      void postWithToken('valid-token').then((answer: Response) => { response = answer; });
+
+      await jest.advanceTimersByTimeAsync(45_000);
+
+      expect(response?.status).toBe(504);
+      expect(await response?.json()).toEqual(expect.objectContaining({ code: 'deadline-exceeded' }));
+      expect(composePlanFromScratch).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('counts the model deadline from the moment the request arrived, not from the model call', async () => {
+    let clock = 1_000;
+    const now = jest.spyOn(performance, 'now').mockImplementation(() => clock);
+    try {
+      (adminAuth.verifyIdToken as jest.Mock).mockResolvedValueOnce({ uid: 'user-1' });
+      // Reading the sermon takes thirty seconds of the wall.
+      (sermonsRepository.fetchSermonById as jest.Mock).mockImplementationOnce(async () => {
+        clock += 30_000;
+        return { id: 'sermon-1', userId: 'user-1', scratch: [{ id: 'n1', text: 'Intro', createdAt: '2026-07-04T00:00:00.000Z' }], outline: { introduction: [], main: [], conclusion: [] } };
+      });
+      (composePlanFromScratch as jest.Mock).mockResolvedValueOnce({ outline: { introduction: [], main: [], conclusion: [] }, success: true });
+
+      await postWithToken('valid-token');
+
+      expect((composePlanFromScratch as jest.Mock).mock.calls[0][3]).toBe(1_000 + 45_000);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('answers 504 with a deadline code when compose stopped at its own deadline', async () => {
@@ -176,7 +214,8 @@ describe('compose-plan-from-scratch route', () => {
         scratch: [sermon.scratch[1]],
       }),
       sermon.outline,
-      'user-1'
+      'user-1',
+      expect.any(Number)
     );
     expect(body).toEqual({ outline });
   });
@@ -225,7 +264,7 @@ describe('compose-plan-from-scratch route', () => {
     const response = await postWithToken('valid-token');
 
     expect(response.status).toBe(200);
-    expect(composePlanFromScratch).toHaveBeenCalledWith(ownedSermon, ownedSermon.outline, 'user-1');
+    expect(composePlanFromScratch).toHaveBeenCalledWith(ownedSermon, ownedSermon.outline, 'user-1', expect.any(Number));
   });
 
   it('rejects an empty selection rather than answering 200 with an untouched outline', async () => {
@@ -297,7 +336,7 @@ describe('pinned proposal generation source', () => {
       scratch: [note, { id: 'new', text: 'Unrelated', createdAt: 'later' }] });
     (composePlanFromScratch as jest.Mock).mockResolvedValue({ success: true, outline, unplacedScratchNoteIds: [] });
     const response = await postWithToken('valid', { existingOutline: outline, scratchNoteIds: ['n1'], expectedSource: source });
-    expect(response.status).toBe(200); expect(composePlanFromScratch).toHaveBeenCalledWith(expect.objectContaining({ scratch: [note] }), outline, 'owner');
+    expect(response.status).toBe(200); expect(composePlanFromScratch).toHaveBeenCalledWith(expect.objectContaining({ scratch: [note] }), outline, 'owner', expect.any(Number));
   });
   it('rejects malformed source assertions instead of falling back to current server data', async () => {
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'owner', scratch: [note] });

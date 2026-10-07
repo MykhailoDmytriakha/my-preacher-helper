@@ -8,7 +8,9 @@ import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { scratchComposeSource } from '@/utils/scratchComposeSource';
+import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
 import { composePlanFromScratch } from '@clients/openAI.client';
+import { COMPOSE_PLAN_DEADLINE_MS } from '@clients/sermon.structured';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
@@ -128,9 +130,22 @@ function composeFailure(timedOut: boolean) {
     );
 }
 
+/** A refusal the route already has words for: a spent allowance, or its own deadline. */
+function knownRefusal(error: unknown) {
+  if (isUsageCapReachedError(error)) return usageCapResponse(error);
+  if (error instanceof RouteDeadlineError) return composeFailure(true);
+  return null;
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // The wall is set once, when the request arrives: reading the sermon spends the same seconds the
+  // model would get (BUG-20261006-ai-call-outlives-the-wall).
+  const deadline = performance.now() + COMPOSE_PLAN_DEADLINE_MS;
+  // A stalled read before the model is waited for only until the same deadline.
+  const beforeDeadline = <T>(read: () => Promise<T>, stage: string) =>
+    withinDeadline(read, deadline, () => new RouteDeadlineError(stage));
   try {
-    const uid = await getRequiredAuthenticatedUid(request);
+    const uid = await beforeDeadline(() => getRequiredAuthenticatedUid(request), 'while checking the caller');
     if (!uid) {
       return jsonNoStore({ error: 'User not authenticated' }, { status: 401 });
     }
@@ -141,7 +156,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'Sermon ID is required' }, { status: 400 });
     }
 
-    const sermon = await sermonsRepository.fetchSermonById(sermonId);
+    const sermon = await beforeDeadline(() => sermonsRepository.fetchSermonById(sermonId), 'while reading the sermon');
     if (!sermon) {
       return jsonNoStore({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
@@ -150,7 +165,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const read = await readComposeRequest(request);
+    const read = await beforeDeadline(() => readComposeRequest(request), 'while reading the request');
     if (read.kind === 'invalid') {
       return jsonNoStore({ error: read.reason }, { status: 400 });
     }
@@ -175,7 +190,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { outline, success, unplacedScratchNoteIds, timedOut } = await composePlanFromScratch(
       sermonForCompose,
       existingOutline,
-      uid
+      uid,
+      deadline
     );
 
     if (!success) return composeFailure(Boolean(timedOut));
@@ -199,7 +215,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     // so the interface can say it out loud instead of quietly growing orphan points.
     return jsonNoStore({ outline: parsedOutline.data, unplacedScratchNoteIds });
   } catch (error: unknown) {
-    if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    const refusal = knownRefusal(error);
+    if (refusal) return refusal;
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     if (message === SERMON_NOT_FOUND_ERROR) {
       return jsonNoStore({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });

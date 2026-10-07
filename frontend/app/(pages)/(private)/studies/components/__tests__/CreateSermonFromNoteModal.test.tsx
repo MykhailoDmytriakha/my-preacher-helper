@@ -284,6 +284,18 @@ describe('CreateSermonFromNoteModal', () => {
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('a cut that got no answer in the time allowed says so, not a generic failure', async () => {
+    const user = userEvent.setup();
+    mockCut.mockRejectedValueOnce(new CutStudyNoteError('Cut timed out', 504));
+    renderModal();
+
+    await user.click(createButton());
+
+    await waitFor(() => expect(screen.getByTestId('create-sermon-step-cut:0')).toHaveAttribute('data-status', 'error'));
+    expect(screen.getByTestId('create-sermon-step-cut:0')).toHaveTextContent('errors.aiOutOfTime');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
   it('a failed create keeps the atoms, does not pay for a second cut, and retries under the SAME id', async () => {
     const user = userEvent.setup();
     mockCreate.mockRejectedValueOnce(new Error('network'));

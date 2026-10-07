@@ -11,6 +11,7 @@ import { createFenceTracker } from '@/utils/markdownFence';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { RouteDeadlineError, withinDeadline } from '@/utils/withinDeadline';
 import { cutStudyNoteIntoScratch } from '@clients/studyNoteCut.structured';
 import { studiesRepository } from '@repositories/studies.repository';
 
@@ -217,17 +218,24 @@ async function readSliceWindow(request: Request): Promise<{ offset: number; limi
   return { offset, limit };
 }
 
+const cutTimedOut = () =>
+  NextResponse.json({ success: false, error: 'Cut timed out', code: 'deadline-exceeded' }, { status: 504 });
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   // The wall is 60s; the model gets what is left after the note is loaded, minus a margin
-  // for grounding the answer and writing the response.
-  const wallStartedAt = Date.now();
+  // for grounding the answer and writing the response. Set once, when the request arrives: a
+  // stalled read before the model is waited for only until the same moment
+  // (BUG-20261006-ai-call-outlives-the-wall).
+  const modelDeadline = performance.now() + MODEL_BUDGET_MS;
+  const beforeDeadline = <T>(read: () => Promise<T>, stage: string) =>
+    withinDeadline(read, modelDeadline, () => new RouteDeadlineError(stage));
   try {
-    const loaded = await loadOwnedNote(request, params);
+    const loaded = await beforeDeadline(() => loadOwnedNote(request, params), 'while reading the note');
     if ('refusal' in loaded) return loaded.refusal;
     const { id, uid, note, content } = loaded;
 
     const allSections = splitNoteIntoSections(content);
-    const { offset, limit } = await readSliceWindow(request);
+    const { offset, limit } = await beforeDeadline(() => readSliceWindow(request), 'while reading the request');
     const slice = sliceSections(allSections, offset, limit);
     if (slice.length === 0) {
       return NextResponse.json(
@@ -246,11 +254,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       slice: isPartial
         ? { from: slice[0].index + 1, to: slice[slice.length - 1].index + 1, total: allSections.length }
         : undefined,
-      budgetMs: Math.max(15_000, MODEL_BUDGET_MS - (Date.now() - wallStartedAt)),
+      // What is left, with no floor: a floor would hand the model time the wall no longer has.
+      budgetMs: modelDeadline - performance.now(),
     });
 
     if (!result.success || !result.data) {
       console.error('Studies cut route: cut failed', result.error);
+      // Its own deadline fired: a 504 with a code lets the dialog say "no answer in the time allowed".
+      if (result.timedOut) return cutTimedOut();
       return NextResponse.json({ success: false, error: result.error ?? 'Failed to cut the note' }, { status: 500 });
     }
 
@@ -301,6 +312,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(body);
   } catch (error) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof RouteDeadlineError) return cutTimedOut();
     console.error('Studies cut route: error', error);
     return NextResponse.json({ success: false, error: 'Failed to cut the study note' }, { status: 500 });
   }

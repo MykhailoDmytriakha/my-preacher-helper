@@ -108,11 +108,33 @@ describe('cutStudyNoteIntoScratch', () => {
     expect(result.success).toBe(false);
   });
 
-  it('does not start an attempt the budget cannot pay for', async () => {
+  it('does not start an attempt the budget cannot pay for, the first one included, and says it timed out', async () => {
     mockCall.mockResolvedValue({ data: null, error: new Error('503 status code (no body)') });
     const result = await cutStudyNoteIntoScratch({ content: NOTE, budgetMs: 1_000 });
-    expect(mockCall).toHaveBeenCalledTimes(1);
+    expect(mockCall).not.toHaveBeenCalled();
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/timed out/);
+    expect(result.timedOut).toBe(true);
+  });
+
+  it('checks the budget again after the pause, when the pause ran late', async () => {
+    let clock = 0;
+    const realNow = Date.now;
+    Date.now = () => clock;
+    const logger = jest.requireMock('@clients/openAIHelpers').logger as { warn: jest.Mock };
+    try {
+      mockCall.mockImplementationOnce(async () => { clock = 16_000; return { data: null, error: new Error('503 status code (no body)') }; });
+      // The warning is said right before the pause; the pause then runs two seconds late.
+      logger.warn.mockImplementationOnce(() => { clock += 2_000; });
+      const result = await cutStudyNoteIntoScratch({ content: NOTE, budgetMs: 30_000 });
+      expect(mockCall).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      // The provider's failure is the cause; time only ran out for a second try.
+      expect(result.error).toMatch(/503/);
+      expect(result.timedOut).toBe(false);
+    } finally {
+      Date.now = realNow;
+    }
   });
 
   it('tells the model when it is reading only part of the note', async () => {

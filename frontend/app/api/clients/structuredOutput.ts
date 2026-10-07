@@ -16,6 +16,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
 import { isUsageCapReachedError } from "@/services/usageLimits";
+import { withinDeadline } from "@/utils/withinDeadline";
 
 import { providerAdapters } from "./ai/providerAdapters";
 import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
@@ -87,7 +88,7 @@ async function executeStructuredTarget<T extends z.ZodType>(
     userMessage: string;
     schema: T;
     formatName: string;
-    requestOptions?: { timeout?: number; maxRetries?: number };
+    requestOptions?: AttemptOptions;
   }
 ) {
   const client = providerAdapters[target.providerId].client;
@@ -107,6 +108,28 @@ async function executeStructuredTarget<T extends z.ZodType>(
   return requestOptions
     ? client.beta.chat.completions.parse(params, requestOptions)
     : client.beta.chat.completions.parse(params);
+}
+
+/** A signal that ends with the chain's deadline: for the attempt in flight, its answer's body included. */
+function abortAtDeadline(chainDeadline: number | null): { signal: AbortSignal; clear: () => void } | null {
+  if (chainDeadline === null) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(0, chainDeadline - performance.now()));
+  return { signal: controller.signal, clear: () => clearTimeout(timer) };
+}
+
+/** One attempt; cut by the chain's deadline, it is the timeout it is, not a transport failure. */
+async function executeBeforeDeadline<T extends z.ZodType>(
+  target: ModelTarget,
+  args: Parameters<typeof executeStructuredTarget<T>>[1],
+  signal: AbortSignal | undefined
+) {
+  try {
+    return await executeStructuredTarget(target, args);
+  } catch (error) {
+    if (signal?.aborted) throw new ChainDeadlineError('while the answer was read', error);
+    throw error;
+  }
 }
 
 /**
@@ -140,6 +163,8 @@ export class ChainDeadlineError extends Error {
 }
 
 type RequestOptions = StructuredOutputOptions['requestOptions'];
+/** What one attempt is sent with: the caller's options, and the signal that ends the chain. */
+type AttemptOptions = { timeout?: number; maxRetries?: number; signal?: AbortSignal };
 
 /**
  * ONE DEADLINE FOR THE WHOLE CHAIN (BUG-20261003-ai-chain-deadline-not-whole-chain). The caller owns
@@ -157,26 +182,19 @@ function ownChainDeadline(requestOptions: RequestOptions): number | null {
  * Preparation work (reading the plan, choosing the models) is started only while the deadline lasts
  * and waited for only until it runs out; work that loses the race still has its outcome handled.
  */
-async function withinChainDeadline<T>(start: () => Promise<T>, chainDeadline: number | null, stage: string): Promise<T> {
-  if (chainDeadline === null) return start();
-  const left = chainDeadline - performance.now();
-  if (left <= 0) throw new ChainDeadlineError(stage);
-  const work = start();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new ChainDeadlineError(stage)), left); }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
+function withinChainDeadline<T>(start: () => Promise<T>, chainDeadline: number | null, stage: string): Promise<T> {
+  return chainDeadline === null ? start() : withinDeadline(start, chainDeadline, () => new ChainDeadlineError(stage));
 }
 
-/** Every attempt gets only what is left of the caller's deadline — whole milliseconds, as the SDK requires. */
-function requestOptionsForAttempt(requestOptions: RequestOptions, chainDeadline: number | null): RequestOptions {
+/**
+ * Every attempt gets only what is left of the caller's deadline — whole milliseconds, as the SDK
+ * requires — and the signal that ends with it. The SDK's own timer stops once the headers arrive, so
+ * an answer whose body is still being read would otherwise run past the wall
+ * (BUG-20261006-ai-call-outlives-the-wall); the signal reaches the body as well.
+ */
+function requestOptionsForAttempt(requestOptions: RequestOptions, chainDeadline: number | null, signal: AbortSignal | undefined): AttemptOptions | undefined {
   return chainDeadline !== null
-    ? { ...requestOptions, timeout: Math.max(1, Math.floor(chainDeadline - performance.now())) }
+    ? { ...requestOptions, timeout: Math.max(1, Math.floor(chainDeadline - performance.now())), ...(signal ? { signal } : {}) }
     : requestOptions;
 }
 
@@ -288,6 +306,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   const startTime = performance.now();
   // Counted from here: reading the plan and the opening telemetry spend the same deadline as the models.
   const chainDeadline = ownChainDeadline(options.requestOptions);
+  const chainAbort = abortAtDeadline(chainDeadline);
   // Объявлено вне try: ветка ошибки обязана дописать ТУ ЖЕ карточку, а не создать
   // вторую. Остаётся null, если падение случилось раньше отметки входа.
   let telemetryEventId: string | null = null;
@@ -339,13 +358,13 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
     const completion = await runWithFallback(
       targets,
-      (target) => executeStructuredTarget(target, {
+      (target) => executeBeforeDeadline(target, {
         systemPrompt: promptBlueprint.systemPrompt,
         userMessage: promptBlueprint.userMessage,
         schema,
         formatName,
-        requestOptions: requestOptionsForAttempt(options.requestOptions, chainDeadline),
-      }),
+        requestOptions: requestOptionsForAttempt(options.requestOptions, chainDeadline, chainAbort?.signal),
+      }, chainAbort?.signal),
       (target) => {
         executionState.target = target;
         logger.info(operationName, `Starting structured output call using model: ${target.modelId}`);
@@ -505,6 +524,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       refusal: null,
       error: error instanceof Error ? error : new Error(String(error)),
     };
+  } finally {
+    chainAbort?.clear();
   }
 }
 

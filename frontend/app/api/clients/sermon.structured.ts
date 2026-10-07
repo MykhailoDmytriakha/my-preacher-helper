@@ -41,6 +41,7 @@ import {
     OutlinePoint,
     SubPoint,
 } from "@/models/models";
+import { stoppedAtDeadline } from "@/utils/aiTimeFailure";
 
 import { extractSectionContent, extractSermonContent } from "./openAIHelpers";
 import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
@@ -54,11 +55,12 @@ type ComposeSectionKey = 'introduction' | 'main' | 'conclusion';
 const COMPOSE_SECTION_KEYS: ComposeSectionKey[] = ['introduction', 'main', 'conclusion'];
 
 /**
- * Compose-plan per-request deadline. Sits under the 60s Vercel function wall so a stalled
- * provider is aborted by us with a real error instead of the platform killing the whole
- * invocation with an empty 504. Measured healthy latency for this call is ~2s.
+ * Compose-plan deadline, counted from the moment the route received the request. Sits under the
+ * 60s Vercel function wall so a stalled provider is aborted by us with a real error instead of the
+ * platform killing the whole invocation with an empty 504; the rest of the wall is for charging
+ * the call and answering. Measured healthy latency for this call is ~2s.
  */
-const COMPOSE_PLAN_REQUEST_TIMEOUT_MS = 45_000;
+export const COMPOSE_PLAN_DEADLINE_MS = 45_000;
 
 // ===== Structured Output Functions =====
 
@@ -632,7 +634,12 @@ function normalizeKeyedComposePlan(
 export async function composePlanFromScratchStructured(
     sermon: Sermon,
     existingOutline?: SermonOutline,
-    userId: string = sermon.userId
+    userId: string = sermon.userId,
+    /**
+     * The route's deadline on the `performance.now()` clock: the model gets what is LEFT of it, not
+     * a fresh 45 s after the route has already spent time reading (BUG-20261006-ai-call-outlives-the-wall).
+     */
+    deadline: number = performance.now() + COMPOSE_PLAN_DEADLINE_MS
 ): Promise<{ outline: ComposedPlanOutline; success: boolean; unplacedScratchNoteIds: string[]; timedOut?: boolean }> {
     const scratch = sermon.scratch ?? [];
     const outlineToAugment = existingOutline ?? sermon.outline;
@@ -729,7 +736,7 @@ Arrange every note. Return keys and headings only.`;
             // retry silently (its default is 2 hidden retries with a 10-minute timeout).
             // A slow provider is then aborted by US — a typed error the route can answer
             // with — instead of the platform killing the function with no JSON body.
-            requestOptions: { timeout: COMPOSE_PLAN_REQUEST_TIMEOUT_MS, maxRetries: 0 },
+            requestOptions: { timeout: Math.max(1, Math.floor(deadline - performance.now())), maxRetries: 0 },
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -745,7 +752,7 @@ Arrange every note. Return keys and headings only.`;
         console.error("ERROR: Failed to compose plan from scratch:", result.error || result.refusal);
         // Our own deadline is what fired: the route says so with a 504, and the screen can say
         // "no answer in the time allowed" instead of a generic failure (.howto/raise-route-time-limit.md).
-        const timedOut = Boolean(result.error && (result.error.name === "APIConnectionTimeoutError" || /\btimed out\b/i.test(result.error.message)));
+        const timedOut = stoppedAtDeadline(result.error);
         return { outline: baseOutline, success: false, unplacedScratchNoteIds: [], timedOut };
     }
 

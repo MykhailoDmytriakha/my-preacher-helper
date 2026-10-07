@@ -51,6 +51,17 @@ describe('sermon.structured', () => {
     expect((await composePlanFromScratchStructured(sermonWithScratch)).timedOut).toBe(false);
   });
 
+  it('gives the model what is left of the route deadline, not a fresh one', async () => {
+    const sermonWithScratch = { ...baseSermon, scratch: [{ id: 'n1', text: 'A note', createdAt: '2026-07-04T00:00:00.000Z' }] } as Sermon;
+    mockStructuredCall.mockResolvedValueOnce({ success: false, data: null, refusal: null, error: new Error('Invalid schema') });
+    // The route already spent 35 of its 45 seconds reading the sermon.
+    await composePlanFromScratchStructured(sermonWithScratch, undefined, 'user-1', performance.now() + 10_000);
+    const { timeout, maxRetries } = mockStructuredCall.mock.calls[0][3].requestOptions;
+    expect(maxRetries).toBe(0);
+    expect(timeout).toBeLessThanOrEqual(10_000);
+    expect(timeout).toBeGreaterThan(9_000);
+  });
+
   it('returns structured insights on success', async () => {
     mockStructuredCall.mockResolvedValue({
       success: true,

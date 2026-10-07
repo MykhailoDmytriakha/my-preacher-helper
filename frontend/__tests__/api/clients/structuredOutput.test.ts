@@ -586,6 +586,31 @@ describe('structuredOutput client', () => {
       expect(String(result.error?.message)).toMatch(/timed out/);
     });
 
+    it('cuts an answer whose body is still being read when the deadline runs out, and says it timed out', async () => {
+      // The SDK's own timer stops once the headers arrive; only the caller's signal still reaches the body.
+      openRouterParseMock.mockImplementationOnce((_params: unknown, options: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => reject(Object.assign(new Error('This operation was aborted'), { name: 'AbortError' })));
+      }));
+      jest.useFakeTimers();
+      try {
+        const mod = await import('@/api/clients/structuredOutput');
+        let settled = false;
+        const call = mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+          formatName: 'test-format',
+          userId: 'paid-user',
+          requestOptions: { timeout: 45_000, maxRetries: 0 },
+        }).finally(() => { settled = true; });
+
+        await jest.advanceTimersByTimeAsync(45_000);
+        expect(settled).toBe(true);
+        const result = await call;
+        expect(result.success).toBe(false);
+        expect(String(result.error?.message)).toMatch(/timed out/);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('counts reading the plan inside the deadline', async () => {
       mockGetUserEntitlementServerSide.mockImplementation(async () => {
         clock += 30_000;

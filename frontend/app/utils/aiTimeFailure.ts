@@ -20,6 +20,16 @@ export function ranOutOfTime(error: unknown, status?: number): boolean {
   return code === 408 || code === 504;
 }
 
+/**
+ * Did a server-side AI call stop at its owner's own deadline — the chain's (`ChainDeadlineError`,
+ * "AI call timed out") or the SDK's per-request timer (`APIConnectionTimeoutError`)? The route then
+ * answers a 504 with a code, which `ranOutOfTime` reads on the screen. Not "timeout" alone: a
+ * "timeout must be positive" refusal is a bad request, not a late answer.
+ */
+export function stoppedAtDeadline(error: { name?: string; message?: string } | null | undefined): boolean {
+  return Boolean(error && (error.name === 'APIConnectionTimeoutError' || /\btimed out\b/i.test(error.message ?? '')));
+}
+
 /** The error a client throws for a non-OK response, carrying the status `ranOutOfTime` reads. */
 export function withStatus(error: Error, status: number): Error & { status: number } {
   return Object.assign(error, { status });

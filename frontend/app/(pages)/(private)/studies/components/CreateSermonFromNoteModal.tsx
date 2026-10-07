@@ -27,6 +27,7 @@ import {
   type NoteCutOutline,
 } from '@/services/studies.service';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -419,6 +420,8 @@ export default function CreateSermonFromNoteModal({
       if (cause.status === 422) return { key: 'studiesWorkspace.createSermon.errors.nothingCut' };
     }
     if (step === PLAN_STEP) return { key: 'studiesWorkspace.createSermon.errors.planFailed' };
+    // A cut that got no answer in the time allowed (the route's own 504, the client's 90 s) says so.
+    if (step !== CREATE_STEP && ranOutOfTime(cause)) return { key: 'errors.aiOutOfTime' };
     if (step !== CREATE_STEP) return { key: 'studiesWorkspace.createSermon.errors.cutFailed' };
     return { key: 'studiesWorkspace.createSermon.errors.createFailed' };
   };

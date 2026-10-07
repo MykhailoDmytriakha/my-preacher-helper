@@ -12,6 +12,7 @@
  */
 import { CutNoteResponseSchema, type CutNoteResponse, type CutNoteSection } from '@/config/schemas/zod';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { stoppedAtDeadline } from '@/utils/aiTimeFailure';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 
 import { logger } from './openAIHelpers';
@@ -42,6 +43,8 @@ export interface CutStudyNoteResult {
   success: boolean;
   data: CutNoteResponse | null;
   error: string | null;
+  /** The cut stopped at the route's own deadline: the route answers 504, not a generic failure. */
+  timedOut?: boolean;
 }
 
 const PROMPT_NAME = 'studies.note.cut_scratch';
@@ -204,12 +207,16 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
      * A failed attempt costs no quota: usage is consumed only on a successful call.
      */
     const deadline = Date.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS);
-    let result: StructuredOutputResult<CutNoteResponse>;
+    let result: StructuredOutputResult<CutNoteResponse> | null = null;
     let attempt = 0;
     for (;;) {
-      attempt += 1;
       const remaining = deadline - Date.now();
-      const timeout = Math.min(MAX_ATTEMPT_MS, Math.max(MIN_ATTEMPT_MS, remaining - 1_000));
+      // Asked before every attempt — the first one, and the one after a pause whose timer ran
+      // late: an attempt that cannot finish inside the wall is not started
+      // (BUG-20261006-ai-call-outlives-the-wall).
+      if (remaining - 1_000 < MIN_ATTEMPT_MS) break;
+      attempt += 1;
+      const timeout = Math.min(MAX_ATTEMPT_MS, remaining - 1_000);
       result = await callWithStructuredOutput(
         promptBlueprint.systemPrompt,
         promptBlueprint.userMessage,
@@ -231,6 +238,10 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
       await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
     }
 
+    if (!result) {
+      logger.warn('CutStudyNote', 'No time was left to ask the model');
+      return { success: false, data: null, error: 'AI call timed out: no time was left to cut the note', timedOut: true };
+    }
     if (result.refusal) {
       logger.warn('CutStudyNote', `Model refused: ${result.refusal}`);
       return { success: false, data: null, error: `AI refused to cut the note: ${result.refusal}` };
@@ -238,7 +249,7 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
     if (result.error || !result.data) {
       const message = result.error?.message ?? 'No data received from AI';
       logger.error('CutStudyNote', message);
-      return { success: false, data: null, error: message };
+      return { success: false, data: null, error: message, timedOut: stoppedAtDeadline(result.error) };
     }
 
     const sections = normalizeCutSections(result.data.sections ?? []);

@@ -1291,9 +1291,10 @@ export async function generateSermonPoints(
 export async function composePlanFromScratch(
   sermon: Sermon,
   existingOutline?: SermonOutline,
-  userId: string = sermon.userId
+  userId: string = sermon.userId,
+  deadline?: number
 ) {
-  return composePlanFromScratchStructured(sermon, existingOutline, userId);
+  return composePlanFromScratchStructured(sermon, existingOutline, userId, deadline);
 }
 
 /**

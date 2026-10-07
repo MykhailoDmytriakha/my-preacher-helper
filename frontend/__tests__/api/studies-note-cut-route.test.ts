@@ -239,6 +239,41 @@ describe('POST — cutting one slice of the note', () => {
     mockCut.mockResolvedValue(goodCut());
   });
 
+  it('answers its own 504 in time when reading the note stalls past the wall', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetNote.mockImplementationOnce(() => new Promise(() => undefined));
+      let response: Response | undefined;
+      void POST(request({ offset: 0 }), params('note-1')).then((answer) => { response = answer; });
+
+      await jest.advanceTimersByTimeAsync(50_000);
+
+      expect(response?.status).toBe(504);
+      expect(await response?.json()).toEqual(expect.objectContaining({ code: 'deadline-exceeded' }));
+      expect(mockCut).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('answers 504, not a generic failure, when the cut stopped at its own deadline', async () => {
+    mockCut.mockResolvedValueOnce({ success: false, data: null, error: 'AI call timed out: no time was left to cut the note', timedOut: true });
+    const response = await POST(request({ offset: 0 }), params('note-1'));
+    expect(response.status).toBe(504);
+  });
+
+  it('gives the model only what the note read left of the wall, with no floor', async () => {
+    let clock = 0;
+    const now = jest.spyOn(performance, 'now').mockImplementation(() => clock);
+    try {
+      mockGetNote.mockImplementationOnce(async () => { clock += 45_000; return ownNote; });
+      await POST(request({ offset: 0 }), params('note-1'));
+      expect(mockCut.mock.calls[0][0].budgetMs).toBe(5_000);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it('hands the model only the sections asked for, and says which part of the note they are', async () => {
     const response = await POST(request({ offset: 1, limit: 1 }), params('note-1'));
     const body = await response.json();
