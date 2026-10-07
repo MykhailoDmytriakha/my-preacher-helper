@@ -57,7 +57,7 @@ const recovered = (id: string, title: unknown = 'Recovery', scratch: unknown = [
 describe('EngineScratchWorkspace', () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
-  it('passes domain interactions, queued Apply and canonical status and lists saved drafts automatically once the document is ready', async () => {
+  it('passes domain interactions and queued Apply, leaves delivery of the document to the header and lists saved drafts once the document is ready', async () => {
     const scratch = setup(); render(<EngineScratchWorkspace sermonId="sermon" />);
     expect(useScratchDataDocument).toHaveBeenCalledWith('sermon');
     expect(screen.getByTestId('sync-status')).toBeInTheDocument();
@@ -69,8 +69,9 @@ describe('EngineScratchWorkspace', () => {
     await act(async () => {});
     expect(scratch.listRecoverable).toHaveBeenCalledTimes(1);
     expect(scratch.recover).not.toHaveBeenCalled();
-    await statusProps().onKeepLocal?.(); await statusProps().onAcceptRemote?.(); await statusProps().onRetry?.();
-    expect(scratch.keepLocal).toHaveBeenCalledTimes(1); expect(scratch.acceptRemote).toHaveBeenCalledTimes(1); expect(scratch.retry).toHaveBeenCalledTimes(1);
+    // The page's header speaks for this document's delivery (BUG-20261006-sermon-conflict-choice-shown-twice).
+    expect(statusProps()).toMatchObject({ status: null, error: null });
+    expect(statusProps().onKeepLocal).toBeUndefined(); expect(statusProps().onAcceptRemote).toBeUndefined(); expect(statusProps().onRetry).toBeUndefined();
   });
 
   it('emits only distinct confirmed snapshots, never the dirty visible draft', () => {
@@ -89,12 +90,12 @@ describe('EngineScratchWorkspace', () => {
     expect(publish).toHaveBeenCalledTimes(3);
   });
 
-  it('shows loading and absence separately while keeping the canonical error', () => {
+  it('shows loading and absence separately, the error being said by the header', () => {
     const scratch = setup({ loading: true, data: null, confirmed: null, error: 'Read failed' });
     const view = render(<EngineScratchWorkspace sermonId="sermon" />);
     expect(screen.getByText('common.loading')).toBeInTheDocument();
     expect(screen.queryByTestId('scratch-panel')).not.toBeInTheDocument();
-    expect(statusProps().error).toBe('Read failed');
+    expect(statusProps().error).toBeNull();
     scratch.loading = false; view.rerender(<EngineScratchWorkspace sermonId="sermon" />);
     expect(screen.getByText('common.noData')).toBeInTheDocument();
   });
@@ -171,7 +172,7 @@ describe('EngineScratchWorkspace', () => {
     expect(statusProps().recoveryChoices).toHaveLength(1);
   });
 
-  it('fences a late recovery list after the document identity changes and stale action callbacks', async () => {
+  it('fences a late recovery list and a stale recovery callback after the document identity changes', async () => {
     const scratch = setup(); const pending = deferred<RecoveryCheckpoint[]>();
     jest.mocked(scratch.listRecoverable).mockReturnValueOnce(pending.promise);
     const publish = jest.fn(); const view = render(<EngineScratchWorkspace sermonId="sermon" onConfirmed={publish} />);
@@ -183,9 +184,8 @@ describe('EngineScratchWorkspace', () => {
     await act(async () => { pending.resolve([recovered('old-account')]); });
     expect(statusProps().recoveryChoices).toEqual([]);
     expect(panelProps().isReadOnly).toBe(true);
-    await oldActions.onKeepLocal?.(); await oldActions.onAcceptRemote?.(); await oldActions.onRetry?.();
     await expect(oldActions.onRecover!('old')).rejects.toThrow();
-    expect(scratch.keepLocal).not.toHaveBeenCalled(); expect(scratch.acceptRemote).not.toHaveBeenCalled(); expect(scratch.retry).not.toHaveBeenCalled(); expect(scratch.recover).not.toHaveBeenCalled();
+    expect(scratch.recover).not.toHaveBeenCalled();
     expect(scratch.listRecoverable).toHaveBeenCalledTimes(1);
     expect(publish).toHaveBeenCalledTimes(1);
   });

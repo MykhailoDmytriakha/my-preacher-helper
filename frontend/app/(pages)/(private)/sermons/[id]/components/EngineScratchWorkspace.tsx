@@ -42,9 +42,6 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       return { id, title: typeof title === 'string' && title.trim() ? title : fallbackTitle, ...(preview ? { preview } : {}) };
     }),
     recover: id => latest.current.recover(id) });
-  const keepLocal = useCallback(async () => { if (isCurrent()) await latest.current.keepLocal(); }, [isCurrent]);
-  const acceptRemote = useCallback(async () => { if (isCurrent()) await latest.current.acceptRemote(); }, [isCurrent]);
-  const retry = useCallback(async () => { if (isCurrent()) await latest.current.retry(); }, [isCurrent]);
   const emitted = useRef<{ identity: object; fingerprint: string } | null>(null);
   const confirmed = scratch.confirmed;
   const fingerprint = JSON.stringify(confirmed);
@@ -58,7 +55,12 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
     || (scratch.remote && scratch.remote.value === null) || scratch.remote?.metadata?.deleted);
 
   return <section className="space-y-4" data-testid="engine-scratch-workspace">
-    <DataSyncStatus subject={scratch.recoveryIdentity} status={scratch.status} error={scratch.error} onKeepLocal={keepLocal} onAcceptRemote={acceptRemote} onRetry={retry}
+    {/* ONE CONFLICT, ONE QUESTION (BUG-20261006-sermon-conflict-choice-shown-twice). On the sermon page
+        this workspace holds the page's own document — its provider hands every hook one editor — and the
+        header, on screen in both modes, already speaks for that document's delivery: its state, its
+        failure, the choice in a conflict. This block offers only what is the workspace's own — drafts
+        of notes left unfinished. */}
+    <DataSyncStatus subject={scratch.recoveryIdentity} status={null} error={null}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel
