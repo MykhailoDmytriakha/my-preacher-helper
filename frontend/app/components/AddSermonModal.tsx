@@ -10,6 +10,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildUnspecifiedChurch, churchForNewPreachDate } from '@/utils/church';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
@@ -90,7 +91,7 @@ function LegacyAddSermonModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   // What went wrong with the LAST attempt, shown inside the form the person is still
   // looking at. Previously these failures went only to the console.
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState<FailureWords | null>(null);
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -112,7 +113,7 @@ function LegacyAddSermonModal({
     if (isSubmitting) return;
 
     if (onCreateRequest) {
-      setSubmitError('');
+      setSubmitError(null);
       setIsSubmitting(true);
       try {
         await awaitAcceptance(onCreateRequest({
@@ -127,7 +128,7 @@ function LegacyAddSermonModal({
           // still the only thing the person can see, so it says so here too. Once it has
           // closed, the row badge is the reporter and this setState is a no-op.
           console.error('Sermon create refused after acceptance:', error);
-          setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
+          setSubmitError({ key: writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY) });
         });
         if (closeOnSuccess) {
           resetForm();
@@ -143,7 +144,7 @@ function LegacyAddSermonModal({
          * moment this closes — one message visible at any time, never two.
          */
         console.error('Error creating sermon (optimistic request):', error);
-        setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
+        setSubmitError({ key: writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY) });
         setIsSubmitting(false);
       }
       return;
@@ -154,7 +155,7 @@ function LegacyAddSermonModal({
       // Silence here meant the person pressed Save, nothing happened, and they pressed
       // it again. Say it, and keep the form so the typed sermon is not lost.
       console.error("User is not authenticated");
-      setSubmitError(t('writeRecovery.refused'));
+      setSubmitError({ key: 'writeRecovery.refused' });
       setIsSubmitting(false);
       return;
     }
@@ -209,7 +210,7 @@ function LegacyAddSermonModal({
       // The form stays open with everything in it, and now it also SAYS why: logging to
       // a console the person cannot see is the same as saying nothing.
       console.error('Error creating sermon:', error);
-      setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
+      setSubmitError({ key: writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY) });
       setIsSubmitting(false);
     }
   };
@@ -238,7 +239,7 @@ function LegacyAddSermonModal({
       }}
       submitLabel={t('addSermon.save')}
       saving={isSubmitting}
-      error={submitError}
+      error={submitError ? sayFailure(submitError, t) : ''}
       seriesOptions={series.map((s) => ({ id: s.id, label: s.title || s.theme }))}
       seriesLoading={seriesLoading}
       showPlannedDate={allowPlannedDate}

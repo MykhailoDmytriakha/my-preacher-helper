@@ -5,6 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { FirstDayOfWeek, normalizeFirstDayOfWeek } from '@/utils/weekStart';
 
@@ -20,7 +21,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
     updateFirstDayOfWeek,
     updatingFirstDayOfWeek
   } = useUserSettings(user?.uid);
-  const [firstDayError, setFirstDayError] = React.useState<string | null>(null);
+  const [firstDayError, setFirstDayError] = React.useState<FailureWords | null>(null);
   const firstDayOfWeek = normalizeFirstDayOfWeek(settings?.firstDayOfWeek);
 
   const handleFirstDayOfWeekChange = async (value: FirstDayOfWeek) => {
@@ -93,7 +94,7 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
                 </p>
                 {firstDayError && (
                   <p className="mt-2 text-sm text-red-600 dark:text-red-400">
-                    {firstDayError}
+                    {sayFailure(firstDayError, t)}
                   </p>
                 )}
               </div>

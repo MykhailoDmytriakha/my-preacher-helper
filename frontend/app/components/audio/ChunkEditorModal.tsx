@@ -10,6 +10,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 
 // ============================================================================
 // Types
@@ -37,7 +38,7 @@ export default function ChunkEditorModal({
     const { t } = useTranslation();
     const [text, setText] = useState(chunk.text);
     const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<FailureWords | null>(null);
 
     const handleSave = useCallback(async () => {
         setIsSaving(true);
@@ -46,7 +47,8 @@ export default function ChunkEditorModal({
         try {
             await onSave(chunk.index, text);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Save failed');
+            // Kept as words, said when shown: the wizard's own refusals are keys (`saidError`).
+            setError(refusalWords(err, 'common.saveError'));
         } finally {
             setIsSaving(false);
         }
@@ -103,7 +105,7 @@ export default function ChunkEditorModal({
                 {/* Error */}
                 {error && (
                     <div className="mt-2 p-2 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded text-sm">
-                        {error}
+                        {sayFailure(error, t)}
                     </div>
                 )}
 

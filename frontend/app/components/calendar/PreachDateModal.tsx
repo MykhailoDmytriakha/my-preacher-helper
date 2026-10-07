@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import FormDialog from "@/components/ui/FormDialog";
 import { isCollectionOnEngine } from "@/data-engine/react.client";
 import { PreachDate, Church, PreachDateStatus } from "@/models/models";
+import { sayFailure, type FailureWords } from "@/utils/actionFailureMessage";
 import { isUnspecifiedChurch } from "@/utils/church";
 import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
 import {
@@ -70,7 +71,7 @@ function LegacyPreachDateModal({
     const [audience, setAudience] = useState(initialData?.audience || "");
     const [notes, setNotes] = useState(initialData?.notes || "");
     const [isSaving, setIsSaving] = useState(false);
-    const [saveError, setSaveError] = useState("");
+    const [saveError, setSaveError] = useState<FailureWords | null>(null);
 
     useEffect(() => {
         if (initialData) {
@@ -83,7 +84,7 @@ function LegacyPreachDateModal({
             setNotes("");
         }
         setChurch(openingChurch(initialData));
-        setSaveError("");
+        setSaveError(null);
         // `openingChurch` is derived from exactly these inputs and nothing else.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialData, isOpen, defaultChurch]);
@@ -98,11 +99,11 @@ function LegacyPreachDateModal({
 
         setSaveError(
             syncState.refused || syncState.conflict
-                ? t('writeRecovery.refused')
-                : syncState.message || t(SAVE_ERROR_KEY)
+                ? { key: 'writeRecovery.refused' }
+                : syncState.message ? { said: syncState.message } : { key: SAVE_ERROR_KEY }
         );
         setIsSaving(false);
-    }, [syncState, t]);
+    }, [syncState]);
 
     if (!isOpen) return null;
 
@@ -113,7 +114,7 @@ function LegacyPreachDateModal({
         const resolvedStatus = initialData ? initialData.status : defaultStatus;
 
         setIsSaving(true);
-        setSaveError("");
+        setSaveError(null);
         try {
             const submission = onSave({
                 date,
@@ -176,12 +177,12 @@ function LegacyPreachDateModal({
                 if (patch.church !== undefined) setChurch(patch.church);
                 if (patch.audience !== undefined) setAudience(patch.audience);
                 if (patch.notes !== undefined) setNotes(patch.notes);
-                setSaveError("");
+                setSaveError(null);
             }} />
 
             {saveError && (
                 <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-                    {saveError}
+                    {sayFailure(saveError, t)}
                 </p>
             )}
         </FormDialog>

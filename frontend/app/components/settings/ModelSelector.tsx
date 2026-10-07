@@ -8,6 +8,7 @@ import { aiFunctionIds, getFunctionCatalog } from '@/api/clients/ai/functionCata
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
@@ -71,7 +72,7 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
   const { t } = useTranslation();
   const { data: entitlement, isLoading: entitlementLoading, isError: entitlementError } = useUserEntitlement(user);
   const { settings, updateFunctionModelPreference, updatingFunctionModelPreference } = useUserSettings(user?.uid);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<FailureWords | null>(null);
 
   if (!user) return null;
 
@@ -170,7 +171,7 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
       </div>
 
       {isFree && <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">{t('settings.modelSelector.freeHint')}</p>}
-      {saveError && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{saveError}</p>}
+      {saveError && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{sayFailure(saveError, t)}</p>}
     </section>
   );
 }

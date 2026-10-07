@@ -38,6 +38,7 @@ import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
@@ -687,7 +688,7 @@ export default function StudyNoteEditorPage() {
     // Input states
     const [tagInput, setTagInput] = useState('');
     const [quickRefInput, setQuickRefInput] = useState('');
-    const [quickRefError, setQuickRefError] = useState<string | null>(null);
+    const [quickRefError, setQuickRefError] = useState<FailureWords | null>(null);
 
     // Tag / Reference Pickers
     const [showTagCatalog, setShowTagCatalog] = useState(false);
@@ -1115,7 +1116,7 @@ export default function StudyNoteEditorPage() {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
                                             const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
-                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError')); return; }
+                                            if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
                                             setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
                                             setQuickRefInput('');
                                         }
@@ -1132,7 +1133,7 @@ export default function StudyNoteEditorPage() {
                                 </button>
                             </div>
                         )}
-                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{quickRefError}</p>}
+                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{sayFailure(quickRefError, t)}</p>}
 
                         {showRefPicker && (
                             <ScriptureRefPicker

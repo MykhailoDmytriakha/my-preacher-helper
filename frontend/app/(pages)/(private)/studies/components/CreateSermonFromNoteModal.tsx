@@ -26,6 +26,7 @@ import {
   type CutStudyNoteResponse,
   type NoteCutOutline,
 } from '@/services/studies.service';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -284,7 +285,7 @@ export default function CreateSermonFromNoteModal({
   const [explainerOpen, setExplainerOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>('form');
   const [steps, setSteps] = useState<Record<string, StepStatus>>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   /**
    * The plan of the cut and what each slice answered. Kept in refs as well as in state:
    * the run reads them inside an async loop that outlives several renders, and a retry
@@ -408,17 +409,18 @@ export default function CreateSermonFromNoteModal({
     return list;
   }, [outline, t]);
 
-  const errorMessageFor = (step: string, cause: unknown): string => {
-    if (cause instanceof VerseMissingAfterCutError) return t('studiesWorkspace.createSermon.errors.verseRequired');
+  // Words, not a sentence: said in the language on screen when shown (BUG-20261006-screen-error-kept-as-translated-sentence).
+  const errorWordsFor = (step: string, cause: unknown): FailureWords => {
+    if (cause instanceof VerseMissingAfterCutError) return { key: 'studiesWorkspace.createSermon.errors.verseRequired' };
     if (cause instanceof CutStudyNoteError) {
-      if (cause.usageCap) return t('studiesWorkspace.createSermon.errors.usageCap');
-      if (cause.status === 400) return t('studiesWorkspace.createSermon.errors.empty');
-      if (cause.status === 413) return t('studiesWorkspace.createSermon.errors.noteTooLong', { limit: MAX_CUT_WORDS_THOUSANDS });
-      if (cause.status === 422) return t('studiesWorkspace.createSermon.errors.nothingCut');
+      if (cause.usageCap) return { key: 'studiesWorkspace.createSermon.errors.usageCap' };
+      if (cause.status === 400) return { key: 'studiesWorkspace.createSermon.errors.empty' };
+      if (cause.status === 413) return { key: 'studiesWorkspace.createSermon.errors.noteTooLong', values: { limit: String(MAX_CUT_WORDS_THOUSANDS) } };
+      if (cause.status === 422) return { key: 'studiesWorkspace.createSermon.errors.nothingCut' };
     }
-    if (step === PLAN_STEP) return t('studiesWorkspace.createSermon.errors.planFailed');
-    if (step !== CREATE_STEP) return t('studiesWorkspace.createSermon.errors.cutFailed');
-    return t('studiesWorkspace.createSermon.errors.createFailed');
+    if (step === PLAN_STEP) return { key: 'studiesWorkspace.createSermon.errors.planFailed' };
+    if (step !== CREATE_STEP) return { key: 'studiesWorkspace.createSermon.errors.cutFailed' };
+    return { key: 'studiesWorkspace.createSermon.errors.createFailed' };
   };
 
   /**
@@ -432,11 +434,11 @@ export default function CreateSermonFromNoteModal({
     const cleanTitle = title.trim();
     const cleanVerse = verse.trim();
     if (!cleanTitle) {
-      setError(t('studiesWorkspace.createSermon.errors.titleRequired'));
+      setError({ key: 'studiesWorkspace.createSermon.errors.titleRequired' });
       return;
     }
     if (isBrowserOffline()) {
-      setError(t('studiesWorkspace.createSermon.errors.offline'));
+      setError({ key: 'studiesWorkspace.createSermon.errors.offline' });
       return;
     }
 
@@ -520,7 +522,7 @@ export default function CreateSermonFromNoteModal({
       if (!aliveRef.current) return;
       console.error('CreateSermonFromNote: step failed', current, cause);
       setStep(current, 'error');
-      setError(errorMessageFor(current, cause));
+      setError(errorWordsFor(current, cause));
       setPhase('error');
     }
   };
@@ -554,7 +556,7 @@ export default function CreateSermonFromNoteModal({
     ? t('studiesWorkspace.createSermon.errors.empty')
     : offline
       ? t('studiesWorkspace.createSermon.errors.offline')
-      : error;
+      : error && sayFailure(error, t);
 
   const content = (
     <div {...layer} className="fixed inset-0 z-[100] flex overscroll-contain bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4">
@@ -743,7 +745,7 @@ export default function CreateSermonFromNoteModal({
                           </p>
                         )}
                         {status === 'error' && error && (
-                          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+                          <p className="text-xs text-red-600 dark:text-red-400">{sayFailure(error, t)}</p>
                         )}
                       </div>
                     </li>

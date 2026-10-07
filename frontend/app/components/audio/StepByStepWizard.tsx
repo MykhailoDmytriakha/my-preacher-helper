@@ -46,6 +46,7 @@ import {
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
+import { sayFailure, saidError, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { CHUNKS_CHANGED, TTS_CHUNK_FAILED, heardChunks } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs } from '@/utils/audioConcat';
@@ -134,6 +135,9 @@ export interface StepByStepWizardProps {
 const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts';
 const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-tts';
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
+/** Said by every path that met a 409 `chunks-changed` and now shows the stored set; words, said when shown. */
+const CHANGED_ELSEWHERE_KEY = 'audioExport.chunksChangedElsewhere';
+const CHANGED_ELSEWHERE: FailureWords = { key: CHANGED_ELSEWHERE_KEY };
 /**
  * The OpenAI voice samples were recorded before gpt-4o-mini-tts (with tts-1, "standard"), and a
  * quality switch once chose between them. The model alone decides the sound now; the samples
@@ -237,8 +241,6 @@ export default function StepByStepWizard({
     const { user } = useAuth();
     const charsLabel = t('audioExport.chars', { defaultValue: 'симв.' });
     const aiSourceLabel = t('audioExport.sourceAi', { defaultValue: 'AI-optimized' });
-    /** Said by every path that met a 409 `chunks-changed` and now shows the stored set. */
-    const changedElsewhere = t('audioExport.chunksChangedElsewhere');
 
     // Settings
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
@@ -267,7 +269,7 @@ export default function StepByStepWizard({
     const [step, setStep] = useState<WizardStep>(1);
     const [view, setView] = useState<StudioView>('working');
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<FailureWords | null>(null);
     const [editingChunk, setEditingChunk] = useState<ChunkPreview | null>(null);
 
     // Generation
@@ -526,18 +528,18 @@ export default function StepByStepWizard({
                     return 'stored';
                 }
                 showStoredSet(data);
-                setError(changedElsewhere);
+                setError(CHANGED_ELSEWHERE);
                 return 'replaced';
             }
             throw new Error(data.error || `HTTP ${response.status}`);
         } catch (err) {
             console.error('Mode sync failed:', err);
-            setError(t('audioExport.sourceSwitchFailed'));
+            setError({ key: 'audioExport.sourceSwitchFailed' });
             return 'failed';
         } finally {
             setIsLoading(false);
         }
-    }, [changedElsewhere, sermonId, showStoredSet, t]);
+    }, [sermonId, showStoredSet]);
 
     // ------------------------------------------------------------------
     // Prepare text for a given source (AI optimize OR raw split)
@@ -567,7 +569,7 @@ export default function StepByStepWizard({
                 if (response.status === 409 && data.code === CHUNKS_CHANGED) {
                     // A section being prepared was corrected elsewhere meanwhile: show what is stored.
                     showStoredSet(data);
-                    setError(changedElsewhere);
+                    setError(CHANGED_ELSEWHERE);
                     return;
                 }
                 throw new Error(data.error || 'Optimization failed');
@@ -585,7 +587,7 @@ export default function StepByStepWizard({
             }
         } catch (err: unknown) {
             console.error('Prepare error:', err);
-            setError(err instanceof Error ? err.message : 'Optimization failed');
+            setError({ said: err instanceof Error ? err.message : 'Optimization failed' });
             // Show the previous source again. Should the preparation have been saved without an
             // answer, generation's check against the database finds out before any audio is made.
             setMode(previousMode);
@@ -593,7 +595,7 @@ export default function StepByStepWizard({
         } finally {
             setIsLoading(false);
         }
-    }, [aiBlocked, changedElsewhere, chunks, mode, refreshAiUsage, sermonId, sections, showStoredSet, ttsProvider]);
+    }, [aiBlocked, chunks, mode, refreshAiUsage, sermonId, sections, showStoredSet, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -644,7 +646,7 @@ export default function StepByStepWizard({
                 // The stored set is shown behind the editor, which keeps the person's text to copy;
                 // saving again is refused again, never aimed at whatever chunk now sits there.
                 showStoredSet(data);
-                throw new Error(changedElsewhere);
+                throw saidError(CHANGED_ELSEWHERE_KEY);
             }
             throw new Error(data.error || 'Save failed');
         }
@@ -658,7 +660,7 @@ export default function StepByStepWizard({
             return next;
         });
         setEditingChunk(null);
-    }, [changedElsewhere, sermonId, mode, showStoredSet]);
+    }, [sermonId, mode, showStoredSet]);
 
     // ------------------------------------------------------------------
     // Generate audio (TTS)
@@ -784,21 +786,21 @@ export default function StepByStepWizard({
         } catch (err) {
             if (err instanceof ChunksChangedError) {
                 showStoredSet(err.data);
-                setError(t('audioExport.chunksChangedBeforeAudio'));
+                setError({ key: 'audioExport.chunksChangedBeforeAudio' });
             } else if (err instanceof ChunkFailedError) {
-                setError(t('audioExport.chunkFailed', { chunks: err.chunks.join(', ') }));
+                setError({ key: 'audioExport.chunkFailed', values: { chunks: err.chunks.join(', ') } });
             } else if (err instanceof StreamInterruptedError) {
-                setError(t('audioExport.streamInterrupted'));
+                setError({ key: 'audioExport.streamInterrupted' });
             } else if (err instanceof Error && err.name === 'AbortError') {
-                setError(t('audioExport.generationCancelled', { defaultValue: 'Generation cancelled' }));
+                setError({ key: 'audioExport.generationCancelled' });
             } else {
-                setError(err instanceof Error ? err.message : 'Unknown error');
+                setError({ said: err instanceof Error ? err.message : 'Unknown error' });
             }
             setView('working');
         } finally {
             setAbortController(null);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, t]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
@@ -1431,7 +1433,7 @@ export default function StepByStepWizard({
                         className="mb-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
                     >
                         <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                        <p className="text-sm font-medium">{error}</p>
+                        <p className="text-sm font-medium">{sayFailure(error, t)}</p>
                     </motion.div>
                 )}
             </AnimatePresence>

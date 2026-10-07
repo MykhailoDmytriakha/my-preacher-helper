@@ -15,6 +15,7 @@ import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { churchForNewPreachDate, churchToFillOnPreachDate } from '@/utils/church';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getNextPlannedDate } from '@/utils/preachDateStatus';
@@ -91,7 +92,7 @@ function SermonEditor({
   const shownSeriesId = engineSeries.enabled ? engineSeries.seriesId : legacySeriesId;
   const seriesChanged = engineSeries.enabled ? engineSeries.changed : seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState<FailureWords | null>(null);
   const formEditedRef = React.useRef(false);
   /**
    * WHAT THIS FORM OPENED WITH, frozen per sermon.
@@ -179,15 +180,15 @@ function SermonEditor({
 
     setSaveError(
       syncState.refused || syncState.conflict
-        ? t('writeRecovery.refused')
-        : syncState.message || t(EDIT_SERMON_ERROR_KEY)
+        ? { key: 'writeRecovery.refused' }
+        : syncState.message ? { said: syncState.message } : { key: EDIT_SERMON_ERROR_KEY }
     );
     setIsSubmitting(false);
-  }, [syncState, t]);
+  }, [syncState]);
 
   const markEdited = () => {
     formEditedRef.current = true;
-    setSaveError('');
+    setSaveError(null);
   };
 
   /**
@@ -239,7 +240,7 @@ function SermonEditor({
 
     if (onSaveRequest) {
       setIsSubmitting(true);
-      setSaveError('');
+      setSaveError(null);
       try {
         const submission = onSaveRequest({
           sermon,
@@ -277,7 +278,7 @@ function SermonEditor({
     }
 
     setIsSubmitting(true);
-    setSaveError('');
+    setSaveError(null);
 
     try {
       // This fallback intentionally keeps its existing unguarded persistence
@@ -298,7 +299,7 @@ function SermonEditor({
       onUpdate(await syncPlannedDate(data));
       onClose();
     } catch (error) {
-      setSaveError(t(writeFailureTranslationKey(error, EDIT_SERMON_ERROR_KEY)));
+      setSaveError({ key: writeFailureTranslationKey(error, EDIT_SERMON_ERROR_KEY) });
     } finally {
       setIsSubmitting(false);
     }
@@ -329,7 +330,7 @@ function SermonEditor({
       saving={isSubmitting}
       submitDisabled={!hasChanges || (engineSeries.enabled && engineSeries.unsettled)}
       readOnly={isReadOnly}
-      error={saveError}
+      error={saveError ? sayFailure(saveError, t) : ''}
       seriesOptions={engineSeries.enabled ? engineSeries.options : seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
       seriesLoading={engineSeries.enabled ? engineSeries.loading : seriesLoading}
       seriesDisabled={engineSeries.enabled && engineSeries.disabled}

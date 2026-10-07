@@ -17,6 +17,7 @@ import { stickyTopBelowNav, useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
 import { hardCap } from '@/services/usageLimits';
+import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import '@locales/i18n';
 
 import type {
@@ -126,10 +127,11 @@ const parseResponse = async (response: Response): Promise<unknown> => {
   }
 };
 
-const errorMessage = (responseBody: unknown, fallback: string): string =>
+/** The server's own words when it sent some; otherwise this screen's, kept as a key and said when shown. */
+const responseFailure = (responseBody: unknown, fallbackKey: string): Error =>
   responseBody && typeof responseBody === 'object' && 'error' in responseBody
-    ? String(responseBody.error)
-    : fallback;
+    ? new Error(String(responseBody.error))
+    : saidError(fallbackKey);
 
 const parseNonNegativeNumber = (value: string): number | undefined => {
   if (!value.trim()) return undefined;
@@ -722,13 +724,13 @@ export default function AdminPage() {
   const [audioSeconds, setAudioSeconds] = useState('');
   const [role, setRole] = useState<Role | ''>('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
+  const [submitError, setSubmitError] = useState<FailureWords | null>(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [modelDefaults, setModelDefaults] = useState<AiModelDefaults>(CATALOG_DEFAULTS);
   const [modelDefaultsLoading, setModelDefaultsLoading] = useState(false);
   const [modelDefaultsReady, setModelDefaultsReady] = useState(false);
   const [modelDefaultsSaving, setModelDefaultsSaving] = useState(false);
-  const [modelDefaultsError, setModelDefaultsError] = useState('');
+  const [modelDefaultsError, setModelDefaultsError] = useState<FailureWords | null>(null);
   const [modelDefaultsSaved, setModelDefaultsSaved] = useState(false);
   const selectedUser = useMemo(() => users.find((user) => user.uid === selectedUid) ?? null, [selectedUid, users]);
   const filteredUsers = useMemo(() => {
@@ -777,7 +779,7 @@ export default function AdminPage() {
     let cancelled = false;
     setModelDefaultsLoading(true);
     setModelDefaultsReady(false);
-    setModelDefaultsError('');
+    setModelDefaultsError(null);
     void fetchAdminModelDefaults()
       .then((response) => {
         if (!cancelled) {
@@ -786,13 +788,13 @@ export default function AdminPage() {
         }
       })
       .catch(() => {
-        if (!cancelled) setModelDefaultsError(t('admin.modelDefaults.loadFailed'));
+        if (!cancelled) setModelDefaultsError({ key: 'admin.modelDefaults.loadFailed' });
       })
       .finally(() => {
         if (!cancelled) setModelDefaultsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [access, t]);
+  }, [access]);
 
   useEffect(() => {
     if (!toastVisible) return undefined;
@@ -801,13 +803,13 @@ export default function AdminPage() {
   }, [toastVisible]);
 
   const resetEntitlementFields = () => {
-    setPaidTier(''); setRole(''); setAiUsage(''); setTranscriptionSeconds(''); setAudioSeconds(''); setPromotionMode('unchanged'); setPromotionDirty(false); setPromotionTier('free'); setPromotionExpiresAt(''); setSubmitError('');
+    setPaidTier(''); setRole(''); setAiUsage(''); setTranscriptionSeconds(''); setAudioSeconds(''); setPromotionMode('unchanged'); setPromotionDirty(false); setPromotionTier('free'); setPromotionExpiresAt(''); setSubmitError(null);
   };
 
   const selectUser = (user: AdminUser) => {
     setSelectedUid(user.uid); setTargetUid(user.uid); setPaidTier(user.paidTier); setRole(user.role ?? ''); setAiUsage(String(user.usage.aiUsed)); setTranscriptionSeconds(String(user.usage.transcriptionSecondsUsed)); setAudioSeconds(String(user.usage.audioSecondsUsed));
     if (user.promotion) { setPromotionMode('unchanged'); setPromotionTier(user.promotion.tier); setPromotionExpiresAt(formatDateTimeLocal(user.promotion.expiresAt)); } else { setPromotionMode('unchanged'); setPromotionTier('free'); setPromotionExpiresAt(''); }
-    setPromotionDirty(false); setSubmitError(''); setDrawerOpen(true);
+    setPromotionDirty(false); setSubmitError(null); setDrawerOpen(true);
   };
 
   const openManualEditor = () => { setSelectedUid(null); setTargetUid(''); resetEntitlementFields(); setDrawerOpen(true); };
@@ -825,7 +827,7 @@ export default function AdminPage() {
 
   const handleModelDefaultChange = (fn: AiFunctionId, target: FunctionModelTarget) => {
     setModelDefaults((current) => ({ ...current, [fn]: target }));
-    setModelDefaultsError('');
+    setModelDefaultsError(null);
     setModelDefaultsSaved(false);
   };
 
@@ -833,12 +835,12 @@ export default function AdminPage() {
     if (!modelDefaultsReady) return;
     const currentUser = auth.currentUser;
     if (!currentUser) {
-      setModelDefaultsError(t('admin.unauthenticated'));
+      setModelDefaultsError({ key: 'admin.unauthenticated' });
       return;
     }
 
     setModelDefaultsSaving(true);
-    setModelDefaultsError('');
+    setModelDefaultsError(null);
     setModelDefaultsSaved(false);
     try {
       const token = await currentUser.getIdToken();
@@ -853,12 +855,12 @@ export default function AdminPage() {
       const responseBody = await parseResponse(response);
       const parsed = parseAdminModelDefaultsResponse(responseBody);
       if (!response.ok || !parsed) {
-        throw new Error(errorMessage(responseBody, t('admin.modelDefaults.saveFailed')));
+        throw responseFailure(responseBody, 'admin.modelDefaults.saveFailed');
       }
       setModelDefaults(parsed.effective);
       setModelDefaultsSaved(true);
     } catch (error) {
-      setModelDefaultsError(error instanceof Error ? error.message : t('admin.modelDefaults.saveFailed'));
+      setModelDefaultsError(refusalWords(error, 'admin.modelDefaults.saveFailed'));
     } finally {
       setModelDefaultsSaving(false);
     }
@@ -879,34 +881,34 @@ export default function AdminPage() {
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setSubmitError('');
+    event.preventDefault(); setSubmitError(null);
     const uid = targetUid.trim();
-    if (!uid) { setSubmitError(t('admin.targetUidRequired')); return; }
+    if (!uid) { setSubmitError({ key: 'admin.targetUidRequired' }); return; }
     const usage = { aiUsed: parseNonNegativeNumber(aiUsage), transcriptionSecondsUsed: parseNonNegativeNumber(transcriptionSeconds), audioSecondsUsed: parseNonNegativeNumber(audioSeconds) };
-    if ((aiUsage.trim() && usage.aiUsed === undefined) || (transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined) || (audioSeconds.trim() && usage.audioSecondsUsed === undefined)) { setSubmitError(t('admin.invalidUsage')); return; }
+    if ((aiUsage.trim() && usage.aiUsed === undefined) || (transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined) || (audioSeconds.trim() && usage.audioSecondsUsed === undefined)) { setSubmitError({ key: 'admin.invalidUsage' }); return; }
     const patch: EntitlementPatch = {};
     if (paidTier) patch.paidTier = paidTier;
     // Security invariant: promotion is sent only after an explicit Keep/Set/Clear edit.
     if (promotionDirty && promotionMode === 'clear') patch.promotion = null;
     else if (promotionDirty && promotionMode === 'set') {
       const expiresAt = new Date(promotionExpiresAt);
-      if (!promotionExpiresAt || Number.isNaN(expiresAt.getTime())) { setSubmitError(t('admin.invalidPromotion')); return; }
+      if (!promotionExpiresAt || Number.isNaN(expiresAt.getTime())) { setSubmitError({ key: 'admin.invalidPromotion' }); return; }
       patch.promotion = { tier: promotionTier, expiresAt: expiresAt.toISOString() };
     }
     if (usage.aiUsed !== undefined || usage.transcriptionSecondsUsed !== undefined || usage.audioSecondsUsed !== undefined) patch.usage = usage;
     if (role) patch.role = role;
-    if (Object.keys(patch).length === 0) { setSubmitError(t('admin.noChanges')); return; }
+    if (Object.keys(patch).length === 0) { setSubmitError({ key: 'admin.noChanges' }); return; }
     const currentUser = auth.currentUser;
-    if (!currentUser) { setSubmitError(t('admin.unauthenticated')); return; }
+    if (!currentUser) { setSubmitError({ key: 'admin.unauthenticated' }); return; }
     setSubmitting(true);
     try {
       const token = await currentUser.getIdToken();
       const response = await fetch(`/api/admin/users/${encodeURIComponent(uid)}/entitlement`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       const data = await parseResponse(response);
-      if (!response.ok) throw new Error(errorMessage(data, t('admin.requestFailed')));
+      if (!response.ok) throw responseFailure(data, 'admin.requestFailed');
       patchSelectedUser(uid, data as UserEntitlement, patch);
       setPromotionDirty(false); setToastVisible(true);
-    } catch (error) { setSubmitError(error instanceof Error ? error.message : t('admin.requestFailed')); } finally { setSubmitting(false); }
+    } catch (error) { setSubmitError(refusalWords(error, 'admin.requestFailed')); } finally { setSubmitting(false); }
   };
 
   if (access === 'checking') return <main className="mx-auto flex min-h-[60vh] max-w-3xl items-center justify-center px-4 text-slate-600 dark:text-slate-300"><p role="status">{t('admin.loading')}</p></main>;
@@ -919,5 +921,5 @@ export default function AdminPage() {
     ? t('admin.users.pageDescription')
     : t('admin.modelDefaults.description');
 
-  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={i18n.language} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
+  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={i18n.language} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError ? sayFailure(modelDefaultsError, t) : ''} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError ? sayFailure(submitError, t) : ''} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
 }

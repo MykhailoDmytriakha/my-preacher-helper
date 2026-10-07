@@ -45,6 +45,7 @@ import { toast } from 'sonner';
 
 import { Chip } from '@/components/ui/Chip';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
 import { ReorderArrows, ServiceOrderFailure } from './ReorderArrows';
@@ -105,7 +106,7 @@ export default function ServiceOrdersPage() {
   } = useServiceOrders();
 
   const [creating, setCreating] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<FailureWords | null>(null);
   /**
    * ARRANGING IS A DIFFERENT JOB FROM OPENING, so it gets its own mode.
    *
@@ -171,7 +172,7 @@ export default function ServiceOrdersPage() {
     // Spreading the whole list needs a connection, and saying "could not save" about that
     // sends a person looking for a fault that is not there.
     if ((error as Error)?.message === 'OFFLINE_RENUMBER') {
-      setFailure(t('serviceOrders.renumberOffline') as string);
+      setFailure({ key: 'serviceOrders.renumberOffline' });
       toast.error(t('serviceOrders.renumberOffline') as string);
       return;
     }
@@ -179,7 +180,7 @@ export default function ServiceOrdersPage() {
     // proved it silent here: an armed observer watched for nine seconds and no toast ever
     // appeared. A message that depends on something mounted elsewhere can be nowhere, and the
     // person is then left pressing a button that does nothing. This line is part of the page.
-    setFailure(t('serviceOrders.writeFailed') as string);
+    setFailure({ key: 'serviceOrders.writeFailed' });
     toast.error(t('serviceOrders.writeFailed') as string);
   };
 
@@ -403,7 +404,7 @@ export default function ServiceOrdersPage() {
         </div>
       )}
 
-      {!isEmpty && failure && <ServiceOrderFailure message={failure} testId="service-orders-failure" />}
+      {!isEmpty && failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-orders-failure" />}
 
       {!isEmpty && (
         // A footnote, not an announcement: it is true, but it is not what the page is for.
@@ -438,7 +439,7 @@ function FirstOpening({
   seeding: boolean;
   creating: boolean;
   isOnline: boolean;
-  failure: string | null;
+  failure: FailureWords | null;
 }) {
   const { t } = useTranslation();
   return (
@@ -475,7 +476,7 @@ function FirstOpening({
         {t('serviceOrders.custom')}
       </button>
 
-      {failure && <ServiceOrderFailure message={failure} testId="service-orders-failure" />}
+      {failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-orders-failure" />}
 
       <p className="mt-10 max-w-md text-xs leading-relaxed text-gray-400 dark:text-gray-500">
         {t('serviceOrders.boundary')}

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Chip } from '@/components/ui/Chip';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
@@ -32,7 +33,7 @@ export default function AddSermonToSeriesModal({
   const { sermons, loading: sermonsLoading } = useDashboardSermons();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   /* Holds the page still and answers Escape — the same rule every window in the app follows. */
   const layer = useModalLayer({ onClose, closeDisabled: isAdding });
@@ -127,7 +128,7 @@ export default function AddSermonToSeriesModal({
           </div>
 
           <div className="flex-1 overflow-y-auto pr-1">
-            {error && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-300">{error}</p>}
+            {error && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-300">{sayFailure(error, t)}</p>}
             {sermonsLoading ? (
               <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-b-transparent border-blue-600 mr-3" />

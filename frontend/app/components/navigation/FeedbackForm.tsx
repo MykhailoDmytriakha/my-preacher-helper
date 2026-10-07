@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import "@locales/i18n";
 import Select from '@/components/ui/Select';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildDiagnosticReport } from '@/utils/appDiagnostics';
 import { clipboardHasText, extractClipboardImageFiles } from '@/utils/clipboardImages';
 import {
@@ -57,9 +58,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
    * travels, and one click removes it.
    */
   const [attachDiagnostics, setAttachDiagnostics] = useState(true);
-  const [imageError, setImageError] = useState('');
-  const [payloadError, setPayloadError] = useState('');
-  const [submissionError, setSubmissionError] = useState('');
+  const [imageError, setImageError] = useState<FailureWords | null>(null);
+  const [payloadError, setPayloadError] = useState<FailureWords | null>(null);
+  const [submissionError, setSubmissionError] = useState<FailureWords | null>(null);
   const feedbackTextRef = useRef('');
   const imagesRef = useRef<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,25 +69,23 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   // One acceptance path for every source of a file — the picker, a paste, anything added later.
   // `imagesRef` rather than `images` because two pastes can land before React re-renders.
   const addImageFiles = useCallback((files: File[]) => {
-    setImageError('');
+    setImageError(null);
     if (!files.length) return;
 
     const remaining = MAX_FEEDBACK_IMAGES - imagesRef.current.length;
     if (files.length > remaining) {
-      setImageError(t('feedback.imageLimitReached'));
+      setImageError({ key: 'feedback.imageLimitReached' });
       if (remaining <= 0) return;
     }
 
     const toProcess = files.slice(0, remaining);
     toProcess.forEach(file => {
       if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-        setImageError(
-          t('feedback.invalidImage')
-        );
+        setImageError({ key: 'feedback.invalidImage' });
         return;
       }
       if (file.size > MAX_FEEDBACK_IMAGE_BYTES) {
-        setImageError(t('feedback.imageTooLarge'));
+        setImageError({ key: 'feedback.imageTooLarge' });
         return;
       }
       const reader = new FileReader();
@@ -112,7 +111,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             serializedAttachmentBytes > MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES ||
             serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
           ) {
-            setImageError(t(PAYLOAD_TOO_LARGE_KEY));
+            setImageError({ key: PAYLOAD_TOO_LARGE_KEY });
             return;
           }
 
@@ -122,7 +121,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       };
       reader.readAsDataURL(file);
     });
-  }, [t]);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     addImageFiles(Array.from(e.target.files || []));
@@ -160,14 +159,14 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     const nextImages = imagesRef.current.filter((_, i) => i !== index);
     imagesRef.current = nextImages;
     setImages(nextImages);
-    setImageError('');
-    setPayloadError('');
+    setImageError(null);
+    setPayloadError(null);
   };
 
   const handleFeedbackTextChange = (value: string) => {
     feedbackTextRef.current = value;
     setFeedbackText(value);
-    setSubmissionError('');
+    setSubmissionError(null);
     const serializedPayloadBytes = getFeedbackPayloadByteLength({
       feedbackText: value,
       feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
@@ -178,11 +177,11 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       getUtf8ByteLength(value) > MAX_FEEDBACK_TEXT_BYTES ||
       serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
     ) {
-      setPayloadError(t(PAYLOAD_TOO_LARGE_KEY));
+      setPayloadError({ key: PAYLOAD_TOO_LARGE_KEY });
       return;
     }
 
-    setPayloadError('');
+    setPayloadError(null);
   };
 
   /**
@@ -222,13 +221,13 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       });
       if (getUtf8ByteLength(feedbackText) > MAX_FEEDBACK_TEXT_BYTES ||
         serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES) {
-        setPayloadError(t(PAYLOAD_TOO_LARGE_KEY));
+        setPayloadError({ key: PAYLOAD_TOO_LARGE_KEY });
         return;
       }
 
       try {
         setIsSubmitting(true);
-        setSubmissionError('');
+        setSubmissionError(null);
         /**
          * Collected at SEND time, not when the box was ticked: the last events before the
          * person pressed the button are the ones worth having, and the server check needs
@@ -237,10 +236,10 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         const message = attachDiagnostics ? withDiagnostics(feedbackText) : feedbackText;
         const accepted = await onSubmit(message, feedbackType, images);
         if (accepted === false) {
-          setSubmissionError(t('feedback.errorMessage'));
+          setSubmissionError({ key: 'feedback.errorMessage' });
         }
       } catch (error) {
-        setSubmissionError(t(writeFailureTranslationKey(error, 'feedback.errorMessage')));
+        setSubmissionError({ key: writeFailureTranslationKey(error, 'feedback.errorMessage') });
       } finally {
         setIsSubmitting(false);
       }
@@ -420,19 +419,19 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
 
         {imageError && (
           <p className="mt-1 text-xs text-red-500" role="alert" data-testid="image-error">
-            {imageError}
+            {imageError && sayFailure(imageError, t)}
           </p>
         )}
         {payloadError && (
           <p className="mt-1 text-xs text-red-500" role="alert" data-testid="payload-error">
-            {payloadError}
+            {payloadError && sayFailure(payloadError, t)}
           </p>
         )}
       </div>
 
       {submissionError && (
         <p className="mb-4 text-sm text-red-600 dark:text-red-400" role="alert">
-          {submissionError}
+          {submissionError && sayFailure(submissionError, t)}
         </p>
       )}
 

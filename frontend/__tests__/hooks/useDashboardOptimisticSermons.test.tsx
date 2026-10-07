@@ -42,18 +42,21 @@ jest.mock('@/hooks/useSeriesMembership', () => ({
   }),
 }));
 
+// The language a `t` was handed out in, as i18next's after a switch; English says the words bare.
+let mockLanguage = 'en';
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { name?: string; defaultValue?: string }) => {
+  useTranslation: () => {
+    const spoken = mockLanguage;
+    return { t: (key: string, options?: { name?: string; defaultValue?: string }) => {
       const messages: Record<string, string> = {
         'writeRecovery.sermonCreateFailed': `Sermon "${options?.name}" was not saved. Your text is ready to retry.`,
         'writeRecovery.sermonUpdateFailed': `Changes to "${options?.name}" were not saved. Your text is ready to retry.`,
         'writeRecovery.preachDateFailed': `Preaching details for "${options?.name}" were not saved. Your notes are ready to retry.`,
         'writeRecovery.sermonFailed': 'Sermon changes were not saved. Your text is ready to retry.',
       };
-      return messages[key] || options?.defaultValue || key;
-    },
-  }),
+      return (spoken === 'en' ? '' : `${spoken}:`) + (messages[key] || options?.defaultValue || key);
+    } };
+  },
 }));
 
 const { auth: mockAuth } = jest.requireMock('@services/firebaseAuth.service') as {
@@ -356,6 +359,35 @@ describe('useDashboardOptimisticSermons', () => {
       expect(getCachedSermons(queryClient)[0].title).toBe('Updated Title');
       expect(result.current.syncStatesById['sermon-1']).toBeUndefined();
     });
+  });
+
+  it('words a failed save in the language chosen after it, with no new cache event', async () => {
+    // `useMutationState` keeps a selection until the cache changes; a sentence made inside it
+    // stayed in the old language (BUG-20261006-screen-error-kept-as-translated-sentence).
+    const queryClient = createTestQueryClient();
+    setCachedSermons(queryClient, [createSermon('sermon-1')]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    mockUpdateSermon.mockResolvedValueOnce(null);
+    const { result, rerender } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+    const original = getCachedSermons(queryClient)[0];
+    await act(async () => {
+      await result.current.actions.saveEditedSermon({
+        sermon: original, title: 'Updated Title', verse: original.verse, plannedDate: '', initialPlannedDate: '',
+      });
+    });
+    await waitFor(() => expect(result.current.syncStatesById['sermon-1']?.status).toBe('error'));
+
+    mockLanguage = 'ru';
+    try {
+      rerender();
+      expect(result.current.syncStatesById['sermon-1']?.message).toBe(
+        'ru:Changes to "Updated Title" were not saved. Your text is ready to retry.'
+      );
+    } finally {
+      mockLanguage = 'en';
+    }
   });
 
   it('names a rules refusal and exposes the exact sermon edit without suggesting connectivity', async () => {

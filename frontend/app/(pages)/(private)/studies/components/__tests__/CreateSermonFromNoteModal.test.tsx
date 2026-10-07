@@ -315,7 +315,7 @@ describe('CreateSermonFromNoteModal', () => {
     mockCut.mockRejectedValueOnce(new CutStudyNoteError('long', 413));
     await user.click(retryButton());
     await waitFor(() =>
-      expect(screen.getByTestId('create-sermon-step-cut:0')).toHaveTextContent('studiesWorkspace.createSermon.errors.noteTooLong:{"limit":9}')
+      expect(screen.getByTestId('create-sermon-step-cut:0')).toHaveTextContent('studiesWorkspace.createSermon.errors.noteTooLong:{"limit":"9"}')
     );
     expect(mockCreate).not.toHaveBeenCalled();
   });

@@ -21,6 +21,7 @@ import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
+import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -137,7 +138,7 @@ export default function ScratchPanel({
   const [composeNoticeKey, setComposeNoticeKey] = useState<string | null>(null);
   /** How many notes the model skipped. They are in the plan, but placed by fallback. */
   const [composeUnplacedCount, setComposeUnplacedCount] = useState(0);
-  const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeError, setComposeError] = useState<FailureWords | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [placements, setPlacements] = useState<Record<string, ScratchPlacement>>({});
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
@@ -556,8 +557,7 @@ export default function ScratchPanel({
       pendingManualOutlineSignatureRef.current = getOutlineSignature(cleanOutline);
       setManualOutline(cleanOutline);
       void Promise.resolve(onOutlineChange?.(cleanOutline)).catch((error) => {
-        const message = error instanceof Error ? error.message : t(BOARD_APPLY_ERROR_KEY);
-        toast.error(message || t(BOARD_APPLY_ERROR_KEY));
+        toast.error(refusalMessage(error, t, BOARD_APPLY_ERROR_KEY));
       });
     },
     [composedOutline, isBoardLocked, onOutlineChange, t]
@@ -586,11 +586,10 @@ export default function ScratchPanel({
 
     const timeoutId = window.setTimeout(() => {
       if (!isLatestRequest()) return;
-      const timeoutMessage = t("scratch.board.composeTimeout");
       composeRequestIdRef.current = requestId + 1;
       setIsComposing(false);
-      setComposeError(timeoutMessage);
-      toast.error(timeoutMessage);
+      setComposeError({ key: "scratch.board.composeTimeout" });
+      toast.error(t("scratch.board.composeTimeout"));
     }, COMPOSE_TIMEOUT_MS);
 
     try {
@@ -604,9 +603,8 @@ export default function ScratchPanel({
         return;
       }
       if (!isStillValid()) {
-        const staleMessage = t("scratch.board.composeStale");
-        setComposeError(staleMessage);
-        toast.error(staleMessage);
+        setComposeError({ key: "scratch.board.composeStale" });
+        toast.error(t("scratch.board.composeStale"));
         return;
       }
 
@@ -623,16 +621,16 @@ export default function ScratchPanel({
         (error instanceof Error &&
           (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out")));
       const isOffline = isBrowserOffline();
-      const message = isOffline
-        ? t("scratch.board.composeOffline")
+      // Kept as words and said when shown (BUG-20261006-screen-error-kept-as-translated-sentence).
+      const words: FailureWords = isOffline
+        ? { key: "scratch.board.composeOffline" }
         : isTimeout
-        ? t("scratch.board.composeTimeout")
-        : error instanceof Error
-          ? error.message
-          : t("scratch.board.composeError");
-      const visibleMessage = message || t("scratch.board.composeError");
-      setComposeError(visibleMessage);
-      toast.error(visibleMessage);
+        ? { key: "scratch.board.composeTimeout" }
+        : error instanceof Error && error.message
+          ? { said: error.message }
+          : { key: "scratch.board.composeError" };
+      setComposeError(words);
+      toast.error(sayFailure(words, t));
     } finally {
       window.clearTimeout(timeoutId);
       if (isLatestRequest()) {
@@ -655,8 +653,7 @@ export default function ScratchPanel({
     const reportApplyError = (error: unknown) => {
       if (didReportApplyError) return;
       didReportApplyError = true;
-      const message = error instanceof Error ? error.message : t(BOARD_APPLY_ERROR_KEY);
-      toast.error(message || t(BOARD_APPLY_ERROR_KEY));
+      toast.error(refusalMessage(error, t, BOARD_APPLY_ERROR_KEY));
     };
 
     try {
@@ -678,7 +675,7 @@ export default function ScratchPanel({
       });
 
       if (failedPlacementNoteIds.length > 0) {
-        throw new Error(t("scratch.board.applyPlacementError"));
+        throw saidError("scratch.board.applyPlacementError");
       }
 
       let deliveryQueued = false;
@@ -957,7 +954,7 @@ export default function ScratchPanel({
 
       {composeError && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/70 dark:bg-red-950/30 dark:text-red-200">
-          {composeError}
+          {sayFailure(composeError, t)}
         </div>
       )}
     </div>

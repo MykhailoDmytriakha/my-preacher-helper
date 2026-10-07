@@ -7,6 +7,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { useTextDictation } from '@/hooks/useTextDictation';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
@@ -19,7 +20,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
 
   const dictation = useTextDictation({
     onStart: () => setError(null),
@@ -27,7 +28,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
       const prefix = previous.replace(/\s+$/, '');
       return `${prefix}${prefix ? '\n\n' : ''}${dictatedText}`;
     }),
-    onEmpty: () => setError(t('prayer.update.dictationEmpty')),
+    onEmpty: () => setError({ key: 'prayer.update.dictationEmpty' }),
     fallbackErrorKey: 'prayer.update.dictationError',
   });
   const transcriptionUnavailableLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
@@ -71,13 +72,13 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
               disabled={saving || dictation.transcriptionBlocked} title={transcriptionUnavailableLabel}
               transcriptionError={dictation.error} onRetry={dictation.retry} retryCount={dictation.retryCount}
               maxRetries={dictation.maxRetries} onClearError={dictation.clear}
-              onError={message => { setError(message); dictation.stopProcessing(); }} />
+              onError={message => { setError({ said: message }); dictation.stopProcessing(); }} />
           </div>
         </div>
         <TextareaAutosize value={text} onChange={event => setText(event.target.value)}
           placeholder={t('prayer.update.placeholder')} aria-label={t('prayer.update.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />
-        {error && <p className="text-sm text-red-500" role="alert">{error}</p>}
+        {error && <p className="text-sm text-red-500" role="alert">{sayFailure(error, t)}</p>}
       </div>
     </FormDialog>
   );

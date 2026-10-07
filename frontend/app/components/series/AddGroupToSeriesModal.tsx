@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useAuth } from '@/providers/AuthProvider';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 interface AddGroupToSeriesModalProps {
@@ -26,7 +27,7 @@ export default function AddGroupToSeriesModal({
   const { groups, loading } = useGroupsRead(user?.uid || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   /* Holds the page still and answers Escape — the same rule every window in the app follows. */
   const layer = useModalLayer({ onClose, closeDisabled: isAdding });
@@ -121,7 +122,7 @@ export default function AddGroupToSeriesModal({
           </div>
 
           <div className="flex-1 overflow-y-auto pr-1">
-            {error && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-300">{error}</p>}
+            {error && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-300">{sayFailure(error, t)}</p>}
             {loading ? (
               <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-b-transparent border-blue-600 mr-3" />

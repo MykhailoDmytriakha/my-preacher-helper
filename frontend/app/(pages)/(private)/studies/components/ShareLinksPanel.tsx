@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import Select from '@/components/ui/Select';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 
@@ -39,7 +40,7 @@ export default function ShareLinksPanel({
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<FailureWords | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   const noteMap = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes]);
@@ -142,7 +143,7 @@ export default function ShareLinksPanel({
 
       {writeError && (
         <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-300">
-          {writeError}
+          {sayFailure(writeError, t)}
         </p>
       )}
 

@@ -8,6 +8,7 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import {
   awaitAcceptance,
   type WriteSubmission,
@@ -73,7 +74,7 @@ export default function EditThoughtModal({
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [saveError, setSaveError] = useState('');
+  const [saveError, setSaveError] = useState<FailureWords | null>(null);
   const dictation = useTextDictation({
     onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
     onEmpty: () => toast.error(t('errors.audioProcessing')),
@@ -87,21 +88,21 @@ export default function EditThoughtModal({
     !areStringArraysEqual(tags, initialTags) ||
     selectedSermonPointId !== initialSermonPointId ||
     (selectedSubPointId ?? null) !== (initialSubPointId ?? null);
-  const getSaveErrorMessage = (error: unknown) =>
-    t(writeFailureTranslationKey(error, 'writeRecovery.thoughtEditFailed'));
+  const saveFailureWords = (error: unknown): FailureWords =>
+    ({ key: writeFailureTranslationKey(error, 'writeRecovery.thoughtEditFailed') });
 
   const handleAddTag = (tag: string) => {
     if (isReadOnly) return;
     if (!tags.includes(tag)) {
       setTags([...tags, tag]);
-      setSaveError('');
+      setSaveError(null);
     }
   };
 
   const handleRemoveTag = (index: number) => {
     if (isReadOnly) return;
     setTags(tags.filter((_, i) => i !== index));
-    setSaveError('');
+    setSaveError(null);
   };
 
   const handleSave = async () => {
@@ -114,7 +115,7 @@ export default function EditThoughtModal({
     };
 
     setIsSubmitting(true);
-    setSaveError('');
+    setSaveError(null);
     try {
       const submission = onSave(text, tags, selectedSermonPointId, selectedSubPointId ?? null);
 
@@ -130,14 +131,14 @@ export default function EditThoughtModal({
          * while the editor is on screen. Anything after that belongs to
          * `onSubmissionRejected`, whose owner knows where the person now is.
          */
-        setSaveError(getSaveErrorMessage(error));
+        setSaveError(saveFailureWords(error));
         onSubmissionRejected?.(submittedDraft);
       });
 
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);
-      setSaveError(getSaveErrorMessage(error));
+      setSaveError(saveFailureWords(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -160,16 +161,16 @@ export default function EditThoughtModal({
       <div className="space-y-5">
         {sermonOutline && <ThoughtOutlineField sermonOutline={sermonOutline} section={containerSection}
           outlinePointId={selectedSermonPointId} subPointId={selectedSubPointId} disabled={isReadOnly}
-          onSelect={(pointId, subId) => { setSelectedSermonPointId(pointId); setSelectedSubPointId(subId); setSaveError(''); }} />}
+          onSelect={(pointId, subId) => { setSelectedSermonPointId(pointId); setSelectedSubPointId(subId); setSaveError(null); }} />}
         <ThoughtTagsField tags={tags} allowedTags={allowedTags} availableTags={availableTags}
           onRemoveTag={handleRemoveTag} onAddTag={handleAddTag} disabled={isReadOnly} />
         <div className="space-y-3">
           <ThoughtTextHeader dictation={dictation} available={isMagicAvailable} saving={isSubmitting} readOnly={isReadOnly} />
           {isReadOnly ? <div className="rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-700/50">
             <pre className="whitespace-pre-wrap font-sans text-gray-700 dark:text-gray-300">{text}</pre>
-          </div> : <RichMarkdownEditor value={text} onChange={value => { setText(value); setSaveError(''); }} placeholder={t('manualThought.placeholder')} />}
+          </div> : <RichMarkdownEditor value={text} onChange={value => { setText(value); setSaveError(null); }} placeholder={t('manualThought.placeholder')} />}
         </div>
-        {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+        {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{sayFailure(saveError, t)}</p>}
       </div>
     </FormDialog>
   );

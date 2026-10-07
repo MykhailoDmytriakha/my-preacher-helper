@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { Series } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
@@ -26,7 +27,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
     if (!formEditedRef.current) setValues(seriesFormValues(series));
   }, [series]);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const changeFields = (patch: Partial<SeriesFormValues>) => {
     formEditedRef.current = true;
     setValues(previous => ({ ...previous, ...patch }));
@@ -61,11 +62,8 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
         onClose();
         return;
       }
-      setError(
-        writeFailureTranslationKey(error, '') === 'writeRecovery.refused'
-          ? ''
-          : t('common.saveError')
-      );
+      // A refusal is said by the shared recovery toast; anything else here, in the language shown.
+      setError(writeFailureTranslationKey(error, '') === 'writeRecovery.refused' ? null : { key: 'common.saveError' });
     } finally {
       setSaving(false);
     }
@@ -76,7 +74,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
       footer={
         <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')} saving={saving} />
       }>
-      {error && <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+      {error && <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">{sayFailure(error, t)}</div>}
       <div className="space-y-5">
         <SeriesFormFields values={values} onChange={changeFields} colorPickerTitle={t('workspaces.series.editSeries')} />
       </div>

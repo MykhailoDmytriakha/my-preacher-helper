@@ -187,6 +187,32 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261006-confirm-dialog-text-frozen-on-language-switch · Открытое окно подтверждения остаётся на прежнем языке, если язык сменили, пока оно открыто
+**Severity.** P3 — нужно сменить язык при открытом вопросе «удалить?»; смысл понятен, данные не затронуты.
+**Найден.** 2026-10-06 · ревью Codex при закрытии BUG-20261006-screen-error-kept-as-translated-sentence (соседний класс: там — ошибки, здесь — текст вопроса).
+**Как должно работать для человека.** Сменил язык — открытый вопрос, его кнопки и пояснение звучат на новом языке.
+**Механизм.** `hooks/useConfirm.tsx:44` хранит в состоянии и в ref готовые строки (`title`, `description`, `confirmText`, `cancelText`), которые вызывающий перевёл в момент вопроса (`confirm({ title: t(…) })`, ~10 вызовов).
+**Направление.** Принимать ключи (или функцию, говорящую текст при показе) и переводить в самом окне; вызовы перевести одним проходом.
+
+### BUG-20261006-recorder-error-channel-keeps-sentence · Ошибка записи голоса передаётся и хранится готовой фразой: после смены языка остаётся на прежнем
+**Severity.** P3 — фраза понятна и уходит при следующей записи; голос и текст не теряются. Остаток класса BUG-20261006-screen-error-kept-as-translated-sentence (там экраны переведены на «слова отказа»; этот канал требует смены контракта общего компонента).
+**Найден.** 2026-10-06 · агент, прочёс класса при закрытии той записи, чтением кода; живьём не воспроизводилось.
+**Как должно работать для человека.** Сменил язык — подпись под кнопкой записи о неудачной расшифровке звучит на новом языке, как и всё на экране.
+**Механизм.** Рекордер сам переводит причину и отдаёт родителю строку (`components/FocusRecorderButton.tsx:407` `handleError` → `onError(t(messageKey))`; проп `transcriptionError: string`), а расшифровка строит фразу заранее (`utils/transcriptionRetryClient.ts:267` `buildTranscriptionErrorMessage(err, t)`). Родители держат её в состоянии.
+**Карта класса.**
+| место | вердикт | почему |
+|---|---|---|
+| `hooks/useTextDictation.ts:23,54` (`dictation.error`) | поражено | строка из `buildTranscriptionErrorMessage` в состоянии |
+| `components/column/audio.ts:79,87` → `components/Column.tsx:177-178` | поражено | `setAudioError(t(…))` в состояние колонки; исключение стража `failuresKeptAsWords` ссылается на эту запись |
+| `components/column/OutlinePointCard.tsx:127` (`subPointAudioErrors`), `:40` (`audioError`) | поражено | строки в состоянии и пропе |
+| `(pages)/(private)/studies/[id]/page.tsx:224` (`voiceError`) | поражено | строка из `buildTranscriptionErrorMessage` |
+| `(pages)/(private)/sermons/[id]/page.tsx:663,1553` (`transcriptionError`) | поражено | `t('errors.aiOutOfTimeAudio')` или сообщение ошибки в состоянии |
+| `components/sermon/ScratchPanel.tsx:145` (`voiceError`) | поражено | фраза расшифровки в состоянии |
+| `components/audio-recorder/useAudioRecorderLifecycle.ts:44` (`transcriptionErrorState`) | поражено | строка ошибки рекордера в состоянии |
+| `components/prayer/AddUpdateModal.tsx:75` | частично | своё «пусто» — ключ; фраза рекордера хранится как есть (`{ said }`) до смены контракта |
+| `components/thought/ThoughtTextHeader.tsx:31` | не поражено | фраза рекордера уходит в тост — сказана один раз |
+**Направление.** Рекордер отдаёт `FailureWords` (`onError(words)`, `transcriptionError: FailureWords | null`), `buildTranscriptionErrorMessage` возвращает слова, а не фразу; переводит тот, кто показывает (`sayFailure`). После — убрать исключения этой записи из `KNOWN` в `__tests__/architecture/failuresKeptAsWords.test.ts` (страж сам скажет, если исключение пережило правку).
+
 ### BUG-20261006-recovery-list-offers-resolved-and-live-drafts · «Сохранённый черновик» предлагает текст, который человек уже отбросил, и редактор, живой в соседней вкладке
 **Severity.** P3 — текст не теряется и сам никуда не отправляется; но выбор человека («взять чужую версию») не исполнен до конца: отброшенный текст висит предложением без срока, и убрать его нечем.
 **Найден.** 2026-10-06 · агент, живьём на localhost при проверке BUG-20261006-sermon-conflict-choice-shown-twice (демо-проповедь `demo-note-thoughts-scratch`, две вкладки).
@@ -256,14 +282,6 @@
 | `@hello-pangea/dnd`: `Column.tsx:470`, `sermon/SermonOutline.tsx:758`, `column/SubPointList.tsx:302` | поражено | нет `dragHandleUsageInstructions` и `announce` |
 **Шаги.** Включить VoiceOver, интерфейс на русском → календарь проповедей → кнопка следующего месяца; любой список с перетаскиванием → фокус на ручке.
 **Направление.** Календарь — локаль `react-day-picker/locale` (`ru`, `uk`, `enUS` несут переведённые подписи и совместимы с `date-fns`) одной точкой в `useAppLocale`. Перетаскивание — один общий набор переведённых подсказок и объявлений на библиотеку (ключи в трёх локалях), передаваемый каждому контексту, а не десять своих.
-
-### BUG-20261006-screen-error-kept-as-translated-sentence · Ошибка, которую экран сам держит в своём состоянии, после смены языка остаётся на прежнем
-**Severity.** P3 — фраза понятна и исчезает при следующем действии; данные не затронуты. Остаток класса BUG-20261003-said-refusal-keeps-old-language (там исправлен общий путь «слов отказа»: `saidError`, отказ «только просмотр», поле `missing` в модалках серии).
-**Найден.** 2026-10-06 · прочёс класса при закрытии той записи (дело bugs-26), чтением кода; живьём не воспроизводилось.
-**Как должно работать для человека.** Сменил язык — всё, что сейчас на экране, звучит на новом языке, включая только что показанную ошибку.
-**Механизм.** Экран кладёт в своё состояние готовую переведённую строку (`setError(t(...))`, `throw new Error(t(...))`) вместо ключа и переводит её не при показе.
-**Места (`file:line` на 2026-10-06).** `care/orders/[id]/page.tsx:725` · `care/orders/page.tsx:174,182` · `studies/components/CreateSermonFromNoteModal.tsx:435,439` · `sermons/[id]/page.tsx:1334` · `sermons/[id]/plan/page.tsx:561,566` · `components/sermon/SermonOutline.tsx:276` · `components/sermon/ScratchPanel.tsx:681` · `components/prayer/AddUpdateModal.tsx:30` · `components/common/EditableTitle.tsx:59`.
-**Направление.** Хранить ключ (или `FailureWords` из `utils/actionFailureMessage.ts`) и переводить при показе — тем же путём, что `sayFailure`.
 
 ### BUG-20261004-missing-record-dead-end-screens · Запись, которой нет (удалена на другом устройстве или адрес устарел), на четырёх экранах не говорит «не найдено»
 **P3** — тупиковый экран без слов; неотправленный текст при этом виден: с правкой, не успевшей уйти, движок показал «Эту запись удалили на другом устройстве», и текст оставался на экране всю минуту наблюдения · `frontend/app/(pages)/(private)/studies/[id]/page.tsx` (вечная загрузка) · `…/care/orders/[id]/page.tsx` (вечный скелетон) · `…/series/[id]/page.tsx` (пустая страница) · `…/groups/[id]/page.tsx` («Не удалось загрузить группы»).

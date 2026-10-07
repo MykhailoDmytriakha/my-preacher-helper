@@ -19,6 +19,7 @@ import {
   isUnreachableWriteError,
 } from '@/services/conflictSafeUpdate.client';
 import { readServiceOrderOnServer } from '@/services/serviceOrderEditing.client';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
@@ -213,7 +214,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     setEditing((was) => !was);
   };
 
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<FailureWords | null>(null);
 
   /**
    * ONE STRUCTURAL CHANGE AT A TIME. Typing is never held up.
@@ -281,24 +282,25 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * a queued write retypes it; told "failed" about a conflict, he never learns there is
    * another version at all.
    */
-  const describeFailure = (error: unknown): string => {
+  // Words, said when shown: a language switch re-says them (BUG-20261006-screen-error-kept-as-translated-sentence).
+  const describeFailure = (error: unknown): FailureWords => {
     console.error('serviceOrder write failed', error);
-    if (error instanceof StepGoneError) return t('serviceOrders.stepGone') as string;
-    if (isOfflineQueuedError(error)) return t('serviceOrders.writeQueued') as string;
+    if (error instanceof StepGoneError) return { key: 'serviceOrders.stepGone' };
+    if (isOfflineQueuedError(error)) return { key: 'serviceOrders.writeQueued' };
     /*
      * Only the sentence belongs here. Taking the server's version as the new baseline is the
      * hook's work — it is the side that serialises the writes, and a baseline kept anywhere else
      * is stale by the time the next one runs.
      */
-    if (isStaleWriteError(error)) return t('serviceOrders.writeConflict') as string;
+    if (isStaleWriteError(error)) return { key: 'serviceOrders.writeConflict' };
     /*
      * "WE DO NOT KNOW" IS ITS OWN ANSWER, and the most dangerous one to dress up as a refusal.
      * A transaction that times out or loses the connection may already have committed; calling
      * that a refusal and undoing the change on screen turns a saved rite into an unsaved-looking
      * one, and the next edit is then made against a version that no longer exists.
      */
-    if (isUnreachableWriteError(error)) return t('serviceOrders.writeUnknown') as string;
-    return t('serviceOrders.writeFailed') as string;
+    if (isUnreachableWriteError(error)) return { key: 'serviceOrders.writeUnknown' };
+    return { key: 'serviceOrders.writeFailed' };
   };
 
   /**
@@ -419,12 +421,12 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * The name of the rite belongs here too, under `null` — it is not a step, and a step id is
    * always a string, so the two can never be taken for one another.
    */
-  const unresolved = useRef(new Map<string | null, Map<string, { said: string; value?: string }>>());
+  const unresolved = useRef(new Map<string | null, Map<string, { said: FailureWords; value?: string }>>());
 
   const rememberRefusal = useCallback(
-    (owner: string | null, field: string, said: string, value?: string) => {
+    (owner: string | null, field: string, said: FailureWords, value?: string) => {
       const fields =
-        unresolved.current.get(owner) ?? new Map<string, { said: string; value?: string }>();
+        unresolved.current.get(owner) ?? new Map<string, { said: FailureWords; value?: string }>();
       fields.set(field, { said, value });
       unresolved.current.set(owner, fields);
     },
@@ -444,7 +446,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * after every write, so the banner can never go on describing a failure that has since been
    * settled while a different one is still standing.
    */
-  const stillUnsaid = useCallback((): string | null => {
+  const stillUnsaid = useCallback((): FailureWords | null => {
     for (const fields of unresolved.current.values()) {
       for (const entry of fields.values()) return entry.said;
     }
@@ -488,7 +490,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const settleFailure = (
     error: unknown,
     options: WriteOptions | undefined
-  ): string => {
+  ): FailureWords => {
     const said = describeFailure(error);
     const gone = error instanceof StepGoneError;
     const unknown = isUnreachableWriteError(error);
@@ -662,7 +664,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
      * one save out of date.
      */
     if (!next) {
-      const said = t('serviceOrders.titleRequired') as string;
+      const said: FailureWords = { key: 'serviceOrders.titleRequired' };
       rememberRefusal(null, TITLE_KEY, said);
       setFailure(said);
       return;
@@ -722,7 +724,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
       setTyped(null);
       setRefsDraft({});
       freshness.markSynced(content);
-    } catch { setFailure(t('freshness.refreshFailedToast') as string); }
+    } catch { setFailure({ key: 'freshness.refreshFailedToast' }); }
     finally { setRefreshing(false); }
   };
 
@@ -973,7 +975,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         )}
       </header>
 
-      {failure && <ServiceOrderFailure message={failure} testId="service-order-failure" />}
+      {failure && <ServiceOrderFailure message={sayFailure(failure, t)} testId="service-order-failure" />}
 
       {liveSteps.length === 0 && !editing && (
         <p className="mt-8 text-sm text-gray-500 dark:text-gray-400">

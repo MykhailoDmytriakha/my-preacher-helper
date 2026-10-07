@@ -7,6 +7,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
 // ONE definition of "has the server proved its copy is newer" for the whole app: this
@@ -283,7 +284,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     conclusion: [],
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setError] = useState<FailureWords | null>(null);
   const [requiredTagColors, setRequiredTagColors] = useState<{
     introduction?: string;
     main?: string;
@@ -434,9 +435,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         if (!isCurrent()) return;
         recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'failed' });
         console.error("Error initializing sermon data:", err);
-        const errorMessage = t('errors.fetchSermonStructureError');
-        setError(errorMessage);
-        toast.error(errorMessage);
+        setError({ key: 'errors.fetchSermonStructureError' });
+        toast.error(t('errors.fetchSermonStructureError'));
         // Reset state on error
         setSermon(null);
         setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
@@ -483,7 +483,6 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     if (!engineMode) return;
     if (!engineSermon) {
       setLoading(Boolean(engineRef.current?.loading));
-      setError(engineRef.current?.error ?? null);
       return;
     }
     let active = true;
@@ -530,7 +529,9 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     requiredTagColors,
     allowedTags,
     loading,
-    error,
+    // Said in the language on screen when returned (BUG-20261006-screen-error-kept-as-translated-sentence):
+    // on the engine its document hook already says it at render, so it is read live, never copied.
+    error: engineMode ? (engineSermon ? null : engine?.error ?? null) : failure && sayFailure(failure, t),
     retry,
     setLoading,
     isAmbiguousVisible,

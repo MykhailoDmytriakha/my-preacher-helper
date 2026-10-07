@@ -8,6 +8,7 @@ import ChurchField from '@/components/church/ChurchField';
 import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW, GROUP_CARD, GROUP_HINT, GROUP_TITLE } from '@/components/ui/formCardClasses';
 import FormDialog from '@/components/ui/FormDialog';
 import Select from '@/components/ui/Select';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import DatePickerField from '@components/ui/DatePickerField';
 
 import type { Church } from '@/models/models';
@@ -115,7 +116,7 @@ export default function SermonFormDialog({
    * reads out.
    */
   const missingFieldRef = React.useRef<string | null>(null);
-  const [missingField, setMissingField] = React.useState<string | null>(null);
+  const [missingField, setMissingField] = React.useState<FailureWords | null>(null);
 
   const requiredFields: { name: string; labelKey: string; value: string }[] = [
     { name: 'title', labelKey: 'addSermon.titleLabel', value: values.title },
@@ -132,7 +133,7 @@ export default function SermonFormDialog({
     }
     event.preventDefault();
     missingFieldRef.current = empty.name;
-    setMissingField(t('addSermon.fillRequiredField', { field: t(empty.labelKey) }));
+    setMissingField({ key: 'addSermon.fillRequiredField', values: { field: { key: empty.labelKey } } });
     const element = document.getElementById(fieldId(empty.name));
     element?.focus();
     // Optional call on purpose: not every environment implements it, and a missing
@@ -141,7 +142,7 @@ export default function SermonFormDialog({
   };
 
   /** The caller's own error (a refused write) and this form's complaint share one place. */
-  const notice = error || missingField;
+  const notice = error || (missingField ? sayFailure(missingField, t) : null);
 
   const footer = (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">

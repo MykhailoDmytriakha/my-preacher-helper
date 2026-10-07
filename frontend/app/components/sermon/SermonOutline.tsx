@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useConfirm } from '@/hooks/useConfirm';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
@@ -75,7 +76,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
   // --- All useState hooks at the top ---
   const [saving, setSaving] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const [sectionPoints, setSectionPoints] = useState(() => mapOutline(sermon.outline));
   const [expandedSections, setExpandedSections] = useState(() => expandedOutline(sermon.outline));
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
@@ -273,7 +274,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         onOutlineUpdate?.(committed);
       } catch (err) {
         console.error("Error saving sermon outline:", err);
-        setError(t(writeFailureTranslationKey(err, 'errors.saveOutlineError')));
+        setError({ key: writeFailureTranslationKey(err, 'errors.saveOutlineError') });
       } finally {
         setSaving(false);
         if (generationAtRequest === saveGenerationRef.current) settledGenerationRef.current = generationAtRequest;
@@ -458,7 +459,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
 
   // Main component return
   if (error) {
-    return <div className="text-center p-4 text-red-500">{error}</div>;
+    return <div className="text-center p-4 text-red-500">{sayFailure(error, t)}</div>;
   }
 
   // Function to get count of thoughts for a point

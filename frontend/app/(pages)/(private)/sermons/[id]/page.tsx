@@ -51,6 +51,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
+import { saidError } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
@@ -1331,7 +1332,7 @@ useEffect(() => {
 
         if (persistVersion !== scratchOutlinePersistVersionRef.current) return;
         if (!savedOutline) {
-          throw new Error(t('scratch.board.applyError'));
+          throw saidError('scratch.board.applyError');
         }
 
         handleOutlineUpdate(savedOutline);
@@ -1342,7 +1343,7 @@ useEffect(() => {
         }
       }
     },
-    [handleOutlineUpdate, sermon, t]
+    [handleOutlineUpdate, sermon]
   );
 
   const applyScratchOutlineAndConsume = scratchNotes.applyOutlineAndConsume;

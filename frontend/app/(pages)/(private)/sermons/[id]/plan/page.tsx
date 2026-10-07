@@ -19,6 +19,7 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
@@ -261,7 +262,7 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
   const thoughtBaselinesRef = useRef<Record<string, Thought>>({});
   const isRestoring = useIsRestoring();
   const isLoading = isLoadingRaw || isRestoring;
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
 
   // Generated content by outline point ID
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
@@ -558,17 +559,17 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
     if (isLoading) return;
 
     if (sermonError && isOnline) {
-      setError(t("errors.failedToLoadSermon"));
+      setError({ key: "errors.failedToLoadSermon" });
       return;
     }
 
     if (!sermon && isOnline) {
-      setError(t("errors.sermonNotFound"));
+      setError({ key: "errors.sermonNotFound" });
       return;
     }
 
     setError(null);
-  }, [isLoading, sermon, sermonError, isOnline, t]);
+  }, [isLoading, sermon, sermonError, isOnline]);
 
   /**
    * Seed the editor from stored text — understanding BOTH shapes.
@@ -983,7 +984,7 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
   if (error || !sermon) {
     return (
       <div className="p-6 text-center">
-        <h1 className="text-2xl font-bold text-red-600 mb-4">{error}</h1>
+        <h1 className="text-2xl font-bold text-red-600 mb-4">{error && sayFailure(error, t)}</h1>
         <Button
           onClick={() => router.push(`/sermons/${sermonId}`)}
           variant="default"

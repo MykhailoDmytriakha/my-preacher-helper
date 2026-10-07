@@ -198,11 +198,12 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
         sermonId: sermonIdOf(mutation),
         operation,
         status: mutation.state.status,
-        message: mutation.state.error
-          ? isWriteRefusedError(mutation.state.error)
-            ? t('writeRecovery.refused')
-            : recoveryMessageFor(operationKey, mutation.state.variables, t)
-          : undefined,
+        // Facts only: `useMutationState` keeps a selection until the next cache event, so a
+        // sentence made here stayed in the old language after a switch
+        // (BUG-20261006-screen-error-kept-as-translated-sentence). It is worded below, at render.
+        failed: Boolean(mutation.state.error),
+        operationKey,
+        variables: mutation.state.variables,
         recoveryText: mutation.state.error
           ? recoveryTextFor(operationKey, mutation.state.variables, seriesNameOf)
           : undefined,
@@ -237,7 +238,9 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
               status: 'error',
               operation: snapshot.operation,
               submissionId: snapshot.submissionId,
-              message: snapshot.message ?? t('writeRecovery.sermonFailed'),
+              message: !snapshot.failed ? t('writeRecovery.sermonFailed')
+                : snapshot.refused ? t('writeRecovery.refused')
+                : recoveryMessageFor(snapshot.operationKey, snapshot.variables, t),
               recoveryText: snapshot.recoveryText,
               conflict: snapshot.conflict,
               refused: snapshot.refused,

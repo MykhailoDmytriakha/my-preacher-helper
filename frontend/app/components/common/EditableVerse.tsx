@@ -4,6 +4,8 @@ import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+
 import type { ManualTextBinding } from './manualTextBinding';
 
 interface EditableVerseProps {
@@ -36,7 +38,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
   const editedVerse = manual?.value ?? legacyValue;
   const [localSaving, setIsSaving] = useState(false);
   const isSaving = localSaving || Boolean(manual?.busy);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<FailureWords | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Update internal state if initialVerse prop changes externally
@@ -76,7 +78,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
 
   const manualAction = async (action: () => Promise<void>) => {
     setError(null);
-    try { await action(); } catch { setError(t('errors.failedToSaveVerse')); }
+    try { await action(); } catch { setError({ key: 'errors.failedToSaveVerse' }); }
   };
 
   const handleEditClick = () => {
@@ -118,7 +120,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
       setIsEditing(false);
     } catch (err) {
       console.error("Error saving verse:", err);
-      setError(t('errors.failedToSaveVerse'));
+      setError({ key: 'errors.failedToSaveVerse' });
     } finally {
       setIsSaving(false);
     }
@@ -180,7 +182,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
             >
               <XMarkIcon className={buttonSizeClass} />
             </button>
-            {error && <p id="verse-error" className="text-red-500 text-xs">{error}</p>}
+            {error && <p id="verse-error" className="text-red-500 text-xs">{sayFailure(error, t)}</p>}
           </div>
         </div>
       ) : (
@@ -198,7 +200,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
           </button>
         </div>
       )}
-      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{error}</p>}
+      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{sayFailure(error, t)}</p>}
     </div>
   );
 };

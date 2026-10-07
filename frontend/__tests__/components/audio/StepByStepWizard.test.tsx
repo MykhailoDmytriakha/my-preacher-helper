@@ -932,7 +932,8 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
         fireEvent.click(await screen.findByRole('button', { name: 'Cancel Generation' }));
 
-        await waitFor(() => expect(screen.getByText('Generation cancelled')).toBeInTheDocument());
+        // Said by its key when shown (BUG-20261006-screen-error-kept-as-translated-sentence); the key is in all three locales.
+        await waitFor(() => expect(screen.getByText('audioExport.generationCancelled')).toBeInTheDocument());
         expect(screen.getByRole('button', { name: /Generate Audio/ })).toBeInTheDocument();
     });
 });

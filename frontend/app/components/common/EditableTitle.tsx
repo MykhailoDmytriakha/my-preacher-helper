@@ -4,6 +4,8 @@ import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+
 import type { ManualTextBinding } from './manualTextBinding';
 
 interface EditableTitleProps {
@@ -36,7 +38,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
   const editedTitle = manual?.value ?? legacyValue;
   const [localSaving, setIsSaving] = useState(false);
   const isSaving = localSaving || Boolean(manual?.busy);
-  const [error, setError] = useState<string | null>(null); // To display potential save errors
+  const [error, setError] = useState<FailureWords | null>(null); // To display potential save errors
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Update internal state if initialTitle prop changes externally
@@ -56,7 +58,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
 
   const manualAction = async (action: () => Promise<void>) => {
     setError(null);
-    try { await action(); } catch { setError(t('errors.failedToSaveTitle')); }
+    try { await action(); } catch { setError({ key: 'errors.failedToSaveTitle' }); }
   };
 
   const handleEditClick = () => {
@@ -91,7 +93,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
       setIsEditing(false); // Close edit mode on successful save
     } catch (err) {
       console.error("Error saving title:", err);
-      setError(t('errors.failedToSaveTitle')); // Set user-friendly error message
+      setError({ key: 'errors.failedToSaveTitle' }); // Set user-friendly error message
       // Keep editing mode open so user can retry or cancel
     } finally {
       setIsSaving(false);
@@ -150,7 +152,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           >
             <XMarkIcon className={buttonSizeClass} />
           </button>
-          {error && <p id="title-error" className="text-red-500 text-xs ml-2">{error}</p>}
+          {error && <p id="title-error" className="text-red-500 text-xs ml-2">{sayFailure(error, t)}</p>}
         </div>
       ) : (
         <div className="flex items-center gap-2 group min-w-0">
@@ -167,7 +169,7 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           </button>
         </div>
       )}
-      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{error}</p>}
+      {!isEditing && error && <p role="alert" className="text-red-500 text-xs">{sayFailure(error, t)}</p>}
     </div>
   );
 };

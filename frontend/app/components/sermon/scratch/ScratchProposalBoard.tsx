@@ -30,7 +30,8 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
   const { t } = useTranslation();
   const { isMagicAvailable } = useConnection();
   const { aiBlocked, refresh } = useAiUsage();
-  const [notice, setNotice] = useState<string | null>(null);
+  // What the proposal left out, said when shown so a language switch re-says it.
+  const [notice, setNotice] = useState<{ unplaced: number } | null>(null);
   const notes = sermon.scratch ?? [];
   const targets = sections.flatMap(section => (sermon.outline?.[section] ?? []).flatMap(point => [
     { label: point.text, value: JSON.stringify({ pointId: point.id }) },
@@ -60,13 +61,13 @@ export function ScratchProposalBoard({ sermonId, sermon, form, readOnly, valid, 
         return json({ ...replaceSermonOutline(source, stripScratchMetadata(result.outline)),
           scratch: (source.scratch ?? []).filter(note => !consumed.has(note.id)) });
       });
-      setNotice(unplaced ? t('scratch.board.composeUnplaced', { count: unplaced }) : t('scratch.board.proposalReady'));
+      setNotice({ unplaced });
       void refresh().catch(() => undefined);
     } catch { /* The engine retains the prior stage and exposes the failure. */ }
   };
   return <div className="space-y-4">
     <p className="text-sm text-gray-600 dark:text-gray-300">{t('scratch.board.proposalHelp')}</p>
-    {notice && <p role="status">{notice}</p>}
+    {notice && <p role="status">{notice.unplaced ? t('scratch.board.composeUnplaced', { count: notice.unplaced }) : t('scratch.board.proposalReady')}</p>}
     <OutlineBoard value={sermon.outline ?? { introduction: [], main: [], conclusion: [] }} onChange={onChange}
       directText showNotes isReadOnly={readOnly}
       getPointThoughtCount={id => sermon.thoughts.filter(thought => thought.outlinePointId === id).length}
