@@ -444,7 +444,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         </div>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_minmax(320px,420px)]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
         <div className="space-y-6">
           {/* Unified Flow List */}
           <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">

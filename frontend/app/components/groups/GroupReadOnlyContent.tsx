@@ -14,7 +14,7 @@ import type { Group, GroupBlockTemplate } from '@/models/models';
 function BlockDetails({ template }: { template: GroupBlockTemplate }) {
   return <>
     {template.summary && <div className="mt-1 text-xs text-gray-600 dark:text-gray-300"><MarkdownDisplay content={template.summary} compact className="!text-xs" /></div>}
-    {template.scriptureRefs?.length ? <p className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-300">{template.scriptureRefs.join(' · ')}</p> : null}
+    {template.scriptureRefs?.length ? <p className="mt-1 break-words text-xs font-medium text-gray-600 dark:text-gray-300">{template.scriptureRefs.join(' · ')}</p> : null}
     {template.questions?.length ? <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-gray-600 dark:text-gray-300">
       {template.questions.map((question, index) => <li key={index}><MarkdownDisplay content={question} compact className="!text-xs [&_p]:my-0" /></li>)}
     </ul> : null}
@@ -44,14 +44,15 @@ export function GroupReadOnlyContent({ group }: { group: Group }) {
           <ArrowLeftIcon className="h-4 w-4" />
           {t('navigation.groups', { defaultValue: 'Groups' })}
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{group.title}</h1>
+        <h1 className="break-words text-2xl font-bold text-gray-900 dark:text-gray-100">{group.title}</h1>
         {group.description && <div className="mt-2 text-sm text-gray-700 dark:text-gray-300"><MarkdownDisplay content={group.description} compact /></div>}
         {meetings.map(meeting => (
           <div key={meeting.id} className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
             <p className="flex flex-wrap gap-x-6 gap-y-2">
-              {meeting.date && <span className="inline-flex items-center gap-2"><CalendarDaysIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />{meeting.date}</span>}
-              {meeting.location && <span className="inline-flex items-center gap-2"><MapPinIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />{meeting.location}</span>}
-              {meeting.audience && <span className="inline-flex items-center gap-2"><UsersIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden />{meeting.audience}</span>}
+              {/* An item is never wider than the row, so a long value wraps inside it instead of widening the page. */}
+              {meeting.date && <span className="inline-flex max-w-full items-center gap-2"><CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.date}</span></span>}
+              {meeting.location && <span className="inline-flex max-w-full items-center gap-2"><MapPinIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.location}</span></span>}
+              {meeting.audience && <span className="inline-flex max-w-full items-center gap-2"><UsersIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.audience}</span></span>}
             </p>
             {meeting.notes && <MarkdownDisplay content={meeting.notes} compact />}
           </div>
@@ -96,7 +97,7 @@ export function GroupReadOnlyContent({ group }: { group: Group }) {
           <ul className="space-y-2">
             {unplaced.map(template => (
               <li key={template.id} className="rounded-xl border border-gray-200 px-4 py-3 dark:border-gray-700">
-                <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">{template.title}</p>
+                <p className="break-words text-sm font-semibold text-gray-800 dark:text-gray-100">{template.title}</p>
                 {template.content && <MarkdownDisplay content={template.content} compact className="!text-xs !text-gray-500 dark:!text-gray-400" />}
                 <BlockDetails template={template} />
               </li>

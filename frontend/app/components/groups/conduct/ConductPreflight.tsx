@@ -148,7 +148,7 @@ export default function ConductPreflight({ flow, templates, onStart, onBack, onU
                 <span className="min-w-[1.5rem] text-sm font-semibold text-gray-500 dark:text-gray-400">
                   {index + 1}.
                 </span>
-                <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-200">
+                <span className="min-w-0 flex-1 break-words text-sm font-medium text-gray-800 dark:text-gray-200">
                   {title}
                 </span>
                 <div className="flex items-center gap-1.5">

@@ -97,6 +97,21 @@ describe('ConductBlock', () => {
       expect(notes).toHaveClass('whitespace-pre-wrap');
       expect(notes.closest('.meeting-scaled')).not.toBeNull();
     });
+
+    it('wraps a title, a note or a question that has no spaces inside the block, not past its edge', () => {
+      // A pasted link is one word wider than the screen: unbroken it scrolled sideways in the notes
+      // and ran past the block in the questions. jsdom lays nothing out, so the rule is the seam.
+      const word = `https://example.com/${'x'.repeat(200)}`;
+      render(<ConductBlock {...defaultProps} flowItem={{ ...mockFlowItem, instanceNotes: word, instanceTitle: `T${word}` }} template={{ ...mockTemplate, questions: [word] }} />);
+      fireEvent.click(screen.getByText('Notes'));
+
+      expect(screen.getByRole('heading', { name: `T${word}` })).toHaveClass('break-words');
+      const [question, notes] = screen.getAllByText(word);
+      expect(question.tagName).toBe('SPAN');
+      expect(question).toHaveClass('min-w-0', 'break-words');
+      expect(notes.tagName).toBe('P');
+      expect(notes).toHaveClass('break-words');
+    });
   });
 
   it('renders block title', () => {

@@ -46,14 +46,14 @@ export default function FlowEditor({
                 past the window, where it froze under the nav while the other column scrolled. */}
             <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 xl:static xl:z-auto xl:max-h-[var(--flow-editor-max-h,calc(100dvh-2rem))] xl:rounded-2xl xl:border xl:border-gray-200 xl:shadow-sm xl:dark:border-gray-800">
                 {/* Header */}
-                <div className="flex shrink-0 items-center justify-between px-5 pb-6 pt-5">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 xl:text-base xl:font-semibold">
+                <div className="flex shrink-0 items-center justify-between gap-3 px-5 pb-6 pt-5">
+                    <h3 className="min-w-0 flex-1 break-words text-lg font-bold text-gray-900 dark:text-gray-100 xl:text-base xl:font-semibold">
                         {flowItem.instanceTitle || template.title}
                     </h3>
                     <button
                         type="button"
                         onClick={onClose}
-                        className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300 xl:rounded-lg xl:p-1.5"
+                        className="shrink-0 rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300 xl:rounded-lg xl:p-1.5"
                         aria-label={t('common.close')}
                     >
                         <XMarkIcon className="h-6 w-6 xl:h-5 xl:w-5" />

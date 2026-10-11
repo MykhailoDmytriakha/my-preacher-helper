@@ -131,7 +131,7 @@ export default function ConductBlock({
       {/* The bottom inset lets the last line scroll clear of the floating text size button. */}
       <div className="flex-1 overflow-y-auto px-5 pb-20 pt-6">
         <div className="meeting-scaled">
-          <h1 className="mb-[0.5em] text-[1.9em] font-bold text-gray-900 dark:text-gray-100">{title}</h1>
+          <h1 className="mb-[0.5em] break-words text-[1.9em] font-bold text-gray-900 dark:text-gray-100">{title}</h1>
 
           {template.content && (
             // Written in the rich Markdown editor, so it is Markdown: shown raw, ** and ## reached the screen.
@@ -143,7 +143,8 @@ export default function ConductBlock({
           {template.scriptureRefs && template.scriptureRefs.length > 0 && (
             <div className="mt-[1em] flex flex-wrap gap-2">
               {template.scriptureRefs.map((ref) => (
-                <Chip key={ref} tone="blue">
+                // `anywhere`, not `break-words`: inside the chip's flex label only it lets a long reference wrap.
+                <Chip key={ref} tone="blue" className="max-w-full [overflow-wrap:anywhere]">
                   {ref}
                 </Chip>
               ))}
@@ -155,7 +156,7 @@ export default function ConductBlock({
               {template.questions.map((q, i) => (
                 <li key={i} className="flex gap-[0.5em] text-[0.875em] text-gray-700 dark:text-gray-300">
                   <span className="font-semibold text-gray-400">{i + 1}.</span>
-                  <span>{q}</span>
+                  <span className="min-w-0 break-words">{q}</span>
                 </li>
               ))}
             </ul>
@@ -177,7 +178,7 @@ export default function ConductBlock({
             // Plain text from a text area, not Markdown: kept as typed, and as large as the body.
             // Capped and scrolled on its own, so long notes at 200% cannot squeeze the block away.
             <div className="meeting-scaled max-h-[40vh] overflow-y-auto border-t border-gray-100 bg-amber-50/60 px-5 py-4 dark:border-gray-700 dark:bg-amber-950/20">
-              <p className="whitespace-pre-wrap text-[0.875em] text-gray-700 dark:text-gray-300">{flowItem.instanceNotes}</p>
+              <p className="whitespace-pre-wrap break-words text-[0.875em] text-gray-700 dark:text-gray-300">{flowItem.instanceNotes}</p>
             </div>
           )}
         </div>

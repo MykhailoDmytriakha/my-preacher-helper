@@ -54,3 +54,18 @@ it('opens a link in the content without selecting the row, and still selects it 
     fireEvent.click(screen.getByText('Pray'));
     expect(onSelect).toHaveBeenCalledTimes(1);
 });
+
+it("wraps a leader's note that has no spaces inside the row", () => {
+    // A pasted link is one word wider than an iPad: with no break rule it stretched the page sideways
+    // and pushed "Start meeting" off screen (BUG-20261010-group-long-note-pushes-start-off-screen).
+    // jsdom lays nothing out, so the rule itself is the seam; the width is measured in WebKit.
+    const word = `https://example.com/${'x'.repeat(200)}`;
+    render(
+        <FlowItemRow
+            flowItem={{ ...flowItem, instanceNotes: word }} template={template} index={0} isSelected={false} isFirst isLast
+            onSelect={jest.fn()} onStatusCycle={jest.fn()} onMoveUp={jest.fn()} onMoveDown={jest.fn()}
+            onDuplicate={jest.fn()} onDelete={jest.fn()}
+        />
+    );
+    expect(screen.getByText(word)).toHaveClass('break-words');
+});

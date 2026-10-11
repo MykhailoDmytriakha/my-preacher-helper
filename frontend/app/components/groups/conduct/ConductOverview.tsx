@@ -97,7 +97,7 @@ export default function ConductOverview({
 
                 {/* Title */}
                 <span
-                  className={`flex-1 text-sm font-medium ${
+                  className={`min-w-0 flex-1 break-words text-sm font-medium ${
                     isCurrent
                       ? 'text-blue-900 dark:text-blue-100'
                       : isVisited

@@ -27,3 +27,15 @@ it('shows the group as its page does — blocks in order with every detail, and 
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
+
+it('wraps a long meeting place or audience inside its row instead of widening the page', () => {
+  // One unbroken value (a pasted link) used to set the minimum width of the whole row.
+  const place = `https://maps.example.com/${'x'.repeat(200)}`;
+  const group = { id: 'g', title: 'G', templates: [], flow: [],
+    meetingDates: [{ id: 'date', date: '2026-10-01', location: place, audience: 'Everyone' }] } as unknown as Group;
+  render(<GroupReadOnlyContent group={group} />);
+
+  const value = screen.getByText(place);
+  expect(value).toHaveClass('min-w-0', 'break-words');
+  expect(value.parentElement).toHaveClass('max-w-full');
+});

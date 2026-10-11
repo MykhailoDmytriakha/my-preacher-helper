@@ -67,6 +67,11 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                     a: ({ ...props }) => (
                         <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
                     ),
+                    // A table sizes its columns by their longest word, so a pasted link in a cell would widen the
+                    // whole page; the table scrolls inside its own box instead.
+                    table: ({ ...props }) => (
+                        <div className="max-w-full overflow-x-auto"><table {...props} /></div>
+                    ),
                     // Ensure lists are properly spaced
                     ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
                     ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,

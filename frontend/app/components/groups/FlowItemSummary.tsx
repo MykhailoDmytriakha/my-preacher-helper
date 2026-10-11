@@ -56,7 +56,7 @@ export function FlowItemSummary({ flowItem, template, fullNotes = false, childre
         )}
         {children}
         {notes && (
-          <p className={`mt-0.5 text-xs italic text-indigo-500 dark:text-indigo-400 ${fullNotes ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+          <p className={`mt-0.5 break-words text-xs italic text-indigo-500 dark:text-indigo-400 ${fullNotes ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
             {notes}
           </p>
         )}

@@ -303,6 +303,18 @@ describe('GroupDetailPage', () => {
     });
   });
 
+  it('never lets one long word widen the page: its columns may shrink below their widest word', async () => {
+    // A grid column sized `1fr` or `auto` grows to its longest unbreakable word: a pasted link in a
+    // block note or content made the page 1298 px on an 820 px iPad and hid "Start meeting"
+    // (BUG-20261010-group-long-note-pushes-start-off-screen). `grid-cols-1` and `minmax(0,1fr)`
+    // give the tracks a zero minimum. jsdom lays nothing out; the width is measured in WebKit.
+    render(<GroupDetailPage />);
+    await waitFor(() => expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument());
+
+    const pageGrid = screen.getByRole('heading', { name: 'Group Flow' }).closest('.grid');
+    expect(pageGrid).toHaveClass('grid-cols-1', 'xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]');
+  });
+
   it('deletes group and navigates back to /groups', async () => {
     render(<GroupDetailPage />);
 
