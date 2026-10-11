@@ -8,7 +8,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 import { serializeContent } from '@/utils/contentFingerprint';
 
 /**
@@ -422,7 +422,8 @@ export function useDocumentFreshness<T>({
       // A terminal failure already has a more specific explanation.
       if (!listenerStopped) unavailable('initialCheck', 'opening');
     }, 15_000);
-    if (isBrowserOffline()) unavailable('offline', 'device');
+    // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+    if (isKnownOffline()) unavailable('offline', 'device');
 
     const checkServer = (source: 'manual' | 'return' | 'opening'): Promise<void> => {
       if (!active) return Promise.resolve();
@@ -493,12 +494,12 @@ export function useDocumentFreshness<T>({
     };
     checkRef.current = () => checkServer('manual');
     const recoveryTimer = window.setTimeout(() => {
-      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && !isBrowserOffline()) {
+      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && !isKnownOffline()) {
         void checkServer('opening');
       }
     }, 4000);
     const pollTimer = hasIndependentRead && pollIntervalMs ? window.setInterval(() => {
-      if (document.visibilityState === 'visible' && !isBrowserOffline()) void checkServer('return');
+      if (document.visibilityState === 'visible' && !isKnownOffline()) void checkServer('return');
     }, Math.max(5000, pollIntervalMs)) : undefined;
     const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
@@ -573,7 +574,7 @@ export function useDocumentFreshness<T>({
       state === 'unknown' &&
       !everAnswered &&
       !silenceIsNews &&
-      !isBrowserOffline()
+      !isKnownOffline()
         ? 'fresh'
         : state,
     remote,

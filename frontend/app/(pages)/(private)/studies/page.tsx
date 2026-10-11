@@ -23,6 +23,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { isKnownOffline } from '@/utils/connectivity';
 import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
 
 import { getBooksForDropdown, BibleLocale, resolveBibleLocale } from './bibleData';
@@ -489,7 +490,7 @@ export default function StudiesPage() {
       {/* Notes list */}
       {notesError && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-100">
-          {t(typeof navigator !== 'undefined' && !navigator.onLine ? 'studiesWorkspace.loadOffline' : 'studiesWorkspace.loadError')}
+          {t(isKnownOffline() ? 'studiesWorkspace.loadOffline' : 'studiesWorkspace.loadError')}
         </div>
       )}
 

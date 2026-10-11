@@ -5,7 +5,7 @@ import {
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -63,7 +63,7 @@ export const generateSermonPointsForSection = async (
   section: 'introduction' | 'main' | 'conclusion'
 ): Promise<SermonPoint[]> => {
   try {
-    if (isBrowserOffline()) {
+    if (isKnownOffline()) {
       return [];
     }
     const authHeaders = await getAuthenticatedRequestHeaders();

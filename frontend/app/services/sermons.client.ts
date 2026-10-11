@@ -40,7 +40,7 @@ import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -117,7 +117,8 @@ export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
 const SERMON_SDK_DEADLINE_MS = 4000;
 
 export async function getSermonByIdViaClient(id: string): Promise<Sermon | undefined> {
-  const online = !isBrowserOffline();
+  // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+  const online = !isKnownOffline();
   const owner = auth.currentUser?.uid;
   let cached: Sermon | undefined;
   const assertOwner = () => {

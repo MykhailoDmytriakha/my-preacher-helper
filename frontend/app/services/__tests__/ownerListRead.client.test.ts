@@ -1,5 +1,6 @@
 import { apiClient } from '@/utils/apiClient';
 import { ownedBy, readOwnerList, readOwnerDocument } from '@/services/ownerListRead.client';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 /**
  * A LIST THAT NEVER ARRIVES IS THE SAME DEFECT AS A LIST THAT ARRIVES WRONG.
@@ -37,6 +38,7 @@ const unavailable = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  __resetConnectivityForTests();
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   mockApi.mockResolvedValue({ ok: true, status: 200, json: async () => fromServer } as Response);
 });
@@ -230,4 +232,36 @@ describe('ownedBy', () => {
     expect(ownedBy('owner-1', { id: 'a', userId: 'owner-2' })).toBeUndefined();
     expect(ownedBy('owner-1', undefined)).toBeUndefined();
   });
+});
+
+/*
+ * The question is whether the server answers, not what the phone's flag says
+ * (BUG-20261011-raw-phone-flag-in-read-paths): an iPad back from the background keeps "offline"
+ * while the app's own requests already get through, and the list waited 8 s instead of taking the
+ * second road.
+ */
+it('takes the second road when the phone says offline but the server already answered', async () => {
+  jest.useFakeTimers();
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+  reportServerReachable();
+
+  const list = readOwnerList('sermons', 'owner-1', silent(), shape);
+  await jest.advanceTimersByTimeAsync(2500);
+
+  await expect(list).resolves.toEqual(fromServer);
+});
+
+// A request that did not reach, while the phone says "network", does not close the second road:
+// it is what finds the server again (review of the fix above).
+it('keeps the second road for a list and a document after a request that did not reach', async () => {
+  reportServerUnreachable();
+  await expect(readOwnerList('sermons', 'owner-1', unavailable(), shape)).resolves.toEqual(fromServer);
+  await expect(readOwnerDocument('series', 'owner-1', 'a', unavailable() as never, shape)).resolves.toBeDefined();
+  expect(mockApi).toHaveBeenCalledTimes(2);
+});
+
+it('does not take the second road while the phone says offline and nothing has reached the server', async () => {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+  await expect(readOwnerList('sermons', 'owner-1', unavailable(), shape)).rejects.toBeTruthy();
+  expect(mockApi).not.toHaveBeenCalled();
 });

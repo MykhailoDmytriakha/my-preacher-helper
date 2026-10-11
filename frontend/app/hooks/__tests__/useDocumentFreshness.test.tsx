@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 import {
   planFreshnessProjection,
   type PlanFreshnessProjection,
@@ -276,12 +277,29 @@ describe('a cache-only snapshot must never leave a stale "fresh" standing', () =
   });
 
   it('says "unknown" immediately when the browser itself reports no connection', () => {
+    __resetConnectivityForTests();
     Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
     try {
       const { result } = render({ title: 'local' });
       expect(result.current.state).toBe('unknown');
     } finally {
       delete (window.navigator as unknown as Record<string, unknown>).onLine;
+      __resetConnectivityForTests();
+    }
+  });
+
+  // The phone's flag alone is not the answer (BUG-20261011-raw-phone-flag-in-read-paths): an iPad back
+  // from the background keeps "offline" while the app's requests already get through.
+  it('stays quiet when the phone says offline but the server already answered', () => {
+    __resetConnectivityForTests();
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+    try {
+      reportServerReachable();
+      const { result } = render({ title: 'local' });
+      expect(result.current.state).toBe('fresh');
+    } finally {
+      delete (window.navigator as unknown as Record<string, unknown>).onLine;
+      __resetConnectivityForTests();
     }
   });
 
@@ -802,6 +820,22 @@ describe('sermon freshness recovery', () => {
     expect(result.current.state).toBe('stale');
     expect(result.current.remote).toEqual({ title: 'Remote' });
     expect(result.current.diagnostics.lastServerResult).toBe('different');
+  });
+
+  // A failed request while the phone says "network" does not switch the check off: the check is
+  // what finds the server again (BUG-20261011-raw-phone-flag-in-read-paths, review of the fix).
+  it('still checks the server after a request that did not reach, while the phone says online', async () => {
+    __resetConnectivityForTests();
+    try {
+      reportServerUnreachable();
+      (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Remote' });
+      open();
+      act(() => emit!(server({ title: 'Local' }, { fromCache: true })));
+      await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+      expect(readSermonFromServer).toHaveBeenCalledWith('sermon');
+    } finally {
+      __resetConnectivityForTests();
+    }
   });
 
   it('does not issue recovery traffic after the listener has already confirmed the document', async () => {

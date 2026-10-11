@@ -32,6 +32,33 @@ describe('scratch.service', () => {
     });
   });
 
+  describe('the phone flag says offline (BUG-20261011-raw-phone-flag-in-read-paths)', () => {
+    const connectivity = () => jest.requireActual('@/utils/connectivity') as typeof import('@/utils/connectivity');
+    beforeEach(() => {
+      connectivity().__resetConnectivityForTests();
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    });
+    afterEach(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+      connectivity().__resetConnectivityForTests();
+      // A refused call leaves its queued answer unspent; it must not reach the next test.
+      apiClientMock().mockReset();
+    });
+
+    it('refuses at once while nothing has reached the server', async () => {
+      await expect(composePlanFromScratch('sermon-1', emptyOutline, ['n1'])).rejects.toThrow('unavailable offline');
+      expect(apiClientMock()).not.toHaveBeenCalled();
+    });
+
+    it('asks the server once a request has reached it, though the flag is stuck', async () => {
+      connectivity().getConnectivityStatus();
+      connectivity().reportServerReachable();
+      apiClientMock().mockResolvedValueOnce({ ok: true, json: async () => ({ outline: emptyOutline }) });
+      await composePlanFromScratch('sermon-1', emptyOutline, ['n1']);
+      expect(apiClientMock()).toHaveBeenCalled();
+    });
+  });
+
   it('carries the status of a bare 504, so the screen can say compose ran out of time', async () => {
     apiClientMock().mockResolvedValueOnce({ ok: false, status: 504, statusText: 'Gateway Timeout', json: async () => { throw new Error('not JSON'); } });
 

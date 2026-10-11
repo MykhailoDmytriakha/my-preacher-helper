@@ -13,7 +13,7 @@ import {
 } from '@/services/sermons.client';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
@@ -68,7 +68,7 @@ export async function composePlanFromScratch(
   knownScratchNoteIds: Iterable<string>,
   expectedSource?: ComposePlanExpectedSource
 ): Promise<ComposePlanResult> {
-  if (isBrowserOffline()) {
+  if (isKnownOffline()) {
     throw new Error('Scratch compose is unavailable offline');
   }
 

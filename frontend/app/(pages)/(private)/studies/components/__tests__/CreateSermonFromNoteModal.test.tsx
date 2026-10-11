@@ -5,6 +5,7 @@ import React from 'react';
 
 import { createSermon } from '@/services/sermon.service';
 import { cutStudyNoteIntoScratch, CutStudyNoteError, fetchNoteCutOutline } from '@/services/studies.service';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
 
 import CreateSermonFromNoteModal, { pickVerseFromRefs } from '../CreateSermonFromNoteModal';
@@ -435,6 +436,35 @@ describe('CreateSermonFromNoteModal', () => {
     expect(screen.queryByTestId('create-sermon-expectation')).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent('studiesWorkspace.createSermon.errors.empty');
     expect(mockCut).not.toHaveBeenCalled();
+  });
+
+  describe('the phone flag says offline', () => {
+    const setPhoneFlag = (value: boolean) =>
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value });
+    beforeEach(() => {
+      __resetConnectivityForTests();
+      setPhoneFlag(false);
+    });
+    afterEach(() => {
+      setPhoneFlag(true);
+      __resetConnectivityForTests();
+    });
+
+    it('will not start while nothing has reached the server, and says why', () => {
+      renderModal();
+      expect(createButton()).toBeDisabled();
+      expect(screen.getByRole('alert')).toHaveTextContent('studiesWorkspace.createSermon.errors.offline');
+    });
+
+    it('starts once a request has reached the server, though the flag is stuck (BUG-20261011-raw-phone-flag-in-read-paths)', async () => {
+      getConnectivityStatus();
+      reportServerReachable();
+      const user = userEvent.setup();
+      renderModal();
+      expect(createButton()).toBeEnabled();
+      await user.click(createButton());
+      await waitFor(() => expect(mockOutline).toHaveBeenCalled());
+    });
   });
 
   it('can always be closed — while idle on Escape with focus handed back, and while a step is running', async () => {

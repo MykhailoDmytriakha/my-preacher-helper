@@ -23,7 +23,7 @@ import { transcribeThoughtAudio } from "@/services/thought.service";
 import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { getSectionLabel } from "@lib/sections";
@@ -617,7 +617,7 @@ export default function ScratchPanel({
         ranOutOfTime(error) ||
         (error instanceof Error &&
           (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out")));
-      const isOffline = isBrowserOffline();
+      const isOffline = isKnownOffline();
       // Kept as words and said when shown (BUG-20261006-screen-error-kept-as-translated-sentence).
       const words: FailureWords = isOffline
         ? { key: "scratch.board.composeOffline" }

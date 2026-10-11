@@ -5,6 +5,7 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 
 import StudiesPage from '../page';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -119,6 +120,32 @@ describe('StudiesPage', () => {
       addCustomTag: jest.fn(),
       removeCustomTag: jest.fn(),
       updateTag: jest.fn(),
+    });
+  });
+
+  describe('a list that failed to load, with the phone flag saying offline', () => {
+    const setPhoneFlag = (value: boolean) =>
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value });
+    beforeEach(() => {
+      __resetConnectivityForTests();
+      setPhoneFlag(false);
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), error: new Error('load failed') });
+    });
+    afterEach(() => {
+      setPhoneFlag(true);
+      __resetConnectivityForTests();
+    });
+
+    it('says there is no network while nothing has reached the server', () => {
+      render(<StudiesPage />);
+      expect(screen.getByText('studiesWorkspace.loadOffline')).toBeInTheDocument();
+    });
+
+    it('says the load failed once a request has reached the server, though the flag is stuck (BUG-20261011-raw-phone-flag-in-read-paths)', () => {
+      getConnectivityStatus();
+      reportServerReachable();
+      render(<StudiesPage />);
+      expect(screen.getByText('studiesWorkspace.loadError')).toBeInTheDocument();
     });
   });
 

@@ -8,7 +8,7 @@ import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
-import { getConnectivityStatus, isBrowserOffline } from '@/utils/connectivity';
+import { getConnectivityStatus, isKnownOffline } from '@/utils/connectivity';
 import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
 // ONE definition of "has the server proved its copy is newer" for the whole app: this
 // hook used to carry a byte-identical private copy, and two copies of a rule that
@@ -53,8 +53,9 @@ async function fetchSermonData(
   // this editor is built once, so a late copy is not poured in under pending work.
   // With a connection the server is asked first (the 2026-08-11 case above), within a deadline.
   if (stored && !getConnectivityStatus()) return { sermon: stored };
-  // Nothing stored and the phone says there is no network: there is nothing to wait for.
-  if (!stored && isBrowserOffline()) return { sermon: null };
+  // Nothing stored and the phone says there is no network, uncontradicted by any request since:
+  // there is nothing to wait for (BUG-20261011-raw-phone-flag-in-read-paths).
+  if (!stored && isKnownOffline()) return { sermon: null };
 
   let fetched: Sermon | null;
   try {
@@ -102,7 +103,7 @@ async function fetchTagsData(
     const cachedTags = queryClient.getQueryData<{ requiredTags: Tag[]; customTags: Tag[] }>(tagsQueryKey);
     if (cachedTags) {
       tagsData = cachedTags;
-    } else if (getConnectivityStatus() && !isBrowserOffline()) {
+    } else if (getConnectivityStatus()) {
       tagsData = await readWithDeadline(getTags(fetchedSermon.userId), 3000);
       queryClient.setQueryData(tagsQueryKey, tagsData);
     } else {

@@ -129,6 +129,20 @@ export const getConnectivityStatus = (): boolean => {
   return online;
 };
 
+/**
+ * DO WE KNOW THAT THE SERVER CANNOT BE REACHED?
+ *
+ * Yes when the phone says "no network" and no request has reached our server since. This is what
+ * the phone's flag used to answer alone for every decision that is not a write queue: how long a read
+ * waits and whether it takes the server road, whether a step only the server can do (an AI call, a
+ * one-shot settings write) is refused at once, whether a message says "offline". A flag stuck at false
+ * while requests get through (an iPad resumed from the background) is not "offline"; and a failed
+ * request while the phone says "network" does not switch reading or a step off — the next attempt is
+ * what finds the server again (owner's rule 3, BUG-20260908-cached-response-counts-as-live-connection;
+ * BUG-20261011-raw-phone-flag-in-read-paths). Writes that choose a durable queue keep `isBrowserOffline`.
+ */
+export const isKnownOffline = (): boolean => isBrowserOffline() && !getConnectivityStatus();
+
 export const subscribeToConnectivity = (listener: Listener): (() => void) => {
   const first = listeners.size === 0;
   listeners.add(listener);

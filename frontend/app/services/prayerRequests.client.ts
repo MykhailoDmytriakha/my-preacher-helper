@@ -15,7 +15,7 @@ import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { ownedBy, readOwnerList } from '@/services/ownerListRead.client';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 import { readWithDeadline } from '@/utils/readWithDeadline';
@@ -89,7 +89,8 @@ export async function getAllPrayerRequestsViaClient(userId: string): Promise<Pra
  */
 export async function getPrayerRequestByIdViaClient(id: string): Promise<PrayerRequest | undefined> {
   const db = getClientDb();
-  const online = !isBrowserOffline();
+  // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+  const online = !isKnownOffline();
   const snap = await readWithDeadline(
     getDoc(doc(db, PRAYER_REQUESTS_COLLECTION, id)),
     online ? 4000 : 8000

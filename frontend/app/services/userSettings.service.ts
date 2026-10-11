@@ -1,7 +1,7 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { UserSettings } from '@/models/models';
 import { requestUserSettings } from '@/services/userSettingsTransport.client';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@locales/constants';
 
@@ -32,7 +32,8 @@ async function updateUserSettingsViaClient(userId: string, updates: Record<strin
  */
 export async function getUserLanguage(userId: string): Promise<string> {
   try {
-    if (isBrowserOffline()) {
+    // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+    if (isKnownOffline()) {
       return getCookieLanguage();
     }
     // For guest users, only use cookies
@@ -89,7 +90,7 @@ export async function updateUserLanguage(userId: string, language: string): Prom
 
     // Private settings use the engine journal. The public selector has no workspace:
     // keep the cookie immediately, and make one bounded server attempt without replay.
-    if (isBrowserOffline()) return;
+    if (isKnownOffline()) return;
     await requestUserSettings(userId, { operation: 'language', patch: { language } });
   } catch (error) {
     console.error('Error updating user language:', error);
@@ -119,7 +120,7 @@ export async function updateUserProfile(
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
 
-    if (isBrowserOffline()) return;
+    if (isKnownOffline()) return;
     await requestUserSettings(userId, { operation: 'bootstrap', patch: updates });
   } catch (error) {
     console.error('Error updating user profile:', error);
@@ -193,7 +194,7 @@ export async function initializeUserSettings(
     if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
     if (language) setLanguageCookie(language);
-    if (isBrowserOffline()) return;
+    if (isKnownOffline()) return;
     await requestUserSettings(userId, { operation: 'bootstrap', patch: payload });
   } catch (error) {
     console.error('Error initializing user settings:', error);
@@ -270,7 +271,7 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
     }
 
     debugLog('👤 hasPrepModeAccess: authenticated user, fetching settings...');
-    if (isBrowserOffline()) {
+    if (isKnownOffline()) {
       return false;
     }
     // For authenticated users: check settings.enablePrepMode, default to false
@@ -367,7 +368,7 @@ export async function hasStructurePreviewAccess(userId: string): Promise<boolean
       return false; // Not accessible to guests by default
     }
 
-    if (isBrowserOffline()) {
+    if (isKnownOffline()) {
       return false;
     }
 

@@ -2,6 +2,12 @@ import { getDoc } from 'firebase/firestore';
 
 import { getSermonByIdViaClient } from '@/services/sermons.client';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
+import {
+  __resetConnectivityForTests,
+  getConnectivityStatus,
+  reportServerReachable,
+  reportServerUnreachable,
+} from '@/utils/connectivity';
 
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 jest.mock('firebase/firestore', () => ({ doc: () => ({}), getDoc: jest.fn() }));
@@ -14,6 +20,7 @@ const snapshot = (metadata = { fromCache: false, hasPendingWrites: false }) => (
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  __resetConnectivityForTests();
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   (getDoc as jest.Mock).mockResolvedValue(snapshot());
   (readSermonFromServer as jest.Mock).mockResolvedValue(remote);
@@ -50,6 +57,23 @@ it('opens the offline SDK copy without an HTTP request', async () => {
   (getDoc as jest.Mock).mockResolvedValue(snapshot({ fromCache: true, hasPendingWrites: false }));
   await expect(getSermonByIdViaClient('sermon')).resolves.toEqual(stored);
   expect(readSermonFromServer).not.toHaveBeenCalled();
+});
+it('takes the server road when a request has reached it, though the phone flag is stuck on offline', async () => {
+  // An iPad resumed from the background: `navigator.onLine` stays false while requests get through
+  // (BUG-20261011-raw-phone-flag-in-read-paths).
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+  getConnectivityStatus();
+  reportServerReachable();
+  jest.useFakeTimers();
+  (getDoc as jest.Mock).mockReturnValue(new Promise(() => {}));
+  const result = getSermonByIdViaClient('sermon');
+  await jest.advanceTimersByTimeAsync(4000);
+  await expect(result).resolves.toEqual(remote);
+});
+it('keeps the server road after a request that did not reach, while the phone says online', async () => {
+  reportServerUnreachable();
+  (getDoc as jest.Mock).mockRejectedValue({ code: 'unavailable' });
+  await expect(getSermonByIdViaClient('sermon')).resolves.toEqual(remote);
 });
 it('does not reinterpret denied access as a transport failure', async () => {
   (getDoc as jest.Mock).mockRejectedValue({ code: 'permission-denied' });

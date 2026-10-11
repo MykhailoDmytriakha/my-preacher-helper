@@ -5,7 +5,7 @@ import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 import { readWithDeadline } from '@/utils/readWithDeadline';
 
@@ -60,7 +60,8 @@ export async function readOwnerList<T>(
   viaSdk: Promise<T[]>,
   hydrate: (documents: Record<string, unknown>[]) => T[]
 ): Promise<T[]> {
-  const online = !isBrowserOffline();
+  // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+  const online = !isKnownOffline();
   try {
     return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
   } catch (error) {
@@ -110,7 +111,8 @@ export async function readOwnerDocument<T extends { id: string }>(
   viaSdk: Promise<T | undefined>,
   hydrate: (documents: Record<string, unknown>[]) => T[]
 ): Promise<T | undefined> {
-  const online = !isBrowserOffline();
+  // The phone's "no network" counts only until a request reaches the server (BUG-20261011-raw-phone-flag-in-read-paths).
+  const online = !isKnownOffline();
   // Checked once, before either road can answer: a late SDK answer races the server below too.
   const mine = viaSdk.then((document) => ownedBy(owner, document));
   try {

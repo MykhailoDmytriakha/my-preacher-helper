@@ -3,6 +3,7 @@ import {
   beginConnectivityRequest,
   getConnectivityStatus,
   isBrowserOffline,
+  isKnownOffline,
   reportServerReachable,
   reportServerUnreachable,
   subscribeToConnectivity,
@@ -163,5 +164,41 @@ describe('isBrowserOffline', () => {
     expect(isBrowserOffline()).toBe(false);
     setOnLine(false);
     expect(isBrowserOffline()).toBe(true);
+  });
+});
+
+/**
+ * A STEP THAT ONLY THE SERVER CAN DO IS REFUSED ONLY WHEN THE APP KNOWS IT CANNOT REACH IT.
+ * The phone's "no network" counts until a request gets through; an iPad back from the background
+ * keeps the flag false while its requests already reach the server
+ * (BUG-20261011-raw-phone-flag-in-read-paths).
+ */
+describe('isKnownOffline', () => {
+  beforeEach(() => {
+    __resetConnectivityForTests();
+    setOnLine(true);
+  });
+  afterEach(() => {
+    __resetConnectivityForTests();
+    setOnLine(true);
+  });
+
+  it('is true while the phone says there is no network and nothing has reached the server since', () => {
+    setOnLine(false);
+    expect(isKnownOffline()).toBe(true);
+    reportServerUnreachable();
+    expect(isKnownOffline()).toBe(true);
+  });
+
+  it('is false once a request reaches the server, though the phone flag stays false', () => {
+    setOnLine(false);
+    expect(isKnownOffline()).toBe(true);
+    reportServerReachable();
+    expect(isKnownOffline()).toBe(false);
+  });
+
+  it('is false while the phone says there is a network, even when the last request did not reach', () => {
+    reportServerUnreachable();
+    expect(isKnownOffline()).toBe(false);
   });
 });

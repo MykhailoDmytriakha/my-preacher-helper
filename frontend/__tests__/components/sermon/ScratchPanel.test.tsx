@@ -8,6 +8,8 @@ import type { ComposedPlanOutline } from '@/config/schemas/zod';
 import type { ScratchNote, SermonOutline } from '@/models/models';
 import { aiUsageStub } from '@test-utils/aiUsage';
 
+import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
+
 /**
  * The board runs on dnd-kit now, so a simulated drop is `{active, over}` — the
  * only two things the handler reads. Ids carry their own meaning: `note:<id>`
@@ -1262,6 +1264,34 @@ describe('ScratchPanel', () => {
 
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeEnabled();
+  });
+
+  describe('a failed compose with the phone flag saying offline', () => {
+    beforeEach(() => {
+      __resetConnectivityForTests();
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    });
+    afterEach(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+      __resetConnectivityForTests();
+    });
+
+    it('says there is no network while nothing has reached the server', async () => {
+      composePlanFromScratchMock().mockRejectedValueOnce(new Error('Scratch compose is unavailable offline'));
+      renderScratchPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+      expect(await screen.findByText('scratch.board.composeOffline')).toBeInTheDocument();
+    });
+
+    it('names the real failure once a request has reached the server (BUG-20261011-raw-phone-flag-in-read-paths)', async () => {
+      getConnectivityStatus();
+      reportServerReachable();
+      composePlanFromScratchMock().mockRejectedValueOnce(new Error('The model refused'));
+      renderScratchPanel();
+      fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+      expect(await screen.findByText('The model refused')).toBeInTheDocument();
+      expect(screen.queryByText('scratch.board.composeOffline')).not.toBeInTheDocument();
+    });
   });
 
   it('says compose timed out on a bare 504 instead of printing the status line', async () => {

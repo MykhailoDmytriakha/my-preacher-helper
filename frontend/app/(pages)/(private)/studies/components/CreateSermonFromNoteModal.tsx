@@ -29,7 +29,7 @@ import {
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { isKnownOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
@@ -308,7 +308,7 @@ export default function CreateSermonFromNoteModal({
   const sermonIdRef = useRef<string>(newClientId());
 
   const busy = phase === 'running';
-  const offline = isBrowserOffline();
+  const offline = isKnownOffline();
   const canCreate = !busy && !offline && !noteIsEmpty && title.trim().length > 0;
 
   useEffect(() => {
@@ -440,7 +440,7 @@ export default function CreateSermonFromNoteModal({
       setError({ key: 'studiesWorkspace.createSermon.errors.titleRequired' });
       return;
     }
-    if (isBrowserOffline()) {
+    if (isKnownOffline()) {
       setError({ key: 'studiesWorkspace.createSermon.errors.offline' });
       return;
     }

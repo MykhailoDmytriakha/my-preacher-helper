@@ -11,7 +11,12 @@ import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 
 import { useSermonStructureData } from './useSermonStructureData';
-import { __resetConnectivityForTests, reportServerUnreachable } from '@/utils/connectivity';
+import {
+  __resetConnectivityForTests,
+  getConnectivityStatus,
+  reportServerReachable,
+  reportServerUnreachable,
+} from '@/utils/connectivity';
 
 
 
@@ -711,6 +716,40 @@ describe('useSermonStructureData · which copy the screen shows', () => {
 
     expect(mockedGetSermonById).toHaveBeenCalled();
     expect(result.current.sermon?.thoughts[0].text).toBe('Newer copy from the server');
+  });
+
+  describe('a phone flag stuck on offline (BUG-20261011-raw-phone-flag-in-read-paths)', () => {
+    const setPhoneFlag = (value: boolean) =>
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value });
+    beforeEach(() => __resetConnectivityForTests());
+    afterEach(() => {
+      setPhoneFlag(true);
+      __resetConnectivityForTests();
+    });
+
+    it('opens a sermon never stored here, with its tags, once a request has reached the server', async () => {
+      // An iPad back from the background: `navigator.onLine` stays false while requests get through.
+      setPhoneFlag(false);
+      getConnectivityStatus();
+      reportServerReachable();
+      mockedGetSermonById.mockResolvedValue(sermonWith('Read from the server', 1));
+
+      const { result } = renderWithSeededCache(null);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.sermon?.thoughts[0].text).toBe('Read from the server');
+      expect(mockedGetTags).toHaveBeenCalled();
+    });
+
+    it('does not wait on the server when nothing is stored and the phone says offline', async () => {
+      setPhoneFlag(false);
+
+      const { result } = renderWithSeededCache(null);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(mockedGetSermonById).not.toHaveBeenCalled();
+      expect(result.current.sermon).toBeNull();
+    });
   });
 
   it('falls back to the write timestamp on sermons written before revisions existed', async () => {
