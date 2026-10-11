@@ -342,8 +342,9 @@ export default function DashboardNav() {
   };
 
   // Handle submitting feedback with user info
-  const submitFeedbackWithUser = async (text: string, type: string, images: string[]) => {
-    return handleSubmitFeedback(text, type, images, user?.uid || 'anonymous');
+  const submitFeedbackWithUser = async (text: string, type: string, images: string[], diagnostics?: Record<string, unknown>) => {
+    const uid = user?.uid || 'anonymous';
+    return diagnostics ? handleSubmitFeedback(text, type, images, uid, diagnostics) : handleSubmitFeedback(text, type, images, uid);
   };
 
   /**

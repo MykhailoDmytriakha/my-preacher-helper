@@ -1,10 +1,11 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 
 import { isSyncTrouble } from './status';
 import { useLasting } from './useLasting';
@@ -101,6 +102,9 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
   // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
   const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
   const trouble = isSyncTrouble(status?.phase);
+  const troublePhase = trouble ? status?.phase : null;
+  // What the person was shown goes into the technical report's path (owner, 2026-10-10).
+  useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);
   // Unfinished drafts from earlier sessions are a choice for the person, so they are announced.
   const showPhase = Boolean(status) && (trouble || recoveryChoices.length > 0);
   const showRetry = Boolean(onRetry && (failure || readTrouble || trouble));

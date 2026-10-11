@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 import type * as Diagnostics from '@/utils/appDiagnostics';
 
 let diagnostics: typeof Diagnostics;
@@ -13,7 +16,7 @@ afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 it('stores only allowlisted fields and removes identifiers and query strings from routes', () => {
   diagnostics.recordDiagnostic('route', { route: '/sermons/private-id/plan?token=secret#private', code: 'raw error with private text', elapsedMs: 4.6, visible: true, secret: 'password' } as never);
   const data = diagnostics.diagnosticEvents()[0].data;
-  expect(data).toEqual({ route: '/sermons/:id/plan', elapsedMs: 5, visible: true });
+  expect(data).toEqual({ route: '/sermons/:id/plan', doc: expect.stringMatching(/^[0-9a-f]{8}$/), elapsedMs: 5, visible: true });
   expect(localStorage.getItem(key)).not.toMatch(/password|token|private/);
   expect(diagnostics.diagnosticErrorCode({ code: 'firestore/permission-denied' })).toBe('permission-denied');
   expect(diagnostics.diagnosticErrorCode({ code: 'secret message' })).toBeUndefined();
@@ -23,8 +26,8 @@ it('stores only allowlisted fields and removes identifiers and query strings fro
 
 it('bounds history, drops expired records and coalesces repeated snapshot metadata', () => {
   jest.useFakeTimers();
-  for (let index = 0; index < 90; index++) diagnostics.recordDiagnostic('focus');
-  expect(diagnostics.diagnosticEvents()).toHaveLength(80);
+  for (let index = 0; index < 160; index++) diagnostics.recordDiagnostic('route', { route: '/dashboard' });
+  expect(diagnostics.diagnosticEvents()).toHaveLength(150);
   diagnostics.recordDiagnostic('snapshot-cache', { collection: 'sermons' });
   diagnostics.recordDiagnostic('snapshot-cache', { collection: 'sermons' });
   expect(diagnostics.diagnosticEvents().filter(e => e.name === 'snapshot-cache')).toHaveLength(1);
@@ -43,7 +46,7 @@ it('restores sanitized recent history after a new application session', () => {
   ]));
   const restored = diagnostics.diagnosticEvents();
   expect(restored).toHaveLength(2);
-  expect(restored[0].data).toEqual({ route: '/groups/:id' });
+  expect(restored[0].data).toEqual({ route: '/groups/:id', doc: expect.stringMatching(/^[0-9a-f]{8}$/) });
   diagnostics.recordDiagnostic('boot');
   jest.resetModules();
   diagnostics = require('@/utils/appDiagnostics');
@@ -67,7 +70,7 @@ it.each(['not json', '{}'])('recovers from corrupted history: %s', raw => {
 it('builds a copyable content-free environment report', () => {
   diagnostics.recordDiagnostic('freshness-timeout', { collection: 'sermons', source: 'manual' });
   const report = diagnostics.buildDiagnosticReport();
-  expect(report.schema).toBe(1);
+  expect(report.schema).toBe(2);
   expect(report.environment).toEqual(expect.objectContaining({ online: navigator.onLine, visibility: document.visibilityState }));
   expect(report.events[0].name).toBe('freshness-timeout');
   expect(JSON.parse(JSON.stringify(report)).runningVersion).toBeTruthy();
@@ -121,4 +124,90 @@ it('merges newly persisted events from another tab before appending, retaining s
   diagnostics.recordDiagnostic('snapshot-server', { result: 'matching' });
   diagnostics.recordDiagnostic('snapshot-server', { result: 'matching' });
   expect(diagnostics.diagnosticEvents().filter(e => e.name === 'snapshot-server')).toHaveLength(2);
+});
+
+/**
+ * THE REPORT EXISTS TO REPRODUCE A BUG (owner, 2026-10-10): where the person went, what they did,
+ * what waited to be sent. In twelve real reports 98 of 187 page visits read '/:id/:id' — whole
+ * sections were missing from the known segments — and swipe gestures filled up to 49 of 80 places.
+ */
+it('keeps every section of the app readable in the path', () => {
+  const pages = path.join(__dirname, '../../app/(pages)');
+  const segments = new Set<string>();
+  const walk = (dir: string): boolean => {
+    let routed = false;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) { if (/^(page|layout|route)\.tsx?$/.test(entry.name)) routed = true; continue; }
+      if (entry.name.startsWith('_') || entry.name === 'node_modules') continue;
+      const child = walk(path.join(dir, entry.name));
+      if (child && !/^[[(]/.test(entry.name)) segments.add(entry.name);
+      routed = routed || child;
+    }
+    return routed;
+  };
+  walk(pages);
+  expect(segments.size).toBeGreaterThan(15);
+  expect([...segments].filter(segment => diagnostics.diagnosticRoute(`/${segment}`) !== `/${segment}`)).toEqual([]);
+});
+
+it('tells the same document from another without naming it', () => {
+  diagnostics.recordDiagnostic('route', { route: '/studies/note-alpha' });
+  diagnostics.recordDiagnostic('route', { route: '/studies/note-alpha' });
+  diagnostics.recordDiagnostic('route', { route: '/studies/note-beta' });
+  diagnostics.recordDiagnostic('route', { route: '/studies' });
+  const [first, again, other, list] = diagnostics.diagnosticEvents().map(event => event.data);
+  expect(first.doc).toMatch(/^[0-9a-f]{8}$/);
+  expect(again.doc).toBe(first.doc);
+  expect(other.doc).not.toBe(first.doc);
+  expect(list.doc).toBeUndefined();
+  expect(localStorage.getItem(key)).not.toMatch(/note-alpha|note-beta/);
+});
+
+it('keeps the path when routine events pile up', () => {
+  diagnostics.recordDiagnostic('route', { route: '/studies/note-alpha' });
+  for (let index = 0; index < 200; index++) diagnostics.recordDiagnostic('gesture', { source: 'start', result: 'cancelled' });
+  for (let index = 0; index < 60; index++) diagnostics.recordDiagnostic('focus');
+  diagnostics.recordDiagnostic('route', { route: '/dashboard' });
+  const events = diagnostics.diagnosticEvents();
+  expect(events.filter(event => event.name === 'route')).toHaveLength(2);
+  expect(events.filter(event => event.name === 'gesture').length).toBeLessThanOrEqual(12);
+  expect(events.filter(event => event.name === 'focus').length).toBeLessThanOrEqual(12);
+});
+
+it('says what waited to be sent when the report was taken, without the edits themselves', () => {
+  const now = Date.now();
+  diagnostics.setEditQueueReader(() => [
+    { collection: 'studyNotes', state: 'queued', createdAt: now - 5000 },
+    { collection: 'studyNotes', state: 'unknown', createdAt: now - 60_000 },
+    { collection: 'sermons', state: 'conflict', createdAt: now - 1000 },
+  ]);
+  const report = diagnostics.buildDiagnosticReport();
+  expect(report.edits).toEqual({
+    pending: 3,
+    byState: { queued: 1, unknown: 1, conflict: 1 },
+    byCollection: { studyNotes: 2, sermons: 1 },
+    oldestAgeMs: expect.any(Number),
+  });
+  expect(report.edits?.oldestAgeMs).toBeGreaterThanOrEqual(60_000);
+});
+
+it('records what the person did — an edit, dictation, a trouble shown — as plain words only', () => {
+  diagnostics.recordDiagnostic('edit', { collection: 'studyNotes', result: 'delivered', elapsedMs: 1500 });
+  diagnostics.recordDiagnostic('dictation', { source: 'note', result: 'text', elapsedMs: 4200 });
+  diagnostics.recordDiagnostic('sync-trouble', { code: 'conflict', collection: 'sermons' });
+  // A report is often sent after a reload: the record must survive it, not only live in memory.
+  jest.resetModules();
+  diagnostics = require('@/utils/appDiagnostics');
+  expect(diagnostics.diagnosticEvents().map(event => event.name)).toEqual(['edit', 'dictation', 'sync-trouble']);
+});
+
+it('does not count an edit the server already took as waiting to be sent', () => {
+  const now = Date.now();
+  diagnostics.setEditQueueReader(() => [
+    { collection: 'studyNotes', state: 'acknowledged', createdAt: now - 1000 },
+    { collection: 'studyNotes', state: 'queued', createdAt: now - 2000 },
+  ]);
+  const report = diagnostics.buildDiagnosticReport();
+  expect(report.edits?.pending).toBe(1);
+  expect(report.edits?.byState).toEqual({ acknowledged: 1, queued: 1 });
 });

@@ -22,26 +22,19 @@ import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 /**
- * The report is appended to the message rather than sent as its own field.
+ * The report travels BESIDE the words, not inside them (owner, 2026-10-10).
  *
- * It used to be reachable only through a viewer: open a dialog, read a wall of JSON, press
- * copy, then find the message box again and paste it in beside your own words. People did
- * that by hand — including the owner — and what arrived was one field holding a paragraph
- * of human sentences and eight kilobytes of machine detail, with the sentences buried. The
- * work of getting the two into one message belonged to the app all along.
- *
- * Appending keeps every part of the existing path intact: the size checks, the mail
- * template, what is stored. The marker below is what separates the person's words from the
- * machine's, so whoever reads the message can tell at a glance where one ends.
+ * It used to be appended under the message after a marker, so the letter was a sentence on top of
+ * eight kilobytes of JSON and the person's words had to be dug out. Now the words go as written and
+ * the report is its own piece: a field in the database and a file attached to the letter.
  */
-const DIAGNOSTICS_MARKER = '--- technical details (attached by the app) ---';
-/** Said in the message rather than swallowed: a missing report is itself worth knowing. */
-const DIAGNOSTICS_UNAVAILABLE = '(this browser did not let the app collect them)';
+/** Said rather than swallowed: a report that could not be collected is itself worth knowing. */
+const DIAGNOSTICS_UNAVAILABLE = { schema: 2, unavailable: true } as const;
 const FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER = 'suggestion';
 const PAYLOAD_TOO_LARGE_KEY = 'feedback.payloadTooLarge';
 
 interface FeedbackFormProps {
-  onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
+  onSubmit: (text: string, type: string, images: string[], diagnostics?: Record<string, unknown>) => Promise<boolean | void>;
   onCancel: () => void;
 }
 
@@ -185,7 +178,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   };
 
   /**
-   * The person's words first, the machine's afterwards, with a line between them.
+   * The report as it stands when the person presses Send.
    *
    * ⚠️ NO NETWORK CALL HERE, DELIBERATELY. The viewer asks the server for its version, and
    * that is fine when someone is sitting reading a dialog. On the send path it is a round
@@ -194,7 +187,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
    * something being broken. The version that settles "were we looking at the same code" is
    * the one this browser is running, and the report carries it without asking anyone.
    */
-  const withDiagnostics = (message: string): string => {
+  const collectDiagnostics = (): Record<string, unknown> => {
     /**
      * An optional attachment must never cost someone their message. The report reads a
      * dozen browser APIs, and any one of them can be missing or refused — a privacy mode,
@@ -203,10 +196,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
      * whose entire purpose is telling us something is wrong.
      */
     try {
-      const report = JSON.stringify(buildDiagnosticReport(), null, 2);
-      return `${message}\n\n${DIAGNOSTICS_MARKER}\n${report}`;
+      return buildDiagnosticReport() as unknown as Record<string, unknown>;
     } catch {
-      return `${message}\n\n${DIAGNOSTICS_MARKER}\n${DIAGNOSTICS_UNAVAILABLE}`;
+      return { ...DIAGNOSTICS_UNAVAILABLE };
     }
   };
 
@@ -233,8 +225,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
          * person pressed the button are the ones worth having, and the server check needs
          * a round trip we should not make them wait through earlier.
          */
-        const message = attachDiagnostics ? withDiagnostics(feedbackText) : feedbackText;
-        const accepted = await onSubmit(message, feedbackType, images);
+        const accepted = attachDiagnostics
+          ? await onSubmit(feedbackText, feedbackType, images, collectDiagnostics())
+          : await onSubmit(feedbackText, feedbackType, images);
         if (accepted === false) {
           setSubmissionError({ key: 'feedback.errorMessage' });
         }

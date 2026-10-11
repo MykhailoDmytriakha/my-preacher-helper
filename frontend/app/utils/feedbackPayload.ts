@@ -7,8 +7,13 @@ export const MAX_FEEDBACK_PAYLOAD_BYTES = 4_400_000;
 const FEEDBACK_PAYLOAD_METADATA_HEADROOM_BYTES = 1_024;
 export const MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES =
   MAX_FEEDBACK_PAYLOAD_BYTES - FEEDBACK_PAYLOAD_METADATA_HEADROOM_BYTES;
+/**
+ * The technical report rides beside the words (owner, 2026-10-10): a field of its own in the database
+ * and a file attached to the letter. A real report is 2–20 KB; the ceiling leaves room for a long day.
+ */
+export const MAX_FEEDBACK_DIAGNOSTICS_BYTES = 100_000;
 export const MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES =
-  MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES - MAX_FEEDBACK_TEXT_BYTES;
+  MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES - MAX_FEEDBACK_TEXT_BYTES - MAX_FEEDBACK_DIAGNOSTICS_BYTES;
 
 /**
  * Only the HEADER is matched by a regex. Deliberately.
@@ -50,7 +55,27 @@ export interface FeedbackRequestPayload {
   feedbackType: string;
   images: string[];
   userId: string;
+  diagnostics?: Record<string, unknown>;
 }
+
+export type FeedbackDiagnosticsCheck =
+  | { kind: 'none' }
+  | { kind: 'ok'; json: string; diagnostics: Record<string, unknown> }
+  | { kind: 'dropped'; reason: 'invalid' | 'too-large' };
+
+/**
+ * A report is optional and must never cost the person their words: anything that is not a plain
+ * object within the ceiling is dropped, and the drop is named so the reader knows it was asked for.
+ */
+export function checkFeedbackDiagnostics(value: unknown): FeedbackDiagnosticsCheck {
+  if (value === undefined || value === null) return { kind: 'none' };
+  if (typeof value !== 'object' || Array.isArray(value)) return { kind: 'dropped', reason: 'invalid' };
+  let json: string;
+  try { json = JSON.stringify(value); } catch { return { kind: 'dropped', reason: 'invalid' }; }
+  if (getUtf8ByteLength(json) > MAX_FEEDBACK_DIAGNOSTICS_BYTES) return { kind: 'dropped', reason: 'too-large' };
+  return { kind: 'ok', json, diagnostics: JSON.parse(json) as Record<string, unknown> };
+}
+
 
 export function serializeFeedbackPayload(payload: FeedbackRequestPayload): string {
   return JSON.stringify(payload);

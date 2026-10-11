@@ -40,6 +40,7 @@ import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
+import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
@@ -314,9 +315,11 @@ function useNoteAIAssistant({
     ): Promise<boolean> => {
         setIsVoiceProcessing(true);
         setVoiceError(null);
+        const startedAt = Date.now();
         try {
             const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/studies/transcribe' });
             const newText = result.polishedText || result.originalText;
+            recordDiagnostic('dictation', { source: 'note', result: newText ? 'text' : 'empty', elapsedMs: Date.now() - startedAt });
             if (newText) {
                 // Seen on screen means on its way: the preacher may lock the phone right now
                 // (BUG-20261006-hidden-tab-holds-last-edit).
@@ -334,6 +337,7 @@ function useNoteAIAssistant({
             }
             return true;
         } catch (err) {
+            recordDiagnostic('dictation', { source: 'note', result: 'failed', code: diagnosticErrorCode(err), elapsedMs: Date.now() - startedAt });
             if (isUsageCapReachedError(err)) {
                 setIsVoiceProcessing(false);
                 return false;

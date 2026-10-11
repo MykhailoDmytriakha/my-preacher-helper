@@ -36,6 +36,14 @@ describe('feedback.service', () => {
         });
     });
 
+    test('submitFeedback sends the technical report as its own field, beside the words', async () => {
+        const report = { schema: 2, route: '/studies/:id', events: [] };
+        await submitFeedback('words', 'bug', [], 'user123', report);
+        const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+        expect(body.feedbackText).toBe('words');
+        expect(body.diagnostics).toEqual(report);
+    });
+
     test('submitFeedback handles defaults (no images, no userId)', async () => {
         const text = 'Minimal feedback';
         const type = 'suggestion';

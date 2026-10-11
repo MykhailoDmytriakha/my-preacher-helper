@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure } from '@/utils/actionFailureMessage';
+import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 
 const mockRefresh = jest.fn();
@@ -104,4 +105,15 @@ it('keeps a failed transcription as words a recorder says in the language on scr
 
   // What a recorder shows for the kept failure now: words are said with the current language.
   expect(sayFailure(result.current.error!, key => `uk:${key}`)).toBe('uk:audio.transcribeError.network uk:audio.transcribeError.billingHint');
+});
+
+// The technical report's path says that the person dictated and how it ended (owner, 2026-10-10).
+it('leaves a dictation line in the technical report — the outcome and time, never the words', async () => {
+  localStorage.clear();
+  transcribe.mockResolvedValueOnce({ polishedText: 'Private sermon words', originalText: 'Private sermon words' } as never);
+  const { result } = renderHook(() => useTextDictation(options()));
+  await act(async () => { result.current.complete(blob); });
+  const line = diagnosticEvents().filter(event => event.name === 'dictation').at(-1);
+  expect(line?.data).toEqual({ source: 'field', result: 'text', elapsedMs: expect.any(Number) });
+  expect(JSON.stringify(diagnosticEvents())).not.toContain('Private sermon words');
 });

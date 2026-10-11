@@ -25,8 +25,6 @@ jest.mock('@/utils/appDiagnostics', () => ({
   buildDiagnosticReport: jest.fn(() => ({ schema: 1, route: '/sermons/:id' })),
 }));
 
-const MARKER = '--- technical details (attached by the app) ---';
-
 const typeMessage = (text: string) => {
   fireEvent.change(screen.getByRole('textbox'), { target: { value: text } });
 };
@@ -35,8 +33,16 @@ const submit = () => {
   fireEvent.click(screen.getByText('feedback.submitButton'));
 };
 
+type Sent = [string, string, string[], Record<string, unknown> | undefined];
+
+/**
+ * BESIDE THE WORDS, NOT INSIDE THEM (owner, 2026-10-10). The report used to be glued under the
+ * person's message, so the letter was eight kilobytes of JSON with a sentence on top. Now the
+ * words go as written and the report travels as its own piece — a field in the database and a
+ * file attached to the letter.
+ */
 describe('the app attaches the technical report, the person does not', () => {
-  it('sends the report along with the message when the box is ticked', async () => {
+  it('sends the report beside the message, not inside it, when the box is ticked', async () => {
     const onSubmit = jest.fn(async () => true);
     render(<FeedbackForm onSubmit={onSubmit} onCancel={jest.fn()} />);
 
@@ -44,10 +50,9 @@ describe('the app attaches the technical report, the person does not', () => {
     submit();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const [message] = onSubmit.mock.calls[0] as unknown as [string];
-    expect(message).toContain('the icon did not appear');
-    expect(message).toContain(MARKER);
-    expect(message).toContain('"route": "/sermons/:id"');
+    const [message, , , report] = onSubmit.mock.calls[0] as unknown as Sent;
+    expect(message).toBe('the icon did not appear');
+    expect(report).toEqual({ schema: 1, route: '/sermons/:id' });
   });
 
   it('is ticked to begin with, because whoever opens this form already hit something', () => {
@@ -65,27 +70,9 @@ describe('the app attaches the technical report, the person does not', () => {
     submit();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const [message] = onSubmit.mock.calls[0] as unknown as [string];
+    const [message, , , report] = onSubmit.mock.calls[0] as unknown as Sent;
     expect(message).toBe('just an idea');
-    expect(message).not.toContain(MARKER);
-  });
-
-  it('keeps the person’s words above the machine’s, and separated', async () => {
-    /**
-     * The whole point of the marker: whoever reads the message can see at a glance where
-     * the sentences end and the diagnostics begin. Sending them merged is what made the
-     * hand-pasted version hard to read.
-     */
-    const onSubmit = jest.fn(async () => true);
-    render(<FeedbackForm onSubmit={onSubmit} onCancel={jest.fn()} />);
-
-    typeMessage('first line of what I noticed');
-    submit();
-
-    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const [message] = onSubmit.mock.calls[0] as unknown as [string];
-    expect(message.indexOf('first line of what I noticed')).toBeLessThan(message.indexOf(MARKER));
-    expect(message.startsWith('first line of what I noticed')).toBe(true);
+    expect(report).toBeUndefined();
   });
 
   it('does not ask the network on the way out', async () => {
@@ -136,9 +123,9 @@ describe('an optional attachment never costs someone their message', () => {
     submit();
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    const [message] = onSubmit.mock.calls[0] as unknown as [string];
-    expect(message).toContain('something is broken here');
-    // And it says so, rather than pretending the attachment was never asked for.
-    expect(message).toContain('did not let the app collect them');
+    const [message, , , report] = onSubmit.mock.calls[0] as unknown as Sent;
+    expect(message).toBe('something is broken here');
+    // And the report says so, rather than pretending the attachment was never asked for.
+    expect(report).toEqual({ schema: 2, unavailable: true });
   });
 });

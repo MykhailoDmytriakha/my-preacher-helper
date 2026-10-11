@@ -2,6 +2,8 @@ when: payload too large · 413 · document exceeds maximum size · Base64 images
 
 # Stay within size limits
 
+The technical report beside a feedback has its own ceiling, `MAX_FEEDBACK_DIAGNOSTICS_BYTES` (100 KB, subtracted from the image budget); over it, or not a plain object, the server drops the report, keeps the words and records `diagnosticsDropped`.
+
 Size every boundary on its own: the decoded file, the serialized request, and the stored document are different resources with different ceilings, and passing one says nothing about the others. The worked example is feedback: limits in `frontend/app/utils/feedbackPayload.ts`, checked in `frontend/app/components/navigation/FeedbackForm.tsx`, again in `submitFeedback` (`frontend/app/services/feedback.service.ts`) and again in `frontend/app/api/feedback/route.ts`.
 
 ## How

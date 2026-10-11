@@ -16,6 +16,7 @@ import {
   FEEDBACK_RATE_LIMIT_WINDOW_MS,
 } from '@/services/rateLimit.server';
 import {
+  checkFeedbackDiagnostics,
   getFeedbackImageDecodedSize,
   getUtf8ByteLength,
   MAX_FEEDBACK_IMAGE_BYTES,
@@ -35,6 +36,10 @@ interface FeedbackData {
   userAgent: string;
   images?: string[];   // only used transiently for email; not persisted to Firestore
   imageCount?: number; // stored in Firestore instead of raw Base64
+  /** The technical report, beside the words: a JSON string in Firestore, a file in the letter. */
+  diagnostics?: { json: string; report: Record<string, unknown> };
+  /** Why a report that was asked for is missing — so the reader knows it was not forgotten. */
+  diagnosticsDropped?: 'invalid' | 'too-large';
 }
 
 const NOT_PROVIDED = 'Not provided';
@@ -111,6 +116,52 @@ function buildImageHtml(images: string[]): string {
 /**
  * Converts Base64 data URLs to nodemailer inline attachments with CID references.
  */
+const DIAGNOSTICS_FILENAME = 'technical-details.json';
+
+/**
+ * One line about the attached report, for the body of the letter: version, page, device, what waited
+ * to be sent. Only short plain values — the report came from a browser and is not trusted as text.
+ */
+const plainValue = (value: unknown) => (typeof value === 'string' && /^[\w./:-]{1,80}$/.test(value) ? value : null);
+
+const DEVICES: [RegExp, string][] = [[/iPad/, 'iPad'], [/iPhone/, 'iPhone'], [/Android/, 'Android'], [/Macintosh/, 'Mac'], [/Windows/, 'Windows']];
+
+function deviceOf(environment: Record<string, unknown>): string | null {
+  const agent = typeof environment.userAgent === 'string' ? environment.userAgent : '';
+  const device = DEVICES.find(([pattern]) => pattern.test(agent))?.[1];
+  if (!device) return null;
+  return environment.standalone === true ? `${device} (installed app)` : device;
+}
+
+function silentStorageCount(report: Record<string, unknown>): number {
+  const silent = (report.storage as { silent?: unknown } | undefined)?.silent;
+  return Array.isArray(silent) ? silent.length : 0;
+}
+
+function diagnosticsSummary(report: Record<string, unknown>): string {
+  if (report.unavailable === true) return 'the browser did not let the app collect them';
+  const version = plainValue(report.runningVersion);
+  const route = plainValue(report.route);
+  const pending = (report.edits as { pending?: unknown } | null | undefined)?.pending;
+  const silent = silentStorageCount(report);
+  return [
+    version && `version ${version}`,
+    route && `page ${route}`,
+    deviceOf((report.environment ?? {}) as Record<string, unknown>),
+    typeof pending === 'number' && `edits waiting to be sent: ${pending}`,
+    silent > 0 && `device storage silent: ${silent}`,
+  ].filter(Boolean).join(' · ');
+}
+
+function diagnosticsLine(feedbackData: FeedbackData): string | null {
+  if (feedbackData.diagnostics) {
+    const summary = diagnosticsSummary(feedbackData.diagnostics.report);
+    return `Technical details: ${DIAGNOSTICS_FILENAME} attached${summary ? ` — ${summary}` : ''}`;
+  }
+  if (feedbackData.diagnosticsDropped) return `Technical details: not attached (${feedbackData.diagnosticsDropped})`;
+  return null;
+}
+
 function buildAttachments(images: string[]) {
   return images.map((dataUrl, i) => {
     // dataUrl format: "data:<mime>;base64,<data>"
@@ -145,6 +196,11 @@ async function sendEmailNotification(
     console.log(`Preparing to send email to: ${OWNER_EMAIL}`);
     const { text, type, userId, userEmail, createdAt, images = [] } = feedbackData;
     const escapedText = escapeHtml(text).replace(/\r\n|\r|\n/g, '<br>');
+    const technicalLine = diagnosticsLine(feedbackData);
+    const reportFile = feedbackData.diagnostics
+      // Exactly the checked string: re-formatting a deeply nested report could outgrow the ceiling.
+      ? [{ filename: DIAGNOSTICS_FILENAME, content: feedbackData.diagnostics.json, contentType: 'application/json' }]
+      : [];
     const displayedUserEmail =
       userEmail !== NOT_PROVIDED && !userEmailVerified
         ? `${userEmail} (unverified)`
@@ -159,7 +215,7 @@ async function sendEmailNotification(
       to: OWNER_EMAIL,
       ...(userEmail !== NOT_PROVIDED && { replyTo: userEmail }),
       subject: `New Feedback (${type}) from Preacher Helper`,
-      attachments: buildAttachments(images),
+      attachments: [...buildAttachments(images), ...reportFile],
       html: `
         <h2>New Feedback Submitted</h2>
         <p><strong>Type:</strong> ${escapeHtml(type)}</p>
@@ -170,6 +226,7 @@ async function sendEmailNotification(
         <blockquote style="border-left: 4px solid #ccc; padding-left: 16px;">
           ${escapedText}
         </blockquote>
+        ${technicalLine ? `<p><strong>${escapeHtml(technicalLine)}</strong></p>` : ''}
         ${buildImageHtml(images)}
         <p>You can view all feedback in your Firestore database.</p>
       `,
@@ -181,6 +238,7 @@ User Email: ${userEmail}
 Time: ${new Date(createdAt).toLocaleString()}
 Message:
 ${text}
+${technicalLine ? `\n${technicalLine}` : ''}
 ${images.length ? `\nAttachments: ${images.length} image(s) attached (view HTML version)` : ''}
       `
     };
@@ -229,10 +287,13 @@ async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
   const feedbackRef = adminDb.collection('feedback');
 
   // Strip Base64 images — email is the delivery channel, not Firestore
-  const { images, ...dataWithoutImages } = feedbackData;
+  const { images, diagnostics, ...dataWithoutImages } = feedbackData;
   const docToStore = {
     ...dataWithoutImages,
     ...(images && images.length > 0 && { imageCount: images.length }),
+    // A string, not a nested map: a browser's report can be deeper than Firestore allows or carry a
+    // reserved key, and a refused document would cost the person their words.
+    ...(diagnostics && { diagnostics: diagnostics.json }),
   };
 
   const result = await feedbackRef.add(docToStore);
@@ -324,6 +385,11 @@ export async function POST(request: NextRequest) {
     });
 
     // Create a new feedback document
+    // The words are stored exactly as sent. An older app version that still glues its report under
+    // them keeps that text as it was — cutting it apart risked cutting a person's own quoted words
+    // (two review rounds), and such versions update themselves within days.
+    const report = checkFeedbackDiagnostics((body as Record<string, unknown>).diagnostics);
+
     const feedbackData: FeedbackData = {
       text: feedbackText,
       type: resolvedType,
@@ -333,6 +399,8 @@ export async function POST(request: NextRequest) {
       status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.
       userAgent: request.headers.get('user-agent') || 'unknown',
       ...(imageValidation.images.length > 0 && { images: imageValidation.images }),
+      ...(report.kind === 'ok' && { diagnostics: { json: report.json, report: report.diagnostics } }),
+      ...(report.kind === 'dropped' && { diagnosticsDropped: report.reason }),
     };
 
     // Add the feedback to Firestore

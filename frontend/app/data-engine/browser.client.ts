@@ -9,6 +9,7 @@ import { createIndexedDbCheckpoints } from './checkpoint.client';
 import { createIndexedDbCollectionCursors } from './collectionCursors.client';
 import { CollectionReader } from './collections';
 import { createIndexedDbCommitStore } from './commits.client';
+import { watchEditQueue } from './editDiagnostics.client';
 import { editorIdentity } from './editorIdentity';
 import { DataEngine } from './engine';
 import { createIndexedDbJournal } from './journal.client';
@@ -50,6 +51,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   });
   let active = true;
   let owner: string | null = null;
+  // What the person did and what waits to be sent, for the technical report (owner, 2026-10-10).
+  const stopEditDiagnostics = watchEditQueue(engine, () => owner);
   let generation = 0;
   let retrying = false;
   let stopAuth: (() => void) | undefined;
@@ -103,6 +106,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     document.removeEventListener('visibilitychange', visibilityChanged);
     for (const type of ATTENTION_EVENTS) window.removeEventListener(type, attentionSeen, { capture: true });
     stopAuth?.();
+    stopEditDiagnostics();
     engine.dispose();
   };
   try {

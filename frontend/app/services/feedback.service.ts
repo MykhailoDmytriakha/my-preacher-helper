@@ -22,7 +22,9 @@ export async function submitFeedback(
   feedbackText: string,
   feedbackType: string,
   images: string[] = [],
-  userId: string = 'anonymous'
+  userId: string = 'anonymous',
+  /** The technical report, beside the words — never inside them (owner, 2026-10-10). */
+  diagnostics?: Record<string, unknown>
 ) {
   // Endpoint derives identity from the bearer token; userId is kept for signature
   // compatibility but is ignored server-side.
@@ -35,6 +37,7 @@ export async function submitFeedback(
     feedbackType,
     images,
     userId,
+    ...(diagnostics ? { diagnostics } : {}),
   });
   if (getUtf8ByteLength(serializedPayload) > MAX_FEEDBACK_PAYLOAD_BYTES) {
     throw new Error('Feedback payload is too large');

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 
 import type { FailureWords } from '@/utils/actionFailureMessage';
@@ -37,9 +38,11 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
     onStart?.();
     setIsProcessing(true);
     setError(null);
+    const startedAt = Date.now();
     try {
       const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/thoughts/transcribe' });
       const text = (result.polishedText || result.originalText || '').trim();
+      recordDiagnostic('dictation', { source: 'field', result: text ? 'text' : 'empty', elapsedMs: Date.now() - startedAt });
       if (!text) {
         onEmpty();
         return;
@@ -48,6 +51,7 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
       await refresh();
       clear();
     } catch (cause) {
+      recordDiagnostic('dictation', { source: 'field', result: 'failed', code: diagnosticErrorCode(cause), elapsedMs: Date.now() - startedAt });
       // Usage-cap presentation belongs to the global handler, without a second local error.
       if (isUsageCapReachedError(cause)) return;
       storedBlob.current = blob;

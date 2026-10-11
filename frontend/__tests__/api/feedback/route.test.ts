@@ -502,6 +502,93 @@ describe('api/feedback/route', () => {
         expect(mockConsumeRateLimit).not.toHaveBeenCalled();
     });
 
+    /**
+     * THE REPORT TRAVELS BESIDE THE WORDS (owner, 2026-10-10). It is its own field in the database
+     * and a file attached to the letter; the letter's body carries the person's words and one line
+     * saying what the file is about — no longer eight kilobytes of JSON under a sentence.
+     */
+    const report = {
+        schema: 2,
+        runningVersion: 'abc1234',
+        route: '/studies/:id',
+        environment: { userAgent: 'Mozilla/5.0 (iPad)', standalone: true },
+        storage: { silent: [] },
+        edits: { pending: 1, byState: { queued: 1 }, byCollection: { studyNotes: 1 }, oldestAgeMs: 4000 },
+        events: [{ id: 'e1', at: 1, session: 1, name: 'route', data: { route: '/studies/:id', doc: 'a1b2c3d4' } }],
+    };
+    const post = async (body: Record<string, unknown>) => POST(new NextRequest('http://localhost/api/feedback', {
+        method: 'POST', body: JSON.stringify(body),
+    }));
+
+    test('POST stores the report as its own field and attaches it to the letter as a file', async () => {
+        const response = await post({ feedbackText: 'the note did not arrive', feedbackType: 'bug', images: [], diagnostics: report });
+        expect(response.status).toBe(200);
+
+        const storedDoc = mockAdd.mock.calls[0][0];
+        expect(storedDoc.text).toBe('the note did not arrive');
+        // A string, not a nested map: a report from a browser can be deeper than Firestore allows or
+        // carry a reserved key, and refusing the document would cost the person their words.
+        expect(JSON.parse(storedDoc.diagnostics)).toEqual(report);
+
+        const email = mockSendMail.mock.calls[0][0];
+        const file = email.attachments.find((attachment: { filename: string }) => attachment.filename === 'technical-details.json');
+        expect(file).toMatchObject({ contentType: 'application/json' });
+        expect(JSON.parse(String(file.content))).toEqual(report);
+        expect(email.html).toContain('the note did not arrive');
+        expect(email.html).toContain('technical-details.json');
+        expect(email.html).not.toContain('"events"');
+        expect(email.text).toContain('technical-details.json');
+    });
+
+    test('POST keeps an older app version\'s text as it came, report and all', async () => {
+        const text = `still broken\n\n--- technical details (attached by the app) ---\n${JSON.stringify({ schema: 1, capturedAt: '2026-10-04T21:55:22.000Z' }, null, 2)}`;
+        const response = await post({ feedbackText: text, feedbackType: 'bug' });
+        expect(response.status).toBe(200);
+        const storedDoc = mockAdd.mock.calls[0][0];
+        expect(storedDoc.text).toBe(text);
+        expect(storedDoc.diagnostics).toBeUndefined();
+    });
+
+    test.each([
+        ['quotes the marker in its own words', 'I saw this label: --- technical details (attached by the app) --- and then my note disappeared', undefined],
+        ['quotes it beside a separate report', 'my words with --- technical details (attached by the app) --- inside', { schema: 2, route: '/dashboard' }],
+    ])('POST keeps every word when the person %s', async (_label, feedbackText, diagnostics) => {
+        const response = await post({ feedbackText, feedbackType: 'bug', ...(diagnostics ? { diagnostics } : {}) });
+        expect(response.status).toBe(200);
+        expect(mockAdd.mock.calls[0][0].text).toBe(feedbackText);
+    });
+
+    test.each([
+        ['a current app that sent no report', { diagnostics: null }],
+        ['an unknown sender of an arbitrary object', {}],
+    ])('POST keeps every word when the marker and a JSON object come from %s', async (_label, extra) => {
+        const feedbackText = 'The literal broken label was: --- technical details (attached by the app) --- {"message":"these are my words"}';
+        const response = await post({ feedbackText, feedbackType: 'bug', ...extra });
+        expect(response.status).toBe(200);
+        expect(mockAdd.mock.calls[0][0].text).toBe(feedbackText);
+        expect(mockAdd.mock.calls[0][0].diagnostics).toBeUndefined();
+    });
+
+    test('POST attaches exactly the checked report, not a re-formatted copy that could outgrow the ceiling', async () => {
+        await post({ feedbackText: 'words', feedbackType: 'bug', diagnostics: report });
+        const email = mockSendMail.mock.calls[0][0];
+        const file = email.attachments.find((attachment: { filename: string }) => attachment.filename === 'technical-details.json');
+        expect(String(file.content)).toBe(JSON.stringify(report));
+    });
+
+    test.each([
+        ['not an object', 'a string report', 'invalid'],
+        ['an array', [1, 2, 3], 'invalid'],
+        ['too large', { schema: 2, events: Array.from({ length: 3000 }, (_, index) => ({ id: `e${index}`, name: 'route', data: { route: '/studies/:id' } })) }, 'too-large'],
+    ])('POST keeps the words when the report is %s, and says the report was dropped', async (_label, diagnostics, reason) => {
+        const response = await post({ feedbackText: 'words first', feedbackType: 'bug', diagnostics });
+        expect(response.status).toBe(200);
+        const storedDoc = mockAdd.mock.calls[0][0];
+        expect(storedDoc.text).toBe('words first');
+        expect(storedDoc.diagnostics).toBeUndefined();
+        expect(storedDoc.diagnosticsDropped).toBe(reason);
+    });
+
     test('POST rejects more than 3 images instead of silently truncating them', async () => {
         const body = {
             feedbackText: 'Too many images',

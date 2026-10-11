@@ -11,7 +11,7 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 interface FeedbackModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
+  onSubmit: (text: string, type: string, images: string[], diagnostics?: Record<string, unknown>) => Promise<boolean | void>;
 }
 
 export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackModalProps) {

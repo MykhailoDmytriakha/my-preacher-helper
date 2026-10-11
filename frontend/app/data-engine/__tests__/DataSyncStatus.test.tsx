@@ -5,6 +5,7 @@ import ru from '../../../locales/ru/translation.json';
 import uk from '../../../locales/uk/translation.json';
 import { DataSyncStatus, STATUS_SETTLE_MS } from '../DataSyncStatus';
 import { isSyncTrouble } from '../status';
+import { diagnosticEvents } from '@/utils/appDiagnostics';
 
 import type { SyncPhase, SyncStatus } from '../status';
 
@@ -293,3 +294,17 @@ describe('background checks leave the page still', () => {
   });
 });
 
+
+// What the person was shown goes into the technical report's path (owner, 2026-10-10).
+it('puts a trouble the person was shown into the technical report, and nothing for a calm save', () => {
+  // Earlier tests in this file leave their lines in the module's memory: count what this one adds.
+  // Some of them run on a clock moved forward, so the newest line by time may not be ours.
+  const lines = () => diagnosticEvents().filter(event => event.name === 'sync-trouble');
+  const conflicts = () => lines().filter(event => event.data.code === 'conflict').length;
+  const before = lines().length, conflictsBefore = conflicts();
+  const { rerender } = render(<DataSyncStatus subject="doc" status={status('saved')} />);
+  expect(lines()).toHaveLength(before);
+  rerender(<DataSyncStatus subject="doc" status={status('conflict')} />);
+  expect(lines()).toHaveLength(before + 1);
+  expect(conflicts()).toBe(conflictsBefore + 1);
+});
