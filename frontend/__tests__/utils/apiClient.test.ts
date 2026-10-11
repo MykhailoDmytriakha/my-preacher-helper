@@ -186,6 +186,52 @@ describe('apiClient', () => {
       expect(getConnectivityStatus()).toBe(false);
     });
 
+    // BUG-20261011-body-after-headers-no-deadline: a body that stopped coming now ends at the deadline.
+    it('marks a body that ran out of time as not having arrived', async () => {
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(answerThatBreaks(new FetchTimeoutError('timed out')));
+      const response = await apiClient('http://test.com/api/share-links');
+
+      const failure = await response.json().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(true);
+      expect(getConnectivityStatus()).toBe(false);
+    });
+
+    it('does not take the caller\'s own cancel for a network, whatever error it carries', async () => {
+      const controller = new AbortController();
+      const reason = new TypeError('User cancelled');
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(answerThatBreaks(reason));
+      const response = await apiClient('http://test.com/api/share-links', { signal: controller.signal });
+      controller.abort(reason);
+
+      const failure = await response.json().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    it('does not take a cancel before the answer for a network either', async () => {
+      const controller = new AbortController();
+      const reason = new TypeError('User cancelled');
+      controller.abort(reason);
+      (fetchWithTimeout as jest.Mock).mockRejectedValue(reason);
+
+      const failure = await apiClient('http://test.com/api/share-links', { signal: controller.signal }).catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    it('does not take a slow AI answer for a lost network', async () => {
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(answerThatBreaks(new FetchTimeoutError('timed out')));
+      const response = await apiClient('http://test.com/api/insights', { category: 'ai' });
+
+      const failure = await response.json().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
     it('does not take bad JSON for a network', async () => {
       (fetchWithTimeout as jest.Mock).mockResolvedValue(answerThatBreaks(new SyntaxError('Unexpected token')));
       const response = await apiClient('http://test.com/api/share-links');

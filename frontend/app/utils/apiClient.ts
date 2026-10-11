@@ -95,10 +95,15 @@ export function isConnectionFailure(error: unknown): boolean {
  * returned marks a stream failure as "did not reach" and says the connection is gone, like a failed
  * fetch. Bad JSON (`SyntaxError`) is an answer, and a body read a second time or already held by a
  * stream reader is a fault in the caller (`bodyUsed` / `body.locked` before the read): neither is a
- * network. `formData()` is not covered: its TypeError also means "this is not form data".
+ * network. `formData()` is not covered: its TypeError also means "this is not form data". A body that
+ * ran out of time (`fetchWithTimeout` bounds the read, BUG-20261011-body-after-headers-no-deadline) is
+ * "did not arrive" too — except a slow AI or audio answer, as before the headers.
  */
 const BODY_READS = ['json', 'text', 'arrayBuffer', 'blob'] as const;
-function markBodyCutOff(response: Response, requestId: number): Response {
+/** The caller's own cancel, whatever error it carries, is not the network's. */
+const cancelledBy = (signal: AbortSignal | null | undefined, error: unknown): boolean =>
+  Boolean(signal?.aborted) && signal?.reason === error;
+function markBodyCutOff(response: Response, requestId: number, slowIsNormal: boolean, signal?: AbortSignal | null): Response {
   // A response that cannot take own properties is returned as it is: the mark is a help, never a
   // reason to fail a request that succeeded.
   if (!Object.isExtensible(response)) return response;
@@ -113,7 +118,8 @@ function markBodyCutOff(response: Response, requestId: number): Response {
         try {
           return await read();
         } catch (error) {
-          if (untouched && error instanceof TypeError) {
+          const outOfTime = error instanceof FetchTimeoutError && !slowIsNormal;
+          if (untouched && !cancelledBy(signal, error) && (error instanceof TypeError || outOfTime)) {
             connectionFailures.add(error);
             // Reported under the request it belongs to: a newer answer already heard wins.
             reportServerUnreachable(requestId);
@@ -161,12 +167,12 @@ async function performApiRequest(
     // route succeeded is the caller's question, not the connection's.
     reportServerReachable(requestId);
     await throwIfUsageCapReached(response);
-    return markBodyCutOff(response, requestId);
+    return markBodyCutOff(response, requestId, category === 'ai' || category === 'audio', fetchOptions.signal);
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
     // A slow AI/audio operation is not evidence that unrelated reads lost their network.
     const slowGeneration = err instanceof FetchTimeoutError && (category === 'ai' || category === 'audio');
-    const isConnectivityError = !slowGeneration && fetchDidNotReach(err);
+    const isConnectivityError = !slowGeneration && !cancelledBy(fetchOptions.signal, error) && fetchDidNotReach(err);
     if (isConnectivityError && typeof error === 'object' && error !== null) connectionFailures.add(error);
 
     if (isConnectivityError) {
