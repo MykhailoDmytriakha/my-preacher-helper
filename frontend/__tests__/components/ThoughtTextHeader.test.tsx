@@ -14,7 +14,7 @@ const dictation = () => ({ isProcessing: false, transcriptionBlocked: false,
 
 it('forwards retry/discard and reports recorder errors while ending its processing state', () => {
   const controller = dictation();
-  render(<ThoughtTextHeader dictation={controller} available saving={false} />);
+  render(<ThoughtTextHeader dictation={controller} saving={false} />);
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
   fireEvent.click(screen.getByRole('button', { name: 'Record' }));
@@ -24,7 +24,7 @@ it('forwards retry/discard and reports recorder errors while ending its processi
   expect(toast.error).toHaveBeenCalledWith('errors.microphoneUnavailable');
 });
 
-it.each([{ available: false, saving: false }, { available: true, saving: true }, { available: true, saving: false, readOnly: true }])('blocks recording for unavailable or locked editors: %j', props => {
+it.each([{ saving: true }, { saving: false, readOnly: true }])('blocks recording for a saving or locked editor: %j', props => {
   render(<ThoughtTextHeader dictation={dictation()} {...props} />);
   expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled();
 });
@@ -48,4 +48,10 @@ it('explains quota exhaustion and supports a plain custom field label without di
   rerender(<ThoughtTextHeader {...props} labelKey="custom.field" showDictation={false} />);
   expect(screen.getByText('custom.field')).toBeInTheDocument();
   expect(screen.queryByRole('button')).toBeNull();
+});
+
+it('keeps dictation available when the connection icon says there is none — pressing it sends the recording', () => {
+  // Owner's decision 2026-10-10: AI buttons are not disabled by the icon; a failed send says so.
+  render(<ThoughtTextHeader dictation={dictation()} saving={false} />);
+  expect(screen.getByRole('button', { name: 'Record' })).toBeEnabled();
 });

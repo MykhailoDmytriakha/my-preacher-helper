@@ -3,7 +3,6 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { getAllGroups } from '@/services/groups.service';
 import { getAllSeries } from '@/services/series.service';
@@ -276,7 +275,6 @@ export function useSeriesMembership() {
   const queryClient = useQueryClient();
   const { uid } = useResolvedUid();
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
 
   const sweep = useMutation<void, Error, SeriesTransform[], MembershipCacheSnapshot>({
     mutationKey: SERIES_MEMBERSHIP_MUTATION_KEY,
@@ -323,14 +321,15 @@ export function useSeriesMembership() {
     [queryClient, uid]
   );
 
-  // Run `build` with a reconciled owner snapshot. Online, all three lists are read
-  // because series membership decides both which series must change and which
-  // sermon/group objects the optimistic detail screen renders. Offline, the stored
-  // lists are the answer and no service is touched. A failed online read falls back
-  // to the stored list without blanking the existing screen.
+  // Run `build` with a reconciled owner snapshot. All three lists are read because series
+  // membership decides both which series must change and which sermon/group objects the
+  // optimistic detail screen renders; a failed read falls back to the stored list without
+  // blanking the screen. The connection icon does not stop the read (owner's rule 3) — only the
+  // phone itself saying "no network" does, so an offline write is not held up to eight seconds
+  // by reads that cannot leave the device.
   const withSeries = useCallback(
     (build: (series: Series[]) => WriteSubmission): Promise<WriteSubmission> => {
-      if (!isOnline || !uid) {
+      if (isBrowserOffline() || !uid) {
         return Promise.resolve(build(loadedSeries()));
       }
 
@@ -340,7 +339,7 @@ export function useSeriesMembership() {
         refreshCachedList(queryClient, ['groups', uid], () => getAllGroups(uid)),
       ]).then(([series]) => build(series));
     },
-    [isOnline, loadedSeries, queryClient, uid]
+    [loadedSeries, queryClient, uid]
   );
 
   const runSweep = useCallback(

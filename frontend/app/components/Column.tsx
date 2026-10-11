@@ -273,7 +273,6 @@ export default function Column({
       setAudioError={(error) => setPointAudioError(point.id, error)}
       onClearAudioError={() => setPointAudioError(point.id, null)}
       onAiSortPoint={onAiSortPoint}
-      isOnline={isOnline}
       isSorting={isLoading}
       isSortReviewPending={isDiffModeActive}
       sortingOutlinePointId={sortingOutlinePointId}

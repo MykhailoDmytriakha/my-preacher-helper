@@ -13,7 +13,6 @@ import ThoughtsEmptyState from "@/components/sermon/ThoughtsEmptyState";
 import { Chip } from "@/components/ui/Chip";
 import { useSourceNotes } from "@/hooks/useSermonNoteLinks";
 import { getSectionLabel } from "@/lib/sections";
-import { useConnection } from "@/providers/ConnectionProvider";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
 
@@ -187,7 +186,6 @@ export default function ClassicThoughtsPanel({
   onOpenScratch,
 }: ClassicThoughtsPanelProps) {
   const { t } = useTranslation();
-  const { isMagicAvailable } = useConnection();
   const hasAnyActiveFilter = viewFilter !== "all" || structureFilter !== "all" || tagFilters.length > 0 || sortOrder !== "date";
   const { notes: sourceNotes } = useSourceNotes(sermon);
   /**
@@ -314,9 +312,7 @@ export default function ClassicThoughtsPanel({
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.2 }}
                   onClick={() => setIsBrainstormOpen(!isBrainstormOpen)}
-                  disabled={!isMagicAvailable}
-                  className={`inline-flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-md text-sm font-medium bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 text-amber-700 dark:text-amber-300 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/30 dark:hover:to-yellow-900/30 transition-all shadow-sm hover:shadow ${!isMagicAvailable ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
-                  title={!isMagicAvailable ? t("errors.magicUnavailable") : ""}
+                  className={`inline-flex items-center gap-2 px-3 py-2 border border-amber-300 dark:border-amber-700 rounded-md text-sm font-medium bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 text-amber-700 dark:text-amber-300 hover:from-amber-100 hover:to-yellow-100 dark:hover:from-amber-900/30 dark:hover:to-yellow-900/30 transition-all shadow-sm hover:shadow`}
                   aria-label={t("brainstorm.title")}
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -330,7 +326,7 @@ export default function ClassicThoughtsPanel({
         </div>
 
         <AnimatePresence initial={false}>
-          {isClassicMode && isBrainstormOpen && withBrainstorm && isMagicAvailable && (
+          {isClassicMode && isBrainstormOpen && withBrainstorm && (
             <motion.div
               key="brainstorm-panel"
               initial={{ opacity: 0, y: -10, height: 0 }}

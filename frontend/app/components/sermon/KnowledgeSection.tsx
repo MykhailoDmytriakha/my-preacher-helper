@@ -9,7 +9,6 @@ import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { Sermon, Insights, SermonContent, SectionHints } from '@/models/models';
-import { useConnection } from '@/providers/ConnectionProvider';
 import {
   generateTopics,
   generateRelatedVerses,
@@ -626,14 +625,11 @@ const PlanSection = ({
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
-  const { isMagicAvailable } = useConnection();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const magicUnavailableLabel = !isMagicAvailable
-    ? (t('errors.magicUnavailable') || 'AI features unavailable offline')
-    : aiBlocked
-      ? t('settings.usage.aiUsageExhausted')
-      : undefined;
-  const disableNetworkActions = !isMagicAvailable || aiBlocked;
+  // Not disabled by the connection icon: pressing makes the request, and a failed one says so
+  // (owner, 2026-10-10). Only a spent AI allowance stops it before it starts.
+  const magicUnavailableLabel = aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined;
+  const disableNetworkActions = aiBlocked;
 
   // UI state
   const [expanded, setExpanded] = useState(false);

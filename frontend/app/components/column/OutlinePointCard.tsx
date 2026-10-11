@@ -42,7 +42,6 @@ export const OutlinePointCard: React.FC<{
   setAudioError: (error: FailureWords | null) => void;
   onClearAudioError: () => void;
   onAiSortPoint?: (outlinePointId: string) => void;
-  isOnline: boolean;
   aiBlocked?: boolean;
   transcriptionBlocked?: boolean;
   transcriptionUnavailableLabel?: string;
@@ -81,7 +80,6 @@ export const OutlinePointCard: React.FC<{
   setAudioError,
   onClearAudioError,
   onAiSortPoint,
-  isOnline,
   aiBlocked = false,
   transcriptionBlocked = false,
   transcriptionUnavailableLabel,
@@ -111,7 +109,6 @@ export const OutlinePointCard: React.FC<{
   const aiSortState = getOutlinePointAiSortState({
     items: pointItems,
     outlinePointId: point.id,
-    isOnline,
     aiBlocked,
     isSorting,
     isDiffModeActive: isSortReviewPending,
@@ -219,10 +216,6 @@ export const OutlinePointCard: React.FC<{
       return t("structure.sorting", { defaultValue: "Sorting..." });
     }
     switch (aiSortState.disabledReason) {
-      case "offline":
-        return t("structure.aiSortPointDisabledOffline", {
-          defaultValue: "AI sorting is unavailable offline.",
-        });
       case "quotaExhausted":
         return t("structure.aiSortPointDisabledQuotaExhausted", {
           defaultValue: "Not enough AI usage remaining.",

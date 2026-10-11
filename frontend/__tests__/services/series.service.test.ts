@@ -111,10 +111,10 @@ describe('series.service', () => {
     const service = await importServiceWithClientMocks();
     await service.deleteSeries('series-1');
 
-    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/series/series-1'), {
+    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/series/series-1'), expect.objectContaining({
       method: 'DELETE',
       headers: { Authorization: 'Bearer test-token' },
-    });
+    }));
   });
 
   it('keeps an HTTP refusal class when server delete cannot find the series', async () => {

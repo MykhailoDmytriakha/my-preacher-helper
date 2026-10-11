@@ -1,6 +1,7 @@
 import { onAuthStateChanged, type User } from 'firebase/auth';
 
 import { newClientId } from '@/utils/clientId';
+import { __resetConnectivityForTests, reportServerReachable } from '@/utils/connectivity';
 
 import { createBrowserDataEngine } from '../browser.client';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
@@ -106,7 +107,7 @@ const user = (uid: string) => ({ uid } as User);
 
 describe('Browser DataEngine lifecycle composition', () => {
   beforeEach(() => {
-    jest.useFakeTimers(); jest.clearAllMocks(); setOnline(true); setVisible(true);
+    jest.useFakeTimers(); jest.clearAllMocks(); setOnline(true); setVisible(true); __resetConnectivityForTests();
     let sequence = 0; jest.mocked(newClientId).mockImplementation(() => `identity-${++sequence}`);
   });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
@@ -148,14 +149,17 @@ describe('Browser DataEngine lifecycle composition', () => {
     browser.dispose();
   });
 
-  it('persists offline edits and resumes their journal delivery on an online event', async () => {
+  it('persists offline edits and resumes their journal delivery once a request reaches the server', async () => {
     const s = setup(); setOnline(false);
     const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
     const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
     await editor.edit({ userId: 'owner', content: 'mine' }); await editor.save(); await settle();
     expect(s.transport.send).not.toHaveBeenCalled();
     expect([...s.records.values()]).toEqual([expect.objectContaining({ state: 'queued' })]);
+    // The phone announcing a network is not yet a connection (owner's rule 2): it makes the app knock.
     setOnline(true); window.dispatchEvent(new Event('online')); await settle();
+    expect(s.transport.send).not.toHaveBeenCalled();
+    reportServerReachable(); await settle();
     expect(s.transport.send).toHaveBeenCalledTimes(1);
     expect(editor.getState().checkpoint.draft?.content).toBe('mine');
     expect(editor.getState().checkpoint.dirty).toBe(false);
@@ -199,6 +203,42 @@ describe('Browser DataEngine lifecycle composition', () => {
   });
 
   // A hidden tab still sends its own edits (BUG-20261006-hidden-tab-holds-last-edit); only the network gates the retry.
+  it('sends the edits made offline after a return to the app that slept through the `online` event', async () => {
+    // BUG-20261010-engine-online-flag-not-reread-on-return: the engine followed only the phone's events,
+    // so an installed app woken on a working network kept every edit on the device.
+    const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    setOnline(false); window.dispatchEvent(new Event('offline')); await settle();
+    await editor.edit({ userId: 'owner', content: 'typed offline' }); await editor.save(); await settle();
+    expect(s.transport.send).not.toHaveBeenCalled();
+    // The network came back while the app was frozen: no `online` event arrives.
+    setOnline(true); setVisible(false); document.dispatchEvent(new Event('visibilitychange'));
+    setVisible(true); document.dispatchEvent(new Event('visibilitychange')); await settle();
+    // The return to the page makes the app knock; the answer is a request that reached our server.
+    reportServerReachable(); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(editor.getState().checkpoint.dirty).toBe(false);
+    browser.dispose();
+  });
+
+  it('lets a hidden page with unsent edits ask the server once a minute, and only then', async () => {
+    // A hidden page does not knock on schedule; without this, edits typed before the screen went dark
+    // would wait for the next look at the page even after the network came back.
+    const fetchMock = jest.fn(() => Promise.reject(new TypeError('Failed to fetch')));
+    const realFetch = global.fetch; global.fetch = fetchMock as unknown as typeof fetch;
+    const health = () => (fetchMock.mock.calls as unknown as [string][]).filter(([url]) => String(url).endsWith('/api/health')).length;
+    const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    setOnline(false); window.dispatchEvent(new Event('offline')); await settle();
+    setVisible(false); document.dispatchEvent(new Event('visibilitychange'));
+    jest.advanceTimersByTime(60_000); await settle();
+    expect(health()).toBe(0);
+    await editor.edit({ userId: 'owner', content: 'typed before the screen went dark' }); await editor.save(); await settle();
+    jest.advanceTimersByTime(60_000); await settle();
+    expect(health()).toBe(1);
+    browser.dispose(); global.fetch = realFetch;
+  });
+
   it('retries unknown commands on the minute timer while online, hidden or not', async () => {
     const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
     const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
@@ -211,7 +251,7 @@ describe('Browser DataEngine lifecycle composition', () => {
     expect(s.transport.send).toHaveBeenCalledTimes(3);
     setOnline(false); window.dispatchEvent(new Event('offline'));
     jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(3);
-    setOnline(true); window.dispatchEvent(new Event('online')); await settle();
+    setOnline(true); window.dispatchEvent(new Event('online')); reportServerReachable(); await settle();
     expect(s.transport.send).toHaveBeenCalledTimes(4);
     jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(5);
     expect([...s.records.values()][0].state).toBe('unknown');

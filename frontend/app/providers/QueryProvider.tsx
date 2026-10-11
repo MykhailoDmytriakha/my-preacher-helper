@@ -1,6 +1,6 @@
 'use client';
 
-import { QueryClient, MutationCache, hydrate } from '@tanstack/react-query';
+import { QueryClient, MutationCache, hydrate, onlineManager, type Query } from '@tanstack/react-query';
 import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -10,6 +10,8 @@ import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
 import { DataEngineMigrationGate, queryCacheMayBeOverwritten, shouldPersistLegacyQuery } from '@/data-engine/react.client';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
+import { isConnectionFailure } from '@/utils/apiClient';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
 import { i18n } from '@locales/i18n';
@@ -58,6 +60,34 @@ export function takeInLateRestore(queryClient: QueryClient, restored: PersistedC
       : mutation),
   });
 }
+
+/**
+ * React Query's own "online" — it pauses retries and offline-queued mutations and refetches on
+ * reconnect — follows the app's one answer instead of the browser's `online`/`offline` events. A knock
+ * that reaches our server wakes them; a phone flag stuck at "offline" over a working network no longer
+ * holds them paused (BUG-20261010-engine-online-flag-not-reread-on-return).
+ */
+export function followConnectivityInQueries(): void {
+  onlineManager.setEventListener((setOnline) => {
+    setOnline(getConnectivityStatus());
+    return subscribeToConnectivity(() => setOnline(getConnectivityStatus()));
+  });
+}
+
+/**
+ * WHAT GOES INTO THE SAVED COPY: a query that HAS data — even when its last refetch failed. The
+ * failure is not newer data, and keeping only `success` dropped from the copy what the person had
+ * seen, so it was gone at the next start without a network
+ * (BUG-20261010-persisted-query-copy-dropped-after-failed-refetch). The persister saves such a query
+ * as a clean copy, without the old error (`queryPersister.ts`). A collection the engine owns is read
+ * through the engine; its legacy queries stay in memory.
+ */
+export const shouldPersistQuery = (query: Pick<Query, 'state' | 'queryKey'>): boolean =>
+  query.state.data !== undefined
+  // A refetch that could not reach the server keeps what was seen; one the server answered with
+  // "gone" or "not yours" does not — that answer is newer than the data (Codex review 2026-10-11).
+  && (query.state.status !== 'error' || isConnectionFailure(query.state.error))
+  && shouldPersistLegacyQuery(query.queryKey);
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
   return <DataEngineMigrationGate><QueryRuntimeProvider>{children}</QueryRuntimeProvider></DataEngineMigrationGate>;
@@ -135,6 +165,7 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     registerOfflineMutationDefaults(client);
+    if (typeof window !== 'undefined') followConnectivityInQueries();
     return client;
   });
 
@@ -151,8 +182,7 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         maxAge: PERSISTED_CACHE_MAX_AGE,
         dehydrateOptions: {
           // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
-          // A collection the engine owns is read through the engine; its legacy queries stay in memory.
-          shouldDehydrateQuery: (query) => query.state.status === 'success' && shouldPersistLegacyQuery(query.queryKey),
+          shouldDehydrateQuery: shouldPersistQuery,
           shouldDehydrateMutation,
         },
       }}

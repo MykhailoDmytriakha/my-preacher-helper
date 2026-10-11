@@ -3,12 +3,12 @@ import { TFunction } from 'i18next'; // Import TFunction from i18next
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { getConnectivityStatus, isBrowserOffline } from '@/utils/connectivity';
 import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
 // ONE definition of "has the server proved its copy is newer" for the whole app: this
 // hook used to carry a byte-identical private copy, and two copies of a rule that
@@ -33,8 +33,7 @@ const STRUCTURE_LOAD_EVENT = 'structure-load';
  */
 async function fetchSermonData(
   sermonId: string,
-  queryClient: ReturnType<typeof useQueryClient>,
-  isOnlineResolved: boolean
+  queryClient: ReturnType<typeof useQueryClient>
 ): Promise<{ sermon: Sermon | null }> {
   /**
    * The owner is fixed HERE, when the work starts, and not read again when it
@@ -47,9 +46,15 @@ async function fetchSermonData(
   const key = sermonDetailKey(startedAsUid, sermonId);
   const stored = queryClient.getQueryData<Sermon>(key) ?? null;
 
-  // Without a connection the stored copy is not a stale second-best, it is the only
-  // thing there is — and it is why this sermon opens at all on a phone in a hall.
-  if (!isOnlineResolved) return { sermon: stored };
+  // WITHOUT A CONNECTION A STORED COPY OPENS AT ONCE (owner's rule 3,
+  // BUG-20260908-cached-response-counts-as-live-connection): waiting on a server the last request
+  // did not reach held the screen for 4 s on a café Wi-Fi. The server is still asked — by the
+  // page's freshness check (`useDocumentFreshness`), which offers a newer copy when there is one;
+  // this editor is built once, so a late copy is not poured in under pending work.
+  // With a connection the server is asked first (the 2026-08-11 case above), within a deadline.
+  if (stored && !getConnectivityStatus()) return { sermon: stored };
+  // Nothing stored and the phone says there is no network: there is nothing to wait for.
+  if (!stored && isBrowserOffline()) return { sermon: null };
 
   let fetched: Sermon | null;
   try {
@@ -84,7 +89,6 @@ async function fetchSermonData(
 async function fetchTagsData(
   fetchedSermon: Sermon,
   queryClient: ReturnType<typeof useQueryClient>,
-  isOnlineResolved: boolean,
   t: TFunction
 ): Promise<{
   requiredTags: Tag[];
@@ -98,7 +102,7 @@ async function fetchTagsData(
     const cachedTags = queryClient.getQueryData<{ requiredTags: Tag[]; customTags: Tag[] }>(tagsQueryKey);
     if (cachedTags) {
       tagsData = cachedTags;
-    } else if (isOnlineResolved) {
+    } else if (getConnectivityStatus() && !isBrowserOffline()) {
       tagsData = await readWithDeadline(getTags(fetchedSermon.userId), 3000);
       queryClient.setQueryData(tagsQueryKey, tagsData);
     } else {
@@ -259,8 +263,6 @@ function buildBoard(sermon: Sermon, allTags: Record<string, { name: string; colo
 }
 
 export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction, engine?: StructureEngineSource) {
-  const isOnline = useOnlineStatus();
-  const isOnlineResolved = typeof isOnline === 'boolean' ? isOnline : true;
   const queryClient = useQueryClient();
   const [sermon, setSermonState] = useState<Sermon | null>(null);
   const lastSermonIdRef = useRef<string | null>(null);
@@ -352,11 +354,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'started' });
       try {
         // Fetch sermon
-        let { sermon: fetchedSermon } = await fetchSermonData(
-          sermonId,
-          queryClient,
-          isOnlineResolved
-        );
+        let { sermon: fetchedSermon } = await fetchSermonData(sermonId, queryClient);
         if (!isCurrent()) return;
         if (!fetchedSermon) {
           setSermon(null);
@@ -367,7 +365,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           setLoading(false);
           return;
         }
-        const { allTags } = await fetchTagsData(fetchedSermon, queryClient, isOnlineResolved, t);
+        const { allTags } = await fetchTagsData(fetchedSermon, queryClient, t);
         if (!isCurrent()) return;
         fetchedSermon = selectReadableCopy(fetchedSermon,
           queryClient.getQueryData<Sermon>(sermonDetailKey(owner, sermonId))) ?? fetchedSermon;
@@ -453,7 +451,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
     void initializeSermon();
     return () => { loadGenerationRef.current += 1; };
-  }, [sermonId, t, isOnlineResolved, queryClient, setSermon, retryCount, engineMode]);
+  }, [sermonId, t, queryClient, setSermon, retryCount, engineMode]);
 
   const engineSermon = engine?.sermon ?? null;
   const engineRef = useRef(engine);
@@ -493,12 +491,12 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       applyEngineSermon(engineSermon, tags);
     };
     if (cached) build(cached);
-    else void fetchTagsData(engineSermon, queryClient, isOnlineResolved, t).then(({ allTags }) => {
+    else void fetchTagsData(engineSermon, queryClient, t).then(({ allTags }) => {
       engineTagsRef.current = { owner: engineSermon.userId, tags: allTags };
       build(allTags);
     });
     return () => { active = false; };
-  }, [engineMode, engineSermon, applyEngineSermon, queryClient, isOnlineResolved, t]);
+  }, [engineMode, engineSermon, applyEngineSermon, queryClient, t]);
 
   /** Runs a rebuild that waited for a drag or an AI review to end. */
   const syncFromEngine = useCallback(() => {

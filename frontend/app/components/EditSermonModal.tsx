@@ -9,7 +9,6 @@ import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
@@ -56,8 +55,8 @@ function SermonEditor({
   syncState,
 }: EditSermonModalProps) {
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
-  const isReadOnly = !isOnline;
+  // Editing is never locked by the connection icon (owner's rule 3): a save that cannot be sent
+  // says so when it is saved.
   const resolveInitialPlannedDate = (source: Sermon): string =>
     toDateOnlyKey(getNextPlannedDate(source)?.date) || '';
   const initialPlannedDate = resolveInitialPlannedDate(sermon);
@@ -236,7 +235,6 @@ function SermonEditor({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly) return;
 
     if (onSaveRequest) {
       setIsSubmitting(true);
@@ -329,7 +327,6 @@ function SermonEditor({
       submitLabel={t('buttons.save')}
       saving={isSubmitting}
       submitDisabled={!hasChanges || (engineSeries.enabled && engineSeries.unsettled)}
-      readOnly={isReadOnly}
       error={saveError ? sayFailure(saveError, t) : ''}
       seriesOptions={engineSeries.enabled ? engineSeries.options : seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
       seriesLoading={engineSeries.enabled ? engineSeries.loading : seriesLoading}

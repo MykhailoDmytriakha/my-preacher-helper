@@ -1,9 +1,11 @@
 'use client';
 
+import { useQuery } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
+import { apiClient } from '@/utils/apiClient';
 
 import type { User } from 'firebase/auth';
 
@@ -15,45 +17,41 @@ export default function ReferralCard({ user }: ReferralCardProps) {
   const { t } = useTranslation();
   const [referralLink, setReferralLink] = useState('');
   const { isCopied: copied, copyToClipboard, reset } = useClipboard({ successDuration: 2000 });
-  const [invitedCount, setInvitedCount] = useState<number | null>(null);
+  /**
+   * How many people this person brought — a React Query entry, so the number last seen is saved with
+   * the cache and shown without a network (owner's decision 2026-10-10), and the request reports its
+   * outcome like every other one (`apiClient`). Supplemental: a failure keeps the card usable.
+   */
+  const { data: invitedCount = null } = useQuery({
+    queryKey: ['referral-stats', user?.uid],
+    enabled: Boolean(user),
+    // A failure throws rather than answering null, so the number already seen stays on screen and in
+    // the saved copy instead of being replaced by nothing.
+    queryFn: async (): Promise<number> => {
+      const token = await user!.getIdToken();
+      const response = await apiClient('/api/referral/stats', {
+        category: 'metadata',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error(`Referral stats: ${response.status}`);
+      const body: unknown = await response.json();
+      if (
+        body !== null
+        && typeof body === 'object'
+        && 'invitedCount' in body
+        && typeof body.invitedCount === 'number'
+        && Number.isInteger(body.invitedCount)
+        && body.invitedCount >= 0
+      ) return body.invitedCount;
+      throw new Error('Referral stats: unexpected answer');
+    },
+  });
 
   useEffect(() => {
     reset();
     if (!user) return;
     setReferralLink(`${window.location.origin}/?ref=${encodeURIComponent(user.uid)}`);
   }, [user, reset]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setInvitedCount(null);
-    if (!user) return () => { cancelled = true; };
-
-    void (async () => {
-      try {
-        const token = await user.getIdToken();
-        const response = await fetch('/api/referral/stats', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) return;
-        const body: unknown = await response.json();
-        if (
-          !cancelled
-          && body !== null
-          && typeof body === 'object'
-          && 'invitedCount' in body
-          && typeof body.invitedCount === 'number'
-          && Number.isInteger(body.invitedCount)
-          && body.invitedCount >= 0
-        ) {
-          setInvitedCount(body.invitedCount);
-        }
-      } catch {
-        // Referral stats are supplemental; keep the card usable when loading fails.
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, [user]);
 
   if (!user) return null;
 

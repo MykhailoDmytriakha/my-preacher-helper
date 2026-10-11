@@ -582,6 +582,9 @@ export class CollectionReader {
       entry.sweepDue = true;
       this.emit(entry);
       if (this.online && this.visible && entry.listeners.size) this.background(this.requestRefresh(entry.collection, false), entry, this.generation);
+      // The new generation drops a device read still in flight; the device can always be read, so a
+      // watched list starts it again — otherwise, offline, it waits on its placeholder for the network.
+      else if (!entry.loaded && entry.listeners.size) this.background(this.load(entry, this.generation), entry, this.generation);
     }
   }
 

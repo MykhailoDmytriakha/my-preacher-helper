@@ -81,18 +81,21 @@ describe('usePrayerDetail · which copy the screen shows', () => {
     expect(result.current.prayer?.title).toBe('Edited here, not saved yet');
   });
 
-  it('reads the stored prayer and leaves the network alone while offline', () => {
+  it('shows the stored prayer at once while the icon says there is no connection, and still asks the server', async () => {
+    // Owner's rule 3: the icon only shows — the read is tried, the stored copy is on screen meanwhile.
     mockUseOnlineStatus.mockReturnValue(false);
     const stored = prayerWith('Available without a connection', 1);
 
     const { result } = renderPrayer(stored);
 
     expect(result.current.prayer?.title).toBe('Available without a connection');
-    expect(mockGetPrayerRequestById).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockGetPrayerRequestById).toHaveBeenCalled());
   });
 
   it('receives a stored prayer when the offline list hydrates after mount', async () => {
     mockUseOnlineStatus.mockReturnValue(false);
+    // Without a network the read is still tried (owner's rule 3) — and it fails, as it does offline.
+    mockGetPrayerRequestById.mockRejectedValue(Object.assign(new Error('offline'), { code: 'unavailable' }));
     const { result, queryClient } = renderPrayer(null);
 
     expect(result.current.prayer).toBeNull();
@@ -106,7 +109,6 @@ describe('usePrayerDetail · which copy the screen shows', () => {
     await waitFor(() =>
       expect(result.current.prayer?.title).toBe('Restored from this device')
     );
-    expect(mockGetPrayerRequestById).not.toHaveBeenCalled();
   });
 
   it('keeps showing the stored prayer when the server request fails', async () => {

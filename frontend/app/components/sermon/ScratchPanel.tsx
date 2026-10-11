@@ -18,7 +18,6 @@ import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/Out
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useAiUsage } from "@/hooks/useAiUsage";
-import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -126,7 +125,6 @@ export default function ScratchPanel({
 }: ScratchPanelProps) {
   const { t } = useTranslation();
   const boardNoteLabels = useScratchNoteLabels();
-  const { isMagicAvailable } = useConnection();
   const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
   const transcriptionBlocked = blocked('dictation');
   const dictationBlockedKey = blockedLabelKey('dictation');
@@ -225,7 +223,6 @@ export default function ScratchPanel({
 
   const canCompose =
     pooledNotes.length > 0 &&
-    isMagicAvailable &&
     !aiBlocked &&
     !isScratchWritePending &&
     !isComposing &&
@@ -712,7 +709,7 @@ export default function ScratchPanel({
     }
   };
 
-  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, isMagicAvailable, aiBlocked, pooledNotes.length);
+  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, aiBlocked, pooledNotes.length);
   const composeDisabledTitle = composeDisabledKey ? t(composeDisabledKey) : undefined;
 
   const hasApplicableOutlineChanges = Boolean(cleanProposedOutline) || hasPlacements;
@@ -869,7 +866,7 @@ export default function ScratchPanel({
         onClearError={handleClearVoiceError}
         hideKeyboardShortcuts
         isReadOnly={isCaptureLocked}
-        isRecorderDisabled={!isMagicAvailable || isCaptureLocked || transcriptionBlocked}
+        isRecorderDisabled={isCaptureLocked || transcriptionBlocked}
         recorderTitle={transcriptionUnavailableLabel}
         isManualDisabled={isCaptureLocked}
         onOpenCreateModal={() => {
@@ -1035,9 +1032,9 @@ export default function ScratchPanel({
   );
 }
 
-function getComposeDisabledKey(pending: boolean, online: boolean, aiBlocked: boolean, noteCount: number): string | undefined {
+// Not the connection icon: pressing makes the request, and a failed one says so (owner, 2026-10-10).
+function getComposeDisabledKey(pending: boolean, aiBlocked: boolean, noteCount: number): string | undefined {
   if (pending) return "scratch.board.composePendingWrites";
-  if (!online) return "scratch.board.composeOffline";
   if (aiBlocked) return "settings.usage.aiUsageExhausted";
   if (noteCount === 0) return "scratch.board.composeEmpty";
   return undefined;

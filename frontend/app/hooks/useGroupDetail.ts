@@ -1,15 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group, GroupMeetingDate } from '@/models/models';
-import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError, isUnreachableWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
@@ -40,11 +39,6 @@ export function useGroupDetail(groupId: string) {
   // Read connectivity AT CATCH-TIME, not from a value closured into a callback:
   // a captured `isOnline` goes stale, so an offline write's `.catch` would read
   // the online value it was created with and toast a false alarm.
-  const isOnline = useOnlineStatus();
-  const isOnlineRef = useRef(isOnline);
-  useEffect(() => {
-    isOnlineRef.current = isOnline;
-  }, [isOnline]);
 
   const { data, isLoading, error, refetch } = useServerFirstQuery<Group | null>({
     queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId],
@@ -71,18 +65,19 @@ export function useGroupDetail(groupId: string) {
   }, [refetch]);
 
   // Shared hard-error handler for the fire-and-forget own-doc writes below. A
-  // getDoc-first RMW rejects offline on a cache-miss (pre-existing to the whole
-  // client-SDK own-doc pattern — thoughts/preachDates share it), so OFFLINE we do
-  // NOT toast: the common offline path succeeds via the native queue and toasting
-  // there is a false alarm. ONLINE, a reject is a real hard error (permission/
-  // validation the queue won't retry) -> reconcile to the server + toast. The
-  // online invalidate may transiently drop an in-flight sibling optimistic patch;
-  // it self-heals on the next refetch and only runs on rare online hard errors.
+  // getDoc-first RMW rejects on a cache-miss when the server cannot be reached
+  // (pre-existing to the whole client-SDK own-doc pattern — thoughts/preachDates
+  // share it); that failure is NOT toasted: the common offline path succeeds via the
+  // native queue and toasting there is a false alarm. Any other reject is a real hard
+  // error (permission/validation the queue won't retry) -> reconcile to the server +
+  // toast. Which one it was is read from the failure itself, not from the connection
+  // icon (owner's rule 3). The invalidate may transiently drop an in-flight sibling
+  // optimistic patch; it self-heals on the next refetch and only runs on rare hard errors.
   const reconcileWriteError = useCallback(
     (errorValue: unknown) => {
       const normalized = errorValue instanceof Error ? errorValue : new Error(String(errorValue));
       setMutationError(normalized);
-      if (isOnlineRef.current) {
+      if (!isUnreachableWriteError(errorValue)) {
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUP_DETAIL, groupId] });
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS, uid] });
         toast.error(t('workspaces.groups.errors.updateFailed', { defaultValue: 'Failed to update group' }));

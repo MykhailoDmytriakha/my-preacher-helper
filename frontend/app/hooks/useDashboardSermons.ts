@@ -68,8 +68,8 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
     });
   }, [isOnline, uid, sermons.length, isLoading]);
 
+  // Asked with or without the icon: the icon only shows (owner's rule 3).
   const refresh = async () => {
-    if (!isOnline) return;
     await refetch();
   };
 

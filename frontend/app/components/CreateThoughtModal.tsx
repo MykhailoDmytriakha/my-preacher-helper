@@ -64,7 +64,7 @@ export default function CreateThoughtModal({
   const submissionInFlightRef = useRef(false);
   const { t } = useTranslation();
   const { confirm, confirmDialog } = useConfirm();
-  const { isOnline, isMagicAvailable } = useConnection();
+  const { isOnline } = useConnection();
 
   const dictation = useTextDictation({
     onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
@@ -183,7 +183,7 @@ export default function CreateThoughtModal({
       footer={<FormActions onCancel={handleClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
           savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!text.trim()} />}>
       <div className="py-3">
-        <ThoughtTextHeader dictation={dictation} available={isMagicAvailable} saving={isSubmitting} showDictation={showDictation} labelKey={textLabelKey} />
+        <ThoughtTextHeader dictation={dictation} saving={isSubmitting} showDictation={showDictation} labelKey={textLabelKey} />
       </div>
       <div className="space-y-5">
         {!isOnline && (

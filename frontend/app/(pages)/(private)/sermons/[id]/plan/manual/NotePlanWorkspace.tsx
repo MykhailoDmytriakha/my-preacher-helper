@@ -9,7 +9,6 @@ import PlanGenerationButton from '@/components/plan/PlanGenerationButton';
 import PlanStyleSelector from '@/components/plan/PlanStyleSelector';
 import { Button } from '@/components/ui/Button';
 import { useAiUsage } from '@/hooks/useAiUsage';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { SCRATCH_REMINDER_COLORS, SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
@@ -28,10 +27,10 @@ const NotePlanContext = createContext<Workspace | null>(null);
 function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; conspectus: ManualConspectus; children: ReactNode }) {
   const { t } = useTranslation();
   const { aiBlocked, refresh } = useAiUsage();
-  const online = useOnlineStatus();
   const sources = useSourceNotes(sermon);
   const sourceUnavailable = !sermon.sourceNoteIds?.length || sources.missingIds.length > 0;
-  const blocked = !online || aiBlocked || sourceUnavailable || sources.loading;
+  // Not the connection icon: pressing makes the request, and a failed one says so (owner, 2026-10-10).
+  const blocked = aiBlocked || sourceUnavailable || sources.loading;
   const generation = useNotePlanGeneration({ sermon, conspectus, blocked, onSuccess: refresh });
   return (
     <NotePlanContext.Provider value={{ ...generation, blocked, conspectus }}>
@@ -40,11 +39,10 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
             a titled card with a paragraph of explanation; it now sits in the page header as the
             same chip the sermon carries, so this block draws nothing at all while everything is
             fine and only speaks when generation is actually held back. */}
-        {(sources.loading || sourceUnavailable || !online || aiBlocked) && (
+        {(sources.loading || sourceUnavailable || aiBlocked) && (
           <div className="space-y-1 text-sm">
             {sources.loading && <p role="status" className="text-gray-500 dark:text-gray-400">{t('common.loading')}</p>}
             {sourceUnavailable && <p role="alert" className="text-amber-700 dark:text-amber-300">{t('plan.fromNote.sourceUnavailable')}</p>}
-            {!online && <p role="status" className="text-gray-500 dark:text-gray-400">{t('connection.offlineBanner')}</p>}
             {aiBlocked && <p role="status" className="text-gray-500 dark:text-gray-400">{t('plan.fromNote.usageBlocked')}</p>}
           </div>
         )}

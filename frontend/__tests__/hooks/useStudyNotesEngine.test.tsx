@@ -4,6 +4,7 @@ import { useDataCollection, useDocumentActions } from '@/data-engine/react.clien
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { __resetConnectivityForTests, reportServerUnreachable } from '@/utils/connectivity';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
@@ -85,16 +86,18 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')).not.toHaveProperty('materialIds');
   });
 
-  it('reports an offline save as queued, never as saved', async () => {
+  it('reports a save made while there is no connection as queued, never as saved', async () => {
+    // The engine holds delivery while the last request did not reach the server, so the label follows
+    // that same answer — a phone flag saying "online" over café Wi-Fi must not make it "saved".
     const { result } = render();
-    const online = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    reportServerUnreachable();
     try {
       let acceptance: unknown;
       await act(async () => {
         acceptance = await awaitAcceptance(result.current.updateNote({ id: 'n1', updates: { content: 'Typed offline' }, expectedBaseline: opened }), () => undefined);
       });
       expect(acceptance).toEqual(expect.objectContaining({ kind: 'queued' }));
-    } finally { online.mockRestore(); }
+    } finally { __resetConnectivityForTests(); }
   });
 
   it('surfaces a stale refusal offline even when the local commit answers late', async () => {

@@ -1240,13 +1240,21 @@ describe('One service', () => {
       expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Погребение');
     });
 
-    it('says it has not arrived yet while offline, and asks no one', () => {
+    it('says it has not arrived yet without a connection, and asks again when the connection returns', async () => {
+      // The read is tried with or without the icon (owner's rule 3); without the server it answers
+      // "unreachable", never "deleted", and the page asks once more when the connection is back.
       state.orders = [];
       state.isOnline = false;
-      render(<ServiceOrderPage />);
+      mockRecheck.mockResolvedValueOnce('unreachable').mockResolvedValueOnce('absent');
+      const { rerender } = render(<ServiceOrderPage />);
 
-      expect(screen.getByText('serviceOrders.notHereYet')).toBeInTheDocument();
-      expect(mockRecheck).not.toHaveBeenCalled();
+      expect(await screen.findByText('serviceOrders.notHereYet')).toBeInTheDocument();
+      expect(mockRecheck).toHaveBeenCalledTimes(1);
+
+      state.isOnline = true;
+      rerender(<ServiceOrderPage />);
+      expect(await screen.findByText('serviceOrders.notFound')).toBeInTheDocument();
+      expect(mockRecheck).toHaveBeenCalledTimes(2);
     });
   });
 });

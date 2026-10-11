@@ -110,7 +110,7 @@ describe('studies.service', () => {
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('/api/studies/notes/note-1?userId=user-1'),
-      { method: 'DELETE', headers: { Authorization: 'Bearer test-token' } }
+      expect.objectContaining({ method: 'DELETE', headers: { Authorization: 'Bearer test-token' } })
     );
   });
 });

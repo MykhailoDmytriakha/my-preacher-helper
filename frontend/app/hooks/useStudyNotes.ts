@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
@@ -13,7 +12,7 @@ import { newClientId } from '@/utils/clientId';
 import { STUDY_NOTE_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { studyNoteListKey } from '@/utils/queryKeys';
 import {
-  persistedWrite,
+  acceptByPhoneFlag,
   queuedMutation,
   refusedWrite,
   skippedWrite,
@@ -72,7 +71,6 @@ function useLegacyStudyNotes(enabled: boolean) {
   const { locale } = useAppLocale();
   const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
-  const isOnline = useOnlineStatus();
   const notesQuery = useServerFirstQuery({
     queryKey: notesKey(uid),
     queryFn: () => (uid ? getStudyNotes(uid) : Promise.resolve([])),
@@ -219,12 +217,7 @@ function useLegacyStudyNotes(enabled: boolean) {
       };
       const vars: CreateStudyNoteVars = { ...note, id };
       const request = createNoteMutation.mutateAsync(vars);
-      return {
-        ...(isOnline
-          ? persistedWrite(request)
-          : queuedMutation(`study-note:create:${id}`, request)),
-        note: optimistic,
-      };
+      return { ...acceptByPhoneFlag(`study-note:create:${id}`, request), note: optimistic };
     },
     updating: updateNoteMutation.isPending,
     updateNote: ({
@@ -272,10 +265,7 @@ function useLegacyStudyNotes(enabled: boolean) {
       }
       const request = updateNoteMutation.mutateAsync(vars);
       void request.catch(() => undefined);
-      const submission = isOnline
-        ? persistedWrite(request)
-        : queuedMutation(`outbox:study-note:update:${id}`, request);
-      return { ...submission, result: request };
+      return { ...acceptByPhoneFlag(`outbox:study-note:update:${id}`, request), result: request };
     },
     deleteNote: (id: string): WriteSubmission => {
       if (!uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));

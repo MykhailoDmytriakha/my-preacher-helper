@@ -69,15 +69,31 @@ function restoreWriteError(error: SerializedWriteError): Error {
   return restored;
 }
 
+/**
+ * A QUERY WITH DATA IS SAVED AS WHAT IT SHOWS, NOT AS ITS LAST FAILED REFETCH
+ * (BUG-20261010-persisted-query-copy-dropped-after-failed-refetch). Such a query is kept in the copy
+ * now, but its `error` would come back with it: restored, the screen reads the old error and draws
+ * its failure state over data it has (`if (error || !series)`). The failure belongs to a moment
+ * that is over; the copy keeps the data and its time, and the next fetch decides afresh.
+ */
+type PersistedQueryState = PersistedClient['clientState']['queries'][number]['state'];
+function asSavedCopy(state: PersistedQueryState): PersistedQueryState {
+  if (state?.status !== 'error' || state.data === undefined) return state;
+  return { ...state, status: 'success', error: null, fetchFailureCount: 0, fetchFailureReason: null };
+}
+
 function serializePersistedClient(client: PersistedClient): PersistedClient {
+  const queries = client.clientState?.queries;
   const mutations = client.clientState?.mutations;
-  if (!mutations?.some((mutation) => mutation.state.error instanceof Error)) return client;
+  const failedWithData = queries?.some((query) => query.state?.status === 'error' && query.state.data !== undefined);
+  if (!failedWithData && !mutations?.some((mutation) => mutation.state.error instanceof Error)) return client;
 
   return {
     ...client,
     clientState: {
       ...client.clientState,
-      mutations: mutations.map((mutation) =>
+      queries: failedWithData ? queries.map((query) => ({ ...query, state: asSavedCopy(query.state) })) : queries,
+      mutations: mutations?.map((mutation) =>
         mutation.state.error instanceof Error
           ? {
               ...mutation,

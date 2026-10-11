@@ -127,3 +127,33 @@ describe('orders of service on the engine', () => {
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'serviceOrders', id: 'a' });
   });
 });
+
+describe('whether a rite is gone — said only by the server', () => {
+  /**
+   * The read is asked with or without the connection icon (owner's rule 3), so a refresh may answer
+   * from what this device holds. A rite created on the laptop is simply not there yet; "absent" needs
+   * a refresh that reached the server (Codex review of the connectivity construction, 2026-10-10).
+   */
+  const renderWithRefresh = (answer: { freshness: string; documents: unknown[] }) => {
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
+    jest.mocked(useDataCollection).mockImplementation(() => ({
+      state: { snapshots: [], documents: [], complete: true, freshness: answer.freshness, checking: false, version: 1, error: null },
+      loading: false, error: null, refresh: jest.fn(async () => answer),
+    }) as never);
+    return renderHook(() => useServiceOrdersEngine('u', true));
+  };
+
+  beforeEach(() => { jest.clearAllMocks(); store = new Map(); });
+
+  it('says absent when the refresh came from the server', async () => {
+    online = false;
+    const { result } = renderWithRefresh({ freshness: 'server', documents: [] });
+    await expect(result.current.recheck('o-missing')).resolves.toBe('absent');
+  });
+
+  it('says unreachable, never absent, when the refresh answered from this device', async () => {
+    online = true;
+    const { result } = renderWithRefresh({ freshness: 'cache', documents: [] });
+    await expect(result.current.recheck('o-missing')).resolves.toBe('unreachable');
+  });
+});

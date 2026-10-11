@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import { apiClient } from '@/utils/apiClient';
+
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
 import type { TierLimits } from '@/api/clients/ai/tierPolicy';
 import type { Tier, UserEntitlement } from '@/models/models';
@@ -22,7 +24,7 @@ export interface UserEntitlementResponse {
 
 export async function fetchUserEntitlement(user: Pick<User, 'getIdToken'>): Promise<UserEntitlementResponse> {
   const token = await user.getIdToken();
-  const response = await fetch('/api/me/entitlement', {
+  const response = await apiClient('/api/me/entitlement', { category: 'metadata',
     headers: { Authorization: `Bearer ${token}` },
   });
 

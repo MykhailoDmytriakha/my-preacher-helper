@@ -5,8 +5,6 @@ import {
 import {
   beginConnectivityRequest,
   getConnectivityStatus,
-  isConnectivityRequestCurrent,
-  reportProbeSucceeded,
   reportServerReachable,
   reportServerUnreachable,
   subscribeToConnectivity,
@@ -40,30 +38,53 @@ const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
   // Audio requests run transcription plus follow-up AI formatting/tagging.
   // A 45s cutoff causes false offline/timeouts for valid long-running work.
   audio: 90000,
-  health: 3000,
+  /**
+   * The knock (`connectivityKnock.ts`) — the ordinary deadline, not a short one. A 3 s probe was
+   * tried in 2026-09 and could never restore a network that answers in 4 s.
+   */
+  health: 8000,
 };
 
 /**
  * CONNECTIVITY IS NOT THIS MODULE'S JOB — it only reports what its requests observed.
  *
- * This file owned the answer for a long time, and owning it made the answer wrong: the flag
- * started at "online" and moved only when a request failed, so a session that issues no
- * requests — an app launched with the Wi-Fi off — reported a working connection for its
- * whole life. Every repair attempted on top of that needed another mechanism to compensate,
- * and each mechanism brought its own way to get stuck.
- *
- * The state now lives in `connectivity.ts`, which keeps the device signal and the server
- * signal apart. Here we do the one thing a transport can honestly say: a reply came back,
- * or the request never reached anything. Re-exported below so the ~25 existing readers keep
- * their import.
+ * The state lives in `connectivity.ts` (yes: the last real request reached our server). Here we do
+ * the one thing a transport can honestly say: a reply came back, or the request never reached
+ * anything. Re-exported below so the existing readers keep their import.
  */
-export {
-  getConnectivityStatus,
-  getConnectivityState,
-} from '@/utils/connectivity';
+export { getConnectivityStatus } from '@/utils/connectivity';
 
 export const onConnectivityChange = (observer: (isOnline: boolean) => void) =>
   subscribeToConnectivity(() => observer(getConnectivityStatus()));
+
+/** Failures this module saw fail to reach the server — marked where the request was made. */
+const connectionFailures = new WeakSet<object>();
+
+/** What a failed `fetch` looks like, as only this module sees it: no answer came back at all. */
+const fetchDidNotReach = (err: Error & { name?: string }): boolean =>
+  err instanceof FetchTimeoutError ||
+  err.message === 'Failed to fetch' ||
+  err.name === 'TypeError' ||
+  Boolean(err.message?.includes('NetworkError'));
+
+/**
+ * DID THIS FAILURE COME FROM NOT REACHING THE SERVER — as opposed to the server answering "no"?
+ *
+ * Decided where the request was made, not guessed from a sentence: a service that turns a 403 into
+ * `new Error('Failed to fetch share links')` is reporting an answer, and a TypeError from our own code
+ * is not a network (Codex review 2026-10-11). Yes for an error `apiClient` marked as not reaching the
+ * server, for a transport's `unavailable` / `deadline-exceeded`, for Firebase Auth failing to fetch a
+ * token (`auth/network-request-failed`, before `apiClient` runs), and for the Firestore SDK saying the
+ * client is offline.
+ */
+export function isConnectionFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  if (connectionFailures.has(error)) return true;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  const bare = typeof code === 'string' ? code.replace(/^firestore\//, '') : '';
+  if (bare === 'unavailable' || bare === 'deadline-exceeded' || bare === 'auth/network-request-failed') return true;
+  return typeof message === 'string' && /client is offline/i.test(message);
+}
 
 /**
  * High-level API client with tiered timeouts and connectivity tracking.
@@ -96,19 +117,17 @@ async function performApiRequest(
       // For now, let the caller handle the redirect or retry
     }
 
-    // Any reply — 200 or 503 — proves the network carried it. Whether the SERVER is
-    // healthy is a different question, and not one connectivity should answer.
+    // Any reply — 200 or 503 — reached our server: that is "yes" (owner's rule 2). Whether the
+    // route succeeded is the caller's question, not the connection's.
     reportServerReachable(requestId);
     await throwIfUsageCapReached(response);
     return response;
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
     // A slow AI/audio operation is not evidence that unrelated reads lost their network.
-    const isConnectivityError = 
-      (err instanceof FetchTimeoutError && category !== 'ai' && category !== 'audio') ||
-      err.message === 'Failed to fetch' ||
-      err.name === 'TypeError' ||
-      err.message?.includes('NetworkError');
+    const slowGeneration = err instanceof FetchTimeoutError && (category === 'ai' || category === 'audio');
+    const isConnectivityError = !slowGeneration && fetchDidNotReach(err);
+    if (isConnectivityError && typeof error === 'object' && error !== null) connectionFailures.add(error);
 
     if (isConnectivityError) {
       debugLog('apiClient: connectivity issue detected', { 
@@ -124,40 +143,5 @@ async function performApiRequest(
     if (category === 'ai' || category === 'audio') {
       notifyUsageRequestSettled();
     }
-  }
-}
-
-/**
- * Manual probe to check server availability.
- *
- * Three current outcomes, plus a superseded result that must not update the UI. A boolean here forced two different situations into one answer
- * and produced a contradiction on screen: a 503 during a deploy made the probe return
- * "false", the toast said "still no connection", and moments later the offline icon
- * disappeared anyway — because the reply had in fact travelled, so connectivity had every
- * right to call the network fine. The network carrying a request and the server being
- * usable are different questions, and the person deserves to be told which one failed.
- */
-export type ProbeOutcome = 'healthy' | 'unhealthy' | 'unreachable' | 'superseded';
-
-export async function probeConnectivity(): Promise<ProbeOutcome> {
-  const requestId = beginConnectivityRequest();
-  try {
-    const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-    const response = await performApiRequest(`${API_BASE}/api/health`, {
-      method: 'HEAD',
-      category: 'health',
-      /**
-       * This answer is the one piece of evidence allowed to overrule the device flag, so it
-       * has to come from the network every time. Without this the browser's own HTTP cache
-       * can hand back a previous 204 with the Wi-Fi off, and the app would announce that
-       * the connection is back having reached nothing.
-       */
-      cache: 'no-store',
-    }, requestId);
-    if (!isConnectivityRequestCurrent(requestId)) return 'superseded';
-    reportProbeSucceeded(requestId);
-    return response.ok ? 'healthy' : 'unhealthy';
-  } catch {
-    return isConnectivityRequestCurrent(requestId) ? 'unreachable' : 'superseded';
   }
 }

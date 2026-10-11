@@ -11,6 +11,7 @@ import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useAuth } from '@/providers/AuthProvider';
+import { apiClient } from '@/utils/apiClient';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { sectionFromPathname } from '@/utils/settingsSections';
 import SettingsNav from '@components/settings/SettingsNav';
@@ -100,7 +101,7 @@ export default function SettingsSectionLayout({ children }: { children: ReactNod
     void (async () => {
       try {
         const token = await user.getIdToken();
-        const response = await fetch('/api/admin/me', {
+        const response = await apiClient('/api/admin/me', { category: 'metadata',
           headers: { Authorization: `Bearer ${token}` },
         });
         const data: unknown = await response.json().catch(() => null);

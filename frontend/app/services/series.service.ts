@@ -5,6 +5,7 @@ import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Series } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateSeries, sortSeries } from '@/utils/seriesDocument';
@@ -201,7 +202,7 @@ export const deleteSeries = async (seriesId: string): Promise<void> => {
   assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
+    const response = await apiClient(`${API_BASE}/api/series/${seriesId}`, { category: 'crud',
       method: 'DELETE',
       headers: authHeaders,
     });

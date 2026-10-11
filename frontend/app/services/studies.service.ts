@@ -369,7 +369,7 @@ export async function cutStudyNoteIntoScratch(
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {
   assertLegacyClientWriteAllowed(NOTES_COLLECTION);
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, {
+  const res = await apiClient(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, { category: 'crud',
     method: 'DELETE',
     headers: authHeaders,
   });

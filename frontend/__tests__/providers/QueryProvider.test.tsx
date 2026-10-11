@@ -216,3 +216,42 @@ describe('QueryProvider', () => {
     });
   });
 });
+
+describe('QueryProvider — React Query follows the one answer about the connection', () => {
+  /**
+   * BUG-20261010-engine-online-flag-not-reread-on-return, third row: React Query's own "online" came
+   * from the browser's events, so a successful check of the connection did not wake what it had
+   * paused. Now it follows `utils/connectivity`: a request that reaches the server resumes paused
+   * work even when the phone never fired `online` (an iPad resumed with its flag stuck at false).
+   */
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const { __resetConnectivityForTests } = jest.requireActual('@/utils/connectivity');
+    __resetConnectivityForTests();
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    mockCreateIDBPersister.mockReturnValue({ persistClient: jest.fn(), restoreClient: jest.fn(), removeClient: jest.fn() });
+  });
+
+  it('resumes a paused save when a request reaches the server, with no `online` event', async () => {
+    const { reportServerReachable } = jest.requireActual('@/utils/connectivity');
+    const onReady = jest.fn();
+    render(<QueryProvider><ClientProbe onReady={onReady} /></QueryProvider>);
+    await waitFor(() => expect(onReady).toHaveBeenCalled());
+    const client = onReady.mock.calls[0][0] as ReturnType<typeof useQueryClient>;
+
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+    window.dispatchEvent(new Event('offline'));
+
+    const save = jest.fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue('saved');
+    const done = client.getMutationCache().build(client, { mutationFn: save, retry: 3, retryDelay: 0 }).execute(undefined);
+    await waitFor(() => expect(client.getMutationCache().getAll()[0].state.isPaused).toBe(true));
+    expect(save).toHaveBeenCalledTimes(1);
+
+    // The flag stays false; the knock (or any request) reaches our server.
+    reportServerReachable();
+    await expect(done).resolves.toBe('saved');
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+});

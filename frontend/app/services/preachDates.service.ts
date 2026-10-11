@@ -1,6 +1,7 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { PreachDate, Sermon } from '@/models/models';
 import { fetchCalendarSermonsViaClient } from '@/services/sermons.client';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || '';
@@ -36,7 +37,7 @@ async function throwResponseError(response: Response, fallbackMessage: string): 
 export async function addPreachDate(sermonId: string, data: Omit<PreachDate, 'id' | 'createdAt'> & { id?: string }): Promise<PreachDate> {
   assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates`, {
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/preach-dates`, { category: 'crud',
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(data),
@@ -51,7 +52,7 @@ export async function addPreachDate(sermonId: string, data: Omit<PreachDate, 'id
 export async function updatePreachDate(sermonId: string, dateId: string, updates: Partial<PreachDate>): Promise<PreachDate> {
   assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, {
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, { category: 'crud',
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(updates),
@@ -66,7 +67,7 @@ export async function updatePreachDate(sermonId: string, dateId: string, updates
 export async function deletePreachDate(sermonId: string, dateId: string): Promise<void> {
   assertLegacyClientWriteAllowed('sermons');
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, {
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/preach-dates/${dateId}`, { category: 'crud',
         method: 'DELETE',
         headers: authHeaders,
     });
@@ -77,7 +78,7 @@ export async function deletePreachDate(sermonId: string, dateId: string): Promis
 
 export async function fetchPreachDates(sermonId: string): Promise<PreachDate[]> {
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/preach-dates`, { headers: authHeaders });
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/preach-dates`, { category: 'detail', headers: authHeaders });
     if (!response.ok) {
         await throwResponseError(response, 'Failed to fetch preach dates');
     }

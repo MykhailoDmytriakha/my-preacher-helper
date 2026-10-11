@@ -8,6 +8,7 @@ import {
   setPrayerStatusViaClient,
   updatePrayerRequestViaClient,
 } from '@/services/prayerRequests.client';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 
@@ -89,7 +90,7 @@ export const createPrayerRequest = async (
   // updates/status; the server create path returns existing client-id docs
   // without clobbering them.
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await fetch(`${API_BASE}/api/prayer`, {
+  const res = await apiClient(`${API_BASE}/api/prayer`, { category: 'crud',
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify(payload),

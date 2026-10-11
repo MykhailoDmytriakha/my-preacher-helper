@@ -47,7 +47,6 @@ import useSermon, { sermonIsMissing } from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
-import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
@@ -370,7 +369,6 @@ function SermonPageContent({ id, source, core, engineThoughts }: { id: string; s
     Boolean(authorUidRef.current) && auth.currentUser?.uid === authorUidRef.current;
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
-  const { isMagicAvailable } = useConnection();
   /**
    * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
    *
@@ -1992,7 +1990,7 @@ useEffect(() => {
           onClearError={handleClearError}
           onDiscardRecording={handleDiscardRecording}
           hideKeyboardShortcuts={uiMode === 'prep'}
-          isReadOnly={!isMagicAvailable || isReadOnly}
+          isReadOnly={isReadOnly}
           isRecorderDisabled={dictationBlocked}
           recorderTitle={dictationBlocked && dictationBlockedKey ? t(dictationBlockedKey) : undefined}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
@@ -2068,7 +2066,6 @@ useEffect(() => {
           sermonOutline={sermon?.outline}
           onSave={handleSaveEditedThought}
           onClose={closeEditingModal}
-          allowOffline={true}
         />
       )}
       {engineEnabled && (editingModalData || isCreateModalOpen) && <EngineThoughtModal

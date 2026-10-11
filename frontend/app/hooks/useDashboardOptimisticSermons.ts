@@ -5,14 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
 import {
   DASHBOARD_SERMON_KEY_PREFIX,
   DASHBOARD_SERMON_MUTATION_KEYS,
 } from '@/utils/mutationDefaults';
 import {
-  persistedWrite,
-  queuedMutation,
+  acceptByPhoneFlag,
   refusedWrite,
   skippedWrite,
   type WriteSubmission,
@@ -154,10 +152,7 @@ const writeFingerprint = (variables: unknown): string => {
   return JSON.stringify(payload?.input ?? payload?.data ?? null);
 };
 
-const submissionForMutation = <T,>(receipt: string, request: Promise<T>): WriteSubmission =>
-  isBrowserOffline()
-    ? queuedMutation(receipt, request)
-    : persistedWrite(request);
+const submissionForMutation = acceptByPhoneFlag;
 
 // Structural slice of React Query's Mutation — keeps the helpers usable for
 // both useMutationState's select argument and MutationCache.findAll results

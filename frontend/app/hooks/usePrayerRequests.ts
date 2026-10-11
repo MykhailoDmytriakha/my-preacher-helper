@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePrayerRequestsEngine } from '@/hooks/usePrayerRequestsEngine';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -16,7 +15,7 @@ import { newClientId } from '@/utils/clientId';
 import { PRAYER_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { normalizeError } from '@/utils/normalizeError';
 import {
-  persistedWrite,
+  acceptByPhoneFlag,
   queuedMutation,
   skippedWrite,
   useWriteRecovery,
@@ -95,7 +94,6 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
 function useLegacyPrayerRequests(userId: string | null | undefined, activeDocId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const isOnline = useOnlineStatus();
   /**
    * Write-side signal only, deliberately NOT returned as the hook's `error`: that field
    * belongs to the query, and a page renders it as a fatal state.
@@ -630,10 +628,7 @@ function useLegacyPrayerRequests(userId: string | null | undefined, activeDocId:
         PRAYER_MUTATION_KEYS.update,
         (pending) => pending.id === id && JSON.stringify(pending.updates) === JSON.stringify(updates)
       )) return skippedWrite();
-      const request = updateMutation.mutateAsync(vars);
-      return isOnline
-        ? persistedWrite(request)
-        : queuedMutation(`outbox:prayer:update:${id}`, request);
+      return acceptByPhoneFlag(`outbox:prayer:update:${id}`, updateMutation.mutateAsync(vars));
     },
     /** A refused save waiting for a decision — render the conflict choice. */
     saveConflict,
@@ -698,10 +693,7 @@ function useLegacyPrayerRequests(userId: string | null | undefined, activeDocId:
         (pending) =>
           pending.id === id && pending.status === status && pending.answerText === answerText
       )) return skippedWrite();
-      const request = statusMutation.mutateAsync(vars);
-      return isOnline
-        ? persistedWrite(request)
-        : queuedMutation(`outbox:prayer:status:${id}`, request);
+      return acceptByPhoneFlag(`outbox:prayer:status:${id}`, statusMutation.mutateAsync(vars));
     },
   };
 }

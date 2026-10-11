@@ -72,9 +72,9 @@ describe('fetchUserEntitlement', () => {
 
     await fetchUserEntitlement({ getIdToken } as never);
 
-    expect(global.fetch).toHaveBeenCalledWith('/api/me/entitlement', {
+    expect(global.fetch).toHaveBeenCalledWith('/api/me/entitlement', expect.objectContaining({
       headers: { Authorization: 'Bearer firebase-id-token' },
-    });
+    }));
   });
 
   it('hydrates a legacy persisted cache without exposing its stale shape under v2', () => {

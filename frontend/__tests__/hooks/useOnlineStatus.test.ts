@@ -48,7 +48,7 @@ describe('useOnlineStatus with the real connectivity module', () => {
     expect(result.current).toBe(false);
   });
 
-  it('stays offline while the server is proven unreachable, whatever the device says', () => {
+  it('does not come back because the phone joined a network — only an answer from our server does', () => {
     const { result } = renderHook(() => useOnlineStatus());
 
     act(() => {
@@ -61,8 +61,10 @@ describe('useOnlineStatus with the real connectivity module', () => {
       setNavigatorOnline(true);
       window.dispatchEvent(new Event('online'));
     });
+    // A café Wi-Fi is not our server: the event makes the app knock, it does not answer for it.
+    expect(result.current).toBe(false);
 
-    // The device is back, but nothing has reached the server yet.
+    act(() => { reportServerReachable(); });
     expect(result.current).toBe(true);
   });
 
@@ -74,16 +76,16 @@ describe('useOnlineStatus with the real connectivity module', () => {
     expect(result.current).toBe(false);
 
     act(() => { reportServerReachable(); });
-    act(() => { jest.advanceTimersByTime(3000); });
 
     expect(result.current).toBe(true);
     jest.useRealTimers();
   });
 
-  it('does not come back on a reply while the device still has no network', () => {
+  it('comes back on a real answer even while the phone flag still says "no network"', () => {
     /**
-     * An installed app serves cached responses offline. Reading one as recovery is how the
-     * offline icon disappeared over no connection at all.
+     * The service worker no longer answers `/api` from its own copies (owner's rule 1), so an
+     * answer is the server's; an iPad resumed from the background can hold the flag at false over
+     * a working network, and the answer is what is true.
      */
     const { result } = renderHook(() => useOnlineStatus());
 
@@ -93,11 +95,7 @@ describe('useOnlineStatus with the real connectivity module', () => {
     });
     expect(result.current).toBe(false);
 
-    jest.useFakeTimers();
     act(() => { reportServerReachable(); });
-    act(() => { jest.advanceTimersByTime(3000); });
-
-    expect(result.current).toBe(false);
-    jest.useRealTimers();
+    expect(result.current).toBe(true);
   });
 });

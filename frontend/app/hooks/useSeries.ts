@@ -273,7 +273,8 @@ export function useSeries(userId?: string | null) {
 
   const refreshSeries = useCallback(async () => {
     if (engineEnabled) { await refreshEngineSeries(); return; }
-    if (!effectiveUserId || !isOnline) return;
+    // Asked with or without the icon: the icon only shows (owner's rule 3).
+    if (!effectiveUserId) return;
     setMutationError(null);
     try {
       const updated = await getAllSeries(effectiveUserId);
@@ -284,7 +285,7 @@ export function useSeries(userId?: string | null) {
       setMutationError(errorObj);
       throw errorObj;
     }
-  }, [queryClient, isOnline, effectiveUserId, engineEnabled, refreshEngineSeries]);
+  }, [queryClient, effectiveUserId, engineEnabled, refreshEngineSeries]);
 
   return {
     series: engineEnabled ? engine.series : series,

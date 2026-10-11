@@ -6,7 +6,7 @@ import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
+import { getConnectivityStatus } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
@@ -30,7 +30,10 @@ const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?
 const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
   const persistence = request.then(() => undefined);
   void persistence.catch(() => undefined);
-  const acceptance = persistence.then((): WriteAcceptance => (isBrowserOffline() ? { kind: 'queued', receipt: key } : { kind: 'persisted' }));
+  // The engine delivers when the one answer about the connection says yes (`browser.client.ts`), so
+  // the label follows that same answer: a phone flag "online" over café Wi-Fi would call a write
+  // saved while the engine is holding it.
+  const acceptance = persistence.then((): WriteAcceptance => (getConnectivityStatus() ? { kind: 'persisted' } : { kind: 'queued', receipt: key }));
   return { acceptance, persistence };
 };
 

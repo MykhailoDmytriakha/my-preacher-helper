@@ -114,7 +114,7 @@ describe('tag.service', () => {
     expect(result.affectedThoughts).toBe(5);
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/tags?userId=u1&tagName=Custom'),
-      { method: 'DELETE', headers: { Authorization: 'Bearer test-token' } }
+      expect.objectContaining({ method: 'DELETE', headers: { Authorization: 'Bearer test-token' } })
     );
   });
 });

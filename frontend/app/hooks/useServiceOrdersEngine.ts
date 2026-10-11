@@ -66,15 +66,24 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
 
   const refresh = async () => { await collection.refresh(); };
 
-  const recheck = async (id: string): Promise<'found' | 'absent' | 'unreachable' | 'overlapped'> => {
-    if (!isOnline) return 'unreachable';
+  /**
+   * Asked always (owner's rule 3), believed only from the server: "absent" is said when THIS refresh
+   * reached the server. Without a connection the engine answers from what the device holds, and a
+   * rite created on the laptop is simply not there yet — that is "unreachable", never "deleted".
+   */
+  // Stable on purpose, like the legacy hook's: the page waits on it inside an effect, and a new
+  // function every render restarted that effect and dropped the answer it was waiting for.
+  const collectionRef = useRef(collection);
+  collectionRef.current = collection;
+  const recheck = useCallback(async (id: string): Promise<'found' | 'absent' | 'unreachable' | 'overlapped'> => {
     try {
-      const state = await collection.refresh() as { documents?: { resource: { id: string }; value: DocumentData | null }[] };
-      return state.documents?.some(row => row.resource.id === id && row.value) ? 'found' : 'absent';
+      const state = await collectionRef.current.refresh() as { freshness?: string; documents?: { resource: { id: string }; value: DocumentData | null }[] };
+      if (state.documents?.some(row => row.resource.id === id && row.value)) return 'found';
+      return state.freshness === 'server' ? 'absent' : 'unreachable';
     } catch {
       return 'unreachable';
     }
-  };
+  }, []);
 
   /**
    * THE STANDARD SET, ONCE. The missing rites are taken from a list just read from the server,

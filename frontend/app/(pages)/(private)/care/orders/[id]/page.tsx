@@ -249,9 +249,19 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const [verdict, setVerdict] = useState<'checking' | 'absent' | 'unreachable' | null>(null);
   const rechecked = useRef(false);
+  /** The last answer could not reach the server: ask once more when the connection comes back. */
+  const unanswered = useRef(false);
+  const [askAgain, setAskAgain] = useState(0);
+  useEffect(() => {
+    if (!isOnline || !unanswered.current) return;
+    unanswered.current = false;
+    rechecked.current = false;
+    setAskAgain(n => n + 1);
+  }, [isOnline]);
 
   useEffect(() => {
-    if (order || loading || !isOnline || rechecked.current) return;
+    // Asked with or without the icon (owner's rule 3); "absent" needs the server (`recheck`).
+    if (order || loading || rechecked.current) return;
     rechecked.current = true;
     setVerdict('checking');
     let gone = false;
@@ -265,13 +275,14 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
       if (gone) return;
       if (answer === 'overlapped' && attemptsLeft > 0) return ask(attemptsLeft - 1);
       if (answer === 'found') return setVerdict(null);
+      if (answer !== 'absent') unanswered.current = true;
       setVerdict(answer === 'overlapped' ? 'unreachable' : answer);
     };
     void ask(2);
     return () => {
       gone = true;
     };
-  }, [order, loading, isOnline, recheck, orderId]);
+  }, [order, loading, askAgain, recheck, orderId]);
 
   /**
    * A REFUSED WRITE, A QUEUED WRITE AND A CONFLICT ARE THREE DIFFERENT ANSWERS.

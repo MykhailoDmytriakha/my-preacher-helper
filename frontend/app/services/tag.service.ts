@@ -3,6 +3,7 @@ import { addDoc, collection, getDocs, query, updateDoc, where } from 'firebase/f
 import { getClientDb } from '@/config/firebaseClientDb';
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Tag } from '@/models/models';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isStructureTag } from '@/utils/structureTags';
 
@@ -70,7 +71,7 @@ export async function removeCustomTag(userId: string, tagName: string) {
   assertLegacyClientWriteAllowed('tags');
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, {
+    const res = await apiClient(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, { category: 'crud',
       method: 'DELETE',
       headers: authHeaders,
     });

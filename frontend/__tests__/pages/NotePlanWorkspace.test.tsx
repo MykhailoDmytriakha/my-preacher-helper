@@ -65,12 +65,12 @@ it('keeps the existing editor free of source controls when the mode is manual', 
 });
 
 const REASON_MESSAGE: Record<string, string> = {
-  offline: 'connection.offlineBanner', usage: 'plan.fromNote.usageBlocked',
+  usage: 'plan.fromNote.usageBlocked',
   missing: 'plan.fromNote.sourceUnavailable', loading: 'common.loading',
 };
 
-it.each(['offline', 'usage', 'missing', 'loading'])('explains %s and disables generation', (reason) => {
-  mockOnline = reason !== 'offline'; mockBlocked = reason === 'usage'; mockLoading = reason === 'loading'; mockMissing = reason === 'missing' ? ['gone'] : [];
+it.each(['usage', 'missing', 'loading'])('explains %s and disables generation', (reason) => {
+  mockOnline = true; mockBlocked = reason === 'usage'; mockLoading = reason === 'loading'; mockMissing = reason === 'missing' ? ['gone'] : [];
   view();
   // Held back — and it SAYS so: the block is silent only while generation is actually possible.
   expect(screen.getByText(REASON_MESSAGE[reason])).toBeInTheDocument();
@@ -78,6 +78,16 @@ it.each(['offline', 'usage', 'missing', 'loading'])('explains %s and disables ge
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
   expect(screen.getByRole('button', { name: 'plan.refine.submit' })).toBeDisabled();
+});
+
+it('keeps generation available when the connection icon says there is none — pressing it makes the request', () => {
+  // Owner's decision 2026-10-10: AI actions are not disabled by the icon; a failed request says so.
+  mockOnline = false; mockBlocked = false; mockLoading = false; mockMissing = [];
+  view();
+  expect(screen.queryByText('connection.offlineBanner')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  expect(screen.getByRole('button', { name: 'plan.refine.submit' })).toBeEnabled();
 });
 
 it('shows request errors and allows dismissing a proposed replacement', async () => {

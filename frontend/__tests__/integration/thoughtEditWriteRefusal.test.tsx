@@ -144,7 +144,6 @@ function ThoughtEditHarness() {
             return submission;
           }}
           onClose={actions.handleCloseEdit}
-          allowOffline
         />
       )}
     </>

@@ -2,7 +2,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group } from '@/models/models';
@@ -28,7 +27,6 @@ export function useGroups(userId?: string | null) {
    * refused write used to replace the whole screen.
    */
   const [, setMutationError] = useState<Error | null>(null);
-  const isOnline = useOnlineStatus();
   const { uid: resolvedUid } = useResolvedUid();
   const effectiveUserId = userId ?? resolvedUid ?? null;
 
@@ -202,12 +200,13 @@ export function useGroups(userId?: string | null) {
   });
 
   const refreshGroups = useCallback(async () => {
-    if (!effectiveUserId || !isOnline) return;
+    // Asked with or without the icon: the icon only shows (owner's rule 3).
+    if (!effectiveUserId) return;
     setMutationError(null);
     const updated = await getAllGroups(effectiveUserId);
     queryClient.setQueryData(buildQueryKey(effectiveUserId), updated);
     return updated;
-  }, [effectiveUserId, isOnline, queryClient]);
+  }, [effectiveUserId, queryClient]);
 
   return {
     groups,

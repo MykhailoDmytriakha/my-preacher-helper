@@ -1,58 +1,43 @@
 'use client';
 
-import React, { createContext, useContext, useCallback } from 'react';
+import React, { createContext, useContext, useCallback, useEffect } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { probeConnectivity, type ProbeOutcome } from '@/utils/apiClient';
+import { knockNow, startConnectivityKnock, type KnockOutcome } from '@/utils/connectivityKnock';
 import { debugLog } from '@/utils/debugMode';
 
 interface ConnectionContextType {
-  isOnline: boolean;        // Real connectivity to the server
-  isMagicAvailable: boolean; // UI-facing status for AI/Audio/Heavy features
-  checkConnection: () => Promise<ProbeOutcome>;
+  /** Did the last real request reach our server? What the crossed-out Wi-Fi icon shows. */
+  isOnline: boolean;
+  /** The "check again" button: knock now and say what came back. */
+  checkConnection: () => Promise<KnockOutcome>;
 }
 
 const ConnectionContext = createContext<ConnectionContextType | undefined>(undefined);
 
 /**
- * ONE ANSWER TO "ARE WE ONLINE", AND THIS PROVIDER DOES NOT HOLD IT.
+ * ONE ANSWER TO "IS THERE A CONNECTION", AND THIS PROVIDER DOES NOT HOLD IT.
  *
- * It used to keep its own copy: starting at `true` and learning otherwise only from the
- * browser `offline` EVENT, which fires on a transition — so an app launched with the Wi-Fi
- * already off never received it, and the two elements that exist to say "you are offline",
- * the header icon and the top strip, both stayed hidden for the whole session.
+ * The answer lives in `utils/connectivity` (yes: the last real request reached our server). This
+ * provider republishes it and keeps the knocking running while it is "no", so a return of the
+ * network is noticed without anybody pressing a button (`utils/connectivityKnock`).
  *
- * The answer now lives in `utils/connectivity`, which keeps the device signal and the
- * server signal apart and reconciles the device on the way back into the page. This is a
- * republisher, and deliberately nothing more: an earlier attempt had it fire its own health
- * probe when the browser announced a network, and a single timed-out probe could then
- * disable every server-first read with nothing left running that could re-enable them.
- * Connectivity recovers from ordinary traffic and from the device signal; a provider does
- * not need to help.
+ * The answer only SHOWS (owner's rule 3): nothing reads it to switch off reading, editing or saving,
+ * and AI actions are not disabled by it — pressing one makes a real request, which is itself the
+ * test of the connection, and a failure is told like any failed request.
  */
 export const ConnectionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isOnline = useOnlineStatus();
 
-  // Magic is available if we are online and not experiencing excessive latency.
-  // For now, we sync it directly with isOnline.
-  const isMagicAvailable = isOnline;
+  useEffect(() => startConnectivityKnock(), []);
 
-  /**
-   * The manual "check again" button.
-   *
-   * A reply of any status means the network carried it, and that is the one piece of
-   * evidence allowed to overrule a device flag that is stuck — which is exactly the state
-   * a person is in when they press this button on an iPad resumed from the background.
-   * Whether the SERVER was healthy is a separate answer, and it goes back to the caller so
-   * the message they read matches what actually happened.
-   */
   const checkConnection = useCallback(async () => {
-    debugLog('ConnectionProvider: manual probe initiated');
-    return probeConnectivity();
+    debugLog('ConnectionProvider: manual check');
+    return knockNow();
   }, []);
 
   return (
-    <ConnectionContext.Provider value={{ isOnline, isMagicAvailable, checkConnection }}>
+    <ConnectionContext.Provider value={{ isOnline, checkConnection }}>
       {children}
     </ConnectionContext.Provider>
   );

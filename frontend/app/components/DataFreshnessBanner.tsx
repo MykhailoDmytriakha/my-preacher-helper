@@ -3,7 +3,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
-import { useDeviceOnline } from '@/hooks/useOnlineStatus';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 import type { FreshnessDiagnostics, FreshnessReason } from '@/hooks/useDocumentFreshness';
 
@@ -78,15 +78,14 @@ export function DataFreshnessBanner({
 }: DataFreshnessBannerProps) {
   const { t } = useTranslation();
   /**
-   * This banner stands down for ONE reason: the device has no network, so the crossed-out
-   * Wi-Fi icon already says everything there is to say. The app-wide "are we online" answer
-   * is the wrong one to ask — a single request timing out marks the SERVER unreachable
-   * while Wi-Fi and Firestore are fine, and the person would lose the specific warning that
-   * what they are editing may be stale.
+   * This banner stands down for ONE reason: there is no connection, so the crossed-out Wi-Fi icon
+   * already says everything there is to say. The icon is the one answer — the last real request did
+   * not reach our server — and a single failed request is corrected within seconds by the knock
+   * (`utils/connectivityKnock.ts`), after which the stale warning returns if it still applies.
    */
-  const deviceOffline = !useDeviceOnline();
+  const offline = !useOnlineStatus();
 
-  if (isPureOfflineSilence({ unknown, deleted, deviceOffline, diagnostics })) return null;
+  if (isPureOfflineSilence({ unknown, deleted, offline, diagnostics })) return null;
 
   const entity = t(`freshness.${entityKey}`);
   const copy = messageKeys({
@@ -226,21 +225,21 @@ function FreshnessHistory({ diagnostics, unknown, deleted }: {
  * exists, which is the exact loss this banner was built to prevent.
  *
  * So silence requires ALL of:
- *   - the device really is offline, and freshness really is unverifiable;
+ *   - there really is no connection (the icon shows), and freshness really is unverifiable;
  *   - the server never told us anything that outlives the connection — no confirmed
  *     deletion, no confirmed difference;
  *   - nothing in the incident is a problem that will still be there once the
  *     connection returns. Access denied and a lost account are exactly that: they
  *     say the next save will fail for a reason no amount of Wi-Fi fixes.
  */
-export function isPureOfflineSilence({ unknown, deleted, deviceOffline, diagnostics }: {
+export function isPureOfflineSilence({ unknown, deleted, offline, diagnostics }: {
   unknown: boolean;
   deleted: boolean;
-  /** The DEVICE has no network — not merely "the app considers itself offline". */
-  deviceOffline: boolean;
+  /** No connection: the last real request did not reach our server, so the icon shows. */
+  offline: boolean;
   diagnostics?: FreshnessDiagnostics;
 }): boolean {
-  if (!unknown || !deviceOffline || deleted) return false;
+  if (!unknown || !offline || deleted) return false;
   // A server answer that survives losing the connection.
   if (diagnostics?.lastServerResult === 'different' || diagnostics?.lastServerResult === 'deleted') return false;
   /**

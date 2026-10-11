@@ -180,6 +180,28 @@ describe('CollectionReader durable read lifecycle', () => {
     restored.dispose();
   });
 
+  it.each([
+    ['the connection is lost', (reader: CollectionReader) => reader.setOnline(false)],
+    ['the page goes hidden and comes back offline', (reader: CollectionReader) => { reader.setOnline(false); reader.setVisible(false); reader.setVisible(true); }],
+  ])('shows the stored rows when %s while they are still being read from the device', async (_, interrupt) => {
+    // A cold start over a dead server: the first failed request says "no connection" a moment after
+    // the list began reading the device. The interrupted read must be started again — the device can
+    // always be read — or the list waits on its placeholder until the network returns.
+    const s = setup(); s.seed(row('a'), true);
+    s.cursorRecords.set(cursorKey('owner'), { version: 1, initialized: true, revision: 1 });
+    const cursorRead = pending<CollectionCursor | undefined>();
+    const readCursor = jest.mocked(s.cursors.read).getMockImplementation()!;
+    jest.mocked(s.cursors.read).mockImplementationOnce(() => cursorRead.promise);
+    const listener = jest.fn();
+    const stop = s.reader.watch(collection, listener);
+
+    interrupt(s.reader);
+    cursorRead.resolve(await readCursor('owner', collection)); await settle();
+
+    expect(listener.mock.calls.at(-1)?.[0]).toMatchObject({ snapshots: [row('a')], complete: true, freshness: 'cache' });
+    stop(); s.reader.dispose();
+  });
+
   it('reads the cursor before rows so a cross-tab v8 commit cannot label captured v7 rows complete', async () => {
     const s = setup({ online: false }); s.seed(row('a'), true);
     s.cursorRecords.set(cursorKey('owner'), { version: 7, initialized: true, revision: 1 });

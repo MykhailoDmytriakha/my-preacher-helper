@@ -246,19 +246,23 @@ describe('useSeriesMembership · which cached lists drive the rendered result', 
     expect(visible?.groups[0]?.title).toBe('Unsaved group title');
   });
 
-  it('uses stored lists without touching the network while offline', async () => {
-    mockUseOnlineStatus.mockReturnValue(false);
-    const target = seriesWith('target', []);
-    const { result } = renderMembership([target]);
+  it('uses stored lists without touching the network while the phone has no network', async () => {
+    // The connection icon does not stop the read (owner's rule 3); the phone itself saying
+    // "no network" does, so an offline write is not held up by reads that cannot leave the device.
+    const online = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      const target = seriesWith('target', []);
+      const { result } = renderMembership([target]);
 
-    act(() => {
-      result.current.addToSeries('target', { type: 'sermon', refId: 'sermon-1' });
-    });
+      act(() => {
+        result.current.addToSeries('target', { type: 'sermon', refId: 'sermon-1' });
+      });
 
-    await waitFor(() => expect(mockCommit).toHaveBeenCalled());
-    expect(mockGetAllSeries).not.toHaveBeenCalled();
-    expect(mockGetSermons).not.toHaveBeenCalled();
-    expect(mockGetAllGroups).not.toHaveBeenCalled();
+      await waitFor(() => expect(mockCommit).toHaveBeenCalled());
+      expect(mockGetAllSeries).not.toHaveBeenCalled();
+      expect(mockGetSermons).not.toHaveBeenCalled();
+      expect(mockGetAllGroups).not.toHaveBeenCalled();
+    } finally { online.mockRestore(); }
   });
 
   it('keeps the visible stored lists when online refresh requests fail', async () => {

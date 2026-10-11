@@ -21,7 +21,7 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
-const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
+const mockUseConnection = jest.fn(() => ({ isOnline: true, checkConnection: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: () => mockUseConnection(),
   ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -147,7 +147,7 @@ describe('EditThoughtModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
+    mockUseConnection.mockReturnValue({ isOnline: true, checkConnection: jest.fn() });
   });
 
   test('renders modal with correct initial values', () => {
@@ -441,8 +441,9 @@ describe('EditThoughtModal Component', () => {
     expect(screen.getByLabelText('Add tag Main Part')).toBeInTheDocument();
   });
 
-  test('shows read-only text block when offline and offline editing is not allowed', () => {
-    mockUseConnection.mockReturnValue({ isOnline: false, isMagicAvailable: false, checkConnection: jest.fn() });
+  test('keeps the text editable when the connection icon says there is none', () => {
+    // Owner's rule 3: the icon only shows; a save that cannot be sent says so when it is saved.
+    mockUseConnection.mockReturnValue({ isOnline: false, checkConnection: jest.fn() });
     render(
       <EditThoughtModal
         {...mockProps}
@@ -450,11 +451,8 @@ describe('EditThoughtModal Component', () => {
       />
     );
 
-    expect(screen.queryByTestId('mock-rich-editor')).not.toBeInTheDocument();
-    const pre = document.querySelector('pre');
-    expect(pre).toBeInTheDocument();
-    expect(pre).toHaveTextContent('Offline text');
-    expect(pre).toHaveTextContent('Second line');
+    expect(screen.getByTestId('mock-rich-editor')).toBeInTheDocument();
+    expect(document.querySelector('pre')).not.toBeInTheDocument();
   });
 
   test('shows recorder error toast from FocusRecorderButton callback', () => {

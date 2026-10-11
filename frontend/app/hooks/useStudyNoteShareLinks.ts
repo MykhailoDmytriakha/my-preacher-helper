@@ -2,14 +2,12 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNoteShareLink } from '@/models/models';
 import { SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
-  persistedWrite,
-  queuedMutation,
+  mutationOutcomeWrite,
   refusedWrite,
   skippedWrite,
   useWriteRecovery,
@@ -34,7 +32,6 @@ export function useStudyNoteShareLinks() {
   const { t } = useTranslation();
   const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
-  const isOnline = useOnlineStatus();
   const shareLinksQuery = useServerFirstQuery({
     queryKey: shareLinksKey(uid),
     queryFn: () => (uid ? getStudyNoteShareLinks(uid) : Promise.resolve([])),
@@ -125,10 +122,9 @@ export function useStudyNoteShareLinks() {
         SHARE_LINK_MUTATION_KEYS.create,
         (pending) => pending.noteId === noteId && pending.userId === uid
       )) return skippedWrite();
-      const request = createLinkMutation.mutateAsync(vars);
-      return isOnline
-        ? persistedWrite(request)
-        : queuedMutation(`outbox:study-note-share-link:create:${noteId}`, request);
+      // Saved or queued is decided by what happened to the mutation, not by the icon (owner's rule 3).
+      return mutationOutcomeWrite(queryClient.getMutationCache(), `outbox:study-note-share-link:create:${noteId}`,
+        () => createLinkMutation.mutateAsync(vars));
     },
     deleteShareLink: (linkId: string): WriteSubmission => {
       if (!uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
@@ -137,10 +133,8 @@ export function useStudyNoteShareLinks() {
         SHARE_LINK_MUTATION_KEYS.delete,
         (pending) => pending.linkId === linkId && pending.userId === uid
       )) return skippedWrite();
-      const request = deleteLinkMutation.mutateAsync(vars);
-      return isOnline
-        ? persistedWrite(request)
-        : queuedMutation(`outbox:study-note-share-link:delete:${linkId}`, request);
+      return mutationOutcomeWrite(queryClient.getMutationCache(), `outbox:study-note-share-link:delete:${linkId}`,
+        () => deleteLinkMutation.mutateAsync(vars));
     },
   };
 }

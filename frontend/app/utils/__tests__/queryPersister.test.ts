@@ -48,6 +48,31 @@ describe('createIDBPersister', () => {
     });
 
     describe('persistClient', () => {
+        it('saves a query whose refetch failed as the data it shows, not as its old error', async () => {
+            // BUG-20261010-persisted-query-copy-dropped-after-failed-refetch: restored with its error,
+            // the screen drew its failure state over data it had.
+            mockSet.mockResolvedValueOnce(undefined);
+            const persister = createIDBPersister();
+            const failure = new Error('refetch failed');
+            const client = {
+                timestamp: 1, buster: '',
+                clientState: {
+                    mutations: [],
+                    queries: [{ queryKey: ['share-links', 'u1'], queryHash: 'h', state: {
+                        status: 'error', data: [{ id: 'link-1' }], error: failure, dataUpdatedAt: 5, errorUpdatedAt: 9,
+                        fetchFailureCount: 2, fetchFailureReason: failure, fetchStatus: 'idle', isInvalidated: false,
+                    } }],
+                },
+            } as unknown as Parameters<typeof persister.persistClient>[0];
+
+            await persister.persistClient(client);
+
+            const saved = mockSet.mock.calls[0][1].clientState.queries[0].state;
+            expect(saved).toEqual(expect.objectContaining({
+                status: 'success', data: [{ id: 'link-1' }], error: null, fetchFailureCount: 0, fetchFailureReason: null, dataUpdatedAt: 5,
+            }));
+        });
+
         it('calls set with the default key and the provided client', async () => {
             mockSet.mockResolvedValueOnce(undefined);
             const persister = createIDBPersister();

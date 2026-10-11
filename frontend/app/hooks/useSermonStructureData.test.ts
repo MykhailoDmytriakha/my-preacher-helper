@@ -11,6 +11,7 @@ import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 
 import { useSermonStructureData } from './useSermonStructureData';
+import { __resetConnectivityForTests, reportServerUnreachable } from '@/utils/connectivity';
 
 
 
@@ -687,15 +688,29 @@ describe('useSermonStructureData · which copy the screen shows', () => {
     expect(result.current.sermon?.thoughts[0].text).toBe('Edited here, not saved yet');
   });
 
-  it('reads the stored copy and leaves the network alone while offline', async () => {
-    mockedUseOnlineStatus.mockReturnValue(false);
-    const stored = sermonWith('Available without a connection', 1);
+  it('opens the stored copy at once when the last request did not reach the server', async () => {
+    // Owner's rule 3: no waiting on a connection known to be down; the freshness check asks the server.
+    reportServerUnreachable();
+    try {
+      const stored = sermonWith('Available without a connection', 1);
+      mockedGetSermonById.mockReturnValue(new Promise(() => undefined));
+
+      const { result } = renderWithSeededCache(stored);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.sermon?.thoughts[0].text).toBe('Available without a connection');
+    } finally { __resetConnectivityForTests(); }
+  });
+
+  it('asks the server first while there is a connection, whatever the phone flag', async () => {
+    const stored = sermonWith('Older copy on this device', 1);
+    mockedGetSermonById.mockResolvedValue(sermonWith('Newer copy from the server', 2));
 
     const { result } = renderWithSeededCache(stored);
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    expect(result.current.sermon?.thoughts[0].text).toBe('Available without a connection');
-    expect(mockedGetSermonById).not.toHaveBeenCalled();
+    expect(mockedGetSermonById).toHaveBeenCalled();
+    expect(result.current.sermon?.thoughts[0].text).toBe('Newer copy from the server');
   });
 
   it('falls back to the write timestamp on sermons written before revisions existed', async () => {

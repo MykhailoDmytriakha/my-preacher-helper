@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Tooltip from '@/components/ui/Tooltip';
+import { apiClient } from '@/utils/apiClient';
 import { reloadPage } from '@/utils/reloadPage';
 import { isIPadStandalonePwa } from '@utils/pwaEnv';
 
@@ -77,7 +78,7 @@ export function AppUpdateButton() {
 
       const running = process.env.NEXT_PUBLIC_APP_VERSION;
       try {
-        const response = await fetch('/api/health', { cache: 'no-store' });
+        const response = await apiClient('/api/health', { category: 'health', cache: 'no-store' });
         if (!response.ok) return;
         const { version } = (await response.json()) as { version?: string };
         // Both sides must be known AND different. An unknown version on either side is not

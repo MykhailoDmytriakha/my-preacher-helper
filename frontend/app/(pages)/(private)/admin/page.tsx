@@ -18,7 +18,9 @@ import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
 import { hardCap } from '@/services/usageLimits';
 import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { apiClient } from '@/utils/apiClient';
 import '@locales/i18n';
+
 
 import type {
   AiFunctionId,
@@ -231,7 +233,7 @@ const fetchAdminUsers = async (pageToken?: string): Promise<AdminUsersResponse> 
   const url = pageToken
     ? `/api/admin/users?${new URLSearchParams({ pageToken }).toString()}`
     : '/api/admin/users';
-  const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const response = await apiClient(url, { category: 'detail', headers: { Authorization: `Bearer ${token}` } });
   const responseBody = await parseResponse(response);
   const parsed = parseAdminUsersResponse(responseBody);
   if (!response.ok || !parsed) throw new Error('Could not load users');
@@ -243,7 +245,7 @@ const fetchAdminModelDefaults = async (): Promise<AdminModelDefaultsResponse> =>
   if (!currentUser) throw new Error('Unauthenticated');
 
   const token = await currentUser.getIdToken();
-  const response = await fetch('/api/admin/ai-defaults', {
+  const response = await apiClient('/api/admin/ai-defaults', { category: 'metadata',
     headers: { Authorization: `Bearer ${token}` },
   });
   const responseBody = await parseResponse(response);
@@ -755,7 +757,7 @@ export default function AdminPage() {
       void (async () => {
         try {
           const token = await currentUser.getIdToken();
-          const response = await fetch('/api/admin/me', { headers: { Authorization: `Bearer ${token}` } });
+          const response = await apiClient('/api/admin/me', { category: 'metadata', headers: { Authorization: `Bearer ${token}` } });
           const data = await parseResponse(response);
           const isAdmin = response.ok && data !== null && typeof data === 'object' && 'admin' in data && data.admin === true;
           if (!cancelled && currentCheckId === adminCheckId) setAccess(isAdmin ? 'authorized' : 'unauthorized');
@@ -844,7 +846,7 @@ export default function AdminPage() {
     setModelDefaultsSaved(false);
     try {
       const token = await currentUser.getIdToken();
-      const response = await fetch('/api/admin/ai-defaults', {
+      const response = await apiClient('/api/admin/ai-defaults', { category: 'crud',
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -903,7 +905,7 @@ export default function AdminPage() {
     setSubmitting(true);
     try {
       const token = await currentUser.getIdToken();
-      const response = await fetch(`/api/admin/users/${encodeURIComponent(uid)}/entitlement`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+      const response = await apiClient(`/api/admin/users/${encodeURIComponent(uid)}/entitlement`, { category: 'crud', method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
       const data = await parseResponse(response);
       if (!response.ok) throw responseFailure(data, 'admin.requestFailed');
       patchSelectedUser(uid, data as UserEntitlement, patch);

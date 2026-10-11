@@ -48,14 +48,14 @@ describe('referral client delivery', () => {
 
     await claimPendingReferral({ uid: 'invitee-1', getIdToken });
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/referral/claim', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/referral/claim', expect.objectContaining({
       method: 'POST',
       headers: {
         Authorization: 'Bearer firebase-token',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ ref: 'inviter-1' }),
-    });
+    }));
     expect(localStorage.getItem(PENDING_REFERRAL_KEY)).toBeNull();
   });
 

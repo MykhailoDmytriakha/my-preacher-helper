@@ -227,3 +227,78 @@ describe('recoverableWrite — refusals reach the right side', () => {
     expect(unhandled).not.toHaveBeenCalled();
   });
 });
+
+describe('mutationOutcomeWrite — saved or queued by what happened, not by the connection icon', () => {
+  /**
+   * Owner's rule 3 (BUG-20260908-cached-response-counts-as-live-connection). Choosing the wrapper by
+   * the icon at launch held the editor on "saving" for hours when the icon said "yes" over a network
+   * that had just died, and called a write queued while nothing durable held it when the icon said "no".
+   */
+  const { QueryClient, onlineManager } = jest.requireActual('@tanstack/react-query');
+  const { mutationOutcomeWrite } = jest.requireActual('@/utils/recoverableWrite');
+  const { OfflineQueuedError } = jest.requireActual('@/services/conflictSafeUpdate.client');
+
+  const launch = (client: InstanceType<typeof QueryClient>, mutationFn: () => Promise<unknown>) =>
+    mutationOutcomeWrite(client.getMutationCache(), 'receipt-1', () =>
+      client.getMutationCache().build(client, { mutationFn, retry: 3, retryDelay: 0, networkMode: 'offlineFirst' }).execute(undefined));
+
+  afterEach(() => {
+    onlineManager.setOnline(true);
+    jest.restoreAllMocks();
+  });
+
+  it('says saved when the server took the write', async () => {
+    const client = new QueryClient();
+    await expect(launch(client, async () => 'ok').acceptance).resolves.toEqual({ kind: 'persisted' });
+  });
+
+  it('says queued the moment React Query paused the write for want of a connection', async () => {
+    const client = new QueryClient();
+    let attempts = 0;
+    const submission = launch(client, async () => {
+      attempts += 1;
+      // The first attempt finds the network gone; the connection answer turns to "no".
+      onlineManager.setOnline(false);
+      throw new TypeError('Failed to fetch');
+    });
+    await expect(submission.acceptance).resolves.toEqual({ kind: 'queued', receipt: 'receipt-1' });
+    expect(attempts).toBe(1);
+    expect(client.getMutationCache().getAll()[0].state.isPaused).toBe(true);
+  });
+
+  it('leaves a Firestore SDK write to the phone-flag rule: queued while the phone has no network, waited for otherwise', async () => {
+    // Such a write offline neither fails nor finishes, so its outcome cannot decide. A shortcut inside
+    // the outcome helper was refused twice by review (BUG-20261011-sdk-write-queued-before-owned).
+    const { acceptByPhoneFlag } = jest.requireActual('@/utils/recoverableWrite');
+    const spy = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    await expect(acceptByPhoneFlag('receipt-1', new Promise(() => undefined)).acceptance).resolves.toEqual({ kind: 'queued', receipt: 'receipt-1' });
+    spy.mockReturnValue(true);
+    await expect(acceptByPhoneFlag('receipt-2', Promise.resolve('ok')).acceptance).resolves.toEqual({ kind: 'persisted' });
+  });
+
+  it('does not call an HTTP write queued before React Query has paused it — nothing durable holds it yet', async () => {
+    // Codex review 2026-10-11: a pending (not paused) mutation is not saved with the cache; a reload
+    // would lose a write that was announced as queued.
+    jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    const client = new QueryClient();
+    let settled = false;
+    const submission = launch(client, () => new Promise(() => undefined));
+    void submission.acceptance.then(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).toBe(false);
+  });
+
+  it('says queued when the durable outbox took the write', async () => {
+    const client = new QueryClient();
+    const submission = launch(client, async () => { throw new OfflineQueuedError('prayer:core'); });
+    await expect(submission.acceptance).resolves.toEqual(expect.objectContaining({ kind: 'queued' }));
+  });
+
+  it('rejects a refusal, so the editor keeps the text', async () => {
+    const client = new QueryClient();
+    const refused = Object.assign(new Error('denied'), { code: 'permission-denied' });
+    const submission = mutationOutcomeWrite(client.getMutationCache(), 'receipt-1', () =>
+      client.getMutationCache().build(client, { mutationFn: async () => { throw refused; }, retry: false }).execute(undefined));
+    await expect(submission.acceptance).rejects.toBe(refused);
+  });
+});

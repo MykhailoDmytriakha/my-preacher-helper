@@ -24,7 +24,7 @@ describe('feedback.service', () => {
 
         await submitFeedback(text, type, images, userId);
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/feedback', {
+        expect(global.fetch).toHaveBeenCalledWith('/api/feedback', expect.objectContaining({
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-id-token' },
             body: JSON.stringify({
@@ -33,7 +33,7 @@ describe('feedback.service', () => {
                 images,
                 userId
             })
-        });
+        }));
     });
 
     test('submitFeedback sends the technical report as its own field, beside the words', async () => {
@@ -50,7 +50,7 @@ describe('feedback.service', () => {
 
         await submitFeedback(text, type);
 
-        expect(global.fetch).toHaveBeenCalledWith('/api/feedback', {
+        expect(global.fetch).toHaveBeenCalledWith('/api/feedback', expect.objectContaining({
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-id-token' },
             body: JSON.stringify({
@@ -59,7 +59,7 @@ describe('feedback.service', () => {
                 images: [],
                 userId: 'anonymous'
             })
-        });
+        }));
     });
 
     test('submitFeedback throws error on non-ok response', async () => {

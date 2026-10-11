@@ -19,7 +19,6 @@ import {
 } from '@/components/usage/UsageGraceIndicator';
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import useSermon, { sermonIsMissing } from '@/hooks/useSermon';
 import { useShellPathname } from "@/hooks/useShellPathname";
@@ -55,7 +54,6 @@ const getSermonIdFromPathname = (pathname: string | null | undefined) => {
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
-  const isOnline = useOnlineStatus();
   const {
     showFeedbackModal,
     handleFeedbackClick,
@@ -390,7 +388,7 @@ export default function DashboardNav() {
           {!isSermonRelated && (
             <Link
               href="/dashboard"
-              prefetch={isOnline}
+              prefetch
               className="group flex shrink-0 items-center gap-2 rounded-full pr-2 text-base font-semibold text-gray-950 transition hover:text-blue-700 dark:text-gray-100 dark:hover:text-blue-300"
               aria-label={t('navigation.dashboard') as string}
             >
@@ -437,7 +435,7 @@ export default function DashboardNav() {
                 <li key={item.key} className="shrink-0">
                   <Link
                     href={item.href}
-                    prefetch={isOnline}
+                    prefetch
                     aria-current={active ? 'page' : undefined}
                     aria-label={item.label}
                     title={iconOnlyNav ? item.label : undefined}
@@ -497,7 +495,7 @@ export default function DashboardNav() {
             {settingsNavItem && SettingsIcon && (
               <Link
                 href={settingsNavItem.href}
-                prefetch={isOnline}
+                prefetch
                 aria-current={settingsActive ? 'page' : undefined}
                 aria-label={settingsNavItem.label}
                 title={settingsNavItem.label}
@@ -534,7 +532,7 @@ export default function DashboardNav() {
 
             {modeToggle ? <div aria-hidden="true" /> : <Link
               href={currentNavItem?.href || "/dashboard"}
-              prefetch={isOnline}
+              prefetch
               className="min-w-0 break-words bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-center text-lg font-bold leading-tight text-transparent"
             >
               <span suppressHydrationWarning={true}>

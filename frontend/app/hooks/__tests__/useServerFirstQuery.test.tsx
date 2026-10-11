@@ -82,7 +82,8 @@ describe('useServerFirstQuery', () => {
     expect(queryFn).not.toHaveBeenCalled();
   });
 
-  it('does not call the query function while offline and no cache exists', () => {
+  it('still tries the read while the icon says there is no connection — the icon only shows', () => {
+    // Owner's rule 3: gating reads on the icon was how the app locked itself out of proving the server back.
     const queryClient = createQueryClient();
     mockUseOnlineStatus.mockReturnValue(false);
 
@@ -97,10 +98,8 @@ describe('useServerFirstQuery', () => {
       { wrapper: createWrapper(queryClient) }
     );
 
-    expect(result.current.data).toBeUndefined();
-    expect(result.current.isLoading).toBe(false);
     expect(result.current.isOnline).toBe(false);
-    expect(queryFn).not.toHaveBeenCalled();
+    expect(queryFn).toHaveBeenCalledTimes(1);
   });
 
   it('fetches when online and no cached data exists', async () => {

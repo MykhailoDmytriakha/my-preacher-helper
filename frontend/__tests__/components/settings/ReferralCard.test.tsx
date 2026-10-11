@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
@@ -12,6 +13,10 @@ jest.mock('react-i18next', () => ({
       options?.count === undefined ? key : `${key} ${options.count}`,
   }),
 }));
+
+const newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+const renderCard = (element: React.ReactElement, client = newClient()) =>
+  render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
 
 describe('ReferralCard', () => {
   const writeText = jest.fn();
@@ -29,7 +34,7 @@ describe('ReferralCard', () => {
   });
 
   it('renders an encoded read-only referral link for the signed-in user', async () => {
-    render(<ReferralCard user={user} />);
+    renderCard(<ReferralCard user={user} />);
 
     const input = await screen.findByRole('textbox', { name: 'settings.referral.linkLabel' });
     expect(input).toHaveAttribute('readonly');
@@ -39,7 +44,7 @@ describe('ReferralCard', () => {
   });
 
   it('copies the link and confirms success accessibly', async () => {
-    render(<ReferralCard user={user} />);
+    renderCard(<ReferralCard user={user} />);
     const input = await screen.findByRole('textbox', { name: 'settings.referral.linkLabel' });
 
     fireEvent.click(screen.getByRole('button', { name: 'settings.referral.copy' }));
@@ -57,12 +62,12 @@ describe('ReferralCard', () => {
     } as unknown as User;
     fetchMock.mockResponseOnce(JSON.stringify({ invitedCount: 3 }));
 
-    render(<ReferralCard user={statsUser} />);
+    renderCard(<ReferralCard user={statsUser} />);
 
     expect(await screen.findByText('settings.referral.invitedCount 3')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/referral/stats', {
+    expect(fetchMock).toHaveBeenCalledWith('/api/referral/stats', expect.objectContaining({
       headers: { Authorization: 'Bearer firebase-token' },
-    });
+    }));
   });
 
   it('hides referral stats when the endpoint fails', async () => {
@@ -72,7 +77,7 @@ describe('ReferralCard', () => {
     } as unknown as User;
     fetchMock.mockRejectOnce(new Error('offline'));
 
-    render(<ReferralCard user={statsUser} />);
+    renderCard(<ReferralCard user={statsUser} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByText(/settings\.referral\.invitedCount/)).not.toBeInTheDocument();
@@ -80,7 +85,7 @@ describe('ReferralCard', () => {
 
   it('resets the Copy label about two seconds after a successful copy', async () => {
     jest.useFakeTimers();
-    render(<ReferralCard user={user} />);
+    renderCard(<ReferralCard user={user} />);
     await screen.findByRole('textbox', { name: 'settings.referral.linkLabel' });
 
     fireEvent.click(screen.getByRole('button', { name: 'settings.referral.copy' }));
@@ -96,7 +101,7 @@ describe('ReferralCard', () => {
 
   it('keeps the Copy state when clipboard access fails', async () => {
     writeText.mockRejectedValue(new Error('blocked'));
-    render(<ReferralCard user={user} />);
+    renderCard(<ReferralCard user={user} />);
     await screen.findByRole('textbox', { name: 'settings.referral.linkLabel' });
 
     fireEvent.click(screen.getByRole('button', { name: 'settings.referral.copy' }));
@@ -106,7 +111,17 @@ describe('ReferralCard', () => {
   });
 
   it('renders nothing without a user', () => {
-    const { container } = render(<ReferralCard user={null} />);
+    const { container } = renderCard(<ReferralCard user={null} />);
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('shows the number last seen when the server cannot be reached', async () => {
+    // Owner's decision 2026-10-10: offline, the referral counter comes from the saved copy.
+    const client = newClient();
+    client.setQueryData(['referral-stats', user.uid], 3);
+    fetchMock.mockReject(new TypeError('Failed to fetch'));
+    renderCard(<ReferralCard user={{ ...user, getIdToken: async () => 'token' } as unknown as User} />, client);
+
+    expect(await screen.findByText('settings.referral.invitedCount 3')).toBeInTheDocument();
   });
 });

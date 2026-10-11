@@ -6,6 +6,7 @@ import { Group, GroupMeetingDate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -310,7 +311,7 @@ export const updateGroup = async (
 export const deleteGroup = async (groupId: string): Promise<void> => {
   assertLegacyClientWriteAllowed(GROUPS_COLLECTION);
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
+  const response = await apiClient(`${API_BASE}/api/groups/${groupId}`, { category: 'crud',
     method: 'DELETE',
     headers: authHeaders,
   });

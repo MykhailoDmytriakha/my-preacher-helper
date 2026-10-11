@@ -41,10 +41,10 @@ describe('studyNoteShareLinks.service', () => {
 
     const result = await getStudyNoteShareLinks('user-1');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links?userId=user-1', {
+    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links?userId=user-1', expect.objectContaining({
       cache: 'no-store',
       headers: { Authorization: 'Bearer test-token' },
-    });
+    }));
     expect(result).toEqual(links);
   });
 
@@ -75,11 +75,11 @@ describe('studyNoteShareLinks.service', () => {
 
     const result = await createStudyNoteShareLink('user-1', 'note-1');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links', {
+    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
       body: JSON.stringify({ userId: 'user-1', noteId: 'note-1' }),
-    });
+    }));
     expect(result).toEqual(link);
   });
 
@@ -98,10 +98,10 @@ describe('studyNoteShareLinks.service', () => {
 
     await deleteStudyNoteShareLink('user-1', 'link-1');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links/link-1?userId=user-1', {
+    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links/link-1?userId=user-1', expect.objectContaining({
       method: 'DELETE',
       headers: { Authorization: 'Bearer test-token' },
-    });
+    }));
   });
 
   it('throws when deleting a share link fails', async () => {

@@ -45,7 +45,6 @@ it.each([false, true])('hovering a plan point reveals nothing that belongs to on
       pointItems={items}
       containerId="main"
       t={t}
-      isOnline
       isFocusMode={isFocusMode}
       setAudioError={jest.fn()}
       onClearAudioError={jest.fn()}

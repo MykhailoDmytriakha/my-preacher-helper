@@ -11,7 +11,7 @@ let mockOptions: {
   skipWaiting: boolean;
   clientsClaim: boolean;
   navigationPreload: boolean;
-  runtimeCaching: { matcher: (args: { url: URL }) => boolean }[];
+  runtimeCaching: { matcher: (args: { url: URL }) => boolean; handler?: unknown }[];
   fallbacks: { entries: { url: string; matcher: (args: { request: { destination: string } }) => boolean }[] };
 };
 
@@ -114,12 +114,19 @@ describe('service worker transport boundary', () => {
     expect(shared.waitUntil).not.toHaveBeenCalled();
   });
 
-  it('keeps recovery reads network-only and the offline fallback limited to documents', () => {
-    const recovery = mockOptions.runtimeCaching[0].matcher;
-    expect(recovery({ url: new URL('https://my-preacher-helper.com/api/sermons/example') })).toBe(true);
-    expect(recovery({ url: new URL('https://my-preacher-helper.com/api/sermons/example/plan') })).toBe(true);
-    expect(recovery({ url: new URL('https://my-preacher-helper.com/api/groups') })).toBe(false);
-    expect(recovery({ url: new URL('https://other.example/api/sermons/example') })).toBe(false);
+  it('answers every private API request from the network only, first among the rules', () => {
+    // Owner's rule 1 (BUG-20260908-cached-response-counts-as-live-connection): a stored `/api` answer
+    // handed back when the network failed looked like the server answering. First, so the default
+    // static-JSON rule cannot catch `/api/…json`; the public shared-note API keeps its caching.
+    const apiRule = mockOptions.runtimeCaching[0];
+    expect(apiRule.handler).toBeInstanceOf(jest.requireMock('serwist').NetworkOnly);
+    const matches = (href: string) => apiRule.matcher({ url: new URL(href) });
+    expect(matches('https://my-preacher-helper.com/api/sermons/example')).toBe(true);
+    expect(matches('https://my-preacher-helper.com/api/groups')).toBe(true);
+    expect(matches('https://my-preacher-helper.com/api/data-engine/read/note.json')).toBe(true);
+    expect(matches('https://api.example.org/api/me/settings')).toBe(true);
+    expect(matches('https://my-preacher-helper.com/api/share/notes/token')).toBe(false);
+    expect(matches('https://my-preacher-helper.com/sermons/example')).toBe(false);
     const fallback = mockOptions.fallbacks.entries[0];
     expect(fallback.url).toBe('/~offline');
     expect(fallback.matcher({ request: { destination: 'document' } })).toBe(true);

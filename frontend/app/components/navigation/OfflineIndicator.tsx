@@ -27,17 +27,14 @@ export function OfflineIndicator() {
     setIsChecking(true);
     try {
       const outcome = await checkConnection();
-      // A newer request or device event has already replaced this evidence.
-      if (outcome === 'superseded') return;
       /**
-       * Three outcomes, three sentences. A single boolean here once told someone "still no
-       * connection" and then removed the offline icon a moment later, because the server
-       * had in fact replied — with an error. The network carrying a request and the server
-       * being usable are different facts, and the message has to say which one is true.
+       * Three outcomes, three sentences. The server answering with an error still clears the icon —
+       * the request reached it — so the person is told that, not "still no connection" over an icon
+       * that is about to disappear.
        */
       if (outcome === 'unreachable') {
         toast.info(t('connection.probeStillOffline'), { id: 'offline-probe-failed' });
-      } else if (outcome === 'unhealthy') {
+      } else if (outcome === 'reached-with-error') {
         toast.warning(t('connection.probeServerUnhealthy'), { id: 'offline-probe-unhealthy' });
       } else {
         toast.success(t('connection.probeBackOnline'), { id: 'offline-probe-success' });

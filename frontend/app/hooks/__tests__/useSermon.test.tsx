@@ -246,7 +246,9 @@ describe('useSermon', () => {
    * settles and never errors. Waiting for it is waiting for something that cannot
    * arrive, so the page must be free to say so.
    */
-  it('stops waiting when offline with no local copy', () => {
+  it('stops waiting when offline with no local copy, and still tries the read', async () => {
+    // The screen says "not on this device" instead of a spinner (awaitingFirstAnswer is display), while
+    // the read is tried anyway — the icon only shows (owner's rule 3) — and arrives if the server answers.
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     mutableAuth.currentUser = { uid: 'user-1' };
     mockUseOnlineStatus.mockReturnValue(false);
@@ -258,7 +260,8 @@ describe('useSermon', () => {
 
     expect(result.current.sermon).toBeNull();
     expect(result.current.awaitingFirstAnswer).toBe(false);
-    expect(mockGetSermonById).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockGetSermonById).toHaveBeenCalled());
+    await waitFor(() => expect(result.current.sermon).not.toBeNull());
   });
 
   it('keeps waiting while a read is genuinely in flight', () => {

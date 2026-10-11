@@ -131,16 +131,18 @@ describe('useGroups', () => {
     expect(mockDeleteGroup).toHaveBeenCalledWith('g1');
   });
 
-  it('refreshes groups only when online and user id exists', async () => {
+  it('refreshes groups whenever a user is signed in — the connection icon does not stop the read', async () => {
     const { result } = renderHook(() => useGroups(), { wrapper: createWrapper() });
     const refreshed = await result.current.refreshGroups();
     expect(refreshed).toEqual([{ id: 'g1' }]);
     expect(mockGetAllGroups).toHaveBeenCalledWith('user-1');
 
+    // Owner's rule 3: the icon only shows; a read that cannot reach the server says so itself.
     mockUseOnlineStatus.mockReturnValue(false);
+    mockGetAllGroups.mockClear();
     const { result: offline } = renderHook(() => useGroups(), { wrapper: createWrapper() });
-    const refreshedOffline = await offline.current.refreshGroups();
-    expect(refreshedOffline).toBeUndefined();
+    await offline.current.refreshGroups();
+    expect(mockGetAllGroups).toHaveBeenCalledWith('user-1');
   });
 
   it('offline write is ACCEPTED as queued, never as saved (Stage 2 + write contract)', async () => {

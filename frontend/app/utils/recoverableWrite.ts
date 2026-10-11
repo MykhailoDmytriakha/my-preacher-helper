@@ -2,13 +2,14 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 import {
   showRecoverableWriteFailure,
   subscribeToTerminalMutationFailures,
   writeFailureTranslationKey,
 } from '@/utils/writeRecovery';
 
-import type { QueryClient } from '@tanstack/react-query';
+import type { Mutation, MutationCache, QueryClient } from '@tanstack/react-query';
 
 /**
  * When this browser session started. Failed mutations are PERSISTED, so anything with an
@@ -199,6 +200,81 @@ export function skippedWrite(
  */
 export function queuedMutation(receipt: string, request: Promise<unknown>): WriteSubmission {
   return queuedWrite(receipt, request);
+}
+
+/**
+ * SAVED OR QUEUED, BY THE PHONE'S OWN FLAG: queued while the phone says there is no network, waited
+ * for otherwise. For writes whose outcome cannot decide it — a Firestore SDK write offline neither
+ * fails nor finishes, the SDK's persisted queue holds it — and for the dashboard's mixed sermon
+ * writes, which used this rule first. Never the connection icon (owner's rule 3,
+ * BUG-20260908-cached-response-counts-as-live-connection). An HTTP write uses `mutationOutcomeWrite`.
+ */
+export function acceptByPhoneFlag(receipt: string, request: Promise<unknown>): WriteSubmission {
+  return isBrowserOffline() ? queuedMutation(receipt, request) : persistedWrite(request);
+}
+
+/**
+ * A React Query mutation accepted by WHAT HAPPENED to it, not by the connection icon at launch
+ * (owner's rule 3, BUG-20260908-cached-response-counts-as-live-connection).
+ *
+ * Choosing the wrapper by the icon was wrong both ways: the icon said "yes" over a network that had
+ * just died, so the editor waited on `persistedWrite` for the server while the mutation sat paused for
+ * hours; or it said "no" over a network that worked, and the write was called queued while nothing
+ * durable held it. The outcome answers it exactly:
+ *   - the server took it → `persisted`;
+ *   - React Query paused it for want of a connection → `queued`: a paused mutation is saved with the
+ *     cache and resumes on the next "yes" (`QueryProvider`);
+ *   - the durable outbox took it (`OfflineQueuedError`) → `queued`;
+ *   - refused before either → rejects, and the editor keeps the text.
+ *
+ * For an HTTP write only. A Firestore SDK write offline neither fails nor finishes — the SDK's queue
+ * holds it — so its outcome never arrives here; such writers keep the wrapper chosen by the phone's
+ * flag (`isBrowserOffline() ? queuedMutation : persistedWrite`). A shortcut for them inside this
+ * helper was tried and refused twice by review: a write still reading before it writes was called
+ * queued while nothing held it (BUG-20261011-sdk-write-queued-before-owned).
+ *
+ * `launch` must start exactly one mutation synchronously (`mutateAsync`): the cache announces it as
+ * it is built, which is how this knows which mutation to watch.
+ */
+export function mutationOutcomeWrite<T>(
+  cache: MutationCache,
+  receipt: string,
+  launch: () => Promise<T>
+): WriteSubmission & { request: Promise<T> } {
+  let mine: Mutation<unknown, unknown, unknown, unknown> | undefined;
+  let onPaused = () => {};
+  const unsubscribe = cache.subscribe((event) => {
+    if (!mine && event.type === 'added') mine = event.mutation as Mutation<unknown, unknown, unknown, unknown>;
+    if (mine && event.mutation === mine && mine.state.isPaused) onPaused();
+  });
+  let request: Promise<T>;
+  try {
+    request = launch();
+  } catch (error) {
+    unsubscribe();
+    throw error;
+  }
+  const persistence = request.then(() => undefined);
+  void persistence.catch(() => undefined);
+  const acceptance = new Promise<WriteAcceptance>((resolve, reject) => {
+    let settled = false;
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe();
+      finish();
+    };
+    onPaused = () => settle(() => resolve({ kind: 'queued', receipt }));
+    if (mine?.state.isPaused) onPaused();
+    persistence.then(
+      () => settle(() => resolve({ kind: 'persisted' })),
+      (error) => settle(() => (isOfflineQueuedError(error)
+        ? resolve({ kind: 'queued', receipt: `outbox:${error.aggregate}` })
+        : reject(error))),
+    );
+  });
+  void acceptance.catch(() => undefined);
+  return { acceptance, persistence, request };
 }
 
 /**

@@ -1,5 +1,7 @@
 'use client';
 
+import { apiClient } from '@/utils/apiClient';
+
 import type { User } from 'firebase/auth';
 
 export const PENDING_REFERRAL_KEY = 'pendingReferral';
@@ -69,7 +71,7 @@ export async function claimPendingReferral(
 
   try {
     const token = await user.getIdToken();
-    const response = await fetch('/api/referral/claim', {
+    const response = await apiClient('/api/referral/claim', { category: 'crud',
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

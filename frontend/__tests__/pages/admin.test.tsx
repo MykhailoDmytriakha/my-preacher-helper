@@ -71,7 +71,7 @@ describe('Admin Page', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'admin.notAuthorizedTitle' })).toBeInTheDocument());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('admin.targetUid')).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/me', { headers: { Authorization: 'Bearer firebase-id-token' } });
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/me', expect.objectContaining({ headers: { Authorization: 'Bearer firebase-id-token' } }));
   });
 
   it('renders the KPI strip and user rows after server authorization', async () => {

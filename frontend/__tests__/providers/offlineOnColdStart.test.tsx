@@ -96,8 +96,8 @@ describe('the app tells the person it is offline', () => {
     /**
      * A joined Wi-Fi with no route out — a café portal, a hotel landing page — still
      * reports `navigator.onLine === true` and still fires `online`. Believing the event
-     * would clear the icon and re-enable the AI controls over a connection that reaches
-     * nothing. Only a request that comes back may say we are online.
+     * would clear the icon over a connection that reaches nothing. Only a request that comes
+     * back may say we are online (the event makes the app knock; it does not answer for it).
      */
     renderOfflineUi();
 
@@ -114,26 +114,17 @@ describe('the app tells the person it is offline', () => {
     expect(offlineUi().strip).toBeInTheDocument();
   });
 
-  it('clears once a request gets through and the link has settled', () => {
-    /**
-     * Coming back waits a few quiet seconds so a shaky link cannot flash the icon on and
-     * off; a loss is believed at once, because being told late that you are offline is the
-     * failure this whole area exists to prevent.
-     */
-    jest.useFakeTimers();
+  it('clears as soon as a request gets through', () => {
+    // Owner's rule 2: the request reached our server, so there is a connection — no settling wait.
     renderOfflineUi();
 
     act(() => { reportServerUnreachable(); });
     expect(offlineUi().icon).toBeInTheDocument();
 
     act(() => { reportServerReachable(); });
-    expect(offlineUi().icon).toBeInTheDocument();
-
-    act(() => { jest.advanceTimersByTime(3000); });
 
     expect(offlineUi().icon).not.toBeInTheDocument();
     expect(offlineUi().strip).not.toBeInTheDocument();
-    jest.useRealTimers();
   });
 
   it('notices a network lost while the app was frozen in the background', () => {

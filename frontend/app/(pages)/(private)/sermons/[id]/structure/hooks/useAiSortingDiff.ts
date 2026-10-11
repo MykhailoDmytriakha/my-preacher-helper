@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { sortItemsWithAI } from "@/services/sortAI.service";
@@ -82,11 +81,6 @@ const notifyOutlinePointSortBlocked = (
   t: ReturnType<typeof useTranslation>["t"],
 ): boolean => {
   switch (disabledReason) {
-    case "offline":
-      toast.info(t("structure.aiSortPointDisabledOffline", {
-        defaultValue: "AI sorting is unavailable offline.",
-      }));
-      return true;
     case "sorting":
       return true;
     case "review":
@@ -291,7 +285,6 @@ export const useAiSortingDiff = ({
 }: UseAiSortingDiffProps) => {
   const { t } = useTranslation();
   const writer = useStructureWriter();
-  const isOnline = useOnlineStatus();
   
   // AI Sort with Interactive Confirmation state
   const [preSortState, setPreSortState] = useState<Record<string, Item[]> | null>(null);
@@ -315,7 +308,6 @@ export const useAiSortingDiff = ({
       const pointSortState = getOutlinePointAiSortState({
         items: currentColumnItems,
         outlinePointId,
-        isOnline,
         isSorting,
         isDiffModeActive,
       });
@@ -390,7 +382,6 @@ export const useAiSortingDiff = ({
   }, [
     containers,
     isDiffModeActive,
-    isOnline,
     isSorting,
     outlinePoints,
     sermon,

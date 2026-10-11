@@ -139,15 +139,12 @@ describe('useSeriesDetail', () => {
     mockUseOnlineStatus.mockReturnValue(true);
   });
 
-  it('does NOT fetch while offline (useServerFirstQuery disables the query)', async () => {
+  it('still asks for the series while the connection icon says there is none', async () => {
+    // Owner's rule 3: the icon only shows. Gating reads on it was how the app locked itself out.
     mockUseOnlineStatus.mockReturnValue(false);
-    const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+    renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
 
-    // Offline: the read query is disabled, so the server fetch never runs and the
-    // detail payload stays empty (the sweep relies on optimism + Firestore's queue).
-    await Promise.resolve();
-    expect(mockGetSeriesById).not.toHaveBeenCalled();
-    expect(result.current.series).toBeNull();
+    await waitFor(() => expect(mockGetSeriesById).toHaveBeenCalledWith('series-1'));
   });
 
   it('fetches series detail payload on mount', async () => {

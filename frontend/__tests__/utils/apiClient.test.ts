@@ -1,5 +1,5 @@
-import { apiClient, onConnectivityChange, probeConnectivity } from '@/utils/apiClient';
-import { __resetConnectivityForTests, getConnectivityStatus, reportProbeSucceeded } from '@/utils/connectivity';
+import { apiClient, onConnectivityChange } from '@/utils/apiClient';
+import { __resetConnectivityForTests, getConnectivityStatus } from '@/utils/connectivity';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
 import { UsageCapReachedError } from '@/services/usageLimits';
@@ -80,27 +80,19 @@ describe('apiClient', () => {
     unsubscribe();
   });
 
-  it('debounces connectivity recovery (hysteresis)', async () => {
+  it('restores the connection at once when a request gets any answer, a 503 included', async () => {
+    // Owner's rule 2: the request reached our server. The old construction held recovery for 3 s.
     const mockObserver = jest.fn();
     const unsubscribe = onConnectivityChange(mockObserver);
 
-    // Drop it first
     (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(new FetchTimeoutError('timeout'));
     await expect(apiClient('http://test.com')).rejects.toThrow(FetchTimeoutError);
-    expect(mockObserver).toHaveBeenCalledWith(false);
+    expect(mockObserver).toHaveBeenLastCalledWith(false);
 
-    // Now succeed
-    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('', { status: 503 }));
     await apiClient('http://test.com');
-
-    // Observer shouldn't be called immediately for true
-    expect(mockObserver).not.toHaveBeenCalledWith(true);
-
-    // Fast forward time
-    jest.advanceTimersByTime(3000);
-
-    // Now it should be called
-    expect(mockObserver).toHaveBeenCalledWith(true);
+    expect(mockObserver).toHaveBeenLastCalledWith(true);
+    expect(getConnectivityStatus()).toBe(true);
 
     unsubscribe();
   });
@@ -168,44 +160,5 @@ describe('apiClient', () => {
     jest.advanceTimersByTime(3000);
     expect(getConnectivityStatus()).toBe(true);
     unsubscribe();
-  });
-
-  describe('probeConnectivity', () => {
-    /**
-     * THREE OUTCOMES, NOT TWO. A boolean forced two different situations into one answer
-     * and contradicted itself on screen: a 503 during a deploy made the probe report
-     * failure, the toast said "still no connection", and moments later the offline icon
-     * disappeared anyway — because the reply had in fact travelled. "The network carried
-     * it" and "the server is usable" are different facts.
-     */
-    it('reports a healthy server when the check answers ok', async () => {
-      (fetchWithTimeout as jest.Mock).mockResolvedValue(new Response('ok', { status: 200 }));
-      process.env.NEXT_PUBLIC_API_BASE = 'http://test.com';
-
-      expect(await probeConnectivity()).toBe('healthy');
-    });
-
-    it('separates a reachable-but-unhealthy server from an unreachable one', async () => {
-      (fetchWithTimeout as jest.Mock).mockResolvedValue(new Response('', { status: 503 }));
-      process.env.NEXT_PUBLIC_API_BASE = 'http://test.com';
-
-      expect(await probeConnectivity()).toBe('unhealthy');
-    });
-
-    it('discards a late probe failure after newer proof of recovery', async () => {
-      let rejectProbe!: (error: Error) => void;
-      (fetchWithTimeout as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectProbe = reject; }));
-      const pending = probeConnectivity();
-      reportProbeSucceeded();
-      rejectProbe(new Error('Failed to fetch'));
-      expect(await pending).toBe('superseded');
-      expect(getConnectivityStatus()).toBe(true);
-    });
-
-    it('reports unreachable when nothing comes back', async () => {
-      (fetchWithTimeout as jest.Mock).mockRejectedValue(new Error('Failed'));
-
-      expect(await probeConnectivity()).toBe('unreachable');
-    });
   });
 });

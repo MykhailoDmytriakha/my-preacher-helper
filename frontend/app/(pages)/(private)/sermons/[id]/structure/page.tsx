@@ -1123,7 +1123,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
              * session silently became read-only — a change nobody asked for, landing on
              * exactly the person who opens the app on an iPad with the Wi-Fi off.
              */
-            allowOffline={true}
           />
         )}
       </div>

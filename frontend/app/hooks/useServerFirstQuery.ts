@@ -48,7 +48,13 @@ export function useServerFirstQuery<
     throw new Error('useServerFirstQuery requires a queryFn.');
   }
 
-  const canFetch = Boolean(enabled) && isOnline;
+  /**
+   * A read always tries (owner's rule 3): the crossed-out icon only shows. Gating reads on it was
+   * how the app used to lock itself out — the icon went on, reads stopped, and nothing was left to
+   * prove the server had come back. The first attempt always runs (`offlineFirst`); retries wait
+   * for a "yes" from `utils/connectivity`, which React Query follows (`QueryProvider`).
+   */
+  const canFetch = Boolean(enabled);
   const isCacheFirst = mode === 'cache-first';
 
   const queryResult = useQuery({
@@ -62,7 +68,7 @@ export function useServerFirstQuery<
     refetchOnMount: refetchOnMount ?? (isCacheFirst ? true : 'always'),
     refetchOnWindowFocus: refetchOnWindowFocus ?? !isCacheFirst,
     refetchOnReconnect: refetchOnReconnect ?? true,
-    networkMode: networkMode ?? (isCacheFirst ? 'offlineFirst' : 'online'),
+    networkMode: networkMode ?? 'offlineFirst',
   });
 
   const hasData = queryResult.data !== undefined;

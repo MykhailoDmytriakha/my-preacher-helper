@@ -10,6 +10,7 @@
  * @param userId - The user's ID or 'anonymous'
  * @returns Promise with the response data
  */
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import {
   getUtf8ByteLength,
@@ -44,7 +45,7 @@ export async function submitFeedback(
   }
 
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await fetch('/api/feedback', {
+  const response = await apiClient('/api/feedback', { category: 'detail', timeout: 60000,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: serializedPayload

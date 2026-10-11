@@ -26,11 +26,18 @@ const offlineNavigation = createOfflineRscNavigation({
 });
 
 const runtimeCaching: RuntimeCaching[] = [
-  // Plan generation and recovery reads must hit the network. A cached recovery
-  // response would be false proof of freshness. This precedes the default /api rule.
+  /**
+   * ONLY REAL ANSWERS FROM OUR API (owner's rule 1, BUG-20260908-cached-response-counts-as-live-connection).
+   *
+   * Serwist's defaults keep the last GET of every `/api` route for a day and hand it back when the
+   * network fails — and the page could not tell that copy from the server answering, so a café
+   * Wi-Fi with no route out looked like a working connection. The app keeps its own copies of what
+   * it showed (the data engine's snapshots, the persisted React Query cache), so the worker's are not
+   * needed. This rule goes FIRST: otherwise `/api/…json` is caught by the default static-JSON rule.
+   * The public shared-note API keeps the default caching — it is read without an account.
+   */
   {
-    matcher: ({ url }) =>
-      self.origin === url.origin && /^\/api\/sermons\/[^/]+(?:\/plan)?$/.test(url.pathname),
+    matcher: ({ url }) => url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/share/"),
     handler: new NetworkOnly(),
   },
   {

@@ -4,6 +4,8 @@ import { onAuthStateChanged } from 'firebase/auth';
 
 import { auth } from '@/services/firebaseAuth.service';
 import { newClientId } from '@/utils/clientId';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
+import { knockNow } from '@/utils/connectivityKnock';
 
 import { createIndexedDbCheckpoints } from './checkpoint.client';
 import { createIndexedDbCollectionCursors } from './collectionCursors.client';
@@ -56,7 +58,14 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   let generation = 0;
   let retrying = false;
   let stopAuth: (() => void) | undefined;
-  const online = () => navigator.onLine;
+  /**
+   * The one answer to "is there a connection" (`utils/connectivity`), not the phone's flag of its own.
+   * The engine used to follow only the `online`/`offline` events, so a phone that slept through the
+   * `online` event kept every edit on the device after it woke on a working network
+   * (BUG-20261010-engine-online-flag-not-reread-on-return). Now a return to the page re-reads the
+   * phone and knocks, and the first answer from our server lets the engine send and read again.
+   */
+  const online = () => getConnectivityStatus();
   const visible = () => document.visibilityState === 'visible';
   const connectivityChanged = () => { if (active) engine.setOnline(online()); };
   // Someone at the screen. A hidden tab already reads nothing. On a computer a screen can stay lit
@@ -81,14 +90,19 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   // Apply browser restrictions before auth can synchronously activate delivery.
   connectivityChanged();
   visibilityChanged();
-  window.addEventListener('online', connectivityChanged);
-  window.addEventListener('offline', connectivityChanged);
+  const stopConnectivity = subscribeToConnectivity(connectivityChanged);
   document.addEventListener('visibilitychange', visibilityChanged);
   if (pausesWhenUntouched) for (const type of ATTENTION_EVENTS) window.addEventListener(type, attentionSeen, { capture: true, passive: true });
   const timer = window.setInterval(() => {
     if (active && pausesWhenUntouched && attended && Date.now() - lastAttention >= ATTENTION_MS) { attended = false; collections.setAttended(false); }
+    if (!active || !owner || retrying) return;
+    if (!online()) {
+      // A hidden page does not knock on schedule, so edits typed before the screen went dark would
+      // wait for the next look at it; one knock a minute lets them leave once the network is back.
+      if (!visible() && engine.getPending().length > 0) void knockNow();
+      return;
+    }
     // Hidden or not: the retry only sends the person's own edits and reads nothing (engine.retry).
-    if (!active || !owner || !online() || retrying) return;
     retrying = true;
     const started = generation;
     void engine.retry().catch(error => {
@@ -101,8 +115,7 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
     active = false;
     generation += 1;
     window.clearInterval(timer);
-    window.removeEventListener('online', connectivityChanged);
-    window.removeEventListener('offline', connectivityChanged);
+    stopConnectivity();
     document.removeEventListener('visibilitychange', visibilityChanged);
     for (const type of ATTENTION_EVENTS) window.removeEventListener(type, attentionSeen, { capture: true });
     stopAuth?.();

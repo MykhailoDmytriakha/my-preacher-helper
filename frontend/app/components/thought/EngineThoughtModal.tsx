@@ -8,7 +8,6 @@ import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
-import { useConnection } from '@/providers/ConnectionProvider';
 import { sayFailure } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
@@ -47,7 +46,6 @@ function recoveryPreview(value: Json | undefined, initialThoughts: Json | undefi
 /** Typing changes only a durable manual stage; Save captures its opening ancestor. */
 export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }: Props) {
   const { t } = useTranslation();
-  const { isMagicAvailable } = useConnection();
   const [newThought] = useState<Thought>(() => ({ id: newClientId(), text: '', tags: [], date: new Date().toISOString() }));
   // Each creation opening is independent, including while earlier creations are offline.
   // Creation selects the array and explicitly shares recovery across unique creation slots,
@@ -120,7 +118,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
       <ThoughtTagsField tags={shown.tags} allowedTags={allowedTags} availableTags={availableTags} disabled={readOnly}
         onAddTag={tag => change({ tags: [...shown.tags, tag] })} onRemoveTag={index => change({ tags: shown.tags.filter((_, i) => i !== index) })} />
       <div className="space-y-3">
-        <ThoughtTextHeader dictation={dictation} available={isMagicAvailable} saving={form.busy} readOnly={readOnly} />
+        <ThoughtTextHeader dictation={dictation} saving={form.busy} readOnly={readOnly} />
         {readOnly ? <pre className="whitespace-pre-wrap font-sans">{shown.text}</pre>
           : <RichMarkdownEditor value={shown.text} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
       </div>

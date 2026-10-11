@@ -2,8 +2,11 @@ import { Item } from "@/models/models";
 
 export const MAX_AI_SORT_ITEMS = 25;
 
+/**
+ * Why AI sorting of a point cannot start. Not the connection icon: pressing makes the request, and
+ * a failed one says so (owner, 2026-10-10).
+ */
 export type AiSortDisabledReason =
-  | "offline"
   | "quotaExhausted"
   | "sorting"
   | "review"
@@ -19,14 +22,12 @@ export type OutlinePointAiSortState = {
 export const getOutlinePointAiSortState = ({
   items,
   outlinePointId,
-  isOnline,
   aiBlocked = false,
   isSorting,
   isDiffModeActive,
 }: {
   items: Item[];
   outlinePointId: string;
-  isOnline: boolean;
   aiBlocked?: boolean;
   isSorting: boolean;
   isDiffModeActive: boolean;
@@ -39,9 +40,7 @@ export const getOutlinePointAiSortState = ({
 
   let disabledReason: AiSortDisabledReason | null = null;
 
-  if (!isOnline) {
-    disabledReason = "offline";
-  } else if (aiBlocked) {
+  if (aiBlocked) {
     disabledReason = "quotaExhausted";
   } else if (isSorting) {
     disabledReason = "sorting";

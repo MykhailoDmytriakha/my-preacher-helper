@@ -152,7 +152,7 @@ describe('preachDates.service', () => {
 
             expect(global.fetch).toHaveBeenCalledWith(
                 expect.stringContaining(`/api/sermons/${sermonId}/preach-dates`),
-                { headers: { Authorization: 'Bearer test-token' } }
+                expect.objectContaining({ headers: { Authorization: 'Bearer test-token' } })
             );
             expect(result).toEqual(mockDates);
         });

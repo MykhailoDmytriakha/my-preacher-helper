@@ -510,7 +510,7 @@ export default function StepByStepWizard({
         setIsLoading(true);
         try {
             const authHeaders = await getAuthenticatedRequestHeaders();
-            const response = await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
+            const response = await apiClient(`/api/sermons/${sermonId}/audio/chunks`, { category: 'crud',
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ chunks: cached, mode: targetMode, expected: storedChunks.current }),
@@ -634,7 +634,7 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const handleSaveChunk = useCallback(async (index: number, newText: string) => {
         const authHeaders = await getAuthenticatedRequestHeaders();
-        const response = await fetch(`/api/sermons/${sermonId}/audio/chunks/${index}`, {
+        const response = await apiClient(`/api/sermons/${sermonId}/audio/chunks/${index}`, { category: 'crud',
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
             // The index names a position; the set the editor opened on names the chunk.

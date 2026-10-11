@@ -203,7 +203,6 @@ describe('useAiSortingDiff', () => {
         disabledReason: NonNullable<ReturnType<typeof aiSortingUtils.getOutlinePointAiSortState>['disabledReason']>;
         expectedToast: 'info' | 'warning' | null;
       }> = [
-        { disabledReason: 'offline', expectedToast: 'info' },
         { disabledReason: 'sorting', expectedToast: null },
         { disabledReason: 'review', expectedToast: 'info' },
         { disabledReason: 'tooMany', expectedToast: 'warning' },

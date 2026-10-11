@@ -142,11 +142,15 @@ describe('useStudyNotes', () => {
     const { result } = renderHook(() => useStudyNotes(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
+    // Offline the SDK write neither fails nor finishes: its own queue holds it. The phone saying "no
+    // network" is what tells the write's outcome apart from a request still on its way.
+    const online = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
     const submission = result.current.createNote({
       userId: 'auth-uid', title: 'Long-form draft', content: 'Never claim this is saved early.',
       tags: [], scriptureRefs: [], type: 'note', materialIds: [], relatedSermonIds: [],
     });
     const acceptance = await awaitAcceptance(submission, () => undefined);
+    online.mockRestore();
 
     expect(acceptance.kind).toBe('queued');
     expect(submission.note.id).toBeTruthy();
