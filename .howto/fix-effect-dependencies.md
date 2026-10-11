@@ -1,4 +1,4 @@
-when: Maximum update depth exceeded · effect runs every render · exhaustive-deps warning · react-hooks/exhaustive-deps · infinite render loop · setState loop · useEffect dependency array · object or array in deps · data?.items ?? [] · new array every render · functional update · setState(prev => ...) · dependency signature string · page dies after an error or offline · бесконечный цикл рендера · эффект срабатывает на каждом рендере · зависимости эффекта · ререндер · зацикливание setState · предупреждение линтера о зависимостях · страница падает после ошибки
+when: Maximum update depth exceeded · effect runs every render · exhaustive-deps warning · react-hooks/exhaustive-deps · infinite render loop · setState loop · useEffect dependency array · object or array in deps · data?.items ?? [] · new array every render · functional update · setState(prev => ...) · dependency signature string · page dies after an error or offline · бесконечный цикл рендера · эффект срабатывает на каждом рендере · зависимости эффекта · ререндер · зацикливание setState · предупреждение линтера о зависимостях · страница падает после ошибки · autosave never fires · debounce restarts on every parent render · callback prop in deps · inline arrow onSave · автосохранение не срабатывает · пауза перезапускается
 
 # Fix effect dependencies that loop or warn
 
@@ -14,6 +14,7 @@ An effect re-runs whenever a dependency changes identity, so a dependency that i
 
 ## When it goes wrong
 
+- An autosave pause that never ends, or ends late → a callback prop (the parent passes `onSave={(x) => …}` inline) sits in the timer effect's dependencies, so every render of the parent restarts the pause. Keep the callback in a ref assigned during render (`saveFunctionRef.current = saveFunction` in `frontend/app/hooks/useAutoSave.ts`) and key the timer on the person's edits only. Seen live 2026-10-11 in the exegetical plan (`ExegeticalPlanModule.tsx`, `handleSave` depends on the page's inline `onSave`): its 15 s autosave did not fire while the sermon page redrew (BUG-20261010-exegetical-plan-save-wipes-newer-words).
 - "Maximum update depth exceeded" on the first paint → an effect keyed on an array rebuilt each render resets state, re-renders, runs again. Key it on the values (`navSignature`).
 - A page works online and turns into a dead loop after a permission error or offline → a `?? []` fallback feeds an effect that sets state. Give the fallback a stable constant.
 
