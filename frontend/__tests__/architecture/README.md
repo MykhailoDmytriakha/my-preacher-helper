@@ -68,3 +68,10 @@ runtime entries were deleted (debt paid). `main` commit `13322a9f` added
 `waitForPendingWrites` to `hooks/useDocumentFreshness.ts` — a read-side wait inside the legacy
 freshness hook, written on `main` where this ledger does not exist — so it was recorded as
 discovered debt with a count of one. It retires with that hook when its domains migrate.
+
+On 2026-10-10 the owner approved four entries for `api/feedback/route.ts` (`get`, `batch`,
+`delete`, `commit`). The route stores each feedback letter with `expiresAt` 90 days ahead and,
+after answering, deletes up to 50 letters whose date has passed. Feedback is a server-only
+inbox, not an owned document, and never moves to the engine. Firestore TTL would do the
+same without code, but it needs a billed project. This is the same shape as the admin
+telemetry clean-up routes, not migration debt.

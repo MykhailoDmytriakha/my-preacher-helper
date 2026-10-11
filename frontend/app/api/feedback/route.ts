@@ -24,6 +24,7 @@ import {
   MAX_FEEDBACK_PAYLOAD_BYTES,
   MAX_FEEDBACK_TEXT_BYTES,
 } from '@/utils/feedbackPayload';
+import { afterResponse } from '@/utils/server/afterResponse.server';
 
 // Define types for better code safety
 interface FeedbackData {
@@ -278,17 +279,38 @@ ${images.length ? `\nAttachments: ${images.length} image(s) attached (view HTML 
 }
 
 /**
+ * A feedback lives 90 days in the database (owner, 2026-10-10); the letter in the mailbox stays. Once
+ * `expiresAt` passes, the next feedback deletes the document (`deleteExpiredFeedback`). A timestamp
+ * field also serves Firestore's own TTL, should the project ever be billed.
+ */
+const FEEDBACK_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+/** How many expired documents one feedback clears; the next one takes the rest. */
+const EXPIRED_FEEDBACK_BATCH = 50;
+
+/**
+ * NO TTL WITHOUT BILLING. Firestore's own time-to-live is refused on a project without billing
+ * ("403: billing disabled", 2026-10-10), so each new feedback clears the ones whose date has passed.
+ * Best effort and after the response: a failed clean-up never costs anyone their feedback.
+ */
+async function deleteExpiredFeedback(now: Date): Promise<void> {
+  try {
+    const expired = await adminDb.collection('feedback').where('expiresAt', '<', now).limit(EXPIRED_FEEDBACK_BATCH).get();
+    if (expired.empty) return;
+    const batch = adminDb.batch();
+    expired.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    console.log(`Deleted ${expired.size} expired feedback document(s)`);
+  } catch (error) {
+    console.error('Expired feedback clean-up failed:', error);
+  }
+}
+
+/**
  * Stores feedback data in Firestore.
  * IMPORTANT: Images are NOT persisted here (TRIZ: inbox is already persistent).
  * Only imageCount is stored so queries stay fast and documents stay small.
  */
-/**
- * A feedback lives 90 days in the database (owner, 2026-10-10); the letter in the mailbox stays. The
- * Firestore TTL policy on `feedback.expiresAt` deletes the document by itself once this date passes —
- * it must be a timestamp, which a Date becomes through the Admin SDK.
- */
-const FEEDBACK_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
-
 async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
   console.log('Storing feedback in Firestore database');
   const feedbackRef = adminDb.collection('feedback');
@@ -413,6 +435,7 @@ export async function POST(request: NextRequest) {
 
     // Add the feedback to Firestore
     const result = await storeFeedbackInDatabase(feedbackData);
+    afterResponse(() => deleteExpiredFeedback(new Date()));
 
     // Send email notification - ensure it completes before the function returns
     console.log('Triggering email notification');

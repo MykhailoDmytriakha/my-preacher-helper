@@ -25,11 +25,17 @@ if (typeof Response.json !== 'function') {
 // Mock dependencies
 jest.mock('nodemailer');
 const mockAdd = jest.fn().mockResolvedValue({ id: 'new-feedback-id' });
+const mockExpiredGet = jest.fn().mockResolvedValue({ empty: true, size: 0, docs: [] });
+const mockWhere = jest.fn(() => ({ limit: () => ({ get: () => mockExpiredGet() }) }));
+const mockBatchDelete = jest.fn();
+const mockBatchCommit = jest.fn().mockResolvedValue(undefined);
 jest.mock('@/config/firebaseAdminConfig', () => ({
     adminDb: {
         collection: jest.fn().mockReturnValue({
             add: (...args: any[]) => mockAdd(...args),
+            where: (...args: unknown[]) => (mockWhere as (...a: unknown[]) => unknown)(...args),
         }),
+        batch: () => ({ delete: (...args: unknown[]) => mockBatchDelete(...args), commit: () => mockBatchCommit() }),
     },
 }));
 jest.mock('@/api/auth/getAuthenticatedIdentity.server', () => ({
@@ -62,6 +68,10 @@ describe('api/feedback/route', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockAdd.mockReset().mockResolvedValue({ id: 'new-feedback-id' });
+        mockExpiredGet.mockReset().mockResolvedValue({ empty: true, size: 0, docs: [] });
+        mockWhere.mockClear();
+        mockBatchDelete.mockClear();
+        mockBatchCommit.mockClear();
         mockGetIdentity.mockResolvedValue({
             uid: 'auth-user-1',
             email: 'verified@example.com',
@@ -599,6 +609,31 @@ describe('api/feedback/route', () => {
         const storedDoc = mockAdd.mock.calls[0][0];
         expect(storedDoc.expiresAt).toBeInstanceOf(Date);
         expect(storedDoc.expiresAt.getTime() - Date.parse(storedDoc.createdAt)).toBe(90 * 24 * 60 * 60 * 1000);
+    });
+
+    /**
+     * NO TTL WITHOUT BILLING. Firestore's own time-to-live needs a billed project, so each new
+     * feedback clears the ones whose 90 days have passed — after the person has the answer.
+     */
+    const flushAfterResponse = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    test('POST clears feedback whose 90 days have passed, after answering', async () => {
+        mockExpiredGet.mockResolvedValueOnce({ empty: false, size: 2, docs: [{ ref: 'old-1' }, { ref: 'old-2' }] });
+        const response = await post({ feedbackText: 'words', feedbackType: 'bug' });
+        expect(response.status).toBe(200);
+        await flushAfterResponse();
+        expect(mockWhere).toHaveBeenCalledWith('expiresAt', '<', expect.any(Date));
+        expect(mockBatchDelete.mock.calls).toEqual([['old-1'], ['old-2']]);
+        expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    });
+
+    test('POST keeps the feedback when clearing old ones fails', async () => {
+        mockExpiredGet.mockRejectedValueOnce(new Error('index not ready'));
+        const response = await post({ feedbackText: 'words', feedbackType: 'bug' });
+        await flushAfterResponse();
+        expect(response.status).toBe(200);
+        expect(mockAdd).toHaveBeenCalledTimes(1);
+        expect(mockBatchCommit).not.toHaveBeenCalled();
     });
 
     test('POST rejects more than 3 images instead of silently truncating them', async () => {

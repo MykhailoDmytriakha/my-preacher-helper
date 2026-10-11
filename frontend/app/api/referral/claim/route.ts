@@ -1,4 +1,4 @@
-import { after, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
 import { adminAuth, adminDb } from '@/config/firebaseAdminConfig';
@@ -12,6 +12,7 @@ import {
   REFERRAL_WARNING_AT,
   type ReferralWarningContext,
 } from '@/services/referral.server';
+import { afterResponse } from '@/utils/server/afterResponse.server';
 
 import type { UserEntitlement } from '@/models/models';
 
@@ -94,15 +95,6 @@ async function notifyOwnerOfReferralWarning(inviterUid: string, warning: Referra
     }
   } catch (error) {
     console.error('Referral warning letter was not sent', { inviterUid, error });
-  }
-}
-
-/** Work the person must not wait for; without a request scope to defer to, it still runs, detached. */
-function afterResponse(task: () => Promise<void>): void {
-  try {
-    after(task);
-  } catch {
-    void task();
   }
 }
 
