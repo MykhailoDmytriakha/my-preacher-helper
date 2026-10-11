@@ -589,6 +589,18 @@ describe('api/feedback/route', () => {
         expect(storedDoc.diagnosticsDropped).toBe(reason);
     });
 
+    /**
+     * A FEEDBACK LIVES 90 DAYS IN THE DATABASE (owner, 2026-10-10); the letter in the mailbox stays.
+     * Firestore's TTL policy on `expiresAt` deletes the document by itself — the field must be a
+     * timestamp, which a Date becomes through the Admin SDK.
+     */
+    test('POST gives every feedback a deletion date 90 days after it was sent', async () => {
+        await post({ feedbackText: 'words', feedbackType: 'bug' });
+        const storedDoc = mockAdd.mock.calls[0][0];
+        expect(storedDoc.expiresAt).toBeInstanceOf(Date);
+        expect(storedDoc.expiresAt.getTime() - Date.parse(storedDoc.createdAt)).toBe(90 * 24 * 60 * 60 * 1000);
+    });
+
     test('POST rejects more than 3 images instead of silently truncating them', async () => {
         const body = {
             feedbackText: 'Too many images',

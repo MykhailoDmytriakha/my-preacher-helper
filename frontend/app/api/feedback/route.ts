@@ -282,6 +282,13 @@ ${images.length ? `\nAttachments: ${images.length} image(s) attached (view HTML 
  * IMPORTANT: Images are NOT persisted here (TRIZ: inbox is already persistent).
  * Only imageCount is stored so queries stay fast and documents stay small.
  */
+/**
+ * A feedback lives 90 days in the database (owner, 2026-10-10); the letter in the mailbox stays. The
+ * Firestore TTL policy on `feedback.expiresAt` deletes the document by itself once this date passes —
+ * it must be a timestamp, which a Date becomes through the Admin SDK.
+ */
+const FEEDBACK_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
 async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
   console.log('Storing feedback in Firestore database');
   const feedbackRef = adminDb.collection('feedback');
@@ -294,6 +301,7 @@ async function storeFeedbackInDatabase(feedbackData: FeedbackData) {
     // A string, not a nested map: a browser's report can be deeper than Firestore allows or carry a
     // reserved key, and a refused document would cost the person their words.
     ...(diagnostics && { diagnostics: diagnostics.json }),
+    expiresAt: new Date(Date.parse(feedbackData.createdAt) + FEEDBACK_RETENTION_MS),
   };
 
   const result = await feedbackRef.add(docToStore);
