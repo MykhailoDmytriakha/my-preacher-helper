@@ -55,6 +55,13 @@ const ROOT_LEVEL_RSC = computeCacheBustingSearchParam(undefined, undefined, ROOT
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
 type CacheStorageLike = { open(name: string): Promise<CacheLike>; delete?(name: string): Promise<boolean> };
+/**
+ * What one warm-up found out about one address: kept — a payload of this build was already there;
+ * stored — fetched and kept now; gone — the server said the page does not exist (404, 410); failed —
+ * no usable answer: no network, out of time, a server error, or an answer without the page that may
+ * change (a refusal, a redirect, "too many requests"); unstored — an answer the cache refused.
+ */
+export type WarmOutcome = 'kept' | 'stored' | 'gone' | 'failed' | 'unstored';
 const OFFLINE_RSC_INDEX_URL = 'https://offline-index.invalid/addresses';
 
 async function readIndex(index: CacheLike): Promise<string[]> {
@@ -140,23 +147,35 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
   caches: CacheStorageLike;
   warmTimeoutMs?: number;
 }) {
-  const inFlight = new Map<string, Promise<void>>();
+  const inFlight = new Map<string, Promise<WarmOutcome>>();
 
-  async function store(url: URL, key: string, signal?: AbortSignal): Promise<void> {
+  async function store(url: URL, key: string, signal?: AbortSignal): Promise<WarmOutcome> {
+    let cache: CacheLike;
     try {
-      const cache = await caches.open(OFFLINE_RSC_CACHE);
+      cache = await caches.open(OFFLINE_RSC_CACHE);
       const stored = await cache.match(key);
       if (stored) {
         // Seen again: move it to the newest end, so eviction drops what was seen longest ago.
         await cache.put(key, stored);
-        return;
+        return 'kept';
       }
-      const response = await fetchFn(rootLevelRequest(url, signal));
-      if (!isFlightPayload(response)) return;
+    } catch {
+      return 'unstored';
+    }
+    let response: Response;
+    try {
+      response = await fetchFn(rootLevelRequest(url, signal));
+    } catch {
+      // No network: the address is simply not available offline yet.
+      return 'failed';
+    }
+    if (!isFlightPayload(response)) return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
+    try {
       await cache.put(key, response);
       await keepNewest(cache);
+      return 'stored';
     } catch {
-      // No network or no storage: the address is simply not available offline yet.
+      return 'unstored';
     }
   }
 
@@ -167,14 +186,14 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
    * the address, because every later visit waits on the one in flight. The whole of it, request,
    * body and storing, is given up on time, and the request aborted where the platform can.
    */
-  function remember(url: URL): Promise<void> {
+  function remember(url: URL): Promise<WarmOutcome> {
     const key = offlineRscKey(url);
     const running = inFlight.get(key);
     if (running) return running;
     const controller = typeof AbortController === 'undefined' ? null : new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<void>((resolve) => {
-      timer = setTimeout(() => { controller?.abort(); resolve(); }, warmTimeoutMs);
+    const deadline = new Promise<WarmOutcome>((resolve) => {
+      timer = setTimeout(() => { controller?.abort(); resolve('failed'); }, warmTimeoutMs);
     });
     // After a version's retirement, so a page seen during activation is not stored and then dropped.
     const work = Promise.race([retiring.then(() => store(url, key, controller?.signal)), deadline]).finally(() => {
@@ -221,35 +240,37 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
 
   /**
    * Warm the carried-over addresses again, the most recently seen first, a batch per page the person
-   * sees online. Without network it does not try. A batch that warms nothing (the server or the
-   * network is down) moves to the old end of the list and the worker stops trying until it starts
-   * again; a batch that warms some proves the network works, so the addresses that failed in it are
-   * pages that are gone, and they are dropped — they warm again whenever they are visited.
+   * sees. Each address is judged by what its own warm-up found: kept or stored — warm, it leaves the
+   * list once its payload is still there when the list is written (an eviction during the batch must
+   * not lose it); gone — dropped, it warms again whenever it is visited; failed or unstored — the batch
+   * stops there, and that address moves to the old end of the list, so the others are not starved
+   * behind it. Without a network that is one attempt per page seen, not a batch; the next page seen
+   * tries again, and the list loses nothing. Nothing about the network is concluded from what already
+   * lies in the cache, and the phone's flag is not asked: a flag stuck at false over a working network
+   * (an iPad back from the background) kept every page cold (BUG-20261011-sw-rewarm-skipped-or-forgets).
    */
   let rewarming: Promise<void> | null = null;
-  let rewarmPaused = false;
   function rewarm(): Promise<void> {
-    if (rewarmPaused || (typeof navigator !== 'undefined' && navigator.onLine === false)) return Promise.resolve();
     return rewarming ??= (async () => {
       try {
         await retiring;
         const index = await caches.open(OFFLINE_RSC_INDEX_CACHE);
         const waiting = await readIndex(index);
         if (!waiting.length) return;
-        const batch = waiting.slice(-OFFLINE_RSC_REWARM_MAX);
-        const rest = waiting.slice(0, waiting.length - batch.length);
+        const untried = waiting.slice(-OFFLINE_RSC_REWARM_MAX);
+        const rest = waiting.slice(0, waiting.length - untried.length);
+        const warm: string[] = [];
+        const stuck: string[] = [];
+        while (untried.length) {
+          const address = untried.pop() as string;
+          const outcome = await remember(new URL(address));
+          if (outcome === 'failed' || outcome === 'unstored') { stuck.push(address); break; }
+          if (outcome !== 'gone') warm.push(address);
+        }
         const payloads = await caches.open(OFFLINE_RSC_CACHE);
-        let warmed = 0;
-        for (const address of [...batch].reverse()) {
-          await remember(new URL(address));
-          if (await payloads.match(address)) warmed += 1;
-        }
-        if (warmed === 0) {
-          rewarmPaused = true;
-          await writeIndex(index, [...batch, ...rest]);
-        } else {
-          await writeIndex(index, rest);
-        }
+        const cold: string[] = [];
+        for (const address of warm) if (!(await payloads.match(address))) cold.push(address);
+        await writeIndex(index, [...stuck, ...cold, ...rest, ...untried]);
       } catch { /* The list stays as it was; the next page seen tries again. */ } finally {
         rewarming = null;
       }

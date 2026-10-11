@@ -50,6 +50,14 @@ function offline(): (request: Request) => Promise<Response> {
 
 const stored = (caches: ReturnType<typeof fakeCaches>) => [...(caches.stores.get(OFFLINE_RSC_CACHE)?.keys() ?? [])];
 
+/** Sixty pages seen under the old build, then a new version retires their payloads. */
+async function retiredSixty(caches: ReturnType<typeof fakeCaches>) {
+  const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+  for (let i = 0; i < 60; i++) await seen.remember(new URL(`${ORIGIN}/sermons/${i}`));
+  await createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches }).retire();
+}
+const sermonId = (request: Request) => Number(new URL(request.url).pathname.split('/').pop());
+
 describe('offline RSC navigation', () => {
   it('keeps every address it could not warm yet, and finishes when the network is back', async () => {
     const caches = fakeCaches();
@@ -64,12 +72,10 @@ describe('offline RSC navigation', () => {
       }, caches,
     });
     void after.retire();
-    await after.rewarm(); // no network: nothing warmed, nothing forgotten — and this worker stops trying
+    await after.rewarm(); // no network: nothing warmed, nothing forgotten
     expect(stored(caches)).toEqual([]);
     online = true;
-    await after.rewarm();
-    expect(fetched).toEqual([]);
-    // The worker starts again later (service workers do): it finishes the list.
+    // The network is back: a worker started later finishes the list.
     const restarted = createOfflineRscNavigation({
       fetchFn: async request => { fetched.push(new URL(request.url).pathname); return flight('new build'); }, caches,
     });
@@ -92,13 +98,233 @@ describe('offline RSC navigation', () => {
     };
     const after = createOfflineRscNavigation({ fetchFn, caches });
     await after.retire();
-    await after.rewarm();
-    await after.rewarm(); // paused after a batch that warmed nothing: no second round of 50 failures
+    await after.rewarm(); // the server answered "no such page" fifty times: those are gone, not waiting
     expect(requests).toBe(50);
     const restarted = createOfflineRscNavigation({ fetchFn, caches });
     await restarted.rewarm();
+    await restarted.rewarm();
+    expect(requests).toBe(60); // no second round of the fifty gone pages
     expect(stored(caches).map(key => new URL(key).pathname).sort()).toEqual(
       Array.from({ length: 10 }, (_, i) => `/sermons/${i}`).sort());
+  });
+
+  // BUG-20261011-sw-rewarm-skipped-or-forgets: a page already stored is no proof of a network, so
+  // it must not turn a batch of failures into "the server answered, the rest are gone".
+  it('forgets nothing when the only page that "warmed" was already stored', async () => {
+    const caches = fakeCaches();
+    const seen = createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches });
+    for (let i = 0; i < 60; i++) await seen.remember(new URL(`${ORIGIN}/sermons/${i}`));
+    const after = createOfflineRscNavigation({ fetchFn: offline(), caches });
+    await after.retire();
+    await after.rewarm(); // no network: the batch moves to the old end, all 60 kept
+    // Online for a moment: the person opens one of them, its payload is stored.
+    await createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches })
+      .remember(new URL(`${ORIGIN}/sermons/5`));
+    // The worker starts again without a network.
+    await createOfflineRscNavigation({ fetchFn: offline(), caches }).rewarm();
+    // The network is back: every page seen before warms again.
+    const back = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+    await back.rewarm();
+    await back.rewarm();
+    expect(stored(caches)).toHaveLength(60);
+  });
+
+  it('warms again when the flag says offline but the network answers (BUG-20261011-sw-rewarm-skipped-or-forgets)', async () => {
+    // An iPad back from the background keeps `navigator.onLine === false` while requests get through.
+    const caches = fakeCaches();
+    await createOfflineRscNavigation({ fetchFn: async () => flight('old build'), caches })
+      .remember(new URL(`${ORIGIN}/sermons/a`));
+    const fetched: string[] = [];
+    const after = createOfflineRscNavigation({
+      fetchFn: async request => { fetched.push(new URL(request.url).pathname); return flight('new build'); }, caches,
+    });
+    await after.retire();
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    try {
+      await after.rewarm();
+    } finally {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    }
+    expect(fetched).toEqual(['/sermons/a']);
+  });
+
+  describe('each address is judged by what its own warm-up found (BUG-20261011-sw-rewarm-skipped-or-forgets)', () => {
+    it('warms the older pages next when the newest ones were already stored again', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const online = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      for (let i = 10; i < 60; i++) await online.remember(new URL(`${ORIGIN}/sermons/${i}`));
+      await online.rewarm();
+      await online.rewarm();
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it('keeps an address the network could not reach, though another page in the batch warmed', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let flaky = true;
+      const fetchFn = async (request: Request) => {
+        if (flaky && sermonId(request) === 40) throw new TypeError('Failed to fetch');
+        return flight('new build');
+      };
+      const nav = createOfflineRscNavigation({ fetchFn, caches });
+      await nav.rewarm();
+      flaky = false;
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toContain(`${ORIGIN}/sermons/40`);
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it('goes on in the same worker once the network is back', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let online = false;
+      const nav = createOfflineRscNavigation({
+        fetchFn: async () => { if (!online) throw new TypeError('Failed to fetch'); return flight('new build'); }, caches,
+      });
+      await nav.rewarm();
+      online = true;
+      await nav.rewarm();
+      await nav.rewarm();
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it('keeps an address whose payload could not be stored', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const real = caches.open.bind(caches);
+      let full = true;
+      caches.open = async (name: string) => {
+        const cache = await real(name);
+        if (name !== OFFLINE_RSC_CACHE) return cache;
+        return { ...cache, put: async (key: RequestInfo | URL, response: Response) => {
+          if (full && String(typeof key === 'string' ? key : (key as Request).url).endsWith('/sermons/40')) {
+            throw new DOMException('Quota exceeded', 'QuotaExceededError');
+          }
+          return cache.put(key, response);
+        } } as unknown as Cache;
+      };
+      const nav = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      await nav.rewarm();
+      full = false;
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toContain(`${ORIGIN}/sermons/40`);
+    });
+
+    it('keeps an address while the server answers with an error, not as a page that is gone', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let failing = true;
+      const nav = createOfflineRscNavigation({
+        fetchFn: async () => (failing ? new Response('busy', { status: 503 }) : flight('new build')), caches,
+      });
+      await nav.rewarm();
+      failing = false;
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it.each([401, 403, 408, 429, 200, 302])('keeps an address answered %s without a page: an answer that may change', async status => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let refusing = true;
+      const nav = createOfflineRscNavigation({
+        fetchFn: async () => (refusing ? new Response('<html>', { status, headers: { 'content-type': 'text/html' } }) : flight('new build')),
+        caches,
+      });
+      await nav.rewarm();
+      refusing = false;
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it.each([404, 410])('drops an address the server answers %s: the page is gone', async status => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let requests = 0;
+      const nav = createOfflineRscNavigation({
+        fetchFn: async () => { requests += 1; return new Response('', { status }); }, caches,
+      });
+      await nav.rewarm();
+      await nav.rewarm();
+      await nav.rewarm();
+      expect(requests).toBe(60);
+    });
+
+    it('does not starve the others behind an address that always fails, wherever it sits', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const nav = createOfflineRscNavigation({
+        fetchFn: async request => (sermonId(request) === 59 ? new Response('busy', { status: 503 }) : flight('new build')),
+        caches,
+      });
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toHaveLength(59);
+    });
+
+    it('keeps an address whose warm-up ran out of time', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let stalled = true;
+      const nav = createOfflineRscNavigation({
+        warmTimeoutMs: 5,
+        fetchFn: () => (stalled ? new Promise<Response>(() => undefined) : Promise.resolve(flight('new build'))),
+        caches,
+      });
+      await nav.rewarm();
+      stalled = false;
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toHaveLength(60);
+    });
+
+    it('keeps an address whose payload was evicted while its batch ran', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const online = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      await online.remember(new URL(`${ORIGIN}/sermons/59`));
+      // Another page's eviction, decided on an older order, lands right after 59 is refreshed.
+      const real = caches.open.bind(caches);
+      let evict = true;
+      caches.open = async (name: string) => {
+        const cache = await real(name);
+        if (name !== OFFLINE_RSC_CACHE) return cache;
+        return { ...cache, put: async (key: RequestInfo | URL, response: Response) => {
+          await cache.put(key, response);
+          const url = typeof key === 'string' ? key : (key as Request).url;
+          if (evict && url.endsWith('/sermons/59')) { evict = false; await cache.delete(url); }
+        } } as unknown as Cache;
+      };
+      const nav = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      for (let i = 0; i < 3; i++) await nav.rewarm();
+      expect(stored(caches)).toContain(`${ORIGIN}/sermons/59`);
+    });
+
+    it('says what each warm-up found', async () => {
+      const caches = fakeCaches();
+      const answers: Record<string, () => Promise<Response>> = {
+        '/sermons/ok': async () => flight('p'),
+        '/sermons/gone': async () => new Response('', { status: 404 }),
+        '/sermons/busy': async () => new Response('', { status: 503 }),
+        '/sermons/down': async () => { throw new TypeError('Failed to fetch'); },
+      };
+      const nav = createOfflineRscNavigation({ fetchFn: request => answers[new URL(request.url).pathname](), caches });
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/ok`))).toBe('stored');
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/ok`))).toBe('kept');
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/gone`))).toBe('gone');
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/busy`))).toBe('failed');
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/down`))).toBe('failed');
+    });
+
+    it('tries one address, not a whole batch, while there is no network', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let attempts = 0;
+      const nav = createOfflineRscNavigation({
+        fetchFn: async () => { attempts += 1; throw new TypeError('Failed to fetch'); }, caches,
+      });
+      await nav.rewarm();
+      expect(attempts).toBe(1);
+    });
   });
 
   it('keeps a page seen while the new version is still retiring the old one', async () => {
@@ -248,7 +474,7 @@ describe('offline RSC navigation', () => {
       fetchFn: () => { calls += 1; return Promise.resolve(calls === 1 ? stalledBody() : flight('p')); },
       caches: reading as never,
     });
-    const settles = (work: Promise<void>) =>
+    const settles = (work: Promise<unknown>) =>
       Promise.race([work.then(() => 'settled'), new Promise(resolve => setTimeout(() => resolve('stuck'), 500))]);
 
     expect(await settles(nav.remember(new URL(`${ORIGIN}/sermons/abc`)))).toBe('settled');
@@ -265,7 +491,7 @@ describe('offline RSC navigation', () => {
       fetchFn: () => { calls += 1; return calls === 1 ? new Promise<Response>(() => undefined) : Promise.resolve(flight('p')); },
       caches: fakeCaches(),
     });
-    const settles = (work: Promise<void>) =>
+    const settles = (work: Promise<unknown>) =>
       Promise.race([work.then(() => 'settled'), new Promise(resolve => setTimeout(() => resolve('stuck'), 500))]);
 
     expect(await settles(nav.remember(new URL(`${ORIGIN}/sermons/abc`)))).toBe('settled');
