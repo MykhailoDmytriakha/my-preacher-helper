@@ -3,8 +3,9 @@
 import { Quote, BookOpen, HelpCircle, Check, X } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import '@locales/i18n';
 
+import '@locales/i18n';
+import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 
 interface ThesisStepContentProps {
@@ -50,27 +51,16 @@ const ThesisStepContent: React.FC<ThesisStepContentProps> = ({
   const { t } = useTranslation();
 
   // Local drafts
-  const [exeDraft, setExeDraft] = React.useState(exegetical);
-  const [whyDraft, setWhyDraft] = React.useState(whyPreach);
-  const [impactDraft, setImpactDraft] = React.useState(impactOnChurch);
-  const [practicalDraft, setPracticalDraft] = React.useState(practicalQuestions);
-  const [homoDraft, setHomoDraft] = React.useState(homiletical);
-  const [questionDraft, setQuestionDraft] = React.useState(questionWord);
-  const [pluralKeyDraft, setPluralKeyDraft] = React.useState(pluralKey);
-  const [transitionDraft, setTransitionDraft] = React.useState(transitionSentence);
-  const [oneSentenceDraft, setOneSentenceDraft] = React.useState(oneSentence);
-  const [sermonOneDraft, setSermonOneDraft] = React.useState(sermonInOneSentence);
-
-  React.useEffect(() => setExeDraft(exegetical || ''), [exegetical]);
-  React.useEffect(() => setWhyDraft(whyPreach || ''), [whyPreach]);
-  React.useEffect(() => setImpactDraft(impactOnChurch || ''), [impactOnChurch]);
-  React.useEffect(() => setPracticalDraft(practicalQuestions || ''), [practicalQuestions]);
-  React.useEffect(() => setHomoDraft(homiletical || ''), [homiletical]);
-  React.useEffect(() => setQuestionDraft(questionWord || ''), [questionWord]);
-  React.useEffect(() => setPluralKeyDraft(pluralKey || ''), [pluralKey]);
-  React.useEffect(() => setTransitionDraft(transitionSentence || ''), [transitionSentence]);
-  React.useEffect(() => setOneSentenceDraft(oneSentence || ''), [oneSentence]);
-  React.useEffect(() => setSermonOneDraft(sermonInOneSentence || ''), [sermonInOneSentence]);
+  const [exeDraft, setExeDraft] = useFieldDraft(exegetical || '');
+  const [whyDraft, setWhyDraft] = useFieldDraft(whyPreach || '');
+  const [impactDraft, setImpactDraft] = useFieldDraft(impactOnChurch || '');
+  const [practicalDraft, setPracticalDraft] = useFieldDraft(practicalQuestions || '');
+  const [homoDraft, setHomoDraft] = useFieldDraft(homiletical || '');
+  const [questionDraft, setQuestionDraft] = useFieldDraft(questionWord || '');
+  const [pluralKeyDraft, setPluralKeyDraft] = useFieldDraft(pluralKey || '');
+  const [transitionDraft, setTransitionDraft] = useFieldDraft(transitionSentence || '');
+  const [oneSentenceDraft, setOneSentenceDraft] = useFieldDraft(oneSentence || '');
+  const [sermonOneDraft, setSermonOneDraft] = useFieldDraft(sermonInOneSentence || '');
 
   // Saving states
   const [saving, setSaving] = React.useState<{[k: string]: boolean}>({});

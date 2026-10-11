@@ -5,6 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 
 // Module-level constants to avoid duplicate strings
@@ -34,24 +35,15 @@ const MainIdeaStepContent: React.FC<MainIdeaStepContentProps> = ({
   const getSaveTitle = () => t('actions.save') || MAIN_IDEA_SAVE_FALLBACK;
   const getCancelTitle = () => t('actions.cancel') || MAIN_IDEA_CANCEL_FALLBACK;
 
-  const [contextDraft, setContextDraft] = React.useState<string>(initialContextIdea || '');
-  const [textDraft, setTextDraft] = React.useState<string>(initialTextIdea || '');
-  const [argumentationDraft, setArgumentationDraft] = React.useState<string>(initialArgumentation || '');
+  const [contextDraft, setContextDraft] = useFieldDraft(initialContextIdea || '');
+  const [textDraft, setTextDraft] = useFieldDraft(initialTextIdea || '');
+  const [argumentationDraft, setArgumentationDraft] = useFieldDraft(initialArgumentation || '');
   const [isSavingContext, setIsSavingContext] = React.useState<boolean>(false);
   const [isSavingText, setIsSavingText] = React.useState<boolean>(false);
   const [isSavingArgumentation, setIsSavingArgumentation] = React.useState<boolean>(false);
 
-  React.useEffect(() => {
-    setContextDraft(initialContextIdea || '');
-  }, [initialContextIdea]);
 
-  React.useEffect(() => {
-    setTextDraft(initialTextIdea || '');
-  }, [initialTextIdea]);
 
-  React.useEffect(() => {
-    setArgumentationDraft(initialArgumentation || '');
-  }, [initialArgumentation]);
 
   const contextHasChanges = React.useMemo(() => (initialContextIdea || '') !== contextDraft, [initialContextIdea, contextDraft]);
   const textHasChanges = React.useMemo(() => (initialTextIdea || '') !== textDraft, [initialTextIdea, textDraft]);

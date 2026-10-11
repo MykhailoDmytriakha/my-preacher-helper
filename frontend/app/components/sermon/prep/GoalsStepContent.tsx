@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import Select from '@/components/ui/Select';
 import '@locales/i18n';
+import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 
 // Module-level constants to avoid duplicate strings
@@ -41,10 +42,10 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
   const getSaveTitle = () => t('actions.save') || GOALS_SAVE_FALLBACK;
   const getCancelTitle = () => t('actions.cancel') || GOALS_CANCEL_FALLBACK;
 
-  const [timelessDraft, setTimelessDraft] = React.useState<string>(initialTimelessTruth || '');
-  const [christDraft, setChristDraft] = React.useState<string>(initialChristConnection || '');
-  const [goalDraft, setGoalDraft] = React.useState<string>(initialGoalStatement || '');
-  const [typeDraft, setTypeDraft] = React.useState<GoalType>(initialGoalType || '');
+  const [timelessDraft, setTimelessDraft] = useFieldDraft(initialTimelessTruth || '');
+  const [christDraft, setChristDraft] = useFieldDraft(initialChristConnection || '');
+  const [goalDraft, setGoalDraft] = useFieldDraft(initialGoalStatement || '');
+  const [typeDraft, setTypeDraft] = useFieldDraft<GoalType>(initialGoalType || '');
 
   const [savingTimeless, setSavingTimeless] = React.useState(false);
   const [savingChrist, setSavingChrist] = React.useState(false);
@@ -53,10 +54,6 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
 
   const [showInstruction, setShowInstruction] = React.useState<boolean>(false);
 
-  React.useEffect(() => setTimelessDraft(initialTimelessTruth || ''), [initialTimelessTruth]);
-  React.useEffect(() => setChristDraft(initialChristConnection || ''), [initialChristConnection]);
-  React.useEffect(() => setGoalDraft(initialGoalStatement || ''), [initialGoalStatement]);
-  React.useEffect(() => setTypeDraft(initialGoalType || ''), [initialGoalType]);
 
   const timelessChanged = (initialTimelessTruth || '') !== timelessDraft;
   const christChanged = (initialChristConnection || '') !== christDraft;

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
+import { useFieldDraft } from '@/hooks/useFieldDraft';
+
 import AuthorIntentSection from './AuthorIntentSection';
 import BlockDiagramSection from './BlockDiagramSection';
 import InstructionSection from './InstructionSection';
@@ -21,6 +23,7 @@ import {
   insertNode,
   previousSiblingId
 } from './treeUtils';
+
 
 import type { ExegeticalPlanModuleProps, PlanEdit } from './types';
 import type { ExegeticalPlanNode } from '@/models/models';
@@ -46,7 +49,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   );
   const [expand, setExpand] = useState<Record<string, boolean>>({});
   const [focusedId, setFocusedId] = useState<string | null>(null);
-  const [authorIntentDraft, setAuthorIntentDraft] = useState<string>(authorIntent || '');
+  const [authorIntentDraft, setAuthorIntentDraft] = useFieldDraft(authorIntent || '');
   const [isSavingAuthorIntent, setIsSavingAuthorIntent] = useState<boolean>(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
@@ -176,10 +179,6 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   }, [authorIntentDraft, onSaveAuthorIntent]);
 
   // 3. Effects
-  useEffect(() => {
-    setAuthorIntentDraft(authorIntent || '');
-  }, [authorIntent]);
-
   // Sync with external value after successful save (own draft only)
   useEffect(() => {
     const wasSaving = prevSavingRef.current;
@@ -249,6 +248,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
         <AuthorIntentSection
           value={authorIntentDraft}
           onChange={setAuthorIntentDraft}
+          onCancel={() => setAuthorIntentDraft(authorIntent || '')}
           onSave={handleSaveAuthorIntent}
           isSaving={isSavingAuthorIntent}
           hasChanges={hasAuthorIntentChanges}

@@ -11,6 +11,7 @@ import type { AuthorIntentSectionProps } from './types';
 const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
   value,
   onChange,
+  onCancel,
   onSave,
   isSaving,
   hasChanges
@@ -22,8 +23,10 @@ const AuthorIntentSection: React.FC<AuthorIntentSectionProps> = ({
     await onSave();
   };
 
+  // Cancel goes back to what is stored when the owner says what that is; otherwise it clears.
   const handleCancel = () => {
-    onChange('');
+    if (onCancel) onCancel();
+    else onChange('');
   };
 
   return (

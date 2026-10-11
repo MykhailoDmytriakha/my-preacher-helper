@@ -37,6 +37,7 @@ export interface TreeNodeProps {
 export interface AuthorIntentSectionProps {
   value: string;
   onChange: (value: string) => void;
+  onCancel?: () => void;
   onSave: () => Promise<void>;
   isSaving: boolean;
   hasChanges: boolean;

@@ -226,7 +226,9 @@ describe('ExegeticalPlanModule', () => {
               const textarea = screen.getByPlaceholderText('Describe the author\'s intent...') as HTMLTextAreaElement;
               fireEvent.change(textarea, { target: { value: 'Modified' } });
               fireEvent.click(screen.getByText('Cancel'));
-              expect(textarea.value).toBe('');
+              // Cancel goes back to what is stored, like every other preparation field
+              // (BUG-20261011-prep-field-draft-replaced-by-parent-copy).
+              expect(textarea.value).toBe('Original');
             }
           },
           {

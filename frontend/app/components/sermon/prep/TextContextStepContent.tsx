@@ -5,6 +5,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 
 // Module-level constants to avoid duplicate strings
@@ -31,39 +32,26 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
   const getSaveTitle = () => t('actions.save') || TEXT_CONTEXT_SAVE_FALLBACK;
   const getCancelTitle = () => t('actions.cancel') || TEXT_CONTEXT_CANCEL_FALLBACK;
 
-  const [verseDraft, setVerseDraft] = useState<string>(initialVerse || '');
+  const [verseDraft, setVerseDraft] = useFieldDraft(initialVerse || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [summaryDraft, setSummaryDraft] = useState<string>(initialPassageSummary || '');
+  const [summaryDraft, setSummaryDraft] = useFieldDraft(initialPassageSummary || '');
   const [isSavingSummary, setIsSavingSummary] = useState(false);
-  const [contextDraft, setContextDraft] = useState<string>(initialContextNotes || '');
+  const [contextDraft, setContextDraft] = useFieldDraft(initialContextNotes || '');
   const [isSavingContext, setIsSavingContext] = useState(false);
-  const [repeatedDraft, setRepeatedDraft] = useState<string>((initialRepeatedWords || []).join(', '));
+  const [repeatedDraft, setRepeatedDraft] = useFieldDraft((initialRepeatedWords || []).join(', '));
   const [isSavingRepeated, setIsSavingRepeated] = useState(false);
-  const [initialVerseMemo] = useState<string>(initialVerse || '');
   const verseRef = useRef<HTMLTextAreaElement | null>(null);
 
   // keep input in sync when sermon verse changes outside
-  React.useEffect(() => {
-    setVerseDraft(initialVerse || '');
-  }, [initialVerse]);
-  React.useEffect(() => {
-    setSummaryDraft(initialPassageSummary || '');
-  }, [initialPassageSummary]);
   React.useEffect(() => {
     const el = verseRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, [verseDraft]);
-  React.useEffect(() => {
-    setContextDraft(initialContextNotes || '');
-  }, [initialContextNotes]);
-  React.useEffect(() => {
-    setRepeatedDraft((initialRepeatedWords || []).join(', '));
-  }, [initialRepeatedWords]);
 
   const canSave = useMemo(() => verseDraft.trim().length > 0 && verseDraft.trim() !== (initialVerse || '').trim(), [verseDraft, initialVerse]);
-  const verseHasChanges = canSave;
+  const verseHasChanges = verseDraft !== (initialVerse || '');
   const summaryHasChanges = useMemo(() => (initialPassageSummary || '') !== summaryDraft, [initialPassageSummary, summaryDraft]);
   const contextHasChanges = useMemo(() => (initialContextNotes || '') !== contextDraft, [initialContextNotes, contextDraft]);
   const repeatedHasChanges = useMemo(() => (initialRepeatedWords || []).join(', ') !== repeatedDraft, [initialRepeatedWords, repeatedDraft]);
@@ -72,7 +60,10 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
     if (!canSave) return;
     try {
       setIsSaving(true);
-      await onSaveVerse(verseDraft.trim());
+      // The draft becomes what is stored, so the field follows the next copy (useFieldDraft).
+      const verse = verseDraft.trim();
+      setVerseDraft(verse);
+      await onSaveVerse(verse);
     } finally {
       setIsSaving(false);
     }
@@ -92,7 +83,9 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
     if (!onSavePassageSummary) return;
     try {
       setIsSavingSummary(true);
-      await onSavePassageSummary(summaryDraft.trim());
+      const summary = summaryDraft.trim();
+      setSummaryDraft(summary);
+      await onSavePassageSummary(summary);
     } finally {
       setIsSavingSummary(false);
     }
@@ -106,6 +99,7 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
         .split(',')
         .map(w => w.trim())
         .filter(Boolean);
+      setRepeatedDraft(words.join(', '));
       await onSaveRepeatedWords(words);
     } finally {
       setIsSavingRepeated(false);
@@ -144,15 +138,15 @@ const TextContextStepContent: React.FC<TextContextStepContentProps> = ({ initial
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={isSaving}
-                className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-semibold shadow-sm ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
+                disabled={isSaving || !canSave}
+                className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-semibold shadow-sm disabled:opacity-50 ${UI_COLORS.button.primary.bg} ${UI_COLORS.button.primary.hover} dark:${UI_COLORS.button.primary.darkBg} dark:${UI_COLORS.button.primary.darkHover} ${UI_COLORS.button.primary.text}`}
                 title={getSaveTitle()}
               >
                 <Check className="w-4 h-4" />
               </button>
               <button
                 type="button"
-                onClick={() => setVerseDraft(initialVerseMemo)}
+                onClick={() => setVerseDraft(initialVerse || '')}
                 className={`inline-flex items-center justify-center px-3 py-2 rounded-md text-sm font-medium border ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
                 title={getCancelTitle()}
               >

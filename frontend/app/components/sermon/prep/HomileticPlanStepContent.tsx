@@ -1,10 +1,11 @@
 'use client';
 
 import { Info, Check, X, Plus, Trash2, ArrowUp, ArrowDown, ListChecks, BookOpen } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
 
 interface HomileticPlanItem {
@@ -28,6 +29,10 @@ interface HomileticPlanStepContentProps {
 
 const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
+/** Two lists of plan points say the same thing: the same points, in the same order, with the same words. */
+const samePlanItems = (a: HomileticPlanItem[], b: HomileticPlanItem[]) =>
+  a.length === b.length && a.every((item, i) => item.id === b[i].id && (item.title || '') === (b[i].title || ''));
+
 const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
   initialModernTranslation = '',
   onSaveModernTranslation,
@@ -44,7 +49,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
   const [showInstruction, setShowInstruction] = useState<boolean>(false);
 
   // Modern translation draft
-  const [modernDraft, setModernDraft] = useState<string>(initialModernTranslation || '');
+  const [modernDraft, setModernDraft] = useFieldDraft(initialModernTranslation || '');
   const modernHasChanges = (modernDraft || '') !== (initialModernTranslation || '');
   const [savingModern, setSavingModern] = useState(false);
 
@@ -59,16 +64,8 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
   };
 
   // Updated plan (list) draft
-  const [updatedPlanDraft, setUpdatedPlanDraft] = useState<HomileticPlanItem[]>(initialUpdatedPlan || []);
-  const updatedPlanHasChanges = useMemo(() => {
-    const a = initialUpdatedPlan || [];
-    const b = updatedPlanDraft || [];
-    if (a.length !== b.length) return true;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i].id !== b[i].id || (a[i].title || '') !== (b[i].title || '')) return true;
-    }
-    return false;
-  }, [initialUpdatedPlan, updatedPlanDraft]);
+  const [updatedPlanDraft, setUpdatedPlanDraft] = useFieldDraft<HomileticPlanItem[]>(initialUpdatedPlan || [], samePlanItems);
+  const updatedPlanHasChanges = !samePlanItems(initialUpdatedPlan || [], updatedPlanDraft || []);
 
   const addUpdatedItem = () => {
     setUpdatedPlanDraft(prev => [...prev, { id: genId(), title: '' }]);
@@ -90,20 +87,15 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
 
   const handleSaveUpdatedPlan = async () => {
     if (!onSaveUpdatedPlan) return;
-    await onSaveUpdatedPlan(updatedPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() })));
+    // The draft becomes what is stored, so the list follows the next copy (useFieldDraft).
+    const items = updatedPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() }));
+    setUpdatedPlanDraft(items);
+    await onSaveUpdatedPlan(items);
   };
 
   // Sermon plan (list) draft
-  const [sermonPlanDraft, setSermonPlanDraft] = useState<HomileticPlanItem[]>(initialSermonPlan || []);
-  const sermonPlanHasChanges = useMemo(() => {
-    const a = initialSermonPlan || [];
-    const b = sermonPlanDraft || [];
-    if (a.length !== b.length) return true;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i].id !== b[i].id || (a[i].title || '') !== (b[i].title || '')) return true;
-    }
-    return false;
-  }, [initialSermonPlan, sermonPlanDraft]);
+  const [sermonPlanDraft, setSermonPlanDraft] = useFieldDraft<HomileticPlanItem[]>(initialSermonPlan || [], samePlanItems);
+  const sermonPlanHasChanges = !samePlanItems(initialSermonPlan || [], sermonPlanDraft || []);
 
   const addSermonPlanItem = () => {
     setSermonPlanDraft(prev => [...prev, { id: genId(), title: '' }]);
@@ -125,7 +117,9 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
 
   const handleSaveSermonPlan = async () => {
     if (!onSaveSermonPlan) return;
-    await onSaveSermonPlan(sermonPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() })));
+    const items = sermonPlanDraft.map(it => ({ id: it.id, title: (it.title || '').trim() }));
+    setSermonPlanDraft(items);
+    await onSaveSermonPlan(items);
   };
 
   return (
