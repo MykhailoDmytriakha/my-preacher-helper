@@ -11,7 +11,6 @@ import "@locales/i18n";
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
 import { debugLog } from "@/utils/debugMode";
@@ -96,7 +95,6 @@ export default function Column({
 }: ColumnComponentProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
   const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
   // Dictation spends transcription AND ai (`/api/thoughts` admits both), so asking only about
   // transcription left the microphone bright on an account whose AI allowance was spent.
@@ -160,7 +158,6 @@ export default function Column({
     id,
     sermonId,
     initialSermonPoints,
-    isOnline,
     onOutlineUpdate,
     onOutlinePointDeleted,
     onSubPointDeleted,

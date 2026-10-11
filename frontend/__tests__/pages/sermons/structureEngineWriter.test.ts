@@ -51,6 +51,22 @@ describe('structure writes on an engine document', () => {
     expect((state.current!.thoughts as unknown as Thought[]).map(item => item.id)).not.toContain('a');
   });
 
+  it('keeps the two sections a board column never read when it hands over its own (BUG-20261010-column-outline-save-cancelled-on-leave)', async () => {
+    // The column knows only its section; the other two go in as the same empty placeholder on both
+    // sides of the merge, so the document's points there must survive the edit.
+    const stored: SermonOutline = {
+      introduction: [{ id: 'i1', text: 'Opening story' }],
+      main: [{ id: 'm1', text: 'Point' }],
+      conclusion: [{ id: 'c1', text: 'Call to act' }],
+    };
+    const { state, writer } = draft({ ...base(), outline: stored } as unknown as DocumentData);
+    const placeholder = { introduction: [], conclusion: [] };
+    const saved = await writer.updateSermonOutline('s1', { ...placeholder, main: [{ id: 'm1', text: 'Point, renamed' }] },
+      { ...placeholder, main: [{ id: 'm1', text: 'Point' }] }, 'preferMine');
+    expect(state.current!.outline).toEqual({ ...stored, main: [{ id: 'm1', text: 'Point, renamed' }] });
+    expect(saved).toEqual(state.current!.outline);
+  });
+
   it('merges a plan by point, keeping a point added elsewhere', async () => {
     const opened: SermonOutline = { introduction: [], main: [{ id: 'p1', text: 'One' }], conclusion: [] };
     const { state, writer } = draft({ ...base(), outline: { ...opened, main: [{ id: 'p1', text: 'One' }, { id: 'p2', text: 'Added on the phone' }] } } as unknown as DocumentData);

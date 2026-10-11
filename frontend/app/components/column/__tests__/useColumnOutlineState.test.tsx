@@ -53,7 +53,6 @@ describe("useColumnOutlineState", () => {
         id: "main",
         sermonId: "sermon-1",
         initialSermonPoints,
-        isOnline: true,
         onOutlineUpdate,
         onSubPointDeleted,
         onAddOutlinePoint,
@@ -321,7 +320,11 @@ describe("useColumnOutlineState", () => {
 
     expect(toast.error).toHaveBeenCalledWith("Failed to generate structure points");
 
-    const offlineHook = renderState({ isOnline: false });
+    // Without a connection the point is still saved, not refused up front (owner's rule 3):
+    // the connection icon only shows, and a save that cannot be sent says so itself.
+    (toast.error as jest.Mock).mockClear();
+    scheduleTask.mockClear();
+    const offlineHook = renderState();
 
     act(() => {
       offlineHook.result.current.setNewPointText("offline point");
@@ -330,6 +333,7 @@ describe("useColumnOutlineState", () => {
       offlineHook.result.current.handleAddPoint();
     });
 
-    expect(toast.error).toHaveBeenCalledWith("Failed to save structure");
+    expect(scheduleTask).toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalledWith("Failed to save structure");
   });
 });

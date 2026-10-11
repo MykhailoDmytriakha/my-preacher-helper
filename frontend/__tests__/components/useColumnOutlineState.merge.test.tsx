@@ -74,7 +74,7 @@ const renderColumn = () =>
       id: 'main',
       sermonId: 's1',
       initialSermonPoints: initialPoints,
-      isOnline: true,
+     
       // Run the debounced save immediately — the debounce is not what is under test.
       scheduleTask: (callback) => {
         void callback();

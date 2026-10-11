@@ -44,7 +44,6 @@ interface UseColumnOutlineStateOptions {
   id: string;
   sermonId?: string;
   initialSermonPoints: SermonPoint[];
-  isOnline: boolean;
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
   onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
@@ -60,7 +59,6 @@ export function useColumnOutlineState({
   id,
   sermonId,
   initialSermonPoints = EMPTY_SERMON_POINTS,
-  isOnline,
   onOutlineUpdate,
   onOutlinePointDeleted,
   onSubPointDeleted,
@@ -98,10 +96,18 @@ export function useColumnOutlineState({
    * person now sees, so it is what their next edit is built on.
    */
   const baseSectionPointsRef = useRef<SermonPoint[]>(initialSermonPoints);
+  /**
+   * On the engine: the points last handed over and not answered yet. The engine lays hand-overs on its
+   * draft in order, so one still unanswered is already in it — the next edit is built on that, not on
+   * the plan from before it (renamed and renamed back, the middle wording won otherwise).
+   */
+  const pendingHandedRef = useRef<SermonPoint[] | null>(null);
 
   useEffect(() => {
     setLocalSermonPoints(initialSermonPoints);
     baseSectionPointsRef.current = initialSermonPoints;
+    // A list from above is the document as it stands, every hand-over laid on it included.
+    pendingHandedRef.current = null;
   }, [initialSermonPoints]);
 
   useEffect(() => {
@@ -116,6 +122,8 @@ export function useColumnOutlineState({
     }
   }, [editingPointId]);
 
+  // The legacy path's pending save goes with the board: a board opened again since would otherwise be
+  // overwritten by the old one's wording. On the engine nothing waits here (`handToEngine`).
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
@@ -125,10 +133,54 @@ export function useColumnOutlineState({
     };
   }, [clearScheduledTask]);
 
+  /**
+   * ON THE ENGINE THE EDIT IS HANDED OVER AT ONCE (BUG-20261010-column-outline-save-cancelled-on-leave).
+   *
+   * The column used to wait a pause and read the plan before handing an edit over, and leaving the
+   * board — or the screen going dark — in that window cancelled the timer: the edit never left the
+   * screen. The engine writer keeps a change on this device the moment it is handed over and sends it
+   * itself, hidden page or not, as the plan editor and the board already rely on (`writer.immediate`).
+   *
+   * No read first: only this column's section is known here, so the other two go in as the same empty
+   * placeholder on both sides of the merge — unchanged — and the document keeps what it holds.
+   */
+  const handToEngine = async (sectionType: SectionType, updatedPoints: SermonPoint[]) => {
+    if (!sermonId) return;
+    const field = SECTION_FIELD_BY_TYPE[sectionType];
+    const untouched: SermonOutline = { introduction: [], main: [], conclusion: [] };
+    const outlineToSave: SermonOutline = { ...untouched, [field]: updatedPoints };
+    const baseOutline: SermonOutline = { ...untouched, [field]: pendingHandedRef.current ?? baseSectionPointsRef.current };
+    pendingHandedRef.current = updatedPoints;
+    const generation = saveGenerationRef.current + 1;
+    saveGenerationRef.current = generation;
+    try {
+      // `preferMine`: this view has nowhere to hold a refused plan (as on the legacy path below).
+      const saved = await writer.updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
+      // A newer edit was handed over meanwhile: its own answer moves the base and the list together.
+      if (generation !== saveGenerationRef.current) return;
+      pendingHandedRef.current = null;
+      const committedPoints = saved?.[field] ?? updatedPoints;
+      baseSectionPointsRef.current = committedPoints;
+      setLocalSermonPoints(committedPoints);
+      // Only the document's own outline goes up: the other two sections were never read here.
+      if (saved) onOutlineUpdate?.(saved);
+    } catch (error) {
+      if (generation === saveGenerationRef.current) pendingHandedRef.current = null;
+      console.error("Error saving sermon outline:", error);
+      toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)));
+    }
+  };
+
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId) return;
-    if (!isOnline) {
-      toast.error(t(SAVE_OUTLINE_ERROR_KEY, { defaultValue: "Failed to save structure" }));
+    // Not stopped by the connection icon (owner's rule 3): a save that cannot be sent says so itself.
+    if (writer.immediate) {
+      const sectionType = mapColumnIdToSectionType(id);
+      if (!sectionType) {
+        console.error("Cannot save outline: Invalid section ID", id);
+        return;
+      }
+      void handToEngine(sectionType, updatedPoints);
       return;
     }
 
