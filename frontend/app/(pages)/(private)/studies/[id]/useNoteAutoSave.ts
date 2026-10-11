@@ -9,7 +9,7 @@
  */
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -24,7 +24,7 @@ import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 
 export function useNoteAutoSave({
-    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved
+    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
@@ -62,12 +62,24 @@ export function useNoteAutoSave({
      * surviving draft is precisely the signal that text is unconfirmed.
      */
     onSaved?: (saved: NoteDraftPayload) => void;
+    /**
+     * Set by the page right before a change that must not wait for the pause — dictated text
+     * landing in the note. The next save goes at once; the flag clears when a save starts.
+     */
+    saveAtOnceRef?: React.MutableRefObject<boolean>;
 }) {
     // The recovery text is read by a person: references in the interface language.
     const { locale } = useAppLocale();
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+    // A save asked for at once while another was still running: it goes the moment that one ends.
+    const ownAtOnceRef = useRef(false);
+    // A save is running. Unlike `isSaving` it is true at once — two departure events in a row
+    // (`visibilitychange`, then `pagehide`) reach the same render, and a state-only guard let
+    // both create the same new note.
+    const inFlightRef = useRef(false);
+    const atOnceRef = saveAtOnceRef ?? ownAtOnceRef;
 
     const saveNewNote = useCallback(async () => {
         if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
@@ -141,13 +153,16 @@ export function useNoteAutoSave({
         // Moving a new note to its client id re-renders this hook before the first
         // create is accepted. A second save in that gap must not become an update
         // against a document the server may still refuse to create.
-        if (isSaving) return;
+        if (isSaving || inFlightRef.current) return;
+        // This save is the one asked for at once (or the ordinary one): the request is met.
+        atOnceRef.current = false;
         // A refusal is already on screen. Continuing to autosave would keep firing
         // writes at a document we know is newer — and one of them could land.
         if (saveBlocked) return;
 
         if (isNew) {
-            await saveNewNote();
+            inFlightRef.current = true;
+            try { await saveNewNote(); } finally { inFlightRef.current = false; }
             return;
         }
 
@@ -161,6 +176,7 @@ export function useNoteAutoSave({
 
         if (Object.keys(updates).length === 0) return;
 
+        inFlightRef.current = true;
         setIsSaving(true);
         setSaveError(null);
         // A previous server save says nothing about the text currently being sent.
@@ -257,17 +273,41 @@ export function useNoteAutoSave({
             console.error('Auto-save error', e);
             setSaveError('common.saveError');
         } finally {
+            inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, locale]);
+    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, locale, atOnceRef]);
 
     useEffect(() => {
         if (!isInitialized) return;
+        // Typing waits for the pause; a change asked for at once (dictation, or a save that the
+        // page's hiding found still running) goes as soon as this render has the text.
         const timeoutId = setTimeout(() => {
             saveChanges();
-        }, 1500);
+        }, atOnceRef.current ? 0 : 1500);
         return () => clearTimeout(timeoutId);
-    }, [title, content, tags, scriptureRefs, type, isInitialized, resaveNonce, saveChanges]);
+    }, [title, content, tags, scriptureRefs, type, isInitialized, resaveNonce, saveChanges, atOnceRef]);
+
+    /**
+     * THE PAGE GOING AWAY IS THE LAST MOMENT TO HAND THE TEXT OVER (BUG-20261006-hidden-tab-holds-last-edit).
+     * A screen locked inside the pause held the note on the phone: on a locked iPhone the device
+     * storage freezes, so what the engine did not receive before the lock waits for the next
+     * opening. Hiding saves at once; a save still running is followed by one for the newest text.
+     */
+    useEffect(() => {
+        if (!isInitialized) return;
+        const saveNow = () => {
+            atOnceRef.current = true;
+            void saveChanges();
+        };
+        const onVisibility = () => { if (document.visibilityState === 'hidden') saveNow(); };
+        window.addEventListener('pagehide', saveNow);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', saveNow);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, [isInitialized, saveChanges, atOnceRef]);
 
     return { isSaving, lastSaved, saveError, setLastSaved };
 }

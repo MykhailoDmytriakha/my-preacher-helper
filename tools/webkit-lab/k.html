@@ -1,0 +1,61 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>k — what leaves a page as it is hidden</title>
+<body style="font: 16px system-ui; padding: 16px">
+<h1>k: hide probe</h1>
+<p id="state">loaded — now background the app or lock the screen</p>
+<script>
+// What reaches the server when the page is hidden (screen locked, app switched)?
+// Each way of sending is labelled; the lab server stamps the arrival time (`at`).
+const run = new URLSearchParams(location.search).get('run') || ('k-' + Date.now());
+const big = new URLSearchParams(location.search).get('big') === '1';
+const started = Date.now();
+const body = (ev, extra = {}) => JSON.stringify({ run, page: 'k', ev, sinceLoad: Date.now() - started, ...extra });
+const headers = { 'Content-Type': 'application/json', Authorization: 'Bearer probe-token' };
+const keepalive = (ev, extra) => fetch('/log', { method: 'POST', keepalive: true, headers, body: body(ev, extra) })
+  .catch(error => plain('keepalive-rejected', { of: ev, error: String(error) }));
+const plain = (ev, extra) => fetch('/log', { method: 'POST', headers, body: body(ev, extra) }).catch(() => undefined);
+const beacon = (ev, extra) => navigator.sendBeacon('/log', new Blob([body(ev, extra)], { type: 'text/plain' }));
+
+let hiddenAt = 0;
+function idbWrite() {
+  return new Promise((resolve, reject) => {
+    const open = indexedDB.open('k-' + run, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore('journal');
+    open.onerror = () => reject(open.error);
+    open.onsuccess = () => {
+      const tx = open.result.transaction('journal', 'readwrite');
+      tx.objectStore('journal').put({ state: 'sending', at: Date.now() }, 'entry');
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () => reject(tx.error);
+    };
+  });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    hiddenAt = Date.now();
+    // The candidate: speak at once, from memory, nothing written to the device first.
+    keepalive('hide-keepalive', big ? { pad: 'x'.repeat(70000) } : {});
+    plain('hide-plain');
+    beacon('hide-beacon');
+    // The engine's real shape: an await (the token) before the request.
+    Promise.resolve().then(() => keepalive('hide-after-await'));
+    // The rejected variant: the request waits behind an IndexedDB write.
+    idbWrite().then(() => keepalive('hide-after-idb'), error => keepalive('hide-idb-failed', { error: String(error) }));
+    // How long does the page still run after hide?
+    for (const ms of [250, 1000, 3000, 10000, 30000]) setTimeout(() => keepalive('tick', { ms, real: Date.now() - hiddenAt }), ms);
+    // Is the device storage closed for the whole hidden time, or only for what was in flight at the moment?
+    for (const ms of [500, 2000, 5000]) setTimeout(() => idbWrite().then(
+      () => keepalive('idb-later-ok', { ms, real: Date.now() - hiddenAt }),
+      error => keepalive('idb-later-failed', { ms, real: Date.now() - hiddenAt, error: String(error) })), ms);
+  } else {
+    plain('visible', { hiddenFor: hiddenAt ? Date.now() - hiddenAt : null });
+    document.getElementById('state').textContent = 'visible again';
+  }
+});
+window.addEventListener('pagehide', event => beacon('pagehide', { persisted: event.persisted }));
+plain('load', { ua: navigator.userAgent, standalone: navigator.standalone === true });
+</script>
+</body>

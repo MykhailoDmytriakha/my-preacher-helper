@@ -119,6 +119,36 @@ describe('PlanTemplatesSection', () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'Alpha renamed' }, 0));
   });
 
+  // An edit inside the 400 ms pause lived only in memory when the page went away (BUG-20261006-hidden-tab-holds-last-edit).
+  it('saves a pending structure edit at once when the page is hidden', () => {
+    jest.useFakeTimers();
+    try {
+      mockTemplates = [tpl('t1', 'Alpha', 0)];
+      render(<PlanTemplatesSection user={user} />);
+      fireEvent.click(screen.getByLabelText('common.expand'));
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+      const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'Before the lock' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      expect(mockUpdate).not.toHaveBeenCalled();
+
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+      try {
+        act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+      } finally {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      }
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+      expect(mockUpdate).toHaveBeenCalledWith('t1', { structure: expect.objectContaining({
+        introduction: [expect.objectContaining({ text: 'Before the lock' })],
+      }) }, 0);
+      act(() => { jest.advanceTimersByTime(1000); });
+      expect(mockUpdate).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('shows a newly added point immediately, before any refetch', () => {
     // The hook mock never feeds back the saved structure, so if the board read
     // straight from the cache the point would never render. The local draft

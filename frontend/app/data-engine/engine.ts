@@ -146,7 +146,7 @@ export class DataEngine {
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
       operationId: options.operationId, readConfirmed: resource => this.read(resource),
-      readCommitted: (resource, proof) => this.readCommittedSnapshot(resource, proof), canDeliver: () => this.canDeliver() });
+      readCommitted: (resource, proof) => this.readCommittedSnapshot(resource, proof), canDeliver: () => this.canSend() });
     this.stopCommits = this.commits.subscribe(({ request }) => {
       if (request.owner !== this.owner || this.disposed) return;
       this.commitRecords.set(request.id, request);
@@ -226,17 +226,17 @@ export class DataEngine {
     const call = () => {
       // Asked again when called: since the promise was queued the tab may have gone hidden or offline,
       // the engine may be disposed (which empties the set), or the screen may have stopped waiting.
-      if (!this.reachableListeners.has(call) || !this.canDeliver()) return;
+      if (!this.reachableListeners.has(call) || !this.canRead()) return;
       this.reachableListeners.delete(call);
       listener();
     };
     this.reachableListeners.add(call);
-    if (this.canDeliver()) void Promise.resolve().then(call);
+    if (this.canRead()) void Promise.resolve().then(call);
     return () => { this.reachableListeners.delete(call); };
   }
 
   private notifyReachable(): void {
-    if (!this.canDeliver()) return;
+    if (!this.canRead()) return;
     for (const call of [...this.reachableListeners]) { try { call(); } catch { /* A screen's retry cannot change the engine. */ } }
   }
 
@@ -646,7 +646,7 @@ export class DataEngine {
       return controller?.needsPersistenceRetry() ? aboutEditor(controller, controller.retryPersistence()) : undefined;
     }));
     this.assertCurrent(owner, generation);
-    await this.commits.drain(this.canDeliver());
+    await this.commits.drain(this.canSend());
     this.assertCurrent(owner, generation);
     // Only an explicit document retry requests a fresh read; the background
     // delivery timer must not turn into an extra polling loop for every editor.
@@ -691,7 +691,8 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     const cached = await this.options.snapshots.read(owner, resource); this.assertCurrent(owner, generation);
     if (cached && coversCommittedEffect(cached, resource, proof)) return cached;
-    if (!this.canDeliver()) throw new Error('Participant acknowledgement needs a confirmed read');
+    // Part of finishing this tab's own write, not polling: allowed whenever the write could be sent.
+    if (!this.canSend()) throw new Error('Participant acknowledgement needs a confirmed read');
     const snapshot = await this.options.transport.read(owner, resource); this.assertCurrent(owner, generation);
     if (!coversCommittedEffect(snapshot, resource, proof) || (snapshot.value && snapshot.value.userId !== owner)) throw new Error('Participant read does not prove the acknowledgement');
     return this.persistSnapshot(owner, generation, snapshot);
@@ -1058,7 +1059,7 @@ export class DataEngine {
 
   private async refreshAcknowledgedCollections(operationId: string, collections: string[], owner: string, generation: number): Promise<void> {
     await Promise.resolve();
-    if (!this.current(owner, generation) || !this.canDeliver() || this.refreshedCollectionOperations.has(operationId)) return;
+    if (!this.current(owner, generation) || !this.canRead() || this.refreshedCollectionOperations.has(operationId)) return;
     this.refreshedCollectionOperations.add(operationId);
     if (this.refreshedCollectionOperations.size > 256) this.refreshedCollectionOperations.delete(this.refreshedCollectionOperations.values().next().value!);
     // ResourceObserver refreshes only registered interests; unopened lists cost no read.
@@ -1100,7 +1101,7 @@ export class DataEngine {
       && sameResource(entry.controller.getState().checkpoint.confirmed.resource, snapshot.resource));
     if (!affected.length) return;
     await Promise.all(affected.map(entry => entry.controller!.settled()));
-    if (!this.current(owner, generation) || !this.canDeliver() || this.refreshedOperations.has(operationId)
+    if (!this.current(owner, generation) || !this.canRead() || this.refreshedOperations.has(operationId)
       || !affected.some(entry => !entry.closed && entry.stopObservation)) return;
     this.refreshedOperations.add(operationId);
     // The bounded set prevents duplicate receipt replays from adding another read loop.
@@ -1192,8 +1193,18 @@ export class DataEngine {
     }
   }
 
-  private canDeliver(): boolean {
-    return !this.disposed && this.owner !== null && this.online && this.visible;
+  /**
+   * Whether this tab may SEND the person's own edits: a signed-in owner and a network. A hidden
+   * page sends too — the phone whose screen went dark must not hold the last words away from the
+   * computer (BUG-20261006-hidden-tab-holds-last-edit).
+   */
+  private canSend(): boolean {
+    return !this.disposed && this.owner !== null && this.online;
+  }
+
+  /** Whether this tab may ask the server to READ: only while someone can see it (the read budget). */
+  private canRead(): boolean {
+    return this.canSend() && this.visible;
   }
 
   private requireOwner(): string {

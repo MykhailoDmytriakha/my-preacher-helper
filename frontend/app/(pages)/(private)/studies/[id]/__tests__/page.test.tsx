@@ -237,6 +237,41 @@ describe('StudyNoteEditorPage Pagination', () => {
         jest.useRealTimers();
     });
 
+    it('saves dictated text at once, not after the typing pause', async () => {
+        // Seen on screen means on its way: the preacher may lock the phone the moment the text
+        // appears, and a locked iPhone freezes the device storage (BUG-20261006-hidden-tab-holds-last-edit).
+        jest.useFakeTimers();
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockResolvedValue({ success: true, polishedText: 'Надиктованная мысль' }),
+        });
+        const updateNote = jest.fn().mockReturnValue({
+            acceptance: Promise.resolve({ kind: 'persisted' }),
+            persistence: Promise.resolve(),
+            result: Promise.resolve({ id: 'note-2', revision: 2 }),
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getAllByTitle('studiesWorkspace.voiceRecord')[0]);
+        // The recording is kept on the device before it is transcribed; wait for the text to land.
+        const editorText = () => (screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement).value;
+        for (let step = 0; step < 100 && !editorText().includes('Надиктованная мысль'); step += 1) {
+            await act(async () => { await jest.advanceTimersByTimeAsync(10); });
+        }
+        expect(editorText()).toContain('Надиктованная мысль');
+        // From the moment it is on screen: well inside the 1.5 s typing pause.
+        await act(async () => { await jest.advanceTimersByTimeAsync(100); });
+
+        expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+            updates: expect.objectContaining({ content: expect.stringContaining('Надиктованная мысль') }),
+        }));
+        jest.useRealTimers();
+    });
+
     it('navigates to the previous note when the left chevron is clicked', () => {
         render(<StudyNoteEditorPage />);
 

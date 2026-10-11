@@ -701,13 +701,28 @@ describe('DataEngine composition', () => {
     editor.dispose(); s.engine.dispose();
   });
 
-  it('does not deliver while hidden and resumes queued work on visibility return', async () => {
+  // A hidden page does not READ (the read budget), but its own edits still leave: the phone whose
+  // screen went dark must not hold the last words from the computer (BUG-20261006-hidden-tab-holds-last-edit).
+  it('delivers a save made while hidden, and still does not ask the server to read', async () => {
     const s = setup(); s.engine.setVisible(false); s.engine.setVisible(false);
     const editor = await s.engine.openEditor(resource, 'tab');
-    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'hidden queued' }); await editor.save();
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'hidden delivered' }); await editor.save();
+    await s.engine.retry();
+    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('hidden delivered');
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    await expect(s.engine.peekRemote(resource)).rejects.toThrow('The server cannot be asked right now');
+    expect(s.transport.read).not.toHaveBeenCalled();
+    s.engine.dispose();
+  });
+
+  it('delivers what waited offline when the network returns while the page is still hidden', async () => {
+    const s = setup(); s.engine.setVisible(false); s.engine.setOnline(false);
+    const editor = await s.engine.openEditor(resource, 'tab');
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'back in range' }); await editor.save();
     await s.engine.retry(); expect(s.transport.send).not.toHaveBeenCalled();
-    s.engine.setVisible(true); await s.engine.retry();
-    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('hidden queued');
+    // The network's return is the trigger; nothing else asks for a retry.
+    s.engine.setOnline(true); for (let i = 0; i < 10; i += 1) await drainMicrotasks();
+    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('back in range');
     s.engine.dispose();
   });
 

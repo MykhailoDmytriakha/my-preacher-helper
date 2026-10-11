@@ -2,7 +2,7 @@
 
 import { CheckIcon, ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from 'firebase/auth';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -74,6 +74,29 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const [draftStructure, setDraftStructure] = useState<SermonOutline | null>(null);
   const [pendingDeleteTpl, setPendingDeleteTpl] = useState<PlanTemplate | null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  // The save each waiting timer will run, so the page going away can run it now.
+  const pendingSaves = useRef<Record<string, () => void>>({});
+
+  /**
+   * An outline edit waits 400 ms and, until then, lives only in memory — a screen locked or a
+   * tab left inside that pause held it back (BUG-20261006-hidden-tab-holds-last-edit). Hiding
+   * the page runs every waiting save at once.
+   */
+  useEffect(() => {
+    const flush = () => {
+      for (const [id, save] of Object.entries(pendingSaves.current)) {
+        clearTimeout(saveTimers.current[id]);
+        save();
+      }
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   const toggleExpand = (tpl: PlanTemplate) => {
     if (expandedId === tpl.id) {
@@ -180,7 +203,9 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     // Reflect the edit instantly (the board reads `value`), then persist on a debounce.
     setDraftStructure(structure);
     if (saveTimers.current[tpl.id]) clearTimeout(saveTimers.current[tpl.id]);
-    saveTimers.current[tpl.id] = setTimeout(() => {
+    const save = () => {
+      delete saveTimers.current[tpl.id];
+      delete pendingSaves.current[tpl.id];
       const submission = updateTemplate(
         tpl.id,
         { structure },
@@ -195,7 +220,9 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         // Reported by the template update descriptor — see the note in handleRename.
         console.error('Error saving template structure:', err);
       });
-    }, 400);
+    };
+    pendingSaves.current[tpl.id] = save;
+    saveTimers.current[tpl.id] = setTimeout(save, 400);
   };
 
   /**

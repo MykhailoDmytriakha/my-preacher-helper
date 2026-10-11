@@ -200,13 +200,15 @@ function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLink
 
 
 function useNoteAIAssistant({
-    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef
 }: {
     noteId: string;
     content: string; availableTags: string[];
     setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
+    /** Text the app inserts whole — dictation, an applied analysis — is saved at once, not after the typing pause. */
+    saveAtOnceRef: React.MutableRefObject<boolean>;
 }) {
     const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
     // `/api/studies/transcribe` admits transcription AND ai, so the microphone has to answer
@@ -289,6 +291,7 @@ function useNoteAIAssistant({
     };
 
     const handleApplyAnalysis = (data: AnalysisResultData) => {
+        saveAtOnceRef.current = true;
         if (data.title) setTitle(data.title);
 
         if (data.scriptureRefs && data.scriptureRefs.length > 0) {
@@ -314,7 +317,12 @@ function useNoteAIAssistant({
         try {
             const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/studies/transcribe' });
             const newText = result.polishedText || result.originalText;
-            if (newText) setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+            if (newText) {
+                // Seen on screen means on its way: the preacher may lock the phone right now
+                // (BUG-20261006-hidden-tab-holds-last-edit).
+                saveAtOnceRef.current = true;
+                setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+            }
             await refreshAiUsage();
             // Success — the thought is now saved as text; drop the safety copy + persisted draft.
             storedVoiceBlobRef.current = null;
@@ -355,7 +363,7 @@ function useNoteAIAssistant({
         } finally {
             setIsVoiceProcessing(false);
         }
-    }, [refreshAiUsage, setContent, t, noteId]);
+    }, [refreshAiUsage, setContent, t, noteId, saveAtOnceRef]);
 
     const handleVoiceRecordingComplete = useCallback((audioBlob: Blob) => {
         setVoiceRetryCount(0);
@@ -751,6 +759,8 @@ export default function StudyNoteEditorPage() {
     }
 
     const baselineRef = useRef<NoteDraftPayload | null>(null);
+    // The next save goes without the typing pause — set by text the app inserts whole.
+    const saveAtOnceRef = useRef(false);
     const baselineNoteIdRef = useRef<string | null>(null);
     /**
      * The same baseline as `baselineRef`, but as STATE. A ref cannot drive what the screen
@@ -791,6 +801,7 @@ export default function StudyNoteEditorPage() {
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
         resaveNonce,
+        saveAtOnceRef,
         saveBlocked: saveConflict,
         onConflict: () => setSaveConflict(true),
         onSaved: (saved) => {
@@ -1000,7 +1011,7 @@ export default function StudyNoteEditorPage() {
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef
     });
 
     useNoteInitialization({

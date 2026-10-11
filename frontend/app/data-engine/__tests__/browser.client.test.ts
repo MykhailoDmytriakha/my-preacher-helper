@@ -198,21 +198,22 @@ describe('Browser DataEngine lifecycle composition', () => {
     stop(); browser.dispose();
   });
 
-  it('retries unknown commands on the minute timer only while foreground and online', async () => {
+  // A hidden tab still sends its own edits (BUG-20261006-hidden-tab-holds-last-edit); only the network gates the retry.
+  it('retries unknown commands on the minute timer while online, hidden or not', async () => {
     const s = setup(); const browser = createBrowserDataEngine(); s.authCallbacks[0].next(user('owner')); await settle();
     const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
     jest.mocked(s.transport.send).mockRejectedValue(new Error('ACK lost'));
     await editor.edit({ userId: 'owner', content: 'mine' }); await editor.save(); await settle();
     expect(s.transport.send).toHaveBeenCalledTimes(1);
     setVisible(false); document.dispatchEvent(new Event('visibilitychange'));
-    jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(1);
-    setVisible(true); document.dispatchEvent(new Event('visibilitychange')); await settle();
-    expect(s.transport.send).toHaveBeenCalledTimes(2);
-    setOnline(false); window.dispatchEvent(new Event('offline'));
     jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(2);
-    setOnline(true); window.dispatchEvent(new Event('online')); await settle();
+    setVisible(true); document.dispatchEvent(new Event('visibilitychange')); await settle();
     expect(s.transport.send).toHaveBeenCalledTimes(3);
-    jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(4);
+    setOnline(false); window.dispatchEvent(new Event('offline'));
+    jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(3);
+    setOnline(true); window.dispatchEvent(new Event('online')); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(4);
+    jest.advanceTimersByTime(60_000); await settle(); expect(s.transport.send).toHaveBeenCalledTimes(5);
     expect([...s.records.values()][0].state).toBe('unknown');
     browser.dispose();
   });

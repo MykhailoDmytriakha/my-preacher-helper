@@ -296,3 +296,111 @@ describe('creating a note keeps the durable draft at all times', () => {
   });
 
 });
+
+/**
+ * THE TEXT LEAVES WHEN IT MATTERS, NOT WHEN A TIMER SAYS SO (BUG-20261006-hidden-tab-holds-last-edit).
+ *
+ * The preacher dictates on the phone, sees the text, locks the screen and sits down at the
+ * computer. A pause timer still running at that moment holds the text on the phone: on a locked
+ * iPhone the device storage freezes, so whatever was not handed to the engine before the lock
+ * leaves only when the phone is opened again. Hiding the page and inserting dictated text are
+ * therefore moments to save at once; ordinary typing still waits for the pause.
+ */
+describe('the note hands its text over at once when the page hides or dictation lands', () => {
+  const existing = { id: 'n1', ...payload } as unknown as StudyNote;
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  };
+  const saved = (content: string, revision: number) => ({ ...payload, content, id: 'n1', revision }) as StudyNote & { revision: number };
+
+  function renderNote(updateNote: jest.Mock, saveAtOnceRef = { current: false }) {
+    const shared = {
+      noteId: 'n1', isNew: false, isInitialized: true, existingNote: existing,
+      title: payload.title, tags: payload.tags, scriptureRefs: payload.scriptureRefs, type: payload.type,
+      updateNote: updateNote as never, createNote: jest.fn() as never, uid: 'u1', setCreatedNoteId: jest.fn(),
+      t: ((key: string) => key) as never, baselineRef: { current: payload }, revisionRef: { current: 1 as number | null },
+      deliberateOverwriteRef: { current: false }, resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), saveAtOnceRef,
+    };
+    return renderHook(({ content }) => useNoteAutoSave({ ...shared, content }), { initialProps: { content: payload.content } });
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    window.localStorage.clear();
+    setVisibility('visible');
+  });
+  afterEach(() => {
+    setVisibility('visible');
+    jest.useRealTimers();
+  });
+
+  it('waits for the pause while the person is typing', async () => {
+    const updateNote = jest.fn(() => ({ ...persistedWrite(Promise.resolve()), result: Promise.resolve(saved('typed', 2)) }));
+    const { rerender } = renderNote(updateNote);
+    rerender({ content: 'typed' });
+    await act(async () => { jest.advanceTimersByTime(1000); });
+    expect(updateNote).not.toHaveBeenCalled();
+    await act(async () => { jest.advanceTimersByTime(600); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['visibilitychange', 'pagehide'] as const)('saves at once when the page goes away (%s), without waiting for the pause', async (event) => {
+    const updateNote = jest.fn(() => ({ ...persistedWrite(Promise.resolve()), result: Promise.resolve(saved('last words', 2)) }));
+    const { rerender } = renderNote(updateNote);
+    rerender({ content: 'last words' });
+    await act(async () => { jest.advanceTimersByTime(200); });
+    expect(updateNote).not.toHaveBeenCalled();
+    await act(async () => {
+      setVisibility('hidden');
+      if (event === 'pagehide') window.dispatchEvent(new Event('pagehide'));
+      else document.dispatchEvent(new Event('visibilitychange'));
+    });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { content: 'last words' } }));
+  });
+
+  it('creates a new note once when the page reports going away twice in a row', async () => {
+    const createNote = jest.fn(() => ({ ...persistedWrite(new Promise(() => undefined)), note: { id: 'real-id' } as StudyNote }));
+    renderHook(() => useHarness(createNote, jest.fn()));
+    await act(async () => {
+      setVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(createNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves the newest text right after a save that was still running when the page hid', async () => {
+    let finishFirst!: () => void;
+    const first = new Promise<void>(resolve => { finishFirst = resolve; });
+    const updateNote = jest.fn()
+      .mockImplementationOnce(() => ({ ...persistedWrite(first), result: first.then(() => saved('first', 2)) }))
+      .mockImplementation(() => ({ ...persistedWrite(Promise.resolve()), result: Promise.resolve(saved('first and newest', 3)) }));
+    const { rerender } = renderNote(updateNote);
+    rerender({ content: 'first' });
+    await act(async () => { jest.advanceTimersByTime(1600); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+
+    rerender({ content: 'first and newest' });
+    await act(async () => {
+      setVisibility('hidden');
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(async () => { finishFirst(); await first; });
+    await act(async () => { jest.advanceTimersByTime(10); });
+    expect(updateNote).toHaveBeenCalledTimes(2);
+    expect(updateNote).toHaveBeenLastCalledWith(expect.objectContaining({ updates: { content: 'first and newest' } }));
+  });
+
+  it('saves dictated text at once when the page asks for it, with the inserted text', async () => {
+    const updateNote = jest.fn(() => ({ ...persistedWrite(Promise.resolve()), result: Promise.resolve(saved('dictated', 2)) }));
+    const saveAtOnceRef = { current: false };
+    const { rerender } = renderNote(updateNote, saveAtOnceRef);
+    saveAtOnceRef.current = true;
+    rerender({ content: 'dictated' });
+    await act(async () => { jest.advanceTimersByTime(10); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { content: 'dictated' } }));
+    expect(saveAtOnceRef.current).toBe(false);
+  });
+});

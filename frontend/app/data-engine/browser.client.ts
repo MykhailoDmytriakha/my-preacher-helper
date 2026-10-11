@@ -84,7 +84,8 @@ export function createBrowserDataEngine({ onError }: { onError?: (error: unknown
   if (pausesWhenUntouched) for (const type of ATTENTION_EVENTS) window.addEventListener(type, attentionSeen, { capture: true, passive: true });
   const timer = window.setInterval(() => {
     if (active && pausesWhenUntouched && attended && Date.now() - lastAttention >= ATTENTION_MS) { attended = false; collections.setAttended(false); }
-    if (!active || !owner || !online() || !visible() || retrying) return;
+    // Hidden or not: the retry only sends the person's own edits and reads nothing (engine.retry).
+    if (!active || !owner || !online() || retrying) return;
     retrying = true;
     const started = generation;
     void engine.retry().catch(error => {
