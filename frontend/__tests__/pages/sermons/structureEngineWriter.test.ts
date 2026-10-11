@@ -92,4 +92,17 @@ describe('structure writes on an engine document', () => {
     const { writer } = draft({ ...base(), userId: 'someone-else' } as unknown as DocumentData);
     await expect(writer.updateStructure('s1', structure({ main: ['a'] }), null)).rejects.toThrow('not available');
   });
+
+  it('keeps a sub-point rewritten on the phone when this board rewrites another sub-point of the same point (BUG-20261011-outline-point-merge-loses-subpoint-edit)', async () => {
+    const subs = (x: string, y: string) => [{ id: 'sx', text: x, position: 1 }, { id: 'sy', text: y, position: 2 }];
+    const opened: SermonOutline = { introduction: [], main: [{ id: 'm1', text: 'Point', subPoints: subs('X', 'Y') }], conclusion: [] };
+    const { state, writer } = draft({ ...base(), outline: opened as unknown as DocumentData });
+    // The phone's rewrite of sub-point Y reached this document before the board handed its edit over.
+    state.current = { ...state.current!, outline: { ...opened, main: [{ id: 'm1', text: 'Point', subPoints: subs('X', 'Y on the phone') }] } as unknown as DocumentData };
+
+    await writer.updateSermonOutline('s1', { ...opened, main: [{ id: 'm1', text: 'Point', subPoints: subs('X on the board', 'Y') }] }, opened);
+
+    const main = (state.current!.outline as unknown as SermonOutline).main;
+    expect(main[0].subPoints?.map(sub => sub.text)).toEqual(['X on the board', 'Y on the phone']);
+  });
 });

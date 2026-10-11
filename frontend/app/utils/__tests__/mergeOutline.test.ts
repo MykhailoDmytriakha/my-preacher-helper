@@ -407,4 +407,127 @@ describe('mergeOutline — two devices, hours apart', () => {
 
     expect(mergeOutline(null, mine, theirs).collisions).toEqual(['p1']);
   });
+
+  /*
+   * One point edited on both devices, in DIFFERENT parts (BUG-20261011-outline-point-merge-loses-subpoint-edit):
+   * the point used to be taken whole from this side, so the phone's sub-point went back to its old words.
+   * The parts merge like the rest of the plan — fields by name, sub-points by id; only the same part
+   * written differently on both sides is a question.
+   */
+  it('keeps the phone edit of one sub-point and the laptop edit of another in the same point', () => {
+    const subs = (x: string, y: string) => [{ id: 'sx', text: x, position: 1 }, { id: 'sy', text: y, position: 2 }];
+    const base = outline([point('p1', 'Grace', { subPoints: subs('X', 'Y') })]);
+    const mine = outline([point('p1', 'Grace', { subPoints: subs('X on the laptop', 'Y') })]);
+    const theirs = outline([point('p1', 'Grace', { subPoints: subs('X', 'Y on the phone') })]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(collisions).toEqual([]);
+    expect(merged.main[0].subPoints?.map(sub => sub.text)).toEqual(['X on the laptop', 'Y on the phone']);
+  });
+
+  it("keeps the phone's note and the laptop's sub-point in the same point", () => {
+    const base = outline([point('p1', 'Grace', { note: 'old note', subPoints: [{ id: 'sx', text: 'X', position: 1 }] })]);
+    const mine = outline([point('p1', 'Grace', { note: 'old note', subPoints: [{ id: 'sx', text: 'X on the laptop', position: 1 }] })]);
+    const theirs = outline([point('p1', 'Grace', { note: 'note from the phone', subPoints: [{ id: 'sx', text: 'X', position: 1 }] })]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(collisions).toEqual([]);
+    expect(merged.main[0].note).toBe('note from the phone');
+    expect(merged.main[0].subPoints?.[0].text).toBe('X on the laptop');
+  });
+
+  it('still asks when the same sub-point was rewritten on both devices', () => {
+    const base = outline([point('p1', 'Grace', { subPoints: [{ id: 'sx', text: 'X', position: 1 }] })]);
+    const mine = outline([point('p1', 'Grace', { subPoints: [{ id: 'sx', text: 'X laptop', position: 1 }] })]);
+    const theirs = outline([point('p1', 'Grace', { subPoints: [{ id: 'sx', text: 'X phone', position: 1 }] })]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(collisions).toEqual(['p1']);
+    expect(merged.main[0].subPoints?.[0].text).toBe('X laptop');
+  });
+
+  it('still asks when both devices changed the skeleton of a point (first sub-points added on each)', () => {
+    // Words merge; the skeleton — which sub-points, in what order — stays a question, as before.
+    const base = outline([point('p1', 'Grace')]);
+    const mine = outline([point('p1', 'Grace', { subPoints: [{ id: 'a', text: 'From the laptop', position: 1 }] })]);
+    const theirs = outline([point('p1', 'Grace', { subPoints: [{ id: 'b', text: 'From the phone', position: 2 }] })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions).toEqual(['p1']);
+  });
+
+  it('asks instead of handing over a plan that holds one sub-point in two places', () => {
+    // The two devices moved "a" to different points, and an unrelated point merged cleanly:
+    // the plan must not go out with "a" twice and no question.
+    const sub = { id: 'a', text: 'Moving', position: 1 };
+    const base = outline([point('p1', 'One', { subPoints: [sub] }), point('p2', 'Two', { subPoints: [] }), point('p3', 'Three', { subPoints: [] }), point('p4', 'Four')]);
+    const mine = outline([point('p1', 'One', { subPoints: [] }), point('p2', 'Two', { subPoints: [sub] }), point('p3', 'Three', { subPoints: [] }), point('p4', 'Four on the laptop')]);
+    const theirs = outline([point('p1', 'One', { subPoints: [] }), point('p2', 'Two', { subPoints: [] }), point('p3', 'Three', { subPoints: [sub] }), point('p4', 'Four', { note: 'phone note' })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions.sort()).toEqual(['p2', 'p3']);
+  });
+
+  it('keeps the visible order when one device appends a sub-point and the other reorders them', () => {
+    const base = outline([point('p1', 'Grace', { subPoints: [{ id: 'a', text: 'A', position: 0 }, { id: 'b', text: 'B', position: 1 }] })]);
+    const mine = outline([point('p1', 'Grace', { subPoints: [{ id: 'a', text: 'A', position: 0 }, { id: 'b', text: 'B', position: 1 }, { id: 'c', text: 'C', position: 1001 }] })]);
+    const theirs = outline([point('p1', 'Grace', { subPoints: [{ id: 'b', text: 'B', position: 1000 }, { id: 'a', text: 'A', position: 2000 }] })]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    // The skeleton changed on both sides: a question, and this side's order stays as it was.
+    expect(collisions).toEqual(['p1']);
+    expect(merged.main[0].subPoints?.map(sub => sub.id)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('asks, and under "keep mine" keeps one place, when the devices moved a sub-point under different points', () => {
+    const sub = { id: 'a', text: 'Moving sub-point', position: 1 };
+    const base = outline([point('p1', 'One', { subPoints: [sub] }), point('p2', 'Two', { subPoints: [] }), point('p3', 'Three', { subPoints: [] })]);
+    // This device moves it under p2 and writes p3's note; the phone moves it under p3 and writes p2's note.
+    const mine = outline([point('p1', 'One', { subPoints: [] }), point('p2', 'Two', { subPoints: [sub] }), point('p3', 'Three', { note: 'laptop note', subPoints: [] })]);
+    const theirs = outline([point('p1', 'One', { subPoints: [] }), point('p2', 'Two', { note: 'phone note', subPoints: [] }), point('p3', 'Three', { subPoints: [sub] })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions.sort()).toEqual(['p2', 'p3']);
+    const kept = mergeOutline(base, mine, theirs, true).outline;
+    expect(kept.main.flatMap(p => (p.subPoints ?? []).map(s => `${p.id}/${s.id}`))).toEqual(['p2/a']);
+  });
+
+  it('asks when one device makes a sub-point a point and the other moves it under another point', () => {
+    const sub = { id: 'a', text: 'Promoted or moved', position: 1 };
+    const base = outline([point('p1', 'One', { subPoints: [sub] }), point('p2', 'Two', { subPoints: [] })]);
+    const mine = outline([point('p1', 'One', { note: 'laptop note', subPoints: [] }), point('p2', 'Two', { subPoints: [] }), point('a', 'Promoted or moved')]);
+    const theirs = outline([point('p1', 'One rewritten', { subPoints: [] }), point('p2', 'Two', { subPoints: [sub] })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions).toContain('p1');
+  });
+
+  it('does not count an empty note against a note written on the other device', () => {
+    const base = outline([point('p1', 'Grace', { subPoints: [{ id: 'sx', text: 'X', position: 1 }] })]);
+    const mine = outline([point('p1', 'Grace', { note: '', subPoints: [{ id: 'sx', text: 'X on the laptop', position: 1, note: '' }] })]);
+    const theirs = outline([point('p1', 'Grace', { subPoints: [{ id: 'sx', text: 'X', position: 1, note: 'phone note' }] })]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(collisions).toEqual([]);
+    expect(merged.main[0].subPoints?.[0]).toEqual(expect.objectContaining({ text: 'X on the laptop', note: 'phone note' }));
+  });
+
+  it('tells a point id that looks like a place label from the place itself', () => {
+    // A point literally named "top:a": the check must not mistake it for "point a at the top".
+    const base = outline([point('p0', 'Zero', { subPoints: [{ id: 'a', text: 'A', position: 1 }] }), point('top:a', 'Named oddly', { subPoints: [] }), point('p4', 'Four')]);
+    const mine = outline([point('p0', 'Zero', { subPoints: [] }), point('top:a', 'Named oddly', { subPoints: [] }), point('a', 'A'), point('p4', 'Four on the laptop')]);
+    const theirs = outline([point('p0', 'Zero', { subPoints: [] }), point('top:a', 'Named oddly', { subPoints: [{ id: 'a', text: 'A', position: 1 }] }), point('p4', 'Four', { note: 'phone note' })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions).toEqual(expect.arrayContaining(['a', 'top:a']));
+  });
+
+  it('keeps the old question for a point whose sub-points have no id or repeat one', () => {
+    const broken = [{ id: 'a', text: 'A', position: 1 }, { id: 'a', text: 'A again', position: 2 }];
+    const base = outline([point('p1', 'Grace', { subPoints: broken })]);
+    const mine = outline([point('p1', 'Grace on the laptop', { subPoints: broken })]);
+    const theirs = outline([point('p1', 'Grace', { note: 'phone note', subPoints: broken })]);
+
+    expect(mergeOutline(base, mine, theirs).collisions).toEqual(['p1']);
+  });
 });

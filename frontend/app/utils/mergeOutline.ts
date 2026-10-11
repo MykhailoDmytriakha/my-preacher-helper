@@ -1,3 +1,5 @@
+import { mergeValues } from '@/data-engine/react.client';
+
 import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
 /**
@@ -289,6 +291,24 @@ export function mergeOutline(
     merged[section] = result;
   });
 
+  // One id lives in one place. A candidate that holds an id in two places — two devices moved a
+  // sub-point to different points (HEAD did this too) — is a plan the document refuses, so those
+  // points become a question instead of a silent hand-over. It only adds questions, never content.
+  const owners = new Map<string, Map<string, string>>();
+  const own = (itemId: unknown, place: string, pointId: string) => {
+    if (typeof itemId !== 'string' || !itemId) return;
+    owners.set(itemId, (owners.get(itemId) ?? new Map()).set(place, pointId));
+  };
+  SECTIONS.forEach((section) => merged[section].forEach((point) => {
+    // A place says what holds the id — the plan itself or a point — never by encoding it into the id.
+    own(point.id, JSON.stringify(['plan']), point.id);
+    (point.subPoints ?? []).forEach((sub) => own(sub.id, JSON.stringify(['point', point.id]), point.id));
+  }));
+  owners.forEach((places) => {
+    if (places.size < 2) return;
+    places.forEach((pointId) => { if (!collisions.includes(pointId)) collisions.push(pointId); });
+  });
+
   return { outline: merged, collisions };
 }
 
@@ -322,9 +342,51 @@ function reconcileExistingPoint(
   const changedHere = !start || !samePoint(start, here);
   const changedThere = !start || !samePoint(start, there);
   if (changedHere && changedThere && !samePoint(here, there)) {
+    // Both sides changed this point. When neither touched its skeleton — the same sub-points in the
+    // same order and places — only words changed, and they merge field by field with the engine's
+    // rule (BUG-20261011-outline-point-merge-loses-subpoint-edit): the phone's sub-point and this
+    // device's sub-point both stay. The same words written differently, or any change to the skeleton
+    // (a sub-point added, removed, moved, reordered), stays a question as before.
+    const parts = start && sameSkeleton(start, here) && sameSkeleton(start, there)
+      ? mergeValues(asField(start), asField(here), asField(there))
+      : null;
+    if (parts && parts.conflicts.length === 0 && parts.value.exists) {
+      content.set(id, parts.value.value as unknown as OutlinePoint);
+      return;
+    }
     if (!collisions.includes(id)) collisions.push(id);
     content.set(id, here);
   } else {
     content.set(id, changedThere ? there : here);
   }
+}
+
+/**
+ * A point as the engine merges it: plain data, without `undefined` fields, and with a list of
+ * sub-points even where none was written yet — so first sub-points added on both devices merge
+ * by id instead of colliding over a missing field.
+ */
+function asField(point: OutlinePoint) {
+  // Absent and empty mean the same here as in `samePoint`: an empty note or a false "reviewed"
+  // is not something either side wrote.
+  const plain = <T extends { note?: string; isReviewed?: boolean }>(item: T): T => {
+    const { note, isReviewed, ...rest } = item;
+    return { ...rest, ...(note ? { note } : {}), ...(isReviewed ? { isReviewed } : {}) } as T;
+  };
+  const value = { ...plain(point), subPoints: (point.subPoints ?? []).map(plain) };
+  return { exists: true as const, value: JSON.parse(JSON.stringify(value)) };
+}
+
+/**
+ * The same sub-points, in the same order, at the same places: only their words may differ. Sub-points
+ * without an id, or with one id twice, are not a skeleton the merge can trust.
+ */
+function sameSkeleton(a: OutlinePoint, b: OutlinePoint): boolean {
+  const left = a.subPoints ?? [];
+  const right = b.subPoints ?? [];
+  const ids = left.map((sub) => sub.id);
+  return ids.every((subId) => typeof subId === 'string' && subId.length > 0)
+    && new Set(ids).size === ids.length
+    && left.length === right.length
+    && left.every((sub, index) => sub.id === right[index].id && sub.position === right[index].position);
 }

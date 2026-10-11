@@ -14,6 +14,7 @@ import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
+import { mergeFields } from './protocol';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -24,7 +25,7 @@ import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
-import type { DocumentData, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
@@ -122,6 +123,15 @@ function useLookWhileSilent(active: boolean, databases: readonly string[], look:
 }
 
 /** Public recovery UI seam; storage and owner fencing remain inside the engine. */
+/**
+ * The engine's own three-way merge of one value — objects by field, lists by item id; a part written
+ * differently on both sides is a conflict. For code that must merge before it hands a value over
+ * (the sermon plan's `mergeOutline`), so there is one rule for what "both changed" means.
+ */
+export function mergeValues(base: FieldValue, mine: FieldValue, theirs: FieldValue) {
+  return mergeFields(base, mine, theirs);
+}
+
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
   return useDiscovery(options);
 }
