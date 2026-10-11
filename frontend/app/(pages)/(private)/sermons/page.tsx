@@ -37,6 +37,7 @@ const SORT_ORDER_KEY = 'filters.sortOrder';
  */
 const DEFAULT_SORT_OPTION = 'recentlyUpdated';
 const REMOVE_FILTER_KEY = 'filters.removeFilter';
+const SERIES_KEY = 'navigation.series';
 
 // localStorage keys for user preferences
 /** Stable identity, so hiding covered verdicts does not remount the list each render. */
@@ -443,7 +444,7 @@ export default function SermonsPage() {
                         {/* Series Filter */}
                         <div className="space-y-2">
                           <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Серии
+                            {t(SERIES_KEY)}
                           </label>
                           <Select
                             tone="muted"
@@ -497,9 +498,9 @@ export default function SermonsPage() {
               <Chip
                 tone="blue"
                 onRemove={() => setSeriesFilter("all")}
-                removeLabel={t(REMOVE_FILTER_KEY, { filter: t('navigation.series') })}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SERIES_KEY) })}
               >
-                {t('navigation.series')}: {t(`workspaces.series.filters.${seriesFilter}`)}
+                {t(SERIES_KEY)}: {t(`workspaces.series.filters.${seriesFilter}`)}
               </Chip>
             )}
 

@@ -9,6 +9,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
@@ -73,18 +74,19 @@ class OfflineRouteBoundary extends Component<{ fallback: ReactNode; children: Re
 }
 
 function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
+  const { t } = useTranslation();
   return (
     <main className="min-h-screen grid place-items-center bg-[#0b1220] px-6 text-slate-100">
       <div className="w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-900/60 p-8 text-center shadow-xl">
         <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-amber-500/15 text-2xl">
           📡
         </div>
-        <h1 className="mb-2 text-xl font-semibold">Нет соединения</h1>
+        <h1 className="mb-2 text-xl font-semibold">{t('connection.offlinePage.title')}</h1>
         <p className="mb-1 text-sm text-slate-300">
-          Приложение запущено из локального кэша — ваши данные на месте.
+          {t('connection.offlinePage.fromCache')}
         </p>
         {requestedPath ? (
-          <p className="mb-6 truncate text-xs text-slate-500">Запрошенная страница: {requestedPath}</p>
+          <p className="mb-6 truncate text-xs text-slate-500">{t('connection.offlinePage.requested', { path: requestedPath })}</p>
         ) : (
           <div className="mb-6" />
         )}
@@ -94,14 +96,14 @@ function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
             href="/dashboard"
             className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500"
           >
-            На главную
+            {t('connection.offlinePage.home')}
           </a>
           <button
             type="button"
             onClick={() => window.location.reload()}
             className="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
           >
-            Повторить
+            {t('buttons.retry')}
           </button>
         </div>
       </div>

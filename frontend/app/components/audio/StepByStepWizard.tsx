@@ -149,11 +149,11 @@ const TTS_CATALOG = getFunctionCatalog('tts');
 const providerIdOf = (provider: TTSProvider) => (provider === 'google' ? 'gemini' : 'openai');
 
 /** Curated male voices for Google TTS, ordered youngest → oldest sounding. */
-const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string; descDefault: string }[] = [
-    { id: 'Puck', descKey: 'audioExport.googleVoicePuck', descDefault: 'молодой, бодрый' },
-    { id: 'Iapetus', descKey: 'audioExport.googleVoiceIapetus', descDefault: 'чёткий, ровный' },
-    { id: 'Orus', descKey: 'audioExport.googleVoiceOrus', descDefault: 'твёрдый, уверенный' },
-    { id: 'Charon', descKey: 'audioExport.googleVoiceCharon', descDefault: 'глубокий, тёплый' },
+const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string }[] = [
+    { id: 'Puck', descKey: 'audioExport.googleVoicePuck' },
+    { id: 'Iapetus', descKey: 'audioExport.googleVoiceIapetus' },
+    { id: 'Orus', descKey: 'audioExport.googleVoiceOrus' },
+    { id: 'Charon', descKey: 'audioExport.googleVoiceCharon' },
 ];
 
 const ACTIVE_PILL = 'border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-500/60 dark:bg-orange-500/10 dark:text-orange-300';
@@ -985,7 +985,7 @@ export default function StepByStepWizard({
                                 <div className="flex flex-wrap gap-2">
                                     {ttsProvider === 'openai'
                                         ? AVAILABLE_VOICES.map(v => renderVoicePill(v.id, v.id.charAt(0).toUpperCase() + v.id.slice(1), t(v.descKey, { defaultValue: '' }), voice === v.id, () => setVoice(v.id)))
-                                        : GOOGLE_VOICE_OPTIONS.map(v => renderVoicePill(v.id, v.id, t(v.descKey, { defaultValue: v.descDefault }), googleVoice === v.id, () => setGoogleVoice(v.id)))}
+                                        : GOOGLE_VOICE_OPTIONS.map(v => renderVoicePill(v.id, v.id, t(v.descKey), googleVoice === v.id, () => setGoogleVoice(v.id)))}
                                 </div>
                                 <p className="mt-2 text-[11px] text-gray-400">
                                     {ttsProvider === 'google'

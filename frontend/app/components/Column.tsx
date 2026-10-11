@@ -378,7 +378,7 @@ export default function Column({
                 onAudioThoughtCreated,
                 t,
                 successMessage: sectionLabel
-                  ? `Запись добавлена в раздел "${sectionLabel}"`
+                  ? t('manualThought.addedToSection', { section: sectionLabel })
                   : undefined,
                 errorContext: "Error recording audio thought:",
               });

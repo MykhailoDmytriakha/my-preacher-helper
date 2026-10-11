@@ -1749,7 +1749,6 @@ useEffect(() => {
           prepDraft={prepDraft}
           setPrepDraft={core ? () => undefined : setPrepDraft}
           savePreparation={core ? next => savePrepField('spiritual', next.spiritual?.readAndPrayedConfirmed, 'readAndPrayedConfirmed') : savePreparation}
-          savingPrep={savingPrep}
           formatSuperscriptVerses={formatSuperscriptVerses}
         />
       ),

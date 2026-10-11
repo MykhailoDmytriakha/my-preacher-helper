@@ -19,7 +19,7 @@ interface RichMarkdownEditorProps {
 export function RichMarkdownEditor({
     value,
     onChange,
-    placeholder = 'Введите текст...',
+    placeholder = '',
     minHeight = '150px',
     autoFocus = false,
     stickyToolbarTop,
