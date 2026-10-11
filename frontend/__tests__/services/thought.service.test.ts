@@ -233,9 +233,12 @@ describe('Thought Service', () => {
     });
 
     it('should clear stored audio on success', async () => {
+      // Kept apart: apiClient wraps a response's body reads (a body cut off mid-answer counts as
+      // not arrived), so the property on the response is no longer this mock.
+      const readJson = jest.fn().mockResolvedValue(mockThought);
       const mockResponse = {
         ok: true,
-        json: jest.fn().mockResolvedValue(mockThought),
+        json: readJson,
       };
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -248,7 +251,7 @@ describe('Thought Service', () => {
       await createAudioThought(mockBlob, mockSermonId);
 
       // For now, just test that the function completes successfully
-      expect(mockResponse.json).toHaveBeenCalled();
+      expect(readJson).toHaveBeenCalled();
     });
   });
 

@@ -87,6 +87,46 @@ export function isConnectionFailure(error: unknown): boolean {
 }
 
 /**
+ * THE HEADERS CAME, THE BODY DID NOT (BUG-20261011-body-read-failure-drops-saved-copy).
+ *
+ * A network that drops mid-answer fails while the body is read — after this module returned the
+ * response — and that failure never reached the classification above, so a refetch cut off halfway
+ * dropped the saved copy of what the person had seen. Reading the body of a response this module
+ * returned marks a stream failure as "did not reach" and says the connection is gone, like a failed
+ * fetch. Bad JSON (`SyntaxError`) is an answer, and a body read a second time or already held by a
+ * stream reader is a fault in the caller (`bodyUsed` / `body.locked` before the read): neither is a
+ * network. `formData()` is not covered: its TypeError also means "this is not form data".
+ */
+const BODY_READS = ['json', 'text', 'arrayBuffer', 'blob'] as const;
+function markBodyCutOff(response: Response, requestId: number): Response {
+  // A response that cannot take own properties is returned as it is: the mark is a help, never a
+  // reason to fail a request that succeeded.
+  if (!Object.isExtensible(response)) return response;
+  for (const method of BODY_READS) {
+    const read = response[method]?.bind(response);
+    if (!read) continue;
+    Object.defineProperty(response, method, {
+      configurable: true,
+      value: async () => {
+        // Unused and not held by a stream reader: only then is a TypeError the network's.
+        const untouched = !response.bodyUsed && !response.body?.locked;
+        try {
+          return await read();
+        } catch (error) {
+          if (untouched && error instanceof TypeError) {
+            connectionFailures.add(error);
+            // Reported under the request it belongs to: a newer answer already heard wins.
+            reportServerUnreachable(requestId);
+          }
+          throw error;
+        }
+      },
+    });
+  }
+  return response;
+}
+
+/**
  * High-level API client with tiered timeouts and connectivity tracking.
  */
 export async function apiClient(
@@ -121,7 +161,7 @@ async function performApiRequest(
     // route succeeded is the caller's question, not the connection's.
     reportServerReachable(requestId);
     await throwIfUsageCapReached(response);
-    return response;
+    return markBodyCutOff(response, requestId);
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
     // A slow AI/audio operation is not evidence that unrelated reads lost their network.
