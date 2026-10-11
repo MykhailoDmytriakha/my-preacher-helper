@@ -8,7 +8,8 @@ import {
     addSiblingNode,
     areTreesEqual,
     promoteNode,
-    demoteNode
+    demoteNode,
+    setNodeTitle
 } from './treeUtils';
 import type { ExegeticalPlanNode } from '@/models/models';
 
@@ -273,6 +274,83 @@ describe('treeUtils', () => {
 
             const result = demoteNode(nodes, '2');
             expect(result).toBe(nodes);
+        });
+    });
+
+    /*
+     * The plan lives in a document merged with other devices field by field
+     * (BUG-20261010-exegetical-plan-save-wipes-newer-words): an operation must leave every point it
+     * does not act on exactly as stored, or another device's edit of that point becomes a conflict.
+     */
+    describe('points the operation does not act on stay as stored', () => {
+        const stored = (): ExegeticalPlanNode[] => [
+            { id: 'a', title: 'A' },
+            { id: 'b', title: 'B', children: [{ id: 'b1', title: 'B1' }] },
+        ];
+
+        it('changes one title and nothing else', () => {
+            expect(setNodeTitle(stored(), 'b1', 'B1 edited')).toEqual([
+                { id: 'a', title: 'A' },
+                { id: 'b', title: 'B', children: [{ id: 'b1', title: 'B1 edited' }] },
+            ]);
+        });
+
+        it('removes a point without giving the others an empty children list', () => {
+            expect(removeNode(stored(), 'b1')).toEqual([{ id: 'a', title: 'A' }, { id: 'b', title: 'B', children: [] }]);
+        });
+
+        it('adds a child without giving the others an empty children list', () => {
+            const added = { id: 'n', title: '', children: [] };
+            expect(addChildNode(stored(), 'b1', added)).toEqual([
+                { id: 'a', title: 'A' },
+                { id: 'b', title: 'B', children: [{ id: 'b1', title: 'B1', children: [added] }] },
+            ]);
+        });
+
+        it('promotes and demotes a later point past an earlier one without children', () => {
+            expect(promoteNode(stored(), 'b1')).toEqual([
+                { id: 'a', title: 'A' }, { id: 'b', title: 'B', children: [] }, { id: 'b1', title: 'B1' },
+            ]);
+            const flat: ExegeticalPlanNode[] = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B', children: [{ id: 'b1', title: 'B1' }, { id: 'b2', title: 'B2' }] }];
+            expect(demoteNode(flat, 'b2')).toEqual([
+                { id: 'a', title: 'A' }, { id: 'b', title: 'B', children: [{ id: 'b1', title: 'B1', children: [{ id: 'b2', title: 'B2' }] }] },
+            ]);
+        });
+    });
+
+    describe('demoting under a given point', () => {
+        const plan = (): ExegeticalPlanNode[] => [
+            { id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'x', title: 'X', children: [{ id: 'x1', title: 'X1' }] },
+        ];
+
+        it('moves the point to the end of the given point, wherever it stands now', () => {
+            expect(demoteNode(plan(), 'x', 'a')).toEqual([
+                { id: 'a', title: 'A', children: [{ id: 'x', title: 'X', children: [{ id: 'x1', title: 'X1' }] }] }, { id: 'b', title: 'B' },
+            ]);
+        });
+
+        it('changes nothing when the given point is gone or lies inside the moving one', () => {
+            const nodes = plan();
+            expect(demoteNode(nodes, 'x', 'gone')).toBe(nodes);
+            expect(demoteNode(nodes, 'x', 'x1')).toBe(nodes);
+            expect(demoteNode(nodes, 'x', 'x')).toBe(nodes);
+        });
+    });
+
+    describe('promoting from a given parent', () => {
+        const plan = (): ExegeticalPlanNode[] => [
+            { id: 'p', title: 'P', children: [{ id: 'a', title: 'A', children: [{ id: 'x', title: 'X' }] }] }, { id: 'q', title: 'Q' },
+        ];
+
+        it('lifts the point when it is still under that parent', () => {
+            expect(promoteNode(plan(), 'x', 'a')).toEqual([
+                { id: 'p', title: 'P', children: [{ id: 'a', title: 'A', children: [] }, { id: 'x', title: 'X' }] }, { id: 'q', title: 'Q' },
+            ]);
+        });
+
+        it('changes nothing when the point has been moved under another parent meanwhile', () => {
+            const nodes = plan();
+            expect(promoteNode(nodes, 'x', 'q')).toBe(nodes);
         });
     });
 });

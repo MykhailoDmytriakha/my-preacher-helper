@@ -1776,11 +1776,9 @@ useEffect(() => {
       exegeticalPlan: (
         <ExegeticalPlanStepContent
           value={prepDraft?.exegeticalPlan || []}
-          onChange={(nodes) => {
-            if (core) { void core.patchPreparation({ exegeticalPlan: nodes }).catch(() => undefined); return; }
-            setPrepDraft(prev => ({ ...(prev || {}), exegeticalPlan: nodes }));
-          }}
-          onSave={(nodes) => savePrepField('exegeticalPlan', nodes)}
+          // On the engine each plan edit goes straight into the document, which saves and merges it.
+          onEdit={core ? (edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) })) : undefined}
+          onSave={core ? undefined : (nodes) => savePrepField('exegeticalPlan', nodes)}
           saving={savingPrep}
           authorIntent={prepDraft?.authorIntent || ''}
           onSaveAuthorIntent={(text) => savePrepField('authorIntent', text)}

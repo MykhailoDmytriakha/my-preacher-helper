@@ -28,6 +28,8 @@ import useSermon from '@/hooks/useSermon';
 
 import { TestProviders } from '../../../test-utils/test-providers';
 
+import type { Preparation } from '@/models/models';
+
 jest.mock('@/services/thought.service', () => ({
   ...jest.requireActual('@/services/thought.service'),
   createAudioThought: jest.fn(async () => ({ id: 'voice-thought', text: 'Spoken', tags: [], date: '2026-09-22' })),
@@ -297,6 +299,34 @@ describe('SermonPage mode transitions', () => {
     ]);
     expect(mockCore.patchCore).toHaveBeenCalledWith({ verse: 'Acts 1' });
     expect(mockSetSermon).not.toHaveBeenCalled();
+  });
+
+  test('on the engine the exegetical plan edits the document, applied to its newest preparation', () => {
+    mockEngineEnabled = true; searchParamsMock.set('mode', 'prep');
+    const editPreparation = jest.fn(async () => undefined);
+    mockCore = { ...mockCore, editPreparation } as typeof mockCore;
+    render(<TestProviders><SermonPage /></TestProviders>);
+    const exegetical = jest.mocked(ExegeticalPlanStepContent).mock.calls.at(-1)![0];
+    // No save of its own: a save that ends must never bring an older plan back over newer words.
+    expect(exegetical.onSave).toBeUndefined();
+    exegetical.onEdit!(nodes => [...nodes, { id: 'n2', title: 'Added', children: [] }]);
+
+    const [edit] = editPreparation.mock.calls[0] as unknown as [(prep: Preparation) => Preparation];
+    // The edit runs on what the document holds when it applies, not on what this render saw.
+    expect(edit({ thesis: { homiletical: 'Newer thesis' }, exegeticalPlan: [{ id: 'n1', title: 'Newest words', children: [] }] }))
+      .toEqual({
+        thesis: { homiletical: 'Newer thesis' },
+        exegeticalPlan: [{ id: 'n1', title: 'Newest words', children: [] }, { id: 'n2', title: 'Added', children: [] }],
+      });
+    expect(mockCore.patchPreparation).not.toHaveBeenCalled();
+  });
+
+  test('without the engine the exegetical plan keeps its own draft and saves it', () => {
+    searchParamsMock.set('mode', 'prep');
+    render(<TestProviders><SermonPage /></TestProviders>);
+    const exegetical = jest.mocked(ExegeticalPlanStepContent).mock.calls.at(-1)![0];
+    expect(exegetical.onEdit).toBeUndefined();
+    expect(exegetical.onSave).toEqual(expect.any(Function));
   });
 
   test('keeps a deleted dirty document visible but locks core, preparation, dictation and insights', () => {

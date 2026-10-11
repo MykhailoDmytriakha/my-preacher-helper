@@ -38,16 +38,66 @@ export const mergeDraftTitles = (
   }));
 };
 
+/*
+ * Tree operations change only the path to the point they act on: every other point keeps exactly
+ * what is stored (no `children: []` added where there were none). A plan kept in a document is
+ * merged with other devices field by field, and an untouched point that looks changed turns
+ * another device's edit or deletion of it into a false conflict.
+ */
+export const setNodeTitle = (
+  nodes: ExegeticalPlanNode[],
+  id: string,
+  title: string
+): ExegeticalPlanNode[] => {
+  return nodes.map(n => {
+    if (n.id === id) return { ...n, title };
+    return n.children ? { ...n, children: setNodeTitle(n.children, id, title) } : n;
+  });
+};
+
+/** Where a point sits: its parent's id (null at the top level) and its index among its siblings. */
+export const findPlace = (
+  nodes: ExegeticalPlanNode[],
+  id: string,
+  parentId: string | null = null
+): { parentId: string | null; index: number } | null => {
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === id) return { parentId, index: i };
+    const inner = nodes[i].children ? findPlace(nodes[i].children!, id, nodes[i].id) : null;
+    if (inner) return inner;
+  }
+  return null;
+};
+
+const insertAt = (nodes: ExegeticalPlanNode[], index: number, node: ExegeticalPlanNode) => {
+  const next = [...nodes];
+  next.splice(Math.min(index, next.length), 0, node);
+  return next;
+};
+
+/** Put a point at a place; a parent that is gone sends it to the end of the top level. */
+export const insertNode = (
+  nodes: ExegeticalPlanNode[],
+  place: { parentId: string | null; index: number },
+  node: ExegeticalPlanNode
+): ExegeticalPlanNode[] => {
+  const { parentId, index } = place;
+  if (parentId === null) return insertAt(nodes, index, node);
+  if (!findPlace(nodes, parentId)) return [...nodes, node];
+  const into = (list: ExegeticalPlanNode[]): ExegeticalPlanNode[] => list.map(n => {
+    if (n.id === parentId) return { ...n, children: insertAt(n.children ?? [], index, node) };
+    return n.children ? { ...n, children: into(n.children) } : n;
+  });
+  return into(nodes);
+};
+
 export const removeNode = (
   nodes: ExegeticalPlanNode[],
   idToRemove: string
 ): ExegeticalPlanNode[] => {
   return nodes
     .filter(n => n.id !== idToRemove)
-    .map(n => ({
-      ...n,
-      children: n.children ? removeNode(n.children, idToRemove) : []
-    }));
+    .map(n => n.children ? { ...n, children: removeNode(n.children, idToRemove) } : n);
 };
 
 export const addChildNode = (
@@ -59,7 +109,7 @@ export const addChildNode = (
     if (n.id === parentId) {
       return { ...n, children: [...(n.children || []), newNode] };
     }
-    return { ...n, children: n.children ? addChildNode(n.children, parentId, newNode) : [] };
+    return n.children ? { ...n, children: addChildNode(n.children, parentId, newNode) } : n;
   });
 };
 
@@ -111,10 +161,16 @@ export const areTreesEqual = (
   return true;
 };
 
+/**
+ * Lift a point to its parent's level, right after the parent. `from` is the parent the person saw:
+ * if the point has been moved under another one meanwhile, nothing changes.
+ */
 export const promoteNode = (
   nodes: ExegeticalPlanNode[],
-  id: string
+  id: string,
+  from?: string
 ): ExegeticalPlanNode[] => {
+  if (from !== undefined && findPlace(nodes, id)?.parentId !== from) return nodes;
   // Check if node is a direct child of any of these nodes
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
@@ -131,8 +187,9 @@ export const promoteNode = (
       return newNodes;
     }
 
-    // Recurse
-    const updatedChildren = promoteNode(node.children || [], id);
+    // Recurse (a point without children cannot hold the target)
+    if (!node.children?.length) continue;
+    const updatedChildren = promoteNode(node.children, id);
     if (updatedChildren !== node.children) {
       const newNodes = [...nodes];
       newNodes[i] = { ...node, children: updatedChildren };
@@ -143,35 +200,35 @@ export const promoteNode = (
   return nodes;
 };
 
+const findNode = (nodes: ExegeticalPlanNode[], id: string): ExegeticalPlanNode | null => {
+  for (const n of nodes) {
+    if (n.id === id) return n;
+    const inner = n.children ? findNode(n.children, id) : null;
+    if (inner) return inner;
+  }
+  return null;
+};
+
+/** The point right above a point among its siblings — where a demotion puts it. */
+export const previousSiblingId = (nodes: ExegeticalPlanNode[], id: string): string | null => {
+  for (let i = 0; i < nodes.length; i++) {
+    if (nodes[i].id === id) return i > 0 ? nodes[i - 1].id : null;
+    const inner = nodes[i].children ? previousSiblingId(nodes[i].children!, id) : null;
+    if (inner) return inner;
+  }
+  return null;
+};
+
+/**
+ * Move a point to the end of `under`'s children. `under` is the point the person saw above it —
+ * passed in when the plan may have been reordered since, otherwise its previous sibling here.
+ */
 export const demoteNode = (
   nodes: ExegeticalPlanNode[],
-  id: string
+  id: string,
+  under: string | null = previousSiblingId(nodes, id)
 ): ExegeticalPlanNode[] => {
-  for (let i = 0; i < nodes.length; i++) {
-    if (nodes[i].id === id) {
-      // Cannot demote if it's the first sibling
-      if (i === 0) return nodes;
-
-      const nodeToDemote = nodes[i];
-      const newNodes = [...nodes];
-      newNodes.splice(i, 1);
-
-      const prevSibling = newNodes[i - 1];
-      newNodes[i - 1] = {
-        ...prevSibling,
-        children: [...(prevSibling.children || []), nodeToDemote]
-      };
-      return newNodes;
-    }
-
-    // Recurse
-    const updatedChildren = demoteNode(nodes[i].children || [], id);
-    if (updatedChildren !== nodes[i].children) {
-      const newNodes = [...nodes];
-      newNodes[i] = { ...nodes[i], children: updatedChildren };
-      return newNodes;
-    }
-  }
-
-  return nodes;
+  const moving = findNode(nodes, id);
+  if (!under || !moving || findNode([moving], under) || !findNode(nodes, under)) return nodes;
+  return addChildNode(removeNode(nodes, id), under, moving);
 };

@@ -8,6 +8,7 @@ import type { Preparation, Sermon } from '@/models/models';
 export type SermonCorePatch = Partial<Pick<Sermon, 'title' | 'verse' | 'date' | 'church' | 'isPreached' | 'sourceNoteIds'>>;
 export interface QueuedCoreDelivery { delivery: 'queued' }
 const coreFields = new Set(['title', 'verse', 'date', 'church', 'isPreached', 'sourceNoteIds']);
+const NOT_EDITABLE = 'The sermon is not available for editing';
 
 /** Apply only supplied fields; undefined explicitly removes an optional field. */
 function patchFields(current: DocumentData, patch: Record<string, unknown>, nested = false): DocumentData {
@@ -41,12 +42,13 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
   const isReadOnly = document.readOnly || !owner || !document.data || document.data.userId !== owner
     || Boolean(document.confirmed?.metadata?.deleted || (document.confirmed && document.confirmed.value === null)
       || (document.remote && document.remote.value === null) || document.remote?.metadata?.deleted);
+  const owned = (update: (current: DocumentData) => DocumentData) => (current: DocumentData | null) => {
+    if (!current || current.userId !== owner) throw new Error(NOT_EDITABLE);
+    return update(current);
+  };
   const commit = async (update: (current: DocumentData) => DocumentData): Promise<QueuedCoreDelivery> => {
-    if (isReadOnly) throw new Error('The sermon is not available for editing');
-    await document.commit(current => {
-      if (!current || current.userId !== owner) throw new Error('The sermon is not available for editing');
-      return update(current);
-    });
+    if (isReadOnly) throw new Error(NOT_EDITABLE);
+    await document.commit(owned(update));
     return { delivery: 'queued' };
   };
   const patchCore = (patch: SermonCorePatch) => commit(current => {
@@ -57,6 +59,17 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     ...current,
     preparation: patchFields((current.preparation ?? {}) as DocumentData, patch, true),
   }));
+  /**
+   * Typing: the change goes into the open document's draft, applied to its newest preparation; the
+   * document saves it after a short pause, when the page is hidden and when it is left.
+   */
+  const editPreparation = (edit: (current: Preparation) => Preparation) => {
+    if (isReadOnly) return Promise.reject(new Error(NOT_EDITABLE));
+    return document.update(owned(current => ({
+      ...current,
+      preparation: edit((current.preparation ?? {}) as Preparation) as DocumentData,
+    })));
+  };
   return {
     ...document,
     titleForm, verseForm,
@@ -69,5 +82,6 @@ export function useSermonCoreDataDocument(sermonId: string | null) {
     isReadOnly,
     patchCore,
     patchPreparation,
+    editPreparation,
   };
 }

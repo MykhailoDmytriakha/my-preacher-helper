@@ -1,8 +1,15 @@
 import type { ExegeticalPlanNode } from '@/models/models';
 
+/** One change of the plan, applied to the newest plan the document holds. */
+export type PlanEdit = (nodes: ExegeticalPlanNode[]) => ExegeticalPlanNode[];
+
 export interface ExegeticalPlanModuleProps {
   value?: ExegeticalPlanNode[];
-  onChange?: (nodes: ExegeticalPlanNode[]) => void;
+  /**
+   * The plan lives in an open document (the data engine): each edit goes into it at once and the
+   * document saves it. Given this, the module keeps no draft and ignores `onSave` / `saving`.
+   */
+  onEdit?: (edit: PlanEdit) => Promise<void> | void;
   onSave?: (nodes: ExegeticalPlanNode[]) => Promise<void> | void;
   saving?: boolean;
   authorIntent?: string;
@@ -15,7 +22,8 @@ export interface TreeNodeProps {
   index?: number;
   draftTitles: Record<string, string>;
   focusedId: string | null;
-  onTitleChange: (id: string, value: string) => void;
+  /** May return the document's answer: a refusal lets the field show the document again. */
+  onTitleChange: (id: string, value: string) => Promise<unknown> | void;
   onFocus: (id: string) => void;
   onBlur: (id: string) => void;
   onRemove: (id: string) => void;

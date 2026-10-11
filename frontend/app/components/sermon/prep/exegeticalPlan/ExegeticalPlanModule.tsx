@@ -15,25 +15,34 @@ import {
   addSiblingNode,
   promoteNode,
   demoteNode,
-  areTreesEqual
+  areTreesEqual,
+  setNodeTitle,
+  findPlace,
+  insertNode,
+  previousSiblingId
 } from './treeUtils';
 
-import type { ExegeticalPlanModuleProps } from './types';
+import type { ExegeticalPlanModuleProps, PlanEdit } from './types';
 import type { ExegeticalPlanNode } from '@/models/models';
+
+const NO_DRAFT_TITLES: Record<string, string> = {};
 
 const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   value = [],
+  onEdit,
   onSave,
   saving,
   authorIntent = '',
   onSaveAuthorIntent
 }) => {
   const [showInstruction, setShowInstruction] = useState(false);
-  const [tree, setTree] = useState<ExegeticalPlanNode[]>(() =>
-    (value && value.length > 0) ? value : [createNewNode()]
+  // An empty plan shows one line to type into; it joins the plan once it is edited.
+  const [blankPlan, setBlankPlan] = useState<ExegeticalPlanNode[]>(() => [createNewNode()]);
+  const [draftTree, setDraftTree] = useState<ExegeticalPlanNode[]>(() =>
+    (value && value.length > 0) ? value : blankPlan
   );
   const [draftTitles, setDraftTitles] = useState<Record<string, string>>(() =>
-    syncDraftTitles((value && value.length > 0) ? value : [createNewNode()])
+    syncDraftTitles((value && value.length > 0) ? value : blankPlan)
   );
   const [expand, setExpand] = useState<Record<string, boolean>>({});
   const [focusedId, setFocusedId] = useState<string | null>(null);
@@ -44,31 +53,56 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   const prevSavingRef = useRef<boolean>(saving);
   const lastSavedTreeRef = useRef<ExegeticalPlanNode[] | null>(null);
 
+  /*
+   * On the data engine (`onEdit`) the plan is the open sermon document's: every edit goes into it at
+   * once, and the engine saves it (after a short pause, when the page is hidden, when it is left),
+   * merges it with other devices and shows conflicts. This screen keeps no copy of its own, so no
+   * save can bring an older one back over newer words (BUG-20261010-exegetical-plan-save-wipes-newer-words).
+   * Without the engine the module keeps its own draft and saves it with the button or the autosave.
+   */
+  const showsBlank = !(value && value.length > 0);
+  const tree = onEdit ? (showsBlank ? blankPlan : value) : draftTree;
+  const apply = useCallback((edit: PlanEdit): Promise<void> | void => {
+    if (!onEdit) { setDraftTree(edit); return; }
+    // The blank line joins the plan only through an action on it, i.e. while the screen shows it.
+    const outcome = onEdit(nodes => edit(nodes.length === 0 && showsBlank ? blankPlan : nodes));
+    // A refusal is shown by the document's own status; the title field also lets go of the words.
+    if (outcome instanceof Promise) outcome.catch(() => undefined);
+    return outcome;
+  }, [onEdit, blankPlan, showsBlank]);
+  // Once the blank line is in the plan it is a real point: an empty plan later starts from a new
+  // line, so a point deleted here and changed on another device never comes back under its identity.
+  useEffect(() => {
+    if (onEdit && findPlace(value, blankPlan[0].id)) setBlankPlan([createNewNode()]);
+  }, [onEdit, value, blankPlan]);
+
   // 1. Memoized values
   const hasUnsavedChanges = useMemo(() => {
-    const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
+    if (onEdit) return false;
+    const currentTreeWithDrafts = mergeDraftTitles(draftTree, draftTitles);
     return !areTreesEqual(currentTreeWithDrafts, value || []);
-  }, [tree, draftTitles, value]);
+  }, [onEdit, draftTree, draftTitles, value]);
 
   const hasAuthorIntentChanges = useMemo(() => {
     return authorIntentDraft !== (authorIntent || '');
   }, [authorIntentDraft, authorIntent]);
 
   // 2. Callbacks
-  const emit = useCallback((nodes: ExegeticalPlanNode[]) => {
-    setTree(nodes);
-  }, []);
-
-  const handleTitleChange = useCallback((id: string, value: string) => {
-    setDraftTitles(prev => ({ ...prev, [id]: value }));
-  }, []);
+  const handleTitleChange = useCallback((id: string, title: string) => {
+    if (!onEdit) { setDraftTitles(prev => ({ ...prev, [id]: title })); return; }
+    // The words go to the point the person sees. If another device deleted it and this screen has
+    // not redrawn yet, the point comes back with the words in its place instead of losing them.
+    const place = findPlace(tree, id);
+    return apply(nodes => findPlace(nodes, id) || !place
+      ? setNodeTitle(nodes, id, title)
+      : insertNode(nodes, place, { id, title, children: [] }));
+  }, [onEdit, apply, tree]);
 
   const handleAddMainPoint = useCallback(() => {
     const newNode = createNewNode();
     setFocusedId(newNode.id);
-    emit([...(tree || []), newNode]);
-    setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-  }, [tree, emit]);
+    apply(nodes => [...nodes, newNode]);
+  }, [apply]);
 
   const handleRemoveNode = useCallback((id: string) => {
     const newTree = removeNode(tree, id);
@@ -95,51 +129,41 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       return updated;
     });
 
-    setTree(newTree);
-  }, [tree]);
+    apply(nodes => removeNode(nodes, id));
+  }, [tree, apply]);
 
   const handleAddChild = useCallback((parentId: string) => {
     const newNode = createNewNode();
     setFocusedId(newNode.id);
-    emit(addChildNode(tree, parentId, newNode));
+    apply(nodes => addChildNode(nodes, parentId, newNode));
     setExpand(prev => ({ ...prev, [parentId]: true }));
-    setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-  }, [tree, emit]);
+  }, [apply]);
 
   const handleAddSibling = useCallback((siblingId: string) => {
     const newNode = createNewNode();
     setFocusedId(newNode.id);
-    emit(addSiblingNode(tree, siblingId, newNode));
-    setDraftTitles(prev => ({ ...prev, [newNode.id]: '' }));
-  }, [tree, emit]);
+    apply(nodes => addSiblingNode(nodes, siblingId, newNode));
+  }, [apply]);
 
   const handlePromote = useCallback((id: string) => {
-    emit(promoteNode(tree, id));
-  }, [tree, emit]);
+    // From under the parent the person sees; a point moved elsewhere meanwhile stays where it is.
+    const from = findPlace(tree, id)?.parentId;
+    if (!from) return;
+    apply(nodes => promoteNode(nodes, id, from));
+  }, [tree, apply]);
 
   const handleDemote = useCallback((id: string) => {
-    emit(demoteNode(tree, id));
-    setExpand(prev => {
-      const findParentOf = (nodes: ExegeticalPlanNode[], targetId: string): string | null => {
-        for (let i = 0; i < nodes.length; i++) {
-          if (i > 0 && nodes[i].id === targetId) return nodes[i - 1].id;
-          if (nodes[i].children) {
-            const found = findParentOf(nodes[i].children!, targetId);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-      const newParentId = findParentOf(tree, id);
-      if (newParentId) return { ...prev, [newParentId]: true };
-      return prev;
-    });
-  }, [tree, emit]);
+    // Under the point the person sees above it, wherever the newest plan has put things meanwhile.
+    const under = previousSiblingId(tree, id);
+    if (!under) return;
+    apply(nodes => demoteNode(nodes, id, under));
+    setExpand(prev => ({ ...prev, [under]: true }));
+  }, [tree, apply]);
 
   const handleSave = useCallback(async () => {
-    const treeWithTitles = mergeDraftTitles(tree, draftTitles);
+    const treeWithTitles = mergeDraftTitles(draftTree, draftTitles);
     await onSave?.(treeWithTitles);
-  }, [tree, draftTitles, onSave]);
+  }, [draftTree, draftTitles, onSave]);
 
   const handleSaveAuthorIntent = useCallback(async () => {
     if (!onSaveAuthorIntent) return;
@@ -156,25 +180,26 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     setAuthorIntentDraft(authorIntent || '');
   }, [authorIntent]);
 
-  // Sync with external value after successful save
+  // Sync with external value after successful save (own draft only)
   useEffect(() => {
     const wasSaving = prevSavingRef.current;
     prevSavingRef.current = saving;
+    if (onEdit) return;
 
     if (wasSaving && !saving && value && value.length > 0) {
-      const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
+      const currentTreeWithDrafts = mergeDraftTitles(draftTree, draftTitles);
       if (!areTreesEqual(currentTreeWithDrafts, value)) {
-        setTree(value);
+        setDraftTree(value);
         setDraftTitles(syncDraftTitles(value));
       }
     }
-  }, [saving, value, tree, draftTitles]);
+  }, [onEdit, saving, value, draftTree, draftTitles]);
 
-  // Auto-save logic
+  // Auto-save logic (own draft only)
   useEffect(() => {
-    if (!autoSaveEnabled || !hasUnsavedChanges || saving) return;
+    if (onEdit || !autoSaveEnabled || !hasUnsavedChanges || saving) return;
 
-    const currentTreeWithDrafts = mergeDraftTitles(tree, draftTitles);
+    const currentTreeWithDrafts = mergeDraftTitles(draftTree, draftTitles);
 
     if (lastSavedTreeRef.current && areTreesEqual(currentTreeWithDrafts, lastSavedTreeRef.current)) {
       return;
@@ -186,7 +211,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     }, 15000); // 15 seconds
 
     return () => clearTimeout(timer);
-  }, [autoSaveEnabled, hasUnsavedChanges, saving, tree, draftTitles, handleSave]);
+  }, [onEdit, autoSaveEnabled, hasUnsavedChanges, saving, draftTree, draftTitles, handleSave]);
 
   return (
     <div className="space-y-4">
@@ -200,7 +225,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
       <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
         <TreeBuilder
           tree={tree}
-          draftTitles={draftTitles}
+          draftTitles={onEdit ? NO_DRAFT_TITLES : draftTitles}
           focusedId={focusedId}
           expand={expand}
           hasUnsavedChanges={hasUnsavedChanges}
@@ -214,7 +239,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
           onPromote={handlePromote}
           onDemote={handleDemote}
           onAddMainPoint={handleAddMainPoint}
-          onSave={handleSave}
+          onSave={onEdit ? undefined : handleSave}
           autoSaveEnabled={autoSaveEnabled}
           onToggleAutoSave={() => setAutoSaveEnabled(v => !v)}
         />

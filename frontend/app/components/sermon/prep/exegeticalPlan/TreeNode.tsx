@@ -5,6 +5,8 @@ import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
+import { useBufferedText } from '@/components/ui/useBufferedText';
+
 import type { TreeNodeProps } from './types';
 
 const TreeNode: React.FC<TreeNodeProps> = ({
@@ -26,6 +28,8 @@ const TreeNode: React.FC<TreeNodeProps> = ({
   const { t } = useTranslation();
   const isOpen = expand[node.id] ?? true;
   const currentValue = draftTitles[node.id] !== undefined ? draftTitles[node.id] : (node.title || '');
+  // A plan kept in a document echoes each keystroke a moment later; the field keeps the letters meanwhile.
+  const title = useBufferedText(currentValue, next => onTitleChange(node.id, next));
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Generate marker based on depth and index
@@ -97,10 +101,9 @@ const TreeNode: React.FC<TreeNodeProps> = ({
           )}
           <input
             ref={inputRef}
-            value={currentValue}
+            value={title.draft}
             onChange={(e) => {
-              const val = e.target.value;
-              onTitleChange(node.id, val);
+              title.change(e.target.value);
               setTimeout(() => {
                 if (focusedId === node.id) {
                   inputRef.current?.focus();

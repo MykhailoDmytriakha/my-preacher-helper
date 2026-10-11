@@ -222,12 +222,10 @@ jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({
   </div>
 ));
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({
-  onChange,
   onSave,
   onSaveAuthorIntent,
 }: any) => (
   <div>
-    <button data-testid="change-exegetical" onClick={() => onChange([{ id: 'n1', title: 'node', children: [] }])}>Change Exegetical</button>
     <button data-testid="save-exegetical" onClick={() => onSave([])}>Save Exegetical</button>
     <button data-testid="save-author-intent" onClick={() => onSaveAuthorIntent('intent')}>Save Author Intent</button>
   </div>
@@ -1118,7 +1116,6 @@ describe('Sermon Detail Page', () => {
         'toggle-read-book',
         'save-context-notes',
         'save-repeated-words',
-        'change-exegetical',
         'save-exegetical',
         'save-author-intent',
         'save-main-idea',
