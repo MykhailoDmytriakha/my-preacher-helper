@@ -1,7 +1,7 @@
 import { defaultCache } from "@serwist/next/worker";
 import { NetworkOnly, Serwist } from "serwist";
 
-import { OFFLINE_PAGE_SEEN, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
+import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
 
@@ -25,6 +25,16 @@ const offlineNavigation = createOfflineRscNavigation({
   caches: self.caches,
 });
 
+/**
+ * THE START OF THE APP ON A WEAK SIGNAL (BUG-20261004-weak-network-delays-offline-navigation). The
+ * installed app opens at `/`; on a signal that neither answered nor failed the page waited for it — on
+ * the owner's phone 20–30 s with nothing on screen. The precached offline shell holds the dashboard
+ * itself, built with this worker, so past a short wait it answers instead. Only these addresses: other
+ * pages need their own code, which a device may not hold yet after a release, so they wait for the
+ * network as before rather than open on a "no connection" card while the page is on its way.
+ */
+const START_PAGES = new Set(["/", "/dashboard"]);
+
 const runtimeCaching: RuntimeCaching[] = [
   /**
    * ONLY REAL ANSWERS FROM OUR API (owner's rule 1, BUG-20260908-cached-response-counts-as-live-connection).
@@ -43,6 +53,15 @@ const runtimeCaching: RuntimeCaching[] = [
   {
     matcher: ({ request }) => isRscNavigation(request, self.origin),
     handler: ({ request }) => offlineNavigation.respond(request),
+  },
+  {
+    matcher: ({ request, url }) => request?.mode === "navigate" && url.origin === self.origin && START_PAGES.has(url.pathname),
+    handler: ({ request, event }) => answerWithinDeadline(
+      // A refused navigation preload is no answer: the network is asked directly, as Serwist does.
+      Promise.resolve((event as FetchEvent).preloadResponse).catch(() => undefined).then(preloaded => preloaded ?? fetch(request)),
+      () => serwist.matchPrecache("/~offline"),
+      { deadlineMs: NAVIGATION_DEADLINE_MS },
+    ),
   },
   ...defaultCache,
 ];

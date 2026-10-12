@@ -13,6 +13,8 @@ import { useTranslation } from 'react-i18next';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
+import { useAuth } from '@/providers/AuthProvider';
+import { hasPersistedSession } from '@/utils/persistedSession';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
 // document as the navigation fallback whenever an offline navigation misses the
@@ -128,6 +130,7 @@ export default function OfflineShell() {
   // is served at that URL). Rendering null first keeps the precached static HTML
   // (path unknown at build) hydration-stable before we pick a branch.
   const [requestedPath, setRequestedPath] = useState<string | null>(null);
+  const { user, loading } = useAuth();
 
   useEffect(() => {
     setRequestedPath(window.location.pathname);
@@ -135,6 +138,13 @@ export default function OfflineShell() {
 
   if (requestedPath === null) {
     return null;
+  }
+
+  // The shell stands in for private pages, which the private layout guards online. Someone signed out
+  // on this device gets the card, not a private page: the worker opens this shell at the start of the
+  // app on a weak signal too (BUG-20261004-weak-network-delays-offline-navigation).
+  if (!user && !hasPersistedSession()) {
+    return loading ? null : <GenericOfflineCard requestedPath={requestedPath} />;
   }
 
   // Dashboard: static, guaranteed offline (the home).

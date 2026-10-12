@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/utils/cache-busting-search-param';
+import { Response as PlatformResponse } from 'undici';
 
 import {
   OFFLINE_RSC_CACHE,
@@ -588,5 +589,193 @@ describe('offline RSC navigation', () => {
   it('does not keep shared pages, whose metadata comes from live server data', () => {
     expect(isRememberedPage(new URL(`${ORIGIN}/sermons/abc`), ORIGIN)).toBe(true);
     expect(isRememberedPage(new URL(`${ORIGIN}/share/notes/token`), ORIGIN)).toBe(false);
+  });
+});
+
+/**
+ * BUG-20261004-weak-network-delays-offline-navigation. On a weak signal a request neither answers nor
+ * fails, and a navigation to a page already seen waited for it for as long as it lasted — the kept copy
+ * was read only after a failure. Next applies a navigation only once it has its whole payload, so a
+ * reply that sent its first bytes and fell silent is as late as one that never began. After a short
+ * wait the kept copy answers; the network keeps the first word while it answers in time, and still
+ * wins if it lands while the copy is being looked for; with nothing kept, it is waited for as before.
+ */
+describe('a navigation on a weak network', () => {
+  const DEADLINE = 50;
+  const never = () => new Promise<Response>(() => undefined);
+  const settled = <T,>(promise: Promise<T>, ms = 1000) => Promise.race([promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('still waiting')), ms))]);
+  const later = (ms: number, body: string) => () => new Promise<Response>(resolve => setTimeout(() => resolve(flight(body)), ms));
+  // A real streaming body: the jest setup replaces the global Response with one that has none.
+  const startedThenSilent = () => async () => new PlatformResponse(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode('first bytes')); },
+  }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+  async function seen(caches: ReturnType<typeof fakeCaches>) {
+    await createOfflineRscNavigation({ fetchFn: async () => flight('kept'), caches }).remember(new URL(`${ORIGIN}/sermons/abc`));
+  }
+
+  it('opens the kept copy when the network neither answers nor fails', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const nav = createOfflineRscNavigation({ fetchFn: never, caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('kept');
+  });
+
+  it('opens the kept copy when the answer began and fell silent', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const nav = createOfflineRscNavigation({ fetchFn: startedThenSilent(), caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('kept');
+  });
+
+  it('keeps the network answer that arrives whole in time', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const nav = createOfflineRscNavigation({ fetchFn: later(5, 'fresh'), caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('fresh');
+  });
+
+  it('waits for the network as before when nothing is kept for the page', async () => {
+    const nav = createOfflineRscNavigation({ fetchFn: later(DEADLINE * 3, 'fresh'), caches: fakeCaches(), navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/never-seen', 'x')).then(answer => answer.text()))).toBe('fresh');
+  });
+
+  it('takes the network answer that lands while the kept copy is still being looked for', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const open = caches.open.bind(caches);
+    caches.open = async (name: string) => {
+      const cache = await open(name);
+      return { ...cache, match: async (key: RequestInfo | URL) => { await new Promise(resolve => setTimeout(resolve, DEADLINE * 4)); return cache.match(key); } } as unknown as Cache;
+    };
+    const nav = createOfflineRscNavigation({ fetchFn: later(DEADLINE * 2, 'fresh'), caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('fresh');
+  });
+
+  it('is not held by storage that does not answer once the network does', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    caches.open = () => new Promise<Cache>(() => undefined);
+    const nav = createOfflineRscNavigation({ fetchFn: later(DEADLINE * 2, 'fresh'), caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('fresh');
+  });
+
+  it('hands a streaming answer over at once when nothing is kept to answer instead', async () => {
+    let more!: ReadableStreamDefaultController<Uint8Array>;
+    const streaming = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { more = controller; controller.enqueue(new TextEncoder().encode('first ')); },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: streaming, caches: fakeCaches(), navigationDeadlineMs: 2000 });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/never-seen', 'x')), 500);
+    more.enqueue(new TextEncoder().encode('rest')); more.close();
+    expect(await answer.text()).toBe('first rest');
+  });
+
+  it('stops downloading the late answer once the kept copy has answered', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    let cancelled = false;
+    const endless = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      pull(controller) { return new Promise(resolve => setTimeout(() => { if (!cancelled) controller.enqueue(new Uint8Array(1024)); resolve(); }, 5)); },
+      cancel() { cancelled = true; },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: endless, caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('kept');
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(cancelled).toBe(true);
+  });
+
+  // Codex refute-weak r2: each of these went behind HEAD.
+  it('hands a streaming answer over soon when storage does not answer', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    caches.open = () => new Promise<Cache>(() => undefined);
+    let more!: ReadableStreamDefaultController<Uint8Array>;
+    const streaming = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { more = controller; controller.enqueue(new TextEncoder().encode('fresh ')); },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: streaming, caches, navigationDeadlineMs: 3000 });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/abc', 'x')), 1000);
+    more.enqueue(new TextEncoder().encode('root')); more.close();
+    expect(await answer.text()).toBe('fresh root');
+  });
+
+  it('hands over a refusal from the server at once, even when its body stalls', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const refused = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('sign in')); },
+    }), { status: 403, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: refused, caches, navigationDeadlineMs: DEADLINE });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/abc', 'x')));
+    expect(answer.status).toBe(403);
+  });
+
+  it('lets the page stop an answer it no longer wants when nothing is kept', async () => {
+    let cancelled = false;
+    const endless = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      pull(controller) { return new Promise(resolve => setTimeout(() => { if (!cancelled) controller.enqueue(new Uint8Array(512)); resolve(); }, 5)); },
+      cancel() { cancelled = true; },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: endless, caches: fakeCaches(), navigationDeadlineMs: DEADLINE });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/never-seen', 'x')));
+    await answer.body?.cancel();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(cancelled).toBe(true);
+  });
+
+  // Codex refute-weak r3.
+  it('counts the deadline from the navigation, so a copy found after it answers at once', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    jest.useFakeTimers();
+    try {
+      const open = caches.open.bind(caches);
+      caches.open = async (name: string) => {
+        const cache = await open(name);
+        return { ...cache, match: async (key: RequestInfo | URL) => { await new Promise(resolve => setTimeout(resolve, 300)); return cache.match(key); } } as unknown as Cache;
+      };
+      const nav = createOfflineRscNavigation({ fetchFn: never, caches, navigationDeadlineMs: 100 });
+      let answered = false;
+      void nav.respond(navigationRequest('/sermons/abc', 'x')).then(() => { answered = true; });
+      await jest.advanceTimersByTimeAsync(310);
+      expect(answered).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('stops an answer whose headers arrive only after the kept copy has answered', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    let cancelled = false;
+    let sent = 0;
+    const lateEndless = () => new Promise<Response>(resolve => setTimeout(() => resolve(new PlatformResponse(new ReadableStream<Uint8Array>({
+      pull(controller) { return new Promise(done => setTimeout(() => { if (!cancelled) { sent += 1; controller.enqueue(new Uint8Array(1024)); } done(); }, 5)); },
+      cancel() { cancelled = true; },
+    }), { status: 200, headers: { 'content-type': 'text/x-component' } }) as unknown as Response), DEADLINE * 2));
+    const nav = createOfflineRscNavigation({ fetchFn: lateEndless, caches, navigationDeadlineMs: DEADLINE });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('kept');
+    await new Promise(resolve => setTimeout(resolve, DEADLINE * 2 + 100));
+    expect(cancelled).toBe(true);
+    expect(sent).toBeLessThan(3);
+  });
+
+  it('hands over at once a page the server sends instead of the payload, even when its body stalls', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const document = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('<!doctype html>')); },
+    }), { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: document, caches, navigationDeadlineMs: DEADLINE });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/abc', 'x')));
+    expect(answer.headers.get('content-type')).toBe('text/html; charset=utf-8');
+  });
+
+  // Codex refute-weak r4: Next applies as a payload only `text/x-component`, case-sensitive; anything
+  // else it opens as a document, and that decision must reach it.
+  it.each([['TEXT/X-COMPONENT; charset=utf-8'], [null]])('hands over at once an answer Next would not apply as a payload (content type %p)', async type => {
+    const caches = fakeCaches(); await seen(caches);
+    const other = async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new TextEncoder().encode('first bytes')); },
+    }), { status: 200, headers: type ? { 'content-type': type } : {} }) as unknown as Response;
+    const nav = createOfflineRscNavigation({ fetchFn: other, caches, navigationDeadlineMs: DEADLINE });
+    const answer = await settled(nav.respond(navigationRequest('/sermons/abc', 'x')));
+    expect(answer.headers.get('content-type')).toBe(type);
+  });
+
+  it('still answers from the kept copy at once when the network fails', async () => {
+    const caches = fakeCaches(); await seen(caches);
+    const nav = createOfflineRscNavigation({ fetchFn: offline(), caches, navigationDeadlineMs: 10_000 });
+    expect(await settled(nav.respond(navigationRequest('/sermons/abc', 'x')).then(answer => answer.text()))).toBe('kept');
   });
 });

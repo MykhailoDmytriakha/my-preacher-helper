@@ -141,6 +141,10 @@ function rootLevelRequest(url: URL, signal?: AbortSignal): Request {
 const WARM_TIMEOUT_MS = 20_000;
 /** A read of the waiting list that has not answered in this long is given up on. */
 const STORAGE_TIMEOUT_MS = 10_000;
+/** How long a navigation to what this device already holds waits for the network before its kept copy answers. */
+export const NAVIGATION_DEADLINE_MS = 3_000;
+/** How long after the network's first answer a copy found in storage still counts. */
+const STORAGE_GRACE_MS = 300;
 
 function isFlightPayload(response: Response): boolean {
   return response.ok && (response.headers.get('content-type') ?? '').startsWith(RSC_CONTENT_TYPE_HEADER);
@@ -153,11 +157,71 @@ async function keepNewest(cache: CacheLike): Promise<void> {
   }
 }
 
-export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WARM_TIMEOUT_MS, storageTimeoutMs = STORAGE_TIMEOUT_MS }: {
+/** `read`, or a failure once it has not answered within `ms` — storage that falls silent cannot hold a caller. */
+function withinMs<T>(read: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const silence = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Offline page storage did not answer')), ms);
+  });
+  return Promise.race([read, silence]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * WHAT THIS DEVICE ALREADY HOLDS DOES NOT WAIT FOR A WEAK SIGNAL
+ * (BUG-20261004-weak-network-delays-offline-navigation). Offline a request fails at once and the kept
+ * copy answers; on a weak signal it neither answers nor fails, and the kept copy waited behind it for as
+ * long as it hung. The first question is whether a copy is kept at all: storage answers in milliseconds,
+ * so when nothing is kept — or storage has not answered shortly after the network did, which is then no
+ * copy to count on — the network is handed over exactly as before, streaming. When a copy is kept, the
+ * network has until the deadline, counted from the navigation, to arrive whole (first bytes and then
+ * silence are as late as nothing). An answer the copy may not stand in for is the server's decision and is
+ * handed over at once: an error, a redirect, or what the caller says is another kind (`replaceable` — for
+ * a client-side navigation, anything Next would not apply as a payload). Past the deadline, or when the
+ * network fails, the copy answers and the late answer stops downloading, however late its headers come.
+ * Used for client-side navigations (their kept payload) and the start of the app (the precached offline
+ * shell, `sw.ts`).
+ */
+export async function answerWithinDeadline(network: Promise<Response>, kept: () => Promise<Response | undefined>,
+  { deadlineMs, storageTimeoutMs = STORAGE_TIMEOUT_MS, replaceable = () => true }:
+  { deadlineMs: number; storageTimeoutMs?: number; replaceable?: (answer: Response) => boolean }): Promise<Response> {
+  const started = performance.now();
+  const lookup = withinMs(kept(), storageTimeoutMs).catch(() => undefined);
+  // Storage answers in milliseconds: a copy it finds shortly after the network's first answer still
+  // counts; storage slower than that is treated as holding none.
+  const copy = await Promise.race([lookup.then(found => found ?? null),
+    network.then(() => new Promise<null>(resolve => setTimeout(() => resolve(null), STORAGE_GRACE_MS)), () => new Promise<never>(() => undefined))]);
+  if (!copy) return network;
+  let abandoned = false;
+  let reading: ReadableStreamDefaultReader<Uint8Array> | undefined;
+  const whole = network.then(async answer => {
+    if (abandoned || !answer.ok || answer.redirected || !replaceable(answer)) return answer;
+    const body = answer.clone();
+    if (typeof body.body?.getReader !== 'function') { await body.arrayBuffer(); return answer; }
+    reading = body.body.getReader();
+    while (!(await reading.read()).done) { /* the whole answer, read to its end */ }
+    return answer;
+  });
+  // What is left of the deadline: a copy found after it answers at once, unless the network is whole by then.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>(resolve => {
+    timer = setTimeout(() => resolve('late'), Math.max(0, deadlineMs - (performance.now() - started)));
+  });
+  const first = await Promise.race([whole, late]).catch(() => 'failed' as const).finally(() => clearTimeout(timer));
+  if (first !== 'late' && first !== 'failed') return first;
+  // Headers that come after this point find the answer abandoned and are not read: cancelling the
+  // answer itself then stops the download.
+  abandoned = true;
+  void reading?.cancel().catch(() => undefined);
+  void network.then(answer => answer.body?.cancel()).catch(() => undefined);
+  return copy;
+}
+
+export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WARM_TIMEOUT_MS, storageTimeoutMs = STORAGE_TIMEOUT_MS, navigationDeadlineMs = NAVIGATION_DEADLINE_MS }: {
   fetchFn: (request: Request) => Promise<Response>;
   caches: CacheStorageLike;
   warmTimeoutMs?: number;
   storageTimeoutMs?: number;
+  navigationDeadlineMs?: number;
 }) {
   const inFlight = new Map<string, Promise<WarmOutcome>>();
 
@@ -167,11 +231,7 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
    * land later, over whatever was written after it.
    */
   function withinStorage<T>(read: Promise<T>): Promise<T> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const silence = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('Offline page storage did not answer')), storageTimeoutMs);
-    });
-    return Promise.race([read, silence]).finally(() => clearTimeout(timer));
+    return withinMs(read, storageTimeoutMs);
   }
 
   async function store(url: URL, key: string, signal?: AbortSignal): Promise<WarmOutcome> {
@@ -231,16 +291,12 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
     return work;
   }
 
-  /** Network first; without network, the stored root-level payload for this address. */
-  async function respond(request: Request): Promise<Response> {
-    try {
-      return await fetchFn(request);
-    } catch (error) {
-      const cache = await caches.open(OFFLINE_RSC_CACHE);
-      const stored = await cache.match(offlineRscKey(new URL(request.url)));
-      if (stored) return stored;
-      throw error;
-    }
+  /** A client-side navigation: the payload kept for this address answers a weak signal (`answerWithinDeadline`). */
+  function respond(request: Request): Promise<Response> {
+    return answerWithinDeadline(fetchFn(request),
+      async () => (await caches.open(OFFLINE_RSC_CACHE)).match(offlineRscKey(new URL(request.url))),
+      // Next applies only a Flight payload; any other answer it opens as a document, and that is its call.
+      { deadlineMs: navigationDeadlineMs, storageTimeoutMs, replaceable: isFlightPayload });
   }
 
   /**

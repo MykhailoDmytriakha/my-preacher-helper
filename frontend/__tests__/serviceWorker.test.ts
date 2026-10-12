@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import { Response as PlatformResponse } from 'undici';
 
 type WorkerCallback = (event: unknown) => void;
 const mockListeners = new Map<string, WorkerCallback>();
@@ -6,12 +7,13 @@ const mockHandleFetch = jest.fn();
 const mockHandleInstall = jest.fn();
 const mockHandleActivate = jest.fn();
 const mockHandleCache = jest.fn();
+const mockMatchPrecache = jest.fn(async (url: string) => new Response(`precached ${url}`, { headers: { 'content-type': 'text/html; charset=utf-8' } }));
 const mockCaches = { delete: jest.fn(async () => true), open: jest.fn(() => new Promise(() => undefined)) };
 let mockOptions: {
   skipWaiting: boolean;
   clientsClaim: boolean;
   navigationPreload: boolean;
-  runtimeCaching: { matcher: (args: { url: URL }) => boolean; handler?: unknown }[];
+  runtimeCaching: { matcher: (args: { url: URL; request?: { mode?: string; url?: string; headers?: Headers } }) => boolean; handler?: unknown }[];
   fallbacks: { entries: { url: string; matcher: (args: { request: { destination: string } }) => boolean }[] };
 };
 
@@ -25,6 +27,7 @@ jest.mock('serwist', () => ({
       handleInstall: mockHandleInstall,
       handleActivate: mockHandleActivate,
       handleCache: mockHandleCache,
+      matchPrecache: mockMatchPrecache,
       addEventListeners: () => {
         mockListeners.set('fetch', mockHandleFetch);
         mockListeners.set('install', mockHandleInstall);
@@ -132,5 +135,61 @@ describe('service worker transport boundary', () => {
     expect(fallback.matcher({ request: { destination: 'document' } })).toBe(true);
     expect(fallback.matcher({ request: { destination: '' } })).toBe(false);
     expect(mockOptions).toMatchObject({ skipWaiting: true, clientsClaim: true, navigationPreload: true });
+  });
+
+  /**
+   * BUG-20261004-weak-network-delays-offline-navigation: the installed app opens at `/` and went on
+   * waiting for a weak signal that neither answered nor failed — 20–30 s on the owner's phone. The
+   * precached shell holds the dashboard: past a short wait it answers the start of the app.
+   */
+  describe('the start of the app on a weak signal', () => {
+    const START = 'https://my-preacher-helper.com/';
+    const opened = (href: string, mode = 'navigate') => ({ url: new URL(href), request: { mode, url: href, headers: new Headers() } });
+    const startRule = () => mockOptions.runtimeCaching.find(rule => rule.matcher(opened(START)))!;
+    const answer = (fetchImpl: () => Promise<Response>) => {
+      const original = globalThis.fetch;
+      globalThis.fetch = jest.fn(fetchImpl) as typeof fetch;
+      const handler = startRule().handler as (options: { request: Request; event: unknown; url: URL }) => Promise<Response>;
+      const result = handler({ request: new Request(START), event: { preloadResponse: Promise.resolve(undefined) }, url: new URL(START) });
+      return result.finally(() => { globalThis.fetch = original; });
+    };
+
+    it('opens the precached shell when the network neither answers nor fails', async () => {
+      const opened = await answer(() => new Promise<Response>(() => undefined));
+      expect(await opened.text()).toBe('precached /~offline');
+    }, 10_000);
+
+    // Codex refute-weak r4: the start waits for any successful page, whatever its headers say.
+    it('opens the precached shell when the page began and fell silent without saying its type', async () => {
+      // A real streaming body: the jest setup replaces the global Response with one that has none.
+      const opened = await answer(async () => new PlatformResponse(new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new TextEncoder().encode('<!doctype html>')); },
+      }), { status: 200 }) as unknown as Response);
+      expect(await opened.text()).toBe('precached /~offline');
+    }, 10_000);
+
+    it('opens the page from the network when it answers in time', async () => {
+      const opened = await answer(async () => new Response('fresh start'));
+      expect(await opened.text()).toBe('fresh start');
+    });
+
+    it('asks the network itself when the navigation preload is refused', async () => {
+      const original = globalThis.fetch;
+      globalThis.fetch = jest.fn(async () => new Response('fetched start')) as typeof fetch;
+      const handler = startRule().handler as (options: { request: Request; event: unknown; url: URL }) => Promise<Response>;
+      const refused = Promise.reject(new Error('preload failed')); refused.catch(() => undefined);
+      try {
+        const opened = await handler({ request: new Request(START), event: { preloadResponse: refused }, url: new URL(START) });
+        expect(await opened.text()).toBe('fetched start');
+      } finally { globalThis.fetch = original; }
+    });
+
+    it('applies only to the start pages opened as documents', () => {
+      const rule = startRule();
+      expect(rule.matcher(opened('https://my-preacher-helper.com/dashboard'))).toBe(true);
+      expect(rule.matcher(opened(START, 'cors'))).toBe(false);
+      expect(rule.matcher(opened('https://my-preacher-helper.com/sermons/a'))).toBe(false);
+      expect(rule.matcher(opened('https://elsewhere.example/'))).toBe(false);
+    });
   });
 });
