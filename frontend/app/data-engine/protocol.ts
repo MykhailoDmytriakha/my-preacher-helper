@@ -285,10 +285,82 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
     }
     if (Array.isArray(base.value) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
       const merged = mergeArrays(base.value, mine.value, theirs.value, path);
+      const children = identityTreeChildren(path);
+      if (merged && children) return settleTreeTwins(base, mine, theirs, merged, path, children);
       if (merged) return merged;
     }
   }
   return { value: mine, conflicts: [{ path, base, mine, theirs }] };
+}
+
+/** Trees whose points move between lists, by where they live and the key of a point's own list. */
+const IDENTITY_TREES: readonly { path: readonly string[]; children: string }[] = [
+  { path: ['preparation', 'exegeticalPlan'], children: 'children' },
+];
+
+function identityTreeChildren(path: readonly string[]): string | null {
+  return IDENTITY_TREES.find(tree => equalValues([...tree.path], [...path]))?.children ?? null;
+}
+
+type Occurrence = { node: DocumentData; parent: string | null; ancestors: readonly DocumentData[] };
+
+/** Every point of a tree by id, in document order: a point and its own children, nothing else. */
+function occurrences(nodes: Json | undefined, children: string, parent: string | null = null,
+  ancestors: readonly DocumentData[] = [], found = new Map<string, Occurrence[]>()): Map<string, Occurrence[]> {
+  if (!Array.isArray(nodes)) return found;
+  for (const node of nodes) {
+    if (!object(node) || typeof node.id !== 'string') continue;
+    const entry = { node, parent, ancestors }, list = found.get(node.id);
+    if (list) list.push(entry); else found.set(node.id, [entry]);
+    occurrences(node[children], children, node.id, [...ancestors, node], found);
+  }
+  return found;
+}
+
+/**
+ * Lists of a tree merge one by one, so a point moved to one place here and to another place there
+ * would land in both (BUG-20261011-plan-tree-move-merge-duplicates). A point the merge holds more often
+ * than either side did is a twin the merge made. When its copies differ only in the point's own fields,
+ * dropping all but one loses nothing but a place: the plan is a conflict, and its candidate keeps the
+ * point once, where this side put it, its own fields merged from the three versions, with every other
+ * merged change. Copies that differ below the point could carry words a dropped copy would take with it:
+ * then the merge stays as it was. Twins both sides already held are old and stay as they were.
+ */
+function settleTreeTwins(base: FieldValue, mine: FieldValue, theirs: FieldValue,
+  merged: ReturnType<typeof mergeFields>, path: string[], children: string): ReturnType<typeof mergeFields> {
+  const tree = merged.value.value as Json;
+  const [baseAt, mineAt, theirAt, mergedAt] = [base.value, mine.value, theirs.value, tree].map(value => occurrences(value, children));
+  const madeTwin = (id: string, count: number) => count > Math.max(1, mineAt.get(id)?.length ?? 0, theirAt.get(id)?.length ?? 0);
+  const twins = [...mergedAt].filter(([id, found]) => madeTwin(id, found.length));
+  if (!twins.length) return merged;
+  const own = ({ [children]: _, ...fields }: DocumentData): DocumentData => fields;
+  const below = (node: DocumentData): Json => node[children] ?? [];
+  const dropped = new Set<DocumentData>(), replaced = new Map<DocumentData, DocumentData>();
+  for (const [id, found] of twins) {
+    // Copies inside a dropped copy of an ancestor went with it; the kept ancestor holds the same points.
+    const live = found.filter(entry => !dropped.has(entry.node) && !entry.ancestors.some(node => dropped.has(node)));
+    if (live.length < 2) continue;
+    const home = mineAt.get(id)?.length === 1 ? mineAt.get(id)![0].parent : undefined;
+    const kept = live.filter(entry => entry.parent === home);
+    if (kept.length !== 1 || live.some(entry => !equalValues(below(entry.node), below(kept[0].node)))) return merged;
+    const sides = [baseAt, mineAt, theirAt].map(side => side.get(id)?.length === 1 ? side.get(id)![0].node : null);
+    if (sides.every(Boolean)) {
+      const [b, m, t] = sides.map(node => ({ exists: true, value: own(node!) }) as FieldValue);
+      replaced.set(kept[0].node, mergeFields(b, m, t, [...path, `id:${id}`]).value.value as DocumentData);
+    } else if (live.some(entry => !equalValues(entry.node, kept[0].node))) return merged;
+    live.forEach(entry => { if (entry !== kept[0]) dropped.add(entry.node); });
+  }
+  const rebuild = (nodes: Json[]): Json[] => nodes.filter(node => !(object(node) && dropped.has(node))).map(node => {
+    if (!object(node)) return node;
+    const fields = replaced.get(node) ?? node;
+    return Array.isArray(node[children]) ? { ...fields, [children]: rebuild(node[children] as Json[]) } : fields;
+  });
+  const settled = rebuild(tree as Json[]), settledAt = occurrences(settled, children);
+  // Every point is still there, none twice anew, and each settled one sits where this side put it.
+  const intact = [...mergedAt.keys()].every(id => settledAt.has(id))
+    && [...settledAt].every(([id, found]) => !madeTwin(id, found.length))
+    && twins.every(([id]) => settledAt.get(id)!.length === 1 && settledAt.get(id)![0].parent === mineAt.get(id)?.[0]?.parent);
+  return intact ? { value: { exists: true, value: settled }, conflicts: [...merged.conflicts, { path, base, mine, theirs }] } : merged;
 }
 
 /** Legacy revisions are server-owned metadata, never an editor's authored intent. */
