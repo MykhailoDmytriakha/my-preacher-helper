@@ -75,6 +75,15 @@ async function readIndex(index: CacheLike): Promise<string[]> {
   }
 }
 
+/** The list as stored. A copy that cannot be read throws: a broken list is not an empty one. */
+async function readIndexStrict(index: CacheLike): Promise<string[]> {
+  const stored = await index.match(OFFLINE_RSC_INDEX_URL);
+  if (!stored) return [];
+  const addresses: unknown = await stored.json();
+  if (!Array.isArray(addresses)) throw new Error('The offline page list is unreadable');
+  return addresses.filter((address): address is string => typeof address === 'string');
+}
+
 async function writeIndex(index: CacheLike, addresses: string[]): Promise<void> {
   if (!addresses.length) { await index.delete(OFFLINE_RSC_INDEX_URL); return; }
   await index.put(OFFLINE_RSC_INDEX_URL, new Response(JSON.stringify(addresses), { headers: { 'content-type': 'application/json' } }));
@@ -130,6 +139,8 @@ function rootLevelRequest(url: URL, signal?: AbortSignal): Request {
 
 /** Long enough for a slow but working connection; short enough that a dead one frees the address. */
 const WARM_TIMEOUT_MS = 20_000;
+/** A read of the waiting list that has not answered in this long is given up on. */
+const STORAGE_TIMEOUT_MS = 10_000;
 
 function isFlightPayload(response: Response): boolean {
   return response.ok && (response.headers.get('content-type') ?? '').startsWith(RSC_CONTENT_TYPE_HEADER);
@@ -142,12 +153,26 @@ async function keepNewest(cache: CacheLike): Promise<void> {
   }
 }
 
-export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WARM_TIMEOUT_MS }: {
+export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WARM_TIMEOUT_MS, storageTimeoutMs = STORAGE_TIMEOUT_MS }: {
   fetchFn: (request: Request) => Promise<Response>;
   caches: CacheStorageLike;
   warmTimeoutMs?: number;
+  storageTimeoutMs?: number;
 }) {
   const inFlight = new Map<string, Promise<WarmOutcome>>();
+
+  /**
+   * A READ of the waiting list that storage does not answer is given up on, so it cannot hold the
+   * re-warm for ever (BUG-20261011-sw-offline-cache-edges). Only reads: a write given up on would still
+   * land later, over whatever was written after it.
+   */
+  function withinStorage<T>(read: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const silence = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Offline page storage did not answer')), storageTimeoutMs);
+    });
+    return Promise.race([read, silence]).finally(() => clearTimeout(timer));
+  }
 
   async function store(url: URL, key: string, signal?: AbortSignal): Promise<WarmOutcome> {
     let cache: CacheLike;
@@ -169,7 +194,9 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
       // No network: the address is simply not available offline yet.
       return 'failed';
     }
-    if (!isFlightPayload(response)) return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
+    // An answer that arrived through a redirect is another page's: kept under this address it would open
+    // that page here offline (BUG-20261011-sw-offline-cache-edges).
+    if (response.redirected || !isFlightPayload(response)) return response.status === 404 || response.status === 410 ? 'gone' : 'failed';
     try {
       await cache.put(key, response);
       await keepNewest(cache);
@@ -254,23 +281,32 @@ export function createOfflineRscNavigation({ fetchFn, caches, warmTimeoutMs = WA
     return rewarming ??= (async () => {
       try {
         await retiring;
-        const index = await caches.open(OFFLINE_RSC_INDEX_CACHE);
-        const waiting = await readIndex(index);
+        const index = await withinStorage(caches.open(OFFLINE_RSC_INDEX_CACHE));
+        const waiting = await withinStorage(readIndex(index));
         if (!waiting.length) return;
         const untried = waiting.slice(-OFFLINE_RSC_REWARM_MAX);
-        const rest = waiting.slice(0, waiting.length - untried.length);
         const warm: string[] = [];
+        const gone: string[] = [];
         const stuck: string[] = [];
         while (untried.length) {
           const address = untried.pop() as string;
           const outcome = await remember(new URL(address));
           if (outcome === 'failed' || outcome === 'unstored') { stuck.push(address); break; }
-          if (outcome !== 'gone') warm.push(address);
+          (outcome === 'gone' ? gone : warm).push(address);
         }
+        // The list as it is now, not the copy read above: a version activating meanwhile may have carried
+        // addresses over, and they stay. A list that cannot be read now, or does not answer, is rebuilt
+        // from that copy, as it always was (BUG-20261011-sw-offline-cache-edges).
+        const current = await withinStorage(readIndexStrict(index)).catch(() => waiting);
         const payloads = await caches.open(OFFLINE_RSC_CACHE);
         const cold: string[] = [];
-        for (const address of warm) if (!(await payloads.match(address))) cold.push(address);
-        await writeIndex(index, [...stuck, ...cold, ...rest, ...untried]);
+        const leaving = new Set(gone);
+        for (const address of warm) {
+          if (await payloads.match(address)) leaving.add(address);
+          else cold.push(address);
+        }
+        const oldEnd = [...stuck, ...cold].filter(address => current.includes(address));
+        await writeIndex(index, [...oldEnd, ...current.filter(address => !leaving.has(address) && !oldEnd.includes(address))]);
       } catch { /* The list stays as it was; the next page seen tries again. */ } finally {
         rewarming = null;
       }

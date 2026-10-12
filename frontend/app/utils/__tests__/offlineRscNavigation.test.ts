@@ -5,6 +5,7 @@ import { computeCacheBustingSearchParam } from 'next/dist/shared/lib/router/util
 
 import {
   OFFLINE_RSC_CACHE,
+  OFFLINE_RSC_INDEX_CACHE,
   OFFLINE_RSC_MAX_ENTRIES,
   createOfflineRscNavigation,
   isRememberedPage,
@@ -57,6 +58,15 @@ async function retiredSixty(caches: ReturnType<typeof fakeCaches>) {
   await createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches }).retire();
 }
 const sermonId = (request: Request) => Number(new URL(request.url).pathname.split('/').pop());
+
+/** The addresses waiting to be warmed again, oldest first, whatever the entries carry besides. */
+async function waiting(caches: ReturnType<typeof fakeCaches>): Promise<string[]> {
+  const list = caches.stores.get(OFFLINE_RSC_INDEX_CACHE)?.values().next().value as Response | undefined;
+  if (!list) return [];
+  const entries = await list.clone().json() as Array<string | { address: string }>;
+  return entries.map(entry => (typeof entry === 'string' ? entry : entry.address));
+}
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 describe('offline RSC navigation', () => {
   it('keeps every address it could not warm yet, and finishes when the network is back', async () => {
@@ -459,7 +469,7 @@ describe('offline RSC navigation', () => {
     let calls = 0;
     // Headers arrived; the body never finishes.
     const stalledBody = () => ({ ok: true, status: 200, headers: new Headers({ 'content-type': 'text/x-component' }),
-      text: () => new Promise<string>(() => undefined) }) as unknown as Response;
+      text: () => new Promise<string>(() => undefined), arrayBuffer: () => new Promise<ArrayBuffer>(() => undefined) }) as unknown as Response;
     const caches = fakeCaches();
     const reading = {
       // A real cache reads the whole body before it stores it.
@@ -498,6 +508,81 @@ describe('offline RSC navigation', () => {
     await nav.remember(new URL(`${ORIGIN}/sermons/abc`));
 
     expect(calls).toBe(2);
+  });
+
+  describe('edges of the waiting list (BUG-20261011-sw-offline-cache-edges)', () => {
+    it('keeps the addresses another version carried over while a re-warm was running', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const nav = createOfflineRscNavigation({ fetchFn: async () => { await gate; return flight('new build'); }, caches });
+      const running = nav.rewarm();
+      await pause(0);
+      // Meanwhile a newer version: a page seen under it, then its retirement carries the address over.
+      const newer = createOfflineRscNavigation({ fetchFn: async () => flight('newer build'), caches });
+      await newer.remember(new URL(`${ORIGIN}/sermons/new`));
+      await newer.retire();
+      release();
+      await running;
+      expect(await waiting(caches)).toContain(`${ORIGIN}/sermons/new`);
+    });
+
+    it('lets a later re-warm run when the list\'s storage did not answer', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const real = caches.open.bind(caches);
+      let silent = true;
+      caches.open = async (name: string) => (silent && name === OFFLINE_RSC_INDEX_CACHE ? new Promise<Cache>(() => undefined) : real(name));
+      let fetched = 0;
+      const nav = createOfflineRscNavigation({ storageTimeoutMs: 5, fetchFn: async () => { fetched += 1; return flight('new build'); }, caches });
+      void nav.rewarm();
+      await pause(30);
+      silent = false;
+      await Promise.race([nav.rewarm(), pause(300)]);
+      expect(fetched).toBeGreaterThan(0);
+    });
+
+    it('does not keep an answer that came through a redirect: it is another page\'s', async () => {
+      const caches = fakeCaches();
+      const redirected = flight('sign-in page');
+      Object.defineProperty(redirected, 'redirected', { value: true });
+      const nav = createOfflineRscNavigation({ fetchFn: async () => redirected, caches });
+      expect(await nav.remember(new URL(`${ORIGIN}/sermons/a`))).toBe('failed');
+      expect(stored(caches)).toEqual([]);
+    });
+
+    it('rebuilds a list that broke while the batch ran from the copy read at its start', async () => {
+      const caches = fakeCaches();
+      await retiredSixty(caches);
+      const index = caches.stores.get(OFFLINE_RSC_INDEX_CACHE)!;
+      let broken = false;
+      const nav = createOfflineRscNavigation({ fetchFn: async () => {
+        if (!broken) { broken = true; index.set('https://offline-index.invalid/addresses', new Response('{broken')); }
+        return flight('new build');
+      }, caches });
+      await nav.rewarm();
+      // The fifty newest warmed and left; the ten older ones are still waiting, in a list that reads again.
+      expect(await waiting(caches)).toHaveLength(10);
+    });
+
+    it('does not let a request that outlived its version store the old build over the new one', async () => {
+      const caches = fakeCaches();
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const old = createOfflineRscNavigation({ fetchFn: async () => { await gate; return flight('old build'); }, caches });
+      const lingering = old.remember(new URL(`${ORIGIN}/sermons/a`));
+      await pause(0);
+      const fresh = createOfflineRscNavigation({ fetchFn: async () => flight('new build'), caches });
+      await fresh.retire();
+      await fresh.remember(new URL(`${ORIGIN}/sermons/a`));
+      release();
+      await lingering;
+      const offlineNav = createOfflineRscNavigation({ fetchFn: offline(), caches });
+      const answer = await offlineNav.respond(navigationRequest('/sermons/a', 'x'));
+      expect(await answer.text()).toBe('new build');
+    });
+
   });
 
   it('does not keep shared pages, whose metadata comes from live server data', () => {
