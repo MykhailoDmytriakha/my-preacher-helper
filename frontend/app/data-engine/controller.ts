@@ -328,12 +328,27 @@ export class EditorController {
     }).catch(() => undefined); // enqueue exposes persistence failure in the editor state.
   }
 
+  /**
+   * The record storage has not caught up with yet, or null once it has. Typing reaches the draft at
+   * once and the device a moment later; an editor closed inside that moment hands this over to be
+   * written, or its last words would live nowhere (BUG-20261011-leave-during-conflict-loses-edit).
+   */
+  unwrittenRecord(): EditorRecord | null {
+    this.assertCurrent();
+    return this.durable ? null : this.record();
+  }
+
+  private record(): EditorRecord {
+    return { owner: this.options.owner, editorId: this.options.editorId, checkpoint: this.session.checkpoint(), prepared: this.prepared,
+      unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits] };
+  }
+
   private async persist(): Promise<void> {
-    const checkpoint = this.session.checkpoint();
-    await this.options.store.put({ owner: this.options.owner, editorId: this.options.editorId, checkpoint, prepared: this.prepared, unfinalized: [...this.unfinalized], completedCommits: [...this.completedCommits] });
+    const record = this.record();
+    await this.options.store.put(record);
     this.assertCurrent();
     // Another keystroke may have arrived during the storage transaction.
-    this.durable = this.session.getState().editGeneration === checkpoint.editGeneration;
+    this.durable = this.session.getState().editGeneration === record.checkpoint.editGeneration;
     this.error = null;
     this.errorCode = null;
     this.emit();

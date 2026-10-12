@@ -1,6 +1,6 @@
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
-import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
+import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -81,8 +81,9 @@ export interface ManagedEditor {
    * delay, or a deletion whose request was not written yet — becomes a durable request first,
    * so leaving a screen never strands it in a checkpoint no editor will read again
    * (BUG-20260919-engine-leaving-strands-last-edit). A draft that waits for the person —
-   * a conflict, a refusal, a document deleted elsewhere — is left alone, as is everything
-   * when `flush` is false (manual forms, creation).
+   * a conflict, a refusal, a document deleted elsewhere — sends nothing, nor does anything
+   * when `flush` is false (manual forms, creation); whatever is not sent stays in the
+   * checkpoint left behind as the screen showed it last (BUG-20261011-leave-during-conflict-loses-edit).
    */
   close(options?: { flush?: boolean }): void;
 }
@@ -167,10 +168,18 @@ export class DataEngine {
 
   setOwner(owner: string | null): void {
     if (this.disposed || this.owner === owner) return;
+    // Leaving an account retires its editors as surely as leaving a screen: what storage has not
+    // caught up with is written under the account that typed it, never under the next one.
+    const previous = this.owner, previousGeneration = this.generation;
+    const unwritten = [...this.editors.values()].flatMap(entry => {
+      const record = entry.controller && !entry.closed ? this.unwrittenRecord(entry.controller) : null;
+      return record ? [record] : [];
+    });
     this.owner = owner;
     this.generation += 1;
     for (const entry of this.editors.values()) this.close(entry);
     this.editors.clear();
+    if (previous) for (const record of unwritten) this.keepUnwritten(record, previous, previousGeneration);
     for (const manual of this.manualForms.values()) manual.scope?.dispose();
     this.manualForms.clear();
     for (const scope of this.membershipForms.values()) scope.dispose();
@@ -850,11 +859,16 @@ export class DataEngine {
         },
         close: ({ flush = false } = {}) => {
           if (entry.closed) return;
-          const leaving = flush && this.current(owner, generation) ? this.leavingIntent(controller) : null;
+          const current = this.current(owner, generation);
+          const leaving = flush && current ? this.leavingIntent(controller) : null;
+          // With no request taking the last words along, the checkpoint left behind is where they live:
+          // it must hold what the screen showed, also when that came a moment before closing.
+          const unwritten = current && !leaving ? this.unwrittenRecord(controller) : null;
           // The entry closes now, synchronously: the same editor identity may reopen at once
           // (navigation back to this document), and an open entry would refuse it.
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
+          if (unwritten) this.keepUnwritten(unwritten, owner, generation, frozen);
           if (!leaving) return;
           // The request belongs to the engine's queue, not to the controller that just closed:
           // it is delivered by any editor or tab of this owner, now or after a reload.
@@ -885,6 +899,18 @@ export class DataEngine {
     if (!checkpoint.dirty || !unqueued || waitsForPerson) return null;
     const predecessorId = pending.sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
     return { checkpoint: JSON.parse(JSON.stringify(checkpoint)) as SessionCheckpoint, ...(predecessorId ? { predecessorId } : {}) };
+  }
+
+  /** The checkpoint a closing editor has not written yet; a retired controller has none to give. */
+  private unwrittenRecord(controller: EditorController): EditorRecord | null {
+    try { return controller.unwrittenRecord(); } catch { return null; }
+  }
+
+  /** Write a retired editor's last checkpoint at once; storage refusing it, even synchronously, is a failure like any other. */
+  private keepUnwritten(record: EditorRecord, owner: string, generation: number, about?: FailureAddress): void {
+    let writing: Promise<void>;
+    try { writing = this.options.checkpoints.put(record); } catch (error) { writing = Promise.reject(error); }
+    this.background(writing, owner, generation, about);
   }
 
   private abortError(): Error {

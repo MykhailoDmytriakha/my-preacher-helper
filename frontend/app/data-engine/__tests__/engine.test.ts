@@ -136,6 +136,18 @@ describe('DataEngine composition', () => {
     expect(s.server.get(keyOf('owner', resource))!.value!.title).toBe('Theirs'); s.engine.dispose();
   });
 
+  /** Codex (refute-leave-conflict): storage refusing the last checkpoint at once must not escape the screen's cleanup. */
+  it('reports a storage refusal of the last checkpoint instead of throwing out of close', async () => {
+    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'leaving');
+    const refusal = new Error('Storage refused at once');
+    void editor.edit({ ...initial().value!, content: 'last words' }).catch(() => undefined);
+    jest.mocked(s.checkpoints.put).mockImplementationOnce(() => { throw refusal; });
+    expect(() => editor.close({ flush: false })).not.toThrow();
+    await drainMicrotasks();
+    expect(s.onError).toHaveBeenCalledWith(refusal, resource);
+    s.engine.dispose();
+  });
+
   it('saves title B then D offline while unrelated unsaved content stays outside both requests', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'unsaved scratch C' });
