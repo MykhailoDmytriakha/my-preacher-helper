@@ -1,4 +1,5 @@
 import { debugLog } from '@/utils/debugMode';
+import { replaceMethod } from '@/utils/replaceMethod';
 
 export interface FetchWithTimeoutOptions extends RequestInit {
   timeout?: number;
@@ -12,10 +13,14 @@ export class FetchTimeoutError extends Error {
 }
 
 /**
- * Body reads a caller awaits as a whole; a stream taken with `getReader()` is its owner's to bound.
- * `formData()` is left out, as `apiClient` leaves it out: its TypeError also means "not form data".
+ * Body reads a caller awaits as a whole. `formData()` is left out, as `apiClient` leaves it out: its
+ * TypeError also means "not form data", and nothing in the app reads one.
  */
 const BODY_READS = ['json', 'text', 'arrayBuffer', 'blob'] as const;
+
+/** A stream reader as far as bounding goes: default and BYOB readers alike. */
+type StreamReader = { read: (...pieces: unknown[]) => Promise<unknown> };
+
 
 /**
  * Resilient fetch with AbortSignal chaining and deterministic error classification.
@@ -24,9 +29,10 @@ const BODY_READS = ['json', 'text', 'arrayBuffer', 'blob'] as const;
  * can come while the body never does, and a read that waits for ever holds the screen without an
  * error and without "no connection" (BUG-20261011-body-after-headers-no-deadline). A fresh window and
  * not what is left of the first one, so a body read late or right at the edge is not cut for being
- * late. The caller's own cancel reaches the body read too. A stream read through `getReader()` —
- * audio, long generations — keeps no deadline after the headers, as before: its length is the
- * caller's business.
+ * late. The caller's own cancel reaches the body read too. A copy of the answer (`clone()`) reads the
+ * same body and keeps both. A stream read piece by piece through `getReader()` — the audio export —
+ * gets the window for each piece: the whole may run long, a pause longer than the deadline is a dead
+ * stream (BUG-20261011-stream-and-clone-reads-unbounded).
  */
 export async function fetchWithTimeout(
   url: string,
@@ -90,25 +96,45 @@ export async function fetchWithTimeout(
 function boundBodyReads(response: Response, bound: () => () => void, classify: (error: unknown) => unknown): Response {
   // A response that cannot take own properties is returned as it is, as before.
   if (!Object.isExtensible(response)) return response;
+  /** One stretch of reading under the request's deadline and the caller's cancel. */
+  const within = async <T,>(read: () => Promise<T>): Promise<T> => {
+    const release = bound();
+    try {
+      return await read();
+    } catch (error) {
+      throw classify(error);
+    } finally {
+      release();
+    }
+  };
   for (const method of BODY_READS) {
-    const read = response[method]?.bind(response);
-    if (!read || Object.getOwnPropertyDescriptor(response, method)?.configurable === false) continue;
-    Object.defineProperty(response, method, {
-      configurable: true,
-      value: async () => {
-        // A body already read or held by a stream reader: the platform refuses this read by itself,
-        // and arming here would only abort the read or the stream that owns the body.
-        if (response.bodyUsed || response.body?.locked) return read();
-        const release = bound();
-        try {
-          return await read();
-        } catch (error) {
-          throw classify(error);
-        } finally {
-          release();
-        }
-      },
-    });
+    replaceMethod(response, method, read => (async () => {
+      // A body already read or held by a stream reader: the platform refuses this read by itself,
+      // and arming here would only abort the read or the stream that owns the body.
+      if (response.bodyUsed || response.body?.locked) return read();
+      return within(read);
+    }) as typeof read);
   }
+  /** The body's stream, read piece by piece: each piece within its own window. */
+  const boundStream = () => {
+    const body = response.body;
+    if (!body || boundStreams.has(body)) return;
+    boundStreams.add(body);
+    replaceMethod(body, 'getReader', getReader => ((...args: Parameters<typeof getReader>) => {
+      const reader = getReader(...args) as unknown as StreamReader;
+      replaceMethod(reader, 'read', read => (...pieces: unknown[]) => within(() => read(...pieces)));
+      return reader;
+    }) as typeof getReader);
+  };
+  // Copying tees the body: the copy is bounded like the original, and the original gets a new stream.
+  replaceMethod(response, 'clone', clone => (() => {
+    const copy = clone();
+    boundStream();
+    return boundBodyReads(copy, bound, classify);
+  }) as typeof clone);
+  boundStream();
   return response;
 }
+
+/** Streams already bounded: a body that survives a copy is not wrapped twice. */
+const boundStreams = new WeakSet<object>();

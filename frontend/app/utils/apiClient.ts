@@ -11,6 +11,7 @@ import {
 } from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
+import { replaceMethod } from '@/utils/replaceMethod';
 
 export type RequestCategory = 'metadata' | 'detail' | 'crud' | 'ai' | 'audio' | 'health';
 
@@ -104,33 +105,60 @@ const BODY_READS = ['json', 'text', 'arrayBuffer', 'blob'] as const;
 const cancelledBy = (signal: AbortSignal | null | undefined, error: unknown): boolean =>
   Boolean(signal?.aborted) && signal?.reason === error;
 function markBodyCutOff(response: Response, requestId: number, slowIsNormal: boolean, signal?: AbortSignal | null): Response {
-  // A response that cannot take own properties is returned as it is: the mark is a help, never a
-  // reason to fail a request that succeeded.
-  if (!Object.isExtensible(response)) return response;
+  /**
+   * Say a read that failed for want of the body. `untouched` answers, when the read fails, whether it
+   * was the caller's to make — a body already used, or a reader let go of, fails for the owner's reasons.
+   */
+  const read = async <T,>(untouched: () => boolean, reading: () => Promise<T>): Promise<T> => {
+    try {
+      return await reading();
+    } catch (error) {
+      const outOfTime = error instanceof FetchTimeoutError && !slowIsNormal;
+      if (untouched() && !cancelledBy(signal, error) && (error instanceof TypeError || outOfTime)) {
+        connectionFailures.add(error);
+        // Reported under the request it belongs to: a newer answer already heard wins.
+        reportServerUnreachable(requestId);
+      }
+      throw error;
+    }
+  };
+  // Where the response cannot take a replaced method, it is returned as it is: the mark is a help,
+  // never a reason to fail a request that succeeded.
   for (const method of BODY_READS) {
-    const read = response[method]?.bind(response);
-    if (!read) continue;
-    Object.defineProperty(response, method, {
-      configurable: true,
-      value: async () => {
-        // Unused and not held by a stream reader: only then is a TypeError the network's.
-        const untouched = !response.bodyUsed && !response.body?.locked;
-        try {
-          return await read();
-        } catch (error) {
-          const outOfTime = error instanceof FetchTimeoutError && !slowIsNormal;
-          if (untouched && !cancelledBy(signal, error) && (error instanceof TypeError || outOfTime)) {
-            connectionFailures.add(error);
-            // Reported under the request it belongs to: a newer answer already heard wins.
-            reportServerUnreachable(requestId);
-          }
-          throw error;
-        }
-      },
-    });
+    // Unused and not held by a stream reader: only then is a TypeError the network's.
+    replaceMethod(response, method, whole => (() => {
+      const fresh = !response.bodyUsed && !response.body?.locked;
+      return read(() => fresh, whole);
+    }) as typeof whole);
   }
+  // A copy reads the same body, and a stream reader reads it piece by piece
+  // (BUG-20261011-stream-and-clone-reads-unbounded): a cut there is the same "did not arrive".
+  const markStream = () => {
+    const body = response.body;
+    if (!body || markedStreams.has(body)) return;
+    markedStreams.add(body);
+    replaceMethod(body, 'getReader', getReader => ((...args: Parameters<typeof getReader>) => {
+      const reader = getReader(...args) as unknown as { read: (...pieces: unknown[]) => Promise<unknown>; releaseLock?: () => void };
+      let released = false;
+      replaceMethod(reader, 'releaseLock', release => () => { released = true; release!(); });
+      // A read on a reader its owner let go of — before the read or while it waited — fails for the
+      // owner's reasons; a read into a buffer of its own (BYOB, unused in the app) is left unmarked.
+      // Only a plain read of a held reader speaks for the network.
+      replaceMethod(reader, 'read', piece => (...pieces: unknown[]) => read(() => !released && pieces.every(given => given === undefined), () => piece(...pieces)));
+      return reader as unknown as ReturnType<typeof getReader>;
+    }) as typeof getReader);
+  };
+  replaceMethod(response, 'clone', clone => (() => {
+    const copy = clone();
+    markStream();
+    return markBodyCutOff(copy, requestId, slowIsNormal, signal);
+  }) as typeof clone);
+  markStream();
   return response;
 }
+
+/** Streams already marked: a body that survives a copy is not wrapped twice. */
+const markedStreams = new WeakSet<object>();
 
 /**
  * High-level API client with tiered timeouts and connectivity tracking.
@@ -166,8 +194,12 @@ async function performApiRequest(
     // Any reply — 200 or 503 — reached our server: that is "yes" (owner's rule 2). Whether the
     // route succeeded is the caller's question, not the connection's.
     reportServerReachable(requestId);
-    await throwIfUsageCapReached(response);
-    return markBodyCutOff(response, requestId, category === 'ai' || category === 'audio', fetchOptions.signal);
+    // The usage check reads a copy of this answer: marked like any other read of it.
+    const answer = markBodyCutOff(response, requestId, category === 'ai' || category === 'audio', fetchOptions.signal);
+    await throwIfUsageCapReached(answer);
+    // The copy stops at the caller's cancel and the check lets that pass: the cancel is the outcome.
+    if (fetchOptions.signal?.aborted) throw fetchOptions.signal.reason;
+    return answer;
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
     // A slow AI/audio operation is not evidence that unrelated reads lost their network.

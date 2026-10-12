@@ -457,7 +457,13 @@ export default function StepByStepWizard({
         };
 
         while (true) {
-            const { done, value } = await reader.read();
+            // A stream that breaks or falls silent mid-way (BUG-20261011-stream-and-clone-reads-unbounded)
+            // is the same broken connection as one that stops short: the batch is not counted and only
+            // the rest is repeated. The person's own cancel stays a cancel.
+            const { done, value } = await reader.read().catch((error: unknown) => {
+                if (signal.aborted) throw error;
+                throw new StreamInterruptedError();
+            });
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');

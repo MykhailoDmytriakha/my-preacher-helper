@@ -253,6 +253,124 @@ describe('apiClient', () => {
       expect(getConnectivityStatus()).toBe(true);
     });
 
+    /*
+     * A stream read piece by piece and a copy of the answer are reads of the same body
+     * (BUG-20261011-stream-and-clone-reads-unbounded): a cut there is "did not arrive" too.
+     */
+    const streamThatBreaks = (failure: Error) => {
+      const response = new Response('{}');
+      Object.defineProperty(response, 'body', { configurable: true, value: { getReader: () => ({ read: () => Promise.reject(failure) }) } });
+      return response;
+    };
+
+    it('marks a stream cut off mid-answer as not having arrived, and says the connection is gone', async () => {
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(streamThatBreaks(new TypeError('network error')));
+      const response = await apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio' });
+
+      const failure = await response.body!.getReader().read().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(true);
+      expect(getConnectivityStatus()).toBe(false);
+    });
+
+    it('does not take a slow audio stream, or the caller\'s cancel of it, for a lost network', async () => {
+      (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(streamThatBreaks(new FetchTimeoutError('timed out')));
+      const slow = await apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio' });
+      const late = await slow.body!.getReader().read().catch((error: unknown) => error);
+
+      const controller = new AbortController();
+      const reason = new TypeError('User cancelled');
+      (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(streamThatBreaks(reason));
+      const cancelled = await apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio', signal: controller.signal });
+      controller.abort(reason);
+      const stopped = await cancelled.body!.getReader().read().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(late)).toBe(false);
+      expect(isConnectionFailure(stopped)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    it('marks a copy of the answer cut off mid-way as not having arrived', async () => {
+      const response = new Response('{}');
+      Object.defineProperty(response, 'clone', { configurable: true, value: () => answerThatBreaks(new TypeError('network error')) });
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(response);
+      const answered = await apiClient('http://test.com/api/share-links');
+
+      const failure = await answered.clone().json().catch((error: unknown) => error);
+
+      expect(isConnectionFailure(failure)).toBe(true);
+      expect(getConnectivityStatus()).toBe(false);
+    });
+
+    // Codex (refute-stream-reads): a reader its owner released is the owner's fault, not the network's.
+    it('does not take a read on a released reader for a network', async () => {
+      const response = new Response('{}');
+      const releaseLock = jest.fn();
+      Object.defineProperty(response, 'body', { configurable: true, value: { getReader: () => ({
+        read: () => Promise.reject(new TypeError('Reader released')), releaseLock }) } });
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(response);
+      const answered = await apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio' });
+
+      const reader = answered.body!.getReader();
+      reader.releaseLock();
+      const failure = await reader.read().catch((error: unknown) => error);
+
+      expect(releaseLock).toHaveBeenCalled();
+      expect(isConnectionFailure(failure)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    // Codex (refute-stream-reads r2): released while the read was waiting — still the owner's doing.
+    it('does not take a read whose reader was released while it waited for a network', async () => {
+      const response = new Response('{}');
+      let rejectRead: (error: Error) => void = () => undefined;
+      Object.defineProperty(response, 'body', { configurable: true, value: { getReader: () => ({
+        read: () => new Promise((_, reject) => { rejectRead = reject; }),
+        releaseLock: () => rejectRead(new TypeError('Releasing reader')) }) } });
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(response);
+      const answered = await apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio' });
+
+      const reader = answered.body!.getReader();
+      const waiting = reader.read().catch((error: unknown) => error);
+      reader.releaseLock();
+      const failure = await waiting;
+
+      expect(isConnectionFailure(failure)).toBe(false);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    it('returns a successful answer whose copy and reader cannot be wrapped', async () => {
+      const response = new Response('{"ok":true}');
+      Object.defineProperty(response, 'clone', { configurable: false, value: () => new Response('{"ok":true}') });
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(response);
+
+      await expect(apiClient('http://test.com/api/share-links')).resolves.toBe(response);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
+    // Codex (refute-stream-reads): the usage check reads a copy; the caller's cancel there is the outcome.
+    it('ends with the caller\'s cancel when it comes while the usage check reads the copy', async () => {
+      const controller = new AbortController();
+      const reason = new DOMException('Cancelled by the person', 'AbortError');
+      const refused = new Response('{}', { status: 403 });
+      Object.defineProperty(refused, 'clone', { configurable: true, value: () => {
+        const copy = new Response('{}', { status: 403 });
+        // As the bounded read does: a cancel already given or given later ends it.
+        Object.defineProperty(copy, 'json', { configurable: true, value: () => new Promise((_, reject) => {
+          if (controller.signal.aborted) reject(controller.signal.reason);
+          controller.signal.addEventListener('abort', () => reject(controller.signal.reason));
+        }) });
+        return copy;
+      } });
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(refused);
+
+      const outcome = apiClient('http://test.com/api/sermons/s/audio/generate', { category: 'audio', signal: controller.signal }).catch((error: unknown) => error);
+      controller.abort(reason);
+
+      expect(await outcome).toBe(reason);
+      expect(getConnectivityStatus()).toBe(true);
+    });
+
     it('lets a newer answer win over an older body cut off later', async () => {
       (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(answerThatBreaks(new TypeError('network error')));
       const older = await apiClient('http://test.com/api/share-links');

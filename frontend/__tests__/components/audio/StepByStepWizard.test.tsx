@@ -841,6 +841,37 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(blob.size).toBe(3);
     });
 
+    // BUG-20261011-stream-and-clone-reads-unbounded: a stream that fails mid-way is the same broken
+    // connection as one that stops short — said in the person's words, and only that batch repeats.
+    it('says the connection broke when the stream fails mid-way, and repeats that batch', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([0, 1].map(i => ({ index: i, text: `Intro ${i}`, sectionId: 'introduction' }))));
+        const encoder = new TextEncoder();
+        const line = (event: object) => encoder.encode(JSON.stringify(event) + '\n');
+        const broken = { ok: true, body: { getReader: () => ({ read: jest.fn()
+            .mockResolvedValueOnce({ done: false, value: line({ type: 'audio_chunk', data: 'AAAA' }) })
+            .mockRejectedValueOnce(new TypeError('network error')) }) } };
+        const whole = { ok: true, body: { getReader: () => ({ read: jest.fn()
+            .mockResolvedValueOnce({ done: false, value: line({ type: 'audio_chunk', data: 'BBBB' }) })
+            .mockResolvedValueOnce({ done: false, value: line({ type: 'download_complete', filename: 'sermon-audio.mp3', mimeType: 'audio/mpeg' }) })
+            .mockResolvedValueOnce({ done: true, value: undefined }) }) } };
+        (global.fetch as jest.Mock).mockResolvedValueOnce(broken).mockResolvedValueOnce(whole);
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        expect(await screen.findByText('audioExport.streamInterrupted')).toBeInTheDocument();
+        expect(screen.queryByText('network error')).not.toBeInTheDocument();
+
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+        const offsets = (global.fetch as jest.Mock).mock.calls
+            .filter(([url]) => String(url).includes('/audio/generate'))
+            .map(([, init]) => JSON.parse(init.body).offset);
+        expect(offsets).toEqual([0, 0]);
+    });
+
     it('drives one quality chunk per Google batch and merges the WAV batches in-browser', async () => {
         setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         const googleChunks = [0, 1, 2, 3].map(i => ({ index: i, text: `Google ${i}`, sectionId: i < 2 ? 'introduction' : 'mainPart' }));
