@@ -18,7 +18,7 @@ import type { ManualScopeStore, StoredManualScope } from './manualScopes.client'
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
-import type { SessionCheckpoint } from './session';
+import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DocumentData, EngineMetadata, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
@@ -66,7 +66,8 @@ export interface ManagedEditor {
   getDelivery(): JournalEntry[];
   form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
-  edit(value: DocumentData | null): Promise<void>;
+  /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
+  edit(value: DocumentData | null, shown?: ShownCopy): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null): Promise<void>;
   /** Resolves when the command is durable; delivery continues independently. */
@@ -842,7 +843,7 @@ export class DataEngine {
           entry.listeners.add(subscription);
           return () => { entry.listeners.delete(subscription); };
         },
-        edit: value => { active(); return controller.edit(value); },
+        edit: (value, shown) => { active(); return controller.edit(value, shown); },
         commit: updater => {
           active();
           const persistence = controller.edit(updater(controller.getState().checkpoint.draft));

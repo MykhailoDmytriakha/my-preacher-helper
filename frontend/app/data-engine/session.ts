@@ -17,6 +17,24 @@ export interface SessionCheckpoint {
 
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+/** What a screen showed: the confirmed copy and the edit it reflected. */
+export type ShownCopy = Pick<SessionCheckpoint, 'confirmed' | 'editGeneration'>;
+
+/**
+ * Whether the draft went to a deletion from another device after a screen showed `shown`, with
+ * nothing of the editor's own in between — no edit, no removal, no choice (each moves the edit
+ * generation; an observed deletion does not). Storage is written before a screen hears of a change,
+ * so a keystroke can land in that moment (BUG-20261011-refused-edit-words-not-recoverable).
+ */
+export function deletedUnder(live: SessionCheckpoint, shown: ShownCopy): boolean {
+  const deletion = live.confirmed.metadata, before = shown.confirmed.metadata;
+  return live.draft === null && !live.dirty && !Object.keys(live.pending).length && Boolean(deletion?.deleted)
+    && live.editGeneration === shown.editGeneration
+    && shown.confirmed.resource.collection === live.confirmed.resource.collection && shown.confirmed.resource.id === live.confirmed.resource.id
+    && shown.confirmed.value !== null && Boolean(before) && !before!.deleted
+    && before!.generation === deletion!.generation && before!.revision < deletion!.revision;
+}
+
 /** The editor's confirmed baseline and local intent have independent lifetimes. */
 export class DataSession {
   private state: SessionCheckpoint;
@@ -34,7 +52,17 @@ export class DataSession {
   checkpoint(): SessionCheckpoint { return copy(this.state); }
   getState(): SessionCheckpoint { return this.checkpoint(); }
 
-  edit(value: DocumentData | null): void {
+  /**
+   * `shown` is the copy the screen showed while the person typed. Typing on a copy a deletion from
+   * another device has replaced here a moment ago (`deletedUnder`) is typing in progress when the
+   * deletion arrived, and waits the way such typing does (`observe`): over the copy it was typed on,
+   * with the deletion as the newer version the person decides on.
+   */
+  edit(value: DocumentData | null, shown?: ShownCopy): void {
+    if (value !== null && shown && deletedUnder(this.state, shown)) {
+      this.state.remoteCandidate = copy(this.state.confirmed);
+      this.state.confirmed = copy(shown.confirmed);
+    }
     this.state.draft = copy(value);
     this.state.editGeneration += 1;
     this.state.dirty = !equalValues(value, this.state.confirmed.value);

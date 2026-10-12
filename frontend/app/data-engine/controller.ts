@@ -2,7 +2,7 @@ import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
-import { DataSession, type SessionCheckpoint } from './session';
+import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 
 import type { CommitQueue, CommitRequest } from './commits';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
@@ -144,9 +144,10 @@ export class EditorController {
     return () => { this.listeners.delete(listener); };
   }
 
-  edit(value: DocumentData | null): Promise<void> {
+  /** `shown` — the copy the screen showed while typing (`DataSession.edit`). */
+  edit(value: DocumentData | null, shown?: ShownCopy): Promise<void> {
     this.assertCurrent();
-    this.session.edit(value);
+    this.session.edit(value, shown);
     this.durable = false;
     this.emit();
     return this.enqueue(() => this.persist());

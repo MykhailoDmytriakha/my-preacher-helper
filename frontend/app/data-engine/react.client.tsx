@@ -15,6 +15,7 @@ import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { mergeFields } from './protocol';
+import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -739,13 +740,23 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     // said in words, an unknown one keeps the engine's sentence, which may be an instruction
     // (BUG-20261003-engine-refusals-speak-english).
     error: error ?? editorRefusal ?? (copy || current ? null : backgroundFailure),
+    /*
+     * Typing is a change of what this screen shows. When a deletion from another device took the
+     * draft away a moment before the screen redrew, the change is made on the copy shown and waits
+     * under "deleted on another device" instead of being refused with the words left only in the
+     * field (BUG-20261011-refused-edit-words-not-recoverable).
+     */
     edit: (value: DocumentData | null) => {
       cancelScheduledSave();
-      return run(editor => editor.edit(value));
+      return run(editor => editor.edit(value, current?.state.checkpoint));
     },
     update: (updater: (current: DocumentData | null) => DocumentData | null) => {
       cancelScheduledSave();
-      return run(editor => editor.edit(updater(editor.getState().checkpoint.draft)));
+      return run(editor => {
+        const live = editor.getState().checkpoint, shown = current?.state.checkpoint;
+        const base = shown && deletedUnder(live, shown) ? shown.draft : live.draft;
+        return editor.edit(updater(base), shown);
+      });
     },
     /** Freeze the intended save before any asynchronous draft persistence. */
     commit: (updater: (current: DocumentData | null) => DocumentData | null) => {
