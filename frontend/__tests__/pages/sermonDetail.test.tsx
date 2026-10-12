@@ -261,8 +261,16 @@ jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({
   onSaveTransitionSentence,
   onSaveOneSentence,
   onSaveSermonInOneSentence,
+  onSaveQuestionWord,
+  onSaveWhyPreach,
+  onSaveImpactOnChurch,
+  onSavePracticalQuestions,
 }: any) => (
   <div>
+    <button data-testid="save-question-word" onClick={() => onSaveQuestionWord?.('question')}>Save Question Word</button>
+    <button data-testid="save-why-preach" onClick={() => onSaveWhyPreach?.('why')}>Save Why Preach</button>
+    <button data-testid="save-impact-on-church" onClick={() => onSaveImpactOnChurch?.('impact')}>Save Impact</button>
+    <button data-testid="save-practical-questions" onClick={() => onSavePracticalQuestions?.('practical')}>Save Practical</button>
     <button data-testid="save-thesis" onClick={() => onSaveHomiletical('thesis')}>Save Thesis</button>
     <button data-testid="save-thesis-exegetical" onClick={() => onSaveExegetical('exegetical')}>Save Thesis Exegetical</button>
     <button data-testid="save-plural-key" onClick={() => onSavePluralKey('plural')}>Save Plural Key</button>
@@ -1154,6 +1162,25 @@ describe('Sermon Detail Page', () => {
       // and went red while passing in isolation — and since the Vercel build runs the suite,
       // a flake here fails a deploy for a reason that has nothing to do with the change
       // being deployed. The work is legitimately slow; give it room instead of pretending.
+    }, 30_000);
+
+    // BUG-20261011-thesis-answers-save-nowhere: four fields of the thesis step showed Save while the page
+    // gave them nothing to save with, so the words went nowhere.
+    it('saves every answer of the thesis step that has a Save button', async () => {
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+      const save = require('@/services/sermon.service').updateSermonPreparation as jest.Mock;
+      save.mockClear();
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const saved = async (testId: string) => {
+        save.mockClear();
+        fireEvent.click(screen.getByTestId(testId));
+        await waitFor(() => expect(save).toHaveBeenCalled());
+        return save.mock.calls[save.mock.calls.length - 1][1];
+      };
+      expect((await saved('save-question-word')).thesis.questionWord).toBe('question');
+      expect((await saved('save-why-preach')).thesis.homileticalAnswers.whyPreach).toBe('why');
+      expect((await saved('save-impact-on-church')).thesis.homileticalAnswers.impactOnChurch).toBe('impact');
+      expect((await saved('save-practical-questions')).thesis.homileticalAnswers.practicalQuestions).toBe('practical');
     }, 30_000);
 
     it('updates structure when edited thought moves to a different section', async () => {

@@ -612,6 +612,9 @@ useEffect(() => {
     setPrepDraft(next);
     await savePreparation(next);
   }, [core, prepDraft, savePreparation]);
+  // One answer of the homiletical thesis, keeping the other answers (BUG-20261011-thesis-answers-save-nowhere).
+  const saveHomileticalAnswer = useCallback((answer: 'whyPreach' | 'impactOnChurch' | 'practicalQuestions', text: string) =>
+    savePrepField('thesis', { ...prepDraft?.thesis?.homileticalAnswers, [answer]: text }, 'homileticalAnswers'), [prepDraft, savePrepField]);
 
   const { allTags } = useTags(sermon?.userId);
   const allowedTags = useMemo(
@@ -1819,6 +1822,14 @@ useEffect(() => {
           onSaveOneSentence={(text) => savePrepField('thesis', text, 'oneSentence')}
           sermonInOneSentence={prepDraft?.thesis?.sermonInOneSentence || ''}
           onSaveSermonInOneSentence={(text) => savePrepField('thesis', text, 'sermonInOneSentence')}
+          questionWord={prepDraft?.thesis?.questionWord || ''}
+          onSaveQuestionWord={(text) => savePrepField('thesis', text, 'questionWord')}
+          whyPreach={prepDraft?.thesis?.homileticalAnswers?.whyPreach || ''}
+          onSaveWhyPreach={(text) => saveHomileticalAnswer('whyPreach', text)}
+          impactOnChurch={prepDraft?.thesis?.homileticalAnswers?.impactOnChurch || ''}
+          onSaveImpactOnChurch={(text) => saveHomileticalAnswer('impactOnChurch', text)}
+          practicalQuestions={prepDraft?.thesis?.homileticalAnswers?.practicalQuestions || ''}
+          onSavePracticalQuestions={(text) => saveHomileticalAnswer('practicalQuestions', text)}
         />
       ),
       homileticPlan: (
