@@ -11,6 +11,6 @@
  * `DATA_ENGINE_CLOSED_COLLECTIONS`) can still add a collection that is not here; they cannot take
  * one of these away. Pure data, no transport: clientPolicy.ts and activation.ts both read it.
  */
-export const ENGINE_OWNED_COLLECTIONS: readonly string[] = ['planTemplates'];
+export const ENGINE_OWNED_COLLECTIONS: readonly string[] = ['planTemplates', 'tags'];
 
 export const isEngineOwned = (collection: string): boolean => ENGINE_OWNED_COLLECTIONS.includes(collection);

@@ -8,6 +8,7 @@ Resizing the Chrome window does not reach phone width. Use DevTools device emula
 
 - Trust `window.innerWidth`, not the tool's success message. `resize_window` and AppleScript both report success while Chrome stays at its minimum, roughly 500 CSS px, or 820 on a scaled display.
 - When Chrome is driven by an agent tool, the device toolbar has to be switched on by the owner by hand; ask for it.
+- Without the owner: open the same page inside a 390 px `iframe` overlay of the same origin. Media queries follow the frame's own viewport (`frame.contentWindow.innerWidth === 390`), sign-in is shared; in an automation tab override `visibilityState` in the frame document too, or engine lists stay loading (2026-10-12).
 - Read the breakpoints out of the code first. The note page branches in JS on `useWideViewport` (`(min-width: 1024px)`, Tailwind `lg`) and `useRoomyHeader` (`(min-width: 640px)`, `sm`), both in `frontend/app/hooks/useWideViewport.ts` and used by `frontend/app/(pages)/(private)/studies/[id]/page.tsx`; add the `sm:` / `md:` / `lg:` prefixes of the markup you touch.
 - N breakpoints make N+1 states. Check one width inside every band, e.g. 390, 800 and 1280 for the note page.
 - In each band ask: is every control that opens something present in the same band as the thing it opens?

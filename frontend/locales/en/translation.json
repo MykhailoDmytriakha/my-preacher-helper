@@ -53,7 +53,8 @@
       "series": "Series",
       "sermons": "Sermon",
       "users": "User Settings",
-      "planTemplates": "Structure template"
+      "planTemplates": "Structure template",
+      "tags": "Tag"
     },
     "field": {
       "name": "Name",

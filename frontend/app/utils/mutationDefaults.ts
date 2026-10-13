@@ -18,7 +18,6 @@ import {
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { createStudyNote, deleteStudyNote, updateStudyNote } from '@/services/studies.service';
 import { createStudyNoteShareLink, deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
-import { addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
 import {
   updateAudioGenerationAccess,
   updateFirstDayOfWeek,
@@ -38,7 +37,7 @@ import type {
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote, Tag } from '@/models/models';
+import type { Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -279,7 +278,6 @@ const buildOptimisticEditedSermon = (vars: DashboardSermonUpdateVars): Sermon =>
 // Variable shapes carried by each mutation. They MUST be self-contained (no
 // closure state) so a mutation rehydrated from IndexedDB after a reload can be
 // replayed by the registered mutationFn alone.
-type TagRemoveVars = { userId: string; tagName: string };
 type SettingVars = { userId: string; value: boolean };
 type FirstDayVars = { userId: string; value: FirstDayOfWeek };
 
@@ -383,18 +381,10 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   });
 
   // ---- tags ----
-  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.add, {
-    mutationFn: (tag: Tag) => addCustomTag(tag),
-    onSuccess: invalidate(['tags']),
-  });
-  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.remove, {
-    mutationFn: ({ userId, tagName }: TagRemoveVars) => removeCustomTag(userId, tagName),
-    onSuccess: invalidate(['tags']),
-  });
-  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.update, {
-    mutationFn: (tag: Tag) => updateTag(tag),
-    onSuccess: invalidate(['tags']),
-  });
+  // The engine owns tags; a paused edit of the previous version gets the same refusal.
+  for (const key of Object.values(TAG_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('tags') });
+  }
 
   // ---- plan templates ----
   // The engine owns plan templates. A paused edit of the previous version replays into the

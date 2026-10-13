@@ -1,5 +1,5 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { deleteTag } from '@clients/firestore.client';
+import { removeTagFromSermons } from '@/data-engine/serverEdit.server';
 
 /**
  * DELETING A TAG MUST NOT SWALLOW A THOUGHT DICTATED MEANWHILE.
@@ -132,7 +132,7 @@ describe('deleting a tag cascades without eating concurrent work', () => {
       landsAfterRead = null;
     };
 
-    await deleteTag('u1', 'Examples');
+    await removeTagFromSermons('u1', 'Examples');
 
     const ids = store['sermon-1'].thoughts.map((thought) => thought.id);
     expect(ids).toContain('t-phone');
@@ -141,7 +141,7 @@ describe('deleting a tag cascades without eating concurrent work', () => {
   });
 
   it('advances the thoughts counter, so the guard is not handed a lie', async () => {
-    await deleteTag('u1', 'Examples');
+    await removeTagFromSermons('u1', 'Examples');
 
     expect(store['sermon-1'].rev?.thoughts).toBe(1);
   });

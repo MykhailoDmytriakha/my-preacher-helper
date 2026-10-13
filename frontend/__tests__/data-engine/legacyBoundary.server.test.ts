@@ -1,8 +1,8 @@
 /** @jest-environment node */
-import { deleteTag } from '@/api/clients/firestore.client';
 import { SeriesRepository } from '@/api/repositories/series.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { assertLegacyWritable, createLegacyDocument, deleteLegacyDocument, legacyBoundaryResponse, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
+import { removeTagFromSermons } from '@/data-engine/serverEdit.server';
 
 import type { DocumentReference } from 'firebase-admin/firestore';
 
@@ -187,31 +187,19 @@ describe('legacy repository cascades are atomic', () => {
     await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(records.has('series/list')).toBe(true);
   });
-  it('removes tag references and preserves untouched thoughts', async () => {
-    records.set('tags/tag', { userId: 'owner', name: 'Topic' });
+  it('strips a deleted tag from the owner\'s sermons and preserves untouched thoughts', async () => {
     records.set('sermons/a', { userId: 'owner', thoughts: [{ id: 'a', text: 'Keep', tags: ['Topic', 'Other'] }, { id: 'b', text: 'No tags' }] });
-    expect(await deleteTag('owner', 'Topic')).toEqual({ affectedThoughts: 1 });
-    expect(records.has('tags/tag')).toBe(false);
+    expect(await removeTagFromSermons('owner', 'Topic')).toEqual({ changed: 1, failed: 0 });
     expect(records.get('sermons/a')?.thoughts).toEqual([{ id: 'a', text: 'Keep', tags: ['Other'] }, { id: 'b', text: 'No tags' }]);
   });
-  it('deletes a tag for an owner with more sermons than one transaction could hold', async () => {
-    records.set('tags/tag', { userId: 'owner', name: 'Topic' });
+  it('strips a deleted tag from more sermons than one transaction could hold, one sermon at a time', async () => {
     for (let index = 0; index < 150; index++) {
       records.set(`sermons/s${index}`, { userId: 'owner', thoughts: [{ id: `t${index}`, text: 'Words', tags: index % 3 ? ['Other'] : ['Topic', 'Other'] }] });
     }
     records.set('sermons/foreign', { userId: 'other', thoughts: [{ id: 'f', text: 'Theirs', tags: ['Topic'] }] });
-    expect(await deleteTag('owner', 'Topic')).toEqual({ affectedThoughts: 50 });
-    expect(records.has('tags/tag')).toBe(false);
+    expect(await removeTagFromSermons('owner', 'Topic')).toEqual({ changed: 50, failed: 0 });
     expect([...records].filter(([path, value]) => path.startsWith('sermons/s') && JSON.stringify(value.thoughts).includes('"Topic"'))).toEqual([]);
     expect(records.get('sermons/foreign')?.thoughts).toEqual([{ id: 'f', text: 'Theirs', tags: ['Topic'] }]);
-  });
-  it.each(['tags/tag', 'sermons/a'])('keeps tag and every reference if %s is protected', async path => {
-    records.set('tags/tag', { userId: 'owner', name: 'Topic' });
-    records.set('sermons/a', { userId: 'owner', thoughts: [{ id: 'a', tags: ['Topic'] }] });
-    records.set(path, { ...records.get(path), _dataEngine: marker });
-    const original = JSON.stringify([...records]);
-    await expect(deleteTag('owner', 'Topic')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(JSON.stringify([...records])).toBe(original);
   });
 });
 

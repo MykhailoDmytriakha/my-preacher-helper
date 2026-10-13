@@ -58,7 +58,24 @@ export function isDataEngineRequired(error: unknown): boolean {
 }
 
 export function legacyBoundaryResponse(error: unknown): NextResponse | null {
-  return isDataEngineRequired(error) ? NextResponse.json({ code: DATA_ENGINE_REQUIRED, error: DATA_ENGINE_REQUIRED }, { status: LEGACY_REFUSAL_STATUS }) : null;
+  return isDataEngineRequired(error) ? legacyRefusalResponse() : null;
+}
+
+/** The refusal body and status every legacy write of an engine-owned collection answers with. */
+export function legacyRefusalResponse(): NextResponse {
+  return NextResponse.json({ code: DATA_ENGINE_REQUIRED, error: DATA_ENGINE_REQUIRED }, { status: LEGACY_REFUSAL_STATUS });
+}
+
+/**
+ * A write route an old bundle may still call for a collection the engine owns
+ * (engineOwnedCollections.ts). Its writer is gone; the route stays, and after it knows the caller
+ * it answers with the same refusal the writer gave — never 404 or 409, which shipped clients read
+ * as "gone" or "conflict" and drop the person's text.
+ */
+export async function refuseLegacyWriteRoute(request: Request): Promise<NextResponse> {
+  const { getRequiredAuthenticatedUid } = await import('@/api/auth/requireAuthenticatedUid.server');
+  if (!await getRequiredAuthenticatedUid(request)) return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
+  return legacyRefusalResponse();
 }
 
 /** Only reviewed legacy APIs may use this bridge. It cannot mutate protocol documents.

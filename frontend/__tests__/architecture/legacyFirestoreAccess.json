@@ -15,10 +15,7 @@
     "api/admin/users/route.ts#get": 2,
     "api/clients/aiTelemetry.ts#set": 3,
     "api/clients/apiPerformanceTelemetry.ts#set": 1,
-    "api/clients/firestore.client.ts#create": 1,
-    "api/clients/firestore.client.ts#delete": 1,
-    "api/clients/firestore.client.ts#get": 5,
-    "api/clients/firestore.client.ts#update": 1,
+    "api/clients/firestore.client.ts#get": 1,
     "api/feedback/route.ts#add": 1,
     "api/feedback/route.ts#batch": 1,
     "api/feedback/route.ts#commit": 1,
@@ -115,9 +112,7 @@
     "services/studies.service.ts#getDocs": 1,
     "services/studies.service.ts#setDoc": 1,
     "services/studies.service.ts#updateDoc": 1,
-    "services/tag.service.ts#addDoc": 1,
-    "services/tag.service.ts#getDocs": 3,
-    "services/tag.service.ts#updateDoc": 1,
+    "services/tag.service.ts#getDocs": 1,
     "services/usageLimits.server.ts#get": 1,
     "services/usageLimits.server.ts#runTransaction": 1,
     "services/usageLimits.server.ts#set": 1,
@@ -324,11 +319,9 @@
     "services/studies.service.ts#sdk-runtime:where": 1,
     "services/tag.service.ts#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
     "services/tag.service.ts#sdk-runtime:*": 1,
-    "services/tag.service.ts#sdk-runtime:addDoc": 1,
     "services/tag.service.ts#sdk-runtime:collection": 1,
     "services/tag.service.ts#sdk-runtime:getDocs": 1,
     "services/tag.service.ts#sdk-runtime:query": 1,
-    "services/tag.service.ts#sdk-runtime:updateDoc": 1,
     "services/tag.service.ts#sdk-runtime:where": 1,
     "services/usageLimits.server.ts#database-runtime:config/firebaseAdminConfig.ts#adminDb": 1,
     "services/userEntitlement.server.ts#database-runtime:config/firebaseAdminConfig.ts#adminDb": 1
@@ -361,7 +354,6 @@
     "services/studies.service.ts#DELETE /api/studies/notes/*": 1,
     "services/studyNoteShareLinks.service.ts#DELETE /api/studies/share-links/*": 1,
     "services/studyNoteShareLinks.service.ts#POST /api/studies/share-links": 1,
-    "services/tag.service.ts#DELETE /api/tags": 1,
     "services/thought.service.ts#POST /api/thoughts": 1
   }
 }

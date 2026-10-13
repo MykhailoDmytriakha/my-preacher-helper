@@ -88,6 +88,7 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
 const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   groups: ['create', 'update', 'delete'], series: ['create', 'update', 'delete'],
   planTemplates: ['create', 'update', 'delete'],
+  tags: ['add', 'remove', 'update'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };

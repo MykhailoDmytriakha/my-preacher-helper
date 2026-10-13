@@ -1,44 +1,24 @@
-/**
- * API Tests for /api/tags route
- */
+/** @jest-environment node */
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { DELETE } from '@/api/tags/route';
 
-import * as clients from '@/api/clients/firestore.client';
-import * as route from '@/api/tags/route';
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: jest.fn() }));
+jest.mock('next/server', () => ({ NextResponse: { json: (body: unknown, init?: { status?: number }) => ({ status: init?.status ?? 200, json: async () => body }) } }));
 
-// Mock firebase admin and clients
-jest.mock('@/config/firebaseAdminConfig', () => ({
-  adminDb: {
-    collection: jest.fn(),
-  },
-  initAdmin: jest.fn(),
-}));
-
-// Mock next/server to avoid pulling actual Request class in node env
-jest.mock('next/server', () => ({
-  NextResponse: { json: (data: any, init?: any) => ({ status: init?.status ?? 200, json: async () => data }) }
-}));
-
-jest.mock('@/api/clients/firestore.client', () => ({
-  deleteTag: jest.fn(),
-}));
-
-jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
-  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('u1'),
-}));
-
-const mockClients = clients as jest.Mocked<typeof clients>;
+const request = () => new Request('http://localhost/api/tags?userId=u1&tagName=Examples', { method: 'DELETE' });
 
 describe('Tags API Route', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeEach(() => jest.clearAllMocks());
+
+  it('refuses a shipped bundle\'s tag delete with data-engine-required, never 404 or 409', async () => {
+    jest.mocked(getRequiredAuthenticatedUid).mockResolvedValue('u1');
+    const response = await DELETE(request());
+    expect(response.status).toBe(426);
+    expect(await response.json()).toEqual({ code: 'data-engine-required', error: 'data-engine-required' });
   });
 
-  it('DELETE performs cascade and returns affectedThoughts', async () => {
-    mockClients.deleteTag.mockResolvedValue({ affectedThoughts: 3 });
-    const req = { url: 'https://example.com/api/tags?userId=u1&tagName=Custom' } as any;
-    const res = await route.DELETE(req);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.affectedThoughts).toBe(3);
+  it('answers an unknown caller 401 before anything else', async () => {
+    jest.mocked(getRequiredAuthenticatedUid).mockResolvedValue(null);
+    expect((await DELETE(request())).status).toBe(401);
   });
 });

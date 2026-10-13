@@ -1,16 +1,11 @@
-import { addDoc, collection, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
-import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Tag } from '@/models/models';
-import { apiClient } from '@/utils/apiClient';
-import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isStructureTag } from '@/utils/structureTags';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
-// Tags live on the client Firestore SDK for reads and own-doc writes. DELETE
-// stays on the server because it cascades tag removal into sermon thoughts.
+// Tags are written only through the data engine (engineOwnedCollections.ts). This read stays for
+// the structure board, which still loads the person's tags on its own (useSermonStructureData).
 
 type TagPayload = { requiredTags: Tag[]; customTags: Tag[] };
 
@@ -32,61 +27,4 @@ async function getTagsViaClient(userId: string): Promise<TagPayload> {
 
 export async function getTags(userId: string) {
   return getTagsViaClient(userId);
-}
-
-// Client-SDK write paths mirror the old server logic; DELETE stays on the
-// server because it cascades tag removal into every sermon's thoughts.
-async function addCustomTagViaClient(tag: Tag): Promise<Tag> {
-  if (isStructureTag(tag.name)) throw new Error('Reserved tag name');
-  const db = getClientDb();
-  const dup = await getDocs(
-    query(collection(db, 'tags'), where('userId', '==', tag.userId), where('name', '==', tag.name))
-  );
-  if (!dup.empty) throw new Error('Tag with same name and userId already exists');
-  await addDoc(collection(db, 'tags'), {
-    userId: tag.userId,
-    name: tag.name,
-    color: tag.color,
-    required: false,
-  });
-  return tag;
-}
-
-async function updateTagViaClient(tag: Tag): Promise<{ message: string; tag: Tag }> {
-  const db = getClientDb();
-  const snap = await getDocs(
-    query(collection(db, 'tags'), where('userId', '==', tag.userId), where('name', '==', tag.name))
-  );
-  if (snap.empty) throw new Error('Tag not found');
-  await updateDoc(snap.docs[0].ref, { name: tag.name, color: tag.color });
-  return { message: 'Tag updated', tag };
-}
-
-export async function addCustomTag(tag: Tag) {
-  assertLegacyClientWriteAllowed('tags');
-  return addCustomTagViaClient(tag);
-}
-
-export async function removeCustomTag(userId: string, tagName: string) {
-  assertLegacyClientWriteAllowed('tags');
-  try {
-    const authHeaders = await getAuthenticatedRequestHeaders();
-    const res = await apiClient(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, { category: 'crud',
-      method: 'DELETE',
-      headers: authHeaders,
-    });
-    if (!res.ok) {
-      throw new Error('Failed to remove custom tag');
-    }
-    const data = await res.json();
-    return data;
-  } catch (error) {
-    console.error('removeCustomTag: Error removing custom tag', error);
-    throw error;
-  }
-}
-
-export async function updateTag(tag: Tag) {
-  assertLegacyClientWriteAllowed('tags');
-  return updateTagViaClient(tag);
 }
