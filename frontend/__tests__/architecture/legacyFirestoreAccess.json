@@ -201,7 +201,6 @@
   },
   "legacyHttp": {
     "(pages)/(private)/sermons/[id]/plan/planApi.ts#POST /api/sermons/*/plan": 1,
-    "(pages)/(private)/sermons/[id]/plan/planApi.ts#PUT /api/sermons/*/plan": 1,
     "components/audio/StepByStepWizard.tsx#POST /api/sermons/*/audio/generate": 1,
     "components/audio/StepByStepWizard.tsx#POST /api/sermons/*/audio/optimize": 1,
     "components/audio/StepByStepWizard.tsx#PUT /api/sermons/*/audio/chunks": 1,

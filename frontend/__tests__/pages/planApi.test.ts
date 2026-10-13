@@ -1,6 +1,5 @@
-import { generateNotePlanContent, generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { generateNotePlanContent, generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import { apiClient } from '@/utils/apiClient';
-import type { Plan } from "@/models/models";
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
 jest.mock('@/utils/authenticatedRequest', () => ({
@@ -104,49 +103,5 @@ describe("planApi", () => {
         style: "memory",
       })
     ).rejects.toThrow("Failed to generate content: invalid response payload");
-  });
-
-  it("sends PUT request with serialized plan payload", async () => {
-    mockedApiClient.mockResolvedValue({
-      ok: true,
-    } as Response);
-
-    const plan: Plan = {
-      introduction: { outline: "Intro", outlinePoints: { p1: "A" } },
-      main: { outline: "Main", outlinePoints: { p2: "B" } },
-      conclusion: { outline: "Conclusion", outlinePoints: { p3: "C" } },
-    };
-
-    await saveSermonPlan({
-      sermonId: "sermon-1",
-      plan,
-    });
-
-    expect(mockedApiClient).toHaveBeenCalledWith("/api/sermons/sermon-1/plan", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: 'Bearer test-token',
-      },
-      body: JSON.stringify(plan),
-    });
-  });
-
-  it("throws when save request returns non-ok status", async () => {
-    mockedApiClient.mockResolvedValue({
-      ok: false,
-      status: 400,
-    } as Response);
-
-    await expect(
-      saveSermonPlan({
-        sermonId: "sermon-1",
-        plan: {
-          introduction: { outline: "" },
-          main: { outline: "" },
-          conclusion: { outline: "" },
-        },
-      })
-    ).rejects.toThrow("Failed to save plan: 400");
   });
 });

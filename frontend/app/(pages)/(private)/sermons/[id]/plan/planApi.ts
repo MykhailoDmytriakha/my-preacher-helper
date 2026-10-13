@@ -4,7 +4,6 @@ import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { NotePlanResultSchema, type NotePlanResult, type NotePlanRevision } from '@/utils/notePlan';
 
-import type { Plan } from "@/models/models";
 
 interface GeneratePlanPointContentParams {
   sermonId: string;
@@ -14,17 +13,6 @@ interface GeneratePlanPointContentParams {
 
 interface GeneratePlanPointContentResponse {
   content: string;
-}
-
-interface SaveSermonPlanParams {
-  sermonId: string;
-  /**
-   * ONLY the sections this save actually changed. The route writes each stated
-   * section by its own nested path and leaves the rest alone, so an editor open since
-   * last night no longer carries its stale copy of the other sections over a rewrite
-   * made on another device.
-   */
-  plan: Partial<Plan>;
 }
 
 export async function generateNotePlanContent(
@@ -77,23 +65,4 @@ export async function generatePlanPointContent({
   }
 
   return { content: data.content };
-}
-
-export async function saveSermonPlan({
-  sermonId,
-  plan,
-}: SaveSermonPlanParams): Promise<void> {
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await apiClient(`/api/sermons/${sermonId}/plan`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders,
-    },
-    body: JSON.stringify(plan),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to save plan: ${response.status}`);
-  }
 }
