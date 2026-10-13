@@ -10,28 +10,9 @@ import { getSermonById } from "@services/sermon.service";
 
 import type { Sermon, Thought } from "@/models/models";
 
-type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
+export { sermonIsMissing } from "@/hooks/useSermonRead";
 
-/**
- * THERE IS NO SERMON TO SHOW HERE — one definition, because two screens ask.
- *
- * The detail page renders its "not found" panel from this, and the app nav decides from the
- * same answer whether to draw the sermon mode switcher (prep / classic / raw). Those modes
- * belong to a sermon; over an empty screen they are three buttons that lead nowhere. Spelling
- * the rule twice is how they would drift apart — one of them would keep showing the switcher
- * long after the other stopped showing the sermon.
- *
- * "Missing" is deliberately narrower than "no sermon in hand": while the read can still
- * arrive, the answer is not in yet and nothing may be concluded from the silence.
- *
- * It is a TYPE PREDICATE so the caller keeps the narrowing the plain `!sermon` check used
- * to give it — otherwise sharing the rule would cost every caller a second, dead null
- * check just to satisfy the compiler.
- */
-export const sermonIsMissing = (
-  sermon: Sermon | null,
-  state: { loading: boolean; awaitingFirstAnswer: boolean }
-): sermon is null => !state.loading && !state.awaitingFirstAnswer && !sermon;
+type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
 
 function useSermon(sermonId: string) {
   const queryClient = useQueryClient();

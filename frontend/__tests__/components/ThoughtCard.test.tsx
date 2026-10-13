@@ -444,7 +444,6 @@ describe('ThoughtCard Component', () => {
         thought={{ ...mockThought, tags: ['Вступление'] }}
         sermonOutline={sermonOutline}
         sermonId="sermon-1"
-        onThoughtUpdate={jest.fn()}
         onThoughtOutlinePointChange={onThoughtOutlinePointChange}
       />
     );

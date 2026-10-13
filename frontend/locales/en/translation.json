@@ -1303,9 +1303,7 @@
   "errors": {
     "audioProcessing": "Error processing audio",
     "thoughtDeleteError": "Error deleting thought. Please try again.",
-    "thoughtUpdateError": "Error updating thought in database",
     "microphoneUnavailable": "Microphone unavailable",
-    "addThoughtError": "Error adding thought",
     "aiSortingError": "Error sorting items with AI. Please try again.",
     "saveOutlineError": "Failed to save structure",
     "fetchOutlineError": "Failed to fetch structure",
@@ -1340,23 +1338,19 @@
     "magicUnavailable": "Magic is currently unavailable due to connectivity issues",
     "syncFailed": "Sync failed",
     "failedToSaveOutline": "Failed to save structure",
-    "savedOfflineWillSync": "Changes saved locally. They will sync when you are back online.",
     "guestSignInFailed": "Guest sign-in error",
     "aiOutOfTime": "No answer arrived in the time allowed. Try again — if it happens again, shorten the text.",
     "aiOutOfTimeAudio": "No answer about the recording arrived in the time allowed. The thought may still have been saved — check the list before recording again; if it is not there, record a shorter piece."
   },
   "createThought": {
-    "title": "New Thought",
-    "dirtyGuard": "You have unsaved text. Close anyway?",
-    "dirtyGuardConfirm": "Close"
+    "title": "New Thought"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
     "placeholder": "Enter your thought...",
     "addedSuccess": "Thought added successfully",
     "addedToSection": "Recording added to “{{section}}”",
-    "offlineDisabled": "Manual thought creation is not available offline",
-    "offlineWarning": "You are currently offline. Manual thoughts cannot be saved until you reconnect."
+    "offlineDisabled": "Manual thought creation is not available offline"
   },
   "thought": {
     "editorLabel": "Thought",
@@ -1388,7 +1382,6 @@
     "noSermonPoint": "No structure point selected",
     "noSermonPointAssigned": "Structure point not assigned",
     "selectSermonPoint": "Select structure point",
-    "selectedSermonPoint": "Selected structure point from {{section}}",
     "currentLocationLabel": "Current location",
     "saveLocationLabel": "After save",
     "locationWithinSubPoint": "{{outlinePoint}} / {{subPoint}}",
@@ -1663,7 +1656,6 @@
   },
   "outline": {
     "introduction": "Introduction",
-    "mainPoints": "Main Points",
     "conclusion": "Conclusion"
   },
   "textOutline": {

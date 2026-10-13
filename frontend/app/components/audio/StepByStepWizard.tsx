@@ -33,7 +33,7 @@ import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/hooks/useAuth';
-import useSermon from '@/hooks/useSermon';
+import { useSermonRead } from '@/hooks/useSermonRead';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import {
     AVAILABLE_VOICES,
@@ -282,7 +282,7 @@ export default function StepByStepWizard({
     const [playingPreview, setPlayingPreview] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const { sermon } = useSermon(sermonId);
+    const { sermon } = useSermonRead(sermonId);
     const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
     // Producing the spoken sermon spends the AI allowance AND the audio one — `/audio/generate`
     // admits both — while optimising the text alone spends only AI.

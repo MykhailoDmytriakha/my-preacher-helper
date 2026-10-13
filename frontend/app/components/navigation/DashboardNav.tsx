@@ -20,7 +20,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
-import useSermon, { sermonIsMissing } from '@/hooks/useSermon';
+import { sermonIsMissing, useSermonRead } from '@/hooks/useSermonRead';
 import { useShellPathname } from "@/hooks/useShellPathname";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
@@ -350,12 +350,12 @@ export default function DashboardNav() {
    *
    * On the "sermon not found or unavailable" screen — a deleted sermon opened from a link, a
    * stale bookmark, someone else's id — the three buttons stayed on the bar and switched
-   * modes of nothing. The answer comes from the SAME query the page reads (React Query
-   * dedupes: two observers, one fetch), so the bar and the screen can never disagree.
+   * modes of nothing. The answer comes from the engine's copy of the sermons on this device —
+   * where the page reads it — so a sermon created offline keeps its switcher.
    *
    * `''` on every other route keeps the read disabled: the hook does nothing for an empty id.
    */
-  const sermonForNav = useSermon(isSermonRoot ? (sermonIdForMode ?? '') : '');
+  const sermonForNav = useSermonRead(isSermonRoot ? (sermonIdForMode ?? '') : '');
   const sermonMissing = isSermonRoot && sermonIsMissing(sermonForNav.sermon, sermonForNav);
 
   const modeToggle = isSermonRoot && !sermonMissing ? (

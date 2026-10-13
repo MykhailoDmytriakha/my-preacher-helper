@@ -1,12 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import { toast } from 'sonner';
 
 import SermonHeader, { type SermonHeaderEditor } from '@/components/sermon/SermonHeader';
 import { DataSyncStatus, type DataSyncStatusProps } from '@/data-engine/DataSyncStatus';
 import { Sermon, Series } from '@/models/models';
-import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { getSermonById, updateSermon } from '@/services/sermon.service';
 import { getExportContent } from '@utils/exportContent';
 import '@testing-library/jest-dom';
 
@@ -21,38 +18,46 @@ jest.mock('@/data-engine/DataSyncStatus', () => ({
   </div>),
 }));
 
+type TestEditor = SermonHeaderEditor & { changed: () => void };
+
+/** A complete editor whose bindings are jest.fn and whose forms re-render the header on change. */
+const buildEditor = (values: { title: string; verse: string }, overrides: Partial<SermonHeaderEditor> = {}): TestEditor => {
+  const editor: TestEditor = {
+    subject: 'sermon-subject', values, isReadOnly: false,
+    status: { phase: 'queued', freshness: 'cache', checking: false, readFailed: false, hasForeignChange: false, canSave: false, canAcceptRemote: false, canKeepLocal: false, canRemove: false },
+    error: null, changed: () => undefined,
+    titleForm: form(values.title), verseForm: form(values.verse),
+    keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
+    ...overrides,
+  };
+  function form(value: string): SermonHeaderEditor['titleForm'] {
+    const binding = {
+      active: false, busy: false, value,
+      begin: jest.fn(async () => { binding.active = true; editor.changed(); }),
+      update: jest.fn(async (text: string) => { binding.value = text; editor.changed(); }),
+      save: jest.fn(async (_text: string) => { binding.active = false; editor.changed(); }),
+      cancel: jest.fn(async () => { binding.active = false; editor.changed(); }),
+    };
+    return binding;
+  }
+  return editor;
+};
+
+const renderHeader = (sermon: Sermon, editor: TestEditor, series?: Series[]) => {
+  const view = render(<SermonHeader sermon={sermon} series={series} editor={editor} />);
+  editor.changed = () => view.rerender(<SermonHeader sermon={sermon} series={series} editor={editor} />);
+  return view;
+};
+
 describe('SermonHeader canonical editor injection', () => {
   const sermon: Sermon = { id: 'canonical-sermon', userId: 'owner', title: 'Legacy title', verse: 'Legacy verse', date: '2026-09-12', thoughts: [] };
-  const editor = () => {
-    const canonical: SermonHeaderEditor & { changed: () => void } = {
-      subject: 'canonical-sermon', values: { title: 'Canonical title', verse: 'Canonical verse' }, isReadOnly: false,
-      status: { phase: 'queued', freshness: 'cache', checking: false, readFailed: false, hasForeignChange: false, canSave: false, canAcceptRemote: false, canKeepLocal: false, canRemove: false },
-      error: null, changed: () => undefined,
-      titleForm: form('Canonical title'), verseForm: form('Canonical verse'),
-      keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
-    };
-    function form(value: string): SermonHeaderEditor['titleForm'] {
-      const binding = {
-        active: false, busy: false, value,
-        begin: jest.fn(async () => { binding.active = true; canonical.changed(); }),
-        update: jest.fn(async (text: string) => { binding.value = text; canonical.changed(); }),
-        save: jest.fn(async (_text: string) => { binding.active = false; canonical.changed(); }),
-        cancel: jest.fn(async () => { binding.active = false; canonical.changed(); }),
-      };
-      return binding;
-    }
-    return canonical;
-  };
-  const renderCanonical = (canonical: ReturnType<typeof editor>, onUpdate?: (sermon: Sermon) => void) => {
-    const view = render(<SermonHeader sermon={sermon} editor={canonical} onUpdate={onUpdate} />);
-    canonical.changed = () => view.rerender(<SermonHeader sermon={sermon} editor={canonical} onUpdate={onUpdate} />);
-    return view;
-  };
+  const editor = () => buildEditor({ title: 'Canonical title', verse: 'Canonical verse' });
+  const renderCanonical = (canonical: TestEditor) => renderHeader(sermon, canonical);
   beforeEach(() => { jest.clearAllMocks(); });
 
-  it('renders canonical title and verse and delegates their patches without legacy writes or confirmed publication', async () => {
-    const canonical = editor(); const onUpdate = jest.fn();
-    const view = renderCanonical(canonical, onUpdate);
+  it('renders canonical title and verse and delegates their saves to the editor forms', async () => {
+    const canonical = editor();
+    const view = renderCanonical(canonical);
     expect(screen.getByRole('heading', { name: 'Canonical title' })).toBeInTheDocument();
     expect(screen.getByText('Canonical verse')).toBeInTheDocument();
     expect(screen.getByTestId('canonical-sync-status')).toHaveTextContent('queued');
@@ -64,18 +69,16 @@ describe('SermonHeader canonical editor injection', () => {
     fireEvent.click(screen.getByTitle('Save'));
     await waitFor(() => expect(canonical.titleForm.save).toHaveBeenCalledWith('Typed title'));
     await waitFor(() => expect(screen.queryByTitle('Save')).not.toBeInTheDocument());
-    view.rerender(<SermonHeader sermon={sermon} editor={{ ...canonical, values: { ...canonical.values, title: 'Typed title' } }} onUpdate={onUpdate} />);
+    view.rerender(<SermonHeader sermon={sermon} editor={{ ...canonical, values: { ...canonical.values, title: 'Typed title' } }} />);
     expect(screen.getByRole('heading', { name: 'Typed title' })).toBeInTheDocument();
     fireEvent.click(screen.getAllByTitle('Edit')[1]);
     await waitFor(() => expect(screen.getByTitle('Save')).toBeInTheDocument());
     fireEvent.change(screen.getByDisplayValue('Canonical verse'), { target: { value: 'Typed verse' } });
     fireEvent.click(screen.getByTitle('Save'));
     await waitFor(() => expect(canonical.verseForm.save).toHaveBeenCalledWith('Typed verse'));
-    expect(updateSermon).not.toHaveBeenCalled(); expect(getSermonById).not.toHaveBeenCalled();
-    expect(onUpdate).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it('uses canonical conflict actions and error text without the legacy conflict store UI', async () => {
+  it('uses canonical conflict actions and error text', async () => {
     const canonical = editor(); canonical.error = 'Local persistence failed';
     render(<SermonHeader sermon={sermon} editor={canonical} />);
     const props = jest.mocked(DataSyncStatus).mock.calls.at(-1)![0];
@@ -83,7 +86,6 @@ describe('SermonHeader canonical editor injection', () => {
     await props.onKeepLocal?.(); await props.onAcceptRemote?.(); await props.onRetry?.();
     expect(canonical.keepLocal).toHaveBeenCalledTimes(1); expect(canonical.acceptRemote).toHaveBeenCalledTimes(1); expect(canonical.retry).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
-    expect(updateSermon).not.toHaveBeenCalled(); expect(getSermonById).not.toHaveBeenCalled();
   });
 
   it('retains the open form on a canonical command failure', async () => {
@@ -95,10 +97,9 @@ describe('SermonHeader canonical editor injection', () => {
     fireEvent.click(screen.getByTitle('Save'));
     expect(await screen.findByText('Failed to save title')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Never discard this')).toBeInTheDocument();
-    expect(updateSermon).not.toHaveBeenCalled();
   });
 
-  it('locks owner-disabled or deleted canonical editors and hides legacy lifecycle actions', () => {
+  it('locks owner-disabled or deleted canonical editors and hides lifecycle actions', () => {
     const canonical = editor(); canonical.isReadOnly = true;
     const view = render(<SermonHeader sermon={sermon} editor={canonical} />);
     screen.getAllByTitle('Edit').forEach(button => expect(button).toBeDisabled());
@@ -109,7 +110,7 @@ describe('SermonHeader canonical editor injection', () => {
     expect(canonical.titleForm.begin).not.toHaveBeenCalled(); expect(canonical.verseForm.begin).not.toHaveBeenCalled();
   });
 
-  it('keeps canonical empty values distinct from populated legacy values while status initializes', () => {
+  it('keeps canonical empty values distinct from populated sermon values while status initializes', () => {
     const canonical = editor(); canonical.values = { title: '', verse: '' }; canonical.status = null;
     render(<SermonHeader sermon={sermon} editor={canonical} />);
     expect(screen.queryByText('Legacy title')).not.toBeInTheDocument();
@@ -124,11 +125,6 @@ describe('SermonHeader canonical editor injection', () => {
 jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() })),
   ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock('@/services/sermon.service', () => ({
-  updateSermon: jest.fn(),
-  getSermonById: jest.fn()
 }));
 
 jest.mock('sonner', () => ({
@@ -246,13 +242,16 @@ jest.mock('react-i18next', () => ({
   },
 }));
 
+
 describe('SermonHeader Component', () => {
-  const mockOnUpdate = jest.fn();
-  const mockUpdateSermon = updateSermon as jest.MockedFunction<typeof updateSermon>;
+  const mount = (sermon: Sermon, series?: Series[], overrides: Partial<SermonHeaderEditor> = {}) => {
+    const editor = buildEditor({ title: sermon.title, verse: sermon.verse ?? '' }, overrides);
+    renderHeader(sermon, editor, series);
+    return editor;
+  };
 
   beforeEach(() => {
-    mockOnUpdate.mockClear();
-    mockUpdateSermon.mockClear();
+    jest.clearAllMocks();
     latestExportProps = null;
   });
 
@@ -274,7 +273,7 @@ describe('SermonHeader Component', () => {
 
   describe('Rendering', () => {
     it('renders basic structure', () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       expect(screen.getByRole('heading', { name: 'Test Sermon Title' })).toBeInTheDocument();
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
@@ -282,7 +281,7 @@ describe('SermonHeader Component', () => {
     });
 
     it('hands the sermon to the source-note chips, in the identity row', () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       // Proves the wiring, not the chip: the header must mount it and give it THIS sermon,
       // or provenance would silently stop appearing while every other assertion stayed green.
@@ -291,14 +290,14 @@ describe('SermonHeader Component', () => {
 
     it('renders without verse when verse is empty', () => {
       const sermonWithoutVerse = { ...mockSermon, verse: '' };
-      render(<SermonHeader sermon={sermonWithoutVerse} onUpdate={mockOnUpdate} />);
+      mount(sermonWithoutVerse);
 
       expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
       expect(screen.queryByText('John 3:16 - For God so loved the world that he gave his one and only Son')).not.toBeInTheDocument();
     });
 
     it('renders export buttons', () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       // Export buttons should be present (they're rendered by ExportButtons component)
       expect(screen.getByText('TXT')).toBeInTheDocument();
@@ -316,7 +315,7 @@ describe('SermonHeader Component', () => {
         },
       };
 
-      render(<SermonHeader sermon={sermonWithPlan} onUpdate={mockOnUpdate} />);
+      mount(sermonWithPlan);
 
       expect(latestExportProps?.planData).toEqual({
         sermonTitle: sermonWithPlan.title,
@@ -328,7 +327,7 @@ describe('SermonHeader Component', () => {
     });
 
     it('exposes export content callbacks for plain and PDF', async () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       await latestExportProps.getExportContent('plain', { includeTags: true });
       expect(getExportContent).toHaveBeenCalledWith(mockSermon, undefined, {
@@ -341,7 +340,7 @@ describe('SermonHeader Component', () => {
     });
 
     it('passes export type (plan/thoughts) to export function', async () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       await latestExportProps.getExportContent('plain', { includeTags: false, type: 'plan' });
       expect(getExportContent).toHaveBeenCalledWith(mockSermon, undefined, {
@@ -360,7 +359,7 @@ describe('SermonHeader Component', () => {
         href: '',
       };
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      mount(mockSermon);
 
       const preachButton = screen.getByTitle('Preach');
       fireEvent.click(preachButton);
@@ -373,217 +372,107 @@ describe('SermonHeader Component', () => {
   });
 
   describe('Title Editing', () => {
-    it('allows editing sermon title', async () => {
-      const updatedSermon = { ...mockSermon, title: 'Updated Title' };
-      mockUpdateSermon.mockResolvedValue(updatedSermon);
+    it('sends the edited title to the editor title form', async () => {
+      const editor = mount(mockSermon);
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-
-      // Find and click the edit button for title
-      const editButtons = screen.getAllByTitle('Edit');
-      const titleEditButton = editButtons[0]; // First edit button should be for title
-      fireEvent.click(titleEditButton);
-
-      const titleInput = screen.getByDisplayValue('Test Sermon Title');
-      fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        // The second argument is the surgical patch: only the field the user
-        // touched is written, so an untouched verse cannot be reverted from a
-        // stale snapshot.
-        // Third argument = the revision this edit was built from; a document with
-        // no counter yet reads as 0.
-        // Fourth argument = THE FIELD AS IT WAS WHEN THE EDIT STARTED. The counter
-        // alone trusts every writer to maintain it; comparing the value catches an
-        // old build that changed the title and left the number alone. It must be
-        // the opening value — a value read fresh at save time would agree with the
-        // server by construction and protect nothing.
-        expect(mockUpdateSermon).toHaveBeenCalledWith(
-          { ...mockSermon, title: 'Updated Title' },
-          { title: 'Updated Title' },
-          0,
-          { title: mockSermon.title }
-        );
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
-      });
-    });
-
-    it('handles title save errors', async () => {
-      mockUpdateSermon.mockRejectedValue(new Error('Save failed'));
-
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-
-      const editButtons = screen.getAllByTitle('Edit');
-      const titleEditButton = editButtons[0];
-      fireEvent.click(titleEditButton);
-
-      const titleInput = screen.getByDisplayValue('Test Sermon Title');
-      fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(screen.getByText('Failed to save title')).toBeInTheDocument();
-      });
-
-      expect(mockOnUpdate).not.toHaveBeenCalled();
-    });
-
-    it('uses a neutral waiting notice, never success, when the durable outbox owns the title write', async () => {
-      mockUpdateSermon.mockRejectedValue(new OfflineQueuedError('core'));
-
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-
-      const titleEditButton = screen.getAllByTitle('Edit')[0];
-      fireEvent.click(titleEditButton);
-      fireEvent.change(screen.getByDisplayValue('Test Sermon Title'), {
-        target: { value: 'Queued title' },
-      });
+      fireEvent.click(screen.getAllByTitle('Edit')[0]);
+      fireEvent.change(await screen.findByDisplayValue('Test Sermon Title'), { target: { value: 'Updated Title' } });
       fireEvent.click(screen.getByTitle('Save'));
 
-      await waitFor(() => {
-        expect(toast.message).toHaveBeenCalledWith('freshness.queuedPending');
-      });
-      // The outbox owns a future attempt; it is not evidence that the server saved it.
-      expect(toast.success).not.toHaveBeenCalledWith('freshness.queuedPending');
+      await waitFor(() => expect(editor.titleForm.save).toHaveBeenCalledWith('Updated Title'));
+      expect(editor.verseForm.save).not.toHaveBeenCalled();
+    });
+
+    it('keeps the typed title and shows the error when the title form rejects the save', async () => {
+      const editor = buildEditor({ title: mockSermon.title, verse: mockSermon.verse });
+      jest.mocked(editor.titleForm.save).mockRejectedValueOnce(new Error('Save failed'));
+      renderHeader(mockSermon, editor);
+
+      fireEvent.click(screen.getAllByTitle('Edit')[0]);
+      fireEvent.change(await screen.findByDisplayValue('Test Sermon Title'), { target: { value: 'Updated Title' } });
+      fireEvent.click(screen.getByTitle('Save'));
+
+      expect(await screen.findByText('Failed to save title')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Updated Title')).toBeInTheDocument();
     });
   });
 
   describe('Verse Editing', () => {
-    it('allows editing sermon verse', async () => {
-      const updatedSermon = { ...mockSermon, verse: 'Updated verse text' };
-      mockUpdateSermon.mockResolvedValue(updatedSermon);
+    const verseText = 'John 3:16 - For God so loved the world that he gave his one and only Son';
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+    it('sends the edited verse to the editor verse form', async () => {
+      const editor = mount(mockSermon);
 
-      // Find and click the edit button for verse (should be the second edit button)
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1]; // Second edit button should be for verse
-      fireEvent.click(verseEditButton);
+      fireEvent.click(screen.getAllByTitle('Edit')[1]);
+      fireEvent.change(await screen.findByDisplayValue(verseText), { target: { value: 'Updated verse text' } });
+      fireEvent.click(screen.getByTitle('Save'));
 
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-      fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith(
-          { ...mockSermon, verse: 'Updated verse text' },
-          { verse: 'Updated verse text' },
-          0,
-          { verse: mockSermon.verse }
-        );
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
-      });
+      await waitFor(() => expect(editor.verseForm.save).toHaveBeenCalledWith('Updated verse text'));
+      expect(editor.titleForm.save).not.toHaveBeenCalled();
     });
 
-    it('handles verse save errors', async () => {
-      mockUpdateSermon.mockRejectedValue(new Error('Save failed'));
+    it('keeps the typed verse and shows the error when the verse form rejects the save', async () => {
+      const editor = buildEditor({ title: mockSermon.title, verse: mockSermon.verse });
+      jest.mocked(editor.verseForm.save).mockRejectedValueOnce(new Error('Save failed'));
+      renderHeader(mockSermon, editor);
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      fireEvent.click(screen.getAllByTitle('Edit')[1]);
+      fireEvent.change(await screen.findByDisplayValue(verseText), { target: { value: 'Updated verse text' } });
+      fireEvent.click(screen.getByTitle('Save'));
 
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1];
-      fireEvent.click(verseEditButton);
-
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-      fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(screen.getByText('Failed to save verse')).toBeInTheDocument();
-      });
-
-      expect(mockOnUpdate).not.toHaveBeenCalled();
+      expect(await screen.findByText('Failed to save verse')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('Updated verse text')).toBeInTheDocument();
     });
 
     it('allows adding verse when sermon has no verse', async () => {
       const sermonWithoutVerse = { ...mockSermon, verse: '' };
-      const { rerender } = render(<SermonHeader sermon={sermonWithoutVerse} onUpdate={mockOnUpdate} />);
+      const editor = buildEditor({ title: sermonWithoutVerse.title, verse: '' });
+      const { rerender } = renderHeader(sermonWithoutVerse, editor);
 
-      expect(screen.queryByText('John 3:16 - For God so loved the world that he gave his one and only Son')).not.toBeInTheDocument();
+      expect(screen.queryByText(verseText)).not.toBeInTheDocument();
 
-      rerender(<SermonHeader sermon={{ ...sermonWithoutVerse, verse: 'New verse text' }} onUpdate={mockOnUpdate} />);
+      rerender(<SermonHeader sermon={sermonWithoutVerse} editor={{ ...editor, values: { title: sermonWithoutVerse.title, verse: 'New verse text' } }} />);
 
       expect(screen.getByText('New verse text')).toBeInTheDocument();
     });
 
-    it('supports multi-line verse editing', async () => {
+    it('passes a multi-line verse to the verse form unchanged', async () => {
       const multiLineVerse = 'John 3:16\nFor God so loved the world\nthat he gave his one and only Son';
-      const updatedSermon = { ...mockSermon, verse: multiLineVerse };
-      mockUpdateSermon.mockResolvedValue(updatedSermon);
+      const editor = mount(mockSermon);
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+      fireEvent.click(screen.getAllByTitle('Edit')[1]);
+      fireEvent.change(await screen.findByDisplayValue(verseText), { target: { value: multiLineVerse } });
+      fireEvent.click(screen.getByTitle('Save'));
 
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1];
-      fireEvent.click(verseEditButton);
-
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-      fireEvent.change(verseTextarea, { target: { value: multiLineVerse } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith(
-          { ...mockSermon, verse: multiLineVerse },
-          { verse: multiLineVerse },
-          0,
-          { verse: mockSermon.verse }
-        );
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
-      });
+      await waitFor(() => expect(editor.verseForm.save).toHaveBeenCalledWith(multiLineVerse));
     });
   });
 
   describe('Keyboard Shortcuts', () => {
+    const verseText = 'John 3:16 - For God so loved the world that he gave his one and only Son';
+
     it('supports Ctrl+Enter to save verse', async () => {
-      const updatedSermon = { ...mockSermon, verse: 'Updated verse text' };
-      mockUpdateSermon.mockResolvedValue(updatedSermon);
+      const editor = mount(mockSermon);
 
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1];
-      fireEvent.click(verseEditButton);
-
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
+      fireEvent.click(screen.getAllByTitle('Edit')[1]);
+      const verseTextarea = await screen.findByDisplayValue(verseText);
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
       fireEvent.keyDown(verseTextarea, { key: 'Enter', ctrlKey: true });
 
-      await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith(
-          { ...mockSermon, verse: 'Updated verse text' },
-          { verse: 'Updated verse text' },
-          0,
-          { verse: mockSermon.verse }
-        );
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
-      });
+      await waitFor(() => expect(editor.verseForm.save).toHaveBeenCalledWith('Updated verse text'));
     });
 
-    it('supports Escape to cancel verse editing', () => {
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+    it('supports Escape to cancel verse editing', async () => {
+      const editor = mount(mockSermon);
 
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1];
-      fireEvent.click(verseEditButton);
-
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
+      fireEvent.click(screen.getAllByTitle('Edit')[1]);
+      const verseTextarea = await screen.findByDisplayValue(verseText);
       fireEvent.change(verseTextarea, { target: { value: 'Updated verse text' } });
       fireEvent.keyDown(verseTextarea, { key: 'Escape' });
 
       // Should return to display mode with original text
-      expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
-      expect(mockUpdateSermon).not.toHaveBeenCalled();
+      expect(await screen.findByText(verseText)).toBeInTheDocument();
+      expect(editor.verseForm.save).not.toHaveBeenCalled();
     });
   });
 
@@ -615,7 +504,7 @@ describe('SermonHeader Component', () => {
 
     it('shows series badge when sermon has seriesId', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, mockSeries);
 
       const seriesBadge = screen.getByText('Test Series');
       expect(seriesBadge).toBeInTheDocument();
@@ -625,7 +514,7 @@ describe('SermonHeader Component', () => {
     it('does not show series badge when sermon is not a member of any series', () => {
       // Not in series.items/sermonIds -> derive returns nothing -> no badge.
       const standaloneSermon = { ...mockSermon, id: 'standalone-sermon-id' };
-      render(<SermonHeader sermon={standaloneSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(standaloneSermon, mockSeries);
 
       expect(screen.queryByText('Test Series')).not.toBeInTheDocument();
       expect(screen.queryByText('Part of Series')).not.toBeInTheDocument();
@@ -633,14 +522,14 @@ describe('SermonHeader Component', () => {
 
     it('renders the sermon actions menu (which now hosts series actions) when in a series', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, mockSeries);
 
       // Series actions were unified into the shared OptionMenu (mocked as "option-menu").
       expect(screen.getByTestId('option-menu')).toBeInTheDocument();
     });
 
     it('renders the sermon actions menu for standalone sermons too', () => {
-      render(<SermonHeader sermon={mockSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(mockSermon, mockSeries);
 
       // Add-to-series lives in the shared OptionMenu now, not a separate header menu.
       expect(screen.getByTestId('option-menu')).toBeInTheDocument();
@@ -648,7 +537,7 @@ describe('SermonHeader Component', () => {
 
     it('shows series management dropdown when sermon belongs to series', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, mockSeries);
 
       // Should show the dropdown menu button (ellipsis icon)
       const menuButtons = screen.getAllByRole('button');
@@ -661,7 +550,7 @@ describe('SermonHeader Component', () => {
 
     it('series badge links to series page', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, mockSeries);
 
       const seriesLink = screen.getByRole('link', { name: /Test Series/ });
       expect(seriesLink).toHaveAttribute('href', '/series/series-1');
@@ -669,7 +558,7 @@ describe('SermonHeader Component', () => {
 
     it('series badge has correct styling with color', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, mockSeries);
 
       const seriesBadge = screen.getByText('Test Series').closest('a');
       expect(seriesBadge).toHaveStyle({
@@ -681,7 +570,7 @@ describe('SermonHeader Component', () => {
     it('series badge has default styling when no color', () => {
       const seriesWithoutColor = [{ ...mockSeries[0], color: undefined }];
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
-      render(<SermonHeader sermon={sermonWithSeries} series={seriesWithoutColor} onUpdate={mockOnUpdate} />);
+      mount(sermonWithSeries, seriesWithoutColor);
 
       // A series with no colour of its own falls back to the shared blue chip token, so the
       // dark plate is the token's `dark:bg-blue-900/50` rather than a local `dark:bg-blue-900`.
@@ -692,195 +581,21 @@ describe('SermonHeader Component', () => {
   });
 
   describe('Component Integration', () => {
-    it('works without onUpdate callback', () => {
-      render(<SermonHeader sermon={mockSermon} />);
+    it('hides the sermon actions menu and disables editing when the editor is read-only', () => {
+      mount(mockSermon, undefined, { isReadOnly: true });
 
+      expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+      screen.getAllByTitle('Edit').forEach(button => expect(button).toBeDisabled());
       expect(screen.getByText('Test Sermon Title')).toBeInTheDocument();
-      expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
     });
 
-    it('handles multiple rapid edits correctly', async () => {
-      const updatedSermon1 = { ...mockSermon, verse: 'First update' };
-      const updatedSermon2 = { ...mockSermon, verse: 'Second update' };
+    it('hands the editor status and error to the sync status block', () => {
+      const editor = mount(mockSermon, undefined, { error: 'Local persistence failed' });
 
-      mockUpdateSermon
-        .mockResolvedValueOnce(updatedSermon1)
-        .mockResolvedValueOnce(updatedSermon2);
-
-      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
-
-      // First edit
-      const editButtons = screen.getAllByTitle('Edit');
-      const verseEditButton = editButtons[1];
-      fireEvent.click(verseEditButton);
-
-      const verseTextarea = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-      fireEvent.change(verseTextarea, { target: { value: 'First update' } });
-
-      const saveButton = screen.getByTitle('Save');
-      fireEvent.click(saveButton);
-
-      await waitFor(() => {
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon1);
-      });
-
-      // Second edit - need to wait for the component to update
-      await waitFor(() => {
-        const editButtons2 = screen.getAllByTitle('Edit');
-        expect(editButtons2).toHaveLength(2);
-      });
-
-      const editButtons2 = screen.getAllByTitle('Edit');
-      const verseEditButton2 = editButtons2[1];
-      fireEvent.click(verseEditButton2);
-
-      const verseTextarea2 = screen.getByDisplayValue('John 3:16 - For God so loved the world that he gave his one and only Son');
-      fireEvent.change(verseTextarea2, { target: { value: 'Second update' } });
-
-      const saveButton2 = screen.getByTitle('Save');
-      fireEvent.click(saveButton2);
-
-      await waitFor(() => {
-        expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon2);
-      });
+      const props = jest.mocked(DataSyncStatus).mock.calls.at(-1)![0];
+      expect(props.subject).toBe(editor.subject);
+      expect(props.status).toBe(editor.status);
+      expect(props.error).toBe('Local persistence failed');
     });
   });
-});
-
-/**
- * A REFUSED save must not cost the person their words.
- *
- * `EditableTitle`/`EditableVerse` treat a resolved `onSave` as success: they close
- * the editor, and an effect resets the field to the server value. So a refusal
- * that is merely toasted erases what was typed — and these fields have no durable
- * draft behind them. The header must HOLD the refused text and offer the choice.
- */
-describe('SermonHeader — a refused save keeps the text and offers a choice', () => {
-  const updateSermonMock = updateSermon as jest.MockedFunction<typeof updateSermon>;
-  const getSermonByIdMock = getSermonById as jest.MockedFunction<typeof getSermonById>;
-
-  const sermonAtRev4: Sermon = {
-    id: 'sermon-1',
-    title: 'Server title',
-    verse: 'Server verse',
-    date: '2024-01-15',
-    userId: 'test-user-id',
-    thoughts: [],
-    outline: { introduction: [], main: [], conclusion: [] },
-    isPreached: false,
-    preparation: {},
-    rev: { core: 4 },
-  };
-
-  const editTitle = (value: string) => {
-    fireEvent.click(screen.getAllByTitle('Edit')[0]);
-    fireEvent.change(screen.getByDisplayValue('Server title'), { target: { value } });
-    fireEvent.click(screen.getByTitle('Save'));
-  };
-
-  beforeEach(() => {
-    updateSermonMock.mockReset();
-    getSermonByIdMock.mockReset();
-  });
-
-  it('shows the refused text instead of losing it', async () => {
-    // The other device already moved the server to revision 7.
-    updateSermonMock.mockRejectedValue(new StaleWriteError('core', 4, 7));
-
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={jest.fn()} />);
-    editTitle('Typed on the laptop');
-
-    // THE POINT: the words are on screen, not merely promised to be safe.
-    expect(await screen.findByText('Typed on the laptop')).toBeInTheDocument();
-    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
-  });
-
-  it('re-sends with the revision the server held at refusal, so "keep mine" lands', async () => {
-    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
-    const onUpdate = jest.fn();
-
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
-    editTitle('Typed on the laptop');
-    await screen.findByText('freshness.conflictTitle');
-
-    const saved = { ...sermonAtRev4, title: 'Typed on the laptop', rev: { core: 8 } };
-    updateSermonMock.mockResolvedValueOnce(saved);
-    getSermonByIdMock.mockResolvedValue(saved);
-    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
-
-    await waitFor(() => {
-      // 7, NOT 4: resending the original revision would be refused again and the
-      // button would promise an action it never performs.
-      // No fingerprint on a deliberate overwrite: the person has SEEN the other
-      // version and chose to replace it, so differing content is the point.
-      expect(updateSermonMock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ title: 'Typed on the laptop' }),
-        { title: 'Typed on the laptop' },
-        7,
-        undefined
-      );
-      expect(onUpdate).toHaveBeenCalledWith(saved);
-    });
-    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
-  });
-
-  it('loads the other version when "take theirs" is chosen', async () => {
-    updateSermonMock.mockRejectedValue(new StaleWriteError('core', 4, 7));
-    const onUpdate = jest.fn();
-
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
-    editTitle('Typed on the laptop');
-    await screen.findByText('freshness.conflictTitle');
-
-    const fromServer = { ...sermonAtRev4, title: 'Typed on the phone', rev: { core: 7 } };
-    getSermonByIdMock.mockResolvedValue(fromServer);
-    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
-
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(fromServer));
-    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
-  });
-
-  it('stays out of the way when the save succeeds', async () => {
-    updateSermonMock.mockResolvedValue({ ...sermonAtRev4, title: 'Typed on the laptop' });
-
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={jest.fn()} />);
-    editTitle('Typed on the laptop');
-
-    await waitFor(() => expect(updateSermonMock).toHaveBeenCalled());
-    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
-  });
-
-  it('publishes the saved value WITHOUT re-reading the just-written document', async () => {
-    // Proven live with a probe: right after the transaction commits, a read still
-    // answers from the local replica and returns the OTHER device's text plus the
-    // pre-commit revision. Re-reading therefore put stale data back on screen after
-    // a correct save. The write path returns what it committed; nothing re-reads.
-    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
-    const onUpdate = jest.fn();
-
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
-    editTitle('Typed on the laptop');
-    await screen.findByText('freshness.conflictTitle');
-
-    const committed = { ...sermonAtRev4, title: 'Typed on the laptop', rev: { core: 8 } };
-    updateSermonMock.mockResolvedValueOnce(committed);
-    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
-
-    await waitFor(() => expect(onUpdate).toHaveBeenLastCalledWith(committed));
-    expect(getSermonByIdMock).not.toHaveBeenCalled();
-  });
-
-  it('retains the legacy conflict when loading the other version fails', async () => {
-    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
-    getSermonByIdMock.mockRejectedValueOnce(new Error('Network unavailable'));
-    const onUpdate = jest.fn();
-    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
-    editTitle('Keep this draft');
-    await screen.findByText('freshness.conflictTitle');
-    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.failedToLoadSermon'));
-    expect(screen.getByText('Keep this draft')).toBeInTheDocument();
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-
 });

@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 
-import CreateThoughtModal from '@/components/CreateThoughtModal';
 import EditThoughtModal from '@/components/EditThoughtModal';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
@@ -33,9 +32,8 @@ jest.mock('@/components/FocusRecorderButton', () => ({
 }));
 
 const transcribe = jest.mocked(transcribeAudioWithRetry);
-const variants = ['create', 'edit', 'prayer'] as const;
+const variants = ['edit', 'prayer'] as const;
 function renderVariant(kind: typeof variants[number]) {
-  if (kind === 'create') return render(<CreateThoughtModal isOpen onClose={jest.fn()} onCreateThought={jest.fn()} />);
   if (kind === 'edit') return render(<EditThoughtModal initialText="" initialTags={[]} allowedTags={[]} onSave={jest.fn()} onClose={jest.fn()} />);
   return render(<AddUpdateModal onClose={jest.fn()} onSubmit={jest.fn()} />);
 }

@@ -70,7 +70,6 @@ const createProps = (overrides: Partial<Props> = {}): Props => ({
   },
   onDelete: jest.fn(),
   onEditStart: jest.fn(),
-  onThoughtUpdate: jest.fn(),
   isReadOnly: false,
   ...overrides,
 });

@@ -35,7 +35,6 @@ interface ThoughtCardProps {
   sermonId?: string;
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
-  onThoughtUpdate?: (updatedThought: Thought) => void;
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   isReadOnly?: boolean;
 }
@@ -67,7 +66,6 @@ const ThoughtCard = ({
   sermonId,
   onDelete,
   onEditStart,
-  onThoughtUpdate,
   onThoughtOutlinePointChange,
   isReadOnly = false
 }: ThoughtCardProps) => {
@@ -145,9 +143,9 @@ const ThoughtCard = ({
 
   const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined, subPointId?: string | null) => {
     if (isReadOnly) return;
-    if (!sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange) return;
+    if (!sermonId || !onThoughtOutlinePointChange) return;
     await onThoughtOutlinePointChange(thought, outlinePointId, subPointId);
-  }, [isReadOnly, onThoughtOutlinePointChange, onThoughtUpdate, sermonId, thought]);
+  }, [isReadOnly, onThoughtOutlinePointChange, sermonId, thought]);
 
   // Get warning messages if any issues exist
   const getWarningMessages = useCallback(() => {
@@ -257,7 +255,7 @@ const ThoughtCard = ({
           thought={thought}
           sermonOutline={sermonOutline}
           onSermonPointChange={handleSermonPointChange}
-          disabled={isReadOnly || !sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange}
+          disabled={isReadOnly || !sermonId || !onThoughtOutlinePointChange}
         />
       </motion.div>
     </motion.div>

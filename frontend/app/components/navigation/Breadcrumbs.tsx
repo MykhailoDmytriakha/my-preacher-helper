@@ -9,7 +9,7 @@ import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesRead } from '@/hooks/useSeriesRead';
-import useSermon from '@/hooks/useSermon';
+import { useSermonRead } from '@/hooks/useSermonRead';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
@@ -179,7 +179,7 @@ const capitalizeWords = (value: string) =>
 
 type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 
-type SermonData = ReturnType<typeof useSermon>['sermon'];
+type SermonData = ReturnType<typeof useSermonRead>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesRead>['series'];
 type GroupData = ReturnType<typeof useGroupRead>['group'];
 type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
@@ -328,9 +328,8 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
 
-  // The page that holds the document publishes the title it shows; the legacy reader only fills in
-  // until it does (on the data engine that cache never sees an engine rename).
-  const { sermon: storedSermon } = useSermon(sermonId || '');
+  // The page that holds the document publishes the title it shows; the collection fills in until it does.
+  const { sermon: storedSermon } = useSermonRead(sermonId || '');
   const { series: storedSeries } = useSeriesRead(seriesId || '');
   const shownSermonTitle = useShellTitle('sermons', sermonId);
   const shownSeriesTitle = useShellTitle('series', seriesId);

@@ -13,7 +13,6 @@ interface ThoughtListProps {
   sermonId?: string;
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
-  onThoughtUpdate?: (updatedThought: Thought) => void;
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   resetFilters: () => void;
   isReadOnly?: boolean;
@@ -34,7 +33,6 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
   sermonId,
   onDelete,
   onEditStart,
-  onThoughtUpdate,
   onThoughtOutlinePointChange,
   resetFilters,
   isReadOnly = false,
@@ -87,7 +85,6 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
           sermonId={sermonId}
           onDelete={() => onDelete(thought.id)} // Pass only thought ID
           onEditStart={() => onEditStart(thought, index)} // Pass thought and index
-          onThoughtUpdate={onThoughtUpdate}
           onThoughtOutlinePointChange={onThoughtOutlinePointChange}
           isReadOnly={isReadOnly}
         />

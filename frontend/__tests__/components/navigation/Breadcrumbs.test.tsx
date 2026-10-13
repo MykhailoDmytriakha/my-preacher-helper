@@ -5,7 +5,7 @@ import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesRead } from '@/hooks/useSeriesRead';
-import useSermon from '@/hooks/useSermon';
+import { useSermonRead } from '@/hooks/useSermonRead';
 
 // Mock the hooks
 jest.mock('next/navigation', () => ({
@@ -13,7 +13,7 @@ jest.mock('next/navigation', () => ({
   useSearchParams: jest.fn(),
 }));
 
-jest.mock('@/hooks/useSermon', () => jest.fn());
+jest.mock('@/hooks/useSermonRead', () => ({ useSermonRead: jest.fn() }));
 jest.mock('@/hooks/useSeriesRead', () => ({
   useSeriesRead: jest.fn(),
 }));
@@ -47,7 +47,7 @@ jest.mock('react-i18next', () => ({
 describe('Breadcrumbs', () => {
   const mockUsePathname = usePathname as jest.Mock;
   const mockUseSearchParams = useSearchParams as jest.Mock;
-  const mockUseSermon = useSermon as jest.Mock;
+  const mockUseSermon = useSermonRead as jest.Mock;
   const mockUseSeriesRead = useSeriesRead as jest.Mock;
   const mockUseGroupRead = useGroupRead as jest.Mock;
   const mockUsePrayerDetail = usePrayerDetail as jest.Mock;

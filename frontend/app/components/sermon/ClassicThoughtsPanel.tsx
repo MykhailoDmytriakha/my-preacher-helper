@@ -48,7 +48,6 @@ interface ClassicThoughtsPanelProps {
   sermonOutline: SermonOutline | null | undefined;
   onDelete: (thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
-  onThoughtUpdate: (updatedThought: Thought) => void;
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   isReadOnly: boolean;
   /** The sermon itself — needed to show the note it was built on, and what was cut from it. */
@@ -178,7 +177,6 @@ export default function ClassicThoughtsPanel({
   sermonOutline,
   onDelete,
   onEditStart,
-  onThoughtUpdate,
   onThoughtOutlinePointChange,
   isReadOnly,
   sermon,
@@ -367,7 +365,6 @@ export default function ClassicThoughtsPanel({
             sermonId={sermonId}
             onDelete={onDelete}
             onEditStart={onEditStart}
-            onThoughtUpdate={onThoughtUpdate}
             onThoughtOutlinePointChange={onThoughtOutlinePointChange}
             resetFilters={resetFilters}
             isReadOnly={isReadOnly}

@@ -52,14 +52,14 @@ const resetScenario = () => {
   mockHasGroupsAccess.mockResolvedValue(true);
 };
 
-jest.mock('@/hooks/useSermon', () => {
-  const actual = jest.requireActual('@/hooks/useSermon');
+jest.mock('@/hooks/useSermonRead', () => {
+  const actual = jest.requireActual('@/hooks/useSermonRead');
   return {
     __esModule: true,
     // The RULE stays real — only the answer it is given is stubbed, so this suite still
     // breaks if `sermonIsMissing` starts meaning something else.
     sermonIsMissing: actual.sermonIsMissing,
-    default: () => mockSermonState,
+    useSermonRead: () => mockSermonState,
   };
 });
 

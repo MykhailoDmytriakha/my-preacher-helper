@@ -1,6 +1,5 @@
 {
   "sdkCalls": {
-    "(pages)/(private)/sermons/[id]/page.tsx#onSnapshot": 1,
     "api/admin/ai-defaults/route.ts#set": 1,
     "api/admin/telemetry/[promptName]/route.ts#batch": 1,
     "api/admin/telemetry/[promptName]/route.ts#commit": 1,
@@ -77,10 +76,6 @@
     "services/userEntitlement.server.ts#get": 1
   },
   "runtimeImports": {
-    "(pages)/(private)/sermons/[id]/page.tsx#database-runtime:config/firebaseClientDb.ts#getClientDb": 1,
-    "(pages)/(private)/sermons/[id]/page.tsx#sdk-runtime:*": 1,
-    "(pages)/(private)/sermons/[id]/page.tsx#sdk-runtime:doc": 1,
-    "(pages)/(private)/sermons/[id]/page.tsx#sdk-runtime:onSnapshot": 1,
     "(pages)/page.tsx#sdk-runtime:*": 1,
     "(pages)/page.tsx#sdk-runtime:GoogleAuthProvider": 1,
     "(pages)/page.tsx#sdk-runtime:signInWithCredential": 1,

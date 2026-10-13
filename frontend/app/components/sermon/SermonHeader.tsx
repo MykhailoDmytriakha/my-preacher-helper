@@ -6,21 +6,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/ActionButton';
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
-import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { SermonStatusChip, getSermonStatusDateTexts } from '@/components/sermon/SermonStatusChip';
 import SourceNoteChips from '@/components/sermon/SourceNoteChips';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/hooks/useAuth';
-import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { getSermonById, updateSermon } from '@/services/sermon.service'; // Import updateSermon service
-import { SERMON_CORE_AGGREGATE } from "@/services/sermons.client";
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
 import { buildChipClasses } from '@utils/chipClasses';
@@ -54,21 +48,20 @@ export interface SermonHeaderEditor {
 export interface SermonHeaderProps {
   sermon: Sermon;
   series?: Series[]; // Series data for displaying badge
-  onUpdate?: (updatedSermon: Sermon) => void; // Callback for successful update
   uiMode?: 'classic' | 'prep';
   onToggleMode?: () => void;
-  /** Canonical draft values and commands; omitted while the legacy path is active. */
-  editor?: SermonHeaderEditor;
+  /** The engine document's draft values and commands. */
+  editor: SermonHeaderEditor;
 }
 
-const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate, editor }) => {
+const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
   const { formattedPreachedDate, formattedPlannedDate } = getSermonStatusDateTexts(sermon);
-  const isReadOnly = Boolean(editor?.isReadOnly || editor?.status?.phase === 'deleted');
+  const isReadOnly = Boolean(editor.isReadOnly || editor.status?.phase === 'deleted');
 
   const enableAudio = settings?.enableAudioGeneration || false;
 
@@ -100,136 +93,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     );
   };
 
-  /**
-   * A refused save, held so the person can decide what happens to it.
-   *
-   * It MUST be held here. `EditableTitle`/`EditableVerse` treat a resolved
-   * `onSave` as success: they close the editor and an effect resets the field to
-   * the server value. So the moment a refusal is swallowed, the typed words are
-   * gone from the screen — and unlike the note, these fields have no durable
-   * draft behind them. A toast claiming "your text is still here" was false.
-   */
-  const [conflict, setConflict] = usePersistedConflict<{ field: 'title' | 'verse'; value: string }>(
-    editor ? null : sermon.userId,
-    sermon.id,
-    SERMON_CORE_AGGREGATE
-  );
-  const [resolvingConflict, setResolvingConflict] = React.useState(false);
-
-  /**
-   * @param statedRevision which revision this write claims to be built from.
-   *   Normally the one this component was rendered with; after the person chooses
-   *   "keep mine" it is the server's CURRENT one, making the overwrite deliberate.
-   */
-  const saveCoreField = async (
-    field: 'title' | 'verse',
-    value: string,
-    statedRevision: number,
-    /**
-     * What this field held when the edit started — see `expectedBaseline` on the
-     * guard. `null` means "do not check the content": used for a deliberate
-     * overwrite, where the person has SEEN the other version and chose to replace
-     * it.
-     */
-    baseValue: string | null
-  ) => {
-    if (editor) {
-      throw new Error('Canonical text edits require the manual form binding');
-    }
-    const patch = field === 'title' ? { title: value } : { verse: value };
-    // The ONE field being replaced, as it looked when the edit started. The guard
-    // hashes it itself, so there is a single definition of "what we started from".
-    const baseline = baseValue === null ? undefined : { [field]: baseValue };
-    const updatedSermonData = { ...sermon, [field]: value };
-    try {
-      // State the revision this edit was built from, so a save from a stale tab is
-      // refused instead of replacing what another device stored.
-      const updatedResult = await updateSermon(updatedSermonData, patch, statedRevision, baseline);
-      // NAME the sermon this commit resolves — see usePersistedConflict.
-      setConflict(null, sermon.id);
-      if (updatedResult && onUpdate) {
-        onUpdate(updatedResult);
-      }
-    } catch (error) {
-      if (isStaleWriteError(error)) {
-        // REFUSED, not failed: the server holds a newer version. Hold the text and
-        // hand the choice to the person instead of reporting a generic glitch.
-        setConflict({ payload: { field, value }, actualRevision: error.actualRevision });
-        toast.error(t('freshness.staleSaveToast'));
-        return;
-      }
-      if (isOfflineQueuedError(error)) {
-        // QUEUED, not failed. Reporting a red error here made people press save
-        // again, and each press queued another intent with the same base revision
-        // — so on reconnect the first landed and the rest came back as "changed on
-        // another device", against their own save moments earlier.
-        // This is durable ownership, not persistence. Keep the honest existing
-        // wording but use a neutral notice: green success styling would say the
-        // sermon is saved even though the server has not accepted it yet.
-        toast.message(t('freshness.queuedPending', { count: 1 }));
-        return;
-      }
-      console.error(`Error saving sermon ${field}:`, error);
-      throw error;
-    }
-  };
-
-  const currentCoreRevision = sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0;
-
-  // Handler passed to EditableTitle
-  const handleSaveSermonTitle = async (newTitle: string) => {
-    if (isReadOnly) return;
-    await saveCoreField('title', newTitle, currentCoreRevision, sermon.title ?? '');
-  };
-
-  // Handler passed to EditableVerse
-  const handleSaveSermonVerse = async (newVerse: string) => {
-    if (isReadOnly) return;
-    await saveCoreField('verse', newVerse, currentCoreRevision, sermon.verse ?? '');
-  };
-
-  const handleKeepMine = async () => {
-    if (!conflict || resolvingConflict) return;
-    setResolvingConflict(true);
-    try {
-      // Adopt the server's revision AS SEEN AT REFUSAL: the person has now seen the
-      // conflict, so this overwrite is deliberate. Resending the old revision would
-      // be refused again — a button that promises an action it never performs.
-      // NOTHING is re-read here. Proven live with a probe: immediately after the
-      // transaction commits, `getDoc` still answers from the local replica, which
-      // has not caught up — it returned the OTHER device's text, and publishing
-      // that put stale data back on screen after a correct save. The write path
-      // itself now returns what it committed, so `saveCoreField` already published
-      // the right thing.
-      // Deliberate overwrite: no fingerprint — the person has SEEN the other
-      // version and chose to replace it, so content differing is the point.
-      await saveCoreField(
-        conflict.payload.field,
-        conflict.payload.value,
-        conflict.actualRevision,
-        null
-      );
-    } finally {
-      setResolvingConflict(false);
-    }
-  };
-
-  const handleTakeTheirs = async () => {
-    if (!conflict || resolvingConflict) return;
-    setResolvingConflict(true);
-    try {
-      // Pull what the other device stored, so the closed editor re-syncs to it.
-      const fresh = await getSermonById(sermon.id);
-      if (fresh && onUpdate) onUpdate(fresh);
-      setConflict(null, sermon.id);
-    } catch (error) {
-      console.error('Error loading the newer sermon version:', error);
-      toast.error(t('errors.failedToLoadSermon'));
-    } finally {
-      setResolvingConflict(false);
-    }
-  };
-
   // Which series is this sermon in — DERIVED from the loaded series list
   // (series.items is the sole truth; the deprecated sermon.seriesId is ignored).
   const sermonSeries = getSeriesForRef(sermon.id, series);
@@ -242,26 +105,16 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
 
   return (
     <div className="flex flex-col gap-4">
-      {/* A save was TURNED AWAY. The editor has already closed and reverted, so the
-          refused text lives here — shown, not just promised — until it is resolved. */}
-      {editor && <DataSyncStatus subject={editor.subject} status={editor.status} error={editor.error}
-        onKeepLocal={editor.keepLocal} onAcceptRemote={editor.acceptRemote} onRetry={editor.retry} />}
-      {!editor && conflict && (
-        <SaveConflictBanner
-          entityKey="entitySermon"
-          pendingText={conflict.payload.value}
-          onKeepMine={handleKeepMine}
-          onTakeTheirs={handleTakeTheirs}
-          busy={resolvingConflict}
-        />
-      )}
+      {/* The document's delivery and any choice it needs (keep mine / take theirs) speak here. */}
+      <DataSyncStatus subject={editor.subject} status={editor.status} error={editor.error}
+        onKeepLocal={editor.keepLocal} onAcceptRemote={editor.acceptRemote} onRetry={editor.retry} />
       <div className="grid grid-cols-1 gap-x-4 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       {/* Title and identity share the top row with the actions on wide screens. */}
       <div className="min-w-0">
         <EditableTitle
-          initialTitle={editor ? editor.values.title : sermon.title}
-          onSave={handleSaveSermonTitle}
-          manual={editor?.titleForm}
+          initialTitle={editor.values.title}
+          onSave={editor.titleForm.save}
+          manual={editor.titleForm}
           disabled={isReadOnly}
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
@@ -326,9 +179,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       {/* Scripture uses both columns; on small screens it stays before the actions. */}
       <div className="order-1 min-w-0 text-base md:text-lg lg:order-2 lg:col-span-2">
           <EditableVerse
-            initialVerse={editor ? editor.values.verse : sermon.verse || ''}
-            onSave={handleSaveSermonVerse}
-            manual={editor?.verseForm}
+            initialVerse={editor.values.verse || ''}
+            onSave={editor.verseForm.save}
+            manual={editor.verseForm}
             disabled={isReadOnly}
           />
       </div>
@@ -364,10 +217,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             away (we're ON the sermon being deleted), rather than refreshing a dead page.
             REPLACE, not push: pushing left this very page in history, so a swipe back
             re-opened a full editor over a sermon that no longer exists — BUG-20260905. */}
-        {!(editor ? editor.isReadOnly : isReadOnly) && <OptionMenu
+        {!editor.isReadOnly && <OptionMenu
           sermon={sermon}
           series={series}
-          onUpdate={onUpdate}
           onDelete={() => router.replace('/sermons')}
         />}
         {/* Mode toggle moved to global DashboardNav */}

@@ -3,7 +3,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import StepByStepWizard from '@/components/audio/StepByStepWizard';
-import useSermon from '@/hooks/useSermon';
+import { useSermonRead } from '@/hooks/useSermonRead';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { __resetConnectivityForTests } from '@/utils/connectivity';
 
@@ -46,7 +46,7 @@ jest.mock('react-i18next', () => ({
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-123' } }) }));
-jest.mock('@/hooks/useSermon', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('@/hooks/useSermonRead', () => ({ useSermonRead: jest.fn() }));
 jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }));
 jest.mock('@/utils/authenticatedRequest', () => ({
     getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
@@ -88,7 +88,7 @@ jest.mock('@/components/audio/ChunkEditorModal', () => function MockChunkEditor(
 
 window.HTMLAnchorElement.prototype.click = jest.fn();
 
-const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
+const mockUseSermon = useSermonRead as jest.MockedFunction<typeof useSermonRead>;
 const mockUseUserEntitlement = useUserEntitlement as jest.MockedFunction<typeof useUserEntitlement>;
 const ttsCatalog = getFunctionCatalog('tts');
 const setTtsEntitlement = (

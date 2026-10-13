@@ -1,14 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
-import SermonHeader from '@/components/sermon/SermonHeader';
+import SermonHeader, { type SermonHeaderEditor } from '@/components/sermon/SermonHeader';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() })),
 }));
-jest.mock('@/services/sermon.service', () => ({ updateSermon: jest.fn(), getSermonById: jest.fn() }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), message: jest.fn(), success: jest.fn() } }));
 jest.mock('@utils/dateFormatter', () => ({
   formatDate: jest.fn(() => 'CREATED'),
@@ -27,6 +26,17 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+const form = (value: string) => ({
+  active: false, busy: false, value,
+  begin: jest.fn(async () => undefined), update: jest.fn(async () => undefined),
+  save: jest.fn(async () => undefined), cancel: jest.fn(async () => undefined),
+});
+const editor: SermonHeaderEditor = {
+  subject: 's1', values: { title: 'T', verse: 'V' }, isReadOnly: false, status: null, error: null,
+  titleForm: form('T'), verseForm: form('V'),
+  keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
+};
+
 const church = { id: 'c1', name: 'Grace', city: 'Kyiv' };
 const base: Sermon = { id: 's1', userId: 'u', title: 'T', verse: 'V', date: '2026-01-01', thoughts: [] };
 const pd = (status: 'planned' | 'preached', date: string) =>
@@ -34,7 +44,7 @@ const pd = (status: 'planned' | 'preached', date: string) =>
 
 describe('SermonHeader status chip', () => {
   it('shows the emerald preached chip with the latest preached date', () => {
-    render(<SermonHeader sermon={{ ...base, preachDates: [pd('preached', '2026-03-01'), pd('preached', '2026-02-01')] }} />);
+    render(<SermonHeader sermon={{ ...base, preachDates: [pd('preached', '2026-03-01'), pd('preached', '2026-02-01')] }} editor={editor} />);
     const label = screen.getByText('Preached');
     expect(label).toBeInTheDocument();
     expect(screen.getByText('FMT(2026-03-01)')).toBeInTheDocument();
@@ -42,7 +52,7 @@ describe('SermonHeader status chip', () => {
   });
 
   it('shows the amber planned chip when only a planned date exists', () => {
-    render(<SermonHeader sermon={{ ...base, preachDates: [pd('planned', '2026-05-01')] }} />);
+    render(<SermonHeader sermon={{ ...base, preachDates: [pd('planned', '2026-05-01')] }} editor={editor} />);
     const label = screen.getByText('Planned');
     expect(screen.getByText('FMT(2026-05-01)')).toBeInTheDocument();
     expect(label.closest('span[class*="amber"]')).not.toBeNull();
@@ -50,7 +60,7 @@ describe('SermonHeader status chip', () => {
   });
 
   it('shows neither chip when the sermon has no preach dates', () => {
-    render(<SermonHeader sermon={base} />);
+    render(<SermonHeader sermon={base} editor={editor} />);
     expect(screen.queryByText('Preached')).not.toBeInTheDocument();
     expect(screen.queryByText('Planned')).not.toBeInTheDocument();
   });

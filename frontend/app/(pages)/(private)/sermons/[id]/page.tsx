@@ -2,7 +2,6 @@
 
 
 
-import { doc, onSnapshot } from "firebase/firestore";
 import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
@@ -14,7 +13,6 @@ import { toast } from 'sonner';
 import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
-import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
@@ -28,164 +26,48 @@ import PrepStepCard from '@/components/sermon/prep/PrepStepCard';
 import SpiritualStepContent from '@/components/sermon/prep/SpiritualStepContent';
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
-import ScratchPanel from "@/components/sermon/ScratchPanel";
 import SermonHeader from "@/components/sermon/SermonHeader";
 import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
-import { getClientDb } from "@/config/firebaseClientDb";
-import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
-import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
-import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
-import useSermon, { sermonIsMissing } from "@/hooks/useSermon";
+import { sermonIsMissing } from "@/hooks/useSermonRead";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
-import { updateSermonOutline } from "@/services/outline.service";
-import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
-import { updateStructure } from "@/services/structure.service";
-import { logFailureOnce, saidError, type FailureWords } from '@/utils/actionFailureMessage';
+import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
-import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
-import { awaitAcceptance, queuedMutation, refusedWrite, replicaAcceptedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
-import {
-  sermonFreshnessProjection,
-  type SermonFreshnessProjection,
-} from '@/utils/sermonFreshnessProjection';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
-import {
-  recoveryText,
-  reportLateRefusal,
-  showRecoverableWriteFailure,
-  writeFailureTranslationKey,
-} from '@/utils/writeRecovery';
-import CreateThoughtModal from "@components/CreateThoughtModal";
-import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
-import { auth } from "@services/firebaseAuth.service";
-import { createAudioThought, createManualThought, deleteThought, updateThought } from "@services/thought.service";
-import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
+import { createAudioThought } from "@services/thought.service";
 import { UI_COLORS } from "@utils/themeColors";
 import {
   canonicalizeStructure,
-  findThoughtSectionInStructure,
-  insertThoughtIdInStructure,
-  removeThoughtIdFromStructure,
-  replaceThoughtIdInStructure,
-  resolveSectionForNewThought,
 } from "@utils/thoughtOrdering";
 import { sermonHasInconsistentThoughts } from "@utils/thoughtStructureConsistency";
 
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { EngineStructureWriterProvider } from './components/EngineStructureWriterProvider';
-import { useScratchNotes } from "./hooks/useScratchNotes";
 import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
 import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
 
-import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
-import type { StructureSectionId } from '@utils/tagUtils';
+import type { Sermon, Thought, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { ReactNode } from "react";
-
-const WRITE_REFUSED_KEY = 'writeRecovery.refused';
-const RETRY_LABEL_KEY = 'buttons.retry';
-const COPY_TEXT_LABEL_KEY = 'freshness.copyTextAction';
-const THOUGHT_UPDATE_ERROR_KEY = 'errors.thoughtUpdateError';
 
 export const dynamic = "force-dynamic";
 
-// Defensive structure-hygiene backstop: thought ids are now minted real up front
-// (newClientId), so no "local-" placeholder ever reaches the structure. We still
-// strip any such id before persisting structure, to keep the structure-overwrite
-// bug class (#13) impossible even if a legacy/stray local id slips through.
-const THOUGHT_LOCAL_ID_PREFIX = "local-thought-";
-const STRUCTURE_SAVE_ERROR_KEY = "errors.failedToSaveStructure";
-
-/** Wait until the local replica contains this submission, not merely any document change. */
-function waitForThoughtInLocalReplica(
-  sermonId: string,
-  carriesPayload: (thoughts: Thought[]) => boolean
-): { seen: Promise<void>; stop: () => void } {
-  let unsubscribe: (() => void) | undefined;
-  let stopped = false;
-  // The snapshot callback and acceptance cleanup may both stop the listener.
-  const stop = () => {
-    if (stopped) return;
-    stopped = true;
-    unsubscribe?.();
-  };
-
-  const seen = new Promise<void>((resolve, reject) => {
-    unsubscribe = onSnapshot(
-      doc(getClientDb(), 'sermons', sermonId),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!snapshot.exists()) return;
-        const stored = ((snapshot.data() as { thoughts?: Thought[] } | undefined)?.thoughts ?? []);
-        if (!carriesPayload(stored)) return;
-        stop();
-        resolve();
-      },
-      // A listener with no error branch never settles: a refused read left the editor
-      // waiting forever, and each retry stacked another live listener.
-      (listenError) => {
-        stop();
-        reject(listenError);
-      }
-    );
-    if (stopped) unsubscribe?.();
-  });
-
-  return { seen, stop };
-}
-
-/** Compare every editable field; text-only matching misses tag and placement edits. */
-function carriesEdit(stored: Thought, submitted: Thought): boolean {
-  const sameTags =
-    (stored.tags ?? []).length === (submitted.tags ?? []).length &&
-    (submitted.tags ?? []).every((tag) => (stored.tags ?? []).includes(tag));
-  return (
-    stored.text === submitted.text &&
-    sameTags &&
-    (stored.outlinePointId ?? null) === (submitted.outlinePointId ?? null) &&
-    (stored.subPointId ?? null) === (submitted.subPointId ?? null)
-  );
-}
-
-type ThoughtPatch = Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">;
 type SermonUiMode = 'classic' | 'prep' | 'raw';
 // The editor seeds state on mount, so every opening needs a distinct identity.
 type EditingModalData = { thought: Thought; index: number; session: number };
-
-interface ThoughtPatchOptions {
-  outlineOverride?: SermonOutlineType;
-  // Recovery needs the original error to choose copy-text versus retry UI.
-  recoverRejectedEdit?: (thought: Thought, error: unknown) => void;
-}
-
-const sanitizeThoughtStructure = (structure: Sermon["structure"] | undefined) => {
-  if (!structure) return structure;
-
-  return {
-    introduction: (structure.introduction ?? []).filter((id) => !id.startsWith(THOUGHT_LOCAL_ID_PREFIX)),
-    main: (structure.main ?? []).filter((id) => !id.startsWith(THOUGHT_LOCAL_ID_PREFIX)),
-    conclusion: (structure.conclusion ?? []).filter((id) => !id.startsWith(THOUGHT_LOCAL_ID_PREFIX)),
-    ambiguous: (structure.ambiguous ?? []).filter((id) => !id.startsWith(THOUGHT_LOCAL_ID_PREFIX)),
-  };
-};
-
-const withStructureTagForSection = (tags: string[], section: StructureSectionId): string[] => [
-  ...tags.filter((tag) => !normalizeStructureTag(tag)),
-  getCanonicalTagForSection(section),
-];
 
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
@@ -259,9 +141,6 @@ const calculateThoughtsPerSermonPoint = (sermon: Sermon | null) => {
   return counts;
 };
 
-/** Preparation is its own aggregate in the durable store, as it is on the server. */
-const PREPARATION_DRAFT_AGGREGATE = 'preparation';
-
 const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
   const isTextContextDone = Boolean(
     prepDraft?.textContext?.readWholeBookOnceConfirmed &&
@@ -315,58 +194,24 @@ const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
 
 export default function SermonPage() {
   const id = useRouteId();
-  return isCollectionOnEngine('sermons') ? (
+  return (
     <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon', readOnlyCopy: true }}>
-      <EngineSermonPageContent id={id} />
+      {/* One door for outline writes on this page (the page outline and the structure editor alike). */}
+      <EngineStructureWriterProvider sermonId={id}>
+        <SermonPageContent id={id} />
+      </EngineStructureWriterProvider>
     </DataDocumentProvider>
-  ) : <LegacySermonPageContent id={id} />;
+  );
 }
 
-function LegacySermonPageContent({ id }: { id: string }) {
-  const source = useSermon(id);
-  // Preserve normalization for legacy documents; canonical presentation normalizes below.
-  if (source.sermon?.thoughts === null) source.sermon.thoughts = [];
-  return <SermonPageContent id={id} source={source} />;
-}
-
-type CoreDocument = ReturnType<typeof useSermonCoreDataDocument>;
-// Legacy optimistic callbacks never become implicit engine writes. Those consumers
-// remain disabled until they issue explicit canonical commands of their own.
-const ignoreLegacyProjection = async () => undefined;
-
-function EngineSermonPageContent({ id }: { id: string }) {
+function SermonPageContent({ id }: { id: string }) {
   const core = useSermonCoreDataDocument(id);
-  const thoughts = useSermonThoughtsDataDocument(id);
+  const engineThoughts = useSermonThoughtsDataDocument(id);
   const isOnline = useOnlineStatus();
   const sermon = useMemo(() => core.data ? ({ ...core.data, id, thoughts: core.data.thoughts ?? [] } as unknown as Sermon) : null, [core.data, id]);
-  const source = {
-    sermon, setSermon: ignoreLegacyProjection, loading: core.loading,
-    error: core.error ? new Error(core.error) : null, isOnline, awaitingFirstAnswer: core.loading,
-    refreshSermon: core.retry, getSortedThoughts: () => [...(sermon?.thoughts ?? [])],
-  };
-  // One door for outline writes on this page (the page outline and the structure editor alike).
-  return <EngineStructureWriterProvider sermonId={id}>
-    <SermonPageContent id={id} source={source} core={core} engineThoughts={thoughts} />
-  </EngineStructureWriterProvider>;
-}
-
-function SermonPageContent({ id, source, core, engineThoughts }: { id: string; source: ReturnType<typeof useSermon>; core?: CoreDocument; engineThoughts?: ReturnType<typeof useSermonThoughtsDataDocument> }) {
+  const loading = core.loading;
+  const awaitingFirstAnswer = core.loading;
   const { user } = useAuth();
-  /**
-   * WHOSE screen this is, answered from the LIVE source at report time.
-   *
-   * A late refusal fires from a closure that outlives the editor, the page and even the
-   * session, so it must ask who is signed in NOW — and a React ref cannot answer that:
-   * it stops updating the moment the component unmounts, which is exactly the case this
-   * guards (submit → navigate away → sign out → someone else signs in). `auth.currentUser`
-   * is a module singleton and stays current after unmount, so it is the only honest
-   * answer here. The sign-out sweep cannot help either: this message is created AFTER it
-   * has run.
-   */
-  const authorUidRef = useRef(user?.uid);
-  if (user?.uid && !authorUidRef.current) authorUidRef.current = user.uid;
-  const stillTheSamePerson = () =>
-    Boolean(authorUidRef.current) && auth.currentUser?.uid === authorUidRef.current;
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
   /**
@@ -380,125 +225,18 @@ function SermonPageContent({ id, source, core, engineThoughts }: { id: string; s
   const { blocked: usageBlocked, blockedLabelKey: usageBlockedLabelKey } = useAiUsage();
   const dictationBlocked = usageBlocked('dictation');
   const dictationBlockedKey = usageBlockedLabelKey('dictation');
-  const isReadOnly = Boolean(core?.isReadOnly);
-  const engineEnabled = Boolean(core);
-  // Controls that exist only in legacy form (their engine counterparts render instead).
-  const legacyReadOnly = engineEnabled || isReadOnly;
+  const isReadOnly = core.isReadOnly;
 
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
 
   const { t } = useTranslation();
-  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer, refreshSermon } = source;
-
-  // Does the server hold a newer version of THIS sermon? Shared layer with the
-  // note and series pages: observe only, never swap what is on screen.
-  // Fingerprints, not counts: editing a thought, reordering the outline or
-  // rewriting the plan leaves every length identical, and the stale screen used
-  // to call itself fresh. The listener already carries the whole document, so
-  // this costs no extra reads.
-  // ONE function for both sides of the comparison. This and the `select` below used
-  // to hold two copies of the same rule; drifting apart, they would themselves look
-  // exactly like a foreign edit.
-  const knownSermon = useMemo<SermonFreshnessProjection | null>(
-    () => (sermon ? sermonFreshnessProjection(sermon as unknown as Record<string, unknown>) : null),
-    [sermon]
-  );
-  const freshnessUid = useFreshnessUid(sermon?.userId);
-  const sermonFreshness = useDocumentFreshness<SermonFreshnessProjection>({
-    collection: 'sermons',
-    docId: id || null,
-    // The CURRENT signed-in owner, not the owner stored on the cached document.
-    // A listener keyed by the document's own userId survives a logout: the cached
-    // entity keeps the old owner, the prop never changes, so the effect never
-    // cleans up. Requiring the two to match also refuses to listen to a foreign
-    // document left in the cache.
-    uid: freshnessUid,
-    enabled: !engineEnabled && Boolean(sermon),
-    known: knownSermon,
-    select: (data) => sermonFreshnessProjection(data),
-  });
-  const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
-
-  /**
-   * PULL THE NEWER VERSION IN PLACE — no page reload.
-   *
-   * The banner used to have no action at all here, because the only refresh anyone
-   * had written was `window.location.reload()`, and that threw away whatever was
-   * being typed. So the screen asked "load the newer version?" and offered no way to
-   * say yes; the answer was to go to the browser and reload by hand.
-   *
-   * Refetching the query replaces the sermon data and leaves component state alone:
-   * an open thought modal keeps its text, the title being edited keeps its draft.
-   * The banner then disappears on its own — once the screen holds what the server
-   * holds, the freshness comparison stops finding a difference.
-   */
-  const [isRefreshingSermon, setIsRefreshingSermon] = useState(false);
-  const handleRefreshSermon = useCallback(async () => {
-    if (isRefreshingSermon) return;
-    setIsRefreshingSermon(true);
-    try {
-      await refreshSermon();
-      toast.success(t('freshness.refreshedToast'));
-    } catch {
-      // Staying on the older version is not a disaster; silently pretending it
-      // worked would be. The banner remains, so the offer stays available.
-      toast.error(t('freshness.refreshFailedToast'));
-    } finally {
-      setIsRefreshingSermon(false);
-    }
-  }, [isRefreshingSermon, refreshSermon, t]);
-  useEffect(() => {
-    if (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') setSermonFreshnessDismissed(false);
-  }, [sermonFreshness.remote, sermonFreshness.state]);
-
   const sermonRef = useRef<Sermon | null>(sermon);
-  const structurePersistVersionRef = useRef(0);
-  const scratchOutlinePersistVersionRef = useRef(0);
-  /**
-   * THE PLAN THIS SCREEN LAST SAW **CONFIRMED** — never the one merely on display.
-   *
-   * The edited plan is shown before the server answers, and the held sermon is
-   * updated with it. Using that as the merge base is fine while saves succeed and
-   * destructive the moment one fails: the next save would state a plan containing a
-   * point the server never received, the merge would read the absence as a deletion
-   * made on another device, and the point would be dropped for good.
-   *
-   * So the baseline only advances on a confirmed answer. `unconfirmed` records that
-   * Stamped with the SAVE THAT CONFIRMED IT, not with a boolean "unconfirmed" flag.
-   * A flag cannot say WHICH save the baseline belongs to, and that gap wedged it:
-   * save A left, save B failed, A's success arrived afterwards and was discarded as
-   * "stale" — so the flag stayed set forever and the baseline froze at the plan from
-   * before A. From then on this screen's own wording looked like a fresh edit, and
-   * the next save collided with the phone's rewrite of the same point and quietly
-   * restored the old words. A late answer is stale for the SCREEN and still perfectly
-   * good news about the SERVER.
-   */
-  const confirmedOutlineRef = useRef<{ version: number; outline: SermonOutlineType | null } | null>(null);
-  const [legacySavingPrep, setSavingPrep] = useState(false);
-  const [legacyPrepDraft, setPrepDraft] = useState<Preparation>({});
-  const prepDraft = core?.preparation ?? legacyPrepDraft;
-  const savingPrep = core ? Boolean(core.status && core.status.phase !== 'saved') : legacySavingPrep;
-  /**
-   * Preparation text that was never confirmed saved — a failed write, a closed tab.
-   * OFFERED, never applied by itself: a leftover copy silently merged over the
-   * server's preparation is how work done on another device disappeared.
-   */
-  const [prepRecovery, setPrepRecovery] = useState<Preparation | null>(null);
-  const prepRecoveryCheckedRef = useRef<string | null>(null);
+  const prepDraft = core.preparation;
+  const savingPrep = Boolean(core.status && core.status.phase !== 'saved');
   const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
   const [prepPortal, setPrepPortal] = useState<HTMLDivElement | null>(null);
-  const invalidateScratchOutlinePersistence = useCallback(() => {
-    scratchOutlinePersistVersionRef.current += 1;
-  }, []);
-  const scratchNotes = useScratchNotes({
-    sermon: engineEnabled ? null : sermon,
-    sermonRef,
-    setSermon,
-    onOutlineWriteQueued: invalidateScratchOutlinePersistence,
-  });
-
   useEffect(() => {
     sermonRef.current = sermon;
   }, [sermon]);
@@ -512,106 +250,9 @@ function SermonPageContent({ id, source, core, engineThoughts }: { id: string; s
     }
   }, [modeParam, id]);
 
-/**
- * THE SERVER'S PREPARATION IS WHAT THE EDITOR SHOWS.
- *
- * This used to merge a leftover `prep-draft-backup-<sermonId>` over it — "local wins
- * over stale remote" — so a backup left behind by a failed save weeks earlier silently
- * replaced work done on another device since, and the next save pushed it to the
- * server. Unconfirmed text is OFFERED now, never applied by itself, and it lives in
- * the uid-scoped durable store (the old key had no uid, so on a shared computer the
- * next account could read the previous one's text).
- */
-useEffect(() => {
-  if (engineEnabled) return;
-  if (sermon?.preparation) setPrepDraft(sermon.preparation);
-}, [engineEnabled, sermon?.preparation, sermon?.id]);
-
-/**
- * Look for unconfirmed preparation text ONCE per sermon, and only OFFER it.
- *
- * Text left by an older build under the uid-less `prep-draft-backup-<sermonId>` key is
- * carried into the uid-scoped store first, so nothing anybody typed is destroyed — it
- * simply stops being applied by itself. (That old key had no uid at all, so on a shared
- * computer the next account could read the previous one's text; it is retired here.)
- */
-useEffect(() => {
-  if (engineEnabled) return;
-  const uid = user?.uid;
-  if (!uid || !sermon?.id) return;
-  const key = draftKey(uid, sermon.id, PREPARATION_DRAFT_AGGREGATE);
-  if (prepRecoveryCheckedRef.current === key) return;
-  prepRecoveryCheckedRef.current = key;
-
-  try {
-    const legacy = localStorage.getItem(`prep-draft-backup-${sermon.id}`);
-    if (legacy) {
-      const parsed = JSON.parse(legacy) as Preparation;
-      if (!readDraft<Preparation>(key)) saveDraft(key, parsed);
-      // The old key goes only once the new store holds a copy: a refused write must not leave none.
-      if (readDraft<Preparation>(key)) localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
-    }
-  } catch { }
-
-  const stored = readDraft<Preparation>(key);
-  if (!stored) return;
-  // Nothing to offer when it says exactly what the server already holds.
-  const server = sermonRef.current?.preparation ?? {};
-  const differs = (Object.keys(stored.value) as (keyof Preparation)[]).some(
-    (field) => JSON.stringify(stored.value[field]) !== JSON.stringify(server[field])
-  );
-  if (differs) setPrepRecovery(stored.value);
-}, [engineEnabled, user?.uid, sermon?.id]);
-  const savePreparation = useCallback(async (partial: Preparation) => {
-    if (core) throw new Error('Use an explicit preparation field command');
-    if (!sermon) return;
-    setSavingPrep(true);
-    const next: Preparation = { ...(sermon.preparation ?? {}), ...partial };
-    
-    // A durable copy BEFORE the write is attempted — uid-scoped, and retired only
-    // once the server has accepted exactly this value.
-    if (user?.uid) saveDraft(draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE), next);
-
-    // Only the steps that actually differ from what the server holds. Writing
-    // `next` wholesale would push back every OTHER step from this page's snapshot,
-    // silently reverting work done on another device.
-    const server = (sermon.preparation ?? {}) as Preparation;
-    // Union of both sides: a step the user REMOVED is absent from `next`, so
-    // iterating `next` alone would never notice it and the removal would never
-    // reach the server (it looked saved, then came back after a reload).
-    const allKeys = Array.from(
-      new Set([...Object.keys(next), ...Object.keys(server)])
-    ) as (keyof Preparation)[];
-    const changedKeys = allKeys.filter(
-      (key) => JSON.stringify(next[key]) !== JSON.stringify(server[key])
-    );
-    if (changedKeys.length === 0) {
-      setSavingPrep(false);
-      return;
-    }
-
-    const updated = await updateSermonPreparation(sermon.id, next, changedKeys);
-    if (updated) {
-      setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
-      // Retire OUR copy only — compare first, so a copy another tab stored since
-      // survives (it is that tab's only unconfirmed text).
-      if (user?.uid) {
-        clearDraftIfMatches(draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE), next);
-      }
-    } else {
-      // If update failed (offline), we keep the backup and show a toast
-      toast.error(t('errors.savedOfflineWillSync'), { id: 'prep-sync-error' });
-    }
-    setSavingPrep(false);
-  }, [core, sermon, setSermon, user?.uid, t]);
-
   const savePrepField = useCallback(async (field: keyof Preparation, value: unknown, child?: string) => {
-    const patch = { [field]: child ? { [child]: value } : value } as Partial<Preparation>;
-    if (core) { await core.patchPreparation(patch); return; }
-    const next = { ...prepDraft, [field]: child ? { ...(prepDraft[field] as object ?? {}), [child]: value } : value } as Preparation;
-    setPrepDraft(next);
-    await savePreparation(next);
-  }, [core, prepDraft, savePreparation]);
+    await core.patchPreparation({ [field]: child ? { [child]: value } : value } as Partial<Preparation>);
+  }, [core]);
   // One answer of the homiletical thesis, keeping the other answers (BUG-20261011-thesis-answers-save-nowhere).
   const saveHomileticalAnswer = useCallback((answer: 'whyPreach' | 'impactOnChurch' | 'practicalQuestions', text: string) =>
     savePrepField('thesis', { ...prepDraft?.thesis?.homileticalAnswers, [answer]: text }, 'homileticalAnswers'), [prepDraft, savePrepField]);
@@ -622,65 +263,11 @@ useEffect(() => {
     [allTags]
   );
 
-  const persistStructureForThoughts = useCallback(async (nextStructure: Sermon["structure"]) => {
-    const currentSermon = sermonRef.current;
-    const sanitizedStructure = sanitizeThoughtStructure(nextStructure);
-    if (!currentSermon || !sanitizedStructure) return;
-
-    try {
-      // State the arrangement this screen holds as stored, so a thought moved only on
-      // the other device is not pulled back here.
-      await updateStructure(currentSermon.id, sanitizedStructure, currentSermon.structure);
-    } catch (structureError) {
-      console.error("Failed to update structure after thought sync", structureError);
-      throw structureError;
-    }
-  }, []);
-
-  const buildStructureWithThought = useCallback((params: {
-    baseSermon: Sermon;
-    thought: Thought;
-    targetSection: ReturnType<typeof resolveSectionForNewThought>;
-  }) => {
-    const { baseSermon, thought, targetSection } = params;
-    const projectedThoughts = [
-      thought,
-      ...baseSermon.thoughts.filter((item) => item.id !== thought.id),
-    ];
-    const thoughtsById = new Map(projectedThoughts.map((item) => [item.id, item]));
-
-    return insertThoughtIdInStructure({
-      structure: baseSermon.structure,
-      section: targetSection,
-      thoughtId: thought.id,
-      outlinePointId: thought.outlinePointId ?? null,
-      thoughtsById,
-      thoughts: projectedThoughts,
-      outline: baseSermon.outline,
-    });
-  }, []);
-
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   // Kept as words: the recorder says them in the language on screen.
   const [transcriptionError, setTranscriptionError] = useState<FailureWords | null>(null);
   const [editingModalData, setEditingModalData] = useState<EditingModalData | null>(null);
-  const rejectedEditQueueRef = useRef<EditingModalData[]>([]);
-  // Whether this screen is still on the person's display. A write outlives the page
-  // it started on, so the late-refusal path asks this before choosing who reports.
-  const isPageMountedRef = useRef(true);
-  // Live replica listeners started by in-flight thought edits, so leaving the page
-  // takes them down with it.
-  const replicaWatchersRef = useRef(new Set<() => void>());
-  useEffect(() => {
-    isPageMountedRef.current = true;
-    const watchers = replicaWatchersRef.current;
-    return () => {
-      isPageMountedRef.current = false;
-      watchers.forEach((stop) => stop());
-      watchers.clear();
-    };
-  }, []);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<PrepStepId>>(new Set());
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -692,10 +279,6 @@ useEffect(() => {
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  // Whether the create editor is on screen RIGHT NOW. The write outlives the modal, so
-  // its late failure must ask this at report time, not capture it at submit time.
-  const isCreateModalOpenRef = useRef(isCreateModalOpen);
-  isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
   // One structure editor in both modes; on the engine it writes through the page's engine writer.
   const openPlanEditor = isReadOnly ? undefined : () => setIsPlanEditorOpen(true);
@@ -730,515 +313,9 @@ useEffect(() => {
     return editSessionRef.current;
   }, []);
 
-  const queueRejectedEdit = useCallback((rejectedEdit: EditingModalData) => {
-    setEditingModalData((currentEdit) => {
-      if (currentEdit) {
-        rejectedEditQueueRef.current.push(rejectedEdit);
-        return currentEdit;
-      }
-      return rejectedEdit;
-    });
-  }, []);
-
   const closeEditingModal = useCallback(() => {
-    setEditingModalData(rejectedEditQueueRef.current.shift() ?? null);
+    setEditingModalData(null);
   }, []);
-
-  const appendNewThoughtWithStructure = useCallback(async (newThought: Thought) => {
-    if (!sermon) return;
-
-    const targetSection = resolveSectionForNewThought({
-      sermon,
-      outlinePointId: newThought.outlinePointId ?? null,
-      tags: newThought.tags,
-    });
-
-    const thoughtsById = new Map(
-      [...(sermon.thoughts ?? []), newThought].map((thought) => [thought.id, thought])
-    );
-    const updatedStructure = insertThoughtIdInStructure({
-      structure: sermon.structure,
-      section: targetSection,
-      thoughtId: newThought.id,
-      outlinePointId: newThought.outlinePointId,
-      thoughtsById,
-      thoughts: [...(sermon.thoughts ?? []), newThought],
-      outline: sermon.outline,
-    });
-
-    setSermon((prevSermon) =>
-      prevSermon
-        ? { ...prevSermon, thoughts: [newThought, ...(prevSermon.thoughts ?? [])], structure: updatedStructure, thoughtsBySection: updatedStructure }
-        : prevSermon
-    );
-
-    try {
-      await updateStructure(sermon.id, updatedStructure, sermon.structure);
-    } catch (error) {
-      console.error("Failed to update structure after adding thought", error);
-    }
-  }, [sermon, setSermon]);
-
-  const handleSaveThoughtPatch = useCallback((
-    thoughtToUpdate: Thought,
-    patch: ThoughtPatch,
-    options: ThoughtPatchOptions = {}
-  ): WriteSubmission => {
-    const currentSermon = sermonRef.current ?? sermon;
-    // No sermon means nothing holds this edit — `skipped` would close the editor and
-    // clear the fields as if the write were safe elsewhere. It is not.
-    if (!currentSermon) return refusedWrite('not-found', 'This sermon is no longer available', t(WRITE_REFUSED_KEY));
-
-    const baseSermon: Sermon = options.outlineOverride
-      ? { ...currentSermon, outline: options.outlineOverride }
-      : currentSermon;
-    const previousStructure = baseSermon.structure;
-    const optimisticThought: Thought = {
-      ...thoughtToUpdate,
-      ...patch,
-    };
-    const currentSection = findThoughtSectionInStructure(baseSermon.structure, thoughtToUpdate.id);
-    const nextSection = resolveSectionForNewThought({
-      sermon: baseSermon,
-      outlinePointId: optimisticThought.outlinePointId ?? null,
-      tags: optimisticThought.tags,
-    });
-    const outlinePointWillChange = (thoughtToUpdate.outlinePointId ?? null) !== (optimisticThought.outlinePointId ?? null);
-    const structureWillChange = nextSection !== currentSection || outlinePointWillChange;
-    const optimisticStructure = structureWillChange
-      ? buildStructureWithThought({
-          baseSermon,
-          thought: optimisticThought,
-          targetSection: nextSection,
-        })
-      : baseSermon.structure;
-    const optimisticThoughts = baseSermon.thoughts.map((thought) =>
-      thought.id === optimisticThought.id ? optimisticThought : thought
-    );
-    const optimisticSermon: Sermon = {
-      ...baseSermon,
-      thoughts: optimisticThoughts,
-      structure: optimisticStructure ?? baseSermon.structure,
-      thoughtsBySection: optimisticStructure ?? baseSermon.thoughtsBySection,
-    };
-    const structurePersistVersion = structureWillChange ? ++structurePersistVersionRef.current : null;
-    sermonRef.current = optimisticSermon;
-
-    // Keep the thought and its structure placement optimistic as one UI update.
-    setSermon((prevSermon) =>
-      prevSermon
-        ? {
-            ...prevSermon,
-            outline: optimisticSermon.outline,
-            thoughts: optimisticSermon.thoughts,
-            structure: optimisticSermon.structure,
-            thoughtsBySection: optimisticSermon.thoughtsBySection,
-          }
-        : prevSermon
-    );
-
-    // Acceptance decides whether the current editor or late-recovery path owns failure UI.
-    let acceptedLocally = false;
-    const persistence = (async () => {
-      try {
-        // `thoughtToUpdate` is the thought as opened by the editor and `patch` is
-        // what the person changed, so the write states only the changed fields —
-        // dragging a thought no longer re-sends this screen's hours-old copy of its
-        // text over a rewrite made on another device.
-        const savedThought = await updateThought(baseSermon.id, optimisticThought, thoughtToUpdate);
-        // Reconcile with the server's returned thought; fall back to the optimistic
-        // one if the service resolves empty (offline path / void return) so we never
-        // dereference undefined and never skip the structure persist below.
-        const reconciledThought = savedThought ?? optimisticThought;
-        sermonRef.current = sermonRef.current
-          ? {
-              ...sermonRef.current,
-              thoughts: sermonRef.current.thoughts.map((thought) =>
-                thought.id === reconciledThought.id ? reconciledThought : thought
-              ),
-            }
-          : sermonRef.current;
-        setSermon((prevSermon) =>
-          prevSermon
-            ? {
-                ...prevSermon,
-                thoughts: prevSermon.thoughts.map((thought) =>
-                  thought.id === reconciledThought.id ? reconciledThought : thought
-                ),
-              }
-            : prevSermon
-        );
-
-        // Structure persist is best-effort: a failure here must NOT roll back the
-        // thought edit, which already succeeded server-side.
-        if (
-          structureWillChange &&
-          optimisticStructure &&
-          structurePersistVersion === structurePersistVersionRef.current
-        ) {
-          try {
-            await persistStructureForThoughts(optimisticStructure);
-          } catch (structureError) {
-            console.error("Failed to persist structure after thought update", structureError);
-            toast.error(t(STRUCTURE_SAVE_ERROR_KEY));
-          }
-        }
-      } catch (updateError) {
-        console.error("Failed to update thought", updateError);
-        const shouldRollbackStructure =
-          structureWillChange && structurePersistVersion === structurePersistVersionRef.current;
-        sermonRef.current = sermonRef.current
-          ? {
-              ...sermonRef.current,
-              thoughts: sermonRef.current.thoughts.map((thought) =>
-                thought.id === thoughtToUpdate.id ? thoughtToUpdate : thought
-              ),
-              ...(shouldRollbackStructure
-                ? { structure: previousStructure, thoughtsBySection: previousStructure }
-                : {}),
-            }
-          : sermonRef.current;
-        // Surgical rollback: restore only THIS thought (+ its structure move), so a
-        // concurrent batch (outline-point delete patching N thoughts) is not
-        // clobbered by restoring a whole stale sermon snapshot.
-        setSermon((prevSermon) =>
-          prevSermon
-            ? {
-                ...prevSermon,
-                thoughts: prevSermon.thoughts.map((thought) =>
-                  thought.id === thoughtToUpdate.id ? thoughtToUpdate : thought
-                ),
-                ...(shouldRollbackStructure
-                  ? { structure: previousStructure, thoughtsBySection: previousStructure }
-                  : {}),
-              }
-            : prevSermon
-        );
-        // Early refusal stays in the open editor. Queueing it too would reopen a stale
-        // rejected draft after the corrected edit is saved.
-        if (options.recoverRejectedEdit && (acceptedLocally || !isPageMountedRef.current)) {
-          options.recoverRejectedEdit(optimisticThought, updateError);
-        }
-        throw updateError;
-      }
-    })();
-    const replica = waitForThoughtInLocalReplica(baseSermon.id, (stored) =>
-      stored.some((thought) => thought.id === optimisticThought.id && carriesEdit(thought, optimisticThought))
-    );
-    // Page cleanup must also stop listeners whose acceptance is still pending.
-    replicaWatchersRef.current.add(replica.stop);
-    const submission = replicaAcceptedWrite(
-      `thought:update:${baseSermon.id}:${optimisticThought.id}`,
-      replica,
-      persistence
-    );
-    const forget = () => replicaWatchersRef.current.delete(replica.stop);
-    void submission.acceptance.then(
-      () => {
-        acceptedLocally = true;
-        forget();
-      },
-      forget
-    );
-    return submission;
-  }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
-
-  const handleCreateManualThought = useCallback((draftThought: Omit<Thought, "id">): WriteSubmission => {
-    // The sermon is gone, so nothing holds this dictated text. Closing the editor as
-    // a mere skip erased it without a word; refuse instead and keep the draft.
-    if (!sermon) return refusedWrite('not-found', 'This sermon is no longer available', t(WRITE_REFUSED_KEY));
-
-    // Did this create reach acceptance before it failed? Until then the modal owns the
-    // message; afterwards it may already be closed and only this page can speak.
-    let acceptedLocally = false;
-    const previousSermon = sermonRef.current;
-    // One stable id keeps optimistic UI, queued replay, and structure references aligned.
-    const newThought: Thought = {
-      ...draftThought,
-      id: newClientId(),
-    };
-    const targetSection = resolveSectionForNewThought({
-      sermon: sermon,
-      outlinePointId: newThought.outlinePointId ?? null,
-      tags: newThought.tags,
-    });
-    const optimisticStructure = buildStructureWithThought({
-      baseSermon: sermon,
-      thought: newThought,
-      targetSection,
-    });
-    setSermon((prevSermon) =>
-      prevSermon
-        ? {
-            ...prevSermon,
-            thoughts: [newThought, ...prevSermon.thoughts.filter((thought) => thought.id !== newThought.id)],
-            structure: optimisticStructure ?? prevSermon.structure,
-            thoughtsBySection: optimisticStructure ?? prevSermon.thoughtsBySection,
-          }
-        : prevSermon
-    );
-
-    const persistence = (async () => {
-      try {
-        const savedThought = await createManualThought(sermon.id, newThought);
-        const idChanged = savedThought.id !== newThought.id;
-        // Client SDK echoes the same id (idChanged=false, no-op). A server fallback
-        // that mints its own id is reconciled here: swap temp->real everywhere.
-        const reconciledStructure = idChanged
-          ? replaceThoughtIdInStructure({
-              structure: optimisticStructure,
-              fromThoughtId: newThought.id,
-              toThoughtId: savedThought.id,
-            })
-          : optimisticStructure;
-
-        setSermon((prevSermon) => {
-          if (!prevSermon) return prevSermon;
-          const nextStructure = idChanged
-            ? replaceThoughtIdInStructure({
-                structure: prevSermon.structure,
-                fromThoughtId: newThought.id,
-                toThoughtId: savedThought.id,
-              })
-            : prevSermon.structure;
-          return {
-            ...prevSermon,
-            thoughts: prevSermon.thoughts.map((thought) =>
-              thought.id === newThought.id ? savedThought : thought
-            ),
-            structure: nextStructure,
-            thoughtsBySection: nextStructure,
-          };
-        });
-
-        // Structure persist is best-effort: a failure must not undo the created thought.
-        if (reconciledStructure) {
-          try {
-            await persistStructureForThoughts(reconciledStructure);
-          } catch (structureError) {
-            console.error("Failed to persist structure after thought create", structureError);
-            toast.error(t(STRUCTURE_SAVE_ERROR_KEY));
-          }
-        }
-      } catch (createError) {
-        console.error("Failed to create thought", createError);
-        // Undo only this create; restoring the whole submit-time sermon would erase
-        // unrelated edits or snapshots that arrived while the write was in flight.
-        setSermon((prevSermon) =>
-          prevSermon
-            ? {
-                ...prevSermon,
-                thoughts: prevSermon.thoughts.filter((thought) => thought.id !== newThought.id),
-                ...(optimisticStructure
-                  ? {
-                      structure: previousSermon?.structure ?? prevSermon.structure,
-                      thoughtsBySection:
-                        previousSermon?.thoughtsBySection ?? prevSermon.thoughtsBySection,
-                    }
-                  : {}),
-              }
-            : prevSermon
-        );
-        /**
-         * SAY IT ONCE, AND ONLY WHEN NOBODY ELSE WILL.
-         *
-         * Two failures were measured on this path, in opposite directions. Reporting
-         * only when the page was gone left the COMMON case mute: the modal had closed
-         * after local acceptance, the server refused later, the thought rolled back off
-         * the screen and nothing explained why. Reporting unconditionally then gave the
-         * EARLY refusal two voices — the modal's own catch is still open and speaking.
-         *
-         * The dividing line is whether the modal is still awaiting this write: before
-         * acceptance it owns the message, after acceptance nobody does but this branch.
-         */
-        if ((acceptedLocally || !isCreateModalOpenRef.current) && stillTheSamePerson()) showRecoverableWriteFailure({
-          error: createError,
-          title: t(writeFailureTranslationKey(createError, 'errors.failedToSaveThought')),
-          description: recoveryText([newThought.text, (newThought.tags ?? []).join(', ')]),
-          retryLabel: t(RETRY_LABEL_KEY),
-          retry: () => undefined,
-          copyLabel: t(COPY_TEXT_LABEL_KEY),
-          id: `write-recovery:thought-create:${newThought.id}`,
-        });
-        throw createError;
-      }
-    })();
-
-    const replica = waitForThoughtInLocalReplica(sermon.id, (stored) =>
-      stored.some((thought) => thought.id === newThought.id)
-    );
-    replicaWatchersRef.current.add(replica.stop);
-    const submission = replicaAcceptedWrite(
-      `thought:create:${sermon.id}:${newThought.id}`,
-      replica,
-      persistence
-    );
-    const forget = () => replicaWatchersRef.current.delete(replica.stop);
-    void submission.acceptance.then(
-      () => {
-        acceptedLocally = true;
-        forget();
-      },
-      forget
-    );
-    return submission;
-  }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
-
-  const handleThoughtUpdate = useCallback((updatedThought: Thought) => {
-    setSermon((prevSermon) => {
-      if (!prevSermon) return null;
-      return {
-        ...prevSermon,
-        thoughts: prevSermon.thoughts.map(t =>
-          t.id === updatedThought.id ? updatedThought : t
-        ),
-      };
-    });
-  }, [setSermon]);
-
-  const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => {
-    const outlineChanged = outlinePointId !== (thought.outlinePointId ?? null);
-    /**
-     * A REFUSAL HERE WAS SWALLOWED. This write was fired with `void`, so a refused move
-     * rolled the thought back to its old point and said nothing at all: the person saw
-     * their drag undo itself for no stated reason. There is no editor holding text to
-     * recover — the recovery IS knowing that the move did not happen.
-     */
-    const report = (error: unknown) => {
-      if (!stillTheSamePerson()) return;
-      showRecoverableWriteFailure({
-        error,
-        title: t(writeFailureTranslationKey(error, THOUGHT_UPDATE_ERROR_KEY)),
-        description: '',
-        retryLabel: t(RETRY_LABEL_KEY),
-        retry: () => undefined,
-        copyLabel: t(COPY_TEXT_LABEL_KEY),
-        id: `write-recovery:thought-move:${thought.id}`,
-      });
-    };
-    try {
-      await awaitAcceptance(
-        handleSaveThoughtPatch(thought, {
-          text: thought.text,
-          tags: thought.tags,
-          outlinePointId,
-          subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thought.subPointId ?? null),
-        }),
-        report
-      );
-    } catch (error) {
-      report(error);
-    }
-  }, [handleSaveThoughtPatch, t]);
-
-  const handleDeleteThought = useCallback((thoughtId: string): WriteSubmission => {
-    if (!sermon) return skippedWrite();
-
-    const thoughtToDelete = sermon.thoughts.find((thought) => thought.id === thoughtId);
-    if (!thoughtToDelete) {
-      console.error("Could not find thought with ID:", thoughtId);
-      return skippedWrite();
-    }
-
-    const previousSermon = sermonRef.current;
-    const nextStructure = removeThoughtIdFromStructure(
-      sermonRef.current?.structure ?? sermon.structure,
-      thoughtId
-    );
-
-    // Optimistic delete: drop the thought + its structure id from the cache now.
-    setSermon((prevSermon) => {
-      if (!prevSermon) return prevSermon;
-      const localStructure = removeThoughtIdFromStructure(prevSermon.structure, thoughtId);
-      return {
-        ...prevSermon,
-        thoughts: prevSermon.thoughts.filter((thought) => thought.id !== thoughtId),
-        structure: localStructure,
-        thoughtsBySection: localStructure,
-      };
-    });
-
-    const persistence = (async () => {
-      try {
-        await deleteThought(sermon.id, thoughtToDelete);
-        try {
-          await persistStructureForThoughts(nextStructure);
-        } catch (structureError) {
-          console.error("Failed to persist structure after thought delete", structureError);
-          toast.error(t("errors.failedToSaveStructure"));
-        }
-      } catch (deleteError) {
-        console.error("Failed to delete thought", deleteError);
-        // Put back only the thought that was not deleted. Restoring the whole
-        // pre-submit sermon also resurrected the state of every OTHER thought as it
-        // was at submit time, discarding edits made while this delete was in flight.
-        setSermon((prevSermon) =>
-          prevSermon
-            ? {
-                ...prevSermon,
-                thoughts: prevSermon.thoughts.some((thought) => thought.id === thoughtId)
-                  ? prevSermon.thoughts
-                  : [thoughtToDelete, ...prevSermon.thoughts],
-                structure: previousSermon?.structure ?? prevSermon.structure,
-                thoughtsBySection:
-                  previousSermon?.thoughtsBySection ?? prevSermon.thoughtsBySection,
-              }
-            : prevSermon
-        );
-        toast.error(t("errors.deletingError"));
-        throw deleteError;
-      }
-    })();
-    return queuedMutation(`thought:delete:${sermon.id}:${thoughtId}`, persistence);
-  }, [sermon, persistStructureForThoughts, setSermon, t]);
-
-  const handleSaveEditedThought = (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null): WriteSubmission => {
-    // No target owns the draft, so keep the editor open with a refusal.
-    if (!editingModalData) return refusedWrite('not-found', 'The thought being edited is gone', t(WRITE_REFUSED_KEY));
-    const currentSermon = sermon;
-    if (!currentSermon) return skippedWrite();
-    const originalThoughtId = editingModalData.thought.id;
-    const originalIndex = editingModalData.index;
-
-    const thoughtToUpdate = currentSermon.thoughts.find((thought) => thought.id === originalThoughtId);
-    if (!thoughtToUpdate) {
-      console.error("Could not find thought with ID:", originalThoughtId);
-      throw new Error('Thought is not available');
-    }
-
-    const outlineChanged = outlinePointId !== (thoughtToUpdate.outlinePointId ?? null);
-    const submission = handleSaveThoughtPatch(thoughtToUpdate, {
-      text: updatedText.trim(),
-      tags: updatedTags,
-      outlinePointId,
-      subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thoughtToUpdate.subPointId ?? null),
-    }, {
-      recoverRejectedEdit: (rejectedThought, rejectionError) => {
-        // Not to a DIFFERENT person: this callback outlives the session that created it.
-        if (!stillTheSamePerson()) return;
-        // Who reports depends on where the person is — see reportLateRefusal.
-        reportLateRefusal({
-          isEditorMounted: isPageMountedRef.current,
-          reopenEditor: () =>
-            queueRejectedEdit({ thought: rejectedThought, index: originalIndex, session: nextEditSession() }),
-          toast: {
-            error: rejectionError,
-            title: t(writeFailureTranslationKey(rejectionError, THOUGHT_UPDATE_ERROR_KEY)),
-            description: recoveryText([
-              rejectedThought.text,
-              (rejectedThought.tags ?? []).join(', '),
-            ]),
-            retryLabel: t(RETRY_LABEL_KEY),
-            // The editor that owned this retry is gone; the text itself is the recovery.
-            retry: () => undefined,
-            copyLabel: t(COPY_TEXT_LABEL_KEY),
-            id: `write-recovery:thought:${rejectedThought.id}`,
-          },
-        });
-      },
-    });
-    return submission;
-  };
 
   const handleEditThoughtStart = (thought: Thought, index: number) => {
     setEditingModalData({ thought, index, session: nextEditSession() });
@@ -1277,241 +354,13 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prepStepParam, activeStepId]);
 
-  const handleOutlineUpdate = useCallback((updatedOutline: SermonOutlineType) => {
-    sermonRef.current = sermonRef.current
-      ? {
-          ...sermonRef.current,
-          outline: updatedOutline,
-        }
-      : sermonRef.current;
-    setSermon(prevSermon => {
-      if (!prevSermon) return null;
-      return {
-        ...prevSermon,
-        outline: updatedOutline,
-      };
-    });
-  }, [setSermon]);
-
-  const handleScratchOutlineChange = useCallback(
-    async (outline: SermonOutlineType) => {
-      const currentSermon = sermonRef.current ?? sermon;
-      if (!currentSermon) return;
-
-      /**
-       * The plan as it stood BEFORE this apply — the base the write merges against.
-       *
-       * Captured here, above `handleOutlineUpdate`, because that call replaces the
-       * held sermon with the new plan: read afterwards this would be the new value
-       * compared with itself, which always agrees and detects nothing. Without a base
-       * the save replaced the whole field and erased points added on another device.
-       */
-      // Seeded ONCE, from the plan as it stands before the first optimistic update.
-      // After that only an answered save may move it: the held plan can contain a
-      // point the server never received, and adopting that would turn the point into
-      // a deletion on the next merge.
-      if (!confirmedOutlineRef.current) {
-        confirmedOutlineRef.current = { version: 0, outline: currentSermon.outline ?? null };
-      }
-      const baseOutline = confirmedOutlineRef.current.outline;
-
-      const persistVersion = scratchOutlinePersistVersionRef.current + 1;
-      scratchOutlinePersistVersionRef.current = persistVersion;
-      handleOutlineUpdate(outline);
-      setOutlineRefreshKey((key) => key + 1);
-
-      try {
-        // `preferMine` — applying scratch has no choice dialog; see the writer.
-        const savedOutline = await updateSermonOutline(currentSermon.id, outline, baseOutline, 'preferMine');
-
-        // CONFIRMED — recorded BEFORE the stale-version check on purpose. An answer
-        // that arrives after a newer save was issued must not touch the SCREEN, but
-        // it still tells us what the SERVER committed, and that is exactly what the
-        // next save must be judged against. The version keeps a late answer from
-        // overwriting a newer confirmation.
-        if (savedOutline && persistVersion >= confirmedOutlineRef.current.version) {
-          confirmedOutlineRef.current = { version: persistVersion, outline: savedOutline };
-        }
-
-        if (persistVersion !== scratchOutlinePersistVersionRef.current) return;
-        if (!savedOutline) {
-          throw saidError('scratch.board.applyError');
-        }
-
-        handleOutlineUpdate(savedOutline);
-        setOutlineRefreshKey((key) => key + 1);
-      } catch (error) {
-        if (persistVersion === scratchOutlinePersistVersionRef.current) {
-          throw error;
-        }
-      }
-    },
-    [handleOutlineUpdate, sermon]
-  );
-
-  const applyScratchOutlineAndConsume = scratchNotes.applyOutlineAndConsume;
-  const handleApplyScratchOutline = useCallback(
-    (outline: SermonOutlineType, consumedNoteIds: string[]) => {
-      const applyResult = applyScratchOutlineAndConsume(outline, consumedNoteIds);
-      setOutlineRefreshKey((key) => key + 1);
-      return applyResult;
-    },
-    [applyScratchOutlineAndConsume]
-  );
-
-  /**
-   * A BULK move/detach speaks ONCE, not per thought.
-   *
-   * Deleting an outline point detaches every thought under it — a dozen writes from one
-   * click. Fired with `void`, a refusal rolled each thought back to where it was and said
-   * nothing, so the person saw some thoughts quietly stay put. Reporting each failure
-   * separately would be its own kind of noise, so one message covers the operation.
-   */
-  const applyToThoughtsAndReportOnce = useCallback(
-    (
-      thoughts: Thought[],
-      patchFor: (thought: Thought) => ThoughtPatch,
-      options?: ThoughtPatchOptions
-    ) => {
-      let alreadyReported = false;
-      const report = (error: unknown) => {
-        if (alreadyReported || !stillTheSamePerson()) return;
-        alreadyReported = true;
-        showRecoverableWriteFailure({
-          error,
-          title: t(writeFailureTranslationKey(error, THOUGHT_UPDATE_ERROR_KEY)),
-          description: '',
-          retryLabel: t(RETRY_LABEL_KEY),
-          retry: () => undefined,
-          copyLabel: t(COPY_TEXT_LABEL_KEY),
-          id: 'write-recovery:thought-bulk-move',
-        });
-      };
-
-      thoughts.forEach((thought) => {
-        void awaitAcceptance(handleSaveThoughtPatch(thought, patchFor(thought), options), report).catch(
-          report
-        );
-      });
-    },
-    [handleSaveThoughtPatch, t]
-  );
-
-  const handleOutlinePointDeleted = useCallback((outlinePointId: string) => {
-    const currentSermon = sermon;
-    if (!currentSermon) return;
-
-    applyToThoughtsAndReportOnce(
-      currentSermon.thoughts.filter((thought) => thought.outlinePointId === outlinePointId),
-      (thought) => ({
-        text: thought.text,
-        tags: thought.tags,
-        outlinePointId: null,
-        subPointId: null,
-      })
-    );
-  }, [applyToThoughtsAndReportOnce, sermon]);
-
-  const handleOutlinePointMoved = useCallback((
-    outlinePointId: string,
-    destinationSection: StructureSectionId,
-    updatedOutline: SermonOutlineType
-  ) => {
-    const currentSermon = sermonRef.current ?? sermon;
-    if (!currentSermon) return;
-
-    sermonRef.current = {
-      ...currentSermon,
-      outline: updatedOutline,
-    };
-    setSermon((prevSermon) =>
-      prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
-    );
-
-    applyToThoughtsAndReportOnce(
-      currentSermon.thoughts.filter((thought) => thought.outlinePointId === outlinePointId),
-      (thought) => ({
-        text: thought.text,
-        tags: withStructureTagForSection(thought.tags, destinationSection),
-        outlinePointId: thought.outlinePointId ?? null,
-        subPointId: thought.subPointId ?? null,
-      }),
-      { outlineOverride: updatedOutline }
-    );
-  }, [applyToThoughtsAndReportOnce, sermon, setSermon]);
-
-  const handleSubPointMoved = useCallback((
-    subPointId: string,
-    _sourcePointId: string,
-    destinationPointId: string,
-    destinationSection: StructureSectionId,
-    updatedOutline: SermonOutlineType
-  ) => {
-    const currentSermon = sermonRef.current ?? sermon;
-    if (!currentSermon) return;
-
-    sermonRef.current = {
-      ...currentSermon,
-      outline: updatedOutline,
-    };
-    setSermon((prevSermon) =>
-      prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
-    );
-
-    applyToThoughtsAndReportOnce(
-      currentSermon.thoughts.filter((thought) => thought.subPointId === subPointId),
-      (thought) => ({
-        text: thought.text,
-        tags: withStructureTagForSection(thought.tags, destinationSection),
-        outlinePointId: destinationPointId,
-        subPointId: thought.subPointId ?? subPointId,
-      }),
-      { outlineOverride: updatedOutline }
-    );
-  }, [applyToThoughtsAndReportOnce, sermon, setSermon]);
-
-  const handleSubPointDeleted = useCallback((outlinePointId: string, subPointId: string) => {
-    const currentSermon = sermon;
-    if (!currentSermon) return;
-
-    applyToThoughtsAndReportOnce(
-      currentSermon.thoughts.filter(
-        (thought) => thought.outlinePointId === outlinePointId && thought.subPointId === subPointId
-      ),
-      (thought) => ({
-        text: thought.text,
-        tags: thought.tags,
-        outlinePointId: thought.outlinePointId ?? null,
-        subPointId: null,
-      })
-    );
-  }, [applyToThoughtsAndReportOnce, sermon]);
-
-  /**
-   * Thought follow-ups after an outline change, for the legacy writer only. On the engine the
-   * writer re-points or releases the thoughts of a moved or deleted point in the same change.
-   */
-  const legacyOutlineFollowUps = engineEnabled ? {} : {
-    onOutlineUpdate: handleOutlineUpdate,
-    onOutlinePointDeleted: handleOutlinePointDeleted,
-    onSubPointDeleted: handleSubPointDeleted,
-  };
-
-  const handleSermonUpdate = useCallback((updatedSermon: Sermon) => {
-    setSermon(updatedSermon);
-  }, [setSermon]);
-
   /**
    * The server stores a transcribed thought itself, so a result paid for survives the person
    * leaving mid-transcription. On an engine document it lands with its place in the structure
    * in the same command (api/thoughts/route.ts); the open page only reads the document again.
    */
-  const placeAudioThought = async (newThought: Thought) => {
-    if (core) {
-      await core.retry().catch(() => undefined);
-      return;
-    }
-    await appendNewThoughtWithStructure(newThought);
+  const placeAudioThought = async () => {
+    await core.retry().catch(() => undefined);
   };
 
   /**
@@ -1546,9 +395,9 @@ useEffect(() => {
   /** Transcribe a held recording into the sermon it was spoken for; true once it is a thought. */
   const transcribeHeld = async (held: { blob: Blob; sermonId: string; draftId: string }, attempt: number): Promise<boolean> => {
     try {
-      const thoughtResponse = await createAudioThought(held.blob, held.sermonId, attempt, 3);
+      await createAudioThought(held.blob, held.sermonId, attempt, 3);
       // Placing re-reads THIS page's sermon; a recording for another one was stored by the server.
-      if (sermonRef.current?.id === held.sermonId) await placeAudioThought({ ...thoughtResponse });
+      if (sermonRef.current?.id === held.sermonId) await placeAudioThought();
       releaseRecording(held);
       toast.success(t('manualThought.addedSuccess'));
       return true;
@@ -1603,8 +452,8 @@ useEffect(() => {
     if (!sermon) return false;
     setIsProcessing(true);
     try {
-      const thoughtResponse = await createAudioThought(audioBlob, sermon.id, 0, 3);
-      await placeAudioThought({ ...thoughtResponse });
+      await createAudioThought(audioBlob, sermon.id, 0, 3);
+      await placeAudioThought();
       toast.success(t('manualThought.addedSuccess'));
       return true;
     } catch (error) {
@@ -1644,38 +493,19 @@ useEffect(() => {
       setBrainstormSuggestion={setBrainstormSuggestion}
       filteredThoughts={filteredThoughts}
       sermonOutline={sermon?.outline}
-      onDelete={engineThoughts ? id => { void engineThoughts.deleteThought(id).catch(() => undefined); } : handleDeleteThought}
+      onDelete={id => { void engineThoughts.deleteThought(id).catch(() => undefined); }}
       onEditStart={handleEditThoughtStart}
-      onThoughtUpdate={handleThoughtUpdate}
-      onThoughtOutlinePointChange={engineThoughts ? async (thought, outlinePointId, subPointId) => {
+      onThoughtOutlinePointChange={async (thought, outlinePointId, subPointId) => {
         await engineThoughts.patchThought(thought.id, { outlinePointId, subPointId: subPointId ?? null }).catch(() => undefined);
-      } : handleThoughtOutlinePointChange}
+      }}
       isReadOnly={isReadOnly}
       sermon={sermon}
-      scratchNotes={scratchNotes.notes}
+      scratchNotes={sermon?.scratch}
       onOpenScratch={() => setUiMode('raw')}
     />
   );
 
-  const renderRawContent = () => engineEnabled ? (
-    <EngineScratchWorkspace sermonId={sermon!.id} isReadOnly={isReadOnly} />
-  ) : (
-    <ScratchPanel
-      sermonId={sermon!.id}
-      notes={scratchNotes.notes}
-      outline={sermon?.outline}
-      addScratchNote={scratchNotes.addScratchNote}
-      restoreScratchNote={scratchNotes.restoreScratchNote}
-      updateScratchNote={scratchNotes.updateScratchNote}
-      deleteScratchNote={scratchNotes.deleteScratchNote}
-      moveScratchNote={scratchNotes.moveScratchNote}
-      isScratchWritePending={scratchNotes.isWritePending}
-      scratchRevision={scratchNotes.scratchRevision}
-      onApplyOutline={handleApplyScratchOutline}
-      onOutlineChange={handleScratchOutlineChange}
-      isReadOnly={isReadOnly}
-    />
-  );
+  const renderRawContent = () => <EngineScratchWorkspace sermonId={sermon!.id} isReadOnly={isReadOnly} />;
 
   const renderPrepContent = () => {
     const {
@@ -1750,21 +580,15 @@ useEffect(() => {
       spiritual: (
         <SpiritualStepContent
           prepDraft={prepDraft}
-          setPrepDraft={core ? () => undefined : setPrepDraft}
-          savePreparation={core ? next => savePrepField('spiritual', next.spiritual?.readAndPrayedConfirmed, 'readAndPrayedConfirmed') : savePreparation}
+          setPrepDraft={() => undefined}
+          savePreparation={next => savePrepField('spiritual', next.spiritual?.readAndPrayedConfirmed, 'readAndPrayedConfirmed')}
           formatSuperscriptVerses={formatSuperscriptVerses}
         />
       ),
       textContext: (
         <TextContextStepContent
           initialVerse={sermon?.verse || ''}
-          onSaveVerse={async (nextVerse: string) => {
-            if (core) { await core.patchCore({ verse: nextVerse }); return; }
-            if (!sermon) return;
-            setSermon(prev => prev ? { ...prev, verse: nextVerse } : prev);
-            const updated = await updateSermon({ ...sermon, verse: nextVerse }, { verse: nextVerse });
-            if (updated) setSermon(updated);
-          }}
+          onSaveVerse={async (nextVerse: string) => { await core.patchCore({ verse: nextVerse }); }}
           readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
           onToggleReadWholeBookOnce={(checked) => savePrepField('textContext', checked, 'readWholeBookOnceConfirmed')}
           initialPassageSummary={prepDraft?.textContext?.passageSummary || ''}
@@ -1778,9 +602,8 @@ useEffect(() => {
       exegeticalPlan: (
         <ExegeticalPlanStepContent
           value={prepDraft?.exegeticalPlan || []}
-          // On the engine each plan edit goes straight into the document, which saves and merges it.
-          onEdit={core ? (edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) })) : undefined}
-          onSave={core ? undefined : (nodes) => savePrepField('exegeticalPlan', nodes)}
+          // Each plan edit goes straight into the document, which saves and merges it.
+          onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}
           saving={savingPrep}
           authorIntent={prepDraft?.authorIntent || ''}
           onSaveAuthorIntent={(text) => savePrepField('authorIntent', text)}
@@ -1846,47 +669,6 @@ useEffect(() => {
 
     return (
       <div className="space-y-4 sm:space-y-6">
-        {/* Unconfirmed preparation text found in the durable store. It is shown, not
-            applied: applying it by itself replaced newer work from another device. */}
-        {!engineEnabled && prepRecovery && (
-          <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="font-medium text-amber-900 dark:text-amber-200">{t('unsavedDraft.title')}</p>
-              <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">{t('unsavedDraft.description')}</p>
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <button
-                type="button"
-                data-testid="restore-prep-draft"
-                onClick={() => {
-                  setPrepDraft((prev) => ({ ...(prev || {}), ...prepRecovery }));
-                  // KEEP the stored copy: it is still unconfirmed until a save lands.
-                  setPrepRecovery(null);
-                }}
-                className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
-              >
-                {t('unsavedDraft.restore')}
-              </button>
-              <button
-                type="button"
-                data-testid="discard-prep-draft"
-                onClick={() => {
-                  const rejected = prepRecovery;
-                  setPrepRecovery(null);
-                  if (user?.uid && sermon?.id && rejected) {
-                    clearDraftIfMatches(
-                      draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE),
-                      rejected
-                    );
-                  }
-                }}
-                className="rounded-lg border border-amber-400 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-500/20"
-              >
-                {t('unsavedDraft.discard')}
-              </button>
-            </div>
-          </div>
-        )}
         {prepStepConfigs.map((step) => (
           <PrepStepCard
             key={step.id}
@@ -1900,7 +682,7 @@ useEffect(() => {
             stepRef={(el) => { stepRefs.current[step.id] = el; }}
             done={step.done}
           >
-            {core ? <fieldset className="min-w-0" disabled={isReadOnly}>{prepStepContentById[step.id]}</fieldset> : prepStepContentById[step.id]}
+            <fieldset className="min-w-0" disabled={isReadOnly}>{prepStepContentById[step.id]}</fieldset>
           </PrepStepCard>
         ))}
       </div>
@@ -1945,27 +727,11 @@ useEffect(() => {
   return (
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
-      {/* This SERMON changed elsewhere — distinct from the app-update toast. */}
-      {!engineEnabled && (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') && !sermonFreshnessDismissed && (
-        <DataFreshnessBanner
-          entityKey="entitySermon"
-          dirty={false}
-          deleted={sermonFreshness.remotelyDeleted}
-          unknown={sermonFreshness.state === 'unknown'}
-          diagnostics={sermonFreshness.diagnostics}
-          checking={sermonFreshness.checking}
-          canCheck={sermonFreshness.canCheck}
-          onCheckAgain={sermonFreshness.checkAgain}
-          onRefresh={handleRefreshSermon}
-          refreshing={isRefreshingSermon}
-          onDismiss={() => setSermonFreshnessDismissed(true)}
-        />
-      )}
-      <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} editor={core ? {
+      <SermonHeader sermon={sermon} series={series} editor={{
         subject: core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error,
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
-      } : undefined} />
+      }} />
       <div className="lg:hidden">
         <StructureStats
           sermon={sermon!}
@@ -2046,11 +812,10 @@ useEffect(() => {
                   key={outlineRefreshKey}
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
-                  {...legacyOutlineFollowUps}
                   isReadOnly={isReadOnly}
                 />
                 {/* On an engine document the insights route stores the result itself; the page reads it back. */}
-                {sermon && !(core && isReadOnly) && <KnowledgeSection sermon={sermon} updateSermon={core ? () => { void core.retry().catch(() => undefined); } : handleSermonUpdate} />}
+                {sermon && !isReadOnly && <KnowledgeSection sermon={sermon} updateSermon={() => { void core.retry().catch(() => undefined); }} />}
                 {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
               </div>
             </div>
@@ -2062,32 +827,9 @@ useEffect(() => {
           </motion.div>
         </div>
       </div>
-      {!legacyReadOnly && editingModalData && (
-        <EditThoughtModal
-          // Remount for every queued edit because the modal seeds its fields only on mount.
-          key={editingModalData.session}
-          initialText={editingModalData.thought.text}
-          initialTags={editingModalData.thought.tags}
-          initialSermonPointId={editingModalData.thought.outlinePointId || undefined}
-          initialSubPointId={editingModalData.thought.subPointId ?? undefined}
-          allowedTags={allowedTags}
-          sermonOutline={sermon?.outline}
-          onSave={handleSaveEditedThought}
-          onClose={closeEditingModal}
-        />
-      )}
-      {engineEnabled && (editingModalData || isCreateModalOpen) && <EngineThoughtModal
+      {(editingModalData || isCreateModalOpen) && <EngineThoughtModal
         key={editingModalData?.session ?? 'create'} sermonId={id} thoughtId={editingModalData?.thought.id}
         allowedTags={allowedTags} onClose={() => { closeEditingModal(); setIsCreateModalOpen(false); }} />}
-      {!engineEnabled && <CreateThoughtModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onCreateThought={handleCreateManualThought}
-        onSubmissionRejected={() => setIsCreateModalOpen(true)}
-        allowedTags={allowedTags}
-        sermonOutline={sermon?.outline}
-        disabled={legacyReadOnly}
-      />}
       {sermon && (
         <PlanEditorModal
           isOpen={isPlanEditorOpen}
@@ -2096,9 +838,6 @@ useEffect(() => {
             setOutlineRefreshKey((k) => k + 1);
           }}
           sermon={sermon}
-          {...legacyOutlineFollowUps}
-          onOutlinePointMoved={legacyOutlineFollowUps.onOutlineUpdate && handleOutlinePointMoved}
-          onSubPointMoved={legacyOutlineFollowUps.onOutlineUpdate && handleSubPointMoved}
           isReadOnly={isReadOnly}
         />
       )}

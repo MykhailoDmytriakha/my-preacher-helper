@@ -9,7 +9,7 @@ import { ShellTitlesProvider, usePublishShellTitle } from '@/components/navigati
 import { useDataDocument } from '@/data-engine/react.client';
 
 // BUG-20261004-breadcrumb-keeps-old-sermon-title: on the data engine the page renders and writes the
-// engine copy, while the breadcrumbs read the legacy cache — a renamed sermon or series kept its old
+// engine copy, while the breadcrumbs read the collection copy — a renamed sermon or series kept its old
 // title in the trail until a reload. The page now publishes the title it shows; the trail follows it.
 jest.mock('next/navigation', () => ({ usePathname: jest.fn(), useSearchParams: jest.fn() }));
 jest.mock('@/data-engine/react.client', () => ({
@@ -18,7 +18,9 @@ jest.mock('@/data-engine/react.client', () => ({
   useDataEngine: () => ({ owner: 'owner-1' }),
   useDataForm: () => ({ active: false, busy: false, data: null, begin: jest.fn(), cancel: jest.fn(), update: jest.fn(), save: jest.fn() }),
 }));
-jest.mock('@/hooks/useSermon', () => jest.fn(() => ({ sermon: { id: 'sermon-1', title: 'Old sermon title' }, loading: false })));
+jest.mock('@/hooks/useSermonRead', () => ({
+  useSermonRead: jest.fn(() => ({ sermon: { id: 'sermon-1', title: 'Old sermon title' }, loading: false, awaitingFirstAnswer: false })),
+}));
 jest.mock('@/hooks/useSeriesRead', () => ({
   useSeriesRead: jest.fn(() => ({ series: { id: 'series-1', title: 'Old series title' }, loading: false })),
 }));

@@ -41,7 +41,6 @@ const CONTRACT_KEYS = [
   'buttons.retry',
   'freshness.copyTextAction',
   'common.saveError',
-  'errors.thoughtUpdateError',
   'errors.failedToSaveThought',
 ];
 
