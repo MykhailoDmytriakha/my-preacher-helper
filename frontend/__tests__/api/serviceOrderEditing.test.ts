@@ -1,116 +1,58 @@
 import { DELETE, GET, PATCH } from '@/api/service-orders/[id]/route';
 import { POST as create } from '@/api/service-orders/custom/route';
 import { PATCH as place } from '@/api/service-orders/placement/route';
+import { POST as seed } from '@/api/service-orders/route';
+
+/**
+ * ONE ORDER OF SERVICE OVER HTTPS. Reading stays for a shipped bundle, filtered by owner. Every
+ * write is the data engine's: a shipped bundle's rename, steps, reorder, custom create, seed and
+ * delete all get the 426 refusal — never 409, which that client reads as "stale, the body is the
+ * order" — and nothing reaches the database.
+ */
 
 jest.mock('next/server', () => ({ NextResponse: { json: (value: unknown, options: { status?: number } = {}) => ({ status: options.status ?? 200, json: async () => value }) } }));
 const mockAuth = jest.fn();
 jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: (...args: unknown[]) => mockAuth(...args) }));
 const mockGet = jest.fn();
-const mockUpdate = jest.fn();
-const mockGetAll = jest.fn();
-const mockCreate = jest.fn();
-const mockDelete = jest.fn();
-jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {
-  collection: () => ({ doc: (id = 'new-order') => ({ id, path: `serviceOrders/${id}`, get: () => mockGet(id), create: mockCreate }) }),
-  runTransaction: (run: (tx: unknown) => Promise<unknown>) => run({ get: (ref: { id: string }) => mockGet(ref.id), getAll: async (...refs: unknown[]) => (await mockGetAll(...refs)).map((snapshot: object, index: number) => ({ ...snapshot, ref: refs[index] })), update: mockUpdate, delete: mockDelete, create: (_ref: unknown, data: unknown) => mockCreate(data) }),
-} }));
+const mockCollection = jest.fn((_name: string) => ({ doc: (id: string) => ({ id, get: () => mockGet(id) }) }));
+jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: (name: string) => mockCollection(name) } }));
 const doc = (data: Record<string, unknown>) => ({ exists: true, data: () => data });
-const current = { userId: 'owner', title: 'Visit', steps: [{ id: 's1', title: 'Listen' }], rev: { steps: 3, meta: 2 } };
+const current = { userId: 'owner', title: 'Visit', steps: [{ id: 's1', title: 'Listen' }] };
 const request = (value?: unknown) => ({ json: async () => value } as Request);
 const context = { params: Promise.resolve({ id: 'order1' }) };
-beforeEach(() => { jest.clearAllMocks(); mockAuth.mockResolvedValue('owner'); mockGet.mockImplementation(id => Promise.resolve(id === 'new-order' ? { exists: false } : doc(current))); });
+const writes = () => [
+  PATCH(request({ aggregate: 'meta', updates: { title: 'New' } })),
+  DELETE(request()),
+  place(request({ ranks: [{ id: 'a', rank: 1 }] })),
+  create(request({ title: 'New', steps: [], rank: 1 })),
+  seed(request({ orders: [{ catalogKey: 'funeral', title: 'Funeral', steps: [], rank: 1 }] })),
+];
+beforeEach(() => { jest.clearAllMocks(); mockAuth.mockResolvedValue('owner'); mockGet.mockResolvedValue(doc(current)); });
+
+it('reads only the authenticated owner\'s live order', async () => {
+  const own = await GET(request(), context);
+  expect(own.status).toBe(200);
+  expect(await own.json()).toMatchObject({ id: 'order1', title: 'Visit' });
+  mockGet.mockResolvedValueOnce(doc({ ...current, userId: 'someone-else' }));
+  expect((await GET(request(), context)).status).toBe(404);
+  mockGet.mockResolvedValueOnce({ exists: false, data: () => undefined });
+  expect((await GET(request(), context)).status).toBe(404);
+  // A tombstone written before 2026-09-18 still carries userId; it is not an order to open.
+  mockGet.mockResolvedValueOnce(doc({ ...current, _dataEngine: { protocol: 1, deleted: true } }));
+  expect((await GET(request(), context)).status).toBe(404);
+});
+
 it('requires authentication for reads and every write', async () => {
   mockAuth.mockResolvedValue(null);
   expect((await GET(request(), context)).status).toBe(401);
-  expect((await PATCH(request({}), context)).status).toBe(401);
-  expect((await place(request({}))).status).toBe(401);
-  expect((await create(request({}))).status).toBe(401);
-  expect((await DELETE(request(), context)).status).toBe(401);
-  expect(mockGet).not.toHaveBeenCalled();
-});
-it('does not expose or update another owner document', async () => {
-  mockGet.mockResolvedValue(doc({ ...current, userId: 'someone-else' }));
-  expect((await GET(request(), context)).status).toBe(404);
-  expect((await PATCH(request({ aggregate: 'steps', expectedRevision: 3, steps: [] }), context)).status).toBe(404);
-  expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('refuses stale steps and returns the current base', async () => {
-  const result = await PATCH(request({ aggregate: 'steps', expectedRevision: 2, steps: [] }), context);
-  expect(result.status).toBe(409);
-  expect((await result.json()).steps).toEqual(current.steps);
-  expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('commits deletion and bumps only the steps revision', async () => {
-  const result = await PATCH(request({ aggregate: 'steps', expectedRevision: 3, steps: [] }), context);
-  expect(result.status).toBe(200);
-  expect(await result.json()).toMatchObject({ steps: [], rev: { steps: 4, meta: 2 } });
-  expect(mockUpdate.mock.calls[0][1]).toMatchObject({ steps: [], 'rev.steps': 4 });
-});
-it('guards a stale title and accepts an unchanged opening baseline', async () => {
-  const base = { aggregate: 'meta', expectedRevision: 1, expectedBaseline: { title: 'Old' }, updates: { title: 'New' } };
-  expect((await PATCH(request(base), context)).status).toBe(409);
-  expect((await PATCH(request({ ...base, expectedBaseline: { title: 'Visit' } }), context)).status).toBe(200);
-});
-it.each([
-  { aggregate: 'steps', expectedRevision: 3, steps: [{ id: 'a', title: 'a' }, { id: 'a', title: 'b' }] },
-  { aggregate: 'meta', expectedRevision: null, expectedBaseline: null, updates: { userId: 'other' } },
-])('rejects invalid or privilege-changing payloads', async value => {
-  expect((await PATCH(request(value), context)).status).toBe(400);
-  expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('checks every rank owner before writing any rank', async () => {
-  mockGetAll.mockResolvedValue([doc(current), doc({ ...current, userId: 'other' })]);
-  expect((await place(request({ ranks: [{ id: 'a', rank: 1 }, { id: 'b', rank: 2 }] }))).status).toBe(404);
-  expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('commits all ranks with placement revisions together', async () => {
-  mockGetAll.mockResolvedValue([doc(current), doc({ ...current, rev: { placement: 9 } })]);
-  expect((await place(request({ ranks: [{ id: 'a', rank: 10 }, { id: 'b', rank: 20 }] }))).status).toBe(200);
-  expect(mockUpdate.mock.calls.map(call => call[1])).toEqual([expect.objectContaining({ rank: 10, 'rev.placement': 1 }), expect.objectContaining({ rank: 20, 'rev.placement': 10 })]);
+  for (const response of await Promise.all(writes())) expect(response.status).toBe(401);
+  expect(mockCollection).not.toHaveBeenCalled();
 });
 
-it('keeps existing long owner-written text editable', async () => {
-  const steps = [{ id: 'a', title: 'a', body: 'x'.repeat(15000) }];
-  expect((await PATCH(request({ aggregate: 'steps', expectedRevision: 3, steps }), context)).status).toBe(200);
-});
-
-it('creates a custom service belonging only to the authenticated owner', async () => {
-  const result = await create(request({ title: 'New', steps: [], rank: 1 }));
-  expect(result.status).toBe(201);
-  expect(await result.json()).toMatchObject({ id: 'new-order', userId: 'owner', title: 'New' });
-  expect(mockCreate).toHaveBeenCalledTimes(1);
-  expect((await create(request({ title: 'New', steps: [], rank: 1, userId: 'other' }))).status).toBe(400);
-});
-it('deletes only the authenticated owner service', async () => {
-  mockGet.mockResolvedValueOnce(doc({ ...current, userId: 'other' }));
-  expect((await DELETE(request(), context)).status).toBe(404);
-  expect(mockDelete).not.toHaveBeenCalled();
-  expect((await DELETE(request(), context)).status).toBe(200);
-  expect(mockDelete).toHaveBeenCalledTimes(1);
-});
-
-
-it.each([null, {}, { protocol: 1, deleted: true }])('refuses marked order updates/deletes before interpreting CAS: %j', async metadata => {
-  mockGet.mockResolvedValue(doc({ ...current, _dataEngine: metadata }));
-  const response = await PATCH(request({ aggregate: 'steps', expectedRevision: 0, steps: [] }), context);
-  // 426, never 409: in this very client 409 is a stale-revision answer whose body is the order.
-  expect(response.status).toBe(426);
-  expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
-  expect((await DELETE(request(), context)).status).toBe(426);
-  expect(mockUpdate).not.toHaveBeenCalled(); expect(mockDelete).not.toHaveBeenCalled();
-});
-it('refuses a protected later placement participant before staging any rank', async () => {
-  mockGetAll.mockResolvedValue([doc(current), doc({ ...current, _dataEngine: null })]);
-  const response = await place(request({ ranks: [{ id: 'a', rank: 1 }, { id: 'b', rank: 2 }] }));
-  expect(response.status).toBe(426); expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('explicitly refuses placement above the atomic bound without reading or writing', async () => {
-  const response = await place(request({ ranks: Array.from({ length: 101 }, (_, index) => ({ id: String(index), rank: index })) }));
-  expect(response.status).toBe(426); expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
-  expect(mockGetAll).not.toHaveBeenCalled(); expect(mockUpdate).not.toHaveBeenCalled();
-});
-it('refuses a tombstone collision during custom create', async () => {
-  mockGet.mockResolvedValue(doc({ ...current, _dataEngine: { deleted: true } }));
-  expect((await create(request({ title: 'New', steps: [], rank: 1 }))).status).toBe(426);
-  expect(mockCreate).not.toHaveBeenCalled();
+it('refuses every write from a shipped bundle with 426 and never touches the database', async () => {
+  for (const response of await Promise.all(writes())) {
+    expect(response.status).toBe(426);
+    expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+  }
+  expect(mockCollection).not.toHaveBeenCalled();
 });

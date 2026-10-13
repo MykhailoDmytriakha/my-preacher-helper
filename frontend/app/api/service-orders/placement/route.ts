@@ -1,35 +1,6 @@
-import { NextResponse } from 'next/server';
-import { z } from 'zod';
+import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 
-import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertLegacyWritable, legacyBoundaryResponse, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
-
-import { noStore, writeError } from '../writeSupport';
-
-const schema = z.object({ ranks: z.array(z.object({ id: z.string().min(1).max(200).refine(id => !id.includes('/')), rank: z.number().finite() }).strict()).min(1).max(500) }).strict();
-
+/** Orders of service are written only through the data engine; a shipped bundle's a reorder gets the refusal. */
 export async function PATCH(request: Request) {
-  const uid = await getRequiredAuthenticatedUid(request);
-  if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const parsed = schema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || new Set(parsed.data.ranks.map(entry => entry.id)).size !== parsed.data.ranks.length) {
-    return NextResponse.json({ error: 'Invalid placement' }, { status: 400 });
-  }
-  try {
-    if (parsed.data.ranks.length > 100) return legacyBoundaryResponse({ code: 'data-engine-required' })!;
-    await runLegacyTransaction(async tx => {
-      const refs = parsed.data.ranks.map(entry => adminDb.collection('serviceOrders').doc(entry.id));
-      const snapshots = await tx.getAll(...refs);
-      if (snapshots.some(snapshot => !snapshot.exists || snapshot.data()?.userId !== uid)) {
-        throw Object.assign(new Error('Service order not found'), { code: 'not-found' });
-      }
-      snapshots.forEach(snapshot => assertLegacyWritable(snapshot.data()));
-      const updatedAt = new Date().toISOString();
-      snapshots.forEach((snapshot, index) => {
-        tx.update(refs[index], { rank: parsed.data.ranks[index].rank, updatedAt, 'rev.placement': (snapshot.data()?.rev?.placement ?? 0) + 1 });
-      });
-    });
-    return NextResponse.json({ saved: true }, { headers: noStore });
-  } catch (error) { return writeError(error); }
+  return refuseLegacyWriteRoute(request);
 }

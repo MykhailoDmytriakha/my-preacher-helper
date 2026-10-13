@@ -898,7 +898,9 @@ describe('semantic snapshot comparison', () => {
   });
 });
 
-describe('independent service-order reads', () => {
+// Orders of service used this road until they became engine-owned (where the hook stays silent);
+// it has no caller left and goes with the hook itself.
+describe('independent server reads', () => {
   afterEach(() => { jest.useRealTimers(); });
 
   it('detects another device while the SDK is silent and stops polling when unmounted', async () => {
@@ -906,7 +908,7 @@ describe('independent service-order reads', () => {
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     const read = jest.fn().mockResolvedValue({ title: 'Local' });
     const { result, unmount } = renderHook(() => useDocumentFreshness({
-      collection: 'serviceOrders', docId: 'o1', uid: 'u1', enabled: true,
+      collection: 'sermons', docId: 'o1', uid: 'u1', enabled: true,
       known: { title: 'Local' }, select: data => ({ title: data.title }), readFromServer: read, pollIntervalMs: 15000,
     }));
     await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
@@ -924,7 +926,7 @@ describe('independent service-order reads', () => {
     let resolve!: (value: { title: string }) => void;
     const read = jest.fn(() => new Promise<{ title: string }>(done => { resolve = done; }));
     const { result, rerender } = renderHook(({ title }) => useDocumentFreshness({
-      collection: 'serviceOrders', docId: 'o1', uid: 'u1', enabled: true,
+      collection: 'sermons', docId: 'o1', uid: 'u1', enabled: true,
       known: { title }, select: data => ({ title: data.title }), readFromServer: read,
     }), { initialProps: { title: 'Before save' } });
     let check!: Promise<void>;

@@ -1,19 +1,6 @@
 import { NextResponse } from 'next/server';
-import { z } from 'zod';
 
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-
-export const stepSchema = z.object({
-  id: z.string().min(1),
-  title: z.string(),
-  body: z.string().optional(),
-  scriptureRefs: z.array(z.string()).optional(),
-  flagged: z.boolean().optional(),
-}).strict();
-export const stepsSchema = z.array(stepSchema).refine(
-  steps => new Set(steps.map(step => step.id)).size === steps.length,
-  'Duplicate step id'
-);
 
 export function writeError(error: unknown) {
   const boundary = legacyBoundaryResponse(error);

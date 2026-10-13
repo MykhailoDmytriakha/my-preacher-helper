@@ -3,25 +3,19 @@
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { Chip } from '@/components/ui/Chip';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
-import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import {
   isOfflineQueuedError,
   isStaleWriteError,
   isUnreachableWriteError,
 } from '@/services/conflictSafeUpdate.client';
-import { readServiceOrderOnServer } from '@/services/serviceOrderEditing.client';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
-import { serializeContent } from '@/utils/contentFingerprint';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
@@ -153,24 +147,12 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, renameOrder, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
-  // A background list refresh must not silently replace the service being read.
+  // The copy on screen; it follows the engine row whenever nothing on screen is unsaved (below).
   const [acceptedOrder, setAcceptedOrder] = useState<ServiceOrder | null>(null);
-  const editVersion = useRef(0);
-  const knownContent = useMemo(() => { const source = acceptedOrder ?? cachedOrder; return source ? selectServiceOrderContent({ ...source }) : null; }, [acceptedOrder, cachedOrder]);
   useEffect(() => {
     if (!acceptedOrder && cachedOrder) setAcceptedOrder(cachedOrder);
   }, [acceptedOrder, cachedOrder]);
   const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
-  const freshnessUid = useFreshnessUid(cachedOrder?.userId);
-  const freshness = useDocumentFreshness({
-    collection: 'serviceOrders', docId: orderId, uid: freshnessUid,
-    enabled: Boolean(knownContent), known: knownContent, select: selectServiceOrderContent,
-    readFromServer: readServiceOrderOnServer, pollIntervalMs: 15000,
-  });
-  const [freshnessDismissed, setFreshnessDismissed] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const remoteFingerprint = serializeContent(freshness.remote);
-  useEffect(() => { setFreshnessDismissed(false); }, [remoteFingerprint, freshness.state]);
   const confirmContent = (patch: Partial<ServiceOrder>) => {
     setAcceptedOrder(current => current ? { ...current, ...patch } : current);
   };
@@ -388,7 +370,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * editor's mirror — the funeral's sentence appearing inside the wedding.
    */
   const schedule = useCallback((key: string, run: () => void) => {
-    editVersion.current += 1;
     const existing = pending.current.get(key);
     if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
@@ -478,7 +459,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const mirror = useCallback(
     (mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null) => {
-      editVersion.current += 1;
       const next = mutate(typedRef.current) ?? typedRef.current;
       typedRef.current = next;
       setTyped(next);
@@ -709,35 +689,15 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    */
   const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
   /*
-   * ON THE ENGINE THE ROW IS ALREADY THE ANSWER. Its value is the server's copy plus this
-   * device's own submitted work, and the freshness banner that offered the legacy road's
-   * "take theirs" stays silent there. With nothing unsaved on screen the page follows the row;
-   * a new title starts a new sitting, so a rename is judged against the title now on screen.
+   * THE ENGINE ROW IS ALREADY THE ANSWER. Its value is the server's copy plus this device's own
+   * submitted work. With nothing unsaved on screen the page follows the row; a new title starts a
+   * new sitting, so a rename is judged against the title now on screen.
    */
-  const followsEngine = isCollectionOnEngine('serviceOrders');
   useEffect(() => {
-    if (!followsEngine || !cachedOrder || hasLocalChanges || acceptedOrder === cachedOrder) return;
+    if (!cachedOrder || hasLocalChanges || acceptedOrder === cachedOrder) return;
     if (acceptedOrder && acceptedOrder.title !== cachedOrder.title) setSession(newClientId());
     setAcceptedOrder(cachedOrder);
-  }, [followsEngine, cachedOrder, hasLocalChanges, acceptedOrder]);
-  const acceptRemote = async () => {
-    if (hasLocalChanges || refreshing) return;
-    setRefreshing(true);
-    const version = editVersion.current;
-    try {
-      const remote = await readServiceOrderOnServer(orderId);
-      if (editVersion.current !== version) return;
-      if (!remote) { await recheck(orderId); return; }
-      const content = selectServiceOrderContent({ ...remote });
-      setAcceptedOrder(remote);
-      setSession(newClientId());
-      typedRef.current = content.steps;
-      setTyped(null);
-      setRefsDraft({});
-      freshness.markSynced(content);
-    } catch { setFailure({ key: 'freshness.refreshFailedToast' }); }
-    finally { setRefreshing(false); }
-  };
+  }, [cachedOrder, hasLocalChanges, acceptedOrder]);
 
   if (!order && (typed || titleDraft || unresolved.current.size > 0) && lastKnown.current) {
     return (
@@ -932,15 +892,6 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         leave. One line, one arrow, in the words of the place it returns to.
       */}
       <BackToList />
-      {!freshnessDismissed && freshness.state !== 'fresh' && (
-        <DataFreshnessBanner
-          entityKey="entityRecord" dirty={hasLocalChanges}
-          deleted={freshness.remotelyDeleted} unknown={freshness.state === 'unknown'}
-          diagnostics={freshness.diagnostics} checking={freshness.checking} canCheck={freshness.canCheck}
-          onCheckAgain={freshness.checkAgain} onRefresh={hasLocalChanges ? undefined : acceptRemote} refreshing={refreshing}
-          onDismiss={() => setFreshnessDismissed(true)}
-        />
-      )}
 
       <header className="mt-4">
         <div className="flex items-center justify-between gap-4">

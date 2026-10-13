@@ -11,7 +11,6 @@ import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCata
 import { needsRenumber, rankForAppend, rankForMove, renumber, sortByRank } from '@/utils/serviceOrderRank';
 
 import type { DocumentData } from '@/data-engine/types';
-import type { ServiceOrdersApi } from '@/hooks/useServiceOrders';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'serviceOrders', id });
@@ -23,8 +22,8 @@ const rowsOf = (documents: readonly { resource: { id: string }; value: DocumentD
   sortByRank((documents ?? []).flatMap(row => row.value ? [asOrder(row.value, row.resource.id)] : []));
 
 /**
- * ORDERS OF SERVICE ON THE ENGINE — the same interface as the legacy hook (useServiceOrders), so
- * the list, the rite's own page and the breadcrumb do not change.
+ * ORDERS OF SERVICE ON THE ENGINE — the interface the list, the rite's own page and the breadcrumb
+ * use (useServiceOrders).
  *
  * What the legacy hook had to build by hand the engine already gives: the rows are the server's
  * copy plus this device's own submitted work, so there is no write fence against a read landing
@@ -38,7 +37,7 @@ const rowsOf = (documents: readonly { resource: { id: string }; value: DocumentD
  * on reconnect. Seeding still needs the server, because only a fresh list says which rites of the
  * standard set are missing.
  */
-export function useServiceOrdersEngine(userId: string | null | undefined, enabled: boolean): ServiceOrdersApi {
+export function useServiceOrdersEngine(userId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
   const collection = useDataCollection(enabled && userId ? 'serviceOrders' : null);
@@ -137,7 +136,8 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
           committed = steps;
           return { ...current, steps: deepCleanUndefined(steps) as unknown as DocumentData[], updatedAt: now() };
         });
-        return committed;
+        // Assigned inside the commit callback, so the type is stated: TypeScript would narrow it to null.
+        return committed as ServiceOrderStep[] | null;
       } finally {
         setSavingSteps(count => count - 1);
       }

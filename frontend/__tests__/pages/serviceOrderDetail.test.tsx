@@ -17,10 +17,6 @@ const mockClosedEditing = jest.fn().mockResolvedValue(undefined);
 const mockRecheck = jest.fn().mockResolvedValue('absent');
 const mockDeleteOrder = jest.fn().mockResolvedValue(undefined);
 const mockPush = jest.fn();
-const mockReadServer = jest.fn();
-const mockFreshness = { state: 'fresh', remote: null, remotelyDeleted: false, checking: false, canCheck: true, checkAgain: jest.fn(), markSynced: jest.fn() };
-jest.mock('@/services/serviceOrderEditing.client', () => ({ readServiceOrderOnServer: (...args: unknown[]) => mockReadServer(...args) }));
-jest.mock('@/hooks/useDocumentFreshness', () => ({ useDocumentFreshness: () => mockFreshness }));
 
 
 const state = {
@@ -71,7 +67,6 @@ const step = (id: string, title: string, body = '') => ({ id, title, body, scrip
 
 describe('One service', () => {
   beforeEach(() => {
-    mockFreshness.state = 'fresh';
     jest.clearAllMocks();
     jest.useRealTimers();
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
@@ -868,13 +863,14 @@ describe('One service', () => {
         fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
       });
 
-      // Background updates wait for explicit acceptance; a confirmed deletion must not reappear.
+      // No marker is left standing, so the screen follows the document again — and the
+      // confirmed deletion does not come back with it.
       state.orders = [order([step('s2', 'Молитва'), step('s3', 'Пришло с ноутбука')])];
       rerender(<ServiceOrderPage />);
 
       expect(
         screen.getAllByRole('textbox', { name: 'serviceOrders.stepTitle' }).map((field) => (field as HTMLInputElement).value)
-      ).toEqual(['Молитва']);
+      ).toEqual(['Молитва', 'Пришло с ноутбука']);
     });
 
     /**
@@ -1060,7 +1056,7 @@ describe('One service', () => {
    * A SAVED write hands the screen back to the document, so a change made elsewhere shows up
    * instead of the tab quietly displaying yesterday until it is closed.
    */
-  it('offers a remote update after a save without silently replacing the accepted version', async () => {
+  it('shows a change made elsewhere once the save is done, without being asked', async () => {
     mockUpdateSteps.mockImplementationOnce(async () => [
       step('s1', 'Перед началом', 'местное'),
       step('s2', 'Молитва'),
@@ -1074,15 +1070,10 @@ describe('One service', () => {
       fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.done' }));
     });
 
-    // Meanwhile the document moved on elsewhere.
+    // Meanwhile the document moved on elsewhere; the engine row already is the server copy.
     state.orders = [order([step('s1', 'Перед началом', 'пришло с другого устройства'), step('s2', 'Молитва')])];
     rerender(<ServiceOrderPage />);
 
-    expect(screen.queryByText('пришло с другого устройства')).not.toBeInTheDocument();
-    mockFreshness.state = 'stale';
-    mockReadServer.mockResolvedValueOnce(state.orders[0]);
-    rerender(<ServiceOrderPage />);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'freshness.refreshAction' })); });
     expect(screen.getByText('пришло с другого устройства')).toBeInTheDocument();
   });
 
@@ -1091,27 +1082,23 @@ describe('One service', () => {
    * later; handing the screen back to the document at the moment the button is pressed announced
    * a failure about text that no longer existed anywhere.
    */
-  it('does not erase typing started while an explicit refresh is loading', async () => {
-    mockFreshness.state = 'stale';
-    let resolve!: (value: unknown) => void;
-    mockReadServer.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
-    render(<ServiceOrderPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'freshness.refreshAction' }));
+  it('does not erase typing when a change from elsewhere arrives', () => {
+    const { rerender } = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
     const input = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
-    fireEvent.change(input, { target: { value: 'New draft while loading' } });
-    await act(async () => { resolve(order([step('s1', 'Remote title', 'Remote text')])); });
-    expect(input).toHaveValue('New draft while loading');
-    expect(screen.queryByRole('button', { name: 'freshness.reviewAction' })).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'New draft while it arrives' } });
+    state.orders = [order([step('s1', 'Remote title', 'Remote text'), step('s2', 'Молитва')])];
+    rerender(<ServiceOrderPage />);
+    expect(screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0]).toHaveValue('New draft while it arrives');
   });
 
-  it('keeps the accepted title revision when a background read has a newer title', () => {
+  it('opens a rename on the title now on screen after a rename arrived from elsewhere', () => {
     const { rerender } = render(<ServiceOrderPage />);
     state.orders = [{ ...order([step('s1', 'Step')]), title: 'Remote title', rev: { meta: 9 } }];
     rerender(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
     fireEvent.focus(screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' }));
-    expect(mockOpenedWith).toHaveBeenLastCalledWith('order-1', { title: 'Погребение', revision: 3 }, expect.any(String));
+    expect(mockOpenedWith).toHaveBeenLastCalledWith('order-1', { title: 'Remote title', revision: 9 }, expect.any(String));
   });
 
   it('keeps words the server refused after editing is done', async () => {
@@ -1268,7 +1255,6 @@ describe('One service', () => {
  */
 describe('when the rite is deleted elsewhere mid-edit', () => {
   beforeEach(() => {
-    mockFreshness.state = 'fresh';
     jest.clearAllMocks();
     jest.useRealTimers();
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
@@ -1356,8 +1342,7 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
   });
 });
 
-describe('One service on the engine', () => {
-  const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
+describe('One service following the engine row', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
@@ -1365,12 +1350,9 @@ describe('One service on the engine', () => {
     state.loading = false;
     state.isOnline = true;
   });
-  afterEach(() => { delete process.env[ON_ENGINE]; });
-
   const remoteEdit = () => { state.orders = [{ ...order([step('s1', 'Written on the phone')]), title: 'Renamed on the phone' }]; };
 
   it('follows the row when nothing is unsaved: the engine row already is the server copy', () => {
-    process.env[ON_ENGINE] = 'serviceOrders';
     const { rerender } = render(<ServiceOrderPage />);
     remoteEdit();
     rerender(<ServiceOrderPage />);
@@ -1378,15 +1360,7 @@ describe('One service on the engine', () => {
     expect(screen.getByText('Written on the phone')).toBeInTheDocument();
   });
 
-  it('keeps the legacy page on the copy it accepted, where the freshness banner offers the change', () => {
-    const { rerender } = render(<ServiceOrderPage />);
-    remoteEdit();
-    rerender(<ServiceOrderPage />);
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Погребение');
-  });
-
   it('holds the row back while a title is being typed, so the field and its sitting survive a rename elsewhere', () => {
-    process.env[ON_ENGINE] = 'serviceOrders';
     const { rerender } = render(<ServiceOrderPage />);
     fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
     const title = screen.getByRole('textbox', { name: 'serviceOrders.orderTitle' });
