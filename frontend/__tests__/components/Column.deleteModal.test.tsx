@@ -123,8 +123,6 @@ jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
 
 jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn(() => Promise.resolve({ success: true })),
-  getSermonOutline: jest.fn(() => Promise.resolve({ introduction: [], main: [], conclusion: [] })),
   generateSermonPointsForSection: jest.fn(() => Promise.resolve([])),
 }));
 
@@ -212,13 +210,30 @@ jest.mock('@/components/SermonGuidanceTooltips', () => ({
 
 // --- Actual test imports ---
 import React from 'react';
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import Column from '../../app/components/Column';
-import { Item } from '@/models/models';
-import { updateSermonOutline } from '@/services/outline.service';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { Item, type SermonOutline } from '@/models/models';
 import { toast } from 'sonner';
+
+/** Every plan write the column makes goes through the structure writer; this one only records it. */
+const mockWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: jest.fn(async (_sermonId: string, outline: SermonOutline) => outline),
+};
+const updateSermonOutline = mockWriter.updateSermonOutline as jest.Mock;
+
+const render = (ui: React.ReactElement) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <StructureWriterContext.Provider value={mockWriter}>{children}</StructureWriterContext.Provider>
+    ),
+  });
 
 // ---------------------------------------------------------------------------
 
@@ -314,7 +329,6 @@ describe('Column — normal mode insert/edit flows', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
-    (updateSermonOutline as jest.Mock).mockResolvedValue({ success: true });
   });
 
   afterEach(() => {
@@ -338,7 +352,7 @@ describe('Column — normal mode insert/edit flows', () => {
     });
 
     expect(updateSermonOutline).toHaveBeenCalled();
-    expect((updateSermonOutline as jest.Mock).mock.calls[0][1]).toEqual(
+    expect(updateSermonOutline.mock.calls[0][1]).toEqual(
       expect.objectContaining({
         introduction: expect.arrayContaining([expect.objectContaining({ text: 'Point one updated' })]),
       })

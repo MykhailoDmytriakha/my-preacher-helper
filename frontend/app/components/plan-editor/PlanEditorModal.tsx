@@ -15,8 +15,7 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
-import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
@@ -255,18 +254,9 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
       const generationAtRequest = generationRef.current;
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          const request = writer.updateSermonOutline(sermon.id, next, baseOutlineRef.current);
-          // An immediate (engine) writer returns once the change is kept on this device; the
-          // engine owns delivery and offline queueing.
-          const committed = writer.immediate ? await request : await (async () => {
-            const acceptance = await awaitAcceptance(
-              isBrowserOffline()
-                ? queuedMutation(`outline:${sermon.id}`, request)
-                : persistedWrite(request),
-              (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
-            );
-            return acceptance.kind === 'persisted' ? await request : next;
-          })();
+          // The engine writer returns once the change is kept on this device; the engine owns
+          // delivery and offline queueing.
+          const committed = await writer.updateSermonOutline(sermon.id, next, baseOutlineRef.current);
           // The COMMITTED plan can legitimately contain more than we sent — a point
           // added on the other device that the merge kept. Adopt it as the new base
           // and show it, or the next save would treat that point as deleted here.

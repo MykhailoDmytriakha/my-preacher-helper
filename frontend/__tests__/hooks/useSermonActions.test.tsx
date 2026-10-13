@@ -1,14 +1,10 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import React from 'react';
+
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
-import * as thoughtService from '@/services/thought.service';
 import { createMockSermon, createMockItem, createMockThought } from '../../test-utils/structure-test-utils';
 
-jest.mock('@/services/thought.service', () => ({
-  deleteThought: jest.fn(),
-  updateThought: jest.fn(),
-  createManualThought: jest.fn(),
-}));
-jest.mock('@/services/structure.service');
 jest.mock('sonner');
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -18,6 +14,24 @@ jest.mock('react-i18next', () => ({
 jest.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => true,
 }));
+
+/** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
+const thoughtService = {
+  deleteThought: jest.fn(),
+  updateThought: jest.fn(),
+  createManualThought: jest.fn(),
+};
+const mockWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  ...thoughtService,
+  updateSermonOutline: jest.fn(),
+};
+
+const renderHook = <T,>(callback: () => T) =>
+  rtlRenderHook(callback, {
+    wrapper: ({ children }) =>
+      React.createElement(StructureWriterContext.Provider, { value: mockWriter }, children),
+  });
 
 describe('useSermonActions', () => {
   let mockSetSermon: jest.Mock;

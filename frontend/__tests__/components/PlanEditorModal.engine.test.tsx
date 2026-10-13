@@ -3,7 +3,6 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import { StructureWriterContext } from '@/components/sermon/structureWriter';
-import { updateSermonOutline } from '@/services/outline.service';
 import '@testing-library/jest-dom';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -15,12 +14,7 @@ import type { Sermon, SermonOutline } from '@/models/models';
  * On engine documents the sermon page opened a separate, reduced editor: a narrow form without
  * templates, undo/redo, clear or the sermon title. The page now opens this editor on both kinds
  * of document; on the engine it writes through the same engine writer as the structure screen.
- * The legacy service refuses here, as it does in production, so a write that slips past the
- * writer in context fails the test instead of passing silently.
  */
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn(async () => { throw new Error('data-engine-required'); }),
-}));
 const mockTemplates = [{ id: 'tpl', userId: 'u1', name: 'Three points', structure: {
   introduction: [{ id: 't-i', text: 'Opening' }], main: [{ id: 't-m', text: 'Body' }], conclusion: [],
 } }];
@@ -81,7 +75,6 @@ describe('the structure editor on an engine document', () => {
     fireEvent.click(screen.getByText('edit-a-point'));
     await flushSaveDebounce();
     expect(documentCopy.outline!.main).toEqual([{ id: 'p1', text: 'edit 1' }]);
-    expect(updateSermonOutline).not.toHaveBeenCalled();
   });
 
   it('applies a template into the document', async () => {

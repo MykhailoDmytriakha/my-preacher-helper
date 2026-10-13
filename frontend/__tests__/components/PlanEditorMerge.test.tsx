@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
-import { updateSermonOutline } from '@/services/outline.service';
+import { StructureWriterContext } from '@/components/sermon/structureWriter';
 import { OutlineCollisionError } from '@/services/sermons.client';
 import '@testing-library/jest-dom';
 
@@ -16,9 +16,6 @@ import type { Sermon, SermonOutline } from '@/models/models';
  * the write is told what the editor OPENED with (so it can merge), and a genuine
  * same-point overlap becomes a visible choice instead of a silent winner.
  */
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn().mockResolvedValue(null),
-}));
 jest.mock('@/hooks/usePlanTemplates', () => ({
   usePlanTemplates: () => ({ templates: [], createTemplate: jest.fn() }),
 }));
@@ -63,7 +60,14 @@ jest.mock('@/components/plan-editor/OutlineBoard', () => ({
   ),
 }));
 
-const mockSave = updateSermonOutline as jest.MockedFunction<typeof updateSermonOutline>;
+const mockSave = jest.fn();
+const mockStructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: (...args: unknown[]) => mockSave(...args),
+};
 
 const outline: SermonOutline = {
   introduction: [],
@@ -83,7 +87,9 @@ const sermon = {
 
 const openEditor = () =>
   render(
-    <PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} onOutlineUpdate={jest.fn()} />
+    <StructureWriterContext.Provider value={mockStructureWriter}>
+      <PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} onOutlineUpdate={jest.fn()} />
+    </StructureWriterContext.Provider>
   );
 
 const flushSaveDebounce = async () => {

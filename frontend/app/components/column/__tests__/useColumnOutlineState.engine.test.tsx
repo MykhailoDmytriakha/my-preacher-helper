@@ -7,7 +7,6 @@ import { StructureWriterContext, type StructureWriter } from "@/components/sermo
 
 import { useColumnOutlineState } from "../useColumnOutlineState";
 
-import { getSermonOutline } from "@/services/outline.service";
 
 import type { DocumentData } from "@/data-engine/types";
 import type { SermonOutline, SermonPoint } from "@/models/models";
@@ -24,8 +23,6 @@ import type { SermonOutline, SermonPoint } from "@/models/models";
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/services/outline.service", () => ({
   generateSermonPointsForSection: jest.fn(),
-  getSermonOutline: jest.fn(),
-  updateSermonOutline: jest.fn(),
 }));
 
 const t = (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key;
@@ -34,7 +31,6 @@ const points: SermonPoint[] = [{ id: "point-1", text: "First point" }, { id: "po
 const engineWriter = () => {
   const handed: SermonOutline[] = [];
   const writer: StructureWriter = {
-    immediate: true,
     updateStructure: jest.fn(),
     updateThought: jest.fn(),
     deleteThought: jest.fn(),
@@ -78,7 +74,6 @@ describe("the structure board column on the data engine", () => {
 
     expect(writer.updateSermonOutline).toHaveBeenCalledTimes(1);
     expect(handed[0].main.map((point) => point.text)).toEqual(["Edited a moment before leaving", "Second point"]);
-    expect(getSermonOutline).not.toHaveBeenCalled();
     expect(scheduleTask).not.toHaveBeenCalled();
   });
 

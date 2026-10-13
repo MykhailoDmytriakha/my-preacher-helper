@@ -3,15 +3,9 @@ import React from 'react';
 
 import { useManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
 import { PlanWriterContext, type PlanWriter } from '@/(pages)/(private)/sermons/[id]/plan/planWriter';
-import { savePlanModeViaClient, savePlanTextViaClient } from '@/services/sermons.client';
 
 import type { Sermon } from '@/models/models';
 
-jest.mock('@/services/sermons.client', () => ({
-  ...jest.requireActual('@/services/sermons.client'),
-  savePlanTextViaClient: jest.fn(),
-  savePlanModeViaClient: jest.fn(),
-}));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 
@@ -22,7 +16,7 @@ const sermon = {
 } as unknown as Sermon;
 
 describe('the hand-written plan on the engine', () => {
-  it('saves a cell through the engine plan writer, with the baseline it opened with, and never the legacy writer', async () => {
+  it('saves a cell through the engine plan writer, with the baseline it opened with', async () => {
     const writer: PlanWriter = {
       savePlanText: jest.fn().mockResolvedValue(undefined),
       savePlanMode: jest.fn().mockResolvedValue(undefined),
@@ -35,7 +29,5 @@ describe('the hand-written plan on the engine', () => {
     await act(async () => { await result.current.savePoint('p1', 'introduction', ['p1']); });
     expect(writer.savePlanText).toHaveBeenCalledWith('sermon-1', { p1: 'Typed here' }, expect.any(Array),
       expect.objectContaining({ baselineByNodeId: { p1: 'Stored text' } }));
-    expect(savePlanTextViaClient).not.toHaveBeenCalled();
-    expect(savePlanModeViaClient).not.toHaveBeenCalled();
   });
 });

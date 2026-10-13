@@ -1,8 +1,8 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import React from 'react';
 import { toast } from 'sonner';
 import { useSermonActions } from '../useSermonActions';
-import { updateStructure } from '@/services/structure.service';
-import { updateThought, createManualThought, deleteThought } from '@/services/thought.service';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Sermon, Item } from '@/models/models';
 import type { WriteSubmission } from '@/utils/recoverableWrite';
 
@@ -21,14 +21,27 @@ jest.mock('react-i18next', () => ({
         t: (key: string) => key,
     }),
 }));
-jest.mock('@/services/structure.service');
-jest.mock('@/services/thought.service');
 
-const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
-const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
-const mockCreateManualThought = createManualThought as jest.MockedFunction<typeof createManualThought>;
-const mockDeleteThought = deleteThought as jest.MockedFunction<typeof deleteThought>;
 const mockToast = toast as jest.Mocked<typeof toast>;
+
+/** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
+const mockUpdateStructure = jest.fn();
+const mockUpdateThought = jest.fn();
+const mockCreateManualThought = jest.fn();
+const mockDeleteThought = jest.fn();
+const mockWriter: StructureWriter = {
+  updateStructure: mockUpdateStructure,
+  updateThought: mockUpdateThought,
+  deleteThought: mockDeleteThought,
+  createManualThought: mockCreateManualThought,
+  updateSermonOutline: jest.fn(),
+};
+
+const renderHook = <T,>(callback: () => T) =>
+  rtlRenderHook(callback, {
+    wrapper: ({ children }) =>
+      React.createElement(StructureWriterContext.Provider, { value: mockWriter }, children),
+  });
 
 describe('useSermonActions', () => {
     const mockSermon: Sermon = {

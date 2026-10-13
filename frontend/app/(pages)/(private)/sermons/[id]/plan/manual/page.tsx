@@ -3,24 +3,15 @@
 import { FileText, Pencil, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 
-import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
-import { useDocumentFreshness } from "@/hooks/useDocumentFreshness";
-import { useFreshnessUid } from "@/hooks/useFreshnessUid";
+import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useRouteId } from "@/hooks/useRouteId";
-import useSermon from "@/hooks/useSermon";
 import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
-import {
-  planFreshnessProjection,
-  type PlanFreshnessProjection,
-} from "@/utils/sermonFreshnessProjection";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 
 import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
@@ -268,9 +259,9 @@ const ManualPointCard = ({ point, index, section, conspectus, text, noteMode, re
  */
 export default function ManualConspectusPage() {
   const sermonId = useRouteId();
-  return sermonId && isCollectionOnEngine('sermons')
+  return sermonId
     ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EngineManualConspectusPage sermonId={sermonId} /></DataDocumentProvider>
-    : <ManualConspectusContent />;
+    : null;
 }
 
 function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
@@ -284,24 +275,22 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
   return <PlanWriterContext.Provider value={writer}>
     {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
-    <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={document.readOnly} />
+    <ManualConspectusContent key={document.readOnly ? 'copy' : 'editor'} source={source} readOnly={document.readOnly} />
   </PlanWriterContext.Provider>;
 }
 
-type SermonSource = ReturnType<typeof useSermon>;
+type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function ManualConspectusContent({ source, readOnly = false }: { source?: SermonSource; readOnly?: boolean }) {
+function ManualConspectusContent({ source, readOnly = false }: { source: SermonSource; readOnly?: boolean }) {
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
-  const legacySource = useSermon(source ? '' : sermonId);
-  const { sermon, setSermon, loading, error, refreshSermon } = source ?? legacySource;
+  const { sermon, setSermon, loading, error } = source;
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
   const conspectus = useManualConspectus({ sermon, setSermon, t, mode: noteMode ? 'note' : 'manual' });
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
-  const hasUnsavedCells = Object.values(conspectus.modifiedNodeIds).some(Boolean);
   /**
    * On a copy for reading the text comes straight from the document, as the reader drew it: the
    * editor's cells are merged over time and would keep text a newer copy no longer has.
@@ -347,59 +336,6 @@ function ManualConspectusContent({ source, readOnly = false }: { source?: Sermon
     orphanedCells(conspectus.contentByNodeId, conspectus.modifiedNodeIds, livePlanNodes),
     draft.orphaned
   );
-
-  /**
-   * DOES THE SERVER HOLD A NEWER PLAN?
-   *
-   * This screen had none of this while its twin did, and that gap was the dangerous half:
-   * here the text is typed BY HAND, so there is nothing to regenerate if it is lost. Someone
-   * could write on a phone in the morning and keep this tab open from the night before, and
-   * the only sign would be their morning paragraph quietly disappearing on the next save.
-   *
-   * The same projection as the paired screen, deliberately: one rule for "did this change",
-   * compared through the plan the application READS rather than the field that stores it, so
-   * a sermon moving between storage shapes is not announced as a foreign edit.
-   */
-  const freshnessUid = useFreshnessUid(sermon?.userId);
-  const knownPlan = useMemo<PlanFreshnessProjection | null>(
-    () => (sermon ? planFreshnessProjection(sermon as unknown as Record<string, unknown>) : null),
-    [sermon]
-  );
-  const planFreshness = useDocumentFreshness<PlanFreshnessProjection>({
-    collection: "sermons",
-    docId: sermonId || null,
-    uid: freshnessUid,
-    // On the engine the document observer owns freshness; DataSyncStatus says it.
-    enabled: Boolean(sermon) && !source,
-    known: knownPlan,
-    select: (data) => planFreshnessProjection(data),
-  });
-  const [freshnessDismissed, setFreshnessDismissed] = useState(false);
-  useEffect(() => {
-    if (planFreshness.state === "stale" || planFreshness.state === "unknown") {
-      setFreshnessDismissed(false);
-    }
-  }, [planFreshness.remote, planFreshness.state]);
-
-  /**
-   * Taking the newer version is SAFE HERE even mid-edit, and that is not an accident: the
-   * seeding effect lays storage over every cell except the ones being typed into. So a
-   * refresh brings in the paragraph written elsewhere and leaves the unsaved one alone —
-   * which is why the button is offered rather than withheld.
-   */
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const handleRefresh = useCallback(async () => {
-    if (isRefreshing) return;
-    setIsRefreshing(true);
-    try {
-      await refreshSermon();
-      toast.success(t("freshness.refreshedToast"));
-    } catch {
-      toast.error(t("freshness.refreshFailedToast"));
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [isRefreshing, refreshSermon, t]);
 
   /**
    * Reading and preaching from the conspectus belong to BOTH editors — see
@@ -584,25 +520,6 @@ function ManualConspectusContent({ source, readOnly = false }: { source?: Sermon
           conspectus.discardCells(nodeIds);
         }}
       />
-
-      {/* Like the paired screen: never in the preaching or immersive views, which return
-          above — someone standing in front of a congregation must not be handed a decision. */}
-      {!source && (planFreshness.state === "stale" || planFreshness.state === "unknown") &&
-        !freshnessDismissed && (
-          <DataFreshnessBanner
-            entityKey="entitySermon"
-            dirty={hasUnsavedCells}
-            deleted={planFreshness.remotelyDeleted}
-            unknown={planFreshness.state === "unknown"}
-            diagnostics={planFreshness.diagnostics}
-            checking={planFreshness.checking}
-            canCheck={planFreshness.canCheck}
-            onCheckAgain={planFreshness.checkAgain}
-            onRefresh={handleRefresh}
-            refreshing={isRefreshing}
-            onDismiss={() => setFreshnessDismissed(true)}
-          />
-        )}
 
       {/* Generating from the note writes the plan, so a copy for reading keeps only the note's reminders. */}
       <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode && !readOnly} sermon={sermon} conspectus={conspectus}>

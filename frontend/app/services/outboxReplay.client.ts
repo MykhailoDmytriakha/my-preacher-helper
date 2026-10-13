@@ -2,7 +2,6 @@
 
 import { doc } from 'firebase/firestore';
 
-
 import { getClientDb } from '@/config/firebaseClientDb';
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -14,7 +13,6 @@ import {
   type OutboxEntry,
 } from '@/services/writeOutbox.client';
 
-import type { ScratchNote, SermonOutline, ThoughtsBySection } from '@/models/models';
 
 /**
  * Put every queued offline intent back through the SAME guard.
@@ -80,22 +78,6 @@ export async function replayOutbox(uid: string): Promise<{
     const rebased = committedHere.get(lane);
     try {
       assertLegacyClientWriteAllowed(entry.collection);
-      /**
-       * A SEMANTIC intent: redo the merge instead of applying a patch.
-       *
-       * Ordered structures (the sermon plan) cannot be protected offline by a
-       * commutative operation — "merge" there means recompute against what the
-       * server holds. So the writer queued the OPERATION and what the editor started
-       * from, and here it runs again with fresh data. A collision surfaces exactly as
-       * it does online: the intent is kept and marked, never silently applied.
-       */
-      if (entry.merge) {
-        await replayMergeIntent({ ...entry, merge: entry.merge });
-        removeFromOutbox(entry.id);
-        touched.push({ collection: entry.collection, docId: entry.docId });
-        replayed += 1;
-        continue;
-      }
       const committed = await conflictSafeUpdate(
         doc(db, entry.collection, entry.docId),
         // A FRESH timestamp. Replaying Monday's `updatedAt` on Friday buried the
@@ -155,39 +137,6 @@ function narrowedBaseline(
     if (!rewritten.has(name)) remaining[name] = baseline[name];
   });
   return Object.keys(remaining).length > 0 ? remaining : undefined;
-}
-
-async function replayMergeIntent(entry: OutboxEntry & { merge: NonNullable<OutboxEntry['merge']> }): Promise<void> {
-  const writers = await import('@/services/sermons.client');
-  if (entry.merge.kind === 'outline') {
-    await writers.updateSermonOutlineViaClient(
-      entry.docId,
-      (entry.patch as { outline: SermonOutline }).outline,
-      { baseOutline: entry.merge.base as SermonOutline | null }
-    );
-  } else if (entry.merge.kind === 'scratch') {
-    await writers.addScratchNoteViaClient(
-      entry.docId,
-      (entry.patch as { scratch: ScratchNote[] }).scratch,
-      entry.merge.base as ScratchNote[] | null
-    );
-  } else if (entry.merge.kind === 'structure') {
-    await writers.updateStructureViaClient(
-      entry.docId,
-      (entry.patch as { structure: ThoughtsBySection }).structure,
-      // The arrangement the screen started from travels with the intent, so the
-      // replay can tell a move made HERE from one made on the other device.
-      entry.merge.base as ThoughtsBySection | null
-    );
-  } else {
-    const payload = entry.patch as { outline: SermonOutline; scratch: ScratchNote[] };
-    await writers.applyScratchToOutlineViaClient(
-      entry.docId,
-      payload.outline,
-      payload.scratch,
-      entry.merge.base as { outline?: SermonOutline | null; scratch?: ScratchNote[] | null }
-    );
-  }
 }
 
 function recordReplayConflict(entry: OutboxEntry, error: unknown): boolean {

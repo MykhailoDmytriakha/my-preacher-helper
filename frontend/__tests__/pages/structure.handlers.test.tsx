@@ -4,9 +4,6 @@ import '@testing-library/jest-dom';
 
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
-import { updateStructure } from '@/services/structure.service';
-import { deleteThought, updateThought } from '@/services/thought.service';
-import { updateSermonOutline } from '@/services/outline.service';
 import { getExportContent } from '@/utils/exportContent';
 import { changedFields } from '@/utils/changedFields';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -14,9 +11,7 @@ import { toast } from 'sonner';
 import { createMockSermon, createMockThought, createMockItem, createMockSermonPoint } from '@test-utils/structure-test-utils';
 
 jest.mock('@/hooks/useSermonStructureData');
-let mockEngineOn = false;
 const mockEngineWriter = {
-  immediate: true,
   updateStructure: jest.fn().mockResolvedValue({}),
   updateThought: jest.fn(async (_id: string, thought: unknown) => thought),
   deleteThought: jest.fn().mockResolvedValue(undefined),
@@ -26,7 +21,6 @@ const mockEngineWriter = {
 let mockEngineDocumentData: Record<string, unknown> | null = null;
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
-  isCollectionOnEngine: () => mockEngineOn,
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataEngine: () => ({ owner: 'user-1', browser: null, error: null }),
 }));
@@ -37,14 +31,11 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/useEngineStructureWriter',
     retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
   } }),
 }));
-jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn().mockResolvedValue({}) }));
-jest.mock('@/services/thought.service', () => ({
-  updateThought: jest.fn().mockResolvedValue({}),
-  deleteThought: jest.fn().mockResolvedValue({}),
-}));
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn().mockResolvedValue({}),
-}));
+// Every write the page makes goes through the engine writer; these are its recording functions.
+const updateStructure = mockEngineWriter.updateStructure;
+const updateThought = mockEngineWriter.updateThought;
+const deleteThought = mockEngineWriter.deleteThought;
+const updateSermonOutline = mockEngineWriter.updateSermonOutline;
 jest.mock('@/utils/exportContent', () => ({
   getExportContent: jest.fn().mockResolvedValue('exported'),
 }));
@@ -159,10 +150,8 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions', (
     handleAddThoughtToSection: jest.fn(),
     handleSaveEdit: jest.fn(),
     handleDeleteThought: jest.fn(async (id) => {
-      const { deleteThought } = require('@/services/thought.service');
-      const { updateStructure } = require('@/services/structure.service');
-      await deleteThought('sermon-1', { id });
-      await updateStructure('sermon-1', {});
+      await mockEngineWriter.deleteThought('sermon-1', { id });
+      await mockEngineWriter.updateStructure('sermon-1', {});
     }),
     handleMoveToAmbiguous: jest.fn(),
     handleRetryPendingThought: jest.fn(),
@@ -313,6 +302,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -372,6 +363,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -424,6 +417,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -443,8 +438,7 @@ describe('StructurePage handlers', () => {
     expect(toast.success).not.toHaveBeenCalledWith('Thought locked');
   });
 
-  it('on the engine, hands the board the engine document and sends a lock through the engine writer only', async () => {
-    mockEngineOn = true;
+  it('hands the board the engine document and sends a lock through the engine writer', async () => {
     autoTriggerPointLock = false;
     autoTriggerThoughtLock = true;
     const sermon = createMockSermon({
@@ -461,17 +455,16 @@ describe('StructurePage handlers', () => {
       requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
       allowedTags: [], loading: false, error: null, isAmbiguousVisible: true, setIsAmbiguousVisible: jest.fn(),
       syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
     try {
       render(<StructurePage />);
       await waitFor(() => expect(mockEngineWriter.updateThought).toHaveBeenCalledWith(
         'sermon-1', expect.objectContaining({ id: 't1', isLocked: true }), expect.objectContaining({ id: 't1', isLocked: false })));
-      expect(updateThought).not.toHaveBeenCalled();
-      const engineSource = (useSermonStructureData as jest.Mock).mock.calls.at(-1)![2];
+      const engineSource = (useSermonStructureData as jest.Mock).mock.calls.at(-1)![1];
       expect(engineSource.sermon).toEqual(expect.objectContaining({ id: 'sermon-1', userId: 'user-1' }));
       expect(screen.getByTestId('engine-sync-status')).toBeInTheDocument();
     } finally {
-      mockEngineOn = false;
       mockEngineDocumentData = null;
     }
   });
@@ -504,7 +497,7 @@ describe('StructurePage handlers', () => {
 
     (updateThought as jest.Mock).mockImplementation(
       async (_sermonId: string, updated: typeof storedThought, base?: typeof storedThought | null) => {
-        // Exactly what the writer does (sermons.client.ts): with no base every field
+        // Exactly what the engine writer does: with no base every field
         // handed over is claimed as changed.
         const intent = base ? changedFields(base, updated) : updated;
         storedThought = { ...storedThought, ...intent };
@@ -549,6 +542,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -604,6 +599,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -670,6 +667,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -742,6 +741,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -834,6 +835,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -866,6 +869,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -929,6 +934,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     });
 
     render(<StructurePage />);
@@ -991,6 +998,8 @@ describe('StructurePage handlers', () => {
       error: null,
       isAmbiguousVisible: true,
       setIsAmbiguousVisible: jest.fn(),
+      syncFromEngine: jest.fn(),
+      retry: jest.fn(),
     }));
 
     const { rerender } = render(<StructurePage />);

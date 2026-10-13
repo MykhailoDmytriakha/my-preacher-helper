@@ -1,16 +1,32 @@
-import { act, renderHook } from '@testing-library/react';
-import { useRef, useState } from 'react';
+import { act, renderHook as rtlRenderHook } from '@testing-library/react';
+import React, { useRef, useState } from 'react';
 
-import { updateStructure } from '@/services/structure.service';
-import { updateThought } from '@/services/thought.service';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 
 import { useStructureDnd } from '../useStructureDnd';
 
 import type { Item, Sermon } from '@/models/models';
 import type { DragOverEvent, DragStartEvent } from '@dnd-kit/core';
 
-jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn() }));
-jest.mock('@/services/thought.service', () => ({ updateThought: jest.fn() }));
+
+/** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
+const updateStructure = jest.fn();
+const updateThought = jest.fn();
+const createManualThought = jest.fn();
+const deleteThought = jest.fn();
+const mockWriter: StructureWriter = {
+  updateStructure: updateStructure,
+  updateThought: updateThought,
+  deleteThought: deleteThought,
+  createManualThought: createManualThought,
+  updateSermonOutline: jest.fn(),
+};
+
+const renderHook = <T,>(callback: () => T) =>
+  rtlRenderHook(callback, {
+    wrapper: ({ children }) =>
+      React.createElement(StructureWriterContext.Provider, { value: mockWriter }, children),
+  });
 
 const item = (id: string, position: number): Item => ({ id, position, content: id, requiredTags: [], customTagNames: [] });
 const initial = { introduction: [item('first', 1000), item('last', 3000)], main: [], conclusion: [], ambiguous: [item('moving', 2000)] };

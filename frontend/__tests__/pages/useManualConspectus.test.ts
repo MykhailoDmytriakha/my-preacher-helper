@@ -1,6 +1,9 @@
+import React from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
+import type { PlanWriter } from '@/(pages)/(private)/sermons/[id]/plan/planWriter';
+import { PlanWriterContext } from '@/(pages)/(private)/sermons/[id]/plan/planWriter';
 import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { enqueueWrite, listOutbox, newIntentId, removeFromOutbox } from '@/services/writeOutbox.client';
 
@@ -27,19 +30,14 @@ const mockUpdateThought = jest.fn();
 const mockSavePlanText = jest.fn();
 const mockToastError = jest.fn();
 
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: (...args: unknown[]) => mockUpdateSermonOutline(...args),
-}));
-
-// The real module with only the write replaced — see the note in usePlanActions.test.ts.
-jest.mock('@/services/sermons.client', () => ({
-  ...jest.requireActual('@/services/sermons.client'),
-  savePlanTextViaClient: (...args: unknown[]) => mockSavePlanText(...args),
-}));
-
-jest.mock('@/services/thought.service', () => ({
-  updateThought: (...args: unknown[]) => mockUpdateThought(...args),
-}));
+const mockPlanWriter: PlanWriter = {
+  savePlanText: (...args: Parameters<PlanWriter['savePlanText']>) => mockSavePlanText(...args),
+  savePlanMode: jest.fn().mockResolvedValue(undefined),
+  updateThought: (...args: Parameters<PlanWriter['updateThought']>) => mockUpdateThought(...args),
+  updateSermonOutline: (...args: Parameters<PlanWriter['updateSermonOutline']>) => mockUpdateSermonOutline(...args),
+};
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(PlanWriterContext.Provider, { value: mockPlanWriter }, children);
 
 jest.mock('sonner', () => ({
   toast: {
@@ -99,7 +97,7 @@ const renderConspectus = (sermon: Sermon) => {
   });
   const t = (key: string) => key;
 
-  const view = renderHook(() => useManualConspectus({ sermon: current, setSermon, t }));
+  const view = renderHook(() => useManualConspectus({ sermon: current, setSermon, t }), { wrapper });
   return { view, setSermon, latest: () => current };
 };
 

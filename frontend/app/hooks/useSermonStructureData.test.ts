@@ -5,27 +5,15 @@ import { TFunction } from 'i18next';
 import { toast } from 'sonner';
 
 import { Sermon, Thought, ThoughtsBySection, SermonOutline } from '@/models/models';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { getSermonOutline } from '@/services/outline.service';
-import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 
-import { useSermonStructureData } from './useSermonStructureData';
-import {
-  __resetConnectivityForTests,
-  getConnectivityStatus,
-  reportServerReachable,
-  reportServerUnreachable,
-} from '@/utils/connectivity';
+import { useSermonStructureData, type StructureEngineSource } from './useSermonStructureData';
 
 
 
 
 // Mocks
-jest.mock('@/services/sermon.service');
 jest.mock('@/services/tag.service');
-jest.mock('@/services/outline.service');
-jest.mock('@/hooks/useOnlineStatus');
 jest.mock('sonner');
 
 // Simple mock TFunction for translations
@@ -102,12 +90,19 @@ const mockOutlineData = {
   conclusion: [],
 };
 
+/** The engine's copy of a sermon, as the structure screen receives it. */
+const engineOf = (sermon: Sermon | null, extra: Partial<StructureEngineSource> = {}): StructureEngineSource => ({
+  sermon,
+  loading: false,
+  error: null,
+  isHolding: () => false,
+  retry: jest.fn(),
+  ...extra,
+});
+
 // Type cast mocks
-const mockedGetSermonById = getSermonById as jest.Mock;
 const mockedGetTags = getTags as jest.Mock;
-const mockedGetSermonOutline = getSermonOutline as jest.Mock;
 const mockedToastError = toast.error as jest.Mock;
-const mockedUseOnlineStatus = useOnlineStatus as jest.Mock;
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -120,111 +115,38 @@ const createWrapper = () => {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 };
 
+const renderData = (sermon: Sermon | null, extra: Partial<StructureEngineSource> = {}) => {
+  const engine = engineOf(sermon, extra);
+  return { engine, ...renderHook(() => useSermonStructureData(mockT as MockTFunction, engine), { wrapper: createWrapper() }) };
+};
+
 describe('useSermonStructureData Hook', () => {
   beforeEach(() => {
     // Reset mocks before each test
-    mockedGetSermonById.mockClear();
     mockedGetTags.mockClear();
-    mockedGetSermonOutline.mockClear();
     mockedToastError.mockClear();
-    mockedUseOnlineStatus.mockReturnValue(true);
 
     // Default successful mock implementations
-    mockedGetSermonById.mockResolvedValue(mockSermon);
     mockedGetTags.mockResolvedValue(mockTagsData);
-    mockedGetSermonOutline.mockResolvedValue(mockOutlineData);
   });
 
-  it('stops loading and offers retry when the sermon read never settles', async () => {
-    jest.useFakeTimers();
-    try {
-      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
-      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
-      await act(async () => { jest.advanceTimersByTime(15000); });
-      expect(result.current.loading).toBe(false);
-      expect(result.current.error).toBeTruthy();
-      mockedGetSermonById.mockResolvedValue(mockSermon);
-      await act(async () => { result.current.retry(); });
-      expect(result.current.sermon?.id).toBe(mockSermon.id);
-      expect(result.current.error).toBeNull();
-    } finally { jest.useRealTimers(); }
-  });
-
-  it('opens cached content even when all three reads remain pending', async () => {
-    jest.useFakeTimers();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    client.setQueryData(['sermon', 'test-user-id', 'sermon123'], mockSermon);
-    try {
-      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
-      mockedGetTags.mockReturnValue(new Promise(() => {}));
-      mockedGetSermonOutline.mockReturnValue(new Promise(() => {}));
-      const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
-      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper });
-      await act(async () => { await jest.advanceTimersByTimeAsync(7000); });
-      expect(result.current.loading).toBe(false);
-      expect(result.current.sermon).toEqual(mockSermon);
-      expect(result.current.outlinePoints).toEqual(mockOutline);
-      expect(result.current.error).toBeNull();
-    } finally { client.clear(); jest.useRealTimers(); }
-  });
-
-  it('keeps edits published to the cache while the opening read was pending', async () => {
-    jest.useFakeTimers();
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const key = ['sermon', 'test-user-id', 'sermon123'];
-    client.setQueryData(key, mockSermon);
-    try {
-      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
-      const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
-      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper });
-      client.setQueryData(key, { ...mockSermon, title: 'Edited while opening' });
-      await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-      expect(result.current.sermon?.title).toBe('Edited while opening');
-    } finally { client.clear(); jest.useRealTimers(); }
-  });
-
-  it('ignores a late initialization after navigating to another sermon', async () => {
-    let finish!: (value: Sermon) => void;
-    mockedGetSermonById.mockImplementation((id: string) => id === 'old'
-      ? new Promise(resolve => { finish = resolve; })
-      : Promise.resolve({ ...mockSermon, id: 'new', title: 'New' }));
-    const { result, rerender } = renderHook(({ id }) => useSermonStructureData(id, mockT as MockTFunction), {
-      initialProps: { id: 'old' }, wrapper: createWrapper(),
-    });
-    rerender({ id: 'new' });
-    await waitFor(() => expect(result.current.sermon?.id).toBe('new'));
-    await act(async () => { finish({ ...mockSermon, id: 'old' }); });
-    expect(result.current.sermon?.id).toBe('new');
-    expect(result.current.loading).toBe(false);
-  });
-
-  it('does not restore an absent outline from a stale secondary read', async () => {
-    mockedGetSermonById.mockResolvedValue({ ...mockSermon, outline: undefined });
-    mockedGetSermonOutline.mockResolvedValue(mockOutline);
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
+  it('shows empty outline sections when the engine document has no outline', async () => {
+    const { result } = renderData({ ...mockSermon, outline: undefined });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
   });
 
-  it('does not reinitialize an open editor on connectivity changes', async () => {
-    const { result, rerender } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
+  it('does not rebuild an open editor when the engine source is re-rendered unchanged', async () => {
+    const { result, rerender } = renderData(mockSermon);
     await waitFor(() => expect(result.current.loading).toBe(false));
     await act(async () => { await result.current.setSermon(prev => ({ ...prev!, title: 'My pending edit' })); });
-    mockedGetSermonById.mockClear();
-    mockedUseOnlineStatus.mockReturnValue(false);
-    rerender();
-    mockedUseOnlineStatus.mockReturnValue(true);
     rerender();
     await act(async () => {});
-    expect(mockedGetSermonById).not.toHaveBeenCalled();
     expect(result.current.sermon?.title).toBe('My pending edit');
   });
 
-  it('should initialize with loading state true and default values', () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+  it('should initialize with loading state true and default values while the engine is still loading', () => {
+    const { result } = renderData(null, { loading: true });
     expect(result.current.loading).toBe(true);
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBeNull();
@@ -233,18 +155,14 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.allowedTags).toEqual([]);
   });
 
-  it('should fetch data and update state on successful load', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+  it('should build the board from the engine document on a successful load', async () => {
+    const { result } = renderData(mockSermon);
 
     // Wait for the loading to finish
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Verify service calls
-    expect(mockedGetSermonById).toHaveBeenCalledWith('sermon123');
     expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
 
     // Verify final state
     expect(result.current.sermon).toEqual(mockSermon);
@@ -294,64 +212,50 @@ describe('useSermonStructureData Hook', () => {
     ]);
   });
 
-  it('should handle null sermonId by setting loading false and clearing data', async () => {
-    const { result } = renderHook(() => useSermonStructureData(null, mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+  it('stays empty and not loading when the engine has no document and is not loading', async () => {
+    const { result } = renderData(null);
 
-    // Should not be loading and data should be cleared/default
     expect(result.current.loading).toBe(false);
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBeNull();
     expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-
-    // Verify services were not called
-    expect(mockedGetSermonById).not.toHaveBeenCalled();
     expect(mockedGetTags).not.toHaveBeenCalled();
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
   });
 
-  it('should handle error during getSermonById', async () => {
-    const sermonError = new Error('Sermon fetch failed');
-    mockedGetSermonById.mockRejectedValue(sermonError);
-
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
+  it('reports the engine error while there is no document, and hands out the engine retry', async () => {
+    const retry = jest.fn();
+    const { result } = renderData(null, { error: 'Failed to fetch sermon structure', retry });
 
     expect(result.current.loading).toBe(false);
     expect(result.current.sermon).toBeNull();
     expect(result.current.error).toBe('Failed to fetch sermon structure');
-    expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] }); // State reset
-    expect(mockedToastError).toHaveBeenCalledWith('Failed to fetch sermon structure');
-
-    // Other services should not be called
+    expect(result.current.retry).toBe(retry);
     expect(mockedGetTags).not.toHaveBeenCalled();
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
+  });
+
+  it('drops the error once the engine has a document', async () => {
+    const { result } = renderData(mockSermon, { error: 'stale error' });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
   });
 
   it('should handle error during getTags but continue processing', async () => {
     const tagsError = new Error('Tags fetch failed');
     mockedGetTags.mockRejectedValue(tagsError);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(mockSermon);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.loading).toBe(false);
-    expect(result.current.sermon).toEqual(mockSermon); // Sermon fetch succeeded
+    expect(result.current.sermon).toEqual(mockSermon); // The board is still built
     expect(result.current.error).toBeNull(); // Error handled, not set at hook level
     expect(mockedToastError).toHaveBeenCalledWith(mockTranslations['errors.fetchTagsError']);
 
     // Allowed tags should be empty as fetch failed
     expect(result.current.allowedTags).toEqual([]);
 
-    // Outline stays on the selected sermon copy
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
+    // Outline stays on the engine document's copy
     expect(result.current.outlinePoints).toEqual(mockOutlineData);
 
     // Items should be processed without tag enrichment from fetched tags,
@@ -362,33 +266,8 @@ describe('useSermonStructureData Hook', () => {
     expect(t2Item?.customTagNames).toEqual([{ name: 'grace', color: '#4c51bf' }]);
   });
 
-  it('does not depend on a separate outline service when the full sermon is available', async () => {
-    const outlineError = new Error('Failed to fetch outline');
-    mockedGetSermonOutline.mockRejectedValue(outlineError);
-
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.loading).toBe(false);
-    expect(result.current.sermon).toEqual(mockSermon); // Sermon fetch succeeded
-    expect(result.current.error).toBeNull(); // Error handled, not set at hook level
-    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
-
-    // Tags should be processed correctly
-    expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
-    expect(result.current.allowedTags.length).toBeGreaterThan(0);
-
-    // Outline points use the exact selected sermon revision
-    expect(result.current.outlinePoints).toEqual(mockOutline);
-  });
-
   it('should sync outlinePoints with sermon.outline when outline is updated', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(mockSermon);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -435,12 +314,9 @@ describe('useSermonStructureData Hook', () => {
       outline: outlineWithReviews,
     };
 
-    mockedGetSermonById.mockResolvedValueOnce(sermonWithReviewedOutline);
     mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(sermonWithReviewedOutline);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -448,9 +324,7 @@ describe('useSermonStructureData Hook', () => {
   });
 
   it('should handle partial outline updates with isReviewed field', async () => {
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(mockSermon);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -485,12 +359,9 @@ describe('useSermonStructureData Hook', () => {
       outline: emptyOutlineWithReviews,
     };
 
-    mockedGetSermonById.mockResolvedValueOnce(sermonWithEmptySections);
     mockedGetTags.mockResolvedValueOnce({ requiredTags: [], customTags: [] });
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(sermonWithEmptySections);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -507,11 +378,8 @@ describe('useSermonStructureData Hook', () => {
         ambiguous: [],
       },
     };
-    mockedGetSermonById.mockResolvedValueOnce(sermonWithDupes);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(sermonWithDupes);
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introIds = result.current.containers.introduction.map((i) => i.id);
@@ -531,11 +399,8 @@ describe('useSermonStructureData Hook', () => {
         { id: 'p3', text: 'C', tags: ['random'], date: '2023-01-01T10:00:02Z' },
       ],
     };
-    mockedGetSermonById.mockResolvedValueOnce(sermonNoPositions);
 
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(sermonNoPositions);
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Items with structure tags go to their sections; positions should be seeded for stable ordering
@@ -559,11 +424,8 @@ describe('useSermonStructureData Hook', () => {
         { id: 'x3', text: '3', tags: ['вступление'], position: 2000, date: '2023-01-01T10:00:02Z' },
       ],
     };
-    mockedGetSermonById.mockResolvedValueOnce(sermonWithPositions);
 
-    const { result: result2 } = renderHook(() => useSermonStructureData('sermon456', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result: result2 } = renderData(sermonWithPositions);
     await waitFor(() => expect(result2.current.loading).toBe(false));
 
     const order = result2.current.containers.introduction.map(i => i.id);
@@ -578,11 +440,7 @@ describe('useSermonStructureData Hook', () => {
         { id: 't3', text: 'C', tags: ['Main Part'], date: '2023-01-01T10:02:00Z' },
       ],
     };
-    mockedGetSermonById.mockResolvedValueOnce(sermonConflict);
-
-    const { result } = renderHook(() => useSermonStructureData('sermon789', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(sermonConflict);
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     const introHas = result.current.containers.introduction.some(i => i.id === 't3');
@@ -603,13 +461,9 @@ describe('useSermonStructureData Hook', () => {
       structure: undefined,
       outline: undefined,
     };
-    mockedGetSermonById.mockResolvedValue(emptySermon);
     mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] }); // No tags
-    mockedGetSermonOutline.mockResolvedValue(null); // No outline
 
-    const { result } = renderHook(() => useSermonStructureData('sermonEmpty', mockT as MockTFunction), {
-      wrapper: createWrapper(),
-    });
+    const { result } = renderData(emptySermon);
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.loading).toBe(false);
@@ -622,174 +476,6 @@ describe('useSermonStructureData Hook', () => {
 
 });
 
-/**
- * Freshness of what the preacher is looking at.
- *
- * The locally stored copy plays TWO roles at once, and the difference decides who
- * wins. It is the snapshot left over from an earlier session — which may be days
- * old, because the store keeps entries for a week — and it is also where an edit
- * made on this screen lives until the server confirms it. Preferring the stored
- * copy blindly shows yesterday's paragraph as if it were current; preferring the
- * server blindly wipes an edit that has not been saved yet. Both are silent, and
- * both cost the preacher words he spoke aloud.
- *
- * The revision counter already separates them: another device's saved edit raises
- * it, an unsaved local edit does not. So "the server's number is higher" means
- * "somebody else stored something newer" and nothing else.
- */
-describe('useSermonStructureData · which copy the screen shows', () => {
-  // The stored copy is filed under its owner, and the suite signs in as this uid
-  // (jest.setup.js). Seeding any other key silently misses and the test would then
-  // measure a cache that was never there.
-  const cacheKeyFor = (sermonId: string) => ['sermon', 'test-user-id', sermonId];
-
-  const sermonWith = (text: string, revThoughts: number): Sermon => ({
-    ...mockSermon,
-    id: 'freshness1',
-    rev: { thoughts: revThoughts },
-    thoughts: [{ id: 't1', text, tags: [], date: '2023-01-01T10:00:00Z' }],
-    structure: { introduction: [], main: [], conclusion: [], ambiguous: ['t1'] },
-  } as Sermon);
-
-  const renderWithSeededCache = (seeded: Sermon | null, sermonId = 'freshness1') => {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    if (seeded) queryClient.setQueryData(cacheKeyFor(sermonId), seeded);
-    const wrapper = ({ children }: { children: React.ReactNode }) =>
-      React.createElement(QueryClientProvider, { client: queryClient }, children);
-    return renderHook(() => useSermonStructureData(sermonId, mockT as MockTFunction), { wrapper });
-  };
-
-  beforeEach(() => {
-    mockedGetSermonById.mockClear();
-    mockedGetTags.mockClear();
-    mockedGetSermonOutline.mockClear();
-    mockedUseOnlineStatus.mockReturnValue(true);
-    mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] });
-    mockedGetSermonOutline.mockResolvedValue(null);
-  });
-
-  it('shows what the server stores when another device saved a newer version', async () => {
-    // Left over from an earlier session on this machine…
-    const stored = sermonWith('Older copy left on this device', 1);
-    // …while the phone stored a newer version, which raised the revision.
-    mockedGetSermonById.mockResolvedValue(sermonWith('Newer version saved elsewhere', 2));
-
-    const { result } = renderWithSeededCache(stored);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.sermon?.thoughts[0].text).toBe('Newer version saved elsewhere');
-    expect(mockedGetSermonById).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps an edit made here that the server has not stored yet', async () => {
-    // The revision is the same on both sides: nothing was saved elsewhere, so the
-    // difference in text is this screen's own work, waiting to be written.
-    const unsavedEdit = sermonWith('Edited here, not saved yet', 4);
-    mockedGetSermonById.mockResolvedValue(sermonWith('What the server still holds', 4));
-
-    const { result } = renderWithSeededCache(unsavedEdit);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.sermon?.thoughts[0].text).toBe('Edited here, not saved yet');
-  });
-
-  it('opens the stored copy at once when the last request did not reach the server', async () => {
-    // Owner's rule 3: no waiting on a connection known to be down; the freshness check asks the server.
-    reportServerUnreachable();
-    try {
-      const stored = sermonWith('Available without a connection', 1);
-      mockedGetSermonById.mockReturnValue(new Promise(() => undefined));
-
-      const { result } = renderWithSeededCache(stored);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      expect(result.current.sermon?.thoughts[0].text).toBe('Available without a connection');
-    } finally { __resetConnectivityForTests(); }
-  });
-
-  it('asks the server first while there is a connection, whatever the phone flag', async () => {
-    const stored = sermonWith('Older copy on this device', 1);
-    mockedGetSermonById.mockResolvedValue(sermonWith('Newer copy from the server', 2));
-
-    const { result } = renderWithSeededCache(stored);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(mockedGetSermonById).toHaveBeenCalled();
-    expect(result.current.sermon?.thoughts[0].text).toBe('Newer copy from the server');
-  });
-
-  describe('a phone flag stuck on offline (BUG-20261011-raw-phone-flag-in-read-paths)', () => {
-    const setPhoneFlag = (value: boolean) =>
-      Object.defineProperty(navigator, 'onLine', { configurable: true, value });
-    beforeEach(() => __resetConnectivityForTests());
-    afterEach(() => {
-      setPhoneFlag(true);
-      __resetConnectivityForTests();
-    });
-
-    it('opens a sermon never stored here, with its tags, once a request has reached the server', async () => {
-      // An iPad back from the background: `navigator.onLine` stays false while requests get through.
-      setPhoneFlag(false);
-      getConnectivityStatus();
-      reportServerReachable();
-      mockedGetSermonById.mockResolvedValue(sermonWith('Read from the server', 1));
-
-      const { result } = renderWithSeededCache(null);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      expect(result.current.sermon?.thoughts[0].text).toBe('Read from the server');
-      expect(mockedGetTags).toHaveBeenCalled();
-    });
-
-    it('does not wait on the server when nothing is stored and the phone says offline', async () => {
-      setPhoneFlag(false);
-
-      const { result } = renderWithSeededCache(null);
-      await waitFor(() => expect(result.current.loading).toBe(false));
-
-      expect(mockedGetSermonById).not.toHaveBeenCalled();
-      expect(result.current.sermon).toBeNull();
-    });
-  });
-
-  it('falls back to the write timestamp on sermons written before revisions existed', async () => {
-    // Most sermons carry no counters at all, so a rule that needs them would leave the
-    // oldest ones — the likeliest to be stale — exactly as broken as before.
-    const stored = { ...sermonWith('Older copy of an old sermon', 0), rev: undefined, updatedAt: '2026-08-01T10:00:00.000Z' } as Sermon;
-    const server = { ...sermonWith('Newer version saved elsewhere', 0), rev: undefined, updatedAt: '2026-08-05T10:00:00.000Z' } as Sermon;
-    mockedGetSermonById.mockResolvedValue(server);
-
-    const { result } = renderWithSeededCache(stored);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.sermon?.thoughts[0].text).toBe('Newer version saved elsewhere');
-  });
-
-  it('keeps an unsaved edit on an old sermon, because the timestamp did not move', async () => {
-    const sameMoment = '2026-08-01T10:00:00.000Z';
-    const unsavedEdit = { ...sermonWith('Edited here, not saved yet', 0), rev: undefined, updatedAt: sameMoment } as Sermon;
-    const server = { ...sermonWith('What the server still holds', 0), rev: undefined, updatedAt: sameMoment } as Sermon;
-    mockedGetSermonById.mockResolvedValue(server);
-
-    const { result } = renderWithSeededCache(unsavedEdit);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.sermon?.thoughts[0].text).toBe('Edited here, not saved yet');
-  });
-
-  it('keeps showing the stored copy when the server cannot be reached', async () => {
-    // A refused or dropped request must not blank a sermon the preacher can see:
-    // losing the screen is worse than showing a copy that may be a few minutes old.
-    const stored = sermonWith('Still readable after a failed refresh', 1);
-    mockedGetSermonById.mockRejectedValue(new Error('network down'));
-
-    const { result } = renderWithSeededCache(stored);
-    await waitFor(() => expect(result.current.loading).toBe(false));
-
-    expect(result.current.sermon?.thoughts[0].text).toBe('Still readable after a failed refresh');
-  });
-});
-
 describe('useSermonStructureData on the engine', () => {
   const sermonWith = (structure: ThoughtsBySection): Sermon => ({ ...mockSermon, structure, thoughtsBySection: structure });
   const wrapper = ({ children }: { children: React.ReactNode }) =>
@@ -798,22 +484,20 @@ describe('useSermonStructureData on the engine', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (useOnlineStatus as jest.Mock).mockReturnValue(true);
     (getTags as jest.Mock).mockResolvedValue({ requiredTags: [], customTags: [] });
   });
 
-  it('builds the board from the engine document and never reads the legacy sermon', async () => {
-    const engine = { sermon: sermonWith({ introduction: ['t7'], main: ['t2'], conclusion: [], ambiguous: [] }), loading: false, error: null, isHolding: () => false };
-    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction, engine), { wrapper });
+  it('builds the board from the engine document', async () => {
+    const engine = engineOf(sermonWith({ introduction: ['t7'], main: ['t2'], conclusion: [], ambiguous: [] }));
+    const { result } = renderHook(() => useSermonStructureData(mockT as MockTFunction, engine), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(ids(result.current.containers.introduction)).toContain('t7');
-    expect(getSermonById).not.toHaveBeenCalled();
   });
 
   it('follows a remote move, but waits while a card is in hand and catches up afterwards', async () => {
     let holding = false;
-    let engine = { sermon: sermonWith({ introduction: ['t7'], main: [], conclusion: [], ambiguous: [] }), loading: false, error: null, isHolding: () => holding };
-    const { result, rerender } = renderHook(({ source }) => useSermonStructureData('sermon123', mockT as MockTFunction, source), { wrapper, initialProps: { source: engine } });
+    let engine = engineOf(sermonWith({ introduction: ['t7'], main: [], conclusion: [], ambiguous: [] }), { isHolding: () => holding });
+    const { result, rerender } = renderHook(({ source }) => useSermonStructureData(mockT as MockTFunction, source), { wrapper, initialProps: { source: engine } });
     await waitFor(() => expect(ids(result.current.containers.introduction)).toContain('t7'));
 
     // Another device moves t7 to the conclusion while nobody is dragging: the board follows.

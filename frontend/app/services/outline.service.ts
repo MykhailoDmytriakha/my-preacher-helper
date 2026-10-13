@@ -1,56 +1,9 @@
-import { SermonOutline, SermonPoint } from '@/models/models';
-import {
-  getSermonOutlineViaClient,
-  updateSermonOutlineViaClient,
-} from '@/services/sermons.client';
+import { SermonPoint } from '@/models/models';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isKnownOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
-/**
- * Fetches the outline for a specific sermon
- * @param sermonId The ID of the sermon to fetch the outline for
- * @returns The sermon outline or undefined if not found
- */
-export const getSermonOutline = async (sermonId: string): Promise<SermonOutline | undefined> => {
-  return getSermonOutlineViaClient(sermonId);
-};
-
-/**
- * Updates the outline for a specific sermon
- * @param sermonId The ID of the sermon to update the outline for
- * @param outline The updated outline data
- * @returns The updated outline or null if the update failed
- */
-export const updateSermonOutline = async (
-  sermonId: string,
-  outline: SermonOutline,
-  /**
-   * The plan this editor OPENED with. Given it, the write MERGES by point id
-   * instead of replacing the whole field: a point added on the phone survives a
-   * save from a laptop that never saw it, and only the same point written in two
-   * places is reported as a collision. Omit it and the old whole-field overwrite
-   * happens, which is what silently erased other devices' work.
-   */
-  baseOutline?: SermonOutline | null,
-  /**
-   * Only a caller that can STORE a refused plan and ask the person to choose may
-   * leave this at `refuse`. Everywhere else a refusal turns into an error toast and
-   * the edit is lost at the next reload — see the writer for the whole reasoning.
-   */
-  onCollision: 'refuse' | 'preferMine' = 'refuse'
-): Promise<SermonOutline | null> => {
-  // Validate outline data
-  if (!outline.main) {
-    outline.main = [];
-  }
-
-  return baseOutline === undefined
-    ? updateSermonOutlineViaClient(sermonId, outline)
-    : updateSermonOutlineViaClient(sermonId, outline, { baseOutline, onCollision });
-};
 
 /**
  * Generates outline points for a specific section of a sermon

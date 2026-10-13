@@ -1,20 +1,34 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import React from 'react';
 import { toast } from 'sonner';
 
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Item, Sermon, Thought } from '@/models/models';
-import { updateStructure } from '@/services/structure.service';
-import { updateThought } from '@/services/thought.service';
 
 import { useStructureDnd } from '../useStructureDnd';
 
 
-// Mock services
-jest.mock('@/services/structure.service');
-jest.mock('@/services/thought.service');
 jest.mock('sonner');
 
-const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
-const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
+/** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
+const mockUpdateStructure = jest.fn();
+const mockUpdateThought = jest.fn();
+const mockCreateManualThought = jest.fn();
+const mockDeleteThought = jest.fn();
+const mockWriter: StructureWriter = {
+  updateStructure: mockUpdateStructure,
+  updateThought: mockUpdateThought,
+  deleteThought: mockDeleteThought,
+  createManualThought: mockCreateManualThought,
+  updateSermonOutline: jest.fn(),
+};
+
+const renderHook = <T,>(callback: () => T) =>
+  rtlRenderHook(callback, {
+    wrapper: ({ children }) =>
+      React.createElement(StructureWriterContext.Provider, { value: mockWriter }, children),
+  });
+
 const mockToastError = toast.error as jest.Mock;
 
 describe('useStructureDnd', () => {

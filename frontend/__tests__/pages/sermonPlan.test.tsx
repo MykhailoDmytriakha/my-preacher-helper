@@ -6,8 +6,6 @@ import { toast } from 'sonner';
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { savePlanTextViaClient } from '@/services/sermons.client';
-import { updateThought } from '@/services/thought.service';
 import { draftKey, saveDraft } from '@/utils/durableDraft';
 import '@testing-library/jest-dom';
 
@@ -34,8 +32,6 @@ let mockSearchParams = new URLSearchParams();
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockToast = toast as jest.Mocked<typeof toast>;
-const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
-const mockSavePlanText = savePlanTextViaClient as jest.MockedFunction<typeof savePlanTextViaClient>;
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
@@ -72,20 +68,9 @@ jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
 }));
 
-// The legacy readers and writers must stay untouched on the engine.
+// The legacy reader must stay untouched on the engine.
 jest.mock('@/services/sermon.service', () => ({
   getSermonById: jest.fn(),
-}));
-
-// The real module with only the write replaced: listing exports by hand meant every new
-// helper the screen started using arrived here as `undefined`.
-jest.mock('@/services/sermons.client', () => ({
-  ...jest.requireActual('@/services/sermons.client'),
-  savePlanTextViaClient: jest.fn().mockResolvedValue(undefined),
-}));
-
-jest.mock('@/services/thought.service', () => ({
-  updateThought: jest.fn(),
 }));
 
 // Mock child components (if any are direct children of the page)
@@ -403,8 +388,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockReplace.mockClear();
     mockToast.success.mockClear();
     mockToast.error.mockClear();
-    mockUpdateThought.mockReset();
-    mockSavePlanText.mockClear();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
     window.localStorage.clear();
@@ -704,8 +687,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
     // Only the edited node travels — no other point's text rides along.
     expect(Object.keys(storedPlanText())).toEqual(['intro-p1']);
-    // The legacy writer is not the way out any more.
-    expect(mockSavePlanText).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(mockToast.success).toHaveBeenCalledWith('Point saved');
@@ -860,7 +841,6 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
     // The edit is stored in the sermon document, through the engine and not the legacy thought writer.
     await waitFor(() => expect(storedThoughts().find((thought) => thought.id === 't1')?.text).toBe('Updated Thought'));
-    expect(mockUpdateThought).not.toHaveBeenCalled();
   });
 
   it('keeps the newest key fragment save when two are made in a row', async () => {

@@ -25,7 +25,7 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   const writer = useStructureWriter();
   // An engine write is local and durable on return; delaying it only widens the window in
   // which a remote update can repaint the screen from the older document.
-  const saveDelayMs = writer.immediate ? 0 : 500;
+  const saveDelayMs = 0;
   const debouncedThoughtsRef = useRef<Map<string, ReturnType<typeof debounce>>>(new Map());
   const latestThoughtByKeyRef = useRef<Map<string, { sermonId: string; thought: Thought }>>(new Map());
   /**

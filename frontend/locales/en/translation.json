@@ -253,8 +253,6 @@
     "deletedDescription": "This {{entity}} no longer exists on the server. Your text here is not saved.",
     "refreshAction": "Load newer",
     "refreshingAction": "Loading…",
-    "refreshedToast": "Data updated",
-    "refreshFailedToast": "Could not update — please try again",
     "reviewAction": "Review changes",
     "dismissAction": "Hide message",
     "entityNote": "note",

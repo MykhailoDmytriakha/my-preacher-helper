@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { PlanModeSwitch } from '@/(pages)/(private)/sermons/[id]/plan/PlanModeSwitch';
-import { savePlanModeViaClient } from '@/services/sermons.client';
+import { PlanWriterContext } from '@/(pages)/(private)/sermons/[id]/plan/planWriter';
 import '@testing-library/jest-dom';
 
 import type { Sermon } from '@/models/models';
@@ -18,14 +18,23 @@ import type { Sermon } from '@/models/models';
 
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
-jest.mock('@/services/sermons.client', () => ({ savePlanModeViaClient: jest.fn() }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
 
 const mockToastError = jest.fn();
 jest.mock('sonner', () => ({ toast: { error: (...a: unknown[]) => mockToastError(...a) } }));
 
 const sermon = { id: 's1', title: 'Град Божий' } as unknown as Sermon;
-const mockSave = savePlanModeViaClient as jest.MockedFunction<typeof savePlanModeViaClient>;
+const mockSave = jest.fn();
+const mockPlanWriter = {
+  savePlanText: jest.fn(),
+  savePlanMode: (...args: unknown[]) => mockSave(...args),
+  updateThought: jest.fn(),
+  updateSermonOutline: jest.fn(),
+};
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <PlanWriterContext.Provider value={mockPlanWriter}>{children}</PlanWriterContext.Provider>
+);
+const render = (ui: React.ReactElement) => rtlRender(ui, { wrapper });
 
 beforeEach(() => {
   jest.clearAllMocks();

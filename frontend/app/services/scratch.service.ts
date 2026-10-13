@@ -4,46 +4,14 @@ import {
   type ComposePlanExpectedSource,
   type ComposedPlanSubPoint,
 } from '@/config/schemas/zod';
-import { ScratchNote, SermonOutline } from '@/models/models';
+import { SermonOutline } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
-import {
-  addScratchNoteViaClient,
-  deleteScratchNoteViaClient,
-  updateScratchNoteViaClient,
-} from '@/services/sermons.client';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { isKnownOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
-
-export function addScratchNote(
-  sermonId: string,
-  scratch: ScratchNote[],
-  /** The list the screen started from — enables the merge instead of a replace. */
-  baseScratch?: ScratchNote[] | null
-): Promise<ScratchNote[]> {
-  return addScratchNoteViaClient(sermonId, scratch, baseScratch);
-}
-
-export function updateScratchNote(
-  sermonId: string,
-  scratch: ScratchNote[],
-  /** The list the screen started from — enables the merge instead of a replace. */
-  baseScratch?: ScratchNote[] | null
-): Promise<ScratchNote[]> {
-  return updateScratchNoteViaClient(sermonId, scratch, baseScratch);
-}
-
-export function deleteScratchNote(
-  sermonId: string,
-  scratch: ScratchNote[],
-  /** The list the screen started from — enables the merge instead of a replace. */
-  baseScratch?: ScratchNote[] | null
-): Promise<ScratchNote[]> {
-  return deleteScratchNoteViaClient(sermonId, scratch, baseScratch);
-}
 
 function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {
   return [

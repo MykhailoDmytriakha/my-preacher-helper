@@ -1,15 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
+import React from "react";
 import { toast } from "sonner";
+
+import { StructureWriterContext, type StructureWriter } from "@/components/sermon/structureWriter";
 
 import { useColumnOutlineState } from "../useColumnOutlineState";
 
-import {
-  generateSermonPointsForSection,
-  getSermonOutline,
-  updateSermonOutline,
-} from "@/services/outline.service";
+import { generateSermonPointsForSection } from "@/services/outline.service";
 
-import type { SermonPoint } from "@/models/models";
+import type { SermonOutline, SermonPoint } from "@/models/models";
 
 jest.mock("sonner", () => ({
   toast: {
@@ -20,17 +19,13 @@ jest.mock("sonner", () => ({
 
 jest.mock("@/services/outline.service", () => ({
   generateSermonPointsForSection: jest.fn(),
-  getSermonOutline: jest.fn(),
-  updateSermonOutline: jest.fn(),
 }));
 
 const t = (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key;
 
 describe("useColumnOutlineState", () => {
-  let scheduledTasks: Map<number, () => void | Promise<void>>;
-  let nextTaskId: number;
   let scheduleTask: jest.Mock;
-  let clearScheduledTask: jest.Mock;
+  let writer: StructureWriter;
   let onOutlineUpdate: jest.Mock;
   let onSubPointDeleted: jest.Mock;
   let onAddOutlinePoint: jest.Mock;
@@ -48,51 +43,46 @@ describe("useColumnOutlineState", () => {
   ];
 
   const renderState = (overrides: Partial<Parameters<typeof useColumnOutlineState>[0]> = {}) =>
-    renderHook(() =>
-      useColumnOutlineState({
-        id: "main",
-        sermonId: "sermon-1",
-        initialSermonPoints,
-        onOutlineUpdate,
-        onSubPointDeleted,
-        onAddOutlinePoint,
-        scheduleTask,
-        clearScheduledTask,
-        t,
-        ...overrides,
-      })
+    renderHook(
+      () =>
+        useColumnOutlineState({
+          id: "main",
+          sermonId: "sermon-1",
+          initialSermonPoints,
+          onOutlineUpdate,
+          onSubPointDeleted,
+          onAddOutlinePoint,
+          scheduleTask,
+          t,
+          ...overrides,
+        }),
+      {
+        wrapper: ({ children }) => (
+          <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>
+        ),
+      }
     );
 
-  const flushScheduledTasks = async () => {
-    const pendingTasks = [...scheduledTasks.values()];
-    scheduledTasks.clear();
-
-    for (const task of pendingTasks) {
-      await task();
-    }
+  /** The writer is asked at once; this lets its answer reach the hook's state. */
+  const settle = async () => {
+    await act(async () => {
+      await Promise.resolve();
+    });
   };
 
   beforeEach(() => {
-    scheduledTasks = new Map();
-    nextTaskId = 0;
-    scheduleTask = jest.fn((callback: () => void | Promise<void>) => {
-      nextTaskId += 1;
-      scheduledTasks.set(nextTaskId, callback);
-      return nextTaskId;
-    });
-    clearScheduledTask = jest.fn((taskId: number) => {
-      scheduledTasks.delete(taskId);
-    });
+    scheduleTask = jest.fn();
+    writer = {
+      updateStructure: jest.fn(),
+      updateThought: jest.fn(),
+      deleteThought: jest.fn(),
+      createManualThought: jest.fn(),
+      updateSermonOutline: jest.fn(async (_id: string, outline: SermonOutline) => outline),
+    };
     onOutlineUpdate = jest.fn();
     onSubPointDeleted = jest.fn();
     onAddOutlinePoint = jest.fn().mockResolvedValue(undefined);
 
-    (getSermonOutline as jest.Mock).mockResolvedValue({
-      introduction: [{ id: "intro-1", text: "Intro point" }],
-      main: [{ id: "old-main", text: "Old main" }],
-      conclusion: [{ id: "conclusion-1", text: "Conclusion point" }],
-    });
-    (updateSermonOutline as jest.Mock).mockResolvedValue({ success: true });
     (generateSermonPointsForSection as jest.Mock).mockResolvedValue([
       { id: "generated-1", text: "Generated point" },
     ]);
@@ -106,14 +96,12 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleSetPointNote("point-1", "remember lowercase phrasing");
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0]).toEqual(
       expect.objectContaining({ note: "remember lowercase phrasing" })
     );
-    expect(updateSermonOutline).toHaveBeenLastCalledWith(
+    expect(writer.updateSermonOutline).toHaveBeenLastCalledWith(
       "sermon-1",
       expect.objectContaining({
         main: expect.arrayContaining([
@@ -124,15 +112,13 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      expect.anything()
+      "preferMine"
     );
 
     act(() => {
       result.current.handleSetSubPointNote("point-1", "sub-1", "sub note, keep as typed");
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].subPoints).toEqual(
       expect.arrayContaining([
@@ -143,12 +129,10 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleSetSubPointNote("point-1", "sub-1", undefined);
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].subPoints?.[0]).toHaveProperty("note", undefined);
-    expect(updateSermonOutline).toHaveBeenLastCalledWith(
+    expect(writer.updateSermonOutline).toHaveBeenLastCalledWith(
       "sermon-1",
       expect.objectContaining({
         main: expect.arrayContaining([
@@ -164,7 +148,7 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      expect.anything()
+      "preferMine"
     );
   });
 
@@ -181,14 +165,12 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleAddPoint();
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints).toEqual(
       expect.arrayContaining([expect.objectContaining({ text: '"Новый пункт' })])
     );
-    expect(updateSermonOutline).toHaveBeenLastCalledWith(
+    expect(writer.updateSermonOutline).toHaveBeenLastCalledWith(
       "sermon-1",
       expect.objectContaining({
         main: expect.arrayContaining([expect.objectContaining({ text: '"Новый пункт' })]),
@@ -197,7 +179,7 @@ describe("useColumnOutlineState", () => {
       // that reaches the plan, not about the merge, so it is left unpinned.
       expect.anything(),
       // …and the collision mode this caller asks for.
-      expect.anything()
+      "preferMine"
     );
 
     act(() => {
@@ -210,9 +192,7 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleSaveEdit();
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].text).toBe("«Исправленный пункт");
     expect(result.current.editingPointId).toBeNull();
@@ -220,18 +200,14 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleSaveEditDirect("point-2", "— прямое редактирование");
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[1].text).toBe("— Прямое редактирование");
 
     act(() => {
       result.current.handleAddSubPoint("point-1", '"новый подпункт');
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].subPoints).toEqual(
       expect.arrayContaining([expect.objectContaining({ text: '"Новый подпункт', position: 3000 })])
@@ -240,9 +216,7 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleEditSubPoint("point-1", "sub-1", "123 первый подпункт");
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].subPoints).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "sub-1", text: "123 Первый подпункт" })])
@@ -251,9 +225,7 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleReorderSubPoints("point-1", 0, 1);
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[0].subPoints?.map((subPoint) => subPoint.position)).toEqual([
       1000,
@@ -264,9 +236,7 @@ describe("useColumnOutlineState", () => {
     act(() => {
       result.current.handleDeleteSubPoint("point-1", "sub-2");
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(onSubPointDeleted).toHaveBeenCalledWith("point-1", "sub-2", "main");
     expect(result.current.localSermonPoints[0].subPoints).not.toEqual(
@@ -284,9 +254,7 @@ describe("useColumnOutlineState", () => {
         combine: null,
       });
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(result.current.localSermonPoints[1].id).toBe("point-1");
   });
@@ -303,9 +271,7 @@ describe("useColumnOutlineState", () => {
     await act(async () => {
       await result.current.handleGenerateSermonPoints();
     });
-    await act(async () => {
-      await flushScheduledTasks();
-    });
+    await settle();
 
     expect(generateSermonPointsForSection).toHaveBeenCalledWith("sermon-1", "main");
     expect(result.current.localSermonPoints).toEqual(
@@ -320,10 +286,10 @@ describe("useColumnOutlineState", () => {
 
     expect(toast.error).toHaveBeenCalledWith("Failed to generate structure points");
 
-    // Without a connection the point is still saved, not refused up front (owner's rule 3):
-    // the connection icon only shows, and a save that cannot be sent says so itself.
+    // Without a connection the point is still handed to the writer at once, not refused up front
+    // (owner's rule 3): the connection icon only shows, and a save that cannot be sent says so itself.
     (toast.error as jest.Mock).mockClear();
-    scheduleTask.mockClear();
+    (writer.updateSermonOutline as jest.Mock).mockClear();
     const offlineHook = renderState();
 
     act(() => {
@@ -333,7 +299,7 @@ describe("useColumnOutlineState", () => {
       offlineHook.result.current.handleAddPoint();
     });
 
-    expect(scheduleTask).toHaveBeenCalled();
+    expect(writer.updateSermonOutline).toHaveBeenCalledTimes(1);
     expect(toast.error).not.toHaveBeenCalledWith("Failed to save structure");
   });
 });

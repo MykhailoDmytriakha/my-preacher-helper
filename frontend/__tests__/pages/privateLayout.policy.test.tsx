@@ -68,6 +68,7 @@ jest.mock('@/hooks/useSermonStructureData', () => ({
     loading: false,
     error: null,
     setLoading: jest.fn(),
+    syncFromEngine: jest.fn(),
     isAmbiguousVisible: true,
     setIsAmbiguousVisible: jest.fn(),
   }),

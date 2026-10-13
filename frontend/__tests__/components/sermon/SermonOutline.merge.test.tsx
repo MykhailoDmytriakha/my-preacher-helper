@@ -1,9 +1,11 @@
-import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 
 import SermonOutline from '@/components/sermon/SermonOutline';
+import { StructureWriterContext } from '@/components/sermon/structureWriter';
+import type { StructureWriter } from '@/components/sermon/structureWriter';
 import { mergeOutline } from '@/utils/mergeOutline';
 
 import type { Sermon, SermonOutline as SermonOutlineType, SermonPoint } from '@/models/models';
@@ -26,38 +28,41 @@ import type { Sermon, SermonOutline as SermonOutlineType, SermonPoint } from '@/
 /** Stands in for the stored plan, so a test can assert what SURVIVED. */
 let mockServerOutline: SermonOutlineType;
 
-jest.mock('@/services/outline.service', () => ({
-  getSermonOutline: jest.fn(async () => ({
-    introduction: [...mockServerOutline.introduction],
-    main: [...mockServerOutline.main],
-    conclusion: [...mockServerOutline.conclusion],
-  })),
-  updateSermonOutline: jest.fn(
-    async (
-      _sermonId: string,
-      mine: SermonOutlineType,
-      base?: SermonOutlineType | null,
-      onCollision?: 'refuse' | 'preferMine'
-    ) => {
-      if (base === undefined) {
-        // Exactly what the unguarded path does: replace the whole field.
-        mockServerOutline = mine;
-        return mockServerOutline;
-      }
-      // The real merge, not an imitation, so a broken caller is caught here rather
-      // than in production.
-      const { outline } = mergeOutline(
-        base,
-        mine,
-        mockServerOutline,
-        onCollision === 'preferMine'
-      );
-      mockServerOutline = outline;
+/** The stand-in for the engine writer: the REAL merge over the stand-in server. */
+const mockUpdateSermonOutline = jest.fn(
+  async (
+    _sermonId: string,
+    mine: SermonOutlineType,
+    base?: SermonOutlineType | null,
+    onCollision?: 'refuse' | 'preferMine'
+  ) => {
+    if (base === undefined) {
+      // Exactly what the unguarded path does: replace the whole field.
+      mockServerOutline = mine;
       return mockServerOutline;
     }
-  ),
+    // The real merge, not an imitation, so a broken caller is caught here rather
+    // than in production.
+    const { outline } = mergeOutline(base, mine, mockServerOutline, onCollision === 'preferMine');
+    mockServerOutline = outline;
+    return mockServerOutline;
+  }
+);
+
+jest.mock('@/services/outline.service', () => ({
   generateSermonPointsForSection: jest.fn(),
 }));
+
+const mockStructureWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: (...args) => mockUpdateSermonOutline(...args),
+};
+
+const render = (ui: React.ReactElement) =>
+  rtlRender(<StructureWriterContext.Provider value={mockStructureWriter}>{ui}</StructureWriterContext.Provider>);
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),

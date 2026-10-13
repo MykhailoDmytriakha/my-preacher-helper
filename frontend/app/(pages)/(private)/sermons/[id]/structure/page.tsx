@@ -8,19 +8,16 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import Column from "@/components/Column";
-import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructureWriterContext, useStructureWriter } from "@/components/sermon/structureWriter";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConfirm } from '@/hooks/useConfirm';
-import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
-import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData, type StructureEngineSource } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
@@ -35,7 +32,6 @@ import {
   skippedWrite,
   type WriteSubmission,
 } from "@/utils/recoverableWrite";
-import { sermonFreshnessProjection } from '@/utils/sermonFreshnessProjection';
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 import { getSermonPlanData, planEditorRoute } from "@utils/sermonPlanAccess";
@@ -77,8 +73,8 @@ interface UseSermonStructureDataReturn {
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   isAmbiguousVisible: boolean;
   setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  /** Present on the engine; the legacy board has nothing to catch up with. */
-  syncFromEngine?: () => void;
+  /** Catches the board up with the document once a held card is let go. */
+  syncFromEngine: () => void;
 }
 
 export default function StructurePage() {
@@ -94,9 +90,9 @@ function StructurePageContent() {
   const sermonIdFromPath = useRouteId();
   const sermonIdFromQuery = searchParams?.get("sermonId");
   const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
-  return sermonId && isCollectionOnEngine('sermons')
+  return sermonId
     ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EngineStructureBoard sermonId={sermonId} /></DataDocumentProvider>
-    : <StructureBoard sermonId={sermonId} />;
+    : null;
 }
 
 /**
@@ -112,7 +108,8 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
     : null, [document.data, sermonId]);
   const engine = useMemo<StructureEngineSource>(() => ({
     sermon, loading: document.loading, error: document.error, isHolding: () => holdingRef.current,
-  }), [sermon, document.loading, document.error]);
+    retry: () => { void document.retry().catch(() => undefined); },
+  }), [sermon, document]);
   // A copy for reading keeps this page and its toolbar; only the board is drawn without controls.
   // It is its own tree, standing exactly where the separate reader stood, so every switch mounts
   // the other one fresh, as the swap did.
@@ -125,9 +122,9 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
 }
 
 function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = false }: {
-  sermonId: string | null;
-  engine?: StructureEngineSource;
-  holdingRef?: React.MutableRefObject<boolean>;
+  sermonId: string;
+  engine: StructureEngineSource;
+  holdingRef: React.MutableRefObject<boolean>;
   syncStatus?: React.ReactNode;
   /** A copy for reading (device storage silent): see `StructureReadOnlyBoard`. */
   readOnly?: boolean;
@@ -174,18 +171,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     isAmbiguousVisible,
     setIsAmbiguousVisible,
     syncFromEngine,
-  }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t, engine);
-
-  const freshnessUid = useFreshnessUid(sermon?.userId);
-  const freshness = useDocumentFreshness({
-    collection: 'sermons', docId: sermonId, uid: freshnessUid,
-    // On the engine the document observer owns freshness; DataSyncStatus says it.
-    enabled: Boolean(sermon) && !engine,
-    known: sermon ? sermonFreshnessProjection(sermon as unknown as Record<string, unknown>) : null,
-    select: sermonFreshnessProjection,
-  });
-  const [freshnessDismissed, setFreshnessDismissed] = useState(false);
-  useEffect(() => { setFreshnessDismissed(false); }, [sermonId, freshness.state, freshness.remote]);
+  }: UseSermonStructureDataReturn = useSermonStructureData(t, engine);
 
   // Handle switching to plan view
   const handleSwitchToPlan = useCallback((sectionId?: string) => {
@@ -334,9 +320,9 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
 
   // A drag or an AI review owns the board; the engine's rebuild waits and then catches up.
   const holdingBoard = dndActiveId !== null || isDiffModeActive;
-  if (holdingRef) holdingRef.current = holdingBoard;
+  holdingRef.current = holdingBoard;
   useEffect(() => {
-    if (!holdingBoard) syncFromEngine?.();
+    if (!holdingBoard) syncFromEngine();
   }, [holdingBoard, syncFromEngine]);
 
   // Safety timeout to prevent stuck drag state (especially on touch devices)
@@ -877,13 +863,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     <div className="px-4 pb-4">
       {/* `empty:hidden`: a silent status leaves no margin behind. */}
       <div className="mb-4 empty:hidden">{syncStatus}</div>
-      {!engine && freshness.state !== 'fresh' && !freshnessDismissed && <DataFreshnessBanner
-        entityKey="entitySermon" dirty={false}
-        unknown={freshness.state === 'unknown'} deleted={freshness.remotelyDeleted}
-        diagnostics={freshness.diagnostics} checking={freshness.checking}
-        canCheck={freshness.canCheck} onCheckAgain={freshness.checkAgain}
-        onDismiss={() => setFreshnessDismissed(true)} className="mb-4"
-      />}
       <div className={`w-full`}>
         {/* One calm toolbar: back + quiet title (left), section toggles + layout (right).
             The big gradient title was dropped — breadcrumbs already carry the sermon path. */}

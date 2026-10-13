@@ -27,10 +27,14 @@ jest.mock('@/services/thought.service', () => ({
   ...jest.requireActual('@/services/thought.service'),
   createAudioThought: jest.fn(async () => ({ id: 'voice-thought', text: 'Spoken', tags: [], date: '2026-09-22' })),
 }));
-jest.mock('@/services/structure.service', () => ({
-  ...jest.requireActual('@/services/structure.service'),
+// Stands for the engine writer the page hands out; the screens below report whether they got it.
+const mockEngineWriter = {
   updateStructure: jest.fn(async () => undefined),
-}));
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: jest.fn(),
+};
 
 // Mock dynamic AudioRecorder
 jest.mock('@/components/AudioRecorder', () => ({
@@ -55,8 +59,8 @@ jest.mock('@/data-engine/react.client', () => ({
 // The engine writer itself is exercised in SermonOutline.engineWriter.test.tsx; here only which door the page hands out.
 jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineStructureWriterProvider', () => ({
   EngineStructureWriterProvider: ({ children }: { children: React.ReactNode }) => {
-    const { StructureWriterContext, legacyStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
-    return <StructureWriterContext.Provider value={{ ...legacyStructureWriter, immediate: true }}>{children}</StructureWriterContext.Provider>;
+    const { StructureWriterContext } = jest.requireActual('@/components/sermon/structureWriter');
+    return <StructureWriterContext.Provider value={mockEngineWriter}>{children}</StructureWriterContext.Provider>;
   },
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({
@@ -108,14 +112,14 @@ jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, def
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
 jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, default: ({}) => null }));
-// Renders which writer reaches it, so a test can tell the engine door from the legacy one.
+// Renders whether the engine writer reaches it, so a test can tell the engine door from the refusing default.
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: jest.fn(() => {
   const { useStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
-  return <div data-testid="outline" data-immediate={String(useStructureWriter().immediate)} />;
+  return <div data-testid="outline" data-engine-writer={String(useStructureWriter() === mockEngineWriter)} />;
 }) }));
 jest.mock('@/components/plan-editor/PlanEditorModal', () => ({ __esModule: true, default: jest.fn(({ isOpen }: { isOpen: boolean }) => {
   const { useStructureWriter } = jest.requireActual('@/components/sermon/structureWriter');
-  return isOpen ? <div data-testid="plan-editor" data-immediate={String(useStructureWriter().immediate)} /> : null;
+  return isOpen ? <div data-testid="plan-editor" data-engine-writer={String(useStructureWriter() === mockEngineWriter)} /> : null;
 }) }));
 jest.mock('@/components/sermon/KnowledgeSection', () => ({ __esModule: true, default: ({}) => <div data-testid="knowledge" /> }));
 jest.mock('@/components/sermon/StructureStats', () => ({ __esModule: true, default: jest.fn(({}) => <div data-testid="stats" />) }));
@@ -454,7 +458,7 @@ mockCore.data = null; mockCore.loading = false;
 
     searchParamsMock = new URLSearchParams();
     const view = render(<TestProviders><SermonPage /></TestProviders>);
-    expect(await screen.findByTestId('outline')).toHaveAttribute('data-immediate', 'true');
+    expect(await screen.findByTestId('outline')).toHaveAttribute('data-engine-writer', 'true');
     const props = jest.mocked(SermonOutline).mock.calls.at(-1)![0];
     expect(props).toMatchObject({ isReadOnly: false });
     expect(props.sermon.id).toBe('abc');
@@ -476,7 +480,7 @@ mockCore.data = null; mockCore.loading = false;
     // The stats card (phone and desktop) is the entry; the page no longer carries a second bare link to the editor.
     expect(screen.queryByRole('button', { name: 'planEditor.title' })).not.toBeInTheDocument();
     act(() => { jest.mocked(StructureStats).mock.calls.at(-1)![0].onOpenPlanEditor!(); });
-    expect(screen.getByTestId('plan-editor')).toHaveAttribute('data-immediate', 'true');
+    expect(screen.getByTestId('plan-editor')).toHaveAttribute('data-engine-writer', 'true');
     const props = jest.mocked(PlanEditorModal).mock.calls.at(-1)![0];
     expect(props).toMatchObject({ isOpen: true, isReadOnly: false });
     expect(props.sermon.id).toBe('abc');
@@ -511,12 +515,11 @@ mockCore.data = null; mockCore.loading = false;
 
     searchParamsMock = new URLSearchParams();
     const { createAudioThought } = jest.requireMock('@/services/thought.service') as { createAudioThought: jest.Mock };
-    const { updateStructure } = jest.requireMock('@/services/structure.service') as { updateStructure: jest.Mock };
     const view = render(<TestProviders><SermonPage /></TestProviders>);
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'finish-recording', hidden: true })[0]); });
     await waitFor(() => expect(mockCore.retry).toHaveBeenCalled());
     expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'abc', 0, 3);
-    expect(updateStructure).not.toHaveBeenCalled();
+    expect(mockEngineWriter.updateStructure).not.toHaveBeenCalled();
     view.unmount();
   });
 });

@@ -253,8 +253,6 @@
     "deletedDescription": "Цього запису більше немає на сервері. Ваш текст тут не збережено.",
     "refreshAction": "Завантажити свіжу",
     "refreshingAction": "Оновлюю…",
-    "refreshedToast": "Дані оновлено",
-    "refreshFailedToast": "Не вдалося оновити — спробуйте ще раз",
     "reviewAction": "Переглянути зміни",
     "dismissAction": "Приховати повідомлення",
     "entityNote": "нотатку",

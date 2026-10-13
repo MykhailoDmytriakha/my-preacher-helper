@@ -1,5 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
+import React from 'react';
 
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { useColumnOutlineState } from '@/components/column/useColumnOutlineState';
 import { OutlineCollisionError } from '@/services/sermons.client';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -29,7 +31,18 @@ import type { SermonOutline, SermonPoint } from '@/models/models';
 let mockServerOutline: SermonOutline;
 
 jest.mock('@/services/outline.service', () => ({
-  getSermonOutline: jest.fn(async () => mockServerOutline),
+  generateSermonPointsForSection: jest.fn(),
+}));
+
+/**
+ * A writer that does exactly what the guarded write does — the real merge, INCLUDING its refusal,
+ * so a caller with nowhere to put a refused plan is caught here rather than in production.
+ */
+const mergingWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
   updateSermonOutline: jest.fn(
     async (
       _sermonId: string,
@@ -37,14 +50,11 @@ jest.mock('@/services/outline.service', () => ({
       base?: SermonOutline | null,
       onCollision?: 'refuse' | 'preferMine'
     ) => {
-      if (base === undefined) {
-        // Exactly what the unguarded path does: replace the whole field.
+      if (base === undefined || base === null) {
+        // Exactly what an unguarded write does: replace the whole field.
         mockServerOutline = mine;
         return mockServerOutline;
       }
-      // And exactly what the guarded path does — the real merge, not an imitation,
-      // INCLUDING its refusal, so a caller with nowhere to put a refused plan is
-      // caught here rather than in production.
       const { outline, collisions } = mergeOutline(base, mine, mockServerOutline);
       if (collisions.length > 0 && onCollision !== 'preferMine') {
         throw new OutlineCollisionError(collisions, mockServerOutline, 1);
@@ -53,8 +63,7 @@ jest.mock('@/services/outline.service', () => ({
       return mockServerOutline;
     }
   ),
-  generateSermonPointsForSection: jest.fn(),
-}));
+};
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 
@@ -69,20 +78,19 @@ const phonePoint: SermonPoint = { id: 'p2', text: 'Added on the phone' };
 const initialPoints: SermonPoint[] = [laptopPoint];
 
 const renderColumn = () =>
-  renderHook(() =>
-    useColumnOutlineState({
-      id: 'main',
-      sermonId: 's1',
-      initialSermonPoints: initialPoints,
-     
-      // Run the debounced save immediately — the debounce is not what is under test.
-      scheduleTask: (callback) => {
-        void callback();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      },
-      clearScheduledTask: () => undefined,
-      t: ((key: string) => key) as never,
-    })
+  renderHook(
+    () =>
+      useColumnOutlineState({
+        id: 'main',
+        sermonId: 's1',
+        initialSermonPoints: initialPoints,
+        t: ((key: string) => key) as never,
+      }),
+    {
+      wrapper: ({ children }) => (
+        <StructureWriterContext.Provider value={mergingWriter}>{children}</StructureWriterContext.Provider>
+      ),
+    }
   );
 
 describe('the column plan editor merges instead of replacing', () => {
@@ -169,6 +177,10 @@ describe('the column plan editor merges instead of replacing', () => {
     });
     await waitFor(() =>
       expect(mockServerOutline.main.map((point) => point.text)).toContain('Grace, revised')
+    );
+    // The person edits again only once the screen shows the committed plan, as in real use.
+    await waitFor(() =>
+      expect(result.current.localSermonPoints.map((point) => point.id)).toEqual(['p1', 'p2'])
     );
 
     act(() => {

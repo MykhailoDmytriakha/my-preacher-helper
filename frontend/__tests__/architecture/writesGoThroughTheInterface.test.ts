@@ -65,7 +65,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
    * A future raise of this number needs the same thing: the answer written down, here.
    */
   'services/conflictSafeUpdate.client.ts': 5,
-  'services/sermons.client.ts': 10,
   'services/atomicUpdate.client.ts': 3,
   // A cross-series move, deliberately all-or-nothing — and invisible to this test until
   // `writeBatch` was added to what it looks for.

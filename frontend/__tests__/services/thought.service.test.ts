@@ -1,13 +1,3 @@
-const mockDeleteThoughtViaClient = jest.fn();
-const mockUpdateThoughtViaClient = jest.fn();
-const mockCreateManualThoughtViaClient = jest.fn();
-
-jest.mock('@/services/sermons.client', () => ({
-  deleteThoughtViaClient: (...args: unknown[]) => mockDeleteThoughtViaClient(...args),
-  updateThoughtViaClient: (...args: unknown[]) => mockUpdateThoughtViaClient(...args),
-  createManualThoughtViaClient: (...args: unknown[]) => mockCreateManualThoughtViaClient(...args),
-}));
-
 jest.mock('@/utils/transcriptionRetryClient', () => ({
   getTranscriptionAuthorizationHeaders: jest.fn(),
 }));
@@ -20,9 +10,6 @@ const { getTranscriptionAuthorizationHeaders: mockGetTranscriptionAuthorizationH
 import {
   createAudioThought,
   retryAudioTranscription,
-  deleteThought,
-  updateThought,
-  createManualThought,
   transcribeThoughtAudio,
 } from '@/services/thought.service';
 
@@ -272,68 +259,6 @@ describe('Thought Service', () => {
           method: 'POST',
           body: expect.any(FormData),
         })
-      );
-    });
-  });
-
-  describe('deleteThought', () => {
-    it('should successfully delete thought', async () => {
-      mockDeleteThoughtViaClient.mockResolvedValueOnce(undefined);
-
-      await deleteThought(mockSermonId, mockThought);
-
-      expect(mockDeleteThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('should throw error on delete failure', async () => {
-      mockDeleteThoughtViaClient.mockRejectedValueOnce(new Error('client delete failed'));
-
-      await expect(deleteThought(mockSermonId, mockThought)).rejects.toThrow(
-        'client delete failed'
-      );
-    });
-  });
-
-  describe('updateThought', () => {
-    it('should successfully update thought', async () => {
-      mockUpdateThoughtViaClient.mockResolvedValueOnce(mockThought);
-
-      const result = await updateThought(mockSermonId, mockThought, null);
-
-      expect(result).toEqual(mockThought);
-      // The third argument is the thought AS THE SCREEN OPENED IT. It is required, so
-      // `null` is a stated decision — "I have no opening value, claim every field",
-      // the pre-baseline behaviour — rather than something a caller drifts into.
-      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought, null);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('should surface client update errors', async () => {
-      mockUpdateThoughtViaClient.mockRejectedValueOnce(new Error('client update failed'));
-
-      await expect(updateThought(mockSermonId, mockThought, null)).rejects.toThrow(
-        'client update failed'
-      );
-    });
-  });
-
-  describe('createManualThought', () => {
-    it('should successfully create manual thought', async () => {
-      mockCreateManualThoughtViaClient.mockResolvedValueOnce(mockThought);
-
-      const result = await createManualThought(mockSermonId, mockThought);
-
-      expect(result).toEqual(mockThought);
-      expect(mockCreateManualThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
-      expect(mockFetch).not.toHaveBeenCalled();
-    });
-
-    it('should throw error on manual thought creation failure', async () => {
-      mockCreateManualThoughtViaClient.mockRejectedValueOnce(new Error('client create failed'));
-
-      await expect(createManualThought(mockSermonId, mockThought)).rejects.toThrow(
-        'client create failed'
       );
     });
   });

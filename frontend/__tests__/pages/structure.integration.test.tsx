@@ -5,14 +5,20 @@ import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { sortItemsWithAI } from '@/services/sortAI.service';
-import { updateStructure } from '@/services/structure.service';
 
-import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn as baseHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../test-utils/test-providers';
+
+/** The engine-only data hook always hands the page `retry` and `syncFromEngine`; the shared stand-in predates them. */
+const createMockHookReturn = (...args: Parameters<typeof baseHookReturn>) => ({
+  ...baseHookReturn(...args),
+  retry: jest.fn(),
+  syncFromEngine: jest.fn(),
+});
 
 // The page runs on the data engine: it mounts inside the sermon's document provider, over the real
 // engine with only the server and the browser transport replaced. The board's own data hook stays
@@ -35,8 +41,6 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/hooks/useSermonStructureData');
 const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
 
-jest.mock('@/services/structure.service');
-jest.mock('@/services/thought.service');
 jest.mock('@/services/sortAI.service');
 
 // Keep the real module underneath: this fake overrides only the tokens the test
@@ -120,7 +124,6 @@ describe('Structure Page - Integration Tests', () => {
     searchParamsGetMock.mockImplementation((param: string) =>
       param === 'sermonId' ? 'sermon-123' : null
     );
-    (updateStructure as jest.Mock).mockResolvedValue({});
     (sortItemsWithAI as jest.Mock).mockResolvedValue([]);
   });
 

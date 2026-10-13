@@ -140,9 +140,6 @@ jest.mock('@services/firebaseAuth.service', () => ({
 
 jest.mock('@/services/thought.service', () => ({
   createAudioThought: jest.fn(),
-  createManualThought: jest.fn(),
-  deleteThought: jest.fn(),
-  updateThought: jest.fn(),
 }));
 
 // Prep components that call back with fixed values, to see what the page stores
@@ -231,25 +228,6 @@ jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({
   </div>
 ));
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => () => <div data-testid="spiritual-step">Spiritual Step</div>);
-
-// The legacy writers must stay untouched: the page writes through the engine only.
-jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn(),
-  updateSermonPreparation: jest.fn().mockResolvedValue({}),
-  updateSermon: jest.fn(),
-}));
-jest.mock('@/services/structure.service', () => ({
-  updateStructure: jest.fn().mockResolvedValue(undefined),
-}));
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn(),
-}));
-jest.mock('@/services/sermons.client', () => ({
-  applyScratchToOutlineViaClient: jest.fn(),
-  addScratchNoteViaClient: jest.fn(),
-  updateScratchNoteViaClient: jest.fn(),
-  deleteScratchNoteViaClient: jest.fn(),
-}));
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -464,7 +442,6 @@ describe('Sermon Detail Page', () => {
 
       await waitFor(() => expect((harness.server.value as any).thoughts).toEqual([]));
       expect((harness.server.value as any).structure.introduction).toEqual([]);
-      expect(require('@services/thought.service').deleteThought).not.toHaveBeenCalled();
     });
 
     it('moves a thought to another outline point and its new section in the stored sermon', async () => {
@@ -475,7 +452,6 @@ describe('Sermon Detail Page', () => {
       await waitFor(() => expect((harness.server.value as any).thoughts[0].outlinePointId).toBe('main-1'));
       expect((harness.server.value as any).structure.main).toEqual(['thought-1']);
       expect((harness.server.value as any).structure.introduction).toEqual([]);
-      expect(require('@/services/structure.service').updateStructure).not.toHaveBeenCalled();
     });
   });
 
@@ -638,8 +614,6 @@ describe('Sermon Detail Page', () => {
       expect(prep.homileticPlan).toEqual({ modernTranslation: 'translation', updatedPlan: [{ id: 'u1', title: 'updated' }], sermonPlan: [{ id: 's1', title: 'sermon plan' }] });
       // The exegetical plan edit lands in the document too (the document applies it to its newest plan).
       await waitFor(() => expect(storedPreparation().exegeticalPlan).toEqual([{ id: 'n1', title: 'Node', children: [] }]));
-      // None of it went through the legacy writer.
-      expect(require('@/services/sermon.service').updateSermonPreparation).not.toHaveBeenCalled();
     }, 30_000);
 
     // BUG-20261011-thesis-answers-save-nowhere: four fields of the thesis step showed Save while the page

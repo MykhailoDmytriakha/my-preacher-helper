@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react';
 
 import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
 import EditThoughtModal from '@/components/EditThoughtModal';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import type { WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { Item, Sermon } from '@/models/models';
@@ -20,6 +21,15 @@ const makeFirestoreError = (code: string, message = code): Error & { code: strin
 };
 
 const mockUpdateThought = jest.fn();
+// The structure screen writes through one seam; the engine writer is replaced here by a writer
+// whose thought update is the mock under test.
+const testWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: (...args: Parameters<StructureWriter['updateThought']>) => mockUpdateThought(...args),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: jest.fn(),
+};
 let capturedThoughtSubmission: WriteSubmission | null = null;
 
 jest.mock('firebase/firestore', () => ({
@@ -28,14 +38,6 @@ jest.mock('firebase/firestore', () => ({
 }));
 
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
-
-jest.mock('@/services/thought.service', () => ({
-  createManualThought: jest.fn(),
-  deleteThought: jest.fn(),
-  updateThought: (...args: unknown[]) => mockUpdateThought(...args),
-}));
-
-jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn() }));
 
 jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: () => ({ isOnline: true, isMagicAvailable: true }),
@@ -161,7 +163,11 @@ describe('thought edit refusal through the real sermon action hook', () => {
     mockUpdateThought.mockRejectedValue(
       makeFirestoreError('permission-denied', 'Permission denied')
     );
-    render(<ThoughtEditHarness />);
+    render(
+      <StructureWriterContext.Provider value={testWriter}>
+        <ThoughtEditHarness />
+      </StructureWriterContext.Provider>
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit stored thought' }));
     fireEvent.change(screen.getByLabelText('Thought text'), {

@@ -18,4 +18,3 @@ export const INLINE_EDIT_ACTION_BUTTON_BASE_CLASS =
 
 export const POINT_AUDIO_SECTION_IDS = ["introduction", "main", "conclusion"] as const;
 export const SECTION_NAV_ORDER = ["introduction", "main", "conclusion"] as const;
-export const OUTLINE_SAVE_DEBOUNCE_MS = 200;

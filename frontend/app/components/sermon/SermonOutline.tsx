@@ -4,7 +4,6 @@ import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroico
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
@@ -12,8 +11,6 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
-import { isBrowserOffline } from '@/utils/connectivity';
-import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
@@ -140,11 +137,11 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   // stays the only store: follow it whenever no save of this panel is on its way.
   useEffect(() => {
     if (editingPointId || addingNewToSection) return;
-    if (writer.immediate ? settledGenerationRef.current !== saveGenerationRef.current : saveGenerationRef.current > 0) return;
+    if (settledGenerationRef.current !== saveGenerationRef.current) return;
     setSectionPoints(mapOutline(sermon.outline));
     baseOutlineRef.current = sermon.outline ?? null;
     if (saveGenerationRef.current === 0) setExpandedSections(expandedOutline(sermon.outline));
-  }, [sermon.outline, editingPointId, addingNewToSection, writer.immediate]);
+  }, [sermon.outline, editingPointId, addingNewToSection]);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -237,18 +234,9 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         };
 
         // `preferMine` — this view cannot hold a refused plan; see the writer.
-        const request = writer.updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
-        // An immediate (engine) writer returns once the change is kept on this device;
-        // delivery, offline queueing and conflicts belong to the engine.
-        const saved = writer.immediate ? await request : await (async () => {
-          const acceptance = await awaitAcceptance(
-            isBrowserOffline()
-              ? queuedMutation(`outline:${sermon.id}`, request)
-              : persistedWrite(request),
-            (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
-          );
-          return acceptance.kind === 'persisted' ? await request : outlineToSave;
-        })();
+        // The engine writer returns once the change is kept on this device; delivery, offline
+        // queueing and conflicts belong to the engine.
+        const saved = await writer.updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
 
         /**
          * THE BASE AND WHAT IS ON SCREEN MOVE TOGETHER — OR NOT AT ALL.

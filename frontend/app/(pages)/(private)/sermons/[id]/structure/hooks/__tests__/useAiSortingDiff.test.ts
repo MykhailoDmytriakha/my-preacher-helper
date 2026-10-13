@@ -1,11 +1,10 @@
 import React from 'react';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Item, SermonPoint, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@/services/sortAI.service';
-import { updateStructure } from '@/services/structure.service';
-import { updateThought } from '@/services/thought.service';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import * as aiSortingUtils from '@/utils/aiSorting';
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -14,8 +13,6 @@ import { useAiSortingDiff } from '../useAiSortingDiff';
 
 // Mock services
 jest.mock('@/services/sortAI.service');
-jest.mock('@/services/structure.service');
-jest.mock('@/services/thought.service');
 jest.mock('sonner');
 jest.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => true,
@@ -30,8 +27,24 @@ jest.mock('@/utils/aiSorting', () => {
 });
 
 const mockSortItemsWithAI = sortItemsWithAI as jest.MockedFunction<typeof sortItemsWithAI>;
-const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
-const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
+/** Every write the hook makes goes through the structure writer; these are its recording stand-ins. */
+const mockUpdateStructure = jest.fn();
+const mockUpdateThought = jest.fn();
+const mockCreateManualThought = jest.fn();
+const mockDeleteThought = jest.fn();
+const mockWriter: StructureWriter = {
+  updateStructure: mockUpdateStructure,
+  updateThought: mockUpdateThought,
+  deleteThought: mockDeleteThought,
+  createManualThought: mockCreateManualThought,
+  updateSermonOutline: jest.fn(),
+};
+
+const renderHook = <T,>(callback: () => T) =>
+  rtlRenderHook(callback, {
+    wrapper: ({ children }) =>
+      React.createElement(StructureWriterContext.Provider, { value: mockWriter }, children),
+  });
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockGetOutlinePointAiSortState = aiSortingUtils.getOutlinePointAiSortState as jest.MockedFunction<typeof aiSortingUtils.getOutlinePointAiSortState>;
 

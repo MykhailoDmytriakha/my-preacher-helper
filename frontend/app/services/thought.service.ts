@@ -1,10 +1,5 @@
 
 import { Thought } from '@/models/models';
-import {
-  createManualThoughtViaClient,
-  deleteThoughtViaClient,
-  updateThoughtViaClient,
-} from '@/services/sermons.client';
 import { logFailureOnce } from '@/utils/actionFailureMessage';
 import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
@@ -198,31 +193,4 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
     logFailureOnce(error, "transcribeThoughtAudio: Error transcribing audio");
     throw error;
   }
-};
-
-export const deleteThought = async (
-  sermonId: string,
-  thought: Thought
-): Promise<void> => {
-  return deleteThoughtViaClient(sermonId, thought);
-};
-
-export const updateThought = async (
-  sermonId: string,
-  thought: Thought,
-  /**
-   * The thought AS THE SCREEN OPENED IT — see updateThoughtViaClient. Required, so
-   * that "send the whole object" is something a caller states with `null` rather
-   * than something it gets by forgetting.
-   */
-  baseThought: Thought | null
-): Promise<Thought> => {
-  return updateThoughtViaClient(sermonId, thought, baseThought);
-};
-
-export const createManualThought = async (
-  sermonId: string,
-  thought: Thought
-): Promise<Thought> => {
-  return createManualThoughtViaClient(sermonId, thought);
 };

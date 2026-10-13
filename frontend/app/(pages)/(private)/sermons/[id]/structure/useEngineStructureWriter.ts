@@ -57,7 +57,6 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
 export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null): StructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
   return {
-    immediate: true,
     updateStructure: (_sermonId, structure, baseStructure) => edit(current => {
       const merged = placeExisting(mergeSections(structure, current.structure ?? current.thoughtsBySection, baseStructure ?? null), current.thoughts);
       return { next: { ...current, structure: merged, thoughtsBySection: merged }, result: merged };

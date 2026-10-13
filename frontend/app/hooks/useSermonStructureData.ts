@@ -4,87 +4,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
-import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
-import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
-import { recordDiagnostic } from '@/utils/appDiagnostics';
-import { getConnectivityStatus, isKnownOffline } from '@/utils/connectivity';
-import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
+import { getConnectivityStatus } from '@/utils/connectivity';
 // ONE definition of "has the server proved its copy is newer" for the whole app: this
 // hook used to carry a byte-identical private copy, and two copies of a rule that
 // decides whether someone's unsaved words may be discarded is one copy too many.
-import { selectReadableCopy, serverCopyIsNewer } from '@/utils/readFreshness';
 import { readWithDeadline } from '@/utils/readWithDeadline';
 import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
-
-const STRUCTURE_LOAD_EVENT = 'structure-load';
-
-/**
- * Fetch the sermon, and decide which copy the screen should show.
- *
- * Reading the stored copy and returning it was the whole of this function, so the
- * server was never consulted at all: a full page reload still rendered whatever
- * this browser happened to hold, for up to a week. Observed live on production
- * 2026-08-11 — a plan point deleted a day earlier was still on screen after a
- * reload, while the document had not held it since.
- */
-async function fetchSermonData(
-  sermonId: string,
-  queryClient: ReturnType<typeof useQueryClient>
-): Promise<{ sermon: Sermon | null }> {
-  /**
-   * The owner is fixed HERE, when the work starts, and not read again when it
-   * finishes. Sign-out and sign-in can happen while a fetch is in flight, and
-   * resolving the uid at completion time would file the FIRST account's sermon
-   * under the SECOND account's cache key — putting one person's sermon inside
-   * another person's cache, which is the leak this key exists to prevent.
-   */
-  const startedAsUid = resolveOwnerUid();
-  const key = sermonDetailKey(startedAsUid, sermonId);
-  const stored = queryClient.getQueryData<Sermon>(key) ?? null;
-
-  // WITHOUT A CONNECTION A STORED COPY OPENS AT ONCE (owner's rule 3,
-  // BUG-20260908-cached-response-counts-as-live-connection): waiting on a server the last request
-  // did not reach held the screen for 4 s on a café Wi-Fi. The server is still asked — by the
-  // page's freshness check (`useDocumentFreshness`), which offers a newer copy when there is one;
-  // this editor is built once, so a late copy is not poured in under pending work.
-  // With a connection the server is asked first (the 2026-08-11 case above), within a deadline.
-  if (stored && !getConnectivityStatus()) return { sermon: stored };
-  // Nothing stored and the phone says there is no network, uncontradicted by any request since:
-  // there is nothing to wait for (BUG-20261011-raw-phone-flag-in-read-paths).
-  if (!stored && isKnownOffline()) return { sermon: null };
-
-  let fetched: Sermon | null;
-  try {
-    fetched = (await readWithDeadline(getSermonById(sermonId), stored ? 4000 : 13000)) ?? null;
-  } catch (error) {
-    // A refused or dropped request must never blank a sermon the preacher can
-    // already see. Losing the screen is worse than showing a copy a few minutes old.
-    if (resolveOwnerUid() !== startedAsUid) return { sermon: null };
-    const currentStored = queryClient.getQueryData<Sermon>(key) ?? stored;
-    if (currentStored) return { sermon: currentStored };
-    throw error;
-  }
-
-  // The account may have changed while this was in flight. Returning the sermon
-  // anyway is not enough: the caller feeds it straight into `setSermon`, which
-  // pins the owner AGAIN — now the new one — and files the first account's sermon
-  // under the second account's key, then builds the visible columns from it. A
-  // late answer for a signed-out account is dropped entirely.
-  if (resolveOwnerUid() !== startedAsUid) return { sermon: null };
-
-  const currentStored = queryClient.getQueryData<Sermon>(key) ?? stored;
-  if (!fetched) return { sermon: currentStored };
-  if (currentStored && !serverCopyIsNewer(fetched, currentStored)) {
-    return { sermon: currentStored };
-  }
-
-  queryClient.setQueryData(key, fetched);
-  return { sermon: fetched };
-}
 
 // Helper: Fetch and process tags
 async function fetchTagsData(
@@ -244,6 +173,8 @@ export interface StructureEngineSource {
   loading: boolean;
   error: string | null;
   isHolding: () => boolean;
+  /** Asks the document again — the error screen's retry. */
+  retry: () => void;
 }
 
 function buildBoard(sermon: Sermon, allTags: Record<string, { name: string; color?: string }>) {
@@ -263,14 +194,9 @@ function buildBoard(sermon: Sermon, allTags: Record<string, { name: string; colo
   };
 }
 
-export function useSermonStructureData(sermonId: string | null | undefined, t: TFunction, engine?: StructureEngineSource) {
+export function useSermonStructureData(t: TFunction, engine: StructureEngineSource) {
   const queryClient = useQueryClient();
   const [sermon, setSermonState] = useState<Sermon | null>(null);
-  const lastSermonIdRef = useRef<string | null>(null);
-  const hasLoadedRef = useRef(false);
-  const loadGenerationRef = useRef(0);
-  const [retryCount, setRetryCount] = useState(0);
-  const retry = useCallback(() => setRetryCount(count => count + 1), []);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
@@ -287,174 +213,20 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     conclusion: [],
   });
   const [loading, setLoading] = useState(true);
-  const [failure, setError] = useState<FailureWords | null>(null);
   const [requiredTagColors, setRequiredTagColors] = useState<{
     introduction?: string;
     main?: string;
     conclusion?: string;
   }>({});
   const [allowedTags, setAllowedTags] = useState<{ name: string; color: string }[]>([]);
-  const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true); // Added state from component
+  const [isAmbiguousVisible, setIsAmbiguousVisible] = useState(true);
 
-  const engineMode = Boolean(engine);
+  // The document is the only store; this copy is the screen's projection of it.
   const setSermon = useCallback(async (updater: React.SetStateAction<Sermon | null>) => {
-    if (!sermonId) return;
-    // On the engine the document is the only store; this copy is the screen's projection of it.
-    if (engineMode) { setSermonState(updater); return; }
+    setSermonState(updater);
+  }, []);
 
-    // Owner pinned before the await, for the same reason as in fetchSermonData:
-    // an account switch mid-flight must not redirect this write to the new owner.
-    const startedAsUid = resolveOwnerUid();
-    const generation = loadGenerationRef.current;
-    const key = sermonDetailKey(startedAsUid, sermonId);
-    await queryClient.cancelQueries({ queryKey: key });
-    if (resolveOwnerUid() !== startedAsUid || generation !== loadGenerationRef.current) return;
-
-    let nextSermon: Sermon | null = null;
-    queryClient.setQueryData(key, (prev: Sermon | undefined) => {
-      const next = updater instanceof Function ? updater(prev || null) : updater;
-      nextSermon = next;
-      return next ?? undefined;
-    });
-
-    // Sync local state
-    setSermonState(nextSermon);
-
-    // NOTE: do NOT invalidateQueries here. setQueryData already updates the cache
-    // AND triggers the IndexedDB persister. Marking the sermon key stale used to make
-    // the detail page (useSermon is cache-first with refetchOnMount) refetch on return
-    // from structure mode — and that background refetch could clobber the just-edited
-    // structure with server data that hadn't caught up with the debounced save yet,
-    // so the right-side structure panel "loaded as if the cache wasn't applied".
-    // The cache is authoritative for the local edits; let the detail page trust it.
-  }, [queryClient, sermonId, engineMode]);
-
-  useEffect(() => {
-    if (engineMode) return;
-    const generation = ++loadGenerationRef.current;
-    const owner = resolveOwnerUid();
-    const isCurrent = () => generation === loadGenerationRef.current && resolveOwnerUid() === owner;
-    async function initializeSermon() {
-      if (!sermonId) {
-        setLoading(false);
-        setError(null);
-        setSermonState(null);
-        setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-        return;
-      }
-
-      const isNewSermon = lastSermonIdRef.current !== sermonId;
-      const isInitialLoad = !hasLoadedRef.current || isNewSermon;
-      // Connectivity changes must not rebuild an editor underneath pending work.
-      // The page's freshness observer independently offers server verification.
-      if (!isInitialLoad) return;
-      setLoading(true);
-      setSermonState(null);
-      setError(null);
-
-      recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'started' });
-      try {
-        // Fetch sermon
-        let { sermon: fetchedSermon } = await fetchSermonData(sermonId, queryClient);
-        if (!isCurrent()) return;
-        if (!fetchedSermon) {
-          setSermon(null);
-          setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-          setSermonPoints({ introduction: [], main: [], conclusion: [] });
-          setAllowedTags([]);
-          setRequiredTagColors({});
-          setLoading(false);
-          return;
-        }
-        const { allTags } = await fetchTagsData(fetchedSermon, queryClient, t);
-        if (!isCurrent()) return;
-        fetchedSermon = selectReadableCopy(fetchedSermon,
-          queryClient.getQueryData<Sermon>(sermonDetailKey(owner, sermonId))) ?? fetchedSermon;
-        // The outline belongs to this exact sermon copy. A second SDK read could
-        // resurrect deleted points from its cache after HTTP recovered the document.
-        const outlineData = fetchedSermon.outline;
-        await setSermon(fetchedSermon);
-        if (!isCurrent()) return;
-
-        setRequiredTagColors({
-          introduction: getSectionBaseColor('introduction'),
-          main: getSectionBaseColor('main'),
-          conclusion: getSectionBaseColor('conclusion'),
-        });
-
-        const filteredAllowedTags = Object.values(allTags)
-          .filter(
-            (tag) =>
-              normalizeStructureTag(tag.name) === null
-          )
-          .map(tag => ({
-            name: tag.name,
-            color: tag.color || "#808080"
-          }));
-        setAllowedTags(filteredAllowedTags);
-
-        // Process thoughts into items
-        const allThoughtItems = processThoughtsIntoItems(fetchedSermon, allTags);
-
-        if (outlineData) {
-          setSermonPoints({
-            introduction: outlineData.introduction || [],
-            main: outlineData.main || [],
-            conclusion: outlineData.conclusion || [],
-          });
-        } else {
-          setSermonPoints({ introduction: [], main: [], conclusion: [] });
-        }
-
-        // Canonicalize structure order (outline blocks -> unassigned tail)
-        const canonicalStructure = canonicalizeStructure({
-          thoughts: fetchedSermon.thoughts ?? [],
-          structure: fetchedSermon.structure ?? fetchedSermon.thoughtsBySection,
-          outline: outlineData ?? fetchedSermon.outline,
-        });
-
-        const { intro, main, concl, ambiguous } = buildContainersFromCanonicalStructure(
-          canonicalStructure,
-          allThoughtItems
-        );
-
-        const finalContainers = {
-          introduction: seedPositions(intro),
-          main: seedPositions(main),
-          conclusion: seedPositions(concl),
-          ambiguous: seedPositions(ambiguous),
-        };
-
-        setContainers(finalContainers);
-        setIsAmbiguousVisible(ambiguous.length > 0);
-        hasLoadedRef.current = true;
-        lastSermonIdRef.current = sermonId;
-
-      } catch (err) {
-        if (!isCurrent()) return;
-        recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'failed' });
-        console.error("Error initializing sermon data:", err);
-        setError({ key: 'errors.fetchSermonStructureError' });
-        toast.error(t('errors.fetchSermonStructureError'));
-        // Reset state on error
-        setSermon(null);
-        setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
-        setSermonPoints({ introduction: [], main: [], conclusion: [] });
-        setAllowedTags([]);
-        setRequiredTagColors({});
-      } finally {
-        if (isCurrent()) {
-          setLoading(false);
-          recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'settled' });
-        }
-      }
-    }
-
-    void initializeSermon();
-    return () => { loadGenerationRef.current += 1; };
-  }, [sermonId, t, queryClient, setSermon, retryCount, engineMode]);
-
-  const engineSermon = engine?.sermon ?? null;
+  const engineSermon = engine.sermon;
   const engineRef = useRef(engine);
   engineRef.current = engine;
   const engineTagsRef = useRef<{ owner: string; tags: Record<string, { name: string; color?: string }> } | null>(null);
@@ -474,21 +246,19 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     if (!engineBuiltRef.current) setIsAmbiguousVisible(board.hasAmbiguous);
     engineBuiltRef.current = true;
     engineBoardPendingRef.current = false;
-    setError(null);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (!engineMode) return;
     if (!engineSermon) {
-      setLoading(Boolean(engineRef.current?.loading));
+      setLoading(Boolean(engineRef.current.loading));
       return;
     }
     let active = true;
     const cached = engineTagsRef.current?.owner === engineSermon.userId ? engineTagsRef.current.tags : null;
     const build = (tags: Record<string, { name: string; color?: string }>) => {
       if (!active) return;
-      if (engineRef.current?.isHolding()) { engineBoardPendingRef.current = true; return; }
+      if (engineRef.current.isHolding()) { engineBoardPendingRef.current = true; return; }
       applyEngineSermon(engineSermon, tags);
     };
     if (cached) build(cached);
@@ -497,13 +267,13 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
       build(allTags);
     });
     return () => { active = false; };
-  }, [engineMode, engineSermon, applyEngineSermon, queryClient, t]);
+  }, [engineSermon, applyEngineSermon, queryClient, t]);
 
   /** Runs a rebuild that waited for a drag or an AI review to end. */
   const syncFromEngine = useCallback(() => {
-    const current = engineRef.current?.sermon;
+    const current = engineRef.current.sermon;
     const tags = engineTagsRef.current;
-    if (!engineBoardPendingRef.current || !current || !tags || engineRef.current?.isHolding()) return;
+    if (!engineBoardPendingRef.current || !current || !tags || engineRef.current.isHolding()) return;
     applyEngineSermon(current, tags.tags);
   }, [applyEngineSermon]);
 
@@ -528,13 +298,12 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     requiredTagColors,
     allowedTags,
     loading,
-    // Said in the language on screen when returned (BUG-20261006-screen-error-kept-as-translated-sentence):
-    // on the engine its document hook already says it at render, so it is read live, never copied.
-    error: engineMode ? (engineSermon ? null : engine?.error ?? null) : failure && sayFailure(failure, t),
-    retry,
+    // Read live from the document hook, which says it in the language on screen.
+    error: engineSermon ? null : engine.error,
+    retry: engine.retry,
     setLoading,
     isAmbiguousVisible,
     setIsAmbiguousVisible,
     syncFromEngine,
   };
-} 
+}

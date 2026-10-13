@@ -128,8 +128,6 @@ jest.mock('@/hooks/useOnlineStatus', () => ({
 
 // Mock outline service
 jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn(() => Promise.resolve({ success: true })),
-  getSermonOutline: jest.fn(() => Promise.resolve({ introduction: [], main: [], conclusion: [] })),
   generateSermonPointsForSection: jest.fn(() => Promise.resolve([]))
 }));
 
@@ -304,17 +302,35 @@ jest.mock('@/components/Icons', () => ({
   SwitchViewIcon: (props: any) => <svg {...props} data-testid="switch-view-icon" />
 }));
 
-import { act, cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
-import { Item } from '@/models/models';
-import { generateSermonPointsForSection, getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { Item, type SermonOutline } from '@/models/models';
+import { generateSermonPointsForSection } from '@/services/outline.service';
 
 import Column from '../../app/components/Column';
 import { runScenarios } from '../../test-utils/scenarioRunner';
 
 import '@testing-library/jest-dom';
+
+/** Every plan write the column makes goes through the structure writer; this one only records it. */
+const mockWriter: StructureWriter = {
+  updateStructure: jest.fn(),
+  updateThought: jest.fn(),
+  deleteThought: jest.fn(),
+  createManualThought: jest.fn(),
+  updateSermonOutline: jest.fn(async (_sermonId: string, outline: SermonOutline) => outline),
+};
+const updateSermonOutline = mockWriter.updateSermonOutline as jest.Mock;
+
+const render = (ui: React.ReactElement) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <StructureWriterContext.Provider value={mockWriter}>{children}</StructureWriterContext.Provider>
+    ),
+  });
 
 describe('Column Component', () => {
   const mockItems: Item[] = [
@@ -456,16 +472,11 @@ describe('Column Component', () => {
 
     beforeEach(() => {
       // Reset mocks
-      (getSermonOutline as jest.Mock).mockClear();
-      (updateSermonOutline as jest.Mock).mockClear();
+      updateSermonOutline.mockClear();
       mockToggleFocus.mockClear();
       (toast.success as jest.Mock).mockClear();
       (toast.error as jest.Mock).mockClear();
 
-      // Mock the implementation of updateSermonOutline (service call)
-      (updateSermonOutline as jest.Mock).mockImplementation(() => Promise.resolve({ success: true }));
-      // Explicitly mock getSermonOutline to resolve
-      (getSermonOutline as jest.Mock).mockResolvedValue({ introduction: [], main: [], conclusion: [] });
 
       // Mock setTimeout to execute immediately
       jest.useFakeTimers();
@@ -502,7 +513,7 @@ describe('Column Component', () => {
       });
 
       await waitFor(() => expect(updateSermonOutline).toHaveBeenCalled());
-      const [sermonId, outline] = (updateSermonOutline as jest.Mock).mock.calls[0];
+      const [sermonId, outline] = updateSermonOutline.mock.calls[0];
       expect(sermonId).toBe('sermon-123');
       expect(outline.introduction).toHaveLength(1);
       expect(outline.introduction[0].text).toBe('"New point');
@@ -1140,7 +1151,7 @@ describe('Column Component', () => {
     });
 
     it.each([false, true])('keeps editable reminder notes inside their own cards (focus mode: %s)', async (isFocusMode) => {
-      (updateSermonOutline as jest.Mock).mockClear();
+      updateSermonOutline.mockClear();
 
       render(
         <Column

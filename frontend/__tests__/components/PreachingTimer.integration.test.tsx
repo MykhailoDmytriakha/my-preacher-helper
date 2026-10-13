@@ -20,35 +20,6 @@ jest.mock('@/hooks/usePreachingTimer', () => ({
   usePreachingTimer: mockUsePreachingTimer,
 }));
 
-// Mock useSermon for all possible import paths
-const mockSermonImpl = () => ({
-  sermon: { id: '123', title: 'Test Sermon' },
-  loading: false,
-  error: null
-});
-
-// The RULE that decides "there is no sermon here" stays REAL in both aliases — only the
-// answer it is given is stubbed. A stubbed rule would keep passing while the screens drift.
-const actualSermonIsMissing = () =>
-  (jest.requireActual('@/hooks/useSermon') as typeof import('@/hooks/useSermon')).sermonIsMissing;
-
-jest.mock('@/hooks/useSermon', () => ({
-  sermonIsMissing: actualSermonIsMissing(),
-  __esModule: true,
-  default: mockSermonImpl,
-}));
-
-jest.mock('@hooks/useSermon', () => ({
-  sermonIsMissing: actualSermonIsMissing(),
-  __esModule: true,
-  default: mockSermonImpl,
-}));
-
-jest.mock('../../app/hooks/useSermon', () => ({
-  __esModule: true,
-  default: mockSermonImpl,
-}));
-
 // Mock the breadcrumb's series read
 jest.mock('@/hooks/useSeriesRead', () => ({
   useSeriesRead: () => ({ series: { id: '456', title: 'Test Series' }, loading: false, error: null }),

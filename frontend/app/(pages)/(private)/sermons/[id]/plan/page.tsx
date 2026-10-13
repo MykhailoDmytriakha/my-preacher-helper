@@ -6,17 +6,13 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine, useDataEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
-import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
-import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useScrollLock } from '@/hooks/useScrollLock';
-import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -26,10 +22,6 @@ import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { liveNodeIds, mergeStoredPlanText, mergeStoredSavedFlags, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
-import {
-  planFreshnessProjection,
-  type PlanFreshnessProjection,
-} from '@/utils/sermonFreshnessProjection';
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
@@ -143,9 +135,9 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
  */
 export default function PlanPage() {
   const sermonId = useRouteId();
-  return sermonId && isCollectionOnEngine('sermons')
+  return sermonId
     ? <DataDocumentProvider resource={{ collection: 'sermons', id: sermonId }} options={{ readOnlyCopy: true }}><EnginePlanPage sermonId={sermonId} /></DataDocumentProvider>
-    : <PlanPageContent />;
+    : null;
 }
 
 function EnginePlanPage({ sermonId }: { sermonId: string }) {
@@ -162,13 +154,13 @@ function EnginePlanPage({ sermonId }: { sermonId: string }) {
   return <PlanWriterContext.Provider value={writer}>
     {!document.readOnly && <div className="px-4 pt-4 empty:hidden"><DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
       onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} /></div>}
-    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source as unknown as SermonSource} readOnly={onCopy} />
+    <PlanPageContent key={onCopy ? 'copy' : 'editor'} source={source} readOnly={onCopy} />
   </PlanWriterContext.Provider>;
 }
 
-type SermonSource = ReturnType<typeof useSermon>;
+type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; readOnly?: boolean }) {
+function PlanPageContent({ source, readOnly = false }: { source: SermonSource; readOnly?: boolean }) {
   const { t } = useTranslation();
   const planWriter = usePlanWriter();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
@@ -194,67 +186,10 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
 
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const legacySource = useSermon(source ? '' : sermonId);
-  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError, refreshSermon } = source ?? legacySource;
+  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = source;
   /** What the server held for each plan cell when this screen took it — see `planTextBaseline.ts`. */
   const planTextBaseline = usePlanTextBaseline(sermon?.id);
 
-  /**
-   * Pull the newer plan in place, without a page reload.
-   *
-   * Same reason as on the sermon screen: the banner used to announce a newer version
-   * and offer no way to take it, so the only route was reloading by hand. Refetching
-   * swaps the data and leaves local drafts (generated plan text, open editors) alone.
-   */
-  const [isRefreshingPlan, setIsRefreshingPlan] = useState(false);
-  const handleRefreshPlan = useCallback(async () => {
-    if (isRefreshingPlan) return;
-    setIsRefreshingPlan(true);
-    try {
-      await refreshSermon();
-      toast.success(t('freshness.refreshedToast'));
-    } catch {
-      toast.error(t('freshness.refreshFailedToast'));
-    } finally {
-      setIsRefreshingPlan(false);
-    }
-  }, [isRefreshingPlan, refreshSermon, t]);
-
-  /**
-   * DOES THE SERVER HOLD A NEWER PLAN?
-   *
-   * This screen had no detector at all, which made it the worst blind spot in the
-   * app: the plan is where a preacher spends the most time, and it is exactly what
-   * they carry from a laptop to a phone and back. Someone could keep this page open
-   * from Friday evening, rewrite the plan from a phone on Saturday, and the laptop
-   * would show Friday's version with no hint whatsoever.
-   *
-   * Observing only — the plan on screen is never swapped underneath anyone. And the
-   * fingerprint covers the WHOLE plan (points, sub-points, notes, the generated
-   * text), because counts stay identical when wording changes.
-   */
-  const planFreshnessUid = useFreshnessUid(sermon?.userId);
-  // ONE rule for both sides, shared with the sermon screen. Thoughts are compared
-  // by content rather than by position: the writer appends, the screen prepends.
-  const knownPlan = useMemo<PlanFreshnessProjection | null>(
-    () => (sermon ? planFreshnessProjection(sermon as unknown as Record<string, unknown>) : null),
-    [sermon]
-  );
-  const planFreshness = useDocumentFreshness<PlanFreshnessProjection>({
-    collection: 'sermons',
-    docId: sermonId || null,
-    uid: planFreshnessUid,
-    // On the engine the document observer owns freshness; DataSyncStatus says it.
-    enabled: Boolean(sermon) && !source,
-    known: knownPlan,
-    select: (data) => planFreshnessProjection(data),
-  });
-  const [planFreshnessDismissed, setPlanFreshnessDismissed] = useState(false);
-  useEffect(() => {
-    if (planFreshness.state === 'stale' || planFreshness.state === 'unknown') {
-      setPlanFreshnessDismissed(false);
-    }
-  }, [planFreshness.remote, planFreshness.state]);
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
   const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
@@ -1224,27 +1159,6 @@ function PlanPageContent({ source, readOnly = false }: { source?: SermonSource; 
         />
       )}
 
-      {/* Deliberately NOT shown in preaching or immersive view: someone standing in
-          front of a congregation must not be handed a decision. */}
-      {!source && (planFreshness.state === 'stale' || planFreshness.state === 'unknown') &&
-        !planFreshnessDismissed && (
-          <DataFreshnessBanner
-            entityKey="entitySermon"
-            // Not a constant: this screen DOES hold unsaved cells, and claiming otherwise made
-            // the banner offer to replace text someone was in the middle of writing.
-            dirty={Object.values(modifiedContent).some(Boolean)}
-            deleted={planFreshness.remotelyDeleted}
-            unknown={planFreshness.state === 'unknown'}
-            diagnostics={planFreshness.diagnostics}
-            checking={planFreshness.checking}
-            canCheck={planFreshness.canCheck}
-            onCheckAgain={planFreshness.checkAgain}
-            onRefresh={handleRefreshPlan}
-            refreshing={isRefreshingPlan}
-            onDismiss={() => setPlanFreshnessDismissed(true)}
-            className="mb-3"
-          />
-        )}
       {/* EVERYTHING THE DOOR WOULD HAVE SAID, SAID BESIDE THE PLAN INSTEAD.
           Once there is text, the warning screen steps aside — but the findings must not go
           with it. Loose thoughts were only one of them; a thought left pointing at a deleted

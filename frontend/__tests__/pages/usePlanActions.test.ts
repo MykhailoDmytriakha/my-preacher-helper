@@ -1,10 +1,12 @@
-import { act, renderHook } from "@testing-library/react";
+import React from "react";
+import { act, renderHook as rtlRenderHook } from "@testing-library/react";
 import { toast } from "sonner";
 
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
 import { generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import { withStatus } from "@/utils/aiTimeFailure";
-import { savePlanTextViaClient } from "@/services/sermons.client";
+import { PlanWriterContext } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
+import type { PlanWriter } from "@/(pages)/(private)/sermons/[id]/plan/planWriter";
 import { UsageCapReachedError } from "@/services/usageLimits";
 
 jest.mock("sonner", () => ({
@@ -15,19 +17,6 @@ jest.mock("sonner", () => ({
   },
 }));
 
-/**
- * THE REAL MODULE, WITH ONLY THE WRITE REPLACED.
- *
- * Listing mocked exports by hand meant every new helper the screens started using arrived here
- * as `undefined` — and `undefined` inside a catch block turns a handled refusal into an
- * unhandled throw, so the tests failed for a reason that had nothing to do with the behaviour
- * under test. Spreading the actual module keeps the seam exactly one function wide.
- */
-jest.mock("@/services/sermons.client", () => ({
-  ...jest.requireActual("@/services/sermons.client"),
-  savePlanTextViaClient: jest.fn(),
-}));
-
 jest.mock("@/(pages)/(private)/sermons/[id]/plan/planApi", () => ({
   generatePlanPointContent: jest.fn(),
 }));
@@ -35,7 +24,16 @@ jest.mock("@/(pages)/(private)/sermons/[id]/plan/planApi", () => ({
 describe("usePlanActions", () => {
   const mockToast = toast as jest.Mocked<typeof toast>;
   const mockGeneratePlanPointContent = generatePlanPointContent as jest.MockedFunction<typeof generatePlanPointContent>;
-  const mockSavePlanText = savePlanTextViaClient as jest.MockedFunction<typeof savePlanTextViaClient>;
+  const mockSavePlanText = jest.fn();
+  const mockPlanWriter: PlanWriter = {
+    savePlanText: mockSavePlanText,
+    savePlanMode: jest.fn().mockResolvedValue(undefined),
+    updateThought: jest.fn(),
+    updateSermonOutline: jest.fn(),
+  };
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(PlanWriterContext.Provider, { value: mockPlanWriter }, children);
+  const renderHook = <T,>(callback: () => T) => rtlRenderHook(callback, { wrapper });
   type GeneratingIds = Record<string, boolean>;
 
   const sermon = {

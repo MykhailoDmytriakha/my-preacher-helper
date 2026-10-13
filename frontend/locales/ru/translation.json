@@ -253,8 +253,6 @@
     "deletedDescription": "Этой записи больше нет на сервере. Ваш текст здесь не сохранён.",
     "refreshAction": "Загрузить свежую",
     "refreshingAction": "Обновляю…",
-    "refreshedToast": "Данные обновлены",
-    "refreshFailedToast": "Не удалось обновить — попробуйте ещё раз",
     "reviewAction": "Посмотреть изменения",
     "dismissAction": "Скрыть сообщение",
     "entityNote": "заметку",

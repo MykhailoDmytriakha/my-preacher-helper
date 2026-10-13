@@ -6,15 +6,11 @@ import { toast } from "sonner";
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import {
   generateSermonPointsForSection,
-  getSermonOutline,
 } from "@/services/outline.service";
 import { newClientId } from "@/utils/clientId";
-import { isBrowserOffline } from '@/utils/connectivity';
-import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
-import { OUTLINE_SAVE_DEBOUNCE_MS } from "./constants";
 import { mapColumnIdToSectionType } from "./utils";
 
 import type { SectionType, Translate } from "./types";
@@ -51,7 +47,6 @@ interface UseColumnOutlineStateOptions {
   onAiSuccess?: () => Promise<void> | void;
   aiBlocked?: boolean;
   scheduleTask?: (callback: () => void | Promise<void>, delayMs: number) => ReturnType<typeof setTimeout>;
-  clearScheduledTask?: (taskId: ReturnType<typeof setTimeout>) => void;
   t: Translate;
 }
 
@@ -66,7 +61,6 @@ export function useColumnOutlineState({
   onAiSuccess,
   aiBlocked = false,
   scheduleTask = setTimeout,
-  clearScheduledTask = clearTimeout,
   t,
 }: UseColumnOutlineStateOptions) {
   const writer = useStructureWriter();
@@ -80,7 +74,6 @@ export function useColumnOutlineState({
   const [localSermonPoints, setLocalSermonPoints] = useState<SermonPoint[]>(initialSermonPoints);
   const [deletePointId, setDeletePointId] = useState<string | null>(null);
 
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Counts scheduled saves, so an older one cannot cancel a newer one. */
   const saveGenerationRef = useRef(0);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -122,24 +115,13 @@ export function useColumnOutlineState({
     }
   }, [editingPointId]);
 
-  // The legacy path's pending save goes with the board: a board opened again since would otherwise be
-  // overwritten by the old one's wording. On the engine nothing waits here (`handToEngine`).
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearScheduledTask(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-      }
-    };
-  }, [clearScheduledTask]);
-
   /**
    * ON THE ENGINE THE EDIT IS HANDED OVER AT ONCE (BUG-20261010-column-outline-save-cancelled-on-leave).
    *
    * The column used to wait a pause and read the plan before handing an edit over, and leaving the
    * board — or the screen going dark — in that window cancelled the timer: the edit never left the
    * screen. The engine writer keeps a change on this device the moment it is handed over and sends it
-   * itself, hidden page or not, as the plan editor and the board already rely on (`writer.immediate`).
+   * itself, hidden page or not, as the plan editor and the board already rely on.
    *
    * No read first: only this column's section is known here, so the other two go in as the same empty
    * placeholder on both sides of the merge — unchanged — and the document keeps what it holds.
@@ -154,7 +136,7 @@ export function useColumnOutlineState({
     const generation = saveGenerationRef.current + 1;
     saveGenerationRef.current = generation;
     try {
-      // `preferMine`: this view has nowhere to hold a refused plan (as on the legacy path below).
+      // `preferMine`: this view has nowhere to hold a refused plan.
       const saved = await writer.updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
       // A newer edit was handed over meanwhile: its own answer moves the base and the list together.
       if (generation !== saveGenerationRef.current) return;
@@ -174,116 +156,12 @@ export function useColumnOutlineState({
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId) return;
     // Not stopped by the connection icon (owner's rule 3): a save that cannot be sent says so itself.
-    if (writer.immediate) {
-      const sectionType = mapColumnIdToSectionType(id);
-      if (!sectionType) {
-        console.error("Cannot save outline: Invalid section ID", id);
-        return;
-      }
-      void handToEngine(sectionType, updatedPoints);
+    const sectionType = mapColumnIdToSectionType(id);
+    if (!sectionType) {
+      console.error("Cannot save outline: Invalid section ID", id);
       return;
     }
-
-    if (saveTimeoutRef.current) {
-      clearScheduledTask(saveTimeoutRef.current);
-    }
-
-    /**
-     * Which save this is. The `finally` below used to clear whatever sat in the ref,
-     * so a save that started earlier and finished later cancelled the timer of an
-     * edit made SINCE — the text stayed on screen and never reached the server.
-     */
-    const generation = saveGenerationRef.current + 1;
-    saveGenerationRef.current = generation;
-
-    saveTimeoutRef.current = scheduleTask(async () => {
-      try {
-        const sectionType = mapColumnIdToSectionType(id);
-        if (!sectionType) {
-          console.error("Cannot save outline: Invalid section ID", id);
-          return;
-        }
-
-        const currentOutline = await getSermonOutline(sermonId);
-        const outlineToSave: SermonOutline = {
-          introduction:
-            sectionType === "introduction" ? updatedPoints : currentOutline?.introduction || [],
-          main: sectionType === "mainPart" ? updatedPoints : currentOutline?.main || [],
-          conclusion:
-            sectionType === "conclusion" ? updatedPoints : currentOutline?.conclusion || [],
-        };
-
-        /**
-         * WHAT THIS COLUMN STARTED FROM — so the write MERGES by point id instead of
-         * replacing the whole plan.
-         *
-         * Without it a save from this view erased every point the column had never
-         * seen: one added on the phone this morning disappeared when a point was
-         * edited here in the afternoon, silently. The read above does NOT serve as a
-         * base — it is the server's CURRENT state, and comparing the server with
-         * itself always agrees, which is exactly the no-op the guard warns about
-         * (conflictSafeUpdate.client.ts).
-         *
-         * Only THIS column's section carries a real base: the other two are passed
-         * through untouched from the same read, so the merge sees them as unchanged
-         * and keeps whatever is stored.
-         */
-        const openingPoints = baseSectionPointsRef.current;
-        const baseOutline: SermonOutline = {
-          introduction:
-            sectionType === "introduction" ? openingPoints : currentOutline?.introduction || [],
-          main: sectionType === "mainPart" ? openingPoints : currentOutline?.main || [],
-          conclusion:
-            sectionType === "conclusion" ? openingPoints : currentOutline?.conclusion || [],
-        };
-
-        // `preferMine`: this view has nowhere to hold a refused plan, and a refusal here
-        // would become an error toast with the edit lost at the next reload.
-        const request = writer.updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
-        const acceptance = await awaitAcceptance(
-          isBrowserOffline()
-            ? queuedMutation(`outline:${sermonId}`, request)
-            : persistedWrite(request),
-          (error) => toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)))
-        );
-        const saved = acceptance.kind === 'persisted' ? await request : outlineToSave;
-
-        /**
-         * THE BASE AND THE VISIBLE LIST MOVE TOGETHER — OR NOT AT ALL.
-         *
-         * The committed plan can legitimately hold MORE than we sent: a point added
-         * on another device that the merge kept. Taking it into the base while the
-         * list stays local puts the two out of step, and the next edit reads that gap
-         * as an intention — a point in the base and missing from the list means
-         * "deleted here" (`utils/mergeOutline.ts`), so the merge removes the other
-         * device's point for good. The person only ever saw it disappear from screen.
-         *
-         * And nothing is adopted at all once a newer edit has been scheduled: with a
-         * local list that never saw that point, adopting the base alone would delete
-         * it on the next save. Keeping the OLDER base lets the merge re-add it.
-         */
-        if (generation !== saveGenerationRef.current) return;
-        const committedSection = saved?.[SECTION_FIELD_BY_TYPE[sectionType]];
-        const committedPoints = committedSection ?? updatedPoints;
-        baseSectionPointsRef.current = committedPoints;
-        setLocalSermonPoints(committedPoints);
-        // Built here rather than forwarded from the writer: the other two sections
-        // came from the same read that produced `outlineToSave`, and only THIS
-        // section has a committed value worth carrying up.
-        onOutlineUpdate?.({
-          ...outlineToSave,
-          [SECTION_FIELD_BY_TYPE[sectionType]]: committedPoints,
-        });
-      } catch (error) {
-        console.error("Error saving sermon outline:", error);
-        toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)));
-      } finally {
-        // ONLY if no newer save has been scheduled since this one started.
-        if (generation === saveGenerationRef.current) {
-          saveTimeoutRef.current = null;
-        }
-      }
-    }, OUTLINE_SAVE_DEBOUNCE_MS);
+    void handToEngine(sectionType, updatedPoints);
   };
 
   const startAddingNewPoint = () => {

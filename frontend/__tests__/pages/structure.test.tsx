@@ -9,12 +9,19 @@ import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
 import { useStructureDnd } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd';
 
-import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn as baseHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../test-utils/test-providers';
+
+/** The engine-only data hook always hands the page `retry` and `syncFromEngine`; the shared stand-in predates them. */
+const createMockHookReturn = (...args: Parameters<typeof baseHookReturn>) => ({
+  ...baseHookReturn(...args),
+  retry: jest.fn(),
+  syncFromEngine: jest.fn(),
+});
 
 // The page runs on the data engine: it mounts inside the sermon's document provider, over the real
 // engine with only the server and the browser transport replaced. The board's own data hook stays
@@ -45,20 +52,6 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions');
 const mockedUseSermonStructureData = useSermonStructureData as jest.Mock;
 const mockedUseStructureDnd = useStructureDnd as jest.Mock;
 const mockedUseSermonActions = useSermonActions as jest.Mock;
-
-jest.mock('@/services/structure.service', () => ({
-  updateStructure: jest.fn().mockResolvedValue({}),
-}));
-
-jest.mock('@/services/outline.service', () => ({
-  updateSermonOutline: jest.fn().mockResolvedValue({}),
-}));
-
-jest.mock('@/services/thought.service', () => ({
-  updateThought: jest.fn().mockResolvedValue({}),
-  deleteThought: jest.fn().mockResolvedValue({}),
-  createManualThought: jest.fn().mockResolvedValue({ id: 'new-thought', text: 'New thought', tags: [], date: new Date().toISOString() }),
-}));
 
 jest.mock('@/services/sortAI.service', () => ({
   sortItemsWithAI: jest.fn().mockResolvedValue([]),

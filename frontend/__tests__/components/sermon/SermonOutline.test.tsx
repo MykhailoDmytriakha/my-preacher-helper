@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
+import { StructureWriterContext } from '@/components/sermon/structureWriter';
+import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { Sermon, SermonOutline as SermonOutlineType, Thought } from '@/models/models';
 import '@testing-library/jest-dom';
 
@@ -60,14 +62,21 @@ jest.mock('@/providers/ConnectionProvider', () => ({
 
 describe('SermonOutline Component', () => {
   // Define mock functions first
-  const mockGetSermonOutline = jest.fn();
   const mockUpdateSermonOutline = jest.fn();
 
-  // Now, mock the service *inside* the describe block
-  jest.mock('@/services/outline.service', () => ({
-    getSermonOutline: mockGetSermonOutline,
-    updateSermonOutline: mockUpdateSermonOutline
-  }));
+  // The outline is saved through the structure writer (the engine one in the app).
+  const mockStructureWriter: StructureWriter = {
+    updateStructure: jest.fn(),
+    updateThought: jest.fn(),
+    deleteThought: jest.fn(),
+    createManualThought: jest.fn(),
+    updateSermonOutline: (...args) => mockUpdateSermonOutline(...args),
+  };
+  // As a wrapper option, so that rerender() keeps the provider too.
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <StructureWriterContext.Provider value={mockStructureWriter}>{children}</StructureWriterContext.Provider>
+  );
+  const render = (ui: React.ReactElement) => rtlRender(ui, { wrapper });
 
   // Import the component *after* the mock is defined within describe
   // (Ensure this runs after the mock setup)
@@ -104,11 +113,6 @@ describe('SermonOutline Component', () => {
 
   beforeEach(() => {
     // Reset mocks using the variables defined in the describe scope
-    mockGetSermonOutline.mockReset().mockResolvedValue({
-      introduction: [{ id: 'intro1', text: 'Introduction point 1' }],
-      main: [{ id: 'main1', text: 'Main point 1' }],
-      conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
-    });
     mockUpdateSermonOutline.mockReset().mockImplementation(async (_sermonId, outline) => Promise.resolve(outline));
     mockOnOutlineUpdate.mockClear();
     // Clear all mocks might still be useful here to catch unexpected calls
@@ -116,31 +120,22 @@ describe('SermonOutline Component', () => {
     mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
   });
 
-  test('shows the supplied outline immediately even when the SDK read never settles', () => {
-    mockGetSermonOutline.mockImplementation(() => new Promise(() => {}));
+  test('shows the supplied outline immediately without any read', () => {
     render(<SermonOutline sermon={{ ...mockSermon, outline: {
       introduction: [{ id: 'cached', text: 'Already restored point' }], main: [], conclusion: [],
     } }} />);
     expect(screen.getByText('Already restored point')).toBeInTheDocument();
     expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
-    expect(mockGetSermonOutline).not.toHaveBeenCalled();
   });
 
   test('renders with the outline from the supplied sermon', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
     await waitFor(() => {
-      expect(mockGetSermonOutline).not.toHaveBeenCalled();
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
   });
 
   test('displays section thought counts from tags when no outline points exist', async () => {
-    mockGetSermonOutline.mockResolvedValueOnce({
-      introduction: [],
-      main: [],
-      conclusion: []
-    });
-
     const sermonWithTaggedThoughts: Sermon = {
       ...mockSermon,
       thoughts: [
@@ -367,7 +362,6 @@ describe('SermonOutline Component', () => {
     expect(screen.queryByText('Introduction point 1')).not.toBeInTheDocument();
     rerender(<SermonOutline sermon={{ ...mockSermon, id: 'another', outline: undefined }} />);
     expect(screen.queryByText('Updated outline')).not.toBeInTheDocument();
-    expect(mockGetSermonOutline).not.toHaveBeenCalled();
   });
 
   test('preserves typing and its opening merge baseline when the parent refreshes', async () => {
@@ -634,7 +628,6 @@ describe('SermonOutline Component', () => {
         expect(screen.getByTestId('outline-section-introduction')).toBeInTheDocument();
       });
 
-      expect(mockGetSermonOutline).not.toHaveBeenCalled();
       expect(screen.queryByText('Offline intro point')).not.toBeInTheDocument();
       expect(screen.queryByText('Offline main point')).not.toBeInTheDocument();
     } finally {
@@ -643,8 +636,6 @@ describe('SermonOutline Component', () => {
   });
 
   test('renders empty sections when the supplied sermon has no outline', async () => {
-    mockGetSermonOutline.mockResolvedValueOnce(null);
-
     render(<SermonOutline sermon={{ ...mockSermon, outline: undefined }} onOutlineUpdate={mockOnOutlineUpdate} />);
 
     await waitFor(() => {
