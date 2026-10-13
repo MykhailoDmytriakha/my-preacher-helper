@@ -25,6 +25,7 @@ jest.mock('@/components/navigation/DevQuickNav', () => () => null);
 jest.mock('@/components/navigation/PageGestures', () => ({ children }: { children: ReactNode }) => <div>{children}</div>);
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => null }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => null }));
+jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => null }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => null }));
 
 function SermonPage() {

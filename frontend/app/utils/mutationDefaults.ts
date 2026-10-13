@@ -2,13 +2,6 @@ import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
 import {
-  createPlanTemplate,
-  deletePlanTemplate,
-  updatePlanTemplate,
-  type CreatePlanTemplatePayload,
-  type UpdatePlanTemplatePayload,
-} from '@/services/planTemplate.service';
-import {
   addPrayerUpdate,
   createPrayerRequest,
   deletePrayerRequest,
@@ -103,6 +96,15 @@ export const TAG_MUTATION_KEYS = {
   add: ['tags', 'add'] as const,
   remove: ['tags', 'remove'] as const,
   update: ['tags', 'update'] as const,
+};
+
+/**
+ * A collection the engine owns refuses a replayed legacy mutation with the same `data-engine-required`
+ * error its old writer threw first; nothing is written and the text stays in the migration archive.
+ */
+const refuseLegacyReplay = (collection: string) => async (): Promise<never> => {
+  assertLegacyClientWriteAllowed(collection);
+  throw new Error(`${collection} is written only through the data engine`);
 };
 
 export const PLAN_TEMPLATE_MUTATION_KEYS = {
@@ -395,29 +397,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   });
 
   // ---- plan templates ----
-  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.create, {
-    mutationFn: (payload: CreatePlanTemplatePayload) => createPlanTemplate(payload),
-    onSuccess: invalidate(['planTemplates']),
-  });
-  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.update, {
-    // `expectedRevision` MUST survive persistence here too. Destructuring only
-    // {id, updates} silently downgrades a replayed edit to the unguarded path, so
-    // after a reload it would overwrite whatever another device stored meanwhile.
-    mutationFn: ({
-      id,
-      updates,
-      expectedRevision,
-    }: {
-      id: string;
-      updates: UpdatePlanTemplatePayload;
-      expectedRevision?: number | null;
-    }) => updatePlanTemplate(id, updates, expectedRevision ?? null),
-    onSuccess: invalidate(['planTemplates']),
-  });
-  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.delete, {
-    mutationFn: (id: string) => deletePlanTemplate(id),
-    onSuccess: invalidate(['planTemplates']),
-  });
+  // The engine owns plan templates. A paused edit of the previous version replays into the
+  // same refusal its old writer gave; the migration archive keeps its text for the person.
+  for (const key of Object.values(PLAN_TEMPLATE_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('planTemplates') });
+  }
 
   // ---- user settings ----
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, {

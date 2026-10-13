@@ -52,9 +52,11 @@
       "groups": "Group",
       "series": "Series",
       "sermons": "Sermon",
-      "users": "User Settings"
+      "users": "User Settings",
+      "planTemplates": "Structure template"
     },
     "field": {
+      "name": "Name",
       "title": "Title",
       "verse": "Verse",
       "description": "Description",

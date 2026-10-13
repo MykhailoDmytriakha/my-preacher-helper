@@ -11,7 +11,10 @@ import { createIDBPersister } from '@/utils/queryPersister';
 jest.mock('@/utils/queryPersister', () => ({
   createIDBPersister: jest.fn(),
 }));
-jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({ preserveLegacyQueryCache: jest.fn() }));
+jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({
+  ...jest.requireActual('@/data-engine/legacyQueryRecovery.client'),
+  preserveLegacyQueryCache: jest.fn(),
+}));
 
 jest.mock('sonner', () => ({
   toast: Object.assign(jest.fn(), { error: jest.fn() })

@@ -33,6 +33,8 @@ afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   useRemotePeek: () => (...args: unknown[]) => mockServerRead(...args),
+  // The previous-version notice it hosts is covered by LegacyQueryRecovery.test.tsx.
+  LegacyDataRecoveryNotice: () => null,
 }));
 jest.mock('firebase/firestore', () => ({ doc: (_db: unknown, c: string, id: string) => ({ __p: `${c}/${id}` }) }));
 jest.mock('@/services/conflictSafeUpdate.client', () => ({

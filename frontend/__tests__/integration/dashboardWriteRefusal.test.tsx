@@ -36,6 +36,12 @@ const makeApiWriteRefusal = (): Error & { code: string; status: number } =>
 const mockUpdateSermon = jest.fn();
 const mockAddPreachDate = jest.fn();
 
+// The previous-version archive mounts on every deployment; this browser has nothing to keep in it.
+jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({
+  ...jest.requireActual('@/data-engine/legacyQueryRecovery.client'),
+  preserveLegacyQueryCache: jest.fn().mockResolvedValue(undefined),
+  listLegacyQueryCopies: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('@/utils/queryPersister', () => ({
   createIDBPersister: jest.fn(),
 }));
@@ -202,8 +208,9 @@ const renderDashboard = () => {
   );
 };
 
-const openOptions = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+// The previous-version archive gate opens the workspace a tick after render, as in production.
+const openOptions = async () => {
+  fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
 };
 
 describe('dashboard refusal recovery through the real mutation hook', () => {
@@ -228,7 +235,7 @@ describe('dashboard refusal recovery through the real mutation hook', () => {
     mockUpdateSermon.mockRejectedValue(refusal);
     renderDashboard();
 
-    openOptions();
+    await openOptions();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Exact refused sermon title' },
@@ -280,7 +287,7 @@ describe('dashboard refusal recovery through the real mutation hook', () => {
     );
     renderDashboard();
 
-    openOptions();
+    await openOptions();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as preached' }));
     fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-11-19' } });
     fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'Refused Church' } });

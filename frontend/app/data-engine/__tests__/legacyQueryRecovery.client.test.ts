@@ -1,6 +1,6 @@
 import { createStore, get } from 'idb-keyval';
 
-import { compareLegacyCopy, legacyCacheMayBeOverwritten, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
+import { ARCHIVED_COLLECTIONS, compareLegacyCopy, legacyCacheMayBeOverwritten, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes } from '../legacyQueryRecovery.client';
 
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 
@@ -144,6 +144,25 @@ it('archives paused and failed mutation variables even when queries have expired
   expect(await listLegacyQueryCopies('other')).toHaveLength(1);
   await preserveLegacyQueryCache(collection => collection === 'groups');
   expect(await listLegacyQueryCopies('owner')).toHaveLength(2);
+});
+
+// A plan template edit the previous version never sent lives only in its paused mutation: on the
+// engine the old writer refuses it, so this archive is the one place its name and structure survive.
+it('archives the previous version\'s unsent plan template edits with their structure', async () => {
+  installStorageHarness();
+  const structure = { introduction: [{ id: 'p', text: 'Opening point' }], main: [], conclusion: [] };
+  const mutation = (operation: string, variables: unknown) => ({ mutationKey: ['planTemplates', operation], state: { variables, status: 'error', submittedAt: 21, isPaused: false } });
+  const create = mutation('create', { id: 'tpl-new', userId: 'owner', name: 'Advent', structure });
+  const update = mutation('update', { id: 'tpl', userId: 'owner', updates: { name: 'Lent', structure }, expectedRevision: 3 });
+  jest.mocked(get).mockResolvedValue({ clientState: { mutations: [create, update] } });
+  await preserveLegacyQueryCache(collection => collection === 'planTemplates');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => copy.collection)).toEqual(['planTemplates', 'planTemplates']);
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([create, update]);
+});
+
+it('names every collection it archives, plan templates included', () => {
+  expect(ARCHIVED_COLLECTIONS).toEqual(expect.arrayContaining(['councils', 'groups', 'series', 'sermons', 'users', 'planTemplates']));
 });
 
 describe('settings migration input', () => {

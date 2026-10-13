@@ -4,6 +4,7 @@ import { GET as changes } from '@/api/data-engine/changes/[collection]/route';
 import { GET as list } from '@/api/data-engine/collections/[collection]/route';
 import { POST } from '@/api/data-engine/commands/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
+import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
 import { listDocuments, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
@@ -40,19 +41,22 @@ afterAll(() => {
 });
 
 describe('DataEngine HTTP routes', () => {
-  it.each([undefined, 'false', '1'])('keeps every HTTP route disabled unless deployment explicitly opts in: %s', async enabled => {
-    if (enabled === undefined) delete process.env.DATA_ENGINE_ENABLED;
-    else process.env.DATA_ENGINE_ENABLED = enabled;
-    for (const response of [await POST(request()), await read(request(), documentContext), await list(request(), listContext), await changes(request(), listContext)]) {
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({ code: 'data-engine-disabled' });
-      expect(response.headers.get('cache-control')).toBe('no-store');
+  it('serves every route with no switch set, because the engine owns collections in code', async () => {
+    const collections = process.env.DATA_ENGINE_COLLECTIONS;
+    try {
+      delete process.env.DATA_ENGINE_ENABLED;
+      delete process.env.DATA_ENGINE_COLLECTIONS;
+      const owned = ENGINE_OWNED_COLLECTIONS[0];
+      const ownedList = { params: Promise.resolve({ collection: owned }) };
+      const ownedDocument = { params: Promise.resolve({ collection: owned, id: 'document-1' }) };
+      expect((await POST(request())).status).toBe(200);
+      expect((await read(request(), ownedDocument)).status).toBe(200);
+      expect((await list(request(), ownedList)).status).toBe(200);
+      expect((await changes(request(`http://localhost/api/data-engine/changes/${owned}?after=0`), ownedList)).status).toBe(200);
+    } finally {
+      if (collections === undefined) delete process.env.DATA_ENGINE_COLLECTIONS;
+      else process.env.DATA_ENGINE_COLLECTIONS = collections;
     }
-    expect(readCommandBody).not.toHaveBeenCalled();
-    expect(processCommand).not.toHaveBeenCalled();
-    expect(readDocument).not.toHaveBeenCalled();
-    expect(listDocuments).not.toHaveBeenCalled();
-    expect(readCollectionChanges).not.toHaveBeenCalled();
   });
 
   // The client switch alone is not a boundary: a build with one migrated collection

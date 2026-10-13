@@ -16,18 +16,21 @@
  * feed alone (collections.ts).
  *
  * Pure env reading, no transport: both server.ts and legacyBoundary.server.ts ask here, so the
- * two can never disagree about what is served or closed.
+ * two can never disagree about what is served or closed. The collections in
+ * engineOwnedCollections.ts are served and closed on every deployment; the switches only add others.
  */
+import { ENGINE_OWNED_COLLECTIONS, isEngineOwned } from './engineOwnedCollections';
+
 const listed = (value: string | undefined): string[] =>
   (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
 
 /** Whether the protocol is served at all on this deployment. */
 export function isEngineServing(): boolean {
-  return process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).length > 0;
+  return ENGINE_OWNED_COLLECTIONS.length > 0 || process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).length > 0;
 }
 
 export function isCollectionServed(collection: string): boolean {
-  return process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).includes(collection);
+  return isEngineOwned(collection) || process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).includes(collection);
 }
 
 /**
@@ -35,6 +38,7 @@ export function isCollectionServed(collection: string): boolean {
  * nobody able to write, and a misconfiguration must not become an outage.
  */
 export function isClosedToLegacyWriters(collection: string): boolean {
+  if (isEngineOwned(collection)) return true;
   return isCollectionServed(collection) && listed(process.env.DATA_ENGINE_CLOSED_COLLECTIONS).includes(collection);
 }
 

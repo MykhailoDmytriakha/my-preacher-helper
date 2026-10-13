@@ -13,7 +13,7 @@ import { DEFAULT_LANGUAGE } from '@locales/constants';
 import { i18n } from '@locales/i18n';
 
 import {
-  compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
+  ARCHIVED_COLLECTIONS, compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
   type CopyFreshness, type LegacyCopyComparison, type LegacyQueryCopy, type ServerCopyReader,
 } from './legacyQueryRecovery.client';
 import { createIndexedDbSnapshots } from './snapshots.client';
@@ -95,14 +95,15 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
 }
 
 /** Fields whose name the person should read in their own words; any other field shows as stored. */
-const NAMED_FIELDS = new Set(['title', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
+const NAMED_FIELDS = new Set(['title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
   'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
   // Every other field the person writes in councils, groups, series and sermons (models.ts).
   'scratch', 'insights', 'planText', 'planMode', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church',
   'audioChunks', 'audioMetadata', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt']);
-const NAMED_COLLECTIONS = new Set(['councils', 'groups', 'series', 'sermons', 'users']);
+// Every archived collection is shown by name, so each one has a label in legacyRecovery.collection.
+const NAMED_COLLECTIONS = new Set(ARCHIVED_COLLECTIONS);
 
 /** Bookkeeping never differs in words the person wrote; sorted keys keep both sides line-aligned. */
 const HIDDEN_KEYS = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);

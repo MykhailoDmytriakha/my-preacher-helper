@@ -5,6 +5,7 @@ import { useAuth } from '@/providers/AuthProvider';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
 import { DataSyncStatus } from '../DataSyncStatus';
+import { ENGINE_OWNED_COLLECTIONS } from '../engineOwnedCollections';
 import { useRecoveryDiscovery } from '../useRecoveryDiscovery';
 import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
@@ -251,54 +252,46 @@ describe('React DataEngine contract', () => {
     expect(b.browser.engine.openEditor).toHaveBeenCalledWith(other, expect.any(String), expect.anything());
   });
 
-  it('mounts the engine only for an explicitly enabled coordinated cutover', () => {
+  it('mounts the engine on every deployment, because collections are engine-owned in code', () => {
     const original = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    const listed = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     try {
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
-      expect(isDataEngineEnabled()).toBe(false);
-      const disabled = render(<DataEngineWorkspace><p>Legacy workspace</p></DataEngineWorkspace>);
-      expect(screen.getByText('Legacy workspace')).toBeInTheDocument();
-      expect(createBrowserDataEngine).not.toHaveBeenCalled();
-      disabled.unmount();
-      process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'false';
-      expect(isDataEngineEnabled()).toBe(false);
-      process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'true';
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      expect(isDataEngineEnabled()).toBe(true);
       const s = makeEditor(); const b = makeBrowser(s.editor);
       jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
-      const enabled = render(<DataEngineWorkspace><p>Engine workspace</p></DataEngineWorkspace>);
-      expect(isDataEngineEnabled()).toBe(true);
+      const mounted = render(<DataEngineWorkspace><p>Engine workspace</p></DataEngineWorkspace>);
       expect(screen.getByText('Engine workspace')).toBeInTheDocument();
       expect(createBrowserDataEngine).toHaveBeenCalledTimes(1);
-      enabled.unmount();
+      mounted.unmount();
       expect(b.browser.dispose).toHaveBeenCalledTimes(1);
     } finally {
       if (original === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
       else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = original;
+      if (listed === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = listed;
     }
   });
 
-  // A domain migrates as a whole, so the switch has to be per collection: enabling the
-  // engine for a migrated domain must not also route an unmigrated one through it.
-  it('routes only the listed collections through the engine', () => {
+  // A domain migrates as a whole, so the switch is per collection: an engine-owned collection needs
+  // no switch, and a switch adds a collection without routing an unlisted one through the engine.
+  it('routes engine-owned collections through the engine and lets the switches add only the listed ones', () => {
     const enabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
     const collections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     try {
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-      expect(isCollectionOnEngine('councils')).toBe(false);
-      expect(isDataEngineEnabled()).toBe(false);
+      for (const owned of ENGINE_OWNED_COLLECTIONS) expect(isCollectionOnEngine(owned)).toBe(true);
+      expect(isCollectionOnEngine('users')).toBe(false);
 
-      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' councils , prayerRequests ';
-      expect(isCollectionOnEngine('councils')).toBe(true);
-      expect(isCollectionOnEngine('prayerRequests')).toBe(true);
-      expect(isCollectionOnEngine('sermons')).toBe(false);
-      // The workspace still mounts: one migrated collection needs the engine alive.
-      expect(isDataEngineEnabled()).toBe(true);
+      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' users ';
+      expect(isCollectionOnEngine('users')).toBe(true);
+      expect(isCollectionOnEngine('studyNoteShareLinks')).toBe(false);
 
       delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
       process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'true';
-      expect(isCollectionOnEngine('sermons')).toBe(true);
-      expect(isCollectionOnEngine('councils')).toBe(true);
+      expect(isCollectionOnEngine('studyNoteShareLinks')).toBe(true);
     } finally {
       if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
       else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;

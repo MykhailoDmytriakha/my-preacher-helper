@@ -87,9 +87,17 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
 
 const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   groups: ['create', 'update', 'delete'], series: ['create', 'update', 'delete'],
+  planTemplates: ['create', 'update', 'delete'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
+const mutationCollection = (prefix: string): string =>
+  prefix === 'dashboardSermons' ? 'sermons' : prefix === 'user-settings' ? 'users' : prefix;
+/** Every collection whose previous-version copies this archive keeps; the gate mounts when one is on the engine. */
+export const ARCHIVED_COLLECTIONS: readonly string[] = [...new Set([
+  ...Object.values(QUERY_SOURCES).map(source => source.collection),
+  ...Object.keys(MUTATION_OPERATIONS).map(mutationCollection),
+])];
 const textField = (value: unknown): string | null => typeof value === 'string' && value ? value : null;
 function mutationIdentity(collection: string, operation: string, variables: unknown) {
   const fields = object(variables) ? variables : {};
@@ -109,7 +117,7 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
   return mutations.flatMap((mutation): Candidate[] => {
     if (!object(mutation) || !Array.isArray(mutation.mutationKey) || !object(mutation.state)) return [];
     const [prefix, operation] = mutation.mutationKey;
-    const collection = prefix === 'dashboardSermons' ? 'sermons' : prefix === 'user-settings' ? 'users' : String(prefix);
+    const collection = mutationCollection(String(prefix));
     if (mutation.mutationKey.length !== 2 || !MUTATION_OPERATIONS[String(prefix)]?.includes(String(operation)) || !enabled(collection)) return [];
     const { documentId, explicitOwner, title } = mutationIdentity(collection, String(operation), mutation.state.variables);
     const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
@@ -164,7 +172,7 @@ export async function preserveLegacyQueryCache(enabled: (collection: string) => 
 }
 
 async function archiveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
-  if (!['councils', 'groups', 'series', 'sermons', 'users'].some(enabled)) return;
+  if (!ARCHIVED_COLLECTIONS.some(enabled)) return;
   const persisted: unknown = await get('react-query-cache', queryCacheStore);
   if (!object(persisted) || !object(persisted.clientState)) return;
   const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));

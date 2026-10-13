@@ -21,6 +21,12 @@ const mockCreateSermon = jest.fn();
 
 // A real (empty) persister, not `jest.fn()`: the provider calls `restoreClient` on mount,
 // and a persister that is `undefined` takes the whole QueryClient context down with it.
+// The previous-version archive mounts on every deployment; this browser has nothing to keep in it.
+jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({
+  ...jest.requireActual('@/data-engine/legacyQueryRecovery.client'),
+  preserveLegacyQueryCache: jest.fn().mockResolvedValue(undefined),
+  listLegacyQueryCopies: jest.fn().mockResolvedValue([]),
+}));
 jest.mock('@/utils/queryPersister', () => ({
   createIDBPersister: () => ({
     persistClient: async () => undefined,
@@ -130,7 +136,7 @@ describe('dashboard quick-create — a refused sermon is reported ON the dashboa
       </QueryProvider>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'New sermon' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New sermon' }));
 
     fireEvent.change(await screen.findByLabelText('Title'), {
       target: { value: 'Sermon the server refused' },
@@ -182,7 +188,7 @@ describe('dashboard quick-create — a refused sermon is reported ON the dashboa
       </QueryProvider>
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'New sermon' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'New sermon' }));
     fireEvent.change(await screen.findByLabelText('Title'), {
       target: { value: 'Accepted sermon' },
     });

@@ -5,12 +5,9 @@ import React from 'react';
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { createPlanTemplate, deletePlanTemplate, updatePlanTemplate } from '@/services/planTemplate.service';
 
-jest.mock('@/services/planTemplate.service', () => ({ getPlanTemplates: jest.fn(), createPlanTemplate: jest.fn(), updatePlanTemplate: jest.fn(), deletePlanTemplate: jest.fn() }));
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
-  isCollectionOnEngine: (collection: string) => collection === 'planTemplates',
   useDataCollection: jest.fn(),
   useDocumentActions: jest.fn(),
 }));
@@ -46,7 +43,6 @@ describe('plan templates on the engine', () => {
     expect(current).toEqual(expect.objectContaining({ name: 'Advent 2026' }));
     await act(async () => { await result.current.deleteTemplate('tpl').persistence; });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'planTemplates', id: 'tpl' });
-    expect(createPlanTemplate).not.toHaveBeenCalled(); expect(updatePlanTemplate).not.toHaveBeenCalled(); expect(deletePlanTemplate).not.toHaveBeenCalled();
   });
 
   it('refuses an edit built from an older revision with the revision the template holds now', async () => {

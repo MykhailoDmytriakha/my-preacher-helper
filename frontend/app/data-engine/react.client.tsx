@@ -13,7 +13,7 @@ import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
-import { isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
+import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { mergeFields } from './protocol';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -149,13 +149,13 @@ export function shouldPersistLegacyQuery(queryKey: readonly unknown[]): boolean 
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return (['councils', 'groups', 'series', 'sermons', 'users'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  return ARCHIVED_COLLECTIONS.some(isCollectionOnEngine) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
 export function LegacyDataRecoveryNotice() {
   const { user } = useAuth();
-  return user?.uid && (['councils', 'groups', 'series', 'sermons', 'users'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
+  return user?.uid && ARCHIVED_COLLECTIONS.some(isCollectionOnEngine) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */

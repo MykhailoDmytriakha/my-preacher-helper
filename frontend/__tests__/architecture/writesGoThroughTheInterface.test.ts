@@ -68,7 +68,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   'services/sermons.client.ts': 10,
   'services/groups.service.ts': 3,
   'services/atomicUpdate.client.ts': 3,
-  'services/planTemplates.client.ts': 2,
   'services/prayerRequests.client.ts': 2,
   'services/series.service.ts': 2,
   // A cross-series move, deliberately all-or-nothing — and invisible to this test until

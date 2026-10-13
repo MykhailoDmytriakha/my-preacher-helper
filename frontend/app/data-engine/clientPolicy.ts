@@ -1,12 +1,16 @@
+import { ENGINE_OWNED_COLLECTIONS, isEngineOwned } from './engineOwnedCollections';
+
 /** Public, transport-free activation policy for React views and legacy compatibility facades. */
 const listed = (value: string | undefined): string[] => (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
 
 export function isCollectionOnEngine(collection: string): boolean {
-  return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
+  return isEngineOwned(collection)
+    || process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
     || listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).includes(collection);
 }
 export function isDataEngineEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
+  return ENGINE_OWNED_COLLECTIONS.length > 0
+    || process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
     || listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).length > 0;
 }
 
