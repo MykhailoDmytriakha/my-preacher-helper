@@ -40,7 +40,6 @@ const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
 interface UseManualConspectusParams {
   sermon: Sermon | null;
   mode?: 'manual' | 'note';
-  setSermon: (updater: (previous: Sermon | null) => Sermon | null) => unknown;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -73,7 +72,6 @@ const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclus
 
 export function useManualConspectus({
   sermon,
-  setSermon,
   t,
   mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
@@ -235,45 +233,12 @@ export function useManualConspectus({
     const currentSermon = sermonRef.current;
     if (!currentSermon) return;
 
-    /**
-     * THE MIRROR HOLDS WHAT STORAGE HOLDS — the stored map plus what was just written, and
-     * NOT the merged read. Folding the legacy cells in made every one of them look written
-     * the moment anything was saved, and `renderPlanWithFallback` reads exactly that to
-     * decide whether a section is still being served from its old assembled string: one save
-     * anywhere turned the fallback off everywhere, and untouched old sections went blank.
-     */
-    const mirror = () => setSermon((previous) => {
-      if (!previous) return previous;
-      const nextText = { ...(previous.planText ?? {}), ...changedText };
-      removedNodeIds.forEach((nodeId) => { delete nextText[nodeId]; });
-      return { ...previous, planText: nextText };
+    // The engine writer lays the text into the document the screen renders; a cell whose write
+    // is still queued keeps judging by its last confirmed baseline (`pendingPlanTextNodeIds`).
+    await planWriter.savePlanText(currentSermon.id, changedText, removedNodeIds, {
+      userId: currentSermon.userId,
+      baselineByNodeId: baseline.forNodes(Object.keys(changedText)),
     });
-
-    /**
-     * A QUEUED WRITE IS MIRRORED TOO — and the baseline is what keeps that honest.
-     *
-     * Not mirroring it was tried, and it cost text: after closing and reopening offline the
-     * screen showed the OLD paragraph, so the person rewrote it blind, and the replay then
-     * buried the version written on the train without a word to anyone. Mirroring alone was
-     * also wrong — `adopt` reads this map to decide what the SERVER holds, so the screen began
-     * vouching for words no server had seen, and a later refusal became inescapable.
-     *
-     * Both are answered by holding the baseline for cells whose write is still queued
-     * (`pendingPlanTextNodeIds`): the screen shows what was written, and the guard keeps
-     * judging by the last thing the server actually confirmed.
-     */
-    try {
-      await planWriter.savePlanText(currentSermon.id, changedText, removedNodeIds, {
-        userId: currentSermon.userId,
-        baselineByNodeId: baseline.forNodes(Object.keys(changedText)),
-      });
-    } catch (error) {
-      if (isOfflineQueuedError(error)) {
-        refreshPending();
-        await mirror();
-      }
-      throw error;
-    }
 
     /**
      * THE FIRST SAVE FROM THIS EDITOR RECORDS THAT THE PLAN LIVES HERE.
@@ -285,7 +250,6 @@ export function useManualConspectus({
      */
     if (!currentSermon.planMode) {
       planWriter.savePlanMode(currentSermon.id, mode)
-        .then(() => setSermon((previous) => (previous ? { ...previous, planMode: mode } : previous)))
         .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
     }
 
@@ -299,8 +263,7 @@ export function useManualConspectus({
      */
     Object.keys(changedText).forEach((nodeId) => { delete contestedRef.current[nodeId]; });
     refreshPending();
-    await mirror();
-  }, [baseline, mode, planWriter, refreshPending, setSermon]);
+  }, [baseline, mode, planWriter, refreshPending]);
 
   /**
    * Marks as saved only the nodes whose text still matches what was actually sent, and
@@ -501,24 +464,17 @@ export function useManualConspectus({
       confirmedOutlineRef.current = currentSermon.outline ?? null;
     }
     const baseOutline = confirmedOutlineRef.current;
-    const previousOutline = currentSermon.outline;
-
-    await setSermon((previous) => (previous ? { ...previous, outline: nextOutline } : previous));
 
     try {
       const saved = await planWriter.updateSermonOutline(currentSermon.id, nextOutline, baseOutline, "preferMine");
-      if (saved) {
-        confirmedOutlineRef.current = saved;
-        await setSermon((previous) => (previous ? { ...previous, outline: saved } : previous));
-      }
+      if (saved) confirmedOutlineRef.current = saved;
       return true;
     } catch (error) {
       debugLog("Manual plan outline write failed", { sermonId: currentSermon.id, error });
-      await setSermon((previous) => (previous ? { ...previous, outline: previousOutline } : previous));
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveOutline")));
       return false;
     }
-  }, [planWriter, setSermon, t]);
+  }, [planWriter, t]);
 
   /**
    * A DELETED NODE MUST NOT KEEP THOUGHTS ATTACHED TO IT — the structure editor detaches
@@ -540,15 +496,11 @@ export function useManualConspectus({
       ? { ...thought, outlinePointId: null, subPointId: null }
       : { ...thought, subPointId: null });
 
-    void setSermon((previous) => (previous
-      ? { ...previous, thoughts: previous.thoughts.map((thought) => (matches(thought) ? detach(thought) : thought)) }
-      : previous));
-
     affected.forEach((thought) => {
       planWriter.updateThought(currentSermon.id, detach(thought) as typeof thought, thought)
         .catch((error) => debugLog("Detaching a thought from a deleted node failed", { id: thought.id, error }));
     });
-  }, [planWriter, setSermon]);
+  }, [planWriter]);
 
   const sectionOfPoint = useCallback((pointId: string): SermonSectionKey | null => {
     const outline = sermonRef.current?.outline;

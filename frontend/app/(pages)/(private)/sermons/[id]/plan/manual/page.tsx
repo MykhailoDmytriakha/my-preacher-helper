@@ -285,10 +285,10 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
-  const { sermon, setSermon, loading, error } = source;
+  const { sermon, loading, error } = source;
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
-  const conspectus = useManualConspectus({ sermon, setSermon, t, mode: noteMode ? 'note' : 'manual' });
+  const conspectus = useManualConspectus({ sermon, t, mode: noteMode ? 'note' : 'manual' });
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
   /**
@@ -493,7 +493,6 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
         t={t}
         onLeave={guardUnsavedNavigation}
         beforeSwitch={conspectus.saveModified}
-        onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
         onRequestPlanOverlay={openOverlay}
         onRequestPreachingMode={openPreaching}
         onStartPreachingMode={openPreaching}

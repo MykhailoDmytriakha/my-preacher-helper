@@ -4,7 +4,7 @@ import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 
-import { isCollectionServed, isEngineServing, isLegacyOpen } from './activation';
+import { isCollectionServed, isLegacyOpen } from './activation';
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
@@ -31,13 +31,10 @@ export class DataEngineServerError extends Error {
 }
 
 /**
- * The HTTP protocol remains opt-in while legacy writers, rules and domain policies
- * are being migrated. This deployment gate is not a replacement for that migration.
- * Trusted server adapters can exercise processCommand without exposing a public API,
- * but every collection in a new effect must still be explicitly served.
+ * The protocol is always served (the engine owns collections in code, engineOwnedCollections.ts);
+ * every collection in a new effect must still be explicitly served.
  */
 export function assertDataEngineEnabled(collection?: string): void {
-  if (!isEngineServing()) throw new DataEngineServerError('data-engine-disabled', 503);
   // A domain migrates as a whole, so the deployment lists the collections it owns. The engine's
   // own bookkeeping is not one of them: change heads are how a client learns that any migrated
   // collection moved, and gating them behind the same list would leave it deaf to its own domain.

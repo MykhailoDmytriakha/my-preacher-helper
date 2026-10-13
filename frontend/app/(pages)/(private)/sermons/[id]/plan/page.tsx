@@ -186,7 +186,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
 
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = source;
+  const { sermon, loading: isLoadingRaw, error: sermonError } = source;
   /** What the server held for each plan cell when this screen took it — see `planTextBaseline.ts`. */
   const planTextBaseline = usePlanTextBaseline(sermon?.id);
 
@@ -625,45 +625,10 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
       ...Object.fromEntries(settled.map((nodeId) => [nodeId, false])),
     }));
 
-    /**
-     * The saved text goes into `planText`, and the document on screen is rebuilt from it.
-     * Previously this also stored an assembled string per section — the copy that then had
-     * to be kept in step by hand, and drifted whenever anything else changed.
-     *
-     * A QUEUED WRITE IS MIRRORED TOO, and the baseline is what keeps that honest. Leaving it
-     * out meant that after reopening offline the screen showed the OLDER paragraph, so the
-     * person rewrote it blind and the replay buried the first version. Mirroring alone was also
-     * wrong, because `adopt` reads this map as "what the server holds". Both are answered by
-     * holding the baseline for cells whose write is still queued (`usePendingPlanCells`).
-     */
+    // The engine writer laid the saved text into the document, which is what the screen renders;
+    // cells whose write is still queued keep their baseline (`usePendingPlanCells`).
     pendingPlanCells.refresh();
-
-    await setSermon((prevSermon) => (prevSermon
-      ? {
-          ...prevSermon,
-          planText: {
-            /**
-             * THE STORED MAP, NOT THE MERGED READ. `readPlanText` lays the new cells over the
-             * legacy ones so the screen has something to show; copying that result back into
-             * `planText` made every legacy cell look WRITTEN after any save at all. That flag
-             * is what `renderPlanWithFallback` consults before serving an old sermon's
-             * assembled section, so one save blanked every section nobody had touched yet.
-             */
-            ...(prevSermon.planText ?? {}),
-            /**
-             * Mirror EXACTLY what was written — `sentText` — not the editor's current value.
-             *
-             * Reading `generatedContent` here was the second stale closure: the callback
-             * holds the map as it was when it was built, so a successful save could put an
-             * OLD (often empty) value into the local sermon. The seeding effect then saw a
-             * clean cell and replaced the screen with it, and the next save wrote that back
-             * over the correct text on the server.
-             */
-            ...Object.fromEntries(savedNodeIds.map((nodeId) => [nodeId, sentText?.[nodeId] ?? ""])),
-          },
-        }
-      : null));
-  }, [setSermon, pendingPlanCells]);
+  }, [pendingPlanCells]);
 
   const {
     generateSermonPointContent,
@@ -724,19 +689,6 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
       thoughtBaselinesRef.current[thoughtId] = previousThought;
     }
 
-    // Optimistic (React Query cache via setSermon): show the edit immediately;
-    // the client-SDK write lands in the native Firestore offline queue.
-    setSermon((prevSermon) =>
-      prevSermon
-        ? {
-            ...prevSermon,
-            thoughts: prevSermon.thoughts.map((thought) =>
-              thought.id === thoughtId ? updatedThought : thought
-            ),
-          }
-        : prevSermon
-    );
-
     const executeSave = async (requestVersion: number) => {
       const latestThought = latestThoughtDraftsRef.current[thoughtId];
       const latestSermon = sermonRef.current;
@@ -756,16 +708,6 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         // CONFIRMED: this is now what the screen knows to be stored.
         thoughtBaselinesRef.current[thoughtId] = savedThought;
 
-        setSermon((prevSermon) => {
-          if (!prevSermon) return prevSermon;
-          return {
-            ...prevSermon,
-            thoughts: prevSermon.thoughts.map((thought) =>
-              thought.id === savedThought.id ? savedThought : thought
-            ),
-          };
-        });
-
         delete latestThoughtDraftsRef.current[thoughtId];
         delete thoughtSaveVersionRef.current[thoughtId];
         return savedThought;
@@ -773,27 +715,14 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         if (thoughtSaveVersionRef.current[thoughtId] !== requestVersion) {
           throw error;
         }
-        // Roll the cache back to the pre-edit thought and surface the failure
-        // (replaces the old inline sync-error badge).
-        if (previousThought) {
-          setSermon((prevSermon) =>
-            prevSermon
-              ? {
-                  ...prevSermon,
-                  thoughts: prevSermon.thoughts.map((thought) =>
-                    thought.id === thoughtId ? previousThought : thought
-                  ),
-                }
-              : prevSermon
-          );
-        }
+        // The engine keeps the document; the failure is said here.
         toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveThought")));
         throw error;
       }
     };
 
     return persistedWrite(executeSave(saveVersion));
-  }, [planWriter, setSermon, t]);
+  }, [planWriter, t]);
 
   // Find outline point by id
   const findSermonPointById = useCallback((outlinePointId: string): SermonPoint | undefined => {
@@ -1135,7 +1064,6 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         mode="ai"
         combinedPlan={combinedPlan}
         t={t}
-        onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
         onRequestPlanOverlay={handleOpenPlanOverlay}
         onRequestPreachingMode={handleOpenTimePicker}
         onStartPreachingMode={handleStartPreachingMode}

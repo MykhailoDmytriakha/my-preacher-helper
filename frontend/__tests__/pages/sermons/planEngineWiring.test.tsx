@@ -24,7 +24,7 @@ describe('the hand-written plan on the engine', () => {
       updateSermonOutline: jest.fn(),
     };
     const wrapper = ({ children }: { children: React.ReactNode }) => <PlanWriterContext.Provider value={writer}>{children}</PlanWriterContext.Provider>;
-    const { result } = renderHook(() => useManualConspectus({ sermon, setSermon: jest.fn(), t: ((key: string) => key) as never }), { wrapper });
+    const { result } = renderHook(() => useManualConspectus({ sermon, t: ((key: string) => key) as never }), { wrapper });
     act(() => { result.current.setNodeContent('p1', 'Typed here'); });
     await act(async () => { await result.current.savePoint('p1', 'introduction', ['p1']); });
     expect(writer.savePlanText).toHaveBeenCalledWith('sermon-1', { p1: 'Typed here' }, expect.any(Array),

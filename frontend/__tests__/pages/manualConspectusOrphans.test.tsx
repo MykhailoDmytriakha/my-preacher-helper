@@ -29,7 +29,7 @@ describe('saving everything while a card has vanished', () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
   it('writes only the cards that still exist and reports that not everything was saved', async () => {
-    const { result } = renderHook(() => useManualConspectus({ sermon, setSermon: jest.fn(), t: (key: string) => key }), { wrapper });
+    const { result } = renderHook(() => useManualConspectus({ sermon, t: (key: string) => key }), { wrapper });
     act(() => { result.current.restoreCells({ p1: 'Kept card', gone: 'Text of a removed point' }); });
     let saved: boolean | undefined;
     await act(async () => { saved = await result.current.saveModified(); });
@@ -47,7 +47,7 @@ describe('saving everything while a card has vanished', () => {
    * does not list it, so there is no control to decide with. It must not hold departure.
    */
   it('lets an emptied card of a removed point go instead of holding departure', async () => {
-    const { result } = renderHook(() => useManualConspectus({ sermon, setSermon: jest.fn(), t: (key: string) => key }), { wrapper });
+    const { result } = renderHook(() => useManualConspectus({ sermon, t: (key: string) => key }), { wrapper });
     act(() => { result.current.restoreCells({ gone: '   ' }); });
     let saved: boolean | undefined;
     await act(async () => { saved = await result.current.saveModified(); });

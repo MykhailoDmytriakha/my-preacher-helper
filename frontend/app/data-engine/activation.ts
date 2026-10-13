@@ -19,15 +19,10 @@
  * two can never disagree about what is served or closed. The collections in
  * engineOwnedCollections.ts are served and closed on every deployment; the switches only add others.
  */
-import { ENGINE_OWNED_COLLECTIONS, isEngineOwned } from './engineOwnedCollections';
+import { isEngineOwned } from './engineOwnedCollections';
 
 const listed = (value: string | undefined): string[] =>
   (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
-
-/** Whether the protocol is served at all on this deployment. */
-export function isEngineServing(): boolean {
-  return ENGINE_OWNED_COLLECTIONS.length > 0 || process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).length > 0;
-}
 
 export function isCollectionServed(collection: string): boolean {
   return isEngineOwned(collection) || process.env.DATA_ENGINE_ENABLED === 'true' || listed(process.env.DATA_ENGINE_COLLECTIONS).includes(collection);

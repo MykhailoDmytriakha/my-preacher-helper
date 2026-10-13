@@ -6,14 +6,12 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 import type { Sermon } from '@/models/models';
 
-type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
-
 /**
  * The sermon a plan screen shows, read from the engine document. Render inside the sermon's
  * DataDocumentProvider so the screen and its writer share one editor.
  *
- * `setSermon` does nothing on purpose: an engine write changes the draft at once, and that draft
- * is what the screen renders, so a legacy optimistic mirror would only be a second, stale copy.
+ * There is no setter: an engine write changes the draft at once, and that draft is what the
+ * screen renders, so a screen-side mirror would only be a second, stale copy.
  */
 export function useEngineSermonSource(sermonId: string) {
   const document = useDataDocument({ collection: 'sermons', id: sermonId });
@@ -22,14 +20,13 @@ export function useEngineSermonSource(sermonId: string) {
   const sermon = useMemo(() => document.data
     ? ({ ...document.data, id: sermonId, thoughts: document.data.thoughts ?? [] } as unknown as Sermon)
     : null, [document.data, sermonId]);
-  const setSermon = useCallback(async (_updater: SermonUpdater) => undefined, []);
   const refreshSermon = useCallback(async () => { await document.retry().catch(() => undefined); }, [document]);
   // `error` means "could not load". A sermon on the screen has loaded; the
   // document's own later failures (a save, a refusal) are said by DataSyncStatus above the page, and
   // must not turn the page into an error screen (BUG-20260927-engine-background-error-sticks-on-every-screen).
   const error = useMemo(() => document.error && !sermon ? new Error(document.error) : null, [document.error, sermon]);
   return {
-    sermon, setSermon, loading: document.loading, error, isOnline,
+    sermon, loading: document.loading, error, isOnline,
     awaitingFirstAnswer: document.loading, refreshSermon,
     getSortedThoughts: () => [...(sermon?.thoughts ?? [])],
     document,

@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 
-import { isClosedToLegacyWriters, isCollectionServed, isEngineServing, isLegacyOpen } from '../activation';
+import { isClosedToLegacyWriters, isCollectionServed, isLegacyOpen } from '../activation';
 import { isCollectionOnEngine } from '../clientPolicy';
 import { ENGINE_OWNED_COLLECTIONS } from '../engineOwnedCollections';
 
@@ -23,7 +23,6 @@ describe('collections the engine owns in code', () => {
 
   it('serves and closes every owned collection on a deployment with no switch set, in the browser and on the server', () => {
     for (const key of SWITCHES) expect(process.env[key]).toBeUndefined();
-    expect(isEngineServing()).toBe(true);
     for (const owned of ENGINE_OWNED_COLLECTIONS) {
       expect(isCollectionOnEngine(owned)).toBe(true);
       expect(isCollectionServed(owned)).toBe(true);

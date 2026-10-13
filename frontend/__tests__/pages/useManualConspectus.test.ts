@@ -89,16 +89,9 @@ const sermonWithTwoPoints = (): Sermon => ({
 } as unknown as Sermon);
 
 const renderConspectus = (sermon: Sermon) => {
-  let current = sermon;
-  const setSermon = jest.fn((updater: (previous: Sermon | null) => Sermon | null) => {
-    const next = updater(current);
-    if (next) current = next;
-    return next;
-  });
   const t = (key: string) => key;
-
-  const view = renderHook(() => useManualConspectus({ sermon: current, setSermon, t }), { wrapper });
-  return { view, setSermon, latest: () => current };
+  const view = renderHook(() => useManualConspectus({ sermon, t }), { wrapper });
+  return { view };
 };
 
 beforeEach(() => {
@@ -482,25 +475,6 @@ describe('useManualConspectus states what it started from', () => {
    * exactly that flag before serving an old sermon's assembled section — so one save blanked
    * every section nobody had touched yet.
    */
-  it('never folds the legacy cells into the stored map', async () => {
-    const legacy = {
-      ...sermonWithTwoPoints(),
-      planText: {},
-      plan: {
-        introduction: { outline: 'Old assembled introduction', outlinePoints: { 'point-b': 'Old B' } },
-        main: { outline: '', outlinePoints: {} },
-        conclusion: { outline: '', outlinePoints: {} },
-      },
-    } as unknown as Sermon;
-    const { view, latest } = renderConspectus(legacy);
-
-    act(() => { view.result.current.setNodeContent('point-a', 'New A'); });
-    await act(async () => {
-      await view.result.current.savePoint('point-a', 'introduction', ['point-a']);
-    });
-
-    expect(latest().planText).toEqual({ 'point-a': 'New A' });
-  });
 });
 
 /**
@@ -677,7 +651,7 @@ describe('useManualConspectus when there is no connection', () => {
    */
   it('keeps the queued text on screen', async () => {
     queueOffline();
-    const { view, latest } = renderConspectus(sermonWithText());
+    const { view } = renderConspectus(sermonWithText());
 
     act(() => { view.result.current.setNodeContent('point-1', 'Written on the train'); });
     await act(async () => {
@@ -685,7 +659,6 @@ describe('useManualConspectus when there is no connection', () => {
     });
 
     expect(view.result.current.contentByNodeId['point-1']).toBe('Written on the train');
-    expect(latest().planText?.['point-1']).toBe('Written on the train');
   });
 
   /**
