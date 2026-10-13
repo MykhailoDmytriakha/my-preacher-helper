@@ -103,9 +103,11 @@ describe('useSermonActions', () => {
     await act(async () => { await result.current.handleSaveEdit('new text', ['tag1']); });
 
     // The thought is created with a client-minted id (not a "local-" placeholder).
+    // The column it was added in travels with it, so the document places it there whatever its tags.
     expect(thoughtService.createManualThought).toHaveBeenCalledWith(
       'sermon-1',
       expect.objectContaining({ text: 'new text', tags: ['tag1'] }),
+      'introduction',
     );
     const createdArg = (thoughtService.createManualThought as jest.Mock).mock.calls[0][1];
     expect(createdArg.id).not.toMatch(/^local-/);
@@ -157,6 +159,7 @@ describe('useSermonActions', () => {
         outlinePointId: 'op-1',
         subPointId: 'sp-1',
       }),
+      'main',
     );
 
     // The optimistic UI item added to the container carries the sub-point id.

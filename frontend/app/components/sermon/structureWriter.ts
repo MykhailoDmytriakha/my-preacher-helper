@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 
 import type { SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
+import type { StructureSectionId } from '@/utils/structureTags';
 
 /**
  * EVERY WRITE THE STRUCTURE SCREEN MAKES, BEHIND ONE SEAM.
@@ -14,7 +15,8 @@ export interface StructureWriter {
   updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null): Promise<unknown>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
   deleteThought(sermonId: string, thought: Thought): Promise<void>;
-  createManualThought(sermonId: string, thought: Thought): Promise<Thought>;
+  /** `section`: the column it was added in, where it is placed whatever its tags. */
+  createManualThought(sermonId: string, thought: Thought, section?: StructureSectionId): Promise<Thought>;
   updateSermonOutline(sermonId: string, outline: SermonOutline, baseOutline?: SermonOutline | null,
     onCollision?: 'refuse' | 'preferMine'): Promise<SermonOutline | null>;
 }

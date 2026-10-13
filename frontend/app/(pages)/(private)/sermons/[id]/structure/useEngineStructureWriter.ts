@@ -68,7 +68,7 @@ export function createEngineStructureWriter(document: Pick<SermonDocument, 'upda
       return { next, result: next.thoughts.find(item => item.id === thought.id) ?? thought };
     }),
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
-    createManualThought: (_sermonId, thought) => edit(current => ({ next: addSermonThought(current, thought), result: thought })),
+    createManualThought: (_sermonId, thought, section) => edit(current => ({ next: addSermonThought(current, thought, section), result: thought })),
     updateSermonOutline: (_sermonId, outline, baseOutline, onCollision) => edit(current => {
       const merged = mergeOutline(baseOutline ?? null, outline, current.outline ?? null, onCollision === 'preferMine');
       // The same error the legacy writer raises, so an editor's "keep mine / take theirs" works on the engine too.

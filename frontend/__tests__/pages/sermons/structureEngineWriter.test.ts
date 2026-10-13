@@ -51,6 +51,23 @@ describe('structure writes on an engine document', () => {
     expect((state.current!.thoughts as unknown as Thought[]).map(item => item.id)).not.toContain('a');
   });
 
+  it('creates a thought added in a column in that column, though it carries no section tag', async () => {
+    // The board's "add thought" in a column: the thought has no tag, the column is its place. The
+    // document placed it by tags alone (under review), and the board, rebuilt from the document
+    // before its follow-up structure save, then saved it there too. It must be born in its column.
+    const { state, writer } = draft({ ...base(), thoughts: [], structure: undefined, thoughtsBySection: undefined } as unknown as DocumentData);
+    await writer.createManualThought('s1', thought('c', 'From the introduction column'), 'introduction');
+    const sections = state.current!.structure as unknown as ThoughtsBySection;
+    expect(sections.introduction).toEqual(['c']);
+    expect(sections.ambiguous ?? []).not.toContain('c');
+  });
+
+  it('still places a thought created without a column by its tags', async () => {
+    const { state, writer } = draft(base());
+    await writer.createManualThought('s1', thought('c', 'Tagged main', { tags: ['main'] }));
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toContain('c');
+  });
+
   it('keeps the two sections a board column never read when it hands over its own (BUG-20261010-column-outline-save-cancelled-on-leave)', async () => {
     // The column knows only its section; the other two go in as the same empty placeholder on both
     // sides of the merge, so the document's points there must survive the edit.

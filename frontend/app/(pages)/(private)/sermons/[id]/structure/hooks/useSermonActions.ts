@@ -291,7 +291,7 @@ export function useSermonActions({
 
         const persistence = (async () => {
             try {
-                const addedThought = await writer.createManualThought(currentSermon.id, newThought);
+                const addedThought = await writer.createManualThought(currentSermon.id, newThought, sectionId);
 
                 // The client SDK echoes the id (no-op). A server fallback that mints a
                 // different id is reconciled here: swap temp->real in the container item,

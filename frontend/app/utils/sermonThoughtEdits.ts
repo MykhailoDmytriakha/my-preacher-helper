@@ -1,6 +1,6 @@
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/structureTags';
+import { getCanonicalTagForSection, normalizeStructureTag, type StructureSectionId } from '@/utils/structureTags';
 import { findThoughtSectionInStructure, insertThoughtIdInStructure, removeThoughtIdFromStructure, resolveSectionForNewThought } from '@/utils/thoughtOrdering';
 
 import type { Sermon, SermonOutline, Thought } from '@/models/models';
@@ -9,21 +9,25 @@ export type ThoughtFieldPatch = Partial<Omit<Thought, 'id'>>;
 const fields = new Set(['text', 'tags', 'date', 'outlinePointId', 'subPointId', 'position', 'isLocked', 'keyFragments']);
 
 /** Pure domain transforms; persistence, ancestors and conflict resolution belong to DataEngine. */
-const withPlacement = (current: Sermon, thought: Thought, thoughts: Thought[]): Sermon => {
-  const section = resolveSectionForNewThought({ sermon: current, outlinePointId: thought.outlinePointId, tags: thought.tags });
+const withPlacement = (current: Sermon, thought: Thought, thoughts: Thought[], intended?: StructureSectionId): Sermon => {
+  const section = intended ?? resolveSectionForNewThought({ sermon: current, outlinePointId: thought.outlinePointId, tags: thought.tags });
   const structure = insertThoughtIdInStructure({
     structure: current.structure ?? current.thoughtsBySection, section, thoughtId: thought.id,
     outlinePointId: thought.outlinePointId, thoughts, thoughtsById: new Map(thoughts.map(item => [item.id, item])), outline: current.outline,
   });
   return { ...current, thoughts, structure, thoughtsBySection: structure };
 };
-export const addSermonThought = (current: Sermon, thought: Thought): Sermon => {
+/**
+ * `section` is where the person put it — a board column. Without one the thought is placed by its
+ * outline point and tags; a tagless thought added in a column would otherwise land under review.
+ */
+export const addSermonThought = (current: Sermon, thought: Thought, section?: StructureSectionId): Sermon => {
   const existing = current.thoughts.find(item => item.id === thought.id);
   if (existing) {
     if (contentFingerprint(existing) !== contentFingerprint(thought)) throw new Error('A different thought already uses this ID');
     return current;
   }
-  return withPlacement(current, thought, [thought, ...current.thoughts]);
+  return withPlacement(current, thought, [thought, ...current.thoughts], section);
 };
 export const patchSermonThought = (current: Sermon, id: string, patch: ThoughtFieldPatch): Sermon => {
   if (Object.keys(patch).some(key => !fields.has(key))) throw new Error('Unsupported thought field');
