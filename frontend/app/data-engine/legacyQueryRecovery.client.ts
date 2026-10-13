@@ -104,9 +104,11 @@ const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   prayerRequests: ['create', 'update', 'delete', 'addUpdate', 'status'],
   'study-notes': ['create', 'update', 'delete'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
+  // The calendar's own queue (usePreachDates before fd842c4d): a date's church, audience and notes.
+  preachDates: ['add', 'update', 'delete'],
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
-const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes' };
+const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', preachDates: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes' };
 const mutationCollection = (prefix: string): string => MUTATION_COLLECTIONS[prefix] ?? prefix;
 /** Every collection whose previous-version copies this archive keeps; the gate mounts when one is on the engine. */
 export const ARCHIVED_COLLECTIONS: readonly string[] = [...new Set([

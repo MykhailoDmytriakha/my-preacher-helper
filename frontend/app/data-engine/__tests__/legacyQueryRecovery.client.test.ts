@@ -344,6 +344,25 @@ it('archives sermon list, owner-scoped detail, calendar and every paused dashboa
   expect(await listLegacyQueryCopies('owner')).toHaveLength(9);
 });
 
+// The previous version queued a preach date under its own key; the church, audience and notes typed
+// there exist only in the paused mutation, and its replay is now refused (mutationDefaults.ts).
+it('archives the previous version\'s unsent preach dates under their sermon, owner from its cached list', async () => {
+  installStorageHarness();
+  const date = { id: 'pd', date: '2026-10-04', status: 'preached', church: { id: 'c', name: 'Grace Church', city: 'Kyiv' }, audience: 'Youth', notes: 'Spoke longer than planned' };
+  const mutations = [
+    { mutationKey: ['preachDates', 'add'], state: { isPaused: true, submittedAt: 5, variables: { sermonId: 's', data: date } } },
+    { mutationKey: ['preachDates', 'update'], state: { isPaused: true, submittedAt: 6, variables: { sermonId: 's', dateId: 'pd', updates: { notes: 'Second service too' } } } },
+    { mutationKey: ['preachDates', 'delete'], state: { isPaused: true, submittedAt: 7, variables: { sermonId: 's', dateId: 'old' } } },
+  ];
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [
+    { queryKey: ['sermons', 'owner'], state: { data: [{ id: 's', userId: 'owner', title: 'Sermon' }] } },
+  ], mutations } });
+  await preserveLegacyQueryCache(collection => collection === 'sermons');
+  const copies = (await listLegacyQueryCopies('owner')).filter(copy => JSON.parse(copy.raw).mutationKey?.[0] === 'preachDates');
+  expect(copies.map(copy => [copy.collection, copy.documentId])).toEqual([['sermons', 's'], ['sermons', 's'], ['sermons', 's']]);
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual(mutations);
+});
+
 describe('which legacy queries the persisted cache may keep', () => {
   const { isEngineOwnedLegacyQuery } = jest.requireActual('../legacyQueryRecovery.client') as typeof import('../legacyQueryRecovery.client');
   const onEngine = (collection: string) => collection === 'sermons';
