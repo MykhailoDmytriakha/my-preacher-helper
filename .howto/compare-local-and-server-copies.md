@@ -18,8 +18,8 @@ These compatibility paths are not templates for new features.
 
 - `serverCopyIsNewer(server, stored)` walks EVERY aggregate counter in `rev` (one counter per independently edited part: core, thoughts, plan…). If the local copy leads in any one, the answer is no: that part holds work the server has not accepted. Without `rev` on both sides it falls back to `updatedAt`; no evidence on either side → keep local; evidence only on the server side → server wins (a copy with no markers is an old snapshot, not fresh work).
 - One document: `selectReadableCopy` — a document missing on one side is not evidence, keep whichever exists. A list: `reconcileServerList` — document by document; server-only rows are added, local-only rows kept.
-- Users today: `useSermon`, `usePrayerDetail`, `useSermonStructureData`, `useSeriesMembership`, `useSermonNoteLinks`; the engine reuses it for snapshots without metadata (`frontend/app/data-engine/snapshotFreshness.ts`). Do not write a second comparison.
-- Compare only copies of equal completeness. The trimmed list copy against the full detail copy is not a freshness question: the list copy is a fallback, never a candidate (`frontend/app/hooks/useSermon.ts`).
+- Users today: `usePrayerDetail`, `useSermonStructureData`, `useSeriesMembership`, `useSermonNoteLinks` (`useSermon` was also a user; removed 2026-10-13); the engine reuses it for snapshots without metadata (`frontend/app/data-engine/snapshotFreshness.ts`). Do not write a second comparison.
+- Compare only copies of equal completeness. The trimmed list copy against the full detail copy is not a freshness question: the list copy is a fallback, never a candidate (`frontend/app/hooks/useSermon.ts`). (Legacy path; removed 2026-10-13 — engine screens read the document instead, via `useSermonRead.ts`, `useSermonCoreDataDocument.ts`, `useEngineSermonSource.ts`.)
 - A write receipt that reports one counter is compared as a whole copy with only that counter replaced; a bare `{core: n}` makes every other aggregate look like zero (`applySourceNoteLinkPatch`).
 
 ### Telling the person

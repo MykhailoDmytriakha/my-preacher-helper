@@ -7,7 +7,7 @@ when: useServerFirstQuery · mode cache-first · mode server-first · cached dat
 ## How
 
 - Cache-first (default): `staleTime` 30 s, `refetchOnMount: true`, no refetch on window focus, `networkMode: 'offlineFirst'`. Use it for lists and anything navigated to often.
-- Server-first: `staleTime` 0, `refetchOnMount: 'always'`, refetch on focus, `networkMode: 'online'`. Only for a detail whose staleness costs more than a fetch — today `useSermon`, `usePrayerDetail`, `useAiUsage`. Any option you pass overrides the mode's default.
+- Server-first: `staleTime` 0, `refetchOnMount: 'always'`, refetch on focus, `networkMode: 'online'`. Only for a detail whose staleness costs more than a fetch — today `usePrayerDetail`, `useAiUsage` (`useSermon` was the third; removed 2026-10-13 — sermon screens read the engine). Any option you pass overrides the mode's default.
 - `enabled` is not combined with the connection icon (owner's rule 3, 2026-10-10): React Query tries under `networkMode: 'offlineFirst'` and pauses only when its `onlineManager`, which follows `getConnectivityStatus()`, says no; cached data is returned meanwhile.
 - `isLoading` is true only when the query is enabled and there is no data yet. A background refetch (`isFetching`) is not loading; never put `isFetching` into a skeleton condition.
 - The result also carries `isOnline`.

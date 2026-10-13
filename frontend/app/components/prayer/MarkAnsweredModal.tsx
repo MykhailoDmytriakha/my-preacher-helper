@@ -46,9 +46,8 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
         return;
       }
       /**
-       * SILENT. Every prayer write has a recovery descriptor (`useWriteRecovery` in
-       * usePrayerRequests), and it reports terminal failures with the person's text and a
-       * retry. This editor showed its own message on top — sometimes the raw technical
+       * SILENT. Every prayer write goes through the data engine, which keeps the person's text and
+       * reports a refusal itself (DataSyncStatus, EngineConflictBanner). This editor showed its own message on top — sometimes the raw technical
        * one — so a single failed save arrived as two messages, one of them untranslated.
        * The editor's whole duty here is to stay open holding what was typed.
        */

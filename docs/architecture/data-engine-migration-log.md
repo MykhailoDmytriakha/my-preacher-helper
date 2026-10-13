@@ -2392,3 +2392,31 @@ person copies what they need. Also open from this review: a request refused loca
 (`commits.ts`, no journal entry) is not seen by `waitsForDecision`; `generation-mismatch`
 refusals are offered only the stored version; acknowledged one-shot checkpoints are never
 compacted.
+
+## 2026-10-12/13 — the ten collections leave the legacy road in code
+
+Case `.cases/2026-10-12-snos-starogo-puti-zapisi`. The engine-owned list moved from the
+deployment environment into code (`engineOwnedCollections.ts`), one collection per commit, each
+verified on `http://[::1]:3000` (create, edit, delete through the engine; dev server log shows only
+`POST /api/data-engine/commands`) and on production (Vercel status, the owned list compiled into the
+bundle, the flag fingerprint unchanged, closed routes answering 401 without a token):
+plan templates `fd842c4d`, tags `9cb0b12a`, councils `54f49aa7`, orders of service `74b9e9db`,
+prayer requests `a5234ff2`, groups `fea0b0bb`, study notes and materials `9eb81b58`,
+series `0f7c4039`, sermons `369a2d4e` → `45c0d5dd` → `f66690b4` → `139f907d` → `0920c6f7`.
+
+What went with them: the legacy client writers and their services, the legacy page branches,
+hooks and dialogs (`useSermon`, `useDashboardOptimisticSermons`, `EditSermonModal`,
+`PreachDateModal`, `CreateThoughtModal`, legacy plan/structure writers and the `immediate`
+writer flag), the freshness banners of engine screens, and the server write routes, which now
+answer with `refuseLegacyWriteRoute`. Paused mutations of previous versions resume into the same
+refusal (`mutationDefaults.ts`) and their text stays in the previous-version archive.
+
+Fixed on the way (all live on production before this work, found by the browser passes): creating
+a sermon from the dashboard opens it again; the mode switcher no longer hides for a sermon created
+offline; the empty thoughts column offers the sermon's scratch notes again; a thought added in a
+structure column stays in that column (BUG-20261013-structure-column-thought-lands-under-review,
+`d7100f52`).
+
+Still on the React Query road: `users` (settings) and `studyNoteShareLinks`; `useDocumentFreshness`
+stays for the settings screen until `users` is engine-owned in code.
+

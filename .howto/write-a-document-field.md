@@ -21,7 +21,7 @@ These compatibility paths are not templates for new features.
 - Never a bare `updateDoc` / `setDoc` for an own-document write: it silently drops the race check, the outbox and the typed errors. `frontend/__tests__/architecture/writesGoThroughTheInterface.test.ts` freezes the remaining direct writes per file — a number may only go down. It also counts `writeBatch` and `runTransaction`; it cannot see an aliased import.
 - Per-item leaf writes (`planText.<nodeId>`): scope the check to that item's baseline, not the whole aggregate — otherwise editing two different points reports a conflict that does not exist.
 - Every writer of a field moves its counter: scripts and migrations included (`frontend/scripts/migrate-plan-text.js` bumps `rev.plan`), and a second writer of the same field bumps the same revision before scheduling its write (outline Apply and the manual save both write `sermon.outline`).
-- Report a legacy write as a patch of what changed; each side — list cache, detail cache, screen — merges it into the copy it owns. Never hand a whole entity across a boundary: the list copy and the detail copy differ in completeness and are not comparable (`frontend/app/hooks/useSermon.ts`, "the list copy is a fallback, not a candidate").
+- Report a legacy write as a patch of what changed; each side — list cache, detail cache, screen — merges it into the copy it owns. Never hand a whole entity across a boundary: the list copy and the detail copy differ in completeness and are not comparable (`frontend/app/hooks/useSermon.ts`, "the list copy is a fallback, not a candidate"). (Legacy path; removed 2026-10-13 — engine screens read the document instead.)
 
 ### When the legacy write is refused
 

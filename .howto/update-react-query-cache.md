@@ -2,7 +2,7 @@ when: setQueryData · invalidateQueries · cancelQueries · refetchType none · 
 
 # Update the React Query cache after a write
 
-Publish a write with `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })`, for EVERY key that holds the changed document, using keys from `frontend/app/utils/queryKeys.ts`. The reference is `setSermon` in `frontend/app/hooks/useSermon.ts`. On a collection switched to the data engine the screen renders the engine's draft and writes are not published this way (`useEngineSermonSource` has a no-op `setSermon`) — `.howto/use-data-engine-in-a-screen.md`.
+Publish a write with `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })`, for EVERY key that holds the changed document, using keys from `frontend/app/utils/queryKeys.ts`. The reference is the `cancelQueries` → `setQueryData` → `invalidateQueries({ refetchType: 'none' })` sequence in `frontend/app/hooks/useSermonNoteLinks.ts` (the former reference, `setSermon` in `useSermon.ts`, was removed 2026-10-13). On a collection switched to the data engine the screen renders the engine's draft and writes are not published this way (`useEngineSermonSource` has a no-op `setSermon`) — `.howto/use-data-engine-in-a-screen.md`.
 
 ## How
 

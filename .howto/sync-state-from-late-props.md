@@ -2,18 +2,18 @@ when: useState(prop) keeps old value · modal shows stale data · prop arrives a
 
 # Sync local state from a prop that arrives late
 
-`useState(prop)` reads the prop once, on the first render; a later value (a React Query refetch, a list that finishes loading after the modal opened, an optimistic cache write) never reaches the state. Pair it with a `useEffect` that copies the prop in, guarded by a "the person has edited" ref, as `frontend/app/components/EditSermonModal.tsx` does.
+`useState(prop)` reads the prop once, on the first render; a later value (a React Query refetch, a list that finishes loading after the modal opened, an optimistic cache write) never reaches the state. Pair it with a `useEffect` that copies the prop in, guarded by a "the person has edited" ref, as `frontend/app/components/EditSermonModal.tsx` does. (Legacy path; removed 2026-10-13 — `EngineEditSermonModal` opens a `useDataForm` that pins the opening document instead of copying the prop; see `.howto/use-data-engine-in-a-screen.md`.)
 
 ## How
 
 - Keep `useState(prop)` for the first paint, then add `useEffect(() => { if (editedRef.current) return; setX(prop.x); }, [prop])`. Set the ref in every change handler (`markEdited` sets `formEditedRef.current = true`), never in the effect.
-- The guard is the point, not a detail: once the person has typed, the form holds the only copy of the draft. Optimistic cache updates and their rollback both replace the prop object while the modal is open, and without the guard they overwrite the typed text (comment on the effect in `EditSermonModal.tsx`).
-- A single field can skip the effect entirely: derive it during render until it is touched — `const shown = touchedRef.current ? localValue : valueFromProp` (`seriesTouchedRef` in `EditSermonModal.tsx`). The field follows the loading list and stops following the moment the person picks something.
+- The guard is the point, not a detail: once the person has typed, the form holds the only copy of the draft. Optimistic cache updates and their rollback both replace the prop object while the modal is open, and without the guard they overwrite the typed text (comment on the effect in `EditSermonModal.tsx`). (The example file was removed 2026-10-13.)
+- A single field can skip the effect entirely: derive it during render until it is touched — `const shown = touchedRef.current ? localValue : valueFromProp` (`seriesTouchedRef` in `EditSermonModal.tsx`). The field follows the loading list and stops following the moment the person picks something. (The example file was removed 2026-10-13.)
 - When the whole entity changes (another id), do not sync field by field — remount with a `key`: `SermonOutline` renders its editor with `key={`${userId}:${id}`}` so every `useState` starts fresh (`frontend/app/components/sermon/SermonOutline.tsx`).
 
 ## Traps
 
-- The save compares against the value the form opened with → do not re-sync that baseline from the prop. A focus refetch replaces the prop without the form being reopened; the baseline would then equal the server and every stale write would look clean. Freeze it per id instead (`openedWithRef` in `EditSermonModal.tsx`).
+- The save compares against the value the form opened with → do not re-sync that baseline from the prop. A focus refetch replaces the prop without the form being reopened; the baseline would then equal the server and every stale write would look clean. Freeze it per id instead (`openedWithRef` in `EditSermonModal.tsx`). (The example file was removed 2026-10-13.)
 - A field that should stay empty until data arrives shows `""` and offers a wrong action (for example "unfile from series") → it was frozen at the pre-load value; derive it from the prop until touched.
 
 ## Why

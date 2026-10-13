@@ -22,6 +22,13 @@ Acceptance has three distinct outcomes:
 
 A refusal is **not** an outcome. It **rejects** `acceptance`, so the editor catches it and stays open with the person's text. The MESSAGE is not the editor's job: the hook's recovery descriptor says it and carries the text (see “Who reports a late refusal”). The one exception is a write that never reached a mutation at all — `refusedWrite`, used when there is no signed-in user or the document is gone. No descriptor can ever see such a write, so it ANNOUNCES ITSELF — the translated sentence is a required argument, and no editor repeats it. The editor just holds the draft.
 
+## Which road a write takes
+
+There are two, and a collection is on exactly one of them.
+
+- **The data engine** — the ten collections in `app/data-engine/engineOwnedCollections.ts` (sermons, series, groups, prayer requests, study notes and materials, tags, councils, orders of service, plan templates). Write only through `app/data-engine/react.client.tsx` (`useDataDocument`, `useDataForm`, `useDocumentActions`, `useDataMembership`). Delivery, the offline queue, conflicts and refusals belong to the engine: `DataSyncStatus` beside the editor says a refusal while the screen is open, and `EngineConflictBanner` says it after the editor has closed. A hook still returns a `WriteSubmission` (usually `queuedMutation` around the engine's promise) so the editor closes only on acceptance. Do not declare `useWriteRecovery` for these collections, and do not add a legacy writer: the browser rules and the server refuse it (`refuseLegacyWriteRoute`).
+- **React Query mutations** — what is not on the engine: the user's settings (`users`) and study-note share links. Their hooks declare `useWriteRecovery` descriptors, as described below.
+
 ## Canonical example: creating a prayer
 
 Read these three files in order (the group example that stood here left with the legacy group hook on 2026-10-12):
@@ -104,4 +111,4 @@ it shows it when it next opens.
 
 ## What has not moved yet
 
-Migration is incremental. Some surfaces still use older schemes (`.mutate()` without the contract, awaiting an ordinary promise, or custom queues). The migration state and order are in `.sessions/SESSION_2026-08-12-modal-refusal-live-proof.md`. When you touch one of these surfaces, move it to the contract instead of copying it.
+The settings (`users`) and study-note share links are still on the React Query road. A screen that writes them follows the descriptor contract above; moving such a collection to the engine is a migration of its own (`docs/architecture/data-engine-migration-log.md`), not a copy of a neighbouring hook.

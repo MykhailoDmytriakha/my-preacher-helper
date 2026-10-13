@@ -4,14 +4,22 @@ User-data features read and edit through `react.client.tsx`. They do not choose
 Firestore vs HTTP, construct commands, manage outboxes, compare revisions, or merge
 remote copies. Those decisions belong here and have direct behavioral tests.
 
-**Migration is in progress.** Every switch defaults to off. A domain is switched on per
-collection: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` (compiled into the bundle) and the server's
-`DATA_ENGINE_COLLECTIONS`; the older `*_ENABLED=true` pair still means every collection.
-A third switch, `DATA_ENGINE_CLOSED_COLLECTIONS`, refuses every legacy write to a collection and
-is thrown LAST, once every device runs the new bundle — `activation.ts` explains why the two
-cannot be thrown together. Between them legacy writers and the engine share the collection:
-the server says `legacyOpen` and lists are re-read, because a legacy write raises no feed event.
-The order, its rollbacks and its residual risks: "Rollout order" in
+**Ten collections are the engine's in code.** `engineOwnedCollections.ts` lists them (sermons,
+series, groups, prayer requests, study notes and materials, tags, councils, orders of service,
+plan templates): they are served and closed to legacy writers on every deployment, whatever the
+environment says, and their legacy client writers, screens and server write routes are gone
+(2026-10-12/13). A shipped bundle that still calls an old route gets `refuseLegacyWriteRoute`
+(401 without a token, 426 `data-engine-required`), so its text stays in the previous-version
+archive instead of being dropped.
+
+The environment switches only ADD a collection that is not in that list — today `users` and
+`studyNoteShareLinks`: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` (compiled into the bundle) and the
+server's `DATA_ENGINE_COLLECTIONS`; the older `*_ENABLED=true` pair still means every collection.
+`DATA_ENGINE_CLOSED_COLLECTIONS` refuses every legacy write to such a collection and is thrown
+LAST, once every device runs the new bundle — `activation.ts` explains why the two cannot be
+thrown together. Between them legacy writers and the engine share the collection: the server
+says `legacyOpen` and lists are re-read, because a legacy write raises no feed event. The order,
+its rollbacks and its residual risks: "Rollout order" in
 `docs/architecture/data-engine-migration-log.md`. Do not flip anything from memory.
 The remaining debt is recorded in `docs/architecture/data-engine-implementation-plan.md`
 at the repository root and the architecture test ledger. The ledger is a shrinking
@@ -467,13 +475,11 @@ through restart; they never silently create outside the intended series.
 
 Creation scopes use a separate durable range so older membership-only dialogs
 cannot recover half of their intent. `EngineCreateSermonModal` and workspace recovery
-are example consumers. `AddSermonModal` selects this form for enabled sermons and
-never invokes its legacy write callbacks; the engine series picker passes a durable
-preset. `useSermonsDataCollection` supplies dashboard/list/calendar reads and submitted
-creation immediately, with `DataCollectionStatus` for pending/incomplete lists.
-Existing sermon editors and other writers still require migration; creation availability
-does not authorize activation. Old dashboard mutation inputs are archived before
-query hydration and refused before service replay under the sermon switch.
+are example consumers. `AddSermonModal` renders only this form, and the engine series
+picker passes a durable preset. `useSermonsDataCollection` supplies dashboard/list/calendar
+reads and submitted creation immediately, with `DataCollectionStatus` for pending/incomplete
+lists. Old dashboard mutation inputs are archived before
+query hydration, and a paused one resumes into the `data-engine-required` refusal (`mutationDefaults.ts`).
 
 Sermon thought forms use `components/thought/EngineThoughtModal.tsx`: fixed child
 identity, pinned manual ancestry and atomic thought/placement edits. Pure domain
