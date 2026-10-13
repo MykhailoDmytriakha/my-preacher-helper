@@ -12,8 +12,8 @@ const mockUseStudyNotes = jest.fn();
 const mockUsePrayerRequests = jest.fn();
 const mockUseGroups = jest.fn();
 const mockCreatePrayer = jest.fn();
-const mockCreateSermon = jest.fn();
 const mockRouterPush = jest.fn();
+const mockAddSermonProps = jest.fn();
 
 const mockTranslationMap: Record<string, string> = {
   'navigation.sermons': 'Проповеди',
@@ -192,18 +192,17 @@ jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => mockUseDashboardSermons(),
 }));
 
-jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
-  useDashboardOptimisticSermons: () => ({
-    syncStatesById: {},
-    actions: {
-      createSermon: (...args: unknown[]) => mockCreateSermon(...args),
-      saveEditedSermon: jest.fn(),
-      deleteSermon: jest.fn(),
-      retrySync: jest.fn(),
-      dismissSyncError: jest.fn(),
+// Real modal, with a spy on the props the dashboard hands it.
+jest.mock('@/components/AddSermonModal', () => {
+  const Actual = jest.requireActual('@/components/AddSermonModal').default;
+  return {
+    __esModule: true,
+    default: (props: Record<string, unknown>) => {
+      mockAddSermonProps(props);
+      return <Actual {...props} />;
     },
-  }),
-}));
+  };
+});
 
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => mockUseSeries(),
@@ -234,14 +233,6 @@ jest.mock('@/services/firebaseAuth.service', () => ({
   },
 }));
 
-jest.mock('@/services/sermon.service', () => ({
-  createSermon: (...args: unknown[]) => mockCreateSermon(...args),
-}));
-
-jest.mock('@/services/preachDates.service', () => ({
-  addPreachDate: jest.fn(),
-}));
-
 /**
  * The create-sermon form embeds the shared church picker, which reads church history
  * through React Query. In the app it always renders under the root provider; a bare
@@ -262,14 +253,6 @@ describe('Dashboard page', () => {
     const staleDate = dateKeyFromToday(-10);
 
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } });
-    // The write contract: createSermon returns a WriteSubmission carrying the new
-    // client id. Navigation to the detail page is allowed ONLY for a `persisted`
-    // acceptance — a queued create has no server document yet, and pushing there
-    // used to land the person on a page for a sermon that was never created.
-    mockCreateSermon.mockImplementation(() => ({
-      ...persistedWrite(Promise.resolve()),
-      sermonId: 'created-sermon-id',
-    }));
     mockUseDashboardSermons.mockReturnValue({
       sermons: [
         {
@@ -468,6 +451,18 @@ describe('Dashboard page', () => {
 
     expect(mockRouterPush).not.toHaveBeenCalledWith('/sermons');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/prayers');
+  });
+
+  it('opens the new sermon page as soon as the engine has queued the create', () => {
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Новая проповедь/i }));
+    const { onCreated } = mockAddSermonProps.mock.calls.at(-1)![0] as { onCreated: (sermonId: string) => void };
+    expect(onCreated).toEqual(expect.any(Function));
+
+    onCreated('queued-sermon-id');
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/sermons/queued-sermon-id');
   });
 
   it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {

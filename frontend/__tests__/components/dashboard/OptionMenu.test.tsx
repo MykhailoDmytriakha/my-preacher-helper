@@ -7,28 +7,13 @@ import { DataEngineProvider } from '@/data-engine/react.client';
 import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
 import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import OptionMenu from '@/components/dashboard/OptionMenu';
-import { persistedWrite } from '@/utils/recoverableWrite';
 import { Sermon } from '@/models/models';
 import type { ResourceSnapshot } from '@/data-engine/types';
-import { deleteSermon, updateSermon } from '@services/sermon.service';
-import * as preachDatesService from '@services/preachDates.service';
 
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: any) =>
   <input aria-label="Date" value={value} onChange={event => onChange(event.target.value)} /> }));
-
-// Mock dependencies
-jest.mock('@services/sermon.service', () => ({
-  deleteSermon: jest.fn().mockResolvedValue({}),
-  updateSermon: jest.fn().mockResolvedValue({}),
-}));
-
-jest.mock('@services/preachDates.service', () => ({
-  addPreachDate: jest.fn().mockResolvedValue({}),
-  updatePreachDate: jest.fn().mockResolvedValue({}),
-  deletePreachDate: jest.fn().mockResolvedValue({}),
-}));
 
 const mockRouterRefresh = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -100,25 +85,14 @@ jest.mock('@components/Icons', () => ({
   DotsVerticalIcon: () => <div data-testid="dots-vertical-icon" />,
 }));
 
-// Mock the EditSermonModal component
-jest.mock('@components/EditSermonModal', () => {
-  return function MockEditSermonModal({ 
-    onClose, 
-    onUpdate, 
-    sermon 
-  }: { 
-    onClose: () => void; 
-    onUpdate: (sermon: Sermon) => void; 
-    sermon: Sermon 
-  }) {
-    return (
-      <div data-testid="edit-sermon-modal">
-        <button onClick={() => onClose()}>Close</button>
-        <button onClick={() => onUpdate({ ...sermon, title: 'Updated Sermon' })}>Update</button>
-      </div>
-    );
-  };
-});
+// The edit dialog is engine-owned and has its own suite; here only the menu wiring matters.
+jest.mock('@/components/sermon/EngineEditSermonModal', () => ({
+  EngineEditSermonModal: ({ sermonId, onClose }: { sermonId: string; onClose: () => void }) => (
+    <div data-testid="edit-sermon-modal" data-sermon-id={sermonId}>
+      <button onClick={() => onClose()}>Close</button>
+    </div>
+  ),
+}));
 
 jest.mock('@/components/church/ChurchField', () => ({
   __esModule: true,
@@ -183,18 +157,6 @@ describe('OptionMenu Component', () => {
     onUpdate: jest.fn(),
   };
 
-  const buildOptimisticActions = (overrides: Record<string, jest.Mock> = {}) => ({
-    createSermon: jest.fn(() => ({ ...persistedWrite(Promise.resolve()), sermonId: 'created-sermon' })),
-    saveEditedSermon: jest.fn(() => persistedWrite(Promise.resolve())),
-    deleteSermon: jest.fn(() => persistedWrite(Promise.resolve())),
-    markAsPreachedFromPreferred: jest.fn(() => persistedWrite(Promise.resolve())),
-    unmarkAsPreached: jest.fn(() => persistedWrite(Promise.resolve())),
-    savePreachDate: jest.fn(() => persistedWrite(Promise.resolve())),
-    retrySync: jest.fn().mockResolvedValue(undefined),
-    dismissSyncError: jest.fn(),
-    ...overrides,
-  });
-  
   beforeEach(() => {
     jest.clearAllMocks();
     mockRouterRefresh.mockReset();
@@ -273,27 +235,7 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByText('Edit'));
     
     // Check modal is shown
-    expect(screen.getByTestId('edit-sermon-modal')).toBeInTheDocument();
-  });
-  
-  it('calls onUpdate with updated sermon when sermon is updated', () => {
-    render(<OptionMenu {...defaultProps} />);
-    
-    // Open the menu
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    
-    // Click Edit
-    fireEvent.click(screen.getByText('Edit'));
-    
-    // Click Update in modal
-    fireEvent.click(screen.getByText('Update'));
-    
-    // Check onUpdate was called
-    expect(defaultProps.onUpdate).toHaveBeenCalledTimes(1);
-    expect(defaultProps.onUpdate).toHaveBeenCalledWith({ 
-      ...mockSermon, 
-      title: 'Updated Sermon' 
-    });
+    expect(screen.getByTestId('edit-sermon-modal')).toHaveAttribute('data-sermon-id', 'sermon-1');
   });
   
   it('closes edit modal when Close button is clicked', () => {
@@ -315,7 +257,7 @@ describe('OptionMenu Component', () => {
     expect(screen.queryByTestId('edit-sermon-modal')).not.toBeInTheDocument();
   });
   
-  it.each([false, true])('uses one pinned engine form to toggle preached=%s without legacy writes', async preached => {
+  it.each([false, true])('uses one pinned engine form to toggle preached=%s ', async preached => {
     const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
     const sermon: Sermon = { ...mockSermon, isPreached: preached, preachDates: [{
@@ -326,8 +268,7 @@ describe('OptionMenu Component', () => {
     const resource = { collection: 'sermons', id };
     const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-    const optimistic = buildOptimisticActions();
-    const view = render(<DataEngineProvider><OptionMenu sermon={sermon} optimisticActions={optimistic} /></DataEngineProvider>);
+    const view = render(<DataEngineProvider><OptionMenu sermon={sermon} /></DataEngineProvider>);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Options' }));
       fireEvent.click(screen.getByText(preached ? 'optionMenu.markAsNotPreached' : 'optionMenu.markAsPreached'));
@@ -338,10 +279,6 @@ describe('OptionMenu Component', () => {
       await act(async () => { await harness.engine.retry(); await settleEngine(); });
       await waitFor(() => expect(harness.read(resource).value!.isPreached).toBe(!preached));
       expect(harness.transport.send).toHaveBeenCalledTimes(1);
-      expect(updateSermon).not.toHaveBeenCalled();
-      expect(preachDatesService.updatePreachDate).not.toHaveBeenCalled();
-      expect(optimistic.markAsPreachedFromPreferred).not.toHaveBeenCalled();
-      expect(optimistic.unmarkAsPreached).not.toHaveBeenCalled();
     } finally {
       view.unmount();
       if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
@@ -349,16 +286,15 @@ describe('OptionMenu Component', () => {
     }
   });
 
-  it('deletes an engine sermon through the engine, leaving a tombstone, without legacy or optimistic writers', async () => {
+  it('deletes an engine sermon through the engine, leaving a tombstone', async () => {
     const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
     const { id, ...value } = mockSermon;
     const resource = { collection: 'sermons', id };
     const harness = membershipEngineHarness([{ resource, value: value as never, metadata: null }]);
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-    const optimistic = buildOptimisticActions();
     const onDelete = jest.fn();
-    const view = render(<DataEngineProvider><OptionMenu sermon={mockSermon} optimisticActions={optimistic} onDelete={onDelete} /></DataEngineProvider>);
+    const view = render(<DataEngineProvider><OptionMenu sermon={mockSermon} onDelete={onDelete} /></DataEngineProvider>);
     try {
       fireEvent.click(screen.getByRole('button', { name: 'Options' }));
       fireEvent.click(screen.getByText('Delete'));
@@ -366,8 +302,6 @@ describe('OptionMenu Component', () => {
       await waitFor(() => expect(onDelete).toHaveBeenCalledWith(id));
       await act(async () => { await harness.engine.retry(); await settleEngine(); });
       await waitFor(() => expect(harness.read(resource).metadata?.deleted).toBe(true));
-      expect(deleteSermon).not.toHaveBeenCalled();
-      expect(optimistic.deleteSermon).not.toHaveBeenCalled();
     } finally {
       view.unmount();
       if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
@@ -437,23 +371,8 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByText('Delete'));
     await answerDeleteQuestion('cancel');
     
-    // Check deleteSermon service was not called
-    expect(deleteSermon).not.toHaveBeenCalled();
-    
     // Check onDelete was not called
     expect(defaultProps.onDelete).not.toHaveBeenCalled();
-  });
-
-  it('disables menu interactions while sync is pending', () => {
-    render(
-      <OptionMenu
-        {...defaultProps}
-        syncState={{ status: 'pending', operation: 'update' }}
-      />
-    );
-
-    const menuButton = screen.getByRole('button', { name: 'Options' });
-    expect(menuButton).toBeDisabled();
   });
 
 });

@@ -2,14 +2,11 @@
 
 import { List, MessageSquareText, Calendar, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
-import { SermonSyncBadge } from "@/components/dashboard/SermonSyncBadge";
 import { SermonStatusChip, getSermonStatusDateTexts } from "@/components/sermon/SermonStatusChip";
 import { Chip } from "@/components/ui/Chip";
-import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
 import {
@@ -35,12 +32,8 @@ const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
 interface SermonCardProps {
   sermon: Sermon;
   series?: Series[];
-  onDelete: (id: string) => void;
-  onUpdate: (updatedSermon: Sermon) => void;
   searchQuery?: string;
   searchSnippets?: ThoughtSnippet[];
-  syncState?: DashboardSermonSyncState;
-  optimisticActions?: DashboardOptimisticActions;
 }
 
 interface SermonCardHeaderProps {
@@ -51,10 +44,6 @@ interface SermonCardHeaderProps {
   formattedUpdatedDate: string | null;
   formattedPreachedDate: string | null;
   formattedPlannedDate: string | null;
-  onDelete: (id: string) => void;
-  onUpdate: (updatedSermon: Sermon) => void;
-  syncState?: DashboardSermonSyncState;
-  optimisticActions?: DashboardOptimisticActions;
   t: TFunction;
 }
 
@@ -93,13 +82,8 @@ function SermonCardHeader({
   formattedUpdatedDate,
   formattedPreachedDate,
   formattedPlannedDate,
-  onDelete,
-  onUpdate,
-  syncState,
-  optimisticActions,
   t,
 }: SermonCardHeaderProps) {
-  const [editorOpen, setEditorOpen] = useState(false);
   return (
     <div className="flex items-start justify-between mb-2">
       <div className="flex flex-col gap-1.5">
@@ -114,17 +98,6 @@ function SermonCardHeader({
           </Chip>
         )}
         <SermonStatusChip formattedPreachedDate={formattedPreachedDate} formattedPlannedDate={formattedPlannedDate} />
-        {/*
-          Silent while one of this card's editors is open: the editor covers the card and
-          says the verdict itself, so rendering the badge underneath would be the same
-          refusal told twice — once where it cannot even be read.
-        */}
-        <SermonSyncBadge
-          sermonId={sermon.id}
-          syncState={editorOpen ? undefined : syncState}
-          optimisticActions={optimisticActions}
-          t={t}
-        />
       </div>
 
       <div className="z-20 -mr-2 -mt-1">
@@ -136,11 +109,6 @@ function SermonCardHeader({
         <OptionMenu
           sermon={sermon}
           series={series}
-          onDelete={(id: string) => onDelete(id)}
-          onUpdate={onUpdate}
-          optimisticActions={optimisticActions}
-          syncState={syncState}
-          onEditorOpenChange={setEditorOpen}
         />
       </div>
     </div>
@@ -315,12 +283,8 @@ function SermonCardFooter({ sermon, effectiveIsPreached, t }: SermonCardFooterPr
 export default function SermonCard({
   sermon,
   series = [],
-  onDelete,
-  onUpdate,
   searchQuery = "",
   searchSnippets = [],
-  syncState,
-  optimisticActions
 }: SermonCardProps) {
   const { t } = useTranslation();
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
@@ -341,19 +305,12 @@ export default function SermonCard({
   const sermonSeries = getSeriesForRef(sermon.id, series);
 
   // Card base styles - clean white/dark theme without heavy backgrounds
-  const syncVisualClasses = syncState?.status === 'pending'
-    ? 'opacity-75 border-blue-200 dark:border-blue-700'
-    : syncState?.status === 'error'
-      ? 'border-red-300 dark:border-red-700'
-      : '';
-
   const cardClasses = `
     group flex flex-col
     bg-white dark:bg-gray-800
     rounded-xl shadow-sm hover:shadow-md transition-all duration-300
     border border-gray-200 dark:border-gray-700
     h-full relative overflow-visible
-    ${syncVisualClasses}
   `;
 
   return (
@@ -369,10 +326,6 @@ export default function SermonCard({
             formattedUpdatedDate={formattedUpdatedDate}
             formattedPreachedDate={formattedPreachedDate}
             formattedPlannedDate={formattedPlannedDate}
-            onDelete={onDelete}
-            onUpdate={onUpdate}
-            syncState={syncState}
-            optimisticActions={optimisticActions}
             t={t}
           />
 

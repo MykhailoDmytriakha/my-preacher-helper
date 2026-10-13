@@ -2,8 +2,6 @@ import { renderHook } from '@testing-library/react';
 
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
 import { useAuth } from '@/hooks/useAuth';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { fetchCalendarSermons } from '@services/preachDates.service';
 
 import type { Sermon } from '@/models/models';
 
@@ -11,30 +9,11 @@ jest.mock('@/hooks/useAuth', () => ({
   useAuth: jest.fn(),
 }));
 
-jest.mock('@/hooks/useServerFirstQuery', () => ({
-  useServerFirstQuery: jest.fn(),
-}));
-
-jest.mock('@services/preachDates.service', () => ({
-  fetchCalendarSermons: jest.fn(),
-}));
-
 // Sermons are engine-owned: the calendar reads the engine's rows.
 const mockEngine = { sermons: [] as Sermon[], loading: false, error: null as string | null, refresh: jest.fn() };
 jest.mock('@/hooks/useSermonsDataCollection', () => ({ useSermonsDataCollection: () => mockEngine }));
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockUseServerFirstQuery = useServerFirstQuery as jest.MockedFunction<typeof useServerFirstQuery>;
-const mockFetchCalendarSermons = fetchCalendarSermons as jest.MockedFunction<typeof fetchCalendarSermons>;
-
-const buildServerFirstResult = <TData,>(data: TData) =>
-  ({
-    data,
-    isLoading: false,
-    error: null,
-    refetch: jest.fn(),
-    isOnline: true,
-  } as unknown as ReturnType<typeof useServerFirstQuery>);
 
 describe('useCalendarSermons', () => {
   const startDate = new Date('2024-01-01T00:00:00.000Z');
@@ -100,8 +79,6 @@ describe('useCalendarSermons', () => {
     ];
 
     mockEngine.sermons = [...sermons, { ...sermons[1], id: 'foreign', userId: 'user-2' }];
-    mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([]));
-
     // The calendar page asks without a range (calendar/page.tsx), so a preached sermon with no
     // date still reaches the "no date yet" warning.
     const { result } = renderHook(() => useCalendarSermons());
@@ -113,50 +90,20 @@ describe('useCalendarSermons', () => {
     expect(result.current.sermonsByDate['2024-01-08']).toHaveLength(1);
     expect(result.current.sermonsByDate['2024-01-07T00:00:00.000Z']).toBeUndefined();
 
-    // A range keeps only sermons with a preach date inside it, as the legacy read did.
+    // A range keeps only sermons with a preach date inside it.
     const ranged = renderHook(() => useCalendarSermons(startDate, endDate)).result.current;
     expect(ranged.sermons.map(entry => entry.id).sort()).toEqual(['sermon-2', 'sermon-3']);
-    expect(mockFetchCalendarSermons).not.toHaveBeenCalled();
     mockEngine.sermons = [];
   });
 
-  it('returns empty data when no user is available', async () => {
+  it('returns empty data when no user is available', () => {
     mockUseAuth.mockReturnValue({ user: null } as any);
-
-    let capturedOptions: any;
-    mockUseServerFirstQuery.mockImplementation((options: any) => {
-      capturedOptions = options;
-      return buildServerFirstResult([]);
-    });
+    mockEngine.sermons = [{ id: 'sermon-x', userId: 'user-1', isPreached: true, preachDates: [] } as unknown as Sermon];
 
     const { result } = renderHook(() => useCalendarSermons());
 
     expect(result.current.sermons).toEqual([]);
     expect(result.current.pendingSermons).toEqual([]);
-    expect(capturedOptions.enabled).toBe(false);
-
-    const queryResult = await capturedOptions.queryFn();
-
-    expect(queryResult).toEqual([]);
-    expect(mockFetchCalendarSermons).not.toHaveBeenCalled();
-  });
-});
-
-/**
- * The calendar has no document listener by design — it shows many sermons at once,
- * and one listener per sermon is the wrong trade. Returning to the tab is what
- * replaces it: without that, a date added on the phone stayed invisible on a laptop
- * calendar left open, indefinitely and with no hint.
- */
-describe('the calendar re-asks the server when the person returns', () => {
-  it('requests a focus refetch instead of trusting the cache', () => {
-    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as unknown as ReturnType<typeof useAuth>);
-    mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([] as Sermon[]));
-
-    renderHook(() => useCalendarSermons(new Date('2026-07-01'), new Date('2026-07-31')));
-
-    expect(mockUseServerFirstQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ refetchOnWindowFocus: true })
-    );
+    mockEngine.sermons = [];
   });
 });

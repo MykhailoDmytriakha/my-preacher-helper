@@ -56,12 +56,6 @@ let mockCouncils: unknown[] = [council];
 jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => ({ sermons: [sermon], loading: false, error: null, refresh: jest.fn() }),
 }));
-jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
-  useDashboardOptimisticSermons: () => ({
-    actions: { createSermon: jest.fn(), updateSermon: jest.fn(), deleteSermon: jest.fn() },
-    syncStatesById: {},
-  }),
-}));
 jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [] }) }));
 jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: () => ({ notes: [] }) }));
 jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [group] }) }));

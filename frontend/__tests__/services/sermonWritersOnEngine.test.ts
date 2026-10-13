@@ -1,7 +1,6 @@
 import { updateDoc } from 'firebase/firestore';
 
 import { createSermon, deleteSermon } from '@/services/sermon.service';
-import { addPreachDate } from '@/services/preachDates.service';
 import { savePlanModeViaClient, updateThoughtViaClient } from '@/services/sermons.client';
 
 jest.mock('firebase/firestore', () => ({ ...jest.requireActual('firebase/firestore'), updateDoc: jest.fn(), runTransaction: jest.fn(), doc: jest.fn(() => ({})) }));
@@ -17,7 +16,6 @@ describe('legacy sermon writers once the engine owns sermons', () => {
     ['a thought', () => updateThoughtViaClient('s1', { id: 't', text: 'x', tags: [], date: 'd' }, null)],
     ['creation', () => createSermon({ title: 'T', verse: 'V', date: 'd', thoughts: [], userId: 'u' })],
     ['deletion', () => deleteSermon('s1')],
-    ['a preach date', () => addPreachDate('s1', { date: '2026-09-23', church: { id: 'c', name: 'C' } } as never)],
   ])('refuses %s with the typed engine error and writes nothing', async (_name, write) => {
     process.env[ON_ENGINE] = 'sermons';
     await expect(write()).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });

@@ -12,19 +12,13 @@ import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSke
 import { Chip } from "@/components/ui/Chip";
 import Select from "@/components/ui/Select";
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useDashboardOptimisticSermons } from "@/hooks/useDashboardOptimisticSermons";
-import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
+import { useDashboardSermons } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
 import { useSeries } from "@/hooks/useSeries";
-import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
 import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
-import { type WriteSubmission } from "@/utils/recoverableWrite";
 import { buildInSeriesRefIds } from "@/utils/seriesMembership";
 import AddSermonModal from "@components/AddSermonModal";
-
-import type { DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 
 /** Keys the filter popover and its active-filter chips both name. */
 const SEARCH_IN_THOUGHTS_KEY = 'dashboard.searchInThoughts';
@@ -40,9 +34,6 @@ const REMOVE_FILTER_KEY = 'filters.removeFilter';
 const SERIES_KEY = 'navigation.series';
 
 // localStorage keys for user preferences
-/** Stable identity, so hiding covered verdicts does not remount the list each render. */
-const EMPTY_SYNC_STATES: Record<string, DashboardSermonSyncState> = {};
-
 const LS_SORT = "sermons:sort";
 const LS_SERIES = "sermons:seriesFilter";
 const LS_IN_THOUGHTS = "sermons:searchInThoughts";
@@ -60,9 +51,6 @@ export default function SermonsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const { sermons, loading, state: sermonState } = useDashboardSermons();
-  const { deleteSermonFromCache, updateSermonCache } = useSermonMutations();
-  const { syncStatesById, actions: optimisticActions } = useDashboardOptimisticSermons();
-  const [createFormOpen, setCreateFormOpen] = useState(false);
 
   const { series: allSeries } = useSeries(user?.uid || null);
 
@@ -154,14 +142,6 @@ export default function SermonsPage() {
     } catch { }
   };
 
-  const handleDeleteSermon = (id: string) => {
-    deleteSermonFromCache(id);
-  };
-
-  const handleUpdateSermon = (updatedSermon: Sermon) => {
-    updateSermonCache(updatedSermon);
-  };
-
   // Series membership derived from the loaded series list (series.items truth),
   // injected into the filter instead of reading the deprecated sermon.seriesId.
   const inSeriesRefIds = useMemo(() => buildInSeriesRefIds(allSeries), [allSeries]);
@@ -193,15 +173,11 @@ export default function SermonsPage() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
-          <AddSermonModal
-            onCreateRequest={(input) => optimisticActions.createSermon(input) as unknown as WriteSubmission}
-            allowPlannedDate
-            onOpenChange={setCreateFormOpen}
-          />
+          <AddSermonModal allowPlannedDate />
         </div>
       </div>
 
-      {isCollectionOnEngine('sermons') && <DataCollectionStatus state={sermonState} />}
+      <DataCollectionStatus state={sermonState} />
       {/* Stats Section */}
       <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
         <div className="px-4 sm:px-0">
@@ -538,8 +514,6 @@ export default function SermonsPage() {
       </div>
 
       {/* Content Area */}
-      {/* The create form covers the list and says its own verdict; drawing card badges
-          underneath it would be the same refusal told twice, once invisibly. */}
       <DashboardContent
         loading={loading}
         sermons={sermons}
@@ -548,10 +522,6 @@ export default function SermonsPage() {
         allSeries={allSeries}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        onDeleteSermon={handleDeleteSermon}
-        onUpdateSermon={handleUpdateSermon}
-        syncStatesById={createFormOpen ? EMPTY_SYNC_STATES : syncStatesById}
-        optimisticActions={optimisticActions}
       />
     </div>
   );

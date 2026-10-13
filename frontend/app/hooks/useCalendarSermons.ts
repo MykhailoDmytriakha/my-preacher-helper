@@ -1,13 +1,10 @@
 import { useEffect } from 'react';
 
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PreachDate, Sermon } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { debugLog } from '@/utils/debugMode';
 import { countPreachDatesByStatus, getEffectiveIsPreached } from '@/utils/preachDateStatus';
-import * as preachDatesService from '@services/preachDates.service';
 
 import { useAuth } from './useAuth';
 
@@ -18,39 +15,17 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
     const startStr = startDate?.toISOString().split('T')[0];
     const endStr = endDate?.toISOString().split('T')[0];
 
+    // The engine keeps the owner's whole collection on this device and follows other devices
+    // itself, so the visible range is a filter over it rather than a query of its own.
     const engine = useSermonsDataCollection();
-    const { data: legacySermons = [], isLoading: legacyLoading, error: legacyError, refetch: legacyRefetch } = useServerFirstQuery({
-        queryKey: ['calendarSermons', userId, startStr, endStr],
-        queryFn: () => {
-            if (!userId) return Promise.resolve([]);
-            return preachDatesService.fetchCalendarSermons(userId, startStr, endStr);
-        },
-        enabled: !!userId && !isCollectionOnEngine('sermons'),
-        /**
-         * ASK THE SERVER AGAIN WHENEVER THE PERSON COMES BACK TO THIS TAB.
-         *
-         * The calendar is the one screen in the coverage list with no document
-         * listener — it shows MANY sermons, so a listener per sermon is the wrong
-         * trade. But the default cache-first behaviour also switched off the focus
-         * refetch, and nothing else could invalidate this query from another device:
-         * a date added on the phone stayed invisible on a laptop calendar that was
-         * left open, indefinitely and with no hint.
-         *
-         * Returning to the tab is exactly the moment a person continues work started
-         * elsewhere, and it costs one query — cheap for a screen nobody types into.
-         */
-        refetchOnWindowFocus: true,
-    });
-
-    const onEngine = isCollectionOnEngine('sermons');
-    const sermons = onEngine ? engine.sermons.filter(sermon => sermon.userId === userId &&
+    const sermons = engine.sermons.filter(sermon => sermon.userId === userId &&
         ((!startStr && !endStr) || sermon.preachDates?.some(preachDate => {
             const date = toDateOnlyKey(preachDate.date);
             return date && (!startStr || date >= startStr) && (!endStr || date <= endStr);
-        }))) : legacySermons;
-    const isLoading = onEngine ? engine.loading : legacyLoading;
-    const error = onEngine ? engine.error : legacyError;
-    const refetch = onEngine ? engine.refresh : legacyRefetch;
+        })));
+    const isLoading = engine.loading;
+    const error = engine.error;
+    const refetch = engine.refresh;
 
     // Identify "pending" sermons (legacy preached sermons without factual preached dates)
     const pendingSermons = sermons.filter(

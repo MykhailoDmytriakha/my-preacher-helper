@@ -10,9 +10,9 @@ import CalendarHeader from "@/components/calendar/CalendarHeader";
 import { CalendarKindFilters } from "@/components/calendar/CalendarKindFilters";
 import { allKindsShown, CALENDAR_KIND_STYLE } from "@/components/calendar/calendarKinds";
 import DateEventList from "@/components/calendar/DateEventList";
+import { EnginePreachDateModal } from "@/components/calendar/EnginePreachDateModal";
 import LegacyDataWarning from "@/components/calendar/LegacyDataWarning";
 import PreachCalendar from "@/components/calendar/PreachCalendar";
-import PreachDateModal from "@/components/calendar/PreachDateModal";
 import { useCalendarCouncils } from "@/hooks/useCalendarCouncils";
 import { useCalendarGroups } from "@/hooks/useCalendarGroups";
 import { useCalendarNotes } from "@/hooks/useCalendarNotes";
@@ -21,7 +21,6 @@ import { useCalendarSermons } from "@/hooks/useCalendarSermons";
 import { useSeries } from "@/hooks/useSeries";
 import { Sermon, PreachDate } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
-import * as preachDatesService from "@/services/preachDates.service";
 import {
     CALENDAR_KINDS,
     countByKind,
@@ -31,13 +30,12 @@ import {
     sermonEntries,
     type CalendarKind
 } from "@/utils/calendarEntries";
-import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
+import { toDateOnlyKey } from "@/utils/dateOnly";
 import { debugLog } from "@/utils/debugMode";
 import {
     getEffectiveIsPreached,
     getEffectivePreachDateStatus
 } from "@/utils/preachDateStatus";
-import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 
 export default function CalendarPage() {
     const { t } = useTranslation();
@@ -53,12 +51,11 @@ export default function CalendarPage() {
 
     // We fetch a wide range for the calendar, or just let the hook handle it
     // For now, let's fetch everything the hook provides
-    const { sermons, pendingSermons, isLoading, error, refetch } = useCalendarSermons();
+    const { sermons, pendingSermons, isLoading, error } = useCalendarSermons();
     const {
         groups,
         isLoading: groupsLoading,
         error: groupsError,
-        refetch: refetchGroups
     } = useCalendarGroups();
     const { entries: councilCalendarEntries, isLoading: councilsLoading, error: councilsError } = useCalendarCouncils();
     const { entries: noteCalendarEntries, isLoading: notesLoading, error: notesError } = useCalendarNotes();
@@ -169,30 +166,6 @@ export default function CalendarPage() {
         const today = new Date();
         setCurrentMonth(today);
         setSelectedDate(today);
-    };
-
-    const handleSaveDate = (data: Omit<PreachDate, 'id' | 'createdAt'>): WriteSubmission => {
-        if (!selectedSermon) {
-            // Nothing to write to, and nothing downstream can say so: this never becomes a
-            // mutation, so the modal would just sit there looking like it had saved.
-            return refusedWrite(
-                'not-found',
-                'No sermon selected for the preach date.',
-                t('writeRecovery.refused')
-            );
-        }
-
-        const sermon = selectedSermon;
-        return persistedWrite(
-            preachDatesService
-                .addPreachDate(sermon.id, {
-                    ...data,
-                    status: getEffectiveIsPreached(sermon) ? 'preached' : (data.status || 'planned')
-                })
-                .then(async () => {
-                    await Promise.all([refetch(), refetchGroups()]);
-                })
-        );
     };
 
     /*
@@ -324,24 +297,19 @@ export default function CalendarPage() {
                 <AnalyticsSection sermonsByDate={normalizedSermonsByDate} />
             )}
 
-            <PreachDateModal
-                sermonId={selectedSermon?.id ?? ''}
-                isOpen={isModalOpen}
+            {isModalOpen && selectedSermon && <EnginePreachDateModal
+                key={`${selectedSermon.id}:${selectedSermon.currentPreachDate?.id || 'new'}`}
+                sermonId={selectedSermon.id}
+                action={{
+                    kind: selectedSermon.currentPreachDate?.id ? 'edit' : 'add',
+                    dateId: selectedSermon.currentPreachDate?.id || undefined,
+                    status: getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned',
+                }}
                 onClose={() => {
                     setIsModalOpen(false);
                     setSelectedSermon(null);
                 }}
-                onSave={handleSaveDate}
-                initialData={selectedSermon?.currentPreachDate || (selectedSermon ? {
-                    id: '',
-                    date: getTodayDateOnlyKey(),
-                    status: getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned',
-                    church: { id: '', name: '', city: '' },
-                    createdAt: new Date().toISOString()
-                } : undefined)}
-                defaultChurch={selectedSermon?.church}
-                defaultStatus={selectedSermon && getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned'}
-            />
+            />}
         </div>
     );
 }

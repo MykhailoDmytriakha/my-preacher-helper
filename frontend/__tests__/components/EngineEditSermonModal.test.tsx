@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
-import EditSermonModal from '@/components/EditSermonModal';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import '@testing-library/jest-dom';
@@ -10,7 +10,6 @@ import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
-import type { Sermon } from '@/models/models';
 
 // Sermons are engine-owned: the dialog edits the stored document through the REAL engine
 // (only I/O is replaced), so every assertion below is about what ends up stored.
@@ -35,10 +34,9 @@ const withPlannedDate: ResourceSnapshot = { ...plain, value: { ...baseValue, pre
 function setup(snapshot: ResourceSnapshot = plain) {
   const harness = membershipEngineHarness([snapshot]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const onClose = jest.fn(), onUpdate = jest.fn();
-  const listCopy = { ...snapshot.value, id: resource.id } as unknown as Sermon;
-  const view = render(<DataEngineProvider><EditSermonModal sermon={listCopy} onClose={onClose} onUpdate={onUpdate} /></DataEngineProvider>);
-  return { harness, onClose, onUpdate, view };
+  const onClose = jest.fn();
+  const view = render(<DataEngineProvider><EngineEditSermonModal sermonId={resource.id} onClose={onClose} /></DataEngineProvider>);
+  return { harness, onClose, view };
 }
 async function ready() {
   const title = await screen.findByLabelText('addSermon.titleLabel');
@@ -55,7 +53,7 @@ async function saveAndSend(harness: ReturnType<typeof setup>['harness'], onClose
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-describe('EditSermonModal on the data engine', () => {
+describe('EngineEditSermonModal on the data engine', () => {
   test('opens on the stored values with Save disabled until something changes', async () => {
     const { view } = setup();
     const title = await ready();
@@ -65,15 +63,6 @@ describe('EditSermonModal on the data engine', () => {
     expect(screen.getByLabelText('Planned date')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'addSermon.cancel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
-    view.unmount();
-  });
-
-  test('shows the stored title, not the stale copy the list handed over', async () => {
-    const harness = membershipEngineHarness([plain]);
-    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-    const stale = { ...baseValue, id: resource.id, title: 'Stale list title' } as unknown as Sermon;
-    const view = render(<DataEngineProvider><EditSermonModal sermon={stale} onClose={jest.fn()} onUpdate={jest.fn()} /></DataEngineProvider>);
-    expect(await ready()).toHaveValue('Test Sermon');
     view.unmount();
   });
 

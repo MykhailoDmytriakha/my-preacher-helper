@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
 
 import SermonCard from "@/components/dashboard/SermonCard";
 import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
-import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 
@@ -14,10 +13,6 @@ interface DashboardContentProps {
     allSeries: Series[];
     searchQuery: string;
     setSearchQuery: (query: string) => void;
-    onDeleteSermon: (id: string) => void;
-    onUpdateSermon: (sermon: Sermon) => void;
-    syncStatesById?: Record<string, DashboardSermonSyncState>;
-    optimisticActions?: DashboardOptimisticActions;
 }
 
 export default function DashboardContent({
@@ -28,10 +23,6 @@ export default function DashboardContent({
     allSeries,
     searchQuery,
     setSearchQuery,
-    onDeleteSermon,
-    onUpdateSermon,
-    syncStatesById = {},
-    optimisticActions
 }: DashboardContentProps) {
     const { t } = useTranslation();
 
@@ -94,12 +85,8 @@ export default function DashboardContent({
                     key={sermon.id}
                     sermon={sermon}
                     series={allSeries}
-                    onDelete={onDeleteSermon}
-                    onUpdate={onUpdateSermon}
                     searchQuery={searchQuery}
                     searchSnippets={searchSnippetsById[sermon.id]}
-                    syncState={syncStatesById[sermon.id]}
-                    optimisticActions={optimisticActions}
                 />
             ))}
         </div>

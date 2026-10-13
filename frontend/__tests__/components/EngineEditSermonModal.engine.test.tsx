@@ -1,12 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
-import EditSermonModal from '@/components/EditSermonModal';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
-import type { Sermon } from '@/models/models';
 import type { ResourceSnapshot } from '@/data-engine/types';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -25,14 +24,11 @@ const original: ResourceSnapshot = { resource, metadata: { protocol: 1, generati
 function setup(snapshot = original) {
   const harness = membershipEngineHarness([snapshot]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const legacySave = jest.fn(), legacyUpdate = jest.fn();
   function Workspace() {
     const [open, setOpen] = useState(true);
-    return <DataEngineProvider><button onClick={() => setOpen(true)}>Open</button>{open && <EditSermonModal
-      sermon={{ ...snapshot.value, id: 'sermon', title: 'Stale list title' } as unknown as Sermon}
-      onClose={() => setOpen(false)} onSaveRequest={legacySave} onUpdate={legacyUpdate} />}</DataEngineProvider>;
+    return <DataEngineProvider><button onClick={() => setOpen(true)}>Open</button>{open && <EngineEditSermonModal sermonId="sermon" onClose={() => setOpen(false)} />}</DataEngineProvider>;
   }
-  return { harness, Workspace, legacySave, legacyUpdate, view: render(<Workspace />) };
+  return { harness, Workspace, view: render(<Workspace />) };
 }
 async function ready() {
   const title = await screen.findByLabelText('addSermon.titleLabel'); await waitFor(() => expect(title).toBeEnabled()); return title;
@@ -46,7 +42,7 @@ beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COL
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
 it('pins the actual document, keeps the selected date identity across reorder and saves metadata/date in one command', async () => {
-  const { harness, view, legacySave, legacyUpdate } = setup(); const title = await ready();
+  const { harness, view } = setup(); const title = await ready();
   expect(title).toHaveValue('Opening');
   fireEvent.change(title, { target: { value: 'Edited' } });
   fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-10-08' } });
@@ -58,7 +54,7 @@ it('pins the actual document, keeps the selected date identity across reorder an
   expect(harness.read(resource).value).toMatchObject({ title: 'Edited', preachDates: [
     { id: 'first', date: '2099-10-09' }, { id: 'second', date: '2099-10-04' },
   ] });
-  expect(legacySave).not.toHaveBeenCalled(); expect(legacyUpdate).not.toHaveBeenCalled(); view.unmount();
+  view.unmount();
 });
 
 it('recovers an unsent added date after restart and edits the same embedded identity', async () => {

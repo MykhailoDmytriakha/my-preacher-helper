@@ -5,7 +5,6 @@ import React from 'react';
 
 import { cutStudyNoteIntoScratch, CutStudyNoteError, fetchNoteCutOutline } from '@/services/studies.service';
 import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
-import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
 
 import CreateSermonFromNoteModal, { pickVerseFromRefs } from '../CreateSermonFromNoteModal';
 
@@ -196,8 +195,7 @@ describe('CreateSermonFromNoteModal', () => {
 
   it('cuts first, then creates the sermon under one client id with the link and the atoms, then opens the scratch mode', async () => {
     const user = userEvent.setup();
-    const { queryClient } = renderModal();
-    queryClient.setQueryData(sermonListKey('u1'), [{ id: 'older' } as Sermon]);
+    renderModal();
 
     await user.clear(titleInput());
     await user.type(titleInput(), 'Рука Господня');
@@ -235,8 +233,6 @@ describe('CreateSermonFromNoteModal', () => {
     );
     expect(verseInput()).toHaveValue('1 Пар 4:9-10');
 
-    expect(queryClient.getQueryData(sermonDetailKey('u1', mintedId))).toEqual(expect.objectContaining({ id: mintedId, title: 'Рука Господня', sourceNoteIds: ['n1'], scratch: atoms }));
-    expect((queryClient.getQueryData(sermonListKey('u1')) as Sermon[]).map((sermon) => sermon.id)).toEqual([mintedId, 'older']);
     for (const key of ['plan', 'cut:0', 'create']) {
       expect(screen.getByTestId(`create-sermon-step-${key}`)).toHaveAttribute('data-status', 'done');
     }

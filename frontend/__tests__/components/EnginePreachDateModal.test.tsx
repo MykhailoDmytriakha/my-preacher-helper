@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { useState } from 'react';
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
-import PreachDateModal from '@/components/calendar/PreachDateModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
@@ -111,13 +110,6 @@ it('replays one command and one date after offline restart', async () => {
   expect(new Set(send.mock.calls.map(([command]) => command.operationId))).toEqual(new Set([id]));
   expect(dates(harness).filter(date => date.notes === 'Offline')).toHaveLength(1); restored.unmount();
 });
-it('routes the calendar modal through the engine without its legacy callback', async () => {
-  const harness = membershipEngineHarness([original]); jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const legacy = jest.fn(); const view = render(<DataEngineProvider><PreachDateModal sermonId="sermon" isOpen onClose={jest.fn()} onSave={legacy} /></DataEngineProvider>);
-  await ready(); editNotes('Calendar'); await settle(); fireEvent.click(screen.getByRole('button', { name: 'buttons.save' })); await deliver(harness);
-  expect(dates(harness)).toHaveLength(3); expect(legacy).not.toHaveBeenCalled(); view.unmount();
-});
-
 it('retains the marked date identity after its originally upcoming date has passed', async () => {
   const { preachDateTarget } = await import('@/components/calendar/preachDateForm');
   const initial = { ...original.value!, preachDates: [{ ...first, date: '2000-01-01' }, second] };

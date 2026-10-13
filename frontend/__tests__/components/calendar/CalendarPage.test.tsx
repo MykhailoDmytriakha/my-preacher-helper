@@ -114,22 +114,13 @@ jest.mock('@/components/calendar/AnalyticsSection', () => {
   };
 });
 
-jest.mock('@/components/calendar/PreachDateModal', () => {
-  return function MockPreachDateModal({ isOpen, onClose, onSave }: any) {
-    return isOpen ? (
-      <div data-testid="preach-date-modal">
-        <button onClick={onClose}>Close</button>
-        <button onClick={() => onSave({
-          date: '2024-01-15',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          audience: '100 people'
-        })}>
-          Save
-        </button>
-      </div>
-    ) : null;
-  };
-});
+jest.mock('@/components/calendar/EnginePreachDateModal', () => ({
+  EnginePreachDateModal: ({ onClose }: any) => (
+    <div data-testid="preach-date-modal">
+      <button onClick={onClose}>Close</button>
+    </div>
+  ),
+}));
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -527,7 +518,7 @@ describe('CalendarPage', () => {
       sermonsByDate: {},
       pendingSermons: [],
       isLoading: false,
-      error: new Error('Test error'),
+      error: 'Test error',
       refetch: jest.fn(),
     });
 

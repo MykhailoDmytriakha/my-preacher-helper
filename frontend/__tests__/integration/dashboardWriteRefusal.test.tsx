@@ -61,7 +61,7 @@ function DashboardHarness() {
   return (
     <>
       <DataCollectionStatus state={state} />
-      {sermon ? <SermonCard sermon={sermon} onDelete={jest.fn()} onUpdate={jest.fn()} /> : <p>No active sermons</p>}
+      {sermon ? <SermonCard sermon={sermon} /> : <p>No active sermons</p>}
     </>
   );
 }

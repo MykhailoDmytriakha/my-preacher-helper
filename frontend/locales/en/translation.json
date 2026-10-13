@@ -619,7 +619,6 @@
     "options": "Options",
     "markAsPreached": "Mark as Preached",
     "markAsNotPreached": "Mark as Not Preached",
-    "updateError": "Failed to update sermon status. Please try again.",
     "copySuccess": "Sermon copied to clipboard!",
     "copyError": "Failed to copy sermon. Please try again."
   },
@@ -628,15 +627,13 @@
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
     "clearPlannedDate": "Clear",
-    "plannedDateHint": "Leave empty if you do not want a planned date",
-    "updateError": "Error updating sermon"
+    "plannedDateHint": "Leave empty if you do not want a planned date"
   },
   "buttons": {
     "cancel": "Cancel",
     "save": "Save",
     "saving": "Saving...",
     "retry": "Retry",
-    "dismiss": "Dismiss",
     "back": "Back",
     "backToSermon": "Back to Sermon",
     "copy": "Copy",
@@ -646,7 +643,6 @@
     "saved": "Saved"
   },
   "writeRecovery": {
-    "refusedLabel": "Save refused",
     "refused": "Save refused. Nothing was saved; your text is still here.",
     "refusedChange": "Change refused. Nothing was saved, and what you see has been restored.",
     "prayerCreateFailed": "Prayer request \"{{name}}\" was not saved.",
@@ -655,10 +651,6 @@
     "seriesSermonsFailed": "The selected sermons were not added to the series.",
     "seriesGroupsFailed": "The selected groups were not added to the series.",
     "groupCreateFailed": "Group \"{{name}}\" was not saved. Your text is ready to retry.",
-    "sermonCreateFailed": "Sermon \"{{name}}\" was not saved. Your text is ready to retry.",
-    "sermonUpdateFailed": "Changes to \"{{name}}\" were not saved. Your text is ready to retry.",
-    "preachDateFailed": "Preaching details for \"{{name}}\" were not saved. Your notes are ready to retry.",
-    "sermonFailed": "Sermon changes were not saved. Your text is ready to retry.",
     "thoughtEditFailed": "Your thought was not saved. Your words are back in the editor so you can try again or copy them."
   },
   "export": {
@@ -1309,7 +1301,6 @@
     "limitReached": "The recording is saved on this device. The monthly allowance is spent, so it cannot be transcribed until the limit renews."
   },
   "errors": {
-    "generic": "Error",
     "audioProcessing": "Error processing audio",
     "thoughtDeleteError": "Error deleting thought. Please try again.",
     "thoughtUpdateError": "Error updating thought in database",
@@ -1349,7 +1340,6 @@
     "magicUnavailable": "Magic is currently unavailable due to connectivity issues",
     "syncFailed": "Sync failed",
     "failedToSaveOutline": "Failed to save structure",
-    "failedToSaveSermon": "Failed to save sermon",
     "savedOfflineWillSync": "Changes saved locally. They will sync when you are back online.",
     "guestSignInFailed": "Guest sign-in error",
     "aiOutOfTime": "No answer arrived in the time allowed. Try again — if it happens again, shorten the text.",

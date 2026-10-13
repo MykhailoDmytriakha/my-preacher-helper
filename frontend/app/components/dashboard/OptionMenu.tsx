@@ -1,13 +1,11 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
-import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import { useDocumentActions } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import {
@@ -16,43 +14,20 @@ import {
   useSourceNoteLink,
   type SourceNoteOpeningContext,
 } from "@/hooks/useSermonNoteLinks";
-import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
-import { Sermon, PreachDate, Series } from "@/models/models";
-import { UNSPECIFIED_CHURCH_ID } from "@/utils/church";
-import {
-  getEffectiveIsPreached,
-  getPreachDatesByStatus,
-  getPreferredDateToMarkAsPreached
-} from "@/utils/preachDateStatus";
-import { resolveOwnerUid, sermonDetailKey, sermonListKey } from "@/utils/queryKeys";
-import { awaitAcceptance, persistedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
+import { Sermon, Series } from "@/models/models";
+import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import { getSeriesForRef } from "@/utils/seriesMembership";
-import PreachDateModal from "@components/calendar/PreachDateModal";
-import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
 import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
-import * as preachDatesService from "@services/preachDates.service";
-import { deleteSermon, updateSermon } from "@services/sermon.service";
 
 import type { PreachDateAction } from '@/components/calendar/preachDateForm';
 
 import "@locales/i18n";
 
-const SERMON_WRITE_REFUSED_LOG = 'Dashboard sermon write refused:';
-
-
 interface OptionMenuProps {
   sermon: Sermon;
   onDelete?: (sermonId: string) => void;
   onUpdate?: (updatedSermon: Sermon) => void;
-  optimisticActions?: DashboardOptimisticActions;
-  syncState?: DashboardSermonSyncState;
-  /**
-   * Raised while one of this menu's editors is on screen. The editor covers the card,
-   * so the card's badge cannot be seen — and two visible reporters for one refusal is
-   * the defect this migration keeps closing. The open editor speaks; the badge waits.
-   */
-  onEditorOpenChange?: (isOpen: boolean) => void;
   /** When provided, the menu also offers series actions (add / move / remove). */
   series?: Series[];
 }
@@ -62,9 +37,6 @@ export default function OptionMenu({
   sermon,
   onDelete,
   onUpdate,
-  optimisticActions,
-  syncState,
-  onEditorOpenChange,
   series
 }: OptionMenuProps) {
   const { t } = useTranslation();
@@ -72,9 +44,6 @@ export default function OptionMenu({
   const [engineDateAction, setEngineDateAction] = useState<PreachDateAction | null>(null);
   const documentActions = useDocumentActions();
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showPreachModal, setShowPreachModal] = useState(false);
-  const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
-  const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
   const [showSourceNotePicker, setShowSourceNotePicker] = useState(false);
   /**
    * WHAT THE PICKER OPENED WITH — frozen here, on purpose.
@@ -107,22 +76,15 @@ export default function OptionMenu({
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change' | 'remove'>('add');
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
-  const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
   /** Where keyboard focus returns after a dialog opened from this menu closes. */
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const router = useRouter();
-  const queryClient = useQueryClient();
   // The app's own "are you sure?" window — the browser's box looked foreign on an iPhone.
   const { confirm, confirmDialog } = useConfirm();
 
   // Which series this sermon is in — DERIVED from the loaded list (series.items
   // is the sole truth). Only meaningful when a `series` list is passed in.
   const currentSeries = getSeriesForRef(sermon.id, series);
-
-  useEffect(() => {
-    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker || Boolean(engineDateAction));
-  }, [showEditModal, showPreachModal, showSourceNotePicker, engineDateAction, onEditorOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -145,60 +107,17 @@ export default function OptionMenu({
   const handleDelete = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isSyncPending) return;
     const confirmed = await confirm({
       title: { key: 'optionMenu.deleteConfirm' },
       confirmText: { key: 'common.delete' },
     });
     if (!confirmed) return;
 
-    // On the engine a deletion is one engine action: the collection keeps the row as pending
-    // until the tombstone is confirmed, on every screen that lists it.
-    if (isCollectionOnEngine('sermons')) {
-      try {
-        await documentActions.remove({ collection: 'sermons', id: sermon.id });
-        if (onDelete) onDelete(sermon.id);
-      } catch (error) {
-        console.error("Error deleting sermon:", error);
-        alert(t('optionMenu.deleteError'));
-      }
-      setOpen(false);
-      return;
-    }
-
-    if (optimisticActions?.deleteSermon) {
-      await awaitAcceptance(
-        optimisticActions.deleteSermon(sermon) as unknown as WriteSubmission,
-        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
-        // with the operation and a retry attached to the row itself. A toast here as
-        // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
-      );
-      setOpen(false);
-      return;
-    }
-
-    // WHOSE cache this is, read BEFORE the await: a sign-out or an account switch while the
-    // request is in flight would make `resolveOwnerUid()` answer with somebody else, and the
-    // eviction would then clear a stranger's key and leave this owner's corpse in place.
-    const ownerUid = resolveOwnerUid();
+    // A deletion is one engine action: the collection keeps the row as pending until the
+    // tombstone is confirmed, on every screen that lists it.
     try {
-      await deleteSermon(sermon.id);
-      // The sermon page reaches delete through THIS branch (it passes no optimistic
-      // actions), so the eviction that the dashboard gets from the delete mutation has
-      // to happen here too — otherwise the detail cache keeps serving the deleted
-      // sermon and Back re-opens a live editor over it.
-      queryClient.removeQueries({ queryKey: sermonDetailKey(ownerUid, sermon.id) });
-      // And the LIST, for the same reason: it is persisted too, so a deleted sermon left in
-      // it comes back on the next cold start and offers itself for opening.
-      queryClient.setQueryData<Sermon[]>(sermonListKey(ownerUid), (old) =>
-        old ? old.filter((item) => item.id !== sermon.id) : old
-      );
-      if (onDelete) {
-        onDelete(sermon.id);
-      } else {
-        router.refresh();
-      }
+      await documentActions.remove({ collection: 'sermons', id: sermon.id });
+      if (onDelete) onDelete(sermon.id);
     } catch (error) {
       console.error("Error deleting sermon:", error);
       alert(t('optionMenu.deleteError'));
@@ -217,187 +136,15 @@ export default function OptionMenu({
     setShowEditModal(false);
   };
 
-  const handleUpdateSermon = (updatedSermon: Sermon) => {
-    if (onUpdate) {
-      onUpdate(updatedSermon);
-    } else {
-      router.refresh();
-    }
-  };
-
   const closeMenu = () => {
     setOpen(false);
   };
 
-  const invalidateCalendarCache = () =>
-    queryClient.invalidateQueries({
-      queryKey: ['calendarSermons'],
-      exact: false
-    });
-
-  const requiresPreachedDetails = (preachDate: PreachDate): boolean => {
-    const churchName = preachDate.church?.name?.trim();
-    if (!churchName) {
-      return true;
-    }
-    return preachDate.church?.id === UNSPECIFIED_CHURCH_ID;
-  };
-
-  const applySermonUpdateResult = (updated: Sermon | null) => {
-    invalidateCalendarCache();
-    if (updated && onUpdate) {
-      onUpdate(updated);
-      return;
-    }
-    if (!onUpdate) {
-      router.refresh();
-    }
-  };
-
-  const openPreachDetailsModal = (preachDate: PreachDate | null) => {
-    setPreachDateToMark(preachDate);
-    // The stand-in is NOT blanked here any more: the form itself decides what "not stated"
-    // looks like and what to offer instead (the sermon's own congregation), so that rule
-    // lives in one place rather than in every door that opens the form.
-    setPreachModalInitialData(
-      preachDate ? { ...preachDate, status: 'preached' } : undefined
-    );
-    setShowPreachModal(true);
-    closeMenu();
-  };
-
-  const markAsPreachedWithPreferredDate = async (preferredDate: PreachDate) => {
-    if (requiresPreachedDetails(preferredDate)) {
-      openPreachDetailsModal(preferredDate);
-      return;
-    }
-
-    if (optimisticActions?.markAsPreachedFromPreferred) {
-      await awaitAcceptance(
-        optimisticActions.markAsPreachedFromPreferred(sermon, preferredDate) as unknown as WriteSubmission,
-        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
-        // with the operation and a retry attached to the row itself. A toast here as
-        // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
-      );
-      closeMenu();
-      return;
-    }
-
-    await preachDatesService.updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
-    const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
-    applySermonUpdateResult(updated);
-    closeMenu();
-  };
-
-  const unmarkAsPreachedInPlace = async () => {
-    if (optimisticActions?.unmarkAsPreached) {
-      await awaitAcceptance(
-        optimisticActions.unmarkAsPreached(sermon) as unknown as WriteSubmission,
-        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
-        // with the operation and a retry attached to the row itself. A toast here as
-        // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
-      );
-      closeMenu();
-      return;
-    }
-
-    const preachedDates = getPreachDatesByStatus(sermon, 'preached');
-    if (preachedDates.length > 0) {
-      await Promise.all(
-        preachedDates.map((preachDate) =>
-          preachDatesService.updatePreachDate(sermon.id, preachDate.id, { status: 'planned' })
-        )
-      );
-    }
-
-    const updated = await updateSermon({ ...sermon, isPreached: false }, { isPreached: false });
-    applySermonUpdateResult(updated);
-    closeMenu();
-  };
-
-  const handleTogglePreached = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const handleTogglePreached = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isSyncPending) return;
-
-    // Captured BEFORE the write: an optimistic update flips this while the request is in
-    // flight and rolls it back on refusal, so reading it inside `catch` asks about the
-    // wrong direction.
-    if (isCollectionOnEngine('sermons')) {
-      setEngineDateAction({ kind: effectiveIsPreached ? 'unmark' : 'mark' });
-      closeMenu();
-      return;
-    }
-
-    const wasPreached = effectiveIsPreached;
-    /**
-     * Does the row already speak for this? The optimistic path fails into the mutation
-     * cache, which the sermon's own badge reads — so an `alert` here made one refusal into
-     * two messages, the second of which invites the person to repeat an action that was
-     * refused. The fallback path has no such reporter, and there the alert IS the message.
-     */
-    const rowReportsRefusal = wasPreached
-      ? Boolean(optimisticActions?.unmarkAsPreached)
-      : Boolean(optimisticActions?.markAsPreachedFromPreferred);
-
-    try {
-      if (!effectiveIsPreached) {
-        const preferredDate = getPreferredDateToMarkAsPreached(sermon);
-        if (preferredDate) {
-          await markAsPreachedWithPreferredDate(preferredDate);
-          return;
-        }
-
-        openPreachDetailsModal(null);
-        return;
-      }
-
-      await unmarkAsPreachedInPlace();
-    } catch (error) {
-      console.error("Error updating preached status:", error);
-      if (!rowReportsRefusal) alert(t('optionMenu.updateError'));
-      closeMenu();
-    }
-  };
-
-  const handleSavePreachDate = (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
-    if (optimisticActions?.savePreachDate) {
-      // Return the real recoverable submission to PreachDateModal. Awaiting this
-      // object here would turn it into an immediately fulfilled Promise and make
-      // the modal close before the persistence result exists.
-      return optimisticActions.savePreachDate(sermon, data, preachDateToMark) as unknown as WriteSubmission;
-    }
-
-    return persistedWrite((async () => {
-      try {
-        if (preachDateToMark) {
-          await preachDatesService.updatePreachDate(sermon.id, preachDateToMark.id, {
-            ...data,
-            status: 'preached'
-          });
-        } else {
-          await preachDatesService.addPreachDate(sermon.id, {
-            ...data,
-            status: data.status || 'preached'
-          });
-        }
-
-        const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
-
-        invalidateCalendarCache();
-
-        if (updated && onUpdate) {
-          onUpdate(updated);
-        } else if (!onUpdate) {
-          router.refresh();
-        }
-      } catch (err) {
-        console.error("Failed to save preach date:", err);
-        throw err;
-      }
-    })());
+    setEngineDateAction({ kind: effectiveIsPreached ? 'unmark' : 'mark' });
+    closeMenu();
   };
 
   // Series actions — only surfaced when a `series` list is passed (e.g. the sermon page).
@@ -440,9 +187,8 @@ export default function OptionMenu({
       <button
         ref={triggerRef}
         onClick={handleToggle}
-        className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200 disabled:opacity-60"
+        className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200"
         aria-label={t('optionMenu.options')}
-        disabled={isSyncPending}
       >
         <DotsVerticalIcon className="w-5 h-5" />
       </button>
@@ -454,16 +200,14 @@ export default function OptionMenu({
               onClick={handleEdit}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
-              disabled={isSyncPending}
-            >
+                  >
               <span>{t('optionMenu.edit')}</span>
             </button>
             <button
               onClick={handleTogglePreached}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
-              disabled={isSyncPending}
-            >
+                  >
               <span>
                 {effectiveIsPreached
                   ? t('optionMenu.markAsNotPreached')
@@ -477,16 +221,14 @@ export default function OptionMenu({
                     onClick={handleChangeSeries}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                     role="menuitem"
-                    disabled={isSyncPending}
-                  >
+                              >
                     <span>{t('workspaces.series.actions.moveToDifferentSeries')}</span>
                   </button>
                   <button
                     onClick={handleRemoveFromSeries}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                     role="menuitem"
-                    disabled={isSyncPending}
-                  >
+                              >
                     <span>{t('workspaces.series.actions.removeFromSeries')}</span>
                   </button>
                 </>
@@ -495,8 +237,7 @@ export default function OptionMenu({
                   onClick={handleAddToSeries}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                   role="menuitem"
-                  disabled={isSyncPending}
-                >
+                          >
                   <span>{t('workspaces.series.actions.addToSeries')}</span>
                 </button>
               )
@@ -507,8 +248,7 @@ export default function OptionMenu({
               onClick={handleEditSourceNotes}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
-              disabled={isSyncPending}
-            >
+                  >
               <span>
                 {(sermon.sourceNoteIds?.length ?? 0) > 0
                   ? t('sermon.sourceNotes.menuEdit')
@@ -519,45 +259,17 @@ export default function OptionMenu({
               onClick={handleDelete}
               className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
               role="menuitem"
-              disabled={isSyncPending}
-            >
+                  >
               <span>{t('optionMenu.delete')}</span>
             </button>
           </div>
         </div>
       )}
 
-      {showEditModal && (
-        <EditSermonModal
-          sermon={sermon}
-          onClose={handleCloseEditModal}
-          onUpdate={handleUpdateSermon}
-          onSaveRequest={
-            optimisticActions?.saveEditedSermon
-              ? (input) => optimisticActions.saveEditedSermon(input) as unknown as WriteSubmission
-              : undefined
-          }
-          syncState={syncState}
-        />
-      )}
+      {showEditModal && <EngineEditSermonModal key={sermon.id} sermonId={sermon.id} onClose={handleCloseEditModal} />}
 
       {engineDateAction && <EnginePreachDateModal key={`${sermon.id}:${engineDateAction.kind}`} sermonId={sermon.id}
         action={engineDateAction} onClose={() => setEngineDateAction(null)} />}
-
-      <PreachDateModal
-        sermonId={sermon.id}
-        isOpen={showPreachModal}
-        onClose={() => {
-          setPreachDateToMark(null);
-          setPreachModalInitialData(undefined);
-          setShowPreachModal(false);
-        }}
-        onSave={handleSavePreachDate}
-        syncState={syncState}
-        initialData={preachModalInitialData}
-        defaultChurch={sermon.church}
-        defaultStatus="preached"
-      />
 
       {showSeriesSelector && <SeriesMembershipDialog seriesId={currentSeries?.id ?? ''} member={{ type: 'sermon', refId: sermon.id }}
         mode={seriesSelectorMode === 'remove' ? 'remove' : 'target'} onClose={() => setShowSeriesSelector(false)} />}

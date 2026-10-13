@@ -20,13 +20,10 @@ import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
-import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
-import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useFittingRows } from '@/hooks/useFittingRows';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
@@ -44,10 +41,6 @@ import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
-import type {
-  DashboardOptimisticActions,
-  DashboardSermonSyncState,
-} from '@/models/dashboardOptimistic';
 import type { TFunction } from 'i18next';
 
 type Tone = 'blue' | 'emerald' | 'amber' | 'rose' | 'gray' | 'violet' | 'cyan';
@@ -61,8 +54,6 @@ type Metric = {
   tone: Exclude<Tone, 'gray'>;
 };
 
-/** Stable identity so hiding the verdicts does not remount the panel on every render. */
-const EMPTY_SYNC_STATES: Record<string, DashboardSermonSyncState> = {};
 
 type SermonRow = {
   id: string;
@@ -233,7 +224,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { sermons, state: sermonState } = useDashboardSermons();
-  const { actions: optimisticSermonActions, syncStatesById } = useDashboardOptimisticSermons();
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
@@ -351,7 +341,7 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
-      {isCollectionOnEngine('sermons') && <DataCollectionStatus state={sermonState} />}
+      <DataCollectionStatus state={sermonState} />
 
 
       <section className="grid gap-3 grid-flow-col auto-cols-fr grid-rows-6 sm:grid-rows-3 lg:grid-rows-2 xl:grid-rows-1" aria-label={t('dashboardHome.metrics.label')}>
@@ -362,13 +352,7 @@ export default function DashboardPage() {
 
       {/* Row order matches the approved color demo: Sermons · Studies · Calendar */}
       <section className="grid gap-3 xl:grid-cols-6">
-        {/* While the create form covers the page it reports its own refusal, so the rows
-            stay quiet: a verdict drawn underneath it could not be read anyway. */}
-        <SermonsPanel
-          sermons={dashboardData.sermonRows}
-          syncStatesById={showSermonModal ? EMPTY_SYNC_STATES : syncStatesById}
-          optimisticActions={optimisticSermonActions}
-        />
+        <SermonsPanel sermons={dashboardData.sermonRows} />
         <RecentStudiesPanel studies={dashboardData.studyItems} />
         <AgendaPanel agendaItems={dashboardData.agendaItems} />
       </section>
@@ -385,21 +369,10 @@ export default function DashboardPage() {
           isOpen
           showTriggerButton={false}
           allowPlannedDate
-          closeOnSuccess
           onClose={() => setShowSermonModal(false)}
-          onCreateRequest={(input) => {
-            const submission = optimisticSermonActions.createSermon(input);
-            // A queued create has a durable owner but no server document yet, so
-            // stay on the dashboard. Navigation is allowed only after persistence.
-            // A refusal is reported by the row badge; here it only means "do not navigate".
-            // Without the catch the rejection escaped as an unhandled promise error.
-            void submission.acceptance
-              .then((acceptance) => {
-                if (acceptance.kind === 'persisted') router.push(`/sermons/${submission.sermonId}`);
-              })
-              .catch(() => undefined);
-            return submission;
-          }}
+          // The engine holds the new sermon on this device once it is saved, so its page opens
+          // at once — offline too.
+          onCreated={(sermonId) => router.push(`/sermons/${sermonId}`)}
         />
       )}
       {showPrayerModal && (
@@ -452,15 +425,7 @@ function PanelTitle({
   );
 }
 
-function SermonsPanel({
-  sermons,
-  syncStatesById,
-  optimisticActions,
-}: {
-  sermons: SermonRow[];
-  syncStatesById: Record<string, DashboardSermonSyncState>;
-  optimisticActions: DashboardOptimisticActions;
-}) {
+function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(5, sermons.length, PANEL_ROW_HEIGHT);
 
@@ -504,21 +469,6 @@ function SermonsPanel({
                 {sermon.status}
               </Chip>
             </Link>
-            {/* A sermon created here can still be refused. Without this the person saw a
-                row that looked saved and no verdict at all — the write left no other
-                reporter, because the modal is silent by contract. Rendered only when there
-                IS a verdict: an empty block still took its padding, and that is what made
-                this row's hover highlight shorter than every other panel's. */}
-            {syncStatesById[sermon.id] && (
-              <div className="pb-2 pl-[52px]">
-                <SermonSyncBadge
-                  sermonId={sermon.id}
-                  syncState={syncStatesById[sermon.id]}
-                  optimisticActions={optimisticActions}
-                  t={t}
-                />
-              </div>
-            )}
             </div>
           ))}
         </div>

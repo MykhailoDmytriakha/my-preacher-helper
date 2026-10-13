@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
-import PreachDateModal from '@/components/calendar/PreachDateModal';
+import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import '@testing-library/jest-dom';
@@ -40,11 +40,12 @@ const existing: PreachDate = { id: 'd1', date: '2023-10-27', status: 'planned', 
 function setup(props: { value?: Record<string, unknown>; action?: PreachDateAction; initialData?: PreachDate; defaultStatus?: 'planned' | 'preached' } = {}) {
   const harness = membershipEngineHarness([snapshot(props.value)]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const onClose = jest.fn(), onSave = jest.fn();
+  const onClose = jest.fn();
+  const action: PreachDateAction = props.action ?? { kind: props.initialData?.id ? 'edit' : 'add', dateId: props.initialData?.id, status: props.defaultStatus };
   const view = render(<DataEngineProvider>
-    <PreachDateModal sermonId="sermon" isOpen onClose={onClose} onSave={onSave} initialData={props.initialData} defaultStatus={props.defaultStatus} />
+    <EnginePreachDateModal sermonId="sermon" action={action} onClose={onClose} />
   </DataEngineProvider>);
-  return { harness, onClose, onSave, view };
+  return { harness, onClose, view };
 }
 const settle = () => act(async () => { await settleEngine(); });
 async function ready() {
@@ -59,7 +60,7 @@ const deliver = (harness: ReturnType<typeof setup>['harness']) => act(async () =
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-describe('PreachDateModal on the data engine', () => {
+describe('EnginePreachDateModal on the data engine', () => {
   describe('the congregation the sermon is already prepared for', () => {
     it('offers it when the sermon has no date yet, instead of asking for it again', async () => {
       // Marking a sermon preached opens this form with no date to read from, so the
@@ -111,7 +112,7 @@ describe('PreachDateModal on the data engine', () => {
   });
 
   it('stores the new preach date with the typed church, audience and notes, and closes', async () => {
-    const { harness, onClose, onSave, view } = setup();
+    const { harness, onClose, view } = setup();
     await ready();
     fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'New Church' } });
     fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Adults' } });
@@ -121,7 +122,6 @@ describe('PreachDateModal on the data engine', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     await deliver(harness);
     expect(dates(harness)).toEqual([expect.objectContaining({ church: { id: 'c1', name: 'New Church', city: 'City' }, audience: 'Adults' })]);
-    expect(onSave).not.toHaveBeenCalled();
     view.unmount();
   });
 

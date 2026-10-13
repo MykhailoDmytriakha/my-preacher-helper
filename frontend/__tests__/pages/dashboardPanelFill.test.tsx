@@ -51,12 +51,6 @@ const sermons = Array.from({ length: 6 }, (_, index) => ({
 jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => ({ sermons, loading: false, error: null, refresh: jest.fn() }),
 }));
-jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
-  useDashboardOptimisticSermons: () => ({
-    actions: { createSermon: jest.fn(), updateSermon: jest.fn(), deleteSermon: jest.fn() },
-    syncStatesById: {},
-  }),
-}));
 jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [] }) }));
 let mockNotes = notes;
 jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: () => ({ notes: mockNotes }) }));

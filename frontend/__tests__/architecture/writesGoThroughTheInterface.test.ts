@@ -69,7 +69,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   'services/atomicUpdate.client.ts': 3,
   // A cross-series move, deliberately all-or-nothing — and invisible to this test until
   // `writeBatch` was added to what it looks for.
-  'services/seriesMembership.client.ts': 4,
   // Server-side counters, on documents no editor competes for.
   'services/rateLimit.server.ts': 2,
   'services/usageLimits.server.ts': 2,

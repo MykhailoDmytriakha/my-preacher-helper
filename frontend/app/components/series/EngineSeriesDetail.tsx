@@ -10,7 +10,7 @@ import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleto
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
@@ -94,7 +94,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     {!document.readOnly && editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
     {!document.readOnly && membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
       seriesId={seriesId} {...membership} onClose={() => setMembership(null)}
-      onCreateSermon={isCollectionOnEngine('sermons') ? () => { setMembership(null); setCreatingSermon(true); } : undefined} />}
+      onCreateSermon={() => { setMembership(null); setCreatingSermon(true); }} />}
     {!document.readOnly && creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
       onQueued={() => setCreatingSermon(false)} />}
     {!document.readOnly && deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}

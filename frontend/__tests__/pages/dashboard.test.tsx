@@ -8,24 +8,15 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 // Mock child components for structural testing
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="dashboard-nav">Mocked Nav</div>);
 jest.mock('@/components/dashboard/DashboardStats', () => ({ sermons }: { sermons: any[] }) => <div data-testid="dashboard-stats">Mocked Stats ({sermons.length})</div>);
-jest.mock('@/components/AddSermonModal', () => ({ onCreateRequest }: { onCreateRequest: any }) => (
-  <button
-    data-testid="add-sermon-modal-trigger"
-    onClick={() => onCreateRequest({ title: 'New', verse: 'John 1:1' })}
-  >
-    Mocked Add Sermon
-  </button>
+jest.mock('@/components/AddSermonModal', () => ({ allowPlannedDate }: { allowPlannedDate?: boolean }) => (
+  <div data-testid="add-sermon-modal" data-allow-planned-date={String(Boolean(allowPlannedDate))}>Mocked Add Sermon</div>
 ));
 jest.mock('@/components/dashboard/SermonCard', () => ({
   sermon,
   searchSnippets,
-  onDelete,
-  onUpdate,
-}: { sermon: any; searchSnippets?: { type: string; value: string }[]; onDelete: any; onUpdate: any }) => (
+}: { sermon: any; searchSnippets?: { type: string; value: string }[] }) => (
   <div data-testid={`sermon-card-${sermon.id}`}>
     <span>{sermon.title}</span>
-    <button data-testid={`delete-sermon-${sermon.id}`} onClick={() => onDelete(sermon.id)}>Delete</button>
-    <button data-testid={`update-sermon-${sermon.id}`} onClick={() => onUpdate({ ...sermon, title: 'Updated' })}>Update</button>
     {searchSnippets?.map((snippet: any, idx: number) => (
       <div key={idx} data-testid={`sermon-snippet-${sermon.id}-${idx}`}>
         {[snippet.text, ...(snippet.tags || [])].filter(Boolean).join(' ')}
@@ -97,38 +88,13 @@ const mockSermons = [
 // Mock hooks - expose mock function to control return value
 const mockUseDashboardSermons = jest.fn();
 const mockUseSeries = jest.fn();
-const mockDeleteSermonFromCache = jest.fn();
-const mockUpdateSermonCache = jest.fn();
-const mockAddSermonToCache = jest.fn();
-const mockOptimisticCreateSermon = jest.fn();
 
 jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => mockUseDashboardSermons(),
-  useSermonMutations: () => ({
-    deleteSermonFromCache: mockDeleteSermonFromCache,
-    updateSermonCache: mockUpdateSermonCache,
-    addSermonToCache: mockAddSermonToCache,
-  }),
 }));
 
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => mockUseSeries(),
-}));
-
-jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
-  useDashboardOptimisticSermons: () => ({
-    syncStatesById: {},
-    actions: {
-      createSermon: mockOptimisticCreateSermon,
-      saveEditedSermon: jest.fn(),
-      deleteSermon: jest.fn(),
-      markAsPreachedFromPreferred: jest.fn(),
-      unmarkAsPreached: jest.fn(),
-      savePreachDate: jest.fn(),
-      retrySync: jest.fn(),
-      dismissSyncError: jest.fn(),
-    },
-  }),
 }));
 
 // Mock i18n
@@ -197,7 +163,6 @@ describe('Sermons Page', () => {
       createNewSeries: jest.fn(),
     });
     mockPush.mockClear();
-    mockOptimisticCreateSermon.mockReset();
   });
 
   describe('Basic Rendering', () => {
@@ -513,24 +478,10 @@ describe('Sermons Page', () => {
       // It should be expanded auto-magically due to the URL parameter
       expect(searchInput).toHaveClass('opacity-100');
     });
-    it('handles sermon actions', async () => {
-      const { deleteSermonFromCache, updateSermonCache } = require('@/hooks/useDashboardSermons').useSermonMutations();
-
+    it('offers sermon creation with planned dates through the engine-owned modal', () => {
       render(<SermonsPage />);
 
-      // Delete
-      fireEvent.click(screen.getByTestId('delete-sermon-1'));
-      expect(deleteSermonFromCache).toHaveBeenCalledWith('1');
-
-      // Update
-      fireEvent.click(screen.getByTestId('update-sermon-1'));
-      expect(updateSermonCache).toHaveBeenCalledWith(expect.objectContaining({ title: 'Updated' }));
-
-      // Add
-      fireEvent.click(screen.getByTestId('add-sermon-modal-trigger'));
-      expect(mockOptimisticCreateSermon).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'New', verse: 'John 1:1' })
-      );
+      expect(screen.getByTestId('add-sermon-modal')).toHaveAttribute('data-allow-planned-date', 'true');
     });
   });
 

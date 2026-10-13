@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import EditSermonModal from '@/components/EditSermonModal';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import '@testing-library/jest-dom';
@@ -9,7 +9,6 @@ import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
-import type { Sermon } from '@/models/models';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'u1' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
@@ -17,7 +16,7 @@ jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: () => null }));
 
-const sermon: Sermon = { id: 'sermon-1', title: 'О терпении', verse: 'Иак 1:4', date: '2026-09-01T00:00:00Z', thoughts: [], userId: 'u1' };
+const sermon = { id: 'sermon-1', title: 'О терпении', verse: 'Иак 1:4', date: '2026-09-01T00:00:00Z', thoughts: [], userId: 'u1' };
 const member = { id: 'sermon-sermon-1', type: 'sermon', refId: 'sermon-1', position: 1 };
 const series = (id: string, title: string, occupied: boolean): ResourceSnapshot => ({ resource: { collection: 'series', id }, metadata: null,
   value: { userId: 'u1', title, theme: title, bookOrTopic: '', status: 'draft', items: occupied ? [member] : [],
@@ -31,7 +30,7 @@ function setup(rows: ResourceSnapshot[] = [series('s1', 'Первая серия
   configure?.(harness);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const onClose = jest.fn();
-  const view = render(<DataEngineProvider><EditSermonModal sermon={sermon} onClose={onClose} onUpdate={jest.fn()} /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><EngineEditSermonModal sermonId="sermon-1" onClose={onClose} /></DataEngineProvider>);
   return { harness, onClose, view };
 }
 const seriesField = async () => (await screen.findByLabelText('addSermon.seriesLabel')) as HTMLSelectElement;

@@ -1,18 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import EditSermonModal from '@/components/EditSermonModal';
+import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal';
 import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { persistedWrite } from '@/utils/recoverableWrite';
 import { settleEngine } from '../../test-utils/documentEngineHarness';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
-import type { Sermon } from '@/models/models';
 import type { ResourceSnapshot } from '@/data-engine/types';
 
-const mockLegacyAdd = jest.fn(), mockLegacyRemove = jest.fn();
-jest.mock('@/hooks/useSeriesMembership', () => ({ useSeriesMembership: () => ({ addToSeries: mockLegacyAdd, removeFromAllSeries: mockLegacyRemove }) }));
 jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [], loading: false }) }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
@@ -20,10 +16,7 @@ jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/services/sermon.service', () => ({ updateSermon: jest.fn() }));
-jest.mock('@/services/preachDates.service', () => ({ addPreachDate: jest.fn(), updatePreachDate: jest.fn(), deletePreachDate: jest.fn() }));
 
-const sermon: Sermon = { id: 's', userId: 'owner', title: 'Title', verse: 'Romans 1', date: 'now', thoughts: [] };
 const member = { id: 'sermon-s', type: 'sermon', refId: 's', position: 1 };
 const series = (id: string, occupied = false): ResourceSnapshot => ({ resource: { collection: 'series', id }, metadata: null,
   value: { userId: 'owner', title: id, theme: id, bookOrTopic: '', status: 'draft', items: occupied ? [member] : [], sermonIds: occupied ? ['s'] : [], seriesKind: 'sermon' } });
@@ -32,10 +25,9 @@ function setup(rows = [series('Source', true), series('Target')]) {
   const harness = membershipEngineHarness([...rows, { resource: { collection: 'sermons', id: 's' }, metadata: null,
     value: { userId: 'owner', title: 'Title', verse: 'Romans 1', date: 'now', thoughts: [] } }]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const onClose = jest.fn(), onSaveRequest = jest.fn(() => persistedWrite(Promise.resolve(sermon)));
-  const view = render(<DataEngineProvider><SeriesMembershipRecovery /><EditSermonModal sermon={sermon}
-    onClose={onClose} onUpdate={jest.fn()} onSaveRequest={onSaveRequest} /></DataEngineProvider>);
-  return { harness, onClose, onSaveRequest, view };
+  const onClose = jest.fn();
+  const view = render(<DataEngineProvider><SeriesMembershipRecovery /><EngineEditSermonModal sermonId="s" onClose={onClose} /></DataEngineProvider>);
+  return { harness, onClose, view };
 }
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
@@ -51,7 +43,7 @@ it('pins the series field when the editor opens and captures one move only after
   expect(harness.transport.send).toHaveBeenCalledTimes(1);
   expect(harness.read({ collection: 'series', id: 'Source' }).value?.items).toEqual([]);
   expect(harness.read({ collection: 'series', id: 'Target' }).value?.items).toEqual([expect.objectContaining({ type: 'sermon', refId: 's' })]);
-  expect(mockLegacyAdd).not.toHaveBeenCalled(); expect(mockLegacyRemove).not.toHaveBeenCalled(); view.unmount();
+  view.unmount();
 });
 
 it('keeps the pinned target when a remote deletion arrives, and refuses the complete move', async () => {
@@ -86,5 +78,5 @@ it('cancels staged membership without sending and supports an empty complete ser
   await act(async () => { await empty.harness.engine.retry(); await settleEngine(); });
   expect(empty.harness.transport.send).toHaveBeenCalledTimes(1);
   expect(empty.harness.read({ collection: 'sermons', id: 's' }).value?.title).toBe('New title');
-  expect(empty.onSaveRequest).not.toHaveBeenCalled(); empty.view.unmount();
+  empty.view.unmount();
 });

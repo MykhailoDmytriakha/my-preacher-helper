@@ -8,17 +8,15 @@ import {
   InformationCircleIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { isCollectionOnEngine, useDocumentActions } from '@/data-engine/react.client';
+import { useDocumentActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
-import { createSermon } from '@/services/sermon.service';
 import {
   cutStudyNoteIntoScratch,
   CutStudyNoteError,
@@ -32,7 +30,6 @@ import { newClientId } from '@/utils/clientId';
 import { isKnownOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
-import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 
@@ -211,16 +208,13 @@ export default function CreateSermonFromNoteModal({
 }: CreateSermonFromNoteModalProps) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const documentActions = useDocumentActions();
   /**
-   * On the engine the sermon is born through it under the same client ID, so a retry after a
-   * lost answer cannot make a second one, and the engine's lists show it at once.
+   * The sermon is born through the engine under the same client ID, so a retry after a lost
+   * answer cannot make a second one, and the engine's lists and the sermon page show it at once.
    */
-  const bearSermon = (born: Sermon & { id: string }): Promise<Sermon> => isCollectionOnEngine('sermons')
-    ? documentActions.create({ collection: 'sermons', id: born.id },
-      deepCleanUndefined({ ...born, id: undefined, createdAt: born.date }) as unknown as DocumentData).then(() => born)
-    : createSermon(born);
+  const bearSermon = (born: Sermon & { id: string }): Promise<Sermon> => documentActions.create({ collection: 'sermons', id: born.id },
+    deepCleanUndefined({ ...born, id: undefined, createdAt: born.date }) as unknown as DocumentData).then(() => born);
   const { uid } = useResolvedUid();
 
   const { locale: bibleLocale } = useAppLocale();
@@ -508,16 +502,6 @@ export default function CreateSermonFromNoteModal({
       const sermon: Sermon = await bearSermon(born);
       if (!aliveRef.current) return;
 
-      // Seed what the next screen reads, so it opens with the sermon instead of a blank
-      // detail fetch. A list fetch already in flight would land after the patch and erase
-      // it, so it is cancelled first; the list is only patched when it is already cached —
-      // seeding an absent list would make the sermons page show one sermon until it refetched.
-      await queryClient.cancelQueries({ queryKey: sermonListKey(uid) });
-      queryClient.setQueryData<Sermon>(sermonDetailKey(uid, sermon.id), sermon);
-      queryClient.setQueryData<Sermon[] | undefined>(sermonListKey(uid), (old) =>
-        old ? [sermon, ...old.filter((item) => item.id !== sermon.id)] : old
-      );
-      void queryClient.invalidateQueries({ queryKey: sermonListKey(uid), refetchType: 'none' });
       setStep(CREATE_STEP, 'done');
       setBornSermonId(sermon.id);
       setPhase('done');

@@ -1,9 +1,6 @@
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Church } from '@/models/models';
 import { isUnspecifiedChurch } from '@/utils/church';
-import { getSermons } from '@services/sermon.service';
 
 import { useAuth } from './useAuth';
 
@@ -12,24 +9,13 @@ export function useUserChurches() {
     const userId = user?.uid;
 
     /**
-     * The sermons come from where the sermons live (BUG-20260930-legacy-cache-week-expiry). On the
-     * data engine the old-path query of every sermon is neither saved for offline use nor asked
-     * offline, so the suggestions were empty without a network however recently they were seen;
-     * the engine's own collection is on this device. Same split as `useCalendarSermons`.
+     * The sermons come from where the sermons live (BUG-20260930-legacy-cache-week-expiry): the
+     * engine's own collection is on this device, so the suggestions survive having no network.
      */
-    const onEngine = isCollectionOnEngine('sermons');
     const engine = useSermonsDataCollection();
-    const { data: legacySermons = [], isLoading: legacyLoading, error: legacyError } = useServerFirstQuery({
-        queryKey: ['sermons', userId, 'all'], // Slightly different key to fetch all for churches
-        queryFn: () => {
-            if (!userId) return Promise.resolve([]);
-            return getSermons(userId);
-        },
-        enabled: !!userId && !onEngine,
-    });
-    const sermons = onEngine ? engine.sermons.filter(sermon => sermon.userId === userId) : legacySermons;
-    const isLoading = onEngine ? engine.loading : legacyLoading;
-    const error = onEngine ? engine.error : legacyError;
+    const sermons = engine.sermons.filter(sermon => sermon.userId === userId);
+    const isLoading = engine.loading;
+    const error = engine.error;
 
     /**
      * History comes from BOTH places a church can be named, because they are different

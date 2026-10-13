@@ -5,14 +5,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { isCollectionOnEngine, useDocumentActions } from '@/data-engine/react.client';
+import { useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
-import { getSermons, updateSermon } from '@services/sermon.service';
+import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import type { Sermon, StudyNote } from '@/models/models';
@@ -292,10 +291,9 @@ const sameIdSet = (a: string[], b: string[]): boolean => {
 /**
  * WRITE THE LINK THROUGH THE ONE DOOR, stating what the editor opened with.
  *
- * `updateSermon` reaches `conflictSafeUpdate` with the opening revision and a baseline of the
- * single field being replaced, so a list chosen on the phone a minute ago is not silently
- * thrown away — the save is refused, the server's list is handed back, and the dialog can
- * adopt it. Offline the intent is queued and replayed through the same guard on reconnect.
+ * The engine commit compares the stored list with the one the dialog opened with, so a list
+ * chosen on the phone a minute ago is not silently thrown away — the save is refused, the
+ * stored list is handed back, and the dialog can adopt it. Offline the engine holds the write.
  */
 export function useSourceNoteLink(
   sermon: Sermon | null | undefined,
@@ -388,64 +386,26 @@ export function useSourceNoteLink(
 
       setSaving(true);
       try {
-        if (isCollectionOnEngine('sermons')) {
-          // Same rule as the legacy guard, applied to the engine's current copy: a list chosen
-          // elsewhere since this dialog opened is handed back, never overwritten.
-          let refusedWith: string[] | null = null;
-          await documentActions.commit({ collection: 'sermons', id: target.id }, current => {
-            if (!current) throw new Error('The sermon was deleted');
-            const stored = Array.isArray(current.sourceNoteIds) ? current.sourceNoteIds as string[] : [];
-            if (opening.noteIds && !sameIdSet(stored, opening.noteIds) && !sameIdSet(stored, nextIds)) {
-              refusedWith = stored;
-              return current;
-            }
-            return { ...current, sourceNoteIds: nextIds };
-          });
-          if (refusedWith) {
-            await publish({ sermonId: target.id, sourceNoteIds: refusedWith });
-            toast.error(t('freshness.staleSaveToast'));
-            return { outcome: 'stale', serverNoteIds: refusedWith };
+        // Same rule as the legacy guard, applied to the engine's current copy: a list chosen
+        // elsewhere since this dialog opened is handed back, never overwritten.
+        let refusedWith: string[] | null = null;
+        await documentActions.commit({ collection: 'sermons', id: target.id }, current => {
+          if (!current) throw new Error('The sermon was deleted');
+          const stored = Array.isArray(current.sourceNoteIds) ? current.sourceNoteIds as string[] : [];
+          if (opening.noteIds && !sameIdSet(stored, opening.noteIds) && !sameIdSet(stored, nextIds)) {
+            refusedWith = stored;
+            return current;
           }
-          await publish({ sermonId: target.id, sourceNoteIds: nextIds });
-          return { outcome: 'saved' };
-        }
-        const updated = await updateSermon(
-          { ...target, sourceNoteIds: nextIds },
-          { sourceNoteIds: nextIds },
-          opening.revision,
-          { sourceNoteIds: opening.noteIds }
-        );
-        await publish({
-          sermonId: target.id,
-          sourceNoteIds: nextIds,
-          updatedAt: updated?.updatedAt,
-          revision: updated?.rev?.[SERMON_CORE_AGGREGATE],
+          return { ...current, sourceNoteIds: nextIds };
         });
+        if (refusedWith) {
+          await publish({ sermonId: target.id, sourceNoteIds: refusedWith });
+          toast.error(t('freshness.staleSaveToast'));
+          return { outcome: 'stale', serverNoteIds: refusedWith };
+        }
+        await publish({ sermonId: target.id, sourceNoteIds: nextIds });
         return { outcome: 'saved' };
       } catch (error) {
-        if (isStaleWriteError(error)) {
-          // REFUSED, and the transaction is the only thing that saw the server — so hand its
-          // values back instead of leaving the dialog to press the same doomed button again.
-          const serverNoteIds = Array.isArray(error.serverValues?.sourceNoteIds)
-            ? (error.serverValues.sourceNoteIds as string[])
-            : [];
-          await publish({
-            sermonId: target.id,
-            sourceNoteIds: serverNoteIds,
-            revision: error.actualRevision,
-          });
-          toast.error(t('freshness.staleSaveToast'));
-          return { outcome: 'stale', serverNoteIds, serverRevision: error.actualRevision };
-        }
-        if (isOfflineQueuedError(error)) {
-          // QUEUED, not refused: the intent is durable and will replay through the same guard.
-          // Showing it locally is the honest thing — the person's choice is stored, and a
-          // dialog that stayed open with a Cancel button would promise a cancellation that
-          // does not exist.
-          await publish({ sermonId: target.id, sourceNoteIds: nextIds });
-          toast.message(t('freshness.queuedPending', { count: 1 }));
-          return { outcome: 'queued' };
-        }
         console.error('Failed to save the sermon source notes:', error);
         toast.error(t('sermon.sourceNotes.saveError'));
         return { outcome: 'failed' };

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
-import PreachDateList from '@/components/calendar/PreachDateList';
+import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import '@testing-library/jest-dom';
@@ -39,7 +39,7 @@ function setup(preachDates: PreachDate[] = []) {
   const harness = membershipEngineHarness([{ resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
     value: { userId: 'owner', title: 'Opening', verse: 'Romans 1', date: '2026-01-01', thoughts: [], isPreached: false, preachDates: preachDates as never } }]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  const view = render(<DataEngineProvider><PreachDateList sermonId="s1" /></DataEngineProvider>);
+  const view = render(<DataEngineProvider><EnginePreachDateList sermonId="s1" /></DataEngineProvider>);
   return { harness, view };
 }
 const settle = () => act(async () => { await settleEngine(); });
@@ -54,7 +54,7 @@ async function addButtonReady() {
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-describe('PreachDateList on the data engine', () => {
+describe('EnginePreachDateList on the data engine', () => {
   it('renders the empty state when there are no preach dates', async () => {
     const { view } = setup();
     await addButtonReady();

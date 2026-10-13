@@ -5,15 +5,6 @@ import SermonCard from '@/components/dashboard/SermonCard';
 import { Sermon, Series } from '@/models/models';
 import '@testing-library/jest-dom';
 
-// Mock services used by OptionMenu
-jest.mock('@services/sermon.service', () => ({
-  updateSermon: jest.fn().mockResolvedValue({}),
-}));
-
-jest.mock('@services/preachDates.service', () => ({
-  deletePreachDate: jest.fn().mockResolvedValue({}),
-}));
-
 // Mock Next.js router
 const mockPush = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -64,22 +55,7 @@ jest.mock('@tanstack/react-query', () => ({
   }),
 }));
 
-// OptionMenu (rendered inside the card) uses the playlist membership sweep hook,
-// which internally calls useMutation — stub it so the partial react-query mock
-// above doesn't need the mutation surface.
-jest.mock('@/hooks/useSeriesMembership', () => ({
-  useSeriesMembership: () => ({
-    addToSeries: jest.fn(),
-    addRefsToSeries: jest.fn(),
-    removeFromAllSeries: jest.fn(),
-    reorderSeries: jest.fn(),
-  }),
-}));
-
 describe('SermonCard Component', () => {
-  const mockOnDelete = jest.fn();
-  const mockOnUpdate = jest.fn();
-
   const baseSermon: Sermon = {
     id: 'test-sermon-id',
     title: 'Test Sermon Title',
@@ -95,23 +71,10 @@ describe('SermonCard Component', () => {
     jest.clearAllMocks();
   });
 
-  const optimisticActions = {
-    createSermon: jest.fn(),
-    saveEditedSermon: jest.fn(),
-    deleteSermon: jest.fn(),
-    markAsPreachedFromPreferred: jest.fn(),
-    unmarkAsPreached: jest.fn(),
-    savePreachDate: jest.fn(),
-    retrySync: jest.fn(),
-    dismissSyncError: jest.fn(),
-  };
-
   it('renders sermon card with basic information', () => {
     render(
       <SermonCard
         sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -130,8 +93,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
         searchQuery="grace"
         searchSnippets={snippets}
       />
@@ -145,8 +106,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
         searchQuery="grace"
         searchSnippets={[{ text: 'grace thought 1', tags: [] }]}
       />
@@ -165,8 +124,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={sermonWithOneThought}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -185,8 +142,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={sermonWithMultipleThoughts}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -206,8 +161,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={sermonWithOutline}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -223,8 +176,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={preachedSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -244,8 +195,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={preachedSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -262,8 +211,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={preachedSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -280,8 +227,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={nonPreachedSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -314,8 +259,6 @@ describe('SermonCard Component', () => {
       <SermonCard
         sermon={sermonWithSeries}
         series={series}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -340,7 +283,7 @@ describe('SermonCard Component', () => {
     ];
 
     render(
-      <SermonCard sermon={baseSermon} series={series} onDelete={mockOnDelete} onUpdate={mockOnUpdate} />
+      <SermonCard sermon={baseSermon} series={series} />
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'optionMenu.options' }));
@@ -352,8 +295,6 @@ describe('SermonCard Component', () => {
     render(
       <SermonCard
         sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
       />
     );
 
@@ -362,113 +303,5 @@ describe('SermonCard Component', () => {
       button.querySelector('svg') && !button.textContent?.trim()
     );
     expect(exportButtons.length).toBeGreaterThan(0);
-  });
-
-  it.each([
-    ['create', 'addSermon.newSermon'],
-    ['delete', 'optionMenu.delete'],
-    ['preach-status', 'optionMenu.markAsPreached'],
-    ['update', 'editSermon.editSermon'],
-  ] as const)('renders sync operation label for %s state', (operation, labelKey) => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        syncState={{ status: 'pending', operation }}
-      />
-    );
-
-    expect(screen.getByText(labelKey)).toBeInTheDocument();
-  });
-
-  it('renders pending sync badge and pending visual card style', () => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        syncState={{ status: 'pending', operation: 'update' }}
-      />
-    );
-
-    expect(screen.getByText('buttons.saving')).toBeInTheDocument();
-    const card = screen.getByTestId(`sermon-card-${baseSermon.id}`);
-    expect(card).toHaveClass('opacity-75');
-    expect(card).toHaveClass('border-blue-200');
-  });
-
-  /**
-   * TWO DIFFERENT SITUATIONS MUST NOT WEAR THE SAME WORDS.
-   *
-   * "Sync failed / Retry" is right for a dropped connection. For a refusal — the record
-   * changed on another device — it sends the person in a circle: Retry, refused again,
-   * then Dismiss, which throws away the only copy of what they typed. A refusal is a
-   * CHOICE: send mine anyway, or keep theirs.
-   */
-  it('words a refusal as a choice, not as a failure to repeat', () => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        syncState={{ status: 'error', operation: 'update', conflict: true }}
-        optimisticActions={optimisticActions as any}
-      />
-    );
-
-    expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
-    expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument();
-    expect(screen.queryByText('buttons.retry')).not.toBeInTheDocument();
-    expect(screen.queryByText('errors.generic')).not.toBeInTheDocument();
-  });
-
-  it('renders error sync badge and triggers retry/dismiss handlers', () => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        syncState={{ status: 'error', operation: 'update' }}
-        optimisticActions={optimisticActions as any}
-      />
-    );
-
-    const retryButton = screen.getByText('buttons.retry');
-    const dismissButton = screen.getByText('buttons.dismiss');
-
-    fireEvent.click(retryButton);
-    fireEvent.click(dismissButton);
-
-    expect(optimisticActions.retrySync).toHaveBeenCalledWith(baseSermon.id);
-    expect(optimisticActions.dismissSyncError).toHaveBeenCalledWith(baseSermon.id);
-
-    const card = screen.getByTestId(`sermon-card-${baseSermon.id}`);
-    expect(card).toHaveClass('border-red-300');
-  });
-
-  it('shows the exact refused sermon text next to the refusal', () => {
-    render(
-      <SermonCard
-        sermon={baseSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-        syncState={{
-          status: 'error',
-          operation: 'update',
-          message: 'writeRecovery.refused',
-          recoveryText: 'Exact refused title\nExact refused verse',
-          refused: true,
-        }}
-        optimisticActions={optimisticActions as any}
-      />
-    );
-
-    expect(screen.getByText('writeRecovery.refused')).toBeInTheDocument();
-    expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
-    expect(screen.queryByText('buttons.retry')).not.toBeInTheDocument();
-    expect(screen.getByText(/Exact refused title/)).toHaveTextContent(
-      'Exact refused title Exact refused verse'
-    );
   });
 });

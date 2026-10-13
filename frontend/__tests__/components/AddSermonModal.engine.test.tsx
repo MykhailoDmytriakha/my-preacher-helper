@@ -25,13 +25,13 @@ beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COL
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
 it('creates through the real entry point, keeps submitted input in list/calendar across restart and follows remote edits/deletion', async () => {
-  const harness = membershipEngineHarness([]), legacyCreate = jest.fn(), legacyCreated = jest.fn();
+  const harness = membershipEngineHarness([]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const send = jest.mocked(harness.transport.send), originalSend = send.getMockImplementation()!;
   send.mockRejectedValue(new Error('offline'));
   function Workspace() {
     const list = useDashboardSermons(), calendar = useCalendarSermons(new Date('2026-10-01'), new Date('2026-10-31'));
-    return <><AddSermonModal allowPlannedDate onCreateRequest={legacyCreate} onNewSermonCreated={legacyCreated} />
+    return <><AddSermonModal allowPlannedDate />
       <DataCollectionStatus state={list.state} />
       <div data-testid="rows">{list.sermons.map(sermon => <p key={sermon.id}>{sermon.title}</p>)}</div>
       <div data-testid="calendar">{calendar.sermons.map(sermon => <p key={sermon.id}>{sermon.title}</p>)}</div>
@@ -53,7 +53,7 @@ it('creates through the real entry point, keeps submitted input in list/calendar
   expect(screen.getByTestId('calendar')).toHaveTextContent('Queued sermon');
   // Waiting in the queue is the ordinary way; the screen says nothing about it (isSyncTrouble).
   expect(screen.queryByText('dataSync.phase.queued')).not.toBeInTheDocument();
-  expect(legacyCreate).not.toHaveBeenCalled(); expect(legacyCreated).not.toHaveBeenCalled(); expect(getSermons).not.toHaveBeenCalled();
+  expect(getSermons).not.toHaveBeenCalled();
   const request = (await harness.commits.list('owner'))[0], resource = request.baseline.resource;
   view.unmount(); const restored = mount();
   await waitFor(() => expect(screen.getByTestId('rows')).toHaveTextContent('Queued sermon'));
@@ -69,4 +69,23 @@ it('creates through the real entry point, keeps submitted input in list/calendar
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   await waitFor(() => expect(screen.getByTestId('rows')).toBeEmptyDOMElement());
   expect(screen.getByTestId('calendar')).toBeEmptyDOMElement(); restored.unmount();
+});
+
+it('reports the queued sermon id through onCreated and closes the modal', async () => {
+  const harness = membershipEngineHarness([]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const onCreated = jest.fn();
+  const view = render(<DataEngineProvider><AddSermonModal onCreated={onCreated} /></DataEngineProvider>);
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.newSermon' }));
+  const title = await screen.findByLabelText('addSermon.titleLabel'); await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Created sermon' } });
+  fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'John 1' } });
+  await act(async () => { await settleEngine(); });
+  expect(onCreated).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
+  const request = (await harness.commits.list('owner'))[0];
+  expect(onCreated).toHaveBeenCalledWith(request.baseline.resource.id);
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  view.unmount();
 });

@@ -47,8 +47,6 @@ describe('SermonCard Calendar Integration', () => {
         render(
             <SermonCard
                 sermon={{ ...baseSermon, preachDates: [] }}
-                onDelete={jest.fn()}
-                onUpdate={jest.fn()}
             />
         );
 
@@ -64,8 +62,6 @@ describe('SermonCard Calendar Integration', () => {
         render(
             <SermonCard
                 sermon={sermonWithDates}
-                onDelete={jest.fn()}
-                onUpdate={jest.fn()}
             />
         );
 
@@ -76,8 +72,6 @@ describe('SermonCard Calendar Integration', () => {
         render(
             <SermonCard
                 sermon={{ ...baseSermon, isPreached: false }}
-                onDelete={jest.fn()}
-                onUpdate={jest.fn()}
             />
         );
 

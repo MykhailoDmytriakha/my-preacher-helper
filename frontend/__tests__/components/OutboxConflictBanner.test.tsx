@@ -46,9 +46,6 @@ const mockInvalidate = jest.fn().mockResolvedValue(undefined);
 jest.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: (...args: unknown[]) => mockInvalidate(...args) }),
 }));
-jest.mock('@/services/seriesMembership.client', () => ({
-  replayMembershipOutbox: jest.fn().mockResolvedValue(0),
-}));
 jest.mock('@/services/outboxReplay.client', () => {
   const actual = jest.requireActual('@/services/writeOutbox.client');
   return {
