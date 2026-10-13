@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
-import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -15,14 +14,12 @@ import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -33,7 +30,6 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { useRoomyHeader, useWideViewport } from '@/hooks/useWideViewport';
 import { ScriptureReference, StudyNote } from '@/models/models';
-import { readRevision } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
@@ -736,15 +732,11 @@ export default function StudyNoteEditorPage() {
      * (moving to another note is a remount: the router keys the `[id]` segment by its value).
      */
     /**
-     * Revision this editor's text is built from. Fed by the listener (server truth)
+     * Revision this editor's text is built from. Fed by the engine row (server truth)
      * and by each accepted save. `null` means "not established yet" — then the save
      * runs unguarded, exactly as before, instead of guessing.
      */
     const serverRevisionRef = useRef<number | null>(null);
-    /** Latest revision the SERVER holds. Adopted only when the text is adopted. */
-    const remoteRevisionRef = useRef<number | null>(null);
-    // Keep a revision attached to the exact snapshot object, not a later emission.
-    const remoteRevisionsRef = useRef(new WeakMap<NoteDraftPayload, number>());
     const [saveConflict, setSaveConflict] = useState(false);
     /**
      * Bumped when the person insists on their text after a refusal. Without it the
@@ -823,82 +815,16 @@ export default function StudyNoteEditorPage() {
         [recovered, draftPayload]
     );
 
-    // Compare against what this editor accepted, never the independently refreshed
-    // query cache: a cache refresh must neither hide a remote edit nor undo adoption.
-    const freshness = useDocumentFreshness<NoteDraftPayload>({
-        collection: 'studyNotes',
-        docId: isNew ? null : noteId,
-        uid,
-        enabled: isInitialized && !isNew,
-        known: confirmedDraft,
-        select: (data) => {
-            // ⚠️ This is the REMOTE revision, deliberately kept apart from the one a
-            // save states. Letting a snapshot advance the save revision was a hole:
-            // the listener moved the number forward while the editor still showed
-            // the OLD text, so stale text was saved WITH a fresh revision and the
-            // guard waved it through — destroying the newer version it exists to
-            // protect. The save revision only advances when the displayed text
-            // advances with it (applyRemote) or when a save is confirmed.
-            remoteRevisionRef.current = readRevision(data as Record<string, unknown>, NOTE_AGGREGATE);
-            const value: NoteDraftPayload = {
-                title: (data.title as string) || '',
-                content: (data.content as string) || '',
-                tags: (data.tags as string[]) || [],
-                scriptureRefs: (data.scriptureRefs as ScriptureReference[]) || [],
-                type: (data.type as 'note' | 'question') || 'note',
-            };
-            remoteRevisionsRef.current.set(value, remoteRevisionRef.current);
-            return value;
-        },
-    });
-
-    const [freshnessDismissed, setFreshnessDismissed] = useState(false);
-    useEffect(() => {
-        // A new remote change re-arms the banner after a previous dismissal.
-        if (freshness.state === 'stale' || freshness.state === 'unknown') setFreshnessDismissed(false);
-    }, [freshness.remote, freshness.state]);
-
     const editorIsDirty = useMemo(
         () => (confirmedDraft ? !sameNoteDraft(confirmedDraft, draftPayload) : false),
         [confirmedDraft, draftPayload]
     );
 
-    const applyRemote = useCallback(() => {
-        const next = freshness.remote;
-        if (!next) return;
-        const revision = remoteRevisionsRef.current.get(next);
-        if (revision === undefined || revision < (serverRevisionRef.current ?? 0)) return;
-        setTitle(next.title);
-        setContent(next.content);
-        setTags(next.tags);
-        setScriptureRefs(next.scriptureRefs);
-        setType(next.type);
-        baselineRef.current = next;
-        setConfirmedDraft(next);
-        markSaved(next);
-        // Text and revision move together — that is the whole invariant.
-        serverRevisionRef.current = revision;
-        freshness.markSynced(next);
-    }, [freshness, markSaved]);
-
-    // Server proof can retire an old recovery copy, including an outbox replay
-    // whose original mutation is gone. Only acknowledge the exact displayed text;
-    // a different server version remains an explicit choice, never an overwrite.
-    useEffect(() => {
-        if (freshness.state === 'stale' && freshness.remote && sameNoteDraft(freshness.remote, draftPayload)) {
-            applyRemote();
-        } else if (confirmedDraft && freshness.state === 'fresh' && freshness.diagnostics?.lastServerResult === 'matching') {
-            markSaved(confirmedDraft);
-        }
-    }, [applyRemote, confirmedDraft, draftPayload, freshness.state, freshness.remote, freshness.diagnostics?.lastServerResponseAt, freshness.diagnostics?.lastServerResult, markSaved]);
-
     /*
-     * ON THE ENGINE THE ROW IS ALREADY THE ANSWER: the server's copy plus this device's own
-     * submitted work, while the freshness listener that fed `applyRemote` stays silent there.
-     * A clean editor follows the row; a dirty, saving or conflicted one keeps the person's words,
-     * and "take theirs" reads the same row.
+     * THE ENGINE ROW IS ALREADY THE ANSWER: the server's copy plus this device's own submitted
+     * work. A clean editor follows the row; a dirty, saving or conflicted one keeps the person's
+     * words, and "take theirs" reads the same row.
      */
-    const followsEngine = isCollectionOnEngine('studyNotes');
     const rowPayload = useMemo<NoteDraftPayload | null>(() => existingNote ? {
         title: existingNote.title || '',
         content: existingNote.content || '',
@@ -919,10 +845,10 @@ export default function StudyNoteEditorPage() {
         serverRevisionRef.current = existingNote?.rev?.[NOTE_AGGREGATE] ?? serverRevisionRef.current;
     }, [rowPayload, existingNote, markSaved]);
     useEffect(() => {
-        if (!followsEngine || isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
+        if (isNew || !isInitialized || !rowPayload || !confirmedDraft) return;
         if (editorIsDirty || isSaving || saveConflict || sameNoteDraft(rowPayload, confirmedDraft)) return;
         adoptRow();
-    }, [followsEngine, isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, adoptRow]);
+    }, [isNew, isInitialized, rowPayload, confirmedDraft, editorIsDirty, isSaving, saveConflict, adoptRow]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;
@@ -1274,42 +1200,16 @@ export default function StudyNoteEditorPage() {
                         // No `pendingText`: unlike the sermon header, this editor stays
                         // open and still shows the refused text.
                         onKeepMine={() => {
-                            // Adopt the server's CURRENT revision: the person has seen
-                            // the conflict and chose their text, so this is a DELIBERATE
-                            // overwrite, not a stale one. Without it the resend carries
-                            // the same old revision and is refused again — a button that
-                            // promises an action it never performs.
-                            if (remoteRevisionRef.current !== null) {
-                                serverRevisionRef.current = remoteRevisionRef.current;
-                            }
-                            // And say plainly that this one send is deliberate, or the
-                            // content check refuses it again and the button never works.
+                            // Say plainly that this one send is deliberate, or the content
+                            // check refuses it again and the button never works.
                             deliberateOverwriteRef.current = true;
                             setSaveConflict(false);
                             setResaveNonce((n) => n + 1);
                         }}
                         onTakeTheirs={() => {
-                            if (followsEngine) adoptRow();
-                            else applyRemote();
+                            adoptRow();
                             setSaveConflict(false);
                         }}
-                        className="mb-2"
-                    />
-                )}
-                {/* The RECORD changed elsewhere. Distinct from the app-update toast,
-                    and it never replaces what is on screen without a decision. */}
-                {!saveConflict && (freshness.state === 'stale' || freshness.state === 'unknown') && !freshnessDismissed && (
-                    <DataFreshnessBanner
-          entityKey="entityNote"
-                        dirty={editorIsDirty}
-                        deleted={freshness.remotelyDeleted}
-          unknown={freshness.state === 'unknown'}
-          diagnostics={freshness.diagnostics}
-          checking={freshness.checking}
-          canCheck={freshness.canCheck}
-          onCheckAgain={freshness.checkAgain}
-                        onRefresh={editorIsDirty ? undefined : applyRemote}
-                        onDismiss={() => setFreshnessDismissed(true)}
                         className="mb-2"
                     />
                 )}

@@ -1,4 +1,5 @@
 import * as route from 'app/api/studies/materials/[id]/route';
+import { POST as createMaterial } from 'app/api/studies/materials/route';
 
 import { studiesRepository } from '@repositories/studies.repository';
 
@@ -15,8 +16,7 @@ jest.mock('next/server', () => ({
 jest.mock('@repositories/studies.repository', () => ({
   studiesRepository: {
     getMaterial: jest.fn(),
-    updateMaterial: jest.fn(),
-    deleteMaterial: jest.fn(),
+    listMaterials: jest.fn(),
   },
 }));
 
@@ -97,122 +97,20 @@ describe('studies materials [id] route', () => {
     });
   });
 
-  describe('PUT', () => {
-    it('returns 401 when userId is missing', async () => {
-      const response = await route.PUT(makeRequest(undefined, 'PUT', { title: 'Updated' }), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe('User not authenticated');
+  // Study materials are written only through the data engine; a shipped bundle's write is refused.
+  describe('writes', () => {
+    it('return 401 when userId is missing', async () => {
+      for (const response of [await route.PUT(makeRequest(undefined, 'PUT', { title: 'x' })), await route.DELETE(makeRequest(undefined, 'DELETE')),
+        await createMaterial(makeRequest(undefined, 'POST', { title: 'x' }))]) expect(response.status).toBe(401);
     });
 
-    it('returns 404 when material does not exist', async () => {
-      mockRepo.getMaterial.mockResolvedValue(null as any);
-
-      const response = await route.PUT(makeRequest('user-1', 'PUT', { title: 'Updated' }), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('Not found');
-    });
-
-    it('returns 403 when material belongs to another user', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ userId: 'user-2' } as any);
-
-      const response = await route.PUT(makeRequest('user-1', 'PUT', { title: 'Updated' }), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(data.error).toBe('Forbidden');
-    });
-
-    it('returns 400 when payload attempts to change userId', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1' } as any);
-
-      const response = await route.PUT(
-        makeRequest('user-1', 'PUT', { title: 'Updated', userId: 'user-2' }),
-        params
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Cannot change userId');
-      expect(mockRepo.updateMaterial).not.toHaveBeenCalled();
-    });
-
-    it('updates material and forces owner to current user', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1' } as any);
-      mockRepo.updateMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1', title: 'Updated' } as any);
-
-      const response = await route.PUT(makeRequest('user-1', 'PUT', { title: 'Updated' }), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(mockRepo.updateMaterial).toHaveBeenCalledWith('material-1', { title: 'Updated', userId: 'user-1' }, 'user-1');
-      expect(data.title).toBe('Updated');
-    });
-
-    it('returns 500 when update fails', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1' } as any);
-      mockRepo.updateMaterial.mockRejectedValue(new Error('boom'));
-
-      const response = await route.PUT(makeRequest('user-1', 'PUT', { title: 'Updated' }), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to update material');
-    });
-  });
-
-  describe('DELETE', () => {
-    it('returns 401 when userId is missing', async () => {
-      const response = await route.DELETE(makeRequest(undefined, 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(401);
-      expect(data.error).toBe('User not authenticated');
-    });
-
-    it('returns success when material does not exist', async () => {
-      mockRepo.getMaterial.mockResolvedValue(null as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-    });
-
-    it('returns 403 when material belongs to another user', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ userId: 'user-2' } as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(data.error).toBe('Forbidden');
-    });
-
-    it('deletes material when owner matches', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1' } as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(mockRepo.deleteMaterial).toHaveBeenCalledWith('material-1', 'user-1');
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-    });
-
-    it('returns 500 when delete fails', async () => {
-      mockRepo.getMaterial.mockResolvedValue({ id: 'material-1', userId: 'user-1' } as any);
-      mockRepo.deleteMaterial.mockRejectedValue(new Error('boom'));
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to delete material');
+    it('refuse a shipped bundle\'s create, update and delete with the migration refusal', async () => {
+      for (const response of [await route.PUT(makeRequest('user-1', 'PUT', { title: 'x' })), await route.DELETE(makeRequest('user-1', 'DELETE')),
+        await createMaterial(makeRequest('user-1', 'POST', { title: 'x', type: 'study' }))]) {
+        expect(response.status).toBe(426);
+        expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+      }
+      expect(mockRepo.getMaterial).not.toHaveBeenCalled();
     });
   });
 });

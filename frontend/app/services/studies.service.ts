@@ -1,40 +1,20 @@
-import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
-import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { ScratchNote, StudyNote } from '@/models/models';
-import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
-import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Study-note reads, create, and content updates use the client Firestore SDK.
-// DELETE stays on the server because it cascades into studyMaterials, and study
-// materials + share links stay on the server.
+// Study notes are written only through the data engine (engineOwnedCollections.ts). What stays
+// here is the note list read the sermon side still uses and the AI cut routes.
 /** The note body is one editable unit; server-side links (materialIds) are not. */
 export const NOTE_AGGREGATE = 'note';
 
 const NOTES_COLLECTION = 'studyNotes';
-
-// Fields a client UPDATE may touch — the user-editable note content only. Never
-// userId/id/createdAt/materialIds (materialIds is kept in sync by the server-side
-// material<->note linking). updatedAt + isDraft are derived and set here.
-/**
- * Fields a note update may carry.
- *
- * `relatedSermonIds` is NOT one of them, deliberately. Create has always stripped it as a
- * derived field, so leaving it writable on update kept a second, half-alive place to store
- * "this sermon was built on this note" — and two truths for one relationship is the defect
- * the sermon side exists to avoid (`Sermon.sourceNoteIds` is the only copy; the reverse
- * direction is derived). A future writer must not be able to revive it by accident.
- */
-const STUDY_NOTE_UPDATE_FIELDS: (keyof StudyNote)[] = [
-  'title', 'content', 'scriptureRefs', 'tags', 'type',
-];
 
 type NoteFilters = Partial<{
   q: string;
@@ -117,123 +97,10 @@ async function getStudyNotesViaClient(userId: string, filters: NoteFilters): Pro
   return filterNotesClient(notes, filters);
 }
 
-async function createStudyNoteViaClient(
-  note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }
-): Promise<StudyNote> {
-  const db = getClientDb();
-  const now = new Date().toISOString();
-  // Persist the same shape the server does: derived/relational fields are NOT stored.
-  const persistable = deepCleanUndefined({
-    userId: note.userId,
-    content: note.content ?? '',
-    title: note.title || '',
-    scriptureRefs: note.scriptureRefs || [],
-    tags: note.tags || [],
-    type: note.type || 'note',
-    createdAt: now,
-    updatedAt: now,
-  });
-  const hydrate = (id: string): StudyNote =>
-    normalizeNote({
-      ...persistable,
-      id,
-      materialIds: note.materialIds || [],
-      relatedSermonIds: note.relatedSermonIds || [],
-    } as StudyNote);
-
-  // Idempotent create when the client supplies an id (offline autosave): setDoc on
-  // that id creates-or-overwrites, so a replayed create reuses the same doc instead
-  // of duplicating. We do NOT pre-read the doc: a get() on a not-yet-existing note
-  // is denied by the `read: ownsExisting('userId')` rule (resource is null), which
-  // would abort the create before the write. Security Rules still guarantee the
-  // write can only target the caller's own note (create = ownsIncoming('userId')).
-  if (note.id) {
-    const ref = doc(db, NOTES_COLLECTION, note.id);
-    await setDoc(ref, persistable);
-    return hydrate(note.id);
-  }
-
-  const ref = await addDoc(collection(db, NOTES_COLLECTION), persistable);
-  return hydrate(ref.id);
-}
-
-async function updateStudyNoteViaClient(
-  id: string,
-  updates: Partial<StudyNote>,
-  expectedRevision: number | null = null,
-  /**
-   * The values these fields had when the editor OPENED — its own baseline, not a
-   * fresh read. This is the whole difference between a real check and a no-op: a
-   * fingerprint taken from a `getDoc` issued moments before the write compares the
-   * server with itself and always agrees, so the stale text goes in.
-   */
-  expectedBaseline: Record<string, unknown> | null = null
-): Promise<StudyNote & { revision?: number }> {
-  const db = getClientDb();
-  const ref = doc(db, NOTES_COLLECTION, id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error('Study note not found');
-  const existing = normalizeNote({ ...(snap.data() as StudyNote), id: snap.id });
-
-  const whitelisted: Partial<StudyNote> = {};
-  for (const field of STUDY_NOTE_UPDATE_FIELDS) {
-    if (updates[field] !== undefined) (whitelisted as Record<string, unknown>)[field] = updates[field];
-  }
-  const merged = normalizeNote({ ...existing, ...whitelisted, updatedAt: new Date().toISOString() } as StudyNote);
-  const cleanUpdates = deepCleanUndefined({ ...whitelisted, updatedAt: merged.updatedAt, isDraft: merged.isDraft });
-
-  // GUARDED PATH. The caller tells us which revision its text was built from, so a
-  // save from a tab that never saw the phone's edit is REFUSED instead of quietly
-  // replacing it. Callers that cannot state a revision keep the old behaviour
-  // exactly — this must not change anything for paths not yet migrated.
-  if (expectedRevision !== null) {
-    const revision = await conflictSafeUpdate(ref, cleanUpdates, 'Study note not found', {
-      aggregate: NOTE_AGGREGATE,
-      expectedRevision,
-      // Content check alongside the counter: an old build that edits a note without
-      // advancing the number is invisible to the counter and visible here. The
-      // values come from the CALLER's baseline — see `expectedBaseline`.
-      expectedBaseline,
-      // Offline this queues the INTENT instead of writing blindly; `replayOutbox`
-      // puts it back through this same guard on reconnect, stating the revision
-      // the text was built from. Without the route an offline save would simply
-      // fail — never become an unconditional write.
-      outboxRoute: existing.userId
-        ? { uid: existing.userId, collection: NOTES_COLLECTION, docId: id, savedAt: Date.now() }
-        : undefined,
-    });
-    return { ...merged, revision };
-  }
-
-  // Unguarded path still advances the counter — otherwise it would lie and give a
-  // later stale save false permission. `increment` works offline; a transaction does not.
-  await updateDoc(ref, { ...cleanUpdates, ...revisionBump(NOTE_AGGREGATE) });
-  return merged;
-}
-
 export async function getStudyNotes(userId: string, filters: NoteFilters = {}): Promise<StudyNote[]> {
   return getStudyNotesViaClient(userId, filters);
 }
 
-export async function createStudyNote(
-  note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }
-): Promise<StudyNote> {
-  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
-  return createStudyNoteViaClient(note);
-}
-
-export async function updateStudyNote(
-  id: string,
-  updates: Partial<StudyNote> & { userId: string },
-  expectedRevision: number | null = null,
-  /** The note's fields as the editor OPENED them — see the guard's baseline. */
-  expectedBaseline: Record<string, unknown> | null = null
-): Promise<StudyNote & { revision?: number }> {
-  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
-  return updateStudyNoteViaClient(id, updates, expectedRevision, expectedBaseline);
-}
-
-/** What the cut route answers: atoms ready to be written into a sermon, plus why that many. */
 export interface CutStudyNoteResponse {
   noteId: string;
   keyPassage: string;
@@ -364,17 +231,4 @@ export async function cutStudyNoteIntoScratch(
     notes,
     totalSections: typeof body.totalSections === 'number' ? body.totalSections : 0,
   };
-}
-
-export async function deleteStudyNote(id: string, userId: string): Promise<void> {
-  assertLegacyClientWriteAllowed(NOTES_COLLECTION);
-  const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, { category: 'crud',
-    method: 'DELETE',
-    headers: authHeaders,
-  });
-  if (!res.ok) {
-    console.error('deleteStudyNote: failed', res.status);
-    throw new Error('Failed to delete study note');
-  }
 }

@@ -55,7 +55,8 @@
       "users": "Налаштування користувача",
       "planTemplates": "Шаблон структури",
       "tags": "Тег",
-      "prayerRequests": "Молитва"
+      "prayerRequests": "Молитва",
+      "studyNotes": "Нотатка"
     },
     "field": {
       "name": "Назва",
@@ -113,7 +114,9 @@
       "heldAt": "Дата проведення",
       "answerText": "Відповідь на молитву",
       "text": "Текст",
-      "updates": "Оновлення"
+      "updates": "Оновлення",
+      "content": "Текст нотатки",
+      "scriptureRefs": "Місця Писання"
     },
     "unchangedLines": "⋯ {{count}} без змін",
     "untitled": "Без назви",

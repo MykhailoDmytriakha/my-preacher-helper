@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { isOwnersTombstone, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { isOwnersTombstone, legacyBoundaryResponse, refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 // Error messages
@@ -34,24 +34,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const uid = await getRequiredAuthenticatedUid(request);
-  if (!uid) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
-  const { id } = await params;
-  try {
-    const existing = await studiesRepository.getNote(id);
-    if (!existing || isOwnersTombstone(existing as unknown as Record<string, unknown>, uid)) return NextResponse.json({ success: true });
-    if (existing.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    await studiesRepository.deleteNote(id, uid);
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    const refusal = legacyBoundaryResponse(error);
-    if (refusal) return refusal;
-    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
-    }
-    console.error(`DELETE /api/studies/notes/${id} error`, error);
-    return NextResponse.json({ error: 'Failed to delete study note' }, { status: 500 });
-  }
+/**
+ * DELETE stays for shipped bundles. Study notes are deleted only through the data engine, which
+ * also retires the note's share links and removes it from its materials (serverRelations.ts), so
+ * a shipped bundle's delete gets the 426 refusal.
+ */
+export async function DELETE(request: Request) {
+  return refuseLegacyWriteRoute(request);
 }

@@ -66,54 +66,24 @@ describe('studies.service', () => {
     jest.dontMock('firebase/firestore');
   });
 
-  it('reads, creates, and updates study notes through the client SDK', async () => {
+  // Study notes are written only through the data engine; the list read the sermon side uses remains.
+  it('reads and filters study notes through the client SDK', async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
         docSnap('note-1', baseNote),
         docSnap('note-2', { ...baseNote, title: 'Other', tags: ['hope'] }),
       ],
     });
-    mockSetDoc.mockResolvedValueOnce(undefined);
-    mockGetDoc.mockResolvedValueOnce(docSnap('note-1', baseNote));
-    mockUpdateDoc.mockResolvedValueOnce(undefined);
 
     const service = await importServiceWithClientMocks();
     const notes = await service.getStudyNotes('user-1', { tag: 'faith', q: 'pray' });
-    const created = await service.createStudyNote({ ...baseNote, id: 'client-note-id' } as any);
-    const updated = await service.updateStudyNote('note-1', {
-      userId: 'user-1',
-      title: 'Updated',
-      materialIds: ['ignored-material'],
-    } as any);
 
     expect(notes.map((note) => note.id)).toEqual(['note-1']);
-    expect(created.id).toBe('client-note-id');
-    expect(updated.title).toBe('Updated');
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'studyNotes', id: 'client-note-id' }),
-      expect.objectContaining({ title: 'Faith note' })
-    );
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'studyNotes', id: 'note-1' }),
-      expect.not.objectContaining({ materialIds: ['ignored-material'] })
-    );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('keeps note delete on the server route', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true });
-
+  it('exposes no study note writer', async () => {
     const service = await importServiceWithClientMocks();
-    await service.deleteStudyNote('note-1', 'user-1');
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining('/api/studies/notes/note-1?userId=user-1'),
-      expect.objectContaining({ method: 'DELETE', headers: { Authorization: 'Bearer test-token' } })
-    );
+    expect(['createStudyNote', 'updateStudyNote', 'deleteStudyNote'].filter(name => name in service)).toEqual([]);
   });
 });
-jest.mock('@/utils/authenticatedRequest', () => ({
-  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
-}));

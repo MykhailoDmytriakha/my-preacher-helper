@@ -8,7 +8,6 @@ import {
   updateSermon as updateSermonRequest,
 } from '@/services/sermon.service';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
-import { createStudyNote, deleteStudyNote, updateStudyNote } from '@/services/studies.service';
 import { createStudyNoteShareLink, deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import {
   updateAudioGenerationAccess,
@@ -29,7 +28,7 @@ import type {
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { PreachDate, Series, Sermon, StudyNote } from '@/models/models';
+import type { PreachDate, Series, Sermon } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -383,39 +382,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   });
 
   // ---- study notes ----
-  queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.create, {
-    mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }) =>
-      createStudyNote(note),
-    onSuccess: invalidate([STUDY_NOTES_KEY]),
-  });
-  queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.update, {
-    // `expectedRevision` MUST survive persistence. This default is what runs after
-    // a reload replays a paused mutation; dropping the field there turned a guarded
-    // save into an ordinary one, so an edit made offline could come back and
-    // overwrite something newer without any check.
-    mutationFn: ({
-      id,
-      updates,
-      userId,
-      expectedRevision,
-      expectedBaseline,
-    }: {
-      id: string;
-      updates: Partial<StudyNote>;
-      userId: string;
-      expectedRevision?: number | null;
-      expectedBaseline?: Record<string, unknown> | null;
-    }) =>
-      // The BASELINE must survive persistence for the same reason the revision
-      // does: a replayed save that forgot what it started from can only fall back
-      // to the counter, and the counter is exactly what an old build fails to move.
-      updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null, expectedBaseline ?? null),
-    onSuccess: invalidate([STUDY_NOTES_KEY]),
-  });
-  queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.delete, {
-    mutationFn: ({ id, userId }: { id: string; userId: string }) => deleteStudyNote(id, userId),
-    onSuccess: invalidate([STUDY_NOTES_KEY]),
-  });
+  // The engine owns study notes; a paused edit of the previous version gets the same refusal, and
+  // its text survives in the previous-version archive (legacyQueryRecovery.client.ts).
+  for (const key of Object.values(STUDY_NOTE_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('studyNotes') });
+  }
 
   // ---- study-note share links ----
   queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.create, {

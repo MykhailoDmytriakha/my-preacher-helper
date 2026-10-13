@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { legacyBoundaryResponse, refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 export async function GET(request: Request) {
@@ -32,39 +32,7 @@ export async function GET(request: Request) {
   }
 }
 
+/** POST stays for shipped bundles: study materials are created only through the data engine. */
 export async function POST(request: Request) {
-  try {
-    const uid = await getRequiredAuthenticatedUid(request);
-    if (!uid) {
-      return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
-    }
-
-    const payload = await request.json();
-    const { userId, title, type, noteIds } = payload;
-    if (!title || !type) {
-      return NextResponse.json({ error: 'title and type are required' }, { status: 400 });
-    }
-    if (userId && userId !== uid) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const material = await studiesRepository.createMaterial({
-      userId: uid,
-      title,
-      type,
-      description: payload.description || '',
-      noteIds: noteIds || [],
-      sections: payload.sections || [],
-    });
-
-    return NextResponse.json(material, { status: 201 });
-  } catch (error) {
-    const refusal = legacyBoundaryResponse(error);
-    if (refusal) return refusal;
-    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
-    }
-    console.error('POST /api/studies/materials error', error);
-    return NextResponse.json({ error: 'Failed to create study material' }, { status: 500 });
-  }
+  return refuseLegacyWriteRoute(request);
 }

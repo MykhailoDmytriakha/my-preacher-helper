@@ -55,7 +55,8 @@
       "users": "User Settings",
       "planTemplates": "Structure template",
       "tags": "Tag",
-      "prayerRequests": "Prayer"
+      "prayerRequests": "Prayer",
+      "studyNotes": "Study note"
     },
     "field": {
       "name": "Name",
@@ -113,7 +114,9 @@
       "heldAt": "Held on",
       "answerText": "Answer to the prayer",
       "text": "Text",
-      "updates": "Updates"
+      "updates": "Updates",
+      "content": "Note text",
+      "scriptureRefs": "Scripture references"
     },
     "unchangedLines": "⋯ {{count}} unchanged",
     "untitled": "Untitled",

@@ -11,7 +11,6 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { DocumentData } from '@/data-engine/types';
-import type { StudyNotesApi } from '@/hooks/useStudyNotes';
 import type { StudyNote } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'studyNotes', id });
@@ -42,9 +41,17 @@ export function engineNote(value: DocumentData, id: string): StudyNote {
   return { ...note, id, scriptureRefs: note.scriptureRefs || [], tags: note.tags || [], materialIds: note.materialIds || [], isDraft: isDraft(note) };
 }
 
+type SavedNote = StudyNote & { revision?: number };
+type NoteUpdate = {
+  id: string;
+  updates: Partial<StudyNote>;
+  expectedRevision?: number | null;
+  expectedBaseline?: Record<string, unknown> | null;
+};
+
 /**
- * STUDY NOTES ON THE ENGINE — the same interface as the legacy hook (useStudyNotes), so the
- * list, the note editor, the calendar and the dashboard do not change.
+ * STUDY NOTES ON THE ENGINE — the interface the list, the note editor, the calendar and the
+ * dashboard use (useStudyNotes).
  *
  * An edit states only the fields the person changed and is laid over the CURRENT note, so a tag
  * added on the phone survives a paragraph written on the laptop. The editor's baseline guard is
@@ -52,7 +59,7 @@ export function engineNote(value: DocumentData, id: string): StudyNote {
  * elsewhere since the editor's baseline refuses with the other value, and the editor offers
  * keep-mine / take-theirs. Offline a write is reported as queued, not saved (`accepted`).
  */
-export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
+export function useStudyNotesEngine(enabled: boolean) {
   const { t } = useTranslation();
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useDataCollection(enabled && uid ? 'studyNotes' : null);
@@ -80,7 +87,7 @@ export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
-    createNote: (note) => {
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): WriteSubmission & { note: StudyNote } => {
       const id = newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
@@ -93,15 +100,15 @@ export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
       return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline }) => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline }: NoteUpdate): WriteSubmission & { result: Promise<SavedNote> } => {
       if (!uid) {
         const refused = refusal();
-        const result = refused.acceptance.then(() => undefined as never) as Promise<StudyNote & { revision?: number }>;
+        const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
         void result.catch(() => undefined);
         return { ...refused, result };
       }
       const patch = Object.fromEntries(EDITABLE.filter(field => updates[field] !== undefined).map(field => [field, updates[field]]));
-      let saved: (StudyNote & { revision?: number }) | undefined;
+      let saved: SavedNote | undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
         setUpdating(count => count + 1);
         try {
@@ -128,13 +135,13 @@ export function useStudyNotesEngine(enabled: boolean): StudyNotesApi {
           setUpdating(count => count - 1);
         }
       });
-      if (!submission) return { ...skippedWrite(), result: Promise.resolve<StudyNote & { revision?: number }>(undefined as never) };
-      const result = submission.persistence.then(() => saved as StudyNote & { revision?: number });
+      if (!submission) return { ...skippedWrite(), result: Promise.resolve<SavedNote>(undefined as never) };
+      const result = submission.persistence.then(() => saved as SavedNote);
       void result.catch(() => undefined);
       return { ...submission, result };
     },
     // The deletion carries what this device last saw; the server removes the note from its
     // materials in the same transaction (serverRelations.ts).
-    deleteNote: (id) => (!uid ? refusal() : once(`study-note:delete:${id}`, () => actions.remove(resource(id))) ?? skippedWrite()),
+    deleteNote: (id: string): WriteSubmission => (!uid ? refusal() : once(`study-note:delete:${id}`, () => actions.remove(resource(id))) ?? skippedWrite()),
   };
 }

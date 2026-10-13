@@ -61,7 +61,7 @@ function render(
   return renderHook(
     (props: { known: { title: string } | null }) =>
       useDocumentFreshness<{ title: string }>({
-        collection: 'studyNotes',
+        collection: 'users',
         docId: 'note-1',
         uid: 'uid-1',
         enabled,
@@ -231,7 +231,7 @@ describe('useDocumentFreshness', () => {
   it('never attaches a listener without a signed-in owner', () => {
     renderHook(() =>
       useDocumentFreshness<{ title: string }>({
-        collection: 'studyNotes',
+        collection: 'users',
         docId: 'note-1',
         uid: null,
         enabled: true,
@@ -398,7 +398,7 @@ describe('a new document starts from knowing nothing', () => {
     const { result, rerender } = renderHook(
       ({ docId }: { docId: string }) =>
         useDocumentFreshness<{ title: string }>({
-          collection: 'studyNotes',
+          collection: 'users',
           docId,
           uid: 'u1',
           enabled: true,
@@ -886,7 +886,7 @@ describe('semantic snapshot comparison', () => {
     const local = { scriptureRefs: [{ book: 'Psalms', chapter: 5, fromVerse: 5, toVerse: 5, id: 'r' }] };
     const remote = { scriptureRefs: [{ id: 'r', toVerse: 5, fromVerse: 5, chapter: 5, book: 'Psalms' }] };
     const { result, rerender } = renderHook(({ known }) => useDocumentFreshness({
-      collection: 'studyNotes', docId: 'n', uid: 'u', enabled: true, known,
+      collection: 'users', docId: 'n', uid: 'u', enabled: true, known,
       select: (data) => ({ scriptureRefs: data.scriptureRefs }),
     }), { initialProps: { known: local } });
     act(() => emit!(server(remote)));
@@ -941,7 +941,9 @@ describe('useDocumentFreshness for a collection the engine owns', () => {
   afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
   it('stays silent and never subscribes, because the engine owns that freshness', async () => {
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'studyNotes';
+    // The examples above use users, which stays on the legacy road; the switch puts it on the
+    // engine for this test (study notes are engine-owned in code, so always silent).
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'users';
     emit = null as unknown as typeof emit;
     const { result } = render({ title: 'Mine' });
     await act(async () => { jest.advanceTimersByTime?.(60_000); });

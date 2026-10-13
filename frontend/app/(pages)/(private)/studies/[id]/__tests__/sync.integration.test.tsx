@@ -166,16 +166,6 @@ describe('note editor sync integration', () => {
     expect(updateNote).not.toHaveBeenCalled();
   });
 
-  it('does not hide a real remote edit when the query cache refreshes ahead of the editor', () => {
-    const view = render(<StudyNoteEditorPage />);
-    emitNote(initialNote);
-    mockCache = { ...initialNote, content: 'Remote body', rev: { note: 2 } };
-    view.rerender(<StudyNoteEditorPage />);
-    emitNote(mockCache);
-    expect(screen.getByText('Original body')).toBeInTheDocument();
-    expect(screen.getByText('freshness.title')).toBeInTheDocument();
-  });
-
   it('clears an own-write echo after acceptance without losing later typing', async () => {
     let finish!: () => void;
     const saved = { ...initialNote, content: 'Own A', rev: { note: 2 }, revision: 2 };
@@ -194,19 +184,6 @@ describe('note editor sync integration', () => {
     act(() => window.dispatchEvent(new Event('pagehide')));
     expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:note-sync:note')!).value.content).toBe('Later B');
     expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
-  });
-
-  it('does not discard recovery on cache-only open, but retires it on matching server proof', () => {
-    window.localStorage.setItem('draft:v1:user-1:note-sync:note', JSON.stringify({
-      savedAt: Date.now(), value: { title: initialNote.title, content: initialNote.content, tags: [], scriptureRefs: [], type: 'note' },
-    }));
-    render(<StudyNoteEditorPage />);
-    expect(window.localStorage.getItem('draft:v1:user-1:note-sync:note')).not.toBeNull();
-    emitNote(initialNote);
-    expect(window.localStorage.getItem('draft:v1:user-1:note-sync:note')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
-    fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Next edit' } });
-    expect(screen.queryByText('unsavedDraft.title')).not.toBeInTheDocument();
   });
 
   it('keeps typing after create submission unsaved until that exact text reaches the server', async () => {
@@ -260,26 +237,12 @@ describe('note editor sync integration', () => {
     expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:created-sync:note')!).value.content).toBe('Queued create A');
   });
 
-  it('adopts remote content once and never re-stores it as an unsaved draft', () => {
-    render(<StudyNoteEditorPage />);
-    emitNote(initialNote);
-    const remote = { ...initialNote, content: 'Remote body', rev: { note: 2 } };
-    emitNote(remote);
-    fireEvent.click(screen.getByText('freshness.refreshAction'));
-    emitNote(remote);
-    act(() => { jest.advanceTimersByTime(300); window.dispatchEvent(new Event('pagehide')); });
-    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
-    expect(screen.getByText('Remote body')).toBeInTheDocument();
-    expect(window.localStorage.getItem('draft:v1:user-1:note-sync:note')).toBeNull();
-  });
 });
 
 describe('note editor on the engine', () => {
-  const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
   beforeEach(() => {
     jest.useFakeTimers();
     window.localStorage.clear();
-    process.env[ON_ENGINE] = 'studyNotes';
     mockCache = initialNote;
     updateNote.mockReset();
     (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
@@ -291,7 +254,7 @@ describe('note editor on the engine', () => {
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });
   });
-  afterEach(() => { delete process.env[ON_ENGINE]; jest.useRealTimers(); });
+  afterEach(() => { jest.useRealTimers(); });
 
   it('follows the engine row while the editor is clean, with no banner and no draft left behind', () => {
     const view = render(<StudyNoteEditorPage />);

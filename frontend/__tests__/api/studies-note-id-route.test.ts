@@ -15,7 +15,6 @@ jest.mock('next/server', () => ({
 jest.mock('@repositories/studies.repository', () => ({
   studiesRepository: {
     getNote: jest.fn(),
-    deleteNote: jest.fn(),
   },
 }));
 
@@ -95,55 +94,18 @@ describe('studies notes [id] route', () => {
     });
   });
 
+  // Study notes are deleted only through the data engine; a shipped bundle's delete is refused.
   describe('DELETE', () => {
     it('returns 401 when userId is missing', async () => {
-      const response = await route.DELETE(makeRequest(undefined, 'DELETE'), params);
-      const data = await response.json();
-
+      const response = await route.DELETE(makeRequest(undefined, 'DELETE'));
       expect(response.status).toBe(401);
-      expect(data.error).toBe('User not authenticated');
     });
 
-    it('returns success when note does not exist', async () => {
-      mockRepo.getNote.mockResolvedValue(null as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-    });
-
-    it('returns 403 when note belongs to another user', async () => {
-      mockRepo.getNote.mockResolvedValue({ userId: 'user-2' } as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(data.error).toBe('Forbidden');
-    });
-
-    it('deletes note when owner matches', async () => {
-      mockRepo.getNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(mockRepo.deleteNote).toHaveBeenCalledWith('note-1', 'user-1');
-      expect(response.status).toBe(200);
-      expect(data.success).toBe(true);
-    });
-
-    it('returns 500 when delete fails', async () => {
-      mockRepo.getNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
-      mockRepo.deleteNote.mockRejectedValue(new Error('boom'));
-
-      const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to delete study note');
+    it('refuses a shipped bundle\'s delete with the migration refusal and reads nothing', async () => {
+      const response = await route.DELETE(makeRequest('user-1', 'DELETE'));
+      expect(response.status).toBe(426);
+      expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+      expect(mockRepo.getNote).not.toHaveBeenCalled();
     });
   });
 });
@@ -156,13 +118,6 @@ describe('a note deleted through the engine', () => {
   it('is not found for its owner rather than forbidden', async () => {
     const response = await route.GET(makeRequest('user-1'), params);
     expect(response.status).toBe(404);
-  });
-
-  it('is already deleted for its owner, and nothing is written', async () => {
-    const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ success: true });
-    expect(mockRepo.deleteNote).not.toHaveBeenCalled();
   });
 
   it('stays forbidden for anyone else', async () => {

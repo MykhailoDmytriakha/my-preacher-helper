@@ -12,13 +12,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useAppLocale } from '@/hooks/useAppLocale';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
 import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
-import { formatScriptureReferences } from '@/utils/scriptureReference';
-import { recoveryText } from '@/utils/writeRecovery';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
@@ -33,7 +30,6 @@ export function useNoteAutoSave({
         updates: Partial<StudyNote>;
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
-        recoveryDraft?: string;
     }) => WriteSubmission & { result: Promise<StudyNote & { revision?: number }> };
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) =>
         WriteSubmission & { note: StudyNote };
@@ -68,8 +64,6 @@ export function useNoteAutoSave({
      */
     saveAtOnceRef?: React.MutableRefObject<boolean>;
 }) {
-    // The recovery text is read by a person: references in the interface language.
-    const { locale } = useAppLocale();
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -202,13 +196,6 @@ export function useNoteAutoSave({
                 expectedBaseline: deliberateOverwriteRef.current
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
-                recoveryDraft: recoveryText([
-                    title,
-                    content,
-                    tags.join(', '),
-                    formatScriptureReferences(scriptureRefs, { locale, style: 'long' }),
-                    type,
-                ]),
             });
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
@@ -276,7 +263,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, locale, atOnceRef]);
+    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, atOnceRef]);
 
     useEffect(() => {
         if (!isInitialized) return;
