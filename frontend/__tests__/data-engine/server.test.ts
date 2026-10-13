@@ -293,6 +293,22 @@ describe('transactional relation execution', () => {
     expect((await listDocuments('owner-1', 'studyNoteShareLinks')).snapshots).toHaveLength(1);
   });
 
+  it('retires a shared note on a deployment whose switches add nothing to the engine-owned collections', async () => {
+    seed();
+    documents.set('studyNoteShareLinks/link', { ownerId: 'owner-1', noteId: 'n', token: 'secret-token', viewCount: 5 });
+    const switches = ['DATA_ENGINE_ENABLED', 'DATA_ENGINE_COLLECTIONS', 'DATA_ENGINE_CLOSED_COLLECTIONS'] as const;
+    const saved = switches.map(name => process.env[name]);
+    switches.forEach(name => { delete process.env[name]; });
+    jest.mocked(isCollectionServed).mockImplementation(jest.requireActual('@/data-engine/activation').isCollectionServed);
+    try {
+      const command: DataCommand = { ...relation('retire-shared'), resource: { collection: 'studyNotes', id: 'n' }, kind: 'delete', baseline: { userId: 'owner-1', content: 'Keep text', materialIds: [] } };
+      expect(await processCommand('owner-1', command)).toMatchObject({ kind: 'acknowledged' });
+      expect(documents.get('studyNoteShareLinks/link')).toEqual({ _dataEngineOwner: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
+    } finally {
+      switches.forEach((name, index) => { if (saved[index] === undefined) delete process.env[name]; else process.env[name] = saved[index]; });
+    }
+  });
+
   it('refuses a multi-document payload beyond its byte budget before any effect is written', async () => {
     seed();
     const command = relation('large') as Extract<DataCommand, { relation: 'material-notes' }>;

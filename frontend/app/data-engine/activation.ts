@@ -29,6 +29,17 @@ export function isCollectionServed(collection: string): boolean {
 }
 
 /**
+ * Collections the engine does not serve whose legacy readers already read its tombstone as deleted
+ * (`isRetired` in studyNoteShareLinks.repository.ts). A cascade may retire their documents — a note's
+ * public links go with the note, as the legacy delete did in one transaction — but never change one.
+ */
+const RETIRED_BY_CASCADE: ReadonlySet<string> = new Set(['studyNoteShareLinks']);
+
+export function mayBeRetiredByCascade(collection: string): boolean {
+  return RETIRED_BY_CASCADE.has(collection);
+}
+
+/**
  * A closure counts only for a collection the engine serves: closing without serving would leave
  * nobody able to write, and a misconfiguration must not become an outage.
  */

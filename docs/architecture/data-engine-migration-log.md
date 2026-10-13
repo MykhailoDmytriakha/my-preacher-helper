@@ -46,9 +46,12 @@ unserved collection (`server.ts:340`). Without `studyNoteShareLinks` every share
 to delete: the screen showed a false "changed on another device" banner and the link was
 already gone (found and fixed 2026-09-28, verified in production: one command retired the note
 and its link, the public link answered 404). Share links stay server-owned; they are not in
-the client list and must not be closed. **Rebuilding the server value from the client list
-silently drops `studyNoteShareLinks` and brings that failure back** — for example when adding
-`users`.
+the client list and must not be closed. Since 2026-10-13 the cascade no longer depends on this
+entry: `mayBeRetiredByCascade` (`activation.ts`) lets the engine retire a share link it does not
+serve, because every legacy reader treats its tombstone as deleted (`isRetired` in
+`studyNoteShareLinks.repository.ts`). A deployment without the entry — a preview, a fresh
+environment, a value rebuilt from the client list — deletes shared notes too; changing a link
+still needs the collection served.
 
 ## User settings — 2026-09-28, local implementation
 

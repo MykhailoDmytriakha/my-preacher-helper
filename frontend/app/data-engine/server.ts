@@ -4,7 +4,7 @@ import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 
-import { isCollectionServed, isLegacyOpen } from './activation';
+import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
@@ -334,7 +334,8 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       // The primary route switch is insufficient: a cascade can mark documents
       // whose clients are still legacy. Refuse the entire effect before any write.
       // Receipt replay above retains proof of already accepted work independently.
-      if (effects.some(effect => !isCollectionServed(effect.resource.collection))) {
+      if (effects.some(effect => !isCollectionServed(effect.resource.collection)
+        && !(effect.value === null && mayBeRetiredByCascade(effect.resource.collection)))) {
         result = refusal('related-collection-not-enabled');
       }
     }

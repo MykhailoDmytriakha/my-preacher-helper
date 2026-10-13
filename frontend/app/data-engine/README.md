@@ -17,7 +17,9 @@ The environment switches only ADD a collection that is not in that list — toda
 server's `DATA_ENGINE_COLLECTIONS`; the older `*_ENABLED=true` pair still means every collection.
 `DATA_ENGINE_CLOSED_COLLECTIONS` refuses every legacy write to such a collection and is thrown
 LAST, once every device runs the new bundle — `activation.ts` explains why the two cannot be
-thrown together. Between them legacy writers and the engine share the collection: the server
+thrown together. Deleting a study note retires its share links whatever the switches say:
+`mayBeRetiredByCascade` lets a cascade tombstone a `studyNoteShareLinks` document, whose legacy
+readers already read the tombstone as deleted, but never change one. Between them legacy writers and the engine share the collection: the server
 says `legacyOpen` and lists are re-read, because a legacy write raises no feed event. The order,
 its rollbacks and its residual risks: "Rollout order" in
 `docs/architecture/data-engine-migration-log.md`. Do not flip anything from memory.
