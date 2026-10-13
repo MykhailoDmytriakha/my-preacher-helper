@@ -8,7 +8,18 @@ import { sortItemsWithAI } from '@/services/sortAI.service';
 import { updateStructure } from '@/services/structure.service';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../test-utils/test-providers';
+
+// The page runs on the data engine: it mounts inside the sermon's document provider, over the real
+// engine with only the server and the browser transport replaced. The board's own data hook stays
+// mocked, so each test decides what the board shows.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 const searchParamsGetMock = jest.fn<string | null, [string]>((param) =>
   param === 'sermonId' ? 'sermon-123' : null
@@ -87,9 +98,25 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
+function StructureOnEngine() {
+  return (
+    <TestProviders>
+      <DataEngineProvider>
+        <StructurePage />
+      </DataEngineProvider>
+    </TestProviders>
+  );
+}
+
 describe('Structure Page - Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const harness = documentEngineHarness({
+      resource: { collection: 'sermons', id: 'sermon-123' },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [] },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     searchParamsGetMock.mockImplementation((param: string) =>
       param === 'sermonId' ? 'sermon-123' : null
     );
@@ -124,9 +151,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       await waitFor(() => {
@@ -171,9 +196,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       await waitFor(() => {
@@ -210,9 +233,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       await waitFor(() => {
@@ -253,9 +274,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       const addButton = await screen.findByTitle('Add thought to “Intro Point”');
@@ -282,9 +301,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       fireEvent.click(await screen.findByTitle('Add thought to “Main Point”'));
@@ -328,9 +345,7 @@ describe('Structure Page - Integration Tests', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       fireEvent.click(screen.getByTitle('Add thought to Introduction'));

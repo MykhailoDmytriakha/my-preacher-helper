@@ -55,6 +55,17 @@ jest.mock('@/services/usageLimits.server', () => ({
   consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
 }));
 
+// Sermons are engine-owned everywhere: production skips the legacy callback and calls
+// editOwnedDocument. writeOwnedDocument calls it inside its own module, so the road is replaced at
+// writeOwnedDocument: it forwards to mockEditOwnedDocument, which applies the route's real transform
+// to a seeded current document.
+const mockEditOwnedDocument = jest.fn();
+jest.mock('@/data-engine/serverEdit.server', () => ({
+  ...jest.requireActual('@/data-engine/serverEdit.server'),
+  writeOwnedDocument: ({ owner, resource, engine }: { owner: string; resource: unknown; engine: unknown }) =>
+    mockEditOwnedDocument(owner, resource, engine),
+}));
+
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
@@ -146,6 +157,9 @@ describe('Thoughts API route additional coverage', () => {
     getCustomTagsMock.mockResolvedValue([]);
     validateAudioDurationMock.mockResolvedValue({ valid: true, duration: 2, maxAllowed: 97 });
     fetchSermonByIdMock.mockResolvedValue({ userId: 'user-1', thoughts: [] });
+    mockEditOwnedDocument.mockReset();
+    mockEditOwnedDocument.mockImplementation(async (_owner: string, _resource: unknown, transform: (doc: Record<string, unknown>) => Record<string, unknown>) =>
+      transform({ userId: 'user-1', thoughts: [], structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } }));
     createTranscriptionMock.mockResolvedValue('transcribed');
     generateThoughtStructuredMock.mockResolvedValue({
       meaningSuccessfullyPreserved: true,
@@ -187,7 +201,11 @@ describe('Thoughts API route additional coverage', () => {
           position: 2,
         })
       );
-      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledTimes(1);
+      expect(mockEditOwnedDocument).toHaveBeenCalledTimes(1);
+      expect(mockEditOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: 'sermon-1' }, expect.any(Function));
+      const saved = await mockEditOwnedDocument.mock.results[0].value;
+      expect(saved.thoughts).toEqual([expect.objectContaining({ id: 'mock-uuid', text: 'Manual thought' })]);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
     });
 
     it('removes deprecated structural tags from manual thoughts', async () => {
@@ -208,15 +226,9 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(200);
       expect(data.tags).toEqual(['Примеры']);
-      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({
-          thoughts: expect.objectContaining({
-            elements: [expect.objectContaining({ tags: ['Примеры'] })],
-          }),
-        }),
-        'thoughts'
-      );
+      expect(mockEditOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: 'sermon-1' }, expect.any(Function));
+      const saved = await mockEditOwnedDocument.mock.results[0].value;
+      expect(saved.thoughts).toEqual([expect.objectContaining({ tags: ['Примеры'] })]);
     });
 
     it('returns 400 when sermonId or thought is missing', async () => {
@@ -338,6 +350,7 @@ describe('Thoughts API route additional coverage', () => {
         2,
         expect.any(Date)
       );
+      expect(mockEditOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: 'sermon-1' }, expect.any(Function));
     });
 
     it('returns a typed cap envelope and does not persist a thought fallback', async () => {

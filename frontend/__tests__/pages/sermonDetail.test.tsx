@@ -3,29 +3,29 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import { TestProviders } from '@test-utils/test-providers';
-import { createAudioThought, createManualThought, updateThought } from '@services/thought.service';
-import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
-import { updateSermonOutline } from '@/services/outline.service';
-import { mergeOutline } from '@/utils/mergeOutline';
+import { createAudioThought } from '@services/thought.service';
 import '@testing-library/jest-dom';
 
-import type { ScratchNote, SermonOutline } from '@/models/models';
+import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 
-let mockFirestoreSnapshotNext: ((snapshot: {
-  exists: () => boolean;
-  data: () => { thoughts: Array<{ id: string }> };
-}) => void) | null = null;
-const mockFirestoreUnsubscribe = jest.fn();
+import type { DocumentData, EngineMetadata } from '@/data-engine/types';
 
+/**
+ * The sermon page runs on the data engine in every deployment: it renders inside a document provider
+ * and reads and writes the sermon through engine hooks. These tests open the page over the real
+ * document engine (only the server and the browser transport are replaced), so a click on the screen
+ * is checked against the document the server ends up holding.
+ */
+
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('firebase/firestore', () => ({
-  doc: jest.fn((_db: unknown, collectionName: string, id: string) => ({ collectionName, id })),
-  onSnapshot: jest.fn((_ref: unknown, _options: unknown, next: typeof mockFirestoreSnapshotNext) => {
-    mockFirestoreSnapshotNext = next;
-    return mockFirestoreUnsubscribe;
-  }),
+  doc: jest.fn(() => ({})),
+  onSnapshot: jest.fn(() => jest.fn()),
 }));
-
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 
 // Render portals inline so AudioRecorder stays in the React tree without DOM moves
@@ -34,10 +34,10 @@ jest.mock('react-dom', () => ({
   createPortal: (node: React.ReactNode) => node,
 }));
 
-// Mock next/navigation - useSearchParams overridable per test
+let routeId = 'sermon-123';
 const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
-  useParams: () => ({ id: 'sermon-123' }),
+  useParams: () => ({ id: routeId }),
   useSearchParams: () => mockUseSearchParams(),
   useRouter: () => ({
     push: jest.fn(),
@@ -45,8 +45,6 @@ jest.mock('next/navigation', () => ({
     prefetch: jest.fn(),
   }),
 }));
-
-// Mock child components with simpler implementations
 
 const mockSaveRecordingDraft = jest.fn();
 const mockDeleteRecordingDraft = jest.fn();
@@ -101,31 +99,27 @@ jest.mock('@/components/sermon/KnowledgeSection', () => ({ uiMode }: any) => (
   </div>
 ));
 
-jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart }: any) => (
+jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart, onThoughtOutlinePointChange }: any) => (
   <div data-testid="thought-list">
     <button onClick={() => onDelete?.('thought-1')}>Mock Delete</button>
     <button onClick={() => onEditStart?.({ id: 'thought-1', text: 'Hello', tags: [] }, 0)}>Mock Edit Start</button>
+    <button onClick={() => onThoughtOutlinePointChange?.({ id: 'thought-1', text: 'Hello', tags: ['introduction'], outlinePointId: 'intro-1' }, 'main-1', null)}>Mock Move</button>
   </div>
 ));
 
-let mockCreateThoughtModalProps: any = null;
-let mockEditThoughtModalProps: any = null;
-jest.mock('@components/CreateThoughtModal', () => ({
-  __esModule: true,
-  default: (props: any) => {
-    mockCreateThoughtModalProps = props;
-    return null;
+// The editor itself is covered by EngineThoughtModal.test.tsx; here only which thought the page opens it for.
+let mockEngineThoughtModalProps: any = null;
+jest.mock('@/components/thought/EngineThoughtModal', () => ({
+  EngineThoughtModal: (props: any) => {
+    mockEngineThoughtModalProps = props;
+    return <div data-testid="engine-thought-modal" data-thought-id={props.thoughtId ?? ''} />;
   },
 }));
 
-jest.mock('@components/EditThoughtModal', () => ({ onSave, ...props }: any) => {
-  mockEditThoughtModalProps = { onSave, ...props };
-  return (
-    <div data-testid="edit-thought-modal">
-      <button onClick={() => onSave('Updated text', ['main'], 'main-1')}>Mock Save</button>
-    </div>
-  );
-});
+// The scratch workspace has its own engine tests (EngineScratchWorkspace.test.tsx).
+jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
+  EngineScratchWorkspace: () => <div data-testid="scratch-panel">Scratch Panel</div>,
+}));
 
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: any) => (
   <div data-testid="prep-step-card" title={title}>
@@ -134,72 +128,16 @@ jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: a
   </div>
 ));
 
-let mockScratchPanelProps: {
-  onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
-  onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
-  updateScratchNote?: (noteId: string, patch: { text?: string; section?: ScratchNote['section'] | null }) => void;
-} = {};
-
-jest.mock('@/components/sermon/ScratchPanel', () => ({
-  __esModule: true,
-  default: (props: {
-    onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
-    onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
-    updateScratchNote?: (noteId: string, patch: { text?: string; section?: ScratchNote['section'] | null }) => void;
-  }) => {
-    mockScratchPanelProps = props;
-    return <div data-testid="scratch-panel">Scratch Panel</div>;
-  },
-}));
-
-// The page reads the signed-in uid to address its durable drafts; TestProviders has
-// no AuthProvider, so without this the draft paths are silently skipped and a test
-// about them would pass while proving nothing.
+// The page reads the signed-in uid as the owner of the document it opens.
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'u1' }, loading: false }),
   AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-/**
- * The LIVE identity, mutable on purpose. Late-refusal reporters ask who is signed in at
- * the moment they speak — a hook value cannot answer that after unmount — so tests that
- * cover "the person left / signed out" must be able to change it.
- */
-let signedInUid: string | undefined = 'u1';
 jest.mock('@services/firebaseAuth.service', () => ({
-  auth: {
-    get currentUser() {
-      return signedInUid ? { uid: signedInUid } : null;
-    },
-  },
+  auth: { currentUser: { uid: 'u1' } },
 }));
 
-jest.mock('@/hooks/useSermon', () => ({
-  // The RULE that decides "there is no sermon here" stays REAL — only the answer it is
-  // given is stubbed. A stubbed rule would keep passing while the screens drift apart.
-  sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing,
-  __esModule: true,
-  default: jest.fn().mockReturnValue({
-    sermon: {
-      id: 'sermon-123',
-      title: 'Test Sermon',
-      verse: 'John 3:16',
-      date: '2023-01-01',
-      thoughts: [],
-      isPreached: false,
-      preparation: {},
-      structure: { introduction: [], main: [], conclusion: [] },
-      outline: { introduction: [], main: [], conclusion: [] }, // detailed outline structure might be needed
-    },
-    loading: false,
-    setSermon: jest.fn(),
-    refreshSermon: jest.fn(),
-    getSortedThoughts: jest.fn().mockReturnValue([]),
-    error: null,
-  }),
-}));
-
-// Mock services
 jest.mock('@/services/thought.service', () => ({
   createAudioThought: jest.fn(),
   createManualThought: jest.fn(),
@@ -207,26 +145,28 @@ jest.mock('@/services/thought.service', () => ({
   updateThought: jest.fn(),
 }));
 
-// Mock prep components to test callbacks
+// Prep components that call back with fixed values, to see what the page stores
 jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({
   onSavePassageSummary,
   onToggleReadWholeBookOnce,
   onSaveContextNotes,
   onSaveRepeatedWords,
+  onSaveVerse,
 }: any) => (
   <div>
     <button data-testid="save-passage-summary" onClick={() => onSavePassageSummary('summary')}>Save Summary</button>
     <button data-testid="toggle-read-book" onClick={() => onToggleReadWholeBookOnce(true)}>Toggle Read Book</button>
     <button data-testid="save-context-notes" onClick={() => onSaveContextNotes('context-notes')}>Save Context Notes</button>
     <button data-testid="save-repeated-words" onClick={() => onSaveRepeatedWords(['word'])}>Save Repeated Words</button>
+    <button data-testid="save-verse" onClick={() => onSaveVerse('Acts 1:8')}>Save Verse</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({
-  onSave,
+  onEdit,
   onSaveAuthorIntent,
 }: any) => (
   <div>
-    <button data-testid="save-exegetical" onClick={() => onSave([])}>Save Exegetical</button>
+    <button data-testid="save-exegetical" onClick={() => onEdit((nodes: unknown[]) => [...nodes, { id: 'n1', title: 'Node', children: [] }])}>Save Exegetical</button>
     <button data-testid="save-author-intent" onClick={() => onSaveAuthorIntent('intent')}>Save Author Intent</button>
   </div>
 ));
@@ -251,7 +191,7 @@ jest.mock('@/components/sermon/prep/GoalsStepContent', () => ({
     <button data-testid="save-goals" onClick={() => onSaveGoalStatement('goal')}>Save Goal</button>
     <button data-testid="save-timeless-truth" onClick={() => onSaveTimelessTruth('truth')}>Save Timeless Truth</button>
     <button data-testid="save-christ-connection" onClick={() => onSaveChristConnection('connection')}>Save Christ Connection</button>
-    <button data-testid="save-goal-type" onClick={() => onSaveGoalType('know')}>Save Goal Type</button>
+    <button data-testid="save-goal-type" onClick={() => onSaveGoalType('didactic')}>Save Goal Type</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({
@@ -286,34 +226,24 @@ jest.mock('@/components/sermon/prep/HomileticPlanStepContent', () => ({
 }: any) => (
   <div>
     <button data-testid="save-homiletic" onClick={() => onSaveModernTranslation('translation')}>Save Homiletic</button>
-    <button data-testid="save-updated-plan" onClick={() => onSaveUpdatedPlan(['updated'])}>Save Updated Plan</button>
-    <button data-testid="save-sermon-plan" onClick={() => onSaveSermonPlan(['sermon plan'])}>Save Sermon Plan</button>
+    <button data-testid="save-updated-plan" onClick={() => onSaveUpdatedPlan([{ id: 'u1', title: 'updated' }])}>Save Updated Plan</button>
+    <button data-testid="save-sermon-plan" onClick={() => onSaveSermonPlan([{ id: 's1', title: 'sermon plan' }])}>Save Sermon Plan</button>
   </div>
 ));
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => () => <div data-testid="spiritual-step">Spiritual Step</div>);
 
-
-// Mock services
+// The legacy writers must stay untouched: the page writes through the engine only.
 jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn().mockResolvedValue({
-    id: 'sermon-123',
-    title: 'Test Sermon',
-    verse: 'John 3:16',
-    date: '2023-01-01',
-    thoughts: [],
-    isPreached: false,
-  }),
+  getSermonById: jest.fn(),
   updateSermonPreparation: jest.fn().mockResolvedValue({}),
+  updateSermon: jest.fn(),
 }));
-
 jest.mock('@/services/structure.service', () => ({
   updateStructure: jest.fn().mockResolvedValue(undefined),
 }));
-
 jest.mock('@/services/outline.service', () => ({
   updateSermonOutline: jest.fn(),
 }));
-
 jest.mock('@/services/sermons.client', () => ({
   applyScratchToOutlineViaClient: jest.fn(),
   addScratchNoteViaClient: jest.fn(),
@@ -321,7 +251,6 @@ jest.mock('@/services/sermons.client', () => ({
   deleteScratchNoteViaClient: jest.fn(),
 }));
 
-// Mock i18n
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => {
@@ -340,7 +269,6 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock localStorage
 const mockLocalStorage = {
   getItem: jest.fn(),
   setItem: jest.fn(),
@@ -356,51 +284,43 @@ const PREP_PANE_OFFSET = 'none';
 const CLASSIC_PANE_OFFSET = 'translateX(-33.333333%)';
 const paneTrack = () => Array.from(document.querySelectorAll<HTMLElement>('div')).find(el => el.style.width === '300%');
 
-const defaultUseSermonReturn = {
-  sermon: {
-    id: 'sermon-123',
-    title: 'Test Sermon',
-    verse: 'John 3:16',
-    date: '2023-01-01',
-    thoughts: [],
-    isPreached: false,
-    preparation: {},
-    structure: { introduction: [], main: [], conclusion: [] },
-    outline: { introduction: [], main: [], conclusion: [] },
-  },
-  loading: false,
-  setSermon: jest.fn(),
-  refreshSermon: jest.fn(),
-  getSortedThoughts: jest.fn().mockReturnValue([]),
-  error: null,
+const resource = { collection: 'sermons', id: 'sermon-123' };
+const storedSermon: DocumentData = {
+  userId: 'u1',
+  title: 'Test Sermon',
+  verse: 'John 3:16',
+  date: '2023-01-01',
+  thoughts: [],
+  isPreached: false,
+  preparation: {},
+  structure: { introduction: [], main: [], conclusion: [] },
+  outline: { introduction: [], main: [], conclusion: [] },
 };
+const metadata: EngineMetadata = { protocol: 1, generation: 'g1', revision: 1, deleted: false };
+
+let harness: ReturnType<typeof documentEngineHarness>;
+function openSermon(overrides: DocumentData = {}, options?: { cached?: boolean }) {
+  harness = documentEngineHarness({ resource, value: { ...storedSermon, ...overrides }, metadata }, options);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+}
+const renderPage = () => render(
+  <TestProviders><DataEngineProvider><SermonDetailPage /></DataEngineProvider></TestProviders>
+);
+const prepMode = () => mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+const storedPreparation = () => (harness.server.value?.preparation ?? {}) as Record<string, any>;
 
 describe('Sermon Detail Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    routeId = 'sermon-123';
     mockLocalStorage.getItem.mockReturnValue(null);
-    mockScratchPanelProps = {};
-    mockCreateThoughtModalProps = null;
-    mockEditThoughtModalProps = null;
-    mockFirestoreSnapshotNext = null;
-    mockFirestoreUnsubscribe.mockClear();
-    require('@/hooks/useSermon').default.mockReturnValue(defaultUseSermonReturn);
-    const sermonsClient = require('@/services/sermons.client');
-    sermonsClient.addScratchNoteViaClient.mockResolvedValue([]);
-    sermonsClient.updateScratchNoteViaClient.mockResolvedValue([]);
-    sermonsClient.deleteScratchNoteViaClient.mockResolvedValue([]);
-    (updateSermonOutline as jest.Mock).mockResolvedValue({ introduction: [], main: [], conclusion: [] });
-    mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? null : null) });
+    mockEngineThoughtModalProps = null;
+    mockUseSearchParams.mockReturnValue({ get: () => null });
+    openSermon();
   });
 
   describe('Basic Rendering', () => {
-    beforeEach(() => {
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-    });
+    beforeEach(() => { renderPage(); });
 
     it('renders the sermon header', async () => {
       await waitFor(() => {
@@ -418,20 +338,17 @@ describe('Sermon Detail Page', () => {
 
     it('renders the brainstorm trigger button', async () => {
       await waitFor(() => {
-        // BrainstormModule is now hidden by default, only the trigger button is visible
+        // BrainstormModule is hidden by default, only the trigger button is visible
         expect(screen.getByLabelText('brainstorm.title')).toBeInTheDocument();
       });
     });
 
     it('shows BrainstormModule when brainstorm button is clicked', async () => {
       const user = userEvent.setup();
-
       await waitFor(() => {
         expect(screen.getByLabelText('brainstorm.title')).toBeInTheDocument();
       });
-
       await user.click(screen.getByLabelText('brainstorm.title'));
-
       await waitFor(() => {
         expect(screen.getByTestId('brainstorm-module')).toBeInTheDocument();
       });
@@ -443,284 +360,10 @@ describe('Sermon Detail Page', () => {
         expect(screen.getByText('Knowledge Section')).toBeInTheDocument();
       });
     });
-
-  });
-
-  describe('Manual thought persistence acceptance', () => {
-    it('says NOTHING when the refusal lands after someone else has signed in', async () => {
-    /**
-     * The privacy case a frozen snapshot could not catch. These reporters live in
-     * closures that outlive the page and the session, so they must read who is signed in
-     * NOW: after A leaves and B signs in, A's dictated text must never appear on B's
-     * screen — and the sign-out sweep cannot help, because this message would be created
-     * after it ran.
-     */
-    const { toast } = require('sonner') as { toast: { error: jest.Mock } };
-    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast-id');
-    let rejectUpdate!: (error: unknown) => void;
-    (updateThought as jest.Mock).mockReturnValue(
-      new Promise((_resolve, reject) => {
-        rejectUpdate = reject;
-      })
-    );
-    require('@/hooks/useSermon').default.mockReturnValue({
-      ...defaultUseSermonReturn,
-      sermon: {
-        ...defaultUseSermonReturn.sermon,
-        thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
-      },
-    });
-
-    const { unmount } = render(<TestProviders><SermonDetailPage /></TestProviders>);
-    fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-    await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
-
-    let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
-    act(() => {
-      submission = mockEditThoughtModalProps.onSave('Private words of the first account', ['main'], 'main-1');
-    });
-    void submission.acceptance.catch(() => undefined);
-
-    unmount();
-    // Someone else is at this browser now.
-    signedInUid = 'somebody-else';
-
-    await act(async () => {
-      rejectUpdate(
-        Object.assign(new Error('Missing or insufficient permissions.'), {
-          code: 'permission-denied',
-          name: 'FirebaseError',
-        })
-      );
-      await submission.persistence.catch(() => undefined);
-    });
-
-    expect(toastError).not.toHaveBeenCalled();
-    toastError.mockRestore();
-    signedInUid = 'u1';
-  });
-
-  it('still tells the person about a refusal that lands after they left the page', async () => {
-      // The silence this pins down: a refusal arriving after navigation used to reopen an
-      // editor nobody renders, so the edit vanished from the document without a word.
-      const { toast } = require('sonner') as { toast: { error: jest.Mock } };
-      const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast-id');
-      let rejectUpdate!: (error: unknown) => void;
-      (updateThought as jest.Mock).mockReturnValue(
-        new Promise((_resolve, reject) => {
-          rejectUpdate = reject;
-        })
-      );
-      require('@/hooks/useSermon').default.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
-        },
-      });
-
-      const { unmount } = render(<TestProviders><SermonDetailPage /></TestProviders>);
-      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
-
-      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
-      act(() => {
-        submission = mockEditThoughtModalProps.onSave('Edit made just before leaving', ['main'], 'main-1');
-      });
-      void submission.acceptance.catch(() => undefined);
-
-      // The person navigates away while the write is still in flight.
-      unmount();
-
-      await act(async () => {
-        rejectUpdate(
-          Object.assign(new Error('Missing or insufficient permissions.'), {
-            code: 'permission-denied',
-            name: 'FirebaseError',
-          })
-        );
-        await submission.persistence.catch(() => undefined);
-      });
-
-      await waitFor(() => expect(toastError).toHaveBeenCalled());
-      const [, options] = toastError.mock.calls.at(-1) as [string, { description: string }];
-      // The text has to travel with the message — the editor that held it is gone.
-      expect(options.description).toContain('Edit made just before leaving');
-      toastError.mockRestore();
-    });
-
-    it('does NOT accept a refused create, so the editor keeps what was dictated', async () => {
-      // The failure this pins down: a refused create used to be indistinguishable from a
-      // queued one, the modal closed, and the dictated thought was gone with no message.
-      const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
-        code: 'permission-denied',
-        name: 'FirebaseError',
-      });
-      (createManualThought as jest.Mock).mockRejectedValue(refusal);
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockCreateThoughtModalProps).not.toBeNull());
-      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
-      act(() => {
-        submission = mockCreateThoughtModalProps.onCreateThought({
-          text: 'Dictated thought that must survive a refusal',
-          tags: [],
-          date: '2026-08-11T00:00:00.000Z',
-        });
-      });
-
-      let rejectedWith: unknown;
-      await act(async () => {
-        rejectedWith = await submission.acceptance.then(
-          () => undefined,
-          (error: unknown) => error
-        );
-      });
-
-      // Acceptance REJECTS: the editor's catch is what keeps the text on screen.
-      expect(rejectedWith).toMatchObject({ code: 'permission-denied' });
-      // And the refused thought is not left drawn as if it had been saved.
-      expect(
-        screen.queryByText('Dictated thought that must survive a refusal')
-      ).not.toBeInTheDocument();
-    });
-
-    it('accepts from the local Firestore snapshot without waiting for the server promise', async () => {
-      (createManualThought as jest.Mock).mockReturnValue(new Promise(() => undefined));
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockCreateThoughtModalProps).not.toBeNull());
-      let submission: { acceptance: Promise<unknown>; persistence: Promise<void> };
-      act(() => {
-        submission = mockCreateThoughtModalProps.onCreateThought({
-          text: 'Queued thought',
-          tags: [],
-          date: '2026-08-11T00:00:00.000Z',
-        });
-      });
-
-      const submittedThought = (createManualThought as jest.Mock).mock.calls[0][1];
-      let locallyAccepted = false;
-      void submission!.acceptance.then(() => {
-        locallyAccepted = true;
-      });
-      await act(async () => Promise.resolve());
-      expect(locallyAccepted).toBe(false);
-
-      await act(async () => {
-        mockFirestoreSnapshotNext?.({
-          exists: () => true,
-          data: () => ({ thoughts: [submittedThought] }),
-        });
-        await submission!.acceptance;
-      });
-
-      expect(locallyAccepted).toBe(true);
-      expect(mockFirestoreUnsubscribe).toHaveBeenCalledTimes(1);
-    });
-
-    it('accepts an exact edited payload from the local replica without waiting for the server', async () => {
-      (updateThought as jest.Mock).mockReturnValue(new Promise(() => undefined));
-      require('@/hooks/useSermon').default.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
-        },
-      });
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
-      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
-
-      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
-      act(() => {
-        submission = mockEditThoughtModalProps.onSave('Queued exact edit', ['main'], 'main-1');
-      });
-      const submittedThought = (updateThought as jest.Mock).mock.calls[0][1];
-      let accepted = false;
-      void submission.acceptance.then(() => { accepted = true; });
-
-      await act(async () => {
-        mockFirestoreSnapshotNext?.({
-          exists: () => true,
-          data: () => ({ thoughts: [{ ...submittedThought, text: 'Old local text' }] }),
-        });
-        await Promise.resolve();
-      });
-      expect(accepted).toBe(false);
-
-      await act(async () => {
-        mockFirestoreSnapshotNext?.({
-          exists: () => true,
-          data: () => ({ thoughts: [submittedThought] }),
-        });
-        await submission.acceptance;
-      });
-      expect(accepted).toBe(true);
-    });
-
-    it('queues the exact rejected edit behind a newer editor instead of reopening on top of it', async () => {
-      let rejectPersistence!: (error: Error) => void;
-      (updateThought as jest.Mock).mockReturnValue(new Promise((_resolve, reject) => {
-        rejectPersistence = reject;
-      }));
-      require('@/hooks/useSermon').default.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
-        },
-      });
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
-      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
-
-      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
-      act(() => {
-        submission = mockEditThoughtModalProps.onSave('Exact rejected page edit', ['main'], 'main-1');
-      });
-      const submittedThought = (updateThought as jest.Mock).mock.calls[0][1];
-      await act(async () => {
-        mockFirestoreSnapshotNext?.({
-          exists: () => true,
-          data: () => ({ thoughts: [submittedThought] }),
-        });
-        await submission.acceptance;
-      });
-      act(() => mockEditThoughtModalProps.onClose());
-
-      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-      await waitFor(() => expect(mockEditThoughtModalProps.initialText).toBe('Hello'));
-
-      await act(async () => {
-        rejectPersistence(new Error('Permission denied'));
-        await expect(submission.persistence).rejects.toThrow('Permission denied');
-      });
-      expect(mockEditThoughtModalProps.initialText).toBe('Hello');
-
-      act(() => mockEditThoughtModalProps.onClose());
-      await waitFor(() => expect(mockEditThoughtModalProps.initialText).toBe('Exact rejected page edit'));
-    });
   });
 
   describe('UI Mode Management', () => {
-    beforeEach(() => {
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-    });
+    beforeEach(() => { renderPage(); });
 
     it('starts in classic mode by default', async () => {
       // The page slides one 300%-wide track across its three panes; classic is the middle one.
@@ -730,8 +373,7 @@ describe('Sermon Detail Page', () => {
 
     it('renders mode toggle button', async () => {
       await waitFor(() => {
-        const switchButton = screen.getByText(/Switch to/);
-        expect(switchButton).toBeInTheDocument();
+        expect(screen.getByText(/Switch to/)).toBeInTheDocument();
       });
     });
   });
@@ -739,202 +381,101 @@ describe('Sermon Detail Page', () => {
   describe('localStorage Persistence', () => {
     it('restores the mode saved for this sermon when the URL names none', async () => {
       mockLocalStorage.getItem.mockImplementation((key: string) => (key === 'sermon-sermon-123-mode' ? 'prep' : null));
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
+      renderPage();
       // Prep is the first pane: the track is not shifted at all.
       await waitFor(() => expect(paneTrack()?.style.transform).toBe(PREP_PANE_OFFSET));
     });
   });
 
   describe('Data Loading', () => {
-    it('shows skeleton while loading', async () => {
-      // Override mock for this test
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        sermon: null,
-        loading: true,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: null,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
+    it('shows skeleton while the first answer can still arrive', async () => {
+      openSermon({}, { cached: false });
+      // No copy on this device and the server has not answered yet.
+      jest.mocked(harness.transport.read).mockImplementation(() => new Promise(() => undefined));
+      renderPage();
+      expect(await screen.findByTestId('sermon-detail-skeleton')).toBeInTheDocument();
     });
 
-    /**
-     * CONTRACT CHANGED 2026-07-28. "No sermon and no error" is NOT a reason to wait:
-     * a refused read is PAUSED by React Query (pending, no error, forever) and an
-     * offline read is disabled, so the old test — which asserted skeletons for that
-     * exact state — was locking the infinite-skeleton bug in place. Waiting is now
-     * driven by `awaitingFirstAnswer`: an answer that can still arrive by itself.
-     */
-    it('shows skeleton while an answer can still arrive', async () => {
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        sermon: null,
-        loading: false,
-        awaitingFirstAnswer: true,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: null,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
-    });
-
-    it('stops waiting and says so when no answer can arrive any more', async () => {
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        sermon: null,
-        loading: false,
-        awaitingFirstAnswer: false,
-        isOnline: true,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: null,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
+    it('loads the stored sermon on mount', async () => {
+      renderPage();
+      await waitFor(() => expect(screen.getByText('Test Sermon')).toBeInTheDocument());
       expect(screen.queryByTestId('sermon-detail-skeleton')).not.toBeInTheDocument();
-      expect(screen.getByText('Sermon not found or unavailable')).toBeInTheDocument();
-    });
-
-    it('loads sermon data on mount', async () => {
-      // Ensure mock returns data (default behavior, but good to be explicit or just rely on beforeEach reset)
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        sermon: {
-          id: 'sermon-123',
-          title: 'Test Sermon',
-          verse: 'John 3:16',
-          date: '2023-01-01',
-          thoughts: [],
-          isPreached: false,
-          preparation: {},
-          structure: { introduction: [], main: [], conclusion: [] },
-          outline: { introduction: [], main: [], conclusion: [] }
-        },
-        loading: false,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: null,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      // Since we mocked the hook, we can checks if it was called
-      expect(useSermonMock).toHaveBeenCalledWith('sermon-123');
-
-      await waitFor(() => {
-        expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-      });
     });
 
     it('renders prep content when URL has mode=prep', async () => {
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      // In prep mode, the first PrepStepCard shows "Meditation Before Preparation"
+      prepMode();
+      renderPage();
       await waitFor(() => {
         expect(screen.getByText(/Meditation Before Preparation|wizard\.steps\.spiritual\.title/)).toBeInTheDocument();
       });
     });
 
-    it('shows Not Found when loading complete, no sermon, and error present', async () => {
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        sermon: null,
-        loading: false,
-        awaitingFirstAnswer: false,
-        isOnline: true,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: new Error('Sermon not found'),
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
+    it('stops waiting and says so when the sermon is gone, with a way back to the list', async () => {
+      harness = documentEngineHarness({ resource, value: null, metadata: { ...metadata, deleted: true } });
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+      renderPage();
 
       await waitFor(() => {
         expect(screen.getByText('Sermon not found or unavailable')).toBeInTheDocument();
-        expect(screen.getByText('Back to list')).toBeInTheDocument();
       });
-
-      const backLink = screen.getByRole('link', { name: 'Back to list' });
-      expect(backLink).toHaveAttribute('href', '/sermons');
+      expect(screen.queryByTestId('sermon-detail-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Back to list' })).toHaveAttribute('href', '/sermons');
     });
 
-    it('handles sermon with null thoughts array', async () => {
-      const useSermonMock = require('@/hooks/useSermon').default;
-      const sermonWithNullThoughts = {
-        id: 'sermon-123',
-        title: 'Test Sermon',
-        verse: 'John 3:16',
-        date: '2023-01-01',
-        thoughts: null as unknown as never[],
-        isPreached: false,
-        preparation: {},
-        structure: { introduction: [], main: [], conclusion: [] },
-        outline: { introduction: [], main: [], conclusion: [] },
-      };
-      useSermonMock.mockReturnValue({
-        sermon: sermonWithNullThoughts,
-        loading: false,
-        setSermon: jest.fn(),
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue([]),
-        error: null,
-      });
+    it('opens a sermon whose stored document has no thoughts list', async () => {
+      const { thoughts: _thoughts, ...withoutThoughts } = storedSermon;
+      harness = documentEngineHarness({ resource, value: withoutThoughts, metadata });
+      jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+      renderPage();
 
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
+      await waitFor(() => expect(screen.getByText('Test Sermon')).toBeInTheDocument());
+      expect(screen.getAllByTestId('thought-list').length).toBeGreaterThan(0);
+    });
+  });
 
-      await waitFor(() => {
-        expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-      });
-      expect(sermonWithNullThoughts.thoughts).toEqual([]);
+  describe('Thoughts', () => {
+    const thought = { id: 'thought-1', text: 'Hello', tags: ['introduction'], outlinePointId: 'intro-1', date: '2024-01-01' };
+    const withThought = {
+      thoughts: [thought],
+      structure: { introduction: ['thought-1'], main: [], conclusion: [] },
+      thoughtsBySection: { introduction: ['thought-1'], main: [], conclusion: [] },
+      outline: {
+        introduction: [{ id: 'intro-1', text: 'Intro point' }],
+        main: [{ id: 'main-1', text: 'Main point' }],
+        conclusion: [],
+      },
+    };
+
+    it('opens the thought editor for the thought the person picked', async () => {
+      openSermon(withThought);
+      renderPage();
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+
+      expect(await screen.findByTestId('engine-thought-modal')).toHaveAttribute('data-thought-id', 'thought-1');
+      expect(mockEngineThoughtModalProps.sermonId).toBe('sermon-123');
+      act(() => mockEngineThoughtModalProps.onClose());
+      await waitFor(() => expect(screen.queryByTestId('engine-thought-modal')).not.toBeInTheDocument());
+    });
+
+    it('removes a deleted thought from the stored sermon and from its section', async () => {
+      openSermon(withThought);
+      renderPage();
+      fireEvent.click((await screen.findAllByText('Mock Delete'))[0]);
+
+      await waitFor(() => expect((harness.server.value as any).thoughts).toEqual([]));
+      expect((harness.server.value as any).structure.introduction).toEqual([]);
+      expect(require('@services/thought.service').deleteThought).not.toHaveBeenCalled();
+    });
+
+    it('moves a thought to another outline point and its new section in the stored sermon', async () => {
+      openSermon(withThought);
+      renderPage();
+      fireEvent.click((await screen.findAllByText('Mock Move'))[0]);
+
+      await waitFor(() => expect((harness.server.value as any).thoughts[0].outlinePointId).toBe('main-1'));
+      expect((harness.server.value as any).structure.main).toEqual(['thought-1']);
+      expect((harness.server.value as any).structure.introduction).toEqual([]);
+      expect(require('@/services/structure.service').updateStructure).not.toHaveBeenCalled();
     });
   });
 
@@ -944,33 +485,27 @@ describe('Sermon Detail Page', () => {
       createAudioThoughtMock
         .mockRejectedValueOnce(new Error('Transcription failed'))
         .mockResolvedValueOnce({ id: 'thought-1', text: 'Hello', tags: [] });
+      renderPage();
 
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      // The raw scratch pane stays mounted in the 3-pane track, so scope to the
-      // classic recorder bridge rather than the scratch voice recorder.
+      // The raw scratch pane stays mounted in the 3-pane track, so scope to the classic recorder.
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
-      await waitFor(() => {
-        expect(createAudioThoughtMock).toHaveBeenCalledTimes(1);
-      });
+      await waitFor(() => expect(createAudioThoughtMock).toHaveBeenCalledTimes(1));
+      expect(await within(classicRecorder).findByTestId('transcription-error')).toBeInTheDocument();
 
+      // The server stores a transcribed thought itself; once the retry succeeds the page reads the document again.
+      const reads = jest.mocked(harness.transport.read).mock.calls.length;
       fireEvent.click(within(classicRecorder).getByText('Mock Retry'));
-      await waitFor(() => {
-        expect(createAudioThoughtMock).toHaveBeenCalledTimes(2);
-        expect(defaultUseSermonReturn.setSermon).toHaveBeenCalled();
-      });
+      await waitFor(() => expect(createAudioThoughtMock).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(within(classicRecorder).queryByTestId('transcription-error')).not.toBeInTheDocument());
+      await waitFor(() => expect(jest.mocked(harness.transport.read).mock.calls.length).toBeGreaterThan(reads));
 
       fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
     });
 
     it('says no answer came in time for a recording instead of printing HTTP 504', async () => {
       (createAudioThought as jest.Mock).mockRejectedValueOnce(Object.assign(new Error('Transcription failed (attempt 1/4): HTTP 504'), { status: 504 }));
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      renderPage();
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       expect(await within(classicRecorder).findByTestId('transcription-error')).toHaveTextContent('errors.aiOutOfTimeAudio');
@@ -985,7 +520,7 @@ describe('Sermon Detail Page', () => {
       mockSaveRecordingDraft.mockReset().mockResolvedValue('draft-1');
       let fail!: (error: Error) => void;
       (createAudioThought as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
-      const view = render(<TestProviders><SermonDetailPage /></TestProviders>);
+      const view = renderPage();
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(createAudioThought).toHaveBeenCalled());
@@ -1003,7 +538,7 @@ describe('Sermon Detail Page', () => {
       (createAudioThought as jest.Mock)
         .mockRejectedValueOnce(new Error('Transcription failed'))
         .mockImplementationOnce(() => new Promise(resolve => { succeed = resolve; }));
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      renderPage();
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
@@ -1018,30 +553,11 @@ describe('Sermon Detail Page', () => {
       await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId));
     });
 
-    it('sends a retry to the sermon the recording was spoken for, not the one now on screen', async () => {
-      mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
-      (createAudioThought as jest.Mock)
-        .mockRejectedValueOnce(new Error('Transcription failed'))
-        .mockResolvedValueOnce({ id: 'thought-1', text: 'Hello', tags: [] });
-      const view = render(<TestProviders><SermonDetailPage /></TestProviders>);
-      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
-      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
-      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
-
-      // The same page component now shows another sermon.
-      require('@/hooks/useSermon').default.mockReturnValue({ ...defaultUseSermonReturn, sermon: { ...defaultUseSermonReturn.sermon, id: 'sermon-456' } });
-      view.rerender(<TestProviders><SermonDetailPage /></TestProviders>);
-      fireEvent.click(within(await screen.findByTestId('classic-audio-recorder')).getByText('Mock Retry'));
-
-      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(2));
-      expect((createAudioThought as jest.Mock).mock.calls[1][1]).toBe('sermon-123');
-    });
-
     it('lets the parked copy go when the person deletes the recording', async () => {
       mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
       mockDeleteRecordingDraft.mockReset().mockResolvedValue(undefined);
       (createAudioThought as jest.Mock).mockRejectedValueOnce(new Error('Transcription failed'));
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      renderPage();
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
@@ -1057,7 +573,7 @@ describe('Sermon Detail Page', () => {
       (createAudioThought as jest.Mock)
         .mockRejectedValueOnce(new Error('Transcription failed'))
         .mockResolvedValueOnce({ id: 'thought-2', text: 'Second', tags: [] });
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      renderPage();
       const classicRecorder = await screen.findByTestId('classic-audio-recorder');
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
@@ -1073,863 +589,109 @@ describe('Sermon Detail Page', () => {
   });
 
   describe('Accessibility', () => {
-    beforeEach(() => {
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-    });
+    beforeEach(() => { renderPage(); });
 
     it('has proper heading structure', async () => {
       await waitFor(() => {
-        const h1 = screen.getByRole('heading', { level: 1 });
-        const h2s = screen.getAllByRole('heading', { level: 2 });
-
-        expect(h1).toBeInTheDocument();
-        expect(h2s.length).toBeGreaterThan(0);
+        expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
+        expect(screen.getAllByRole('heading', { level: 2 }).length).toBeGreaterThan(0);
       });
     });
 
     it('provides mode switching controls', async () => {
       await waitFor(() => {
-        const switchButton = screen.getByText(/Switch to/);
-        expect(switchButton).toBeInTheDocument();
+        expect(screen.getByText(/Switch to/)).toBeInTheDocument();
       });
     });
   });
+
   describe('Prep Mode Interactions', () => {
-    it('triggers save callbacks when steps are updated', () => {
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+    // Each prep step stores its own field of the stored preparation, never the whole object from a render.
+    it('stores every prep step answer in the sermon document', async () => {
+      prepMode();
+      renderPage();
+      expect((await screen.findAllByTestId('prep-step-card')).length).toBeGreaterThan(0);
 
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-
-
-      // Verify we have prep step cards
-      const cards = screen.getAllByTestId('prep-step-card');
-      expect(cards.length).toBeGreaterThan(0);
-
-      // Try to find known visible buttons
-      // If passing summary not found, we skip click but assert prep update called?
-      // No, we must click to call it.
-
-      // Attempt to click all known buttons if present
-      const knownButtons = [
-        'save-passage-summary',
-        'toggle-read-book',
-        'save-context-notes',
-        'save-repeated-words',
-        'save-exegetical',
-        'save-author-intent',
-        'save-main-idea',
-        'save-context-idea',
-        'save-argumentation',
-        'save-goals',
-        'save-timeless-truth',
-        'save-christ-connection',
-        'save-goal-type',
-        'save-thesis',
-        'save-thesis-exegetical',
-        'save-plural-key',
-        'save-transition-sentence',
-        'save-one-sentence',
-        'save-sermon-one-sentence',
-        'save-homiletic',
-        'save-updated-plan',
-        'save-sermon-plan',
+      const buttons = [
+        'save-passage-summary', 'toggle-read-book', 'save-context-notes', 'save-repeated-words', 'save-verse',
+        'save-exegetical', 'save-author-intent', 'save-main-idea', 'save-context-idea', 'save-argumentation',
+        'save-goals', 'save-timeless-truth', 'save-christ-connection', 'save-goal-type',
+        'save-thesis', 'save-thesis-exegetical', 'save-plural-key', 'save-transition-sentence', 'save-one-sentence',
+        'save-sermon-one-sentence', 'save-homiletic', 'save-updated-plan', 'save-sermon-plan',
       ];
-
-      for (const btnId of knownButtons) {
-        if (screen.queryByTestId(btnId)) {
-          fireEvent.click(screen.getByTestId(btnId));
-        }
+      for (const testId of buttons) {
+        fireEvent.click(screen.getByTestId(testId));
+        // One answer after another, as a person fills the steps in.
+        await act(async () => { await settleEngine(); await settleEngine(); });
       }
 
-      // We might have called updateSermonPreparation if any button was clicked.
-      // If none clicked, this expect might fail unless initialized?
-      // But coverage runs lines inside 'onSave...' only if clicked.
-      // So failing test is better than passing with low coverage.
-
-
-      expect(require('@/services/sermon.service').updateSermonPreparation).toHaveBeenCalled();
-      // This case drives ~23 sequential userEvent clicks through a full page render, so it
-      // genuinely needs longer than Jest's 5s default. On a loaded machine it exceeded that
-      // and went red while passing in isolation — and since the Vercel build runs the suite,
-      // a flake here fails a deploy for a reason that has nothing to do with the change
-      // being deployed. The work is legitimately slow; give it room instead of pretending.
+      await waitFor(() => expect(storedPreparation().homileticPlan?.sermonPlan).toEqual([{ id: 's1', title: 'sermon plan' }]), { timeout: 8000 });
+      await waitFor(() => expect(harness.server.value?.verse).toBe('Acts 1:8'));
+      const prep = storedPreparation();
+      expect(prep.textContext).toEqual({ passageSummary: 'summary', readWholeBookOnceConfirmed: true, contextNotes: 'context-notes', repeatedWords: ['word'] });
+      expect(prep.authorIntent).toBe('intent');
+      expect(prep.mainIdea).toEqual({ textIdea: 'idea', contextIdea: 'context idea', argumentation: 'argumentation' });
+      expect(prep.preachingGoal).toEqual({ statement: 'goal', type: 'didactic' });
+      expect(prep.timelessTruth).toBe('truth');
+      expect(prep.christConnection).toBe('connection');
+      expect(prep.thesis).toMatchObject({ homiletical: 'thesis', exegetical: 'exegetical', pluralKey: 'plural', transitionSentence: 'transition', oneSentence: 'one sentence', sermonInOneSentence: 'sermon one sentence' });
+      expect(prep.homileticPlan).toEqual({ modernTranslation: 'translation', updatedPlan: [{ id: 'u1', title: 'updated' }], sermonPlan: [{ id: 's1', title: 'sermon plan' }] });
+      // The exegetical plan edit lands in the document too (the document applies it to its newest plan).
+      await waitFor(() => expect(storedPreparation().exegeticalPlan).toEqual([{ id: 'n1', title: 'Node', children: [] }]));
+      // None of it went through the legacy writer.
+      expect(require('@/services/sermon.service').updateSermonPreparation).not.toHaveBeenCalled();
     }, 30_000);
 
     // BUG-20261011-thesis-answers-save-nowhere: four fields of the thesis step showed Save while the page
     // gave them nothing to save with, so the words went nowhere.
     it('saves every answer of the thesis step that has a Save button', async () => {
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-      const save = require('@/services/sermon.service').updateSermonPreparation as jest.Mock;
-      save.mockClear();
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      prepMode();
+      renderPage();
       const saved = async (testId: string) => {
-        save.mockClear();
-        fireEvent.click(screen.getByTestId(testId));
-        await waitFor(() => expect(save).toHaveBeenCalled());
-        return save.mock.calls[save.mock.calls.length - 1][1];
+        fireEvent.click(await screen.findByTestId(testId));
+        return waitFor(() => {
+          const thesis = storedPreparation().thesis;
+          expect(thesis).toBeDefined();
+          return thesis;
+        });
       };
-      expect((await saved('save-question-word')).thesis.questionWord).toBe('question');
-      expect((await saved('save-why-preach')).thesis.homileticalAnswers.whyPreach).toBe('why');
-      expect((await saved('save-impact-on-church')).thesis.homileticalAnswers.impactOnChurch).toBe('impact');
-      expect((await saved('save-practical-questions')).thesis.homileticalAnswers.practicalQuestions).toBe('practical');
+      await saved('save-question-word');
+      await waitFor(() => expect(storedPreparation().thesis.questionWord).toBe('question'));
+      await saved('save-why-preach');
+      await waitFor(() => expect(storedPreparation().thesis.homileticalAnswers.whyPreach).toBe('why'));
+      await saved('save-impact-on-church');
+      // Each answer keeps the ones saved before it.
+      await waitFor(() => expect(storedPreparation().thesis.homileticalAnswers).toMatchObject({ whyPreach: 'why', impactOnChurch: 'impact' }));
+      await saved('save-practical-questions');
+      await waitFor(() => expect(storedPreparation().thesis.homileticalAnswers).toEqual({ whyPreach: 'why', impactOnChurch: 'impact', practicalQuestions: 'practical' }));
+      expect(storedPreparation().thesis.questionWord).toBe('question');
     }, 30_000);
 
-    it('updates structure when edited thought moves to a different section', async () => {
-      const useSermonMock = require('@/hooks/useSermon').default;
-      const setSermon = jest.fn();
-      const sermonWithThought = {
-        id: 'sermon-123',
-        title: 'Test Sermon',
-        verse: 'John 3:16',
-        date: '2023-01-01',
-        thoughts: [
-          { id: 'thought-1', text: 'Original thought', tags: ['introduction'], outlinePointId: 'intro-1', date: '2024-01-01' },
-        ],
-        isPreached: false,
-        preparation: {},
-        structure: { introduction: ['thought-1'], main: [], conclusion: [] },
-        thoughtsBySection: { introduction: ['thought-1'], main: [], conclusion: [] },
-        outline: {
-          introduction: [{ id: 'intro-1', text: 'Intro point' }],
-          main: [{ id: 'main-1', text: 'Main point' }],
-          conclusion: [{ id: 'conclusion-1', text: 'Conclusion point' }],
-        },
-      };
-      useSermonMock.mockReturnValue({
-        sermon: sermonWithThought,
-        loading: false,
-        setSermon,
-        refreshSermon: jest.fn(),
-        getSortedThoughts: jest.fn().mockReturnValue(sermonWithThought.thoughts),
-        error: null,
-      });
+    it('leaves a step answered on another device alone when a different step is saved', async () => {
+      prepMode();
+      openSermon({ preparation: { authorIntent: 'rewritten on the phone this morning' } });
+      // A leftover copy from a failed save of an older build must not ride along either.
+      mockLocalStorage.getItem.mockImplementation((key: string) => (key === 'prep-draft-backup-sermon-123'
+        ? JSON.stringify({ authorIntent: 'STALE text from a failed save' }) : null));
+      renderPage();
 
-      const { deleteThought, updateThought } = require('@/services/thought.service');
-      const { updateStructure } = require('@/services/structure.service');
-      (deleteThought as jest.Mock).mockResolvedValue(undefined);
-      (updateThought as jest.Mock).mockResolvedValue(undefined);
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId('thought-list').length).toBeGreaterThan(0);
-      });
-
-      fireEvent.click(screen.getAllByText('Mock Edit Start')[0]);
-      await waitFor(() => {
-        expect(screen.getByTestId('edit-thought-modal')).toBeInTheDocument();
-      });
-      fireEvent.click(screen.getByText('Mock Save'));
-
-      await waitFor(() => {
-        expect(updateThought).toHaveBeenCalled();
-        expect(updateStructure).toHaveBeenCalled();
-      });
-    });
-  });
-
-  describe('Scratch Apply', () => {
-    it('accepts a manual outline save ack when no Apply outline write happens in between', async () => {
-      const manualDraftOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'manual-main-draft', text: 'Manual draft point' }],
-        conclusion: [],
-      };
-      const manualSavedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'manual-main-saved', text: 'Manual saved point' }],
-        conclusion: [],
-      };
-      let resolveManualSave: (outline: SermonOutline) => void = () => undefined;
-      (updateSermonOutline as jest.Mock).mockReturnValueOnce(
-        new Promise<SermonOutline>((resolve) => {
-          resolveManualSave = resolve;
-        })
-      );
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: { introduction: [], main: [], conclusion: [] },
-        scratch: [],
-      };
-      const snapshots: any[] = [];
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-        snapshots.push(currentSermon);
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: currentSermon,
-        setSermon,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
-      const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
-
-      await waitFor(() =>
-        expect(updateSermonOutline).toHaveBeenCalledWith(
-          'sermon-123',
-          manualDraftOutline,
-          // The plan this page loaded with, so the write merges instead of replacing.
-          expect.anything(),
-          // …and the collision mode this caller asks for.
-          expect.anything()
-        )
-      );
-      expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
-
-      await act(async () => {
-        resolveManualSave(manualSavedOutline);
-        await manualSavePromise;
-      });
-
-      expect(snapshots.at(-1).outline).toEqual(manualSavedOutline);
-    });
-
-    /**
-     * A POINT ADDED ON ANOTHER DEVICE MUST SURVIVE A PLAN SAVE FROM THIS PAGE.
-     *
-     * The neighbouring test proves the base is HANDED OVER; it stays green even if
-     * the merge underneath is broken, because it looks at the arguments of the call.
-     * This one lets the real `mergeOutline` play the server and then asks the only
-     * question that matters to the person: is the phone's point still there?
-     */
-    it('keeps a point added on another device when the plan is saved here', async () => {
-      const phonePoint = { id: 'phone-main', text: 'Added on the phone' };
-      /** Stands in for the stored plan. */
-      let storedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'p1', text: 'Grace' }, phonePoint],
-        conclusion: [],
-      };
-
-      (updateSermonOutline as jest.Mock).mockImplementation(
-        async (
-          _sermonId: string,
-          mine: SermonOutline,
-          base?: SermonOutline | null,
-          onCollision?: 'refuse' | 'preferMine'
-        ) => {
-          if (base === undefined) {
-            // What the unguarded path does: replace the whole field.
-            storedOutline = mine;
-            return storedOutline;
-          }
-          const { outline } = mergeOutline(base, mine, storedOutline, onCollision === 'preferMine');
-          storedOutline = outline;
-          return storedOutline;
-        }
-      );
-
-      // This page loaded BEFORE the phone's point existed.
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: { introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] },
-        scratch: [],
-      };
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: currentSermon,
-        setSermon,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
-      await act(async () => {
-        await mockScratchPanelProps.onOutlineChange!({
-          introduction: [],
-          main: [{ id: 'p1', text: 'Grace, revised here' }],
-          conclusion: [],
-        });
-      });
-
-      // The edit landed...
-      expect(storedOutline.main.map((point) => point.text)).toContain('Grace, revised here');
-      // ...and the phone's point was not swept away with it.
-      expect(storedOutline.main.map((point) => point.id)).toContain('phone-main');
-    });
-
-    /**
-     * A FAILED SAVE MUST NOT BECOME THE STORY OF WHAT WAS SAVED.
-     *
-     * The plan is shown the moment it is edited, before the server confirms — right,
-     * or every keystroke would wait on the network. What is NOT right is treating
-     * that unconfirmed plan as "what I started from" on the next save.
-     *
-     * Sequence: the server holds [a]. A point `x` is added here and the save FAILS,
-     * but the screen keeps showing [a,x]. Then `y` is added. If the second save
-     * states [a,x] as its starting point, the merge sees `x` missing on the server,
-     * reads that as "deleted on the other device", and commits [a,y] — `x` is gone
-     * for good, and nobody was asked. Found by an independent review 2026-08-10.
-     */
-    it('does not treat a plan from a FAILED save as the baseline of the next one', async () => {
-      let storedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'a', text: 'Grace' }],
-        conclusion: [],
-      };
-      let failNextSave = true;
-
-      (updateSermonOutline as jest.Mock).mockImplementation(
-        async (
-          _sermonId: string,
-          mine: SermonOutline,
-          base?: SermonOutline | null,
-          onCollision?: 'refuse' | 'preferMine'
-        ) => {
-          if (failNextSave) {
-            failNextSave = false;
-            throw new Error('network died');
-          }
-          const { outline } = mergeOutline(base ?? null, mine, storedOutline, onCollision === 'preferMine');
-          storedOutline = outline;
-          return storedOutline;
-        }
-      );
-
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: { introduction: [], main: [{ id: 'a', text: 'Grace' }], conclusion: [] },
-        scratch: [],
-      };
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({ ...defaultUseSermonReturn, sermon: currentSermon, setSermon });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
-
-      // First save fails — the screen keeps the point, the server never got it.
-      await act(async () => {
-        await expect(
-          mockScratchPanelProps.onOutlineChange!({
-            introduction: [],
-            main: [{ id: 'a', text: 'Grace' }, { id: 'x', text: 'Added here' }],
-            conclusion: [],
-          })
-        ).rejects.toThrow('network died');
-      });
-
-      // Second save, with one more point.
-      await act(async () => {
-        await mockScratchPanelProps.onOutlineChange!({
-          introduction: [],
-          main: [
-            { id: 'a', text: 'Grace' },
-            { id: 'x', text: 'Added here' },
-            { id: 'y', text: 'Added after the failure' },
-          ],
-          conclusion: [],
-        });
-      });
-
-      expect(storedOutline.main.map((point) => point.id)).toContain('y');
-      // The point from the failed save is not read as a deletion made elsewhere.
-      expect(storedOutline.main.map((point) => point.id)).toContain('x');
-    });
-
-    /**
-     * A LATE-BUT-SUCCESSFUL SAVE MUST STILL ADVANCE THE BASELINE.
-     *
-     * The baseline says what this screen believes is stored, and only an answered
-     * save may move it. The trap is the ORDER of answers: save A leaves, save B
-     * leaves and fails, and A's success arrives afterwards. A's answer is stale for
-     * the SCREEN — a newer plan is on it — but it is perfectly good news about the
-     * SERVER. Discarding it freezes the baseline at the plan from before A, forever.
-     *
-     * What that costs the person: the frozen baseline makes his own earlier wording
-     * look like a fresh edit, so the next save collides with the phone's rewrite of
-     * the same point and `preferMine` quietly restores the old words.
-     *
-     * Found by an independent review 2026-08-10.
-     */
-    it('advances the plan baseline on a late save answer, so a phone rewrite is not erased', async () => {
-      const point = (text: string) => ({ id: 'p', text });
-      let storedOutline: SermonOutline = { introduction: [], main: [point('T0')], conclusion: [] };
-
-      let resolveFirst: (o: SermonOutline) => void = () => undefined;
-      let call = 0;
-      (updateSermonOutline as jest.Mock).mockImplementation(
-        async (
-          _id: string,
-          mine: SermonOutline,
-          base?: SermonOutline | null,
-          onCollision?: 'refuse' | 'preferMine'
-        ) => {
-          call += 1;
-          if (call === 1) {
-            // Save A: commits T1 on the server, but its answer arrives late.
-            return new Promise<SermonOutline>((resolve) => {
-              resolveFirst = (o) => { storedOutline = o; resolve(o); };
-            });
-          }
-          if (call === 2) throw new Error('network died');   // Save B fails.
-          const { outline } = mergeOutline(base ?? null, mine, storedOutline, onCollision === 'preferMine');
-          storedOutline = outline;
-          return storedOutline;
-        }
-      );
-
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: { introduction: [], main: [point('T0')], conclusion: [] },
-        scratch: [],
-      };
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({ ...defaultUseSermonReturn, sermon: currentSermon, setSermon });
-
-      render(<TestProviders><SermonDetailPage /></TestProviders>);
-      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
-
-      const saveA = mockScratchPanelProps.onOutlineChange!({
-        introduction: [], main: [point('T1')], conclusion: [],
-      }) as Promise<void>;
-      await act(async () => {
-        await expect(
-          mockScratchPanelProps.onOutlineChange!({ introduction: [], main: [point('T1b')], conclusion: [] })
-        ).rejects.toThrow('network died');
-      });
-      // Save A lands only now — after B already failed.
-      await act(async () => {
-        resolveFirst({ introduction: [], main: [point('T1')], conclusion: [] });
-        await saveA.catch(() => undefined);
-      });
-
-      // The phone rewrites the same point.
-      storedOutline = { introduction: [], main: [point('PHONE')], conclusion: [] };
-
-      // An ordinary later save from this screen, carrying the wording it already has.
-      await act(async () => {
-        await mockScratchPanelProps.onOutlineChange!({
-          introduction: [], main: [point('T1')], conclusion: [],
-        });
-      });
-
-      // This screen did not touch the point since A, so the phone's words must stand.
-      expect(storedOutline.main.map((p) => p.text)).toEqual(['PHONE']);
-    });
-
-    it('ignores a stale manual outline save ack that resolves after Apply writes an outline', async () => {
-      const previousOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'previous-main', text: 'Previous main point' }],
-        conclusion: [],
-      };
-      const manualDraftOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'manual-main-draft', text: 'Manual draft before apply' }],
-        conclusion: [],
-      };
-      const staleManualAckOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'manual-main-stale', text: 'Stale manual ack' }],
-        conclusion: [],
-      };
-      const appliedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Scratch note' }],
-        conclusion: [],
-      };
-      const previousScratch: ScratchNote[] = [
-        { id: 'scratch-1', text: 'Scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
-      ];
-      let resolveManualSave: (outline: SermonOutline) => void = () => undefined;
-      (updateSermonOutline as jest.Mock).mockReturnValueOnce(
-        new Promise<SermonOutline>((resolve) => {
-          resolveManualSave = resolve;
-        })
-      );
-      (applyScratchToOutlineViaClient as jest.Mock).mockResolvedValueOnce({
-        outline: appliedOutline,
-        scratch: [],
-      });
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: previousOutline,
-        scratch: previousScratch,
-      };
-      const snapshots: any[] = [];
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-        snapshots.push(currentSermon);
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: currentSermon,
-        setSermon,
-      });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
-      const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
-      await waitFor(() =>
-        expect(updateSermonOutline).toHaveBeenCalledWith(
-          'sermon-123',
-          manualDraftOutline,
-          // The plan this page loaded with, so the write merges instead of replacing.
-          expect.anything(),
-          // …and the collision mode this caller asks for.
-          expect.anything()
-        )
-      );
-      expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
-
-      const applyPromise = mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']) as Promise<void>;
-      await waitFor(() =>
-        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith(
-          'sermon-123',
-          appliedOutline,
-          [],
-          // The plan and the note list this apply STARTED from: both fields are
-          // merged in one transaction instead of being replaced together.
-          expect.objectContaining({ scratch: expect.any(Array) })
-        )
-      );
-      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(appliedOutline));
-      await expect(applyPromise).resolves.toBeUndefined();
-
-      await act(async () => {
-        resolveManualSave(staleManualAckOutline);
-        await manualSavePromise;
-      });
-
-      expect(snapshots.at(-1).outline).toEqual(appliedOutline);
-      expect(snapshots.map((snapshot) => snapshot.outline)).not.toContainEqual(staleManualAckOutline);
-    });
-
-    it('rolls back optimistic outline and scratch state after an online apply write failure', async () => {
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      Object.defineProperty(navigator, 'onLine', {
-        configurable: true,
-        value: true,
-      });
-      const previousOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'previous-main', text: 'Previous main point' }],
-        conclusion: [],
-      };
-      const previousScratch: ScratchNote[] = [
-        { id: 'scratch-1', text: 'Scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
-      ];
-      const appliedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Scratch note' }],
-        conclusion: [],
-      };
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: previousOutline,
-        scratch: previousScratch,
-      };
-      const snapshots: any[] = [];
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-        snapshots.push(currentSermon);
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: currentSermon,
-        setSermon,
-      });
-      (applyScratchToOutlineViaClient as jest.Mock).mockRejectedValueOnce(new Error('permission denied'));
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onApplyOutline).toBeDefined());
-      mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']);
-
-      await waitFor(() =>
-        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith(
-          'sermon-123',
-          appliedOutline,
-          [],
-          // The plan and the note list this apply STARTED from: both fields are
-          // merged in one transaction instead of being replaced together.
-          expect.objectContaining({ scratch: expect.any(Array) })
-        )
-      );
-      await waitFor(() => expect(snapshots[0].outline).toEqual(appliedOutline));
-      expect(snapshots[0].scratch).toEqual([]);
-      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(previousOutline));
-      expect(snapshots.at(-1).scratch).toEqual(previousScratch);
-      consoleErrorSpy.mockRestore();
-    });
-
-    it('preserves a newer scratch edit made during the online apply failure gap', async () => {
-      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      Object.defineProperty(navigator, 'onLine', {
-        configurable: true,
-        value: true,
-      });
-      const previousOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'previous-main', text: 'Previous main point' }],
-        conclusion: [],
-      };
-      const previousScratch: ScratchNote[] = [
-        { id: 'scratch-1', text: 'Consumed scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
-        { id: 'scratch-2', text: 'Remaining scratch note', createdAt: '2026-07-05T00:01:00.000Z' },
-      ];
-      const remainingScratch: ScratchNote[] = [previousScratch[1]];
-      const editedRemainingScratch: ScratchNote[] = [
-        { ...previousScratch[1], text: 'Edited during apply gap' },
-      ];
-      const appliedOutline: SermonOutline = {
-        introduction: [],
-        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Consumed scratch note' }],
-        conclusion: [],
-      };
-      let currentSermon: any = {
-        ...defaultUseSermonReturn.sermon,
-        outline: previousOutline,
-        scratch: previousScratch,
-      };
-      const snapshots: any[] = [];
-      const setSermon = jest.fn((updater: any) => {
-        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
-        snapshots.push(currentSermon);
-      });
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: currentSermon,
-        setSermon,
-      });
-      let rejectApply: (error: Error) => void = () => undefined;
-      (applyScratchToOutlineViaClient as jest.Mock).mockReturnValueOnce(
-        new Promise((_resolve, reject) => {
-          rejectApply = reject;
-        })
-      );
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(mockScratchPanelProps.onApplyOutline).toBeDefined());
-      mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']);
-
-      await waitFor(() => expect(snapshots[0].scratch).toEqual(remainingScratch));
-      await act(async () => {
-        mockScratchPanelProps.updateScratchNote?.('scratch-2', { text: 'Edited during apply gap' });
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      await waitFor(() => expect(snapshots.at(-1).scratch).toEqual(editedRemainingScratch));
-
-      await act(async () => {
-        rejectApply(new Error('permission denied'));
-      });
-
-      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(previousOutline));
-      expect(snapshots.at(-1).scratch).toEqual([editedRemainingScratch[0], previousScratch[0]]);
-      expect(snapshots.at(-1).scratch).not.toEqual(previousScratch);
-      consoleErrorSpy.mockRestore();
-    });
-  });
-
-  /**
-   * A LEFTOVER LOCAL COPY MUST NOT BE APPLIED BY ITSELF.
-   *
-   * The preparation editor merged `prep-draft-backup-<sermonId>` over the server's
-   * preparation on mount — "local wins over stale remote" — so a backup left behind by
-   * a failed save weeks ago silently replaced what had been written on another device
-   * since, and the next save pushed it to the server. That is the exact failure the
-   * durable-draft layer exists to prevent: recovered text is OFFERED, never applied.
-   */
-  describe('preparation: a stale local backup is not applied silently', () => {
-    it('keeps the server value and does not send the leftover text', async () => {
-      const user = userEvent.setup();
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          preparation: { authorIntent: 'rewritten on the phone this morning' },
-        },
-      });
-      mockLocalStorage.getItem.mockImplementation((key: string) => {
-        if (key === 'sermon-sermon-123-mode') return 'prep';
-        if (key === 'prep-draft-backup-sermon-123') {
-          return JSON.stringify({ authorIntent: 'STALE text from a failed save' });
-        }
-        return null;
-      });
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(screen.queryByTestId('save-context-notes')).toBeInTheDocument());
-      // Edit a DIFFERENT field. The leftover copy of `authorIntent` must not ride along.
-      await user.click(screen.getByTestId('save-context-notes'));
-
-      const updateSermonPreparation = require('@/services/sermon.service').updateSermonPreparation;
-      await waitFor(() => expect(updateSermonPreparation).toHaveBeenCalled());
-      const [, payload, changedKeys] = updateSermonPreparation.mock.calls[0];
-      expect(payload.authorIntent).toBe('rewritten on the phone this morning');
-      expect(changedKeys).not.toContain('authorIntent');
-    }, 15_000);
-
-    it('OFFERS the leftover text instead, and applies it only when asked', async () => {
-      // Not applying it silently is only half the fix: the text must still be
-      // reachable, or "protecting" it means quietly discarding it.
-      const user = userEvent.setup();
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          preparation: { authorIntent: 'rewritten on the phone this morning' },
-        },
-      });
-      // A STATEFUL store for this one test: the shared mock does not keep what it is
-      // given, and the carry from the legacy key into the durable store is exactly a
-      // write followed by a read. With a forgetful mock the offer can never appear and
-      // the test would pass for the wrong reason.
-      const store = new Map<string, string>([
-        ['prep-draft-backup-sermon-123', JSON.stringify({ authorIntent: 'STALE text from a failed save' })],
-      ]);
-      mockLocalStorage.getItem.mockImplementation((key: string) => {
-        if (key === 'sermon-sermon-123-mode') return 'prep';
-        return store.get(key) ?? null;
-      });
-      mockLocalStorage.setItem.mockImplementation((key: string, value: string) => {
-        store.set(key, value);
-      });
-      mockLocalStorage.removeItem.mockImplementation((key: string) => {
-        store.delete(key);
-      });
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      // The offer is on screen…
-      const restore = await screen.findByTestId('restore-prep-draft');
-      // …and the uid-less legacy key is retired, not read again on the next mount.
-      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('prep-draft-backup-sermon-123');
-
-      await user.click(restore);
+      fireEvent.click(await screen.findByTestId('save-context-notes'));
+      await waitFor(() => expect(storedPreparation().textContext?.contextNotes).toBe('context-notes'));
+      expect(storedPreparation().authorIntent).toBe('rewritten on the phone this morning');
       expect(screen.queryByTestId('restore-prep-draft')).not.toBeInTheDocument();
     }, 15_000);
 
-    it('keeps the leftover backup when the device refuses to store its new copy', async () => {
-      // Retiring the old key before the new copy landed left the text in neither place.
-      const useSermonMock = require('@/hooks/useSermon').default;
-      useSermonMock.mockReturnValue({
-        ...defaultUseSermonReturn,
-        sermon: { ...defaultUseSermonReturn.sermon, preparation: {} },
-      });
-      const legacy = JSON.stringify({ authorIntent: 'text from a failed save' });
-      const store = new Map<string, string>([['prep-draft-backup-sermon-123', legacy]]);
-      mockLocalStorage.getItem.mockImplementation((key: string) => {
-        if (key === 'sermon-sermon-123-mode') return 'prep';
-        return store.get(key) ?? null;
-      });
-      mockLocalStorage.setItem.mockImplementation((key: string, value: string) => {
-        if (key.startsWith('draft:')) throw new DOMException('quota', 'QuotaExceededError');
-        store.set(key, value);
-      });
-      mockLocalStorage.removeItem.mockImplementation((key: string) => {
-        store.delete(key);
-      });
-      jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-
-      render(
-        <TestProviders>
-          <SermonDetailPage />
-        </TestProviders>
-      );
-
-      await waitFor(() => expect(screen.queryByTestId('save-context-notes')).toBeInTheDocument());
-      expect(store.get('prep-draft-backup-sermon-123')).toBe(legacy);
-      expect(mockLocalStorage.removeItem).not.toHaveBeenCalledWith('prep-draft-backup-sermon-123');
-      jest.mocked(console.error).mockRestore();
+    it('keeps the saved text apart from a sibling written elsewhere in between', async () => {
+      prepMode();
+      renderPage();
+      const user = userEvent.setup();
+      await user.click(await screen.findByTestId('save-context-notes'));
+      await waitFor(() => expect(storedPreparation().textContext?.contextNotes).toBe('context-notes'));
+      // Another device writes a sibling field; this page then saves its own field.
+      await act(async () => { await harness.remote({ preparation: { ...storedPreparation(), textContext: { ...storedPreparation().textContext, passageSummary: 'From the phone' } } }); });
+      await user.click(screen.getByTestId('save-repeated-words'));
+      await waitFor(() => expect(storedPreparation().textContext?.repeatedWords).toEqual(['word']));
+      expect(storedPreparation().textContext).toMatchObject({ contextNotes: 'context-notes', passageSummary: 'From the phone' });
     }, 15_000);
-  });
-
-  describe('Open thought editor outline freshness', () => {
-    it('hands the open editor the new outline when the sermon outline changes', async () => {
-      const useSermon = require('@/hooks/useSermon').default;
-      const withOutline = (title: string) => ({
-        ...defaultUseSermonReturn,
-        sermon: {
-          ...defaultUseSermonReturn.sermon,
-          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
-          outline: { introduction: [], main: [{ id: 'point-1', text: title }], conclusion: [] },
-        },
-      });
-      useSermon.mockReturnValue(withOutline('Old point'));
-
-      const { rerender } = render(<TestProviders><SermonDetailPage /></TestProviders>);
-      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
-      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
-      expect(mockEditThoughtModalProps.sermonOutline.main[0].text).toBe('Old point');
-
-      useSermon.mockReturnValue(withOutline('New point'));
-      rerender(<TestProviders><SermonDetailPage /></TestProviders>);
-
-      expect(screen.getByTestId('edit-thought-modal')).toBeInTheDocument();
-      await waitFor(() => expect(mockEditThoughtModalProps.sermonOutline.main[0].text).toBe('New point'));
-    });
   });
 });

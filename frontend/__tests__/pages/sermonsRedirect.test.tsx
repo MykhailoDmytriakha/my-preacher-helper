@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
@@ -468,38 +468,6 @@ describe('Dashboard page', () => {
 
     expect(mockRouterPush).not.toHaveBeenCalledWith('/sermons');
     expect(mockRouterPush).not.toHaveBeenCalledWith('/prayers');
-  });
-
-  it('creates the sermon via the optimistic path and redirects to the created sermon', async () => {
-    render(<DashboardPage />);
-
-    fireEvent.click(screen.getByRole('button', { name: /Новая проповедь/i }));
-    fireEvent.change(screen.getByPlaceholderText('Введите тему'), {
-      target: { value: 'Created From Dashboard' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Введите текст'), {
-      target: { value: 'John 1:1' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
-
-    // The dashboard delegates to the optimistic buffered create (not the direct
-    // service), passing the typed title/verse.
-    await waitFor(() => {
-      expect(mockCreateSermon).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Created From Dashboard', verse: 'John 1:1' })
-      );
-    });
-
-    // Online, it navigates to the new sermon's editor route...
-    await waitFor(() => {
-      expect(mockRouterPush).toHaveBeenCalledWith('/sermons/created-sermon-id');
-    });
-
-    // ...and the modal closes (closeOnSuccess).
-    await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'Новая проповедь' })).not.toBeInTheDocument();
-    });
   });
 
   it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {

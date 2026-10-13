@@ -37,7 +37,7 @@ const buildServerFirstResult = <TData,>(data: TData) =>
   } as unknown as ReturnType<typeof useServerFirstQuery>);
 
 describe('useUserChurches', () => {
-  it('deduplicates churches by name and city', async () => {
+  it('deduplicates churches by name and city', () => {
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
 
     const sermons: Sermon[] = [
@@ -85,23 +85,17 @@ describe('useUserChurches', () => {
       },
     ];
 
-    let capturedOptions: any;
-    mockUseServerFirstQuery.mockImplementation((options: any) => {
-      capturedOptions = options;
-      return buildServerFirstResult(sermons);
-    });
+    // Sermons are engine-owned: the suggestions come from the engine's rows.
+    mockEngineSermons.sermons = sermons;
+    mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([]));
 
     const { result } = renderHook(() => useUserChurches());
 
     expect(result.current.availableChurches).toHaveLength(2);
     expect(result.current.availableChurches[0].name).toBe('First');
     expect(result.current.availableChurches[1].name).toBe('Second');
-
-    mockGetSermons.mockResolvedValue([]);
-    await capturedOptions.queryFn();
-
-    expect(mockGetSermons).toHaveBeenCalledWith('user-1');
-    expect(capturedOptions.enabled).toBe(true);
+    expect(mockGetSermons).not.toHaveBeenCalled();
+    mockEngineSermons.sermons = [];
   });
 
   it('returns empty list when no user is available', async () => {

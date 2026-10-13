@@ -1,189 +1,135 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
-import { persistedWrite } from '@/utils/recoverableWrite';
-import { addPreachDate } from '@/services/preachDates.service';
-import { createSermon, getSermons } from '@/services/sermon.service';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import '@testing-library/jest-dom';
 
-jest.mock('@/services/sermon.service', () => ({
-  createSermon: jest.fn(),
-  getSermons: jest.fn(),
+// The REAL church field runs inside the REAL engine create stage; only I/O is replaced.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/ui/DatePickerField', () => ({
+  __esModule: true,
+  default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} />,
 }));
 
-jest.mock('@/services/preachDates.service', () => ({
-  addPreachDate: jest.fn(),
-}));
+function setup() {
+  const harness = membershipEngineHarness([]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const onClose = jest.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <DataEngineProvider><AddSermonModal isOpen showTriggerButton={false} allowPlannedDate onClose={onClose} /></DataEngineProvider>
+    </QueryClientProvider>
+  );
+  return { harness, onClose, view };
+}
 
-jest.mock('@/services/firebaseAuth.service', () => ({
-  auth: { currentUser: { uid: 'test-user-id' } },
-}));
+async function fillRequiredFields() {
+  const title = await screen.findByLabelText('addSermon.titleLabel');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Grace that carries' } });
+  fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Eph 2:8' } });
+  await act(async () => { await settleEngine(); });
+}
 
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => ({ user: { uid: 'test-user-id' } }),
-}));
-
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { uid: 'test-user-id' } }),
-}));
-
-jest.mock('@/hooks/useSeries', () => ({
-  useSeries: () => ({ series: [] }),
-}));
-
-jest.mock('@/hooks/useUserSettings', () => ({
-  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
-}));
-
-jest.mock('react-day-picker/dist/style.css', () => ({}));
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: jest.fn() }),
-}));
-
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => {
-      const translations: Record<string, string> = {
-        'addSermon.newSermon': 'New Sermon',
-        'addSermon.titleLabel': 'Title',
-        'addSermon.titlePlaceholder': 'Enter sermon title',
-        'addSermon.verseLabel': 'Scripture Reference',
-        'addSermon.versePlaceholder': 'Enter scripture reference',
-        'addSermon.seriesLabel': 'Series',
-        'addSermon.noSeriesOption': 'No series',
-        'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
-        'addSermon.groupSermon': 'Sermon',
-        'addSermon.groupLater': 'Can be filled in later',
-        'addSermon.groupLaterHint': 'You can change the church and the date later in Calendar',
-        'addSermon.save': 'Save',
-        'addSermon.cancel': 'Cancel',
-        'calendar.church': 'Church',
-        'calendar.unspecifiedChurch': 'Church not specified',
-        'calendar.churchAutocomplete.placeholder': 'Start typing a name',
-      };
-      return translations[key] ?? options?.defaultValue ?? key;
-    },
-  }),
-}));
-
-const renderWithClient = (ui: React.ReactElement) => {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
-  });
-  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
-};
-
-/**
- * Typing into the combobox opens its list, and Headless UI makes the rest of the form
- * inert while it is open — so Save is unreachable BY ROLE until the list closes. In a
- * browser the pointer press closes it before the click lands; here Escape stands in for
- * that, which is also exactly what a keyboard user does.
- */
-const chooseChurch = (name: string) => {
-  const field = screen.getByLabelText('Church');
+/** Typing opens the suggestion list; Escape is what a keyboard user does to close it. */
+async function chooseChurch(name: string) {
+  const field = screen.getByLabelText('calendar.church');
   fireEvent.change(field, { target: { value: name } });
   fireEvent.keyDown(field, { key: 'Escape' });
-};
+  await act(async () => { await settleEngine(); });
+}
 
-const fillRequiredFields = () => {
-  fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-    target: { value: 'Grace that carries' },
-  });
-  fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-    target: { value: 'Eph 2:8' },
-  });
-};
+async function savedSermon(harness: ReturnType<typeof membershipEngineHarness>) {
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  const [request] = await harness.commits.list('owner');
+  return harness.read(request.baseline.resource).value;
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
+});
+afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
 describe('AddSermonModal — the congregation a sermon is prepared for', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (getSermons as jest.Mock).mockResolvedValue([]);
-    (createSermon as jest.Mock).mockResolvedValue({
-      id: 'new-sermon',
-      title: 'Grace that carries',
-      verse: 'Eph 2:8',
-      date: '2026-09-12T00:00:00.000Z',
-      thoughts: [],
-      userId: 'test-user-id',
-    });
-    (addPreachDate as jest.Mock).mockResolvedValue({
-      id: 'pd-1',
-      date: '2026-10-05',
-      status: 'planned',
-      church: { id: '', name: 'Bethel', city: '' },
-      createdAt: '2026-09-12T00:00:00.000Z',
-    });
-  });
-
   test('a church named WITHOUT a date is still stored, on the sermon itself', async () => {
-    const onCreateRequest = jest.fn().mockReturnValue(persistedWrite(Promise.resolve()));
-
-    renderWithClient(
-      <AddSermonModal isOpen showTriggerButton={false} allowPlannedDate onCreateRequest={onCreateRequest} />
-    );
-
-    fillRequiredFields();
-    chooseChurch('Bethel');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(onCreateRequest).toHaveBeenCalled());
-    const input = onCreateRequest.mock.calls[0][0];
-    expect(input.church).toEqual({ id: '', name: 'Bethel', city: '' });
+    const { harness, onClose, view } = setup();
+    await fillRequiredFields();
+    await chooseChurch('Bethel');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const stored = await savedSermon(harness);
+    expect(stored?.church).toEqual({ id: '', name: 'Bethel', city: '' });
     // This is the whole point of the field: no date was given, and the church survives.
-    expect(input.plannedDate).toBeUndefined();
+    expect(stored?.preachDates ?? []).toEqual([]);
+    view.unmount();
   });
 
   test('a church named WITH a date reaches the preach date too, instead of the stand-in', async () => {
-    renderWithClient(<AddSermonModal isOpen showTriggerButton={false} allowPlannedDate />);
-
-    fillRequiredFields();
-    chooseChurch('Bethel');
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-10-05' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(addPreachDate).toHaveBeenCalled());
-    expect((addPreachDate as jest.Mock).mock.calls[0][1]).toEqual(
-      expect.objectContaining({ church: { id: '', name: 'Bethel', city: '' } })
-    );
+    const { harness, onClose, view } = setup();
+    await fillRequiredFields();
+    await chooseChurch('Bethel');
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-10-05' } });
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const stored = await savedSermon(harness);
+    expect(stored?.preachDates).toEqual([expect.objectContaining({ date: '2026-10-05', status: 'planned',
+      church: { id: '', name: 'Bethel', city: '' } })]);
     // The sermon carries it as well: the two facts are stored side by side, never derived.
-    expect((createSermon as jest.Mock).mock.calls[0][0]).toEqual(
-      expect.objectContaining({ church: { id: '', name: 'Bethel', city: '' } })
-    );
+    expect(stored?.church).toEqual({ id: '', name: 'Bethel', city: '' });
+    view.unmount();
+  });
+
+  test('a church typed AFTER the date still reaches the preach date', async () => {
+    const { harness, onClose, view } = setup();
+    await fillRequiredFields();
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-10-05' } });
+    await act(async () => { await settleEngine(); });
+    await chooseChurch('Bethel');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const stored = await savedSermon(harness);
+    expect(stored?.preachDates).toEqual([expect.objectContaining({ church: { id: '', name: 'Bethel', city: '' } })]);
+    view.unmount();
   });
 
   test('a freshly typed church survives closing the suggestion list', async () => {
     // Found live: the previous combobox rewrote the input to the SELECTED option every
-    // time the list closed. A brand-new church matches no option, so the name vanished
-    // from the field while the form still held it — the screen lied about what it
-    // would save. The field owns its text now, and this says so.
-    renderWithClient(<AddSermonModal isOpen showTriggerButton={false} allowPlannedDate />);
-
-    const field = screen.getByLabelText('Church');
+    // time the list closed, so a brand-new church vanished from the field while the form
+    // still held it. The field owns its text now, and this says so.
+    const { view } = setup();
+    const title = await screen.findByLabelText('addSermon.titleLabel');
+    await waitFor(() => expect(title).toBeEnabled());
+    const field = screen.getByLabelText('calendar.church');
     fireEvent.change(field, { target: { value: 'Bethel Sarny' } });
     fireEvent.keyDown(field, { key: 'Escape' });
-
+    await act(async () => { await settleEngine(); });
     expect(field).toHaveValue('Bethel Sarny');
+    view.unmount();
   });
 
   test('leaving the church empty still falls back to the stand-in for the date', async () => {
-    renderWithClient(<AddSermonModal isOpen showTriggerButton={false} allowPlannedDate />);
-
-    fillRequiredFields();
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-10-05' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(addPreachDate).toHaveBeenCalled());
-    expect((addPreachDate as jest.Mock).mock.calls[0][1].church).toEqual(
-      expect.objectContaining({ id: 'church-unspecified' })
-    );
-    expect((createSermon as jest.Mock).mock.calls[0][0].church).toBeUndefined();
+    const { harness, onClose, view } = setup();
+    await fillRequiredFields();
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-10-05' } });
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const stored = await savedSermon(harness);
+    expect(stored?.preachDates).toEqual([expect.objectContaining({ church: expect.objectContaining({ id: 'church-unspecified' }) })]);
+    expect(stored?.church).toBeUndefined();
+    view.unmount();
   });
 });

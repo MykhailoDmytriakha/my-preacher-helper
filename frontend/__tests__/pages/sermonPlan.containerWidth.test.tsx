@@ -33,26 +33,19 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Service and child mocks to avoid heavy render
-jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn(async () => ({
-    id: 'test-sermon-id',
-    title: 'T',
-    verse: 'V',
-    // Whole enough to reach the paired screen at all — this test is about the container,
-    // and an unready sermon is met by the gate instead.
-    thoughts: [{ id: 't1', text: 'A thought', tags: [], date: '2024-01-01', outlinePointId: 'intro-1' }],
-    outline: {
-      introduction: [{ id: 'intro-1', text: 'Intro Point' }],
-      main: [],
-      conclusion: []
-    },
-  })),
-}));
+// The plan page runs on the data engine: it opens the sermon document through the real engine,
+// with only the server and the browser transport replaced.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/components/plan/KeyFragmentsModal', () => () => <div />);
 jest.mock('@/components/ExportButtons', () => () => <div />);
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
 const createTestQueryClient = () =>
   new QueryClient({
@@ -63,11 +56,23 @@ const createTestQueryClient = () =>
 
 const renderWithQueryClient = (ui: React.ReactElement) => {
   const queryClient = createTestQueryClient();
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><DataEngineProvider>{ui}</DataEngineProvider></QueryClientProvider>);
 };
 
 describe('Sermon plan container width', () => {
   it('does not use min-h-screen and keeps page container lightweight', async () => {
+    const harness = documentEngineHarness({
+      resource: { collection: 'sermons', id: 'test-sermon-id' },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+      value: {
+        userId: 'owner', title: 'T', verse: 'V', date: '2024-01-01',
+        // Whole enough to reach the paired screen at all — this test is about the container,
+        // and an unready sermon is met by the gate instead.
+        thoughts: [{ id: 't1', text: 'A thought', tags: [], date: '2024-01-01', outlinePointId: 'intro-1' }],
+        outline: { introduction: [{ id: 'intro-1', text: 'Intro Point' }], main: [], conclusion: [] },
+      },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     renderWithQueryClient(<SermonPlanPage />);
     // Root should have data-testid and no min-h-screen
     const root = await screen.findByTestId('sermon-plan-page-container');

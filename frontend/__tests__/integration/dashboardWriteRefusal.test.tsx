@@ -1,311 +1,159 @@
-import {
-  onlineManager,
-  useQuery,
-} from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import SermonCard from '@/components/dashboard/SermonCard';
-import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import type { ResourceSnapshot } from '@/data-engine/types';
 import { QueryProvider } from '@/providers/QueryProvider';
-import { isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
-import { createIDBPersister } from '@/utils/queryPersister';
 
-import type { Sermon } from '@/models/models';
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
-// FirestoreError's constructor is private, so TypeScript refuses `new FirestoreError(...)`
-// even though the class is exported. The cast keeps the REAL SDK class at runtime — which is
-// the point of these tests, they assert on the object a denied write actually produces —
-// while satisfying the type checker. Resolve it lazily because Jest also mocks selected
-// Firestore functions in neighboring integration suites.
-const makeFirestoreError = (code: string, message = code): Error & { code: string } => {
-  const { FirestoreError } = jest.requireActual<typeof import('firebase/firestore')>('firebase/firestore');
-  const Ctor = FirestoreError as unknown as new (code: string, message: string) => Error & { code: string };
-  return new Ctor(code, message);
-};
-
-// Preach-date writes cross the Next API boundary. The route preserves the SDK
-// refusal code and the browser service reattaches it to an ordinary Error.
-const makeApiWriteRefusal = (): Error & { code: string; status: number } =>
-  Object.assign(new Error('Missing or insufficient permissions.'), {
-    code: 'permission-denied',
-    status: 403,
-  });
-
-const mockUpdateSermon = jest.fn();
-const mockAddPreachDate = jest.fn();
-
-// The previous-version archive mounts on every deployment; this browser has nothing to keep in it.
+// Sermons are engine-owned: edits and preach-date writes go through the REAL engine (only I/O is
+// replaced). A refusal is the server's answer to a request that already closed its form, so the
+// contract checked here is what the person keeps: the typed text in the stored request, the
+// stored sermon untouched, and a verdict on the dashboard they are looking at.
 jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({
   ...jest.requireActual('@/data-engine/legacyQueryRecovery.client'),
   preserveLegacyQueryCache: jest.fn().mockResolvedValue(undefined),
   listLegacyQueryCopies: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('@/utils/queryPersister', () => ({
-  createIDBPersister: jest.fn(),
-}));
-
-jest.mock('@services/firebaseAuth.service', () => ({
-  auth: { currentUser: { uid: 'user-1' } },
-}));
-
-jest.mock('@services/sermon.service', () => ({
-  createSermon: jest.fn(),
-  deleteSermon: jest.fn(),
-  updateSermon: (...args: unknown[]) => mockUpdateSermon(...args),
-}));
-
-jest.mock('@services/preachDates.service', () => ({
-  addPreachDate: (...args: unknown[]) => mockAddPreachDate(...args),
-  deletePreachDate: jest.fn(),
-  updatePreachDate: jest.fn(),
-}));
-
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: () => true,
-}));
-
-jest.mock('@/hooks/useSeriesMembership', () => ({
-  useSeriesMembership: () => ({
-    addToSeries: jest.fn(),
-    addRefsToSeries: jest.fn(),
-    removeFromAllSeries: jest.fn(),
-    reorderSeries: jest.fn(),
+  createIDBPersister: () => ({
+    persistClient: async () => undefined,
+    restoreClient: async () => undefined,
+    removeClient: async () => undefined,
   }),
 }));
-
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => ({ user: { uid: 'user-1' } }),
-}));
-
-jest.mock('@/hooks/useUserSettings', () => ({
-  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
-}));
-
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
+jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }) }));
 jest.mock('react-day-picker/dist/style.css', () => ({}));
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-}));
-
-jest.mock('@/components/calendar/ChurchAutocomplete', () => ({
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }) }));
+jest.mock('@/components/church/ChurchField', () => ({
   __esModule: true,
-  default: ({ initialValue, onChange }: {
-    initialValue?: { name?: string };
-    onChange: (church: { id: string; name: string; city: string }) => void;
-  }) => (
-    <label>
-      Church
-      <input
-        aria-label="Church"
-        defaultValue={initialValue?.name ?? ''}
-        onChange={(event) => onChange({ id: 'church-1', name: event.target.value, city: 'Everett' })}
-      />
-    </label>
-  ),
+  default: ({ value, onChange }: { value?: { name?: string }; onChange: (church: { id: string; name: string; city: string }) => void }) =>
+    <input aria-label="Church" value={value?.name ?? ''} onChange={event => onChange({ id: 'church-1', name: event.target.value, city: 'Everett' })} />,
+}));
+jest.mock('@/components/ui/DatePickerField', () => ({
+  __esModule: true,
+  default: ({ id, value, onChange }: { id?: string; value: string; onChange: (value: string) => void }) =>
+    <input id={id} aria-label={id === 'preach-date-input' ? 'Date' : 'Planned date'} value={value} onChange={event => onChange(event.target.value)} />,
 }));
 
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { name?: string; defaultValue?: string }) => {
-      const translations: Record<string, string> = {
-        'optionMenu.options': 'Options',
-        'optionMenu.edit': 'Edit',
-        'optionMenu.markAsPreached': 'Mark as preached',
-        'optionMenu.markAsNotPreached': 'Mark as not preached',
-        'optionMenu.delete': 'Delete',
-        'editSermon.editSermon': 'Edit Sermon',
-        'editSermon.titleLabel': 'Title',
-        'editSermon.titlePlaceholder': 'Enter sermon title',
-        'editSermon.verseLabel': 'Scripture Reference',
-        'editSermon.versePlaceholder': 'Enter scripture reference',
-        'editSermon.plannedDateLabel': 'Planned preaching date (optional)',
-        'editSermon.plannedDateHint': 'Leave empty if you do not want a planned date',
-        'editSermon.clearPlannedDate': 'Clear',
-        // Both sermon doors share one form module now, so the field labels come from the
-        // "New sermon" key family. Same human strings, one home.
-        'addSermon.titleLabel': 'Title',
-        'addSermon.titlePlaceholder': 'Enter sermon title',
-        'addSermon.verseLabel': 'Scripture Reference',
-        'addSermon.versePlaceholder': 'Enter scripture reference',
-        'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
-        'addSermon.groupSermon': 'Sermon',
-        'addSermon.groupLater': 'Can be filled in later',
-        'addSermon.cancel': 'Cancel',
-        'calendar.church': 'Church',
-        'common.saving': 'Saving',
-        'common.close': 'Close',
-        'calendar.addPreachDate': 'Add Preach Date',
-        'calendar.editPreachDate': 'Edit Preach Date',
-        'calendar.date': 'Date',
-        'calendar.audience': 'Audience',
-        'calendar.notes': 'Notes',
-        'calendar.unspecifiedChurch': 'Church not specified',
-        'dashboard.created': 'Created',
-        'dashboard.preached': 'Preached',
-        'buttons.cancel': 'Cancel',
-        'buttons.save': 'Save',
-        'buttons.saving': 'Saving',
-        'buttons.dismiss': 'Dismiss',
-        'freshness.copyTextAction': 'Copy text',
-        'writeRecovery.refusedLabel': 'Save refused',
-        'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
-        'writeRecovery.sermonFailed': 'Sermon changes were not saved.',
-      };
-      return translations[key] ?? options?.defaultValue ?? key;
-    },
-    i18n: { language: 'en' },
-  }),
-}));
-
-const originalSermon: Sermon = {
-  id: 'sermon-refusal',
-  userId: 'user-1',
-  title: 'Stored sermon title',
-  verse: 'John 3:16',
-  date: '2026-08-11T00:00:00.000Z',
-  thoughts: [],
-  preachDates: [],
+const resource = { collection: 'sermons', id: 'sermon-refusal' };
+const snapshot: ResourceSnapshot = {
+  resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+  value: { userId: 'user-1', title: 'Stored sermon title', verse: 'John 3:16', date: '2026-08-11T00:00:00.000Z', thoughts: [], preachDates: [] },
 };
 
 function DashboardHarness() {
-  const { data: sermons = [] } = useQuery<Sermon[]>({
-    queryKey: ['sermons', 'user-1'],
-    queryFn: async () => [originalSermon],
-    enabled: false,
-    initialData: [originalSermon],
-  });
-  const { syncStatesById, actions } = useDashboardOptimisticSermons();
-  // `/sermons` renders the Active tab by filtering preached sermons out. This
-  // boundary matters: a premature optimistic `isPreached=true` unmounts the card
-  // and its portal modal before a refused write can render an alert.
-  const sermon = sermons.find((candidate) => !getEffectiveIsPreached(candidate));
-
-  if (!sermon) return <p>No active sermons</p>;
+  const { sermons, state } = useDashboardSermons();
+  // `/sermons` renders the Active tab by filtering preached sermons out.
+  const sermon = sermons.find(candidate => !getEffectiveIsPreached(candidate));
   return (
-    <SermonCard
-      sermon={sermon}
-      onDelete={jest.fn()}
-      onUpdate={jest.fn()}
-      syncState={syncStatesById[sermon.id]}
-      optimisticActions={actions}
-    />
+    <>
+      <DataCollectionStatus state={state} />
+      {sermon ? <SermonCard sermon={sermon} onDelete={jest.fn()} onUpdate={jest.fn()} /> : <p>No active sermons</p>}
+    </>
   );
 }
 
-const renderDashboard = () => {
-  (createIDBPersister as jest.MockedFunction<typeof createIDBPersister>).mockReturnValue({
-    persistClient: jest.fn().mockResolvedValue(undefined),
-    restoreClient: jest.fn().mockResolvedValue(undefined),
-    removeClient: jest.fn().mockResolvedValue(undefined),
-  });
-
-  return render(
+function renderDashboard() {
+  const harness = membershipEngineHarness([snapshot]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  jest.mocked(harness.transport.send).mockImplementation(async command =>
+    ({ kind: 'refused', operationId: command.operationId, code: 'permission-denied' }));
+  const view = render(
     <QueryProvider>
-      <DashboardHarness />
+      <DataEngineProvider>
+        <DashboardHarness />
+      </DataEngineProvider>
     </QueryProvider>
   );
-};
+  return { harness, view };
+}
 
-// The previous-version archive gate opens the workspace a tick after render, as in production.
 const openOptions = async () => {
-  fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'optionMenu.options' }));
 };
+const settle = () => act(async () => { await settleEngine(); });
+async function fieldReady(label: string) {
+  const field = await screen.findByLabelText(label);
+  await waitFor(() => expect(field).toBeEnabled());
+  await settle();
+  return field;
+}
+async function refusedRequest(harness: ReturnType<typeof renderDashboard>['harness']) {
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  const [request] = await harness.commits.list('user-1');
+  return request;
+}
 
-describe('dashboard refusal recovery through the real mutation hook', () => {
+describe('dashboard refusal recovery through the real engine', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUpdateSermon.mockReset();
-    mockAddPreachDate.mockReset();
-    onlineManager.setOnline(true);
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
   });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-  it('keeps a refused sermon edit in the open form and rolls the rendered card back', async () => {
-    const refusal = makeFirestoreError(
-      'permission-denied',
-      'Missing or insufficient permissions.'
-    );
-    expect({ name: refusal.name, code: refusal.code, message: refusal.message }).toEqual({
-      name: 'FirebaseError',
-      code: 'permission-denied',
-      message: 'Missing or insufficient permissions.',
-    });
-    expect(isWriteRefusedError(refusal)).toBe(true);
-    mockUpdateSermon.mockRejectedValue(refusal);
-    renderDashboard();
+  it('keeps a refused sermon edit retrievable, reports it on the dashboard and leaves the stored sermon alone', async () => {
+    const { harness, view } = renderDashboard();
 
     await openOptions();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Exact refused sermon title' },
-    });
-    fireEvent.change(screen.getByLabelText('Scripture Reference'), {
-      target: { value: 'Exact refused sermon verse' },
-    });
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-11-20' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'optionMenu.edit' }));
+    const title = await fieldReady('addSermon.titleLabel');
+    fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
+    fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Exact refused sermon verse' } });
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-11-20' } });
+    await settle();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    await waitFor(() => expect(mockUpdateSermon).toHaveBeenCalledTimes(1));
-    // Reported by the dashboard badge / recovery descriptor — one refusal, one
-    // reporter. The dialog's duty is below: it stays open with every field intact.
-    // `find`, not `get`: the suite-wide portal stub in jest.setup.js tears its portal root
-    // down and rebuilds it whenever the parent re-renders, so the dialog blinks out of the
-    // DOM for a tick. Real `createPortal` does not do this.
-    const dialog = await screen.findByRole('dialog', { name: 'Edit Sermon' });
-    /**
-     * IT SAYS SO, and says so HERE. The card badge that owns this refusal is deliberately
-     * hidden while this dialog covers it, so if the dialog also stayed silent the person
-     * would be left with an unchanged form and every reason to think the save went
-     * through. Exactly one alert: the reporter moves, it does not multiply.
-     */
-    await waitFor(() =>
-      expect(within(dialog).getByRole('alert')).toHaveTextContent('Save refused')
-    );
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(within(dialog).getByLabelText('Title')).toHaveValue('Exact refused sermon title');
-    expect(within(dialog).getByLabelText('Scripture Reference')).toHaveValue('Exact refused sermon verse');
-    expect(within(dialog).getByLabelText('Planned preaching date (optional)')).toHaveValue('2026-11-20');
-
-    const card = screen.getByTestId('sermon-card-sermon-refusal');
-    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('Stored sermon title');
-    expect(within(card).queryByRole('heading', { level: 3, name: 'Exact refused sermon title' })).not.toBeInTheDocument();
-    expect(mockUpdateSermon).toHaveBeenCalledTimes(1);
+    const request = await refusedRequest(harness);
+    expect(request.state).toBe('refused');
+    const stored = JSON.stringify(request);
+    for (const text of ['Exact refused sermon title', 'Exact refused sermon verse', '2026-11-20']) expect(stored).toContain(text);
+    // The person is told on the page they are looking at.
+    await waitFor(() => expect(screen.getByText('dataSync.collectionAttention')).toBeInTheDocument());
+    // The stored sermon is untouched.
+    expect(harness.read(resource).value).toMatchObject({ title: 'Stored sermon title', verse: 'John 3:16' });
+    // The refused change stays on the row as waiting-for-attention work, never silently dropped
+    // and never presented as stored: the notice above says so.
+    expect(within(screen.getByTestId('sermon-card-sermon-refusal')).getByRole('heading', { level: 3 })).toHaveTextContent('Exact refused sermon title');
+    view.unmount();
   });
 
-  it('keeps refused preaching details in the open form and out of the rendered sermon status', async () => {
-    const refusal = makeApiWriteRefusal();
-    expect({ name: refusal.name, code: refusal.code, status: refusal.status }).toEqual({
-      name: 'Error',
-      code: 'permission-denied',
-      status: 403,
-    });
-    mockAddPreachDate.mockImplementation(
-      () => new Promise((_, reject) => setTimeout(() => reject(refusal), 25))
-    );
-    renderDashboard();
+  it('keeps refused preaching details retrievable, reports them on the dashboard and out of the stored sermon status', async () => {
+    const { harness, view } = renderDashboard();
 
     await openOptions();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Mark as preached' }));
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-11-19' } });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'optionMenu.markAsPreached' }));
+    const date = await fieldReady('Date');
+    fireEvent.change(date, { target: { value: '2026-11-19' } });
     fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'Refused Church' } });
-    fireEvent.change(screen.getByLabelText('Audience'), { target: { value: 'Exact refused audience' } });
-    fireEvent.change(screen.getByLabelText('Notes'), { target: { value: 'Exact refused preaching notes' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Exact refused audience' } });
+    fireEvent.change(screen.getByLabelText('calendar.notes'), { target: { value: 'Exact refused preaching notes' } });
+    await settle();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 
-    await waitFor(() => expect(mockAddPreachDate).toHaveBeenCalledTimes(1));
-    // Reported by the dashboard badge / recovery descriptor — one refusal, one
-    // reporter. The dialog's duty is below: it stays open with every field intact.
-    const dialog = screen.getByRole('dialog', { name: 'Add Preach Date' });
-    expect(within(dialog).getByLabelText('Date')).toHaveValue('2026-11-19');
-    expect(within(dialog).getByLabelText('Church')).toHaveValue('Refused Church');
-    expect(within(dialog).getByLabelText('Audience')).toHaveValue('Exact refused audience');
-    expect(within(dialog).getByLabelText('Notes')).toHaveValue('Exact refused preaching notes');
-
-    const card = screen.getByTestId('sermon-card-sermon-refusal');
-    await waitFor(() => expect(within(card).queryByText('Preached')).not.toBeInTheDocument());
-    expect(mockAddPreachDate).toHaveBeenCalledTimes(1);
+    const request = await refusedRequest(harness);
+    expect(request.state).toBe('refused');
+    const stored = JSON.stringify(request);
+    for (const text of ['2026-11-19', 'Refused Church', 'Exact refused audience', 'Exact refused preaching notes']) expect(stored).toContain(text);
+    await waitFor(() => expect(screen.getByText('dataSync.collectionAttention')).toBeInTheDocument());
+    // The stored sermon carries no preached status and no date from the refused form.
+    expect(harness.read(resource).value?.isPreached).toBeFalsy();
+    expect(harness.read(resource).value?.preachDates).toEqual([]);
+    view.unmount();
   });
 });

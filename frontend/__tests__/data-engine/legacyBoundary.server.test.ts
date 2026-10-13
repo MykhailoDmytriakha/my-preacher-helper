@@ -7,9 +7,32 @@ import { removeTagFromSermons } from '@/data-engine/serverEdit.server';
 import type { DocumentReference } from 'firebase-admin/firestore';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { runTransaction: jest.fn(), collection: jest.fn() } }));
+// The engine's transport: reads and commands run against `records`, the command through the real applyCommand.
+jest.mock('@/data-engine/server', () => ({
+  readDocument: async (_owner: string, resource: { collection: string; id: string }) => {
+    const stored = mockRecords().get(`${resource.collection}/${resource.id}`);
+    return { resource, value: stored ? JSON.parse(JSON.stringify(stored)) : null,
+      metadata: stored ? { protocol: 1, generation: 'g', revision: 1, deleted: false } : null };
+  },
+  processCommand: async (owner: string, command: { resource: { collection: string; id: string } }) => {
+    const { applyCommand } = jest.requireActual('@/data-engine/protocol') as typeof import('@/data-engine/protocol');
+    const path = `${command.resource.collection}/${command.resource.id}`;
+    const stored = mockRecords().get(path);
+    const result = applyCommand(command as never, {
+      resource: command.resource, value: stored ? JSON.parse(JSON.stringify(stored)) : null,
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    });
+    if (result.kind === 'acknowledged' && result.snapshot.value) mockRecords().set(path, result.snapshot.value as Record<string, unknown>);
+    return result;
+  },
+}));
 jest.mock('next/server', () => ({ NextResponse: { json: (body: unknown, options: { status: number }) => ({ body, status: options.status }) } }));
-const ref = (id: string) => ({ path: `sermons/${id}` }) as DocumentReference;
+// The mechanism tests below run on a collection that is still legacy-writable ('users' is not in
+// ENGINE_OWNED_COLLECTIONS); sermons are engine-owned, so their legacy writes are refused (see the
+// dedicated test on the refusal).
+const ref = (id: string) => ({ path: `users/${id}` }) as DocumentReference;
 const records = new Map<string, Record<string, unknown>>();
+const mockRecords = () => records;
 const marker = { protocol: 1, generation: 'g', revision: 1, deleted: false };
 const snap = (reference: DocumentReference) => ({ ref: reference, exists: records.has(reference.path), data: () => records.get(reference.path) });
 type Query = { queryCollection: string; filters: Array<[string, string, unknown]>; maximum: number };
@@ -108,33 +131,33 @@ describe('a collection closed to legacy writers', () => {
 
 describe('atomic legacy boundary', () => {
   it.each([null, {}, marker, { ...marker, deleted: true }])('refuses any existing marker shape: %j', async metadata => {
-    records.set('sermons/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });
+    records.set('users/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });
     await expect(updateLegacyDocument(ref('a'), { title: 'Legacy' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     await expect(deleteLegacyDocument(ref('a'))).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.get('sermons/a')?.title).toBe('Original');
+    expect(records.get('users/a')?.title).toBe('Original');
   });
   it('preserves unmarked create/replay/update/delete and refuses a foreign create collision', async () => {
     const data = { userId: 'owner', title: 'Original' };
     expect(await createLegacyDocument(ref('a'), data, 'owner')).toEqual({ created: true, data });
     expect(await createLegacyDocument(ref('a'), { ...data, title: 'Replay' }, 'owner')).toEqual({ created: false, data });
     await expect(createLegacyDocument(ref('a'), data, 'other')).rejects.toMatchObject({ code: 'permission-denied' });
-    await updateLegacyDocument(ref('a'), { title: 'Edited' }); expect(records.get('sermons/a')?.title).toBe('Edited');
+    await updateLegacyDocument(ref('a'), { title: 'Edited' }); expect(records.get('users/a')?.title).toBe('Edited');
     await deleteLegacyDocument(ref('a')); expect(records.size).toBe(0);
   });
   it.each([false, true])('forces engine transition between legacy read and commit (create: %s)', async create => {
-    if (!create) records.set('sermons/a', { userId: 'owner', title: 'Original' });
-    beforeCommit = () => records.set('sermons/a', { userId: 'owner', title: 'Engine version', _dataEngine: marker });
+    if (!create) records.set('users/a', { userId: 'owner', title: 'Original' });
+    beforeCommit = () => records.set('users/a', { userId: 'owner', title: 'Engine version', _dataEngine: marker });
     const operation = create ? createLegacyDocument(ref('a'), { userId: 'owner', title: 'Old' }, 'owner') : updateLegacyDocument(ref('a'), { title: 'Old' });
     await expect(operation).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(attempts).toBe(2); expect(records.get('sermons/a')?.title).toBe('Engine version');
+    expect(attempts).toBe(2); expect(records.get('users/a')?.title).toBe('Engine version');
   });
   it('rolls back earlier cascade writes when a later participant is protected', async () => {
-    records.set('sermons/a', { title: 'First' }); records.set('sermons/b', { title: 'Second', _dataEngine: marker });
+    records.set('users/a', { title: 'First' }); records.set('users/b', { title: 'Second', _dataEngine: marker });
     await expect(runLegacyTransaction(async transaction => {
       await transaction.getAll(ref('a'), ref('b'));
       transaction.update(ref('a'), { title: 'Changed' }); transaction.delete(ref('b'));
     })).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.get('sermons/a')?.title).toBe('First'); expect(records.size).toBe(2);
+    expect(records.get('users/a')?.title).toBe('First'); expect(records.size).toBe(2);
   });
   it('registers query targets and refuses more than 100 effects atomically', async () => {
     const refs = Array.from({ length: 101 }, (_, index) => ref(String(index)));
@@ -151,6 +174,15 @@ describe('atomic legacy boundary', () => {
     for (const patch of [{ _dataEngine: marker }, { '_dataEngine.revision': 9 }]) await expect(updateLegacyDocument(ref('a'), patch)).rejects.toMatchObject({ code: 'data-engine-required' });
     await expect(runLegacyTransaction(async transaction => { await transaction.get(ref('a')); transaction.update(ref('a'), '_dataEngine.revision', 9); })).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(records.size).toBe(0);
+  });
+  it('refuses every legacy write to an engine-owned sermon, unmarked or not, and writes nothing', async () => {
+    const sermon = { path: 'sermons/a' } as DocumentReference;
+    records.set('sermons/a', { userId: 'owner', title: 'Original' });
+    await expect(updateLegacyDocument(sermon, { title: 'Legacy' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    await expect(deleteLegacyDocument(sermon)).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(createLegacyDocument({ path: 'sermons/fresh' } as DocumentReference, { userId: 'owner', title: 'New' }, 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(records.get('sermons/a')).toEqual({ userId: 'owner', title: 'Original' });
+    expect(records.has('sermons/fresh')).toBe(false);
   });
   it('refuses a migrated write with a status old bundles do not read as a conflict', () => {
     expect(() => assertLegacyWritable(undefined)).not.toThrow();
@@ -173,19 +205,24 @@ describe('legacy repository cascades', () => {
     await expect(repository.deleteSermonAndDetachFromAllSeries('a', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(JSON.stringify([...records])).toBe(original);
   });
+  // Sermons are engine-owned: each sermon is rewritten by an engine update command, not a legacy
+  // transaction. The engine's transport is the in-memory `records`; the command is judged by the real
+  // applyCommand, so refusals and merges are the production ones.
+  const thought = (id: string, tags?: string[]) => ({ id, text: `Words ${id}`, date: '2026-01-01', ...(tags ? { tags } : { tags: [] }) });
   it('strips a deleted tag from the owner\'s sermons and preserves untouched thoughts', async () => {
-    records.set('sermons/a', { userId: 'owner', thoughts: [{ id: 'a', text: 'Keep', tags: ['Topic', 'Other'] }, { id: 'b', text: 'No tags' }] });
+    records.set('sermons/a', { userId: 'owner', thoughts: [thought('a', ['Topic', 'Other']), thought('b')] });
     expect(await removeTagFromSermons('owner', 'Topic')).toEqual({ changed: 1, failed: 0 });
-    expect(records.get('sermons/a')?.thoughts).toEqual([{ id: 'a', text: 'Keep', tags: ['Other'] }, { id: 'b', text: 'No tags' }]);
+    expect(records.get('sermons/a')?.thoughts).toEqual([thought('a', ['Other']), thought('b')]);
+    expect(jest.mocked(adminDb.runTransaction)).not.toHaveBeenCalled();
   });
   it('strips a deleted tag from more sermons than one transaction could hold, one sermon at a time', async () => {
     for (let index = 0; index < 150; index++) {
-      records.set(`sermons/s${index}`, { userId: 'owner', thoughts: [{ id: `t${index}`, text: 'Words', tags: index % 3 ? ['Other'] : ['Topic', 'Other'] }] });
+      records.set(`sermons/s${index}`, { userId: 'owner', thoughts: [thought(`t${index}`, index % 3 ? ['Other'] : ['Topic', 'Other'])] });
     }
-    records.set('sermons/foreign', { userId: 'other', thoughts: [{ id: 'f', text: 'Theirs', tags: ['Topic'] }] });
+    records.set('sermons/foreign', { userId: 'other', thoughts: [thought('f', ['Topic'])] });
     expect(await removeTagFromSermons('owner', 'Topic')).toEqual({ changed: 50, failed: 0 });
     expect([...records].filter(([path, value]) => path.startsWith('sermons/s') && JSON.stringify(value.thoughts).includes('"Topic"'))).toEqual([]);
-    expect(records.get('sermons/foreign')?.thoughts).toEqual([{ id: 'f', text: 'Theirs', tags: ['Topic'] }]);
+    expect(records.get('sermons/foreign')?.thoughts).toEqual([thought('f', ['Topic'])]);
   });
 });
 

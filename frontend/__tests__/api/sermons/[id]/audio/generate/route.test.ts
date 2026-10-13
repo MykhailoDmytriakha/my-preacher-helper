@@ -87,6 +87,14 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
   },
 }));
 
+// Sermons are engine-owned: production writes the metadata through updateOwnedDocument, which
+// edits the stored document via the engine. Only that door is replaced here.
+const mockUpdateOwnedDocument = jest.fn();
+jest.mock('@/data-engine/serverEdit.server', () => ({
+  ...jest.requireActual('@/data-engine/serverEdit.server'),
+  updateOwnedDocument: (...args: unknown[]) => mockUpdateOwnedDocument(...args),
+}));
+
 jest.mock('@/api/clients/tts.client', () => ({
   generateChunkAudio: jest.fn(),
   splitTextEvenly: jest.fn((text: string) => [text]),
@@ -133,7 +141,6 @@ const { POST } = require('@/api/sermons/[id]/audio/generate/route') as {
 
 const mockDoc = jest.fn();
 const mockGet = jest.fn();
-const mockUpdate = jest.fn();
 
 const createRequest = (
   body: Record<string, unknown>,
@@ -198,8 +205,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     mockDoc.mockReturnValue({
       get: mockGet,
-      update: mockUpdate,
     });
+    mockUpdateOwnedDocument.mockReset();
+    mockUpdateOwnedDocument.mockResolvedValue({});
 
     (createSilenceBlob as jest.Mock).mockReturnValue(new Blob([new Uint8Array(8)], { type: 'audio/wav' }));
     (concatenateAudioBlobs as jest.Mock).mockResolvedValue(createFinalAudioBlob(400_000));
@@ -364,20 +372,31 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     });
   });
 
-  it('refuses migrated documents before generating paid audio', async () => {
-    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ userId: 'user-1', _dataEngine: { protocol: 1 } }) });
+  // Engine-owned sermons are served on every deployment, so a document carrying the engine marker is
+  // no longer refused up front with 426 (assertServerWritable lets it through); the generation runs
+  // and the metadata lands through the engine door.
+  it('generates audio for a document the engine owns instead of refusing it', async () => {
+    mockGet.mockResolvedValueOnce({
+      exists: true, id: 'sermon-1',
+      data: () => ({ userId: 'user-1', title: 'Grace', _dataEngine: { protocol: 1 },
+        audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }] }),
+    });
+    (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
     const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
-    expect(response.status).toBe(426);
-    expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
-    expect(generateChunkAudio).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+    expect(events.some(event => event.type === 'download_complete')).toBe(true);
+    expect(generateChunkAudio).toHaveBeenCalled();
+    expect(mockUpdateOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: 'sermon-1' }, expect.objectContaining({ 'audioMetadata.voice': 'onyx' }));
   });
 
-  it('streams an explicit migration error when the guarded save refuses after generation', async () => {
+  it('streams an explicit error when the engine edit refuses after generation', async () => {
+    const { ServerEditError } = jest.requireActual('@/data-engine/serverEdit.server') as typeof import('@/data-engine/serverEdit.server');
     (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
-    mockUpdate.mockRejectedValueOnce(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
+    mockUpdateOwnedDocument.mockRejectedValueOnce(new ServerEditError('conflict', 409));
     const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
     const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
-    expect(events).toContainEqual(expect.objectContaining({ type: 'error', message: expect.stringContaining('data-engine-required') }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', message: expect.stringContaining('conflict') }));
     expect(events.some(event => event.type === 'download_complete')).toBe(false);
   });
 
@@ -519,7 +538,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(getMeteredAudioDurationSeconds).toHaveBeenCalledTimes(2);
     expect(consumeAudioSeconds).toHaveBeenCalledWith('user-1', 2, expect.any(Date));
 
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockUpdateOwnedDocument).toHaveBeenCalledWith(
+      'user-1',
+      { collection: 'sermons', id: 'sermon-1' },
       expect.objectContaining({
         'audioMetadata.voice': 'ash',
         'audioMetadata.model': 'gpt-4o-mini-tts',
@@ -690,7 +711,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       ])
     );
     expect(splitTextIntoChunks).not.toHaveBeenCalled();
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockUpdateOwnedDocument).toHaveBeenCalledWith(
+      'user-1',
+      { collection: 'sermons', id: 'sermon-1' },
       expect.objectContaining({
         'audioMetadata.provider': 'google',
         'audioMetadata.voice': 'Sulafat',
@@ -1090,7 +1113,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect((generateChunkAudio as jest.Mock).mock.calls.every(([, options]) =>
       options.provider === 'openai' && options.model === 'gpt-4o-mini-tts'))
       .toBe(true);
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockUpdateOwnedDocument).not.toHaveBeenCalled();
     expect(getMeteredAudioDurationSeconds).not.toHaveBeenCalled();
     expect(consumeAiUsage).not.toHaveBeenCalled();
     expect(consumeAudioSeconds).not.toHaveBeenCalled();

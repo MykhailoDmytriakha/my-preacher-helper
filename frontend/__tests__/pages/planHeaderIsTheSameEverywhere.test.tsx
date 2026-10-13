@@ -1,10 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
 import AiPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
+
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
 import type { Sermon } from '@/models/models';
 
@@ -43,26 +48,12 @@ const sermonFixture = (): Sermon =>
   }) as unknown as Sermon;
 
 jest.mock('@/hooks/useRouteId', () => ({ useRouteId: () => 'sermon-1' }));
-jest.mock('@/hooks/useSermon', () => ({
-  sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing,
-  __esModule: true,
-  default: () => ({
-    sermon: mockSermon,
-    setSermon: jest.fn(),
-    loading: false,
-    error: null,
-    refreshSermon: jest.fn().mockResolvedValue(undefined),
-  }),
-}));
 jest.mock('@/hooks/useFreshnessUid', () => ({ useFreshnessUid: () => 'user-1' }));
-jest.mock('@/hooks/useDocumentFreshness', () => ({
-  useDocumentFreshness: () => ({
-    state: 'fresh',
-    remote: null,
-    remotelyDeleted: false,
-    markSynced: jest.fn(),
-  }),
-}));
+// Both routes run on the data engine: they open the sermon document through the real engine, with
+// only the server and the browser transport replaced.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'user-1' }, loading: false }),
 }));
@@ -147,14 +138,25 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-const renderPage = (page: React.ReactElement) =>
-  render(
+/** Opens the page over the sermon fixture the harness serves, and waits until the header is drawn. */
+const renderPage = async (page: React.ReactElement) => {
+  const { id: _id, ...stored } = mockSermon as unknown as Record<string, unknown>;
+  const harness = documentEngineHarness({
+    resource: { collection: 'sermons', id: 'sermon-1' },
+    metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+    value: JSON.parse(JSON.stringify(stored)),
+  });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      {page}
+      <DataEngineProvider>{page}</DataEngineProvider>
     </QueryClientProvider>
   );
+  await screen.findByTestId('plan-page-header');
+  return view;
+};
 
 /** The header's parts, in the order the person reads them down the page. */
 const headerOrder = () => {
@@ -181,37 +183,37 @@ describe('the plan volume the preacher picked', () => {
     window.localStorage.clear();
   });
 
-  it('comes back after the screen is left and reopened', () => {
+  it('comes back after the screen is left and reopened', async () => {
     mockSearchParams = new URLSearchParams('source=note');
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
 
     const handed = styleSelectorProps.at(-1);
-    handed?.onChange?.('exegetical');
+    act(() => { handed?.onChange?.('exegetical'); });
 
     document.body.innerHTML = '';
     styleSelectorProps.length = 0;
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
 
-    expect(styleSelectorProps.at(-1)?.value).toBe('exegetical');
+    await waitFor(() => expect(styleSelectorProps.at(-1)?.value).toBe('exegetical'));
   });
 
   /** Switching editor must not silently change how much the next generation writes. */
-  it('is the same setting on the paired editor', () => {
+  it('is the same setting on the paired editor', async () => {
     mockSearchParams = new URLSearchParams('source=note');
-    renderPage(<ManualConspectusPage />);
-    styleSelectorProps.at(-1)?.onChange?.('narrative');
+    await renderPage(<ManualConspectusPage />);
+    act(() => { styleSelectorProps.at(-1)?.onChange?.('narrative'); });
 
     document.body.innerHTML = '';
     styleSelectorProps.length = 0;
     mockSearchParams = new URLSearchParams();
-    renderPage(<AiPlanPage />);
+    await renderPage(<AiPlanPage />);
 
-    expect(styleSelectorProps.at(-1)?.value).toBe('narrative');
+    await waitFor(() => expect(styleSelectorProps.at(-1)?.value).toBe('narrative'));
   });
 
-  it('falls back to the short plan when nothing was ever chosen', () => {
+  it('falls back to the short plan when nothing was ever chosen', async () => {
     mockSearchParams = new URLSearchParams('source=note');
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
 
     expect(styleSelectorProps.at(-1)?.value).toBe('memory');
   });
@@ -225,14 +227,14 @@ describe('the plan header is the same in every mode', () => {
     mockSourceNotes = [];
   });
 
-  it('is mounted by the paired editor', () => {
-    renderPage(<AiPlanPage />);
+  it('is mounted by the paired editor', async () => {
+    await renderPage(<AiPlanPage />);
 
     expect(screen.getByTestId('plan-page-header')).toBeInTheDocument();
   });
 
-  it('is mounted by the hand-written editor', () => {
-    renderPage(<ManualConspectusPage />);
+  it('is mounted by the hand-written editor', async () => {
+    await renderPage(<ManualConspectusPage />);
 
     expect(screen.getByTestId('plan-page-header')).toBeInTheDocument();
   });
@@ -242,13 +244,13 @@ describe('the plan header is the same in every mode', () => {
    * each other, not with a list written down here. Editing one route's header alone breaks
    * this and nothing else does.
    */
-  it('carries the same parts in the same order on both routes', () => {
-    renderPage(<AiPlanPage />);
+  it('carries the same parts in the same order on both routes', async () => {
+    await renderPage(<AiPlanPage />);
     const paired = headerOrder();
 
     document.body.innerHTML = '';
 
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
     const handWritten = headerOrder();
 
     expect(handWritten).toEqual(paired);
@@ -264,15 +266,15 @@ describe('the plan header is the same in every mode', () => {
     ]);
   });
 
-  it('names the mode the person is in, on every route', () => {
-    renderPage(<AiPlanPage />);
+  it('names the mode the person is in, on every route', async () => {
+    await renderPage(<AiPlanPage />);
     expect(screen.getByTestId('plan-header-subtitle')).toHaveTextContent(
       'plan.fromThoughtsSubtitle'
     );
 
     document.body.innerHTML = '';
 
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
     expect(screen.getByTestId('plan-header-subtitle')).toHaveTextContent('plan.manualSubtitle');
   });
 
@@ -285,10 +287,10 @@ describe('the plan header is the same in every mode', () => {
    * of keeping a second, louder answer to the same question. Provenance belongs to the document,
    * so it shows in every mode; and it opens in a NEW tab, because this screen holds unsaved cells.
    */
-  it('names the note it was built on, as a chip under the title, on every route', () => {
+  it('names the note it was built on, as a chip under the title, on every route', async () => {
     mockSourceNotes = [{ id: 'note-1', title: 'Jabez, a study' }];
 
-    renderPage(<AiPlanPage />);
+    await renderPage(<AiPlanPage />);
     const paired = screen.getByTestId('plan-page-header');
     const pairedChip = within(paired).getByTestId('source-note-chip');
     expect(pairedChip).toHaveTextContent('Jabez, a study');
@@ -297,7 +299,7 @@ describe('the plan header is the same in every mode', () => {
 
     document.body.innerHTML = '';
 
-    renderPage(<ManualConspectusPage />);
+    await renderPage(<ManualConspectusPage />);
     expect(
       within(screen.getByTestId('plan-page-header')).getByTestId('source-note-chip')
     ).toHaveTextContent('Jabez, a study');
@@ -308,10 +310,10 @@ describe('the plan header is the same in every mode', () => {
    * a gap under the title of every sermon that was never built on a note, which is the opposite
    * of what shrinking this was for.
    */
-  it('draws nothing about provenance when the sermon was not built on a note', () => {
+  it('draws nothing about provenance when the sermon was not built on a note', async () => {
     mockSourceNotes = [];
     mockSermon = { ...sermonFixture(), sourceNoteIds: [] } as Sermon;
-    renderPage(<AiPlanPage />);
+    await renderPage(<AiPlanPage />);
 
     expect(screen.queryByTestId('source-note-chip')).not.toBeInTheDocument();
     expect(screen.queryByTestId('plan-header-source')).not.toBeInTheDocument();
@@ -321,17 +323,17 @@ describe('the plan header is the same in every mode', () => {
    * The row is reserved from `sourceNoteIds` alone, before the note titles are read, so the
    * verse, the mode switch and the buttons below do not jump once the titles arrive.
    */
-  it('holds the row open while the note titles are still being read', () => {
+  it('holds the row open while the note titles are still being read', async () => {
     mockSourceNotes = [];
-    renderPage(<AiPlanPage />);
+    await renderPage(<AiPlanPage />);
 
     const row = screen.getByTestId('plan-header-source');
     expect(row).toBeInTheDocument();
     expect(row.className).toContain('min-h-[26px]');
   });
 
-  it('offers no second door to the assembled plan now that the switch is there', () => {
-    renderPage(<ManualConspectusPage />);
+  it('offers no second door to the assembled plan now that the switch is there', async () => {
+    await renderPage(<ManualConspectusPage />);
 
     expect(screen.queryByText('plan.backToAssembled')).not.toBeInTheDocument();
   });

@@ -1,563 +1,174 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render as rtlRender, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
-import { Sermon } from '@/models/models';
-import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
-import { updateSermon } from '@/services/sermon.service';
-import { queuedWrite } from '@/utils/recoverableWrite';
-import { persistedWrite } from '@/utils/recoverableWrite';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import '@testing-library/jest-dom';
 
-const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
-// Mock dependencies
-jest.mock('@/services/sermon.service', () => ({
-  updateSermon: jest.fn(),
-  // The church picker inside this modal reads the person's church history, which comes
-  // from the sermon list. Listing it out means a future call added to the service fails
-  // HERE rather than wherever it is used, so keep the mock complete.
-  getSermons: jest.fn().mockResolvedValue([]),
-}));
-jest.mock('@/services/preachDates.service', () => ({
-  addPreachDate: jest.fn(),
-  updatePreachDate: jest.fn(),
-  deletePreachDate: jest.fn(),
-}));
+import type { ResourceSnapshot } from '@/data-engine/types';
+import type { Sermon } from '@/models/models';
 
-jest.mock('@/providers/ConnectionProvider', () => ({
-  useConnection: () => mockUseConnection(),
-  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+// Sermons are engine-owned: the dialog edits the stored document through the REAL engine
+// (only I/O is replaced), so every assertion below is about what ends up stored.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'test-user-id' } }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/components/ui/DatePickerField', () => ({
+  __esModule: true,
+  default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} />,
 }));
 
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => ({ user: { uid: 'test-user-id' } }),
-}));
+const resource = { collection: 'sermons', id: 'test-sermon-id' };
+const unspecified = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+const baseValue = { userId: 'test-user-id', title: 'Test Sermon', verse: 'John 3:16', date: '2023-05-01T12:00:00Z', thoughts: [] };
+const plain: ResourceSnapshot = { resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: baseValue };
+const withPlannedDate: ResourceSnapshot = { ...plain, value: { ...baseValue, preachDates: [
+  { id: 'pd-existing', date: '2099-04-10', status: 'planned', church: unspecified, createdAt: '2099-01-01T00:00:00.000Z' },
+] } };
 
-jest.mock('@/hooks/useUserSettings', () => ({
-  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
-}));
+function setup(snapshot: ResourceSnapshot = plain) {
+  const harness = membershipEngineHarness([snapshot]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const onClose = jest.fn(), onUpdate = jest.fn();
+  const listCopy = { ...snapshot.value, id: resource.id } as unknown as Sermon;
+  const view = render(<DataEngineProvider><EditSermonModal sermon={listCopy} onClose={onClose} onUpdate={onUpdate} /></DataEngineProvider>);
+  return { harness, onClose, onUpdate, view };
+}
+async function ready() {
+  const title = await screen.findByLabelText('addSermon.titleLabel');
+  await waitFor(() => expect(title).toBeEnabled());
+  return title;
+}
+async function saveAndSend(harness: ReturnType<typeof setup>['harness'], onClose: jest.Mock) {
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+}
 
-jest.mock('react-day-picker/dist/style.css', () => ({}));
+beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
+afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    refresh: jest.fn()
-  })
-}));
-
-// Mock react-dom createPortal
-jest.mock('react-dom', () => {
-  return {
-    ...jest.requireActual('react-dom'),
-    createPortal: (element: React.ReactNode) => element,
-  };
-});
-
-// Mock translations
-jest.mock('react-i18next', () => ({
-  useTranslation: () => {
-    return {
-      t: (key: string) => {
-        const translations: Record<string, string> = {
-          'editSermon.editSermon': 'Edit Sermon',
-          'editSermon.titleLabel': 'Title',
-          'editSermon.titlePlaceholder': 'Enter sermon title',
-          'editSermon.verseLabel': 'Scripture Reference',
-          'editSermon.versePlaceholder': 'Enter scripture reference',
-          'editSermon.plannedDateLabel': 'Planned preaching date (optional)',
-          'editSermon.clearPlannedDate': 'Clear',
-          'editSermon.plannedDateHint': 'Leave empty if you do not want a planned date',
-          'editSermon.updateError': 'Failed to update sermon',
-          // The edit door now wears the SAME labels as "New sermon" — one shared form
-          // module, so the wording comes from one place. Same human strings, new keys.
-          'addSermon.titleLabel': 'Title',
-          'addSermon.titlePlaceholder': 'Enter sermon title',
-          'addSermon.verseLabel': 'Scripture Reference',
-          'addSermon.versePlaceholder': 'Enter scripture reference',
-          'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
-          'addSermon.groupSermon': 'Sermon',
-          'addSermon.groupLater': 'Can be filled in later',
-          'addSermon.groupLaterHint': 'Church and date can be changed in Calendar later',
-          'addSermon.cancel': 'Cancel',
-          'calendar.church': 'Church',
-          'common.saving': 'Saving',
-          'common.close': 'Close',
-          'buttons.cancel': 'Cancel',
-          'buttons.save': 'Save',
-          'buttons.saving': 'Saving',
-          'calendar.unspecifiedChurch': 'Church not specified',
-          'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
-        };
-        return translations[key] || key;
-      }
-    };
-  },
-}));
-
-/**
- * The modal now embeds the shared church picker, which reads church history through
- * React Query. In the app it always renders under the root provider; bare `render` here
- * had no client at all, so every test wraps in a real one rather than mocking the hook —
- * a mocked hook would prove the screen works while the picker is dead.
- */
-const renderWithClient = (ui: React.ReactElement) => {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
-  });
-  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
-};
-const render = renderWithClient;
-
-describe('EditSermonModal Component', () => {
-  const mockSermon: Sermon = {
-    id: 'test-sermon-id',
-    title: 'Test Sermon',
-    verse: 'John 3:16',
-    date: '2023-05-01T12:00:00Z',
-    thoughts: [],
-    userId: 'test-user-id'
-  };
-
-  const mockUpdatedSermon: Sermon = {
-    ...mockSermon,
-    title: 'Updated Sermon Title',
-    verse: 'Romans 8:28'
-  };
-
-  const mockSermonWithPlannedDate: Sermon = {
-    ...mockSermon,
-    preachDates: [
-      {
-        id: 'pd-existing',
-        date: '2099-04-10',
-        status: 'planned',
-        church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-        createdAt: '2099-01-01T00:00:00.000Z'
-      }
-    ]
-  };
-
-  const mockSermonWithPlannedDateInPayload: Sermon = {
-    ...mockSermonWithPlannedDate,
-    title: 'Updated Sermon Title',
-    verse: 'Romans 8:28',
-  };
-
-  const mockProps = {
-    sermon: mockSermon,
-    onClose: jest.fn(),
-    onUpdate: jest.fn()
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
-    (updateSermon as jest.Mock).mockResolvedValue(mockUpdatedSermon);
-    (addPreachDate as jest.Mock).mockResolvedValue({
-      id: 'pd-added',
-      date: '2026-04-10',
-      status: 'planned',
-      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-      createdAt: '2026-01-01T00:00:00.000Z'
-    });
-    (updatePreachDate as jest.Mock).mockResolvedValue({
-      id: 'pd-updated',
-      date: '2026-04-11',
-      status: 'planned',
-      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-      createdAt: '2026-01-01T00:00:00.000Z'
-    });
-    (deletePreachDate as jest.Mock).mockResolvedValue(undefined);
-    
-    // Mock the useEffect hook that sets mounted to true
-    jest.spyOn(React, 'useEffect').mockImplementation(f => f());
+describe('EditSermonModal on the data engine', () => {
+  test('opens on the stored values with Save disabled until something changes', async () => {
+    const { view } = setup();
+    const title = await ready();
+    expect(screen.getByText('editSermon.editSermon')).toBeInTheDocument();
+    expect(title).toHaveValue('Test Sermon');
+    expect(screen.getByLabelText('addSermon.verseLabel')).toHaveValue('John 3:16');
+    expect(screen.getByLabelText('Planned date')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'addSermon.cancel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
+    view.unmount();
   });
 
-  test('keeps saving through the plain writer — the guarded fallback was REVERTED', () => {
-    // The guarded version made the FIRST refusal permanent: this modal has nowhere
-    // to keep a refused edit, so every further Save repeated the same opening values
-    // and was refused again, while Cancel took the text away. Worse than before, so
-    // it was reverted (BUGS.md records the hole this re-opens and its direction).
-    render(<EditSermonModal {...mockProps} />);
-
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Title typed on the laptop' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    return waitFor(() => {
-      expect(updateSermon).toHaveBeenCalled();
-      const call = (updateSermon as jest.Mock).mock.calls[0];
-      expect(call).toHaveLength(2);
-    });
+  test('shows the stored title, not the stale copy the list handed over', async () => {
+    const harness = membershipEngineHarness([plain]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const stale = { ...baseValue, id: resource.id, title: 'Stale list title' } as unknown as Sermon;
+    const view = render(<DataEngineProvider><EditSermonModal sermon={stale} onClose={jest.fn()} onUpdate={jest.fn()} /></DataEngineProvider>);
+    expect(await ready()).toHaveValue('Test Sermon');
+    view.unmount();
   });
 
-  test('renders modal with correct initial values', () => {
-    render(<EditSermonModal {...mockProps} />);
-
-    // Check title
-    expect(screen.getByText('Edit Sermon')).toBeInTheDocument();
-    
-    // Check form fields
-    expect(screen.getByLabelText('Title')).toHaveValue('Test Sermon');
-    expect(screen.getByLabelText('Scripture Reference')).toHaveValue('John 3:16');
-    expect(screen.getByLabelText('Planned preaching date (optional)')).toHaveValue('');
-    
-    // Check buttons
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled(); // Initially disabled with no changes
-  });
-
-  // Cancel first lets the engine's series field drop an unsaved choice, then closes.
-  test('calls onClose when cancel button is clicked', async () => {
-    render(<EditSermonModal {...mockProps} />);
-    
-    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
-    fireEvent.click(cancelButton);
-    
-    await waitFor(() => expect(mockProps.onClose).toHaveBeenCalledTimes(1));
-  });
-
-  test('enables save button when changes are made', () => {
-    render(<EditSermonModal {...mockProps} />);
-    
-    // Initially disabled
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
-    
-    // Make changes
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Updated Sermon Title' }
-    });
-    
-    // Now should be enabled
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-  });
-
-  test('says why a failed save did not go through and stays open', async () => {
-    (updateSermon as jest.Mock).mockRejectedValueOnce(new Error('API Error'));
-    render(<EditSermonModal {...mockProps} />);
-
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), { target: { value: 'Updated Title' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to update sermon');
-    expect(mockProps.onClose).not.toHaveBeenCalled();
-  });
-
-  test('names a rules refusal and keeps the exact sermon edit retrievable', async () => {
-    (updateSermon as jest.Mock).mockRejectedValueOnce(
-      Object.assign(new Error('Permission denied'), { code: 'permission-denied' })
-    );
-    render(<EditSermonModal {...mockProps} />);
-
-    const title = screen.getByLabelText('Title');
-    const verse = screen.getByLabelText('Scripture Reference');
-    fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
-    fireEvent.change(verse, { target: { value: 'Exact refused sermon verse' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    // Let the refusal land before judging: checked right after the click, the dialog is
-    // open whatever the refusal later does to it.
-    await waitFor(() => expect(updateSermon).toHaveBeenCalled());
-    await act(async () => { await Promise.resolve(); });
-
-    expect(screen.getByRole('dialog', { name: 'Edit Sermon' })).toBeInTheDocument();
-    // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
-    // The editor's duty is what is checked above: it stays open with the exact text.
-    expect(title).toHaveValue('Exact refused sermon title');
-    expect(verse).toHaveValue('Exact refused sermon verse');
-    expect(mockProps.onClose).not.toHaveBeenCalled();
-  });
-
-  test('creates planned date when user sets planned date and saves', async () => {
-    render(<EditSermonModal {...mockProps} />);
-
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-04-10' }
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalled();
-      expect(addPreachDate).toHaveBeenCalledWith(
-        'test-sermon-id',
-        expect.objectContaining({
-          date: '2026-04-10',
-          status: 'planned'
-        })
-      );
-      expect(updatePreachDate).not.toHaveBeenCalled();
-      expect(deletePreachDate).not.toHaveBeenCalled();
-      expect(mockProps.onUpdate).toHaveBeenCalled();
-      expect(mockProps.onClose).toHaveBeenCalled();
-    });
-  });
-
-  test('disables buttons during submission', async () => {
-    let resolveUpdate!: (value: object) => void;
-    (updateSermon as jest.Mock).mockImplementationOnce(() => {
-      return new Promise(resolve => {
-        resolveUpdate = resolve;
-      });
-    });
-    
-    render(<EditSermonModal {...mockProps} />);
-    
-    // Make a change to enable the save button
-    const titleInput = screen.getByPlaceholderText('Enter sermon title');
-    fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
-    
-    // Click save button to submit the form
-    const saveButton = screen.getByRole('button', { name: 'Save' });
-    fireEvent.click(saveButton);
-    
-    // Both buttons should be disabled during submission
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-    expect(saveButton).toBeDisabled();
-
-    await act(async () => {
-      resolveUpdate({});
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
-    });
-  });
-
-  test('clears existing planned date and deletes it on save', async () => {
-    render(
-      <EditSermonModal
-        sermon={mockSermonWithPlannedDate}
-        onClose={mockProps.onClose}
-        onUpdate={mockProps.onUpdate}
-      />
-    );
-
-    const dateInput = screen.getByLabelText('Planned preaching date (optional)');
-    expect(dateInput).toHaveValue('2099-04-10');
-
-    fireEvent.click(screen.getByText('Clear'));
-    expect(dateInput).toHaveValue('');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalled();
-      expect(deletePreachDate).toHaveBeenCalledWith('test-sermon-id', 'pd-existing');
-      expect(addPreachDate).not.toHaveBeenCalled();
-      expect(updatePreachDate).not.toHaveBeenCalled();
-      expect(mockProps.onUpdate).toHaveBeenCalled();
-      expect(mockProps.onClose).toHaveBeenCalled();
-    });
-  });
-
-  test('updates existing planned date and preserves preach date identity in merged sermon', async () => {
-    (updateSermon as jest.Mock).mockResolvedValueOnce({
-      ...mockSermonWithPlannedDateInPayload,
-      preachDates: [
-        {
-          id: 'pd-existing',
-          date: '2099-04-10',
-          status: 'planned',
-          church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-          createdAt: '2099-01-01T00:00:00.000Z'
-        }
-      ]
-    });
-    (updatePreachDate as jest.Mock).mockResolvedValueOnce({
-      id: 'pd-existing',
-      date: '2099-04-20',
-      status: 'planned',
-      church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-      createdAt: '2099-01-01T00:00:00.000Z'
-    });
-
-    render(
-      <EditSermonModal
-        sermon={mockSermonWithPlannedDate}
-        onClose={mockProps.onClose}
-        onUpdate={mockProps.onUpdate}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2099-04-20' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(updatePreachDate).toHaveBeenCalledWith('test-sermon-id', 'pd-existing', {
-        date: '2099-04-20',
-        status: 'planned'
-      });
-      expect(addPreachDate).not.toHaveBeenCalled();
-      expect(deletePreachDate).not.toHaveBeenCalled();
-      expect(mockProps.onUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          preachDates: [
-            expect.objectContaining({
-              id: 'pd-existing',
-              date: '2099-04-20',
-              createdAt: '2099-01-01T00:00:00.000Z'
-            })
-          ]
-        })
-      );
-    });
-  });
-
-  test('delegates save to onSaveRequest when provided', async () => {
-    const onSaveRequest = jest.fn(() => persistedWrite(Promise.resolve()));
-    const onClose = jest.fn();
-    const onUpdate = jest.fn();
-
-    render(
-      <EditSermonModal
-        sermon={mockSermon}
-        onClose={onClose}
-        onUpdate={onUpdate}
-        onSaveRequest={onSaveRequest}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Delegated Save Title' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onClose).toHaveBeenCalledTimes(1);
-      expect(onSaveRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sermon: mockSermon,
-          title: 'Delegated Save Title',
-          verse: mockSermon.verse,
-          plannedDate: '',
-          initialPlannedDate: '',
-        })
-      );
-    });
-
-    expect(updateSermon).not.toHaveBeenCalled();
-    expect(onUpdate).not.toHaveBeenCalled();
-  });
-
-  test('keeps a synchronously refused delegated edit open with its exact text', async () => {
-    const refusal = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
-    const onSaveRequest = jest.fn(() => persistedWrite(Promise.reject(refusal)));
-    const onClose = jest.fn();
-    const onUpdate = jest.fn();
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-    render(
-      <EditSermonModal
-        sermon={mockSermon}
-        onClose={onClose}
-        onUpdate={onUpdate}
-        onSaveRequest={onSaveRequest}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Delegated Error Title' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onSaveRequest).toHaveBeenCalled();
-      expect(onClose).not.toHaveBeenCalled();
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-    });
-
-    expect(screen.getByLabelText('Title')).toHaveValue('Delegated Error Title');
-    // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
-    // The editor's duty is what is checked above: it stays open with the exact text.
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Error scheduling optimistic sermon update:',
-      expect.any(Error)
-    );
-    expect(onUpdate).not.toHaveBeenCalled();
-
-    consoleSpy.mockRestore();
-  });
-
-  test('renders a dashboard terminal refusal even when the delegated submission is still pending', async () => {
-    const neverSettles = new Promise<void>(() => undefined);
-
-    function DashboardFailureHarness() {
-      const [syncState, setSyncState] = React.useState<{
-        status: 'error';
-        operation: 'update';
-        message: string;
-        refused: true;
-        submissionId: number;
-      }>();
-
-      return (
-        <EditSermonModal
-          {...mockProps}
-          syncState={syncState}
-          onSaveRequest={() => {
-            setSyncState({
-              status: 'error',
-              operation: 'update',
-              message: 'Save refused. Nothing was saved; your text is still here.',
-              refused: true,
-              submissionId: 41,
-            });
-            return queuedWrite('sermon:update:pending', neverSettles);
-          }}
-        />
-      );
-    }
-
-    render(<DashboardFailureHarness />);
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Detached dashboard refusal title' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    const dialog = screen.getByRole('dialog', { name: 'Edit Sermon' });
-    /**
-     * DIFFERENT from the editor speaking for itself: this is the dashboard's own state
-     * (`syncState`) rendered where the person is looking. The rule forbids a SECOND
-     * reporter, not showing the one reporter's verdict inside the open editor.
-     */
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      'Save refused. Nothing was saved; your text is still here.'
-    );
-    expect(within(dialog).getByLabelText('Title')).toHaveValue('Detached dashboard refusal title');
-    // Queued acceptance closes the editor before the dashboard's later terminal
-    // refusal is rendered; recovery owns the draft after that boundary.
-    expect(mockProps.onClose).toHaveBeenCalledTimes(1);
-  });
-
-  test('closes silently after a delegated offline edit is locally queued', async () => {
-    const onSaveRequest = jest.fn(() => queuedWrite('sermon:update:queued', new Promise<void>(() => undefined)));
-    const onClose = jest.fn();
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
-
-    render(
-      <EditSermonModal
-        sermon={mockSermon}
-        onClose={onClose}
-        onUpdate={jest.fn()}
-        onSaveRequest={onSaveRequest}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText('Title'), {
-      target: { value: 'Queued offline sermon title' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
+  test('calls onClose when the cancel button is clicked, sending nothing', async () => {
+    const { harness, onClose, view } = setup();
+    await ready();
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(onSaveRequest).toHaveBeenCalledTimes(1);
-    expect(alertSpy).not.toHaveBeenCalled();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    view.unmount();
+  });
 
+  test('enables the save button when changes are made', async () => {
+    const { view } = setup();
+    const title = await ready();
+    expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
+    fireEvent.change(title, { target: { value: 'Updated Sermon Title' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled());
+    view.unmount();
+  });
+
+  test('stores the edited title and verse', async () => {
+    const { harness, onClose, view } = setup();
+    const title = await ready();
+    fireEvent.change(title, { target: { value: 'Updated Sermon Title' } });
+    fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Romans 8:28' } });
+    await saveAndSend(harness, onClose);
+    expect(harness.read(resource).value).toMatchObject({ title: 'Updated Sermon Title', verse: 'Romans 8:28' });
+    view.unmount();
+  });
+
+  test('creates a planned date when the person sets one and saves', async () => {
+    const { harness, onClose, view } = setup();
+    await ready();
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-04-10' } });
+    await saveAndSend(harness, onClose);
+    expect(harness.read(resource).value?.preachDates).toEqual([
+      expect.objectContaining({ date: '2026-04-10', status: 'planned', church: expect.objectContaining({ id: 'church-unspecified' }) }),
+    ]);
+    view.unmount();
+  });
+
+  test('clears the existing planned date and removes it on save', async () => {
+    const { harness, onClose, view } = setup(withPlannedDate);
+    await ready();
+    expect(screen.getByLabelText('Planned date')).toHaveValue('2099-04-10');
+    fireEvent.click(screen.getByText('editSermon.clearPlannedDate'));
+    expect(screen.getByLabelText('Planned date')).toHaveValue('');
+    await saveAndSend(harness, onClose);
+    expect(harness.read(resource).value?.preachDates).toEqual([]);
+    view.unmount();
+  });
+
+  test('updates the existing planned date and keeps the preach date identity and creation time', async () => {
+    const { harness, onClose, view } = setup(withPlannedDate);
+    await ready();
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-04-20' } });
+    await saveAndSend(harness, onClose);
+    expect(harness.read(resource).value?.preachDates).toEqual([
+      expect.objectContaining({ id: 'pd-existing', date: '2099-04-20', status: 'planned', createdAt: '2099-01-01T00:00:00.000Z' }),
+    ]);
+    view.unmount();
+  });
+
+  test('closes silently after an offline edit is locally queued, and the edit waits in the queue', async () => {
+    const { harness, onClose, view } = setup();
+    jest.mocked(harness.transport.send).mockRejectedValue(new Error('offline'));
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
+    const title = await ready();
+    fireEvent.change(title, { target: { value: 'Queued offline sermon title' } });
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await act(async () => { await settleEngine(); });
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await harness.commits.list('test-user-id')).toHaveLength(1);
     alertSpy.mockRestore();
+    view.unmount();
+  });
+
+  test('keeps the exact refused sermon edit retrievable in the stored request and leaves the stored sermon untouched', async () => {
+    const { harness, onClose, view } = setup();
+    jest.mocked(harness.transport.send).mockImplementation(async command =>
+      ({ kind: 'refused', operationId: command.operationId, code: 'permission-denied' }));
+    const title = await ready();
+    fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
+    fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Exact refused sermon verse' } });
+    await saveAndSend(harness, onClose);
+
+    const [request] = await harness.commits.list('test-user-id');
+    expect(request.state).toBe('refused');
+    expect(JSON.stringify(request)).toContain('Exact refused sermon title');
+    expect(JSON.stringify(request)).toContain('Exact refused sermon verse');
+    expect(harness.read(resource).value?.title).toBe('Test Sermon');
+    view.unmount();
   });
 });

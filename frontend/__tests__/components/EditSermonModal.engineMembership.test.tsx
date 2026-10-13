@@ -78,24 +78,13 @@ it('cancels staged membership without sending and supports an empty complete ser
   expect(first.harness.transport.send).not.toHaveBeenCalled(); first.view.unmount();
   const empty = setup([]);
   expect(await screen.findByLabelText('addSermon.seriesLabel')).toHaveValue('');
-  fireEvent.change(screen.getByLabelText('addSermon.titleLabel'), { target: { value: 'New title' } });
+  const title = screen.getByLabelText('addSermon.titleLabel'); await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'New title' } }); await act(async () => { await settleEngine(); });
   fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
   await waitFor(() => expect(empty.onClose).toHaveBeenCalled());
-  expect(empty.harness.transport.send).not.toHaveBeenCalled(); empty.view.unmount();
-});
-
-it('can retry sermon metadata after a failure without recapturing the already saved membership', async () => {
-  const { harness, onSaveRequest, onClose, view } = setup();
-  onSaveRequest.mockImplementationOnce(() => persistedWrite(Promise.reject(new Error('Metadata refused'))));
-  fireEvent.change(await screen.findByLabelText('addSermon.seriesLabel'), { target: { value: 'Target' } });
-  await act(async () => { await settleEngine(); });
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled());
-  expect(onClose).not.toHaveBeenCalled();
-  const captured = (await harness.commits.list('owner')).map(request => request.id);
-  expect(captured).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));
-  await waitFor(() => expect(onClose).toHaveBeenCalled());
-  expect((await harness.commits.list('owner')).map(request => request.id)).toEqual(captured);
-  expect(mockLegacyAdd).not.toHaveBeenCalled(); view.unmount();
+  // The title edit is the only command: no series was involved, so no membership is captured.
+  await act(async () => { await empty.harness.engine.retry(); await settleEngine(); });
+  expect(empty.harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(empty.harness.read({ collection: 'sermons', id: 's' }).value?.title).toBe('New title');
+  expect(empty.onSaveRequest).not.toHaveBeenCalled(); empty.view.unmount();
 });

@@ -1,118 +1,92 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { Toaster, toast } from 'sonner';
 
 import AddSermonModal from '@/components/AddSermonModal';
-import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 
-const makeFirestoreError = (code: string, message = code): Error & { code: string } => {
-  const { FirestoreError } = jest.requireActual<typeof import('firebase/firestore')>('firebase/firestore');
-  const Ctor = FirestoreError as unknown as new (code: string, message: string) => Error & { code: string };
-  return new Ctor(code, message);
-};
-
-const mockCreateSermon = jest.fn();
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
 jest.mock('react-dom', () => ({ ...jest.requireActual('react-dom'), createPortal: (node: React.ReactNode) => node }));
-jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
-jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [] }) }));
-jest.mock('@/services/firebaseAuth.service', () => ({ auth: { currentUser: { uid: 'user-1' } } }));
-jest.mock('@/services/sermon.service', () => ({ createSermon: jest.fn(), getSermons: jest.fn().mockResolvedValue([]) }));
-jest.mock('@/services/preachDates.service', () => ({ addPreachDate: jest.fn() }));
-jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: { defaultValue?: string }) => ({
-      'addSermon.newSermon': 'New Sermon',
-      'addSermon.titleLabel': 'Title',
-      'addSermon.titlePlaceholder': 'Enter sermon title',
-      'addSermon.titleExample': 'Example title',
-      'addSermon.verseLabel': 'Verse',
-      'addSermon.versePlaceholder': 'Enter scripture reference',
-      'addSermon.verseExample': 'Example verse',
-      'addSermon.seriesLabel': 'Series',
-      'addSermon.noSeriesOption': 'No series',
-      'addSermon.save': 'Save',
-      'addSermon.cancel': 'Cancel',
-      'calendar.unspecifiedChurch': 'Church not specified',
-      'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
-    }[key] ?? options?.defaultValue ?? key),
-  }),
-}));
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 
-/**
- * The create-sermon form embeds the shared church picker, which reads church history
- * through React Query. In the app it always renders under the root provider; a bare
- * `render` here had none. A real client is used rather than a mocked hook — a mocked
- * hook would leave the picker dead while the test stayed green.
- */
-const renderWithClient = (ui: React.ReactElement) => {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
-  });
-  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
-};
-const render = renderWithClient;
+function setup() {
+  const harness = membershipEngineHarness([]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const onClose = jest.fn();
+  function Workspace() {
+    const list = useDashboardSermons();
+    const [open, setOpen] = React.useState(true);
+    return <>
+      <Toaster />
+      <DataCollectionStatus state={list.state} />
+      <AddSermonModal isOpen={open} showTriggerButton={false} onClose={() => { onClose(); setOpen(false); }} />
+    </>;
+  }
+  const view = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+    <DataEngineProvider><Workspace /></DataEngineProvider></QueryClientProvider>);
+  return { harness, onClose, view };
+}
 
-describe('AddSermonModal write refusal', () => {
+async function typeSermon(title: string, verse: string) {
+  const field = await screen.findByLabelText('addSermon.titleLabel');
+  await waitFor(() => expect(field).toBeEnabled());
+  fireEvent.change(field, { target: { value: title } });
+  fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: verse } });
+  await act(async () => { await settleEngine(); });
+}
+
+describe('AddSermonModal write refusal (data engine)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCreateSermon.mockReset();
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
+  });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+
+  it('reports a sermon the server refused on the dashboard and keeps the exact typed text retrievable', async () => {
+    // Pins the loss where a denied sermon creation dropped the only copy of the person's title and verse.
+    const { harness, onClose, view } = setup();
+    jest.mocked(harness.transport.send).mockImplementation(async command =>
+      ({ kind: 'refused', operationId: command.operationId, code: 'permission-denied' }));
+    await typeSermon('Exact refused sermon title', 'Exact refused sermon verse');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+
+    await waitFor(() => expect(screen.getByText('dataSync.collectionAttention')).toBeInTheDocument());
+    const [request] = await harness.commits.list('owner');
+    expect(request.state).toBe('refused');
+    expect(request.baseline.resource.collection).toBe('sermons');
+    expect(JSON.stringify(request)).toContain('Exact refused sermon title');
+    expect(JSON.stringify(request)).toContain('Exact refused sermon verse');
+    view.unmount();
   });
 
-  it('keeps the refused sermon draft in the open modal instead of closing as if created', async () => {
-    // Pins the loss where a denied sermon creation closed the only copy of the person's title and verse.
-    mockCreateSermon.mockRejectedValue(makeFirestoreError('permission-denied', 'Permission denied'));
-    const onClose = jest.fn();
-    render(
-      <>
-        <Toaster />
-        <AddSermonModal
-          isOpen
-          showTriggerButton={false}
-          onClose={onClose}
-          onCreateRequest={(input) => persistedWrite(mockCreateSermon(input))}
-        />
-      </>
-    );
-
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Exact refused sermon title' } });
-    fireEvent.change(screen.getByLabelText('Verse'), { target: { value: 'Exact refused sermon verse' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(mockCreateSermon).toHaveBeenCalledTimes(1));
-    // The MESSAGE belongs to the dashboard's recovery badge (or, for a local refusal, to
-    // `refusedWrite` itself) — one refusal, one reporter. What the modal owes the person
-    // is below: it stays open with the typed sermon intact.
-    expect(screen.getByLabelText('Title')).toHaveValue('Exact refused sermon title');
-    expect(screen.getByLabelText('Verse')).toHaveValue('Exact refused sermon verse');
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('stays silent when the sermon create is deferred to a queue', async () => {
-    const onClose = jest.fn();
+  it('stays silent when the sermon create is deferred to the queue', async () => {
+    const { harness, onClose, view } = setup();
+    jest.mocked(harness.transport.send).mockRejectedValue(new Error('offline'));
     const errorSpy = jest.spyOn(toast, 'error');
     const successSpy = jest.spyOn(toast, 'success');
-    render(
-      <AddSermonModal
-        isOpen
-        showTriggerButton={false}
-        onClose={onClose}
-        onCreateRequest={(input) => {
-          mockCreateSermon(input);
-          return queuedWrite('sermon:create', Promise.resolve());
-        }}
-      />
-    );
-
-    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Queued sermon' } });
-    fireEvent.change(screen.getByLabelText('Verse'), { target: { value: 'John 3:16' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await typeSermon('Queued sermon', 'John 3:16');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await act(async () => { await settleEngine(); });
     expect(errorSpy).not.toHaveBeenCalled();
     expect(successSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(await harness.commits.list('owner')).toHaveLength(1);
     errorSpy.mockRestore();
     successSpy.mockRestore();
+    view.unmount();
   });
 });

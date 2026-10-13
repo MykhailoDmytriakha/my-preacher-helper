@@ -4,122 +4,83 @@ import { removeTagFromSermons } from '@/data-engine/serverEdit.server';
 /**
  * DELETING A TAG MUST NOT SWALLOW A THOUGHT DICTATED MEANWHILE.
  *
- * The cascade reads every sermon of the user, strips the tag in memory and writes the
- * WHOLE `thoughts` array back. Everything stored between that read and that write is
- * replaced — and this one runs across ALL of the person's sermons at once, so a single
- * tag deletion in Settings can erase a thought captured on the phone a second earlier.
+ * The cascade lists every sermon of the user, then strips the tag from each one. Sermons are
+ * engine-owned on every deployment, so each sermon is rewritten by an ordinary engine update
+ * command (editOwnedDocument), whose three-way merge keeps whatever a device stored between the
+ * cascade's read and its write — a single tag deletion in Settings must not erase a thought
+ * captured on the phone a second earlier.
  *
- * It also left `rev.thoughts` alone, so the counter lied: a later save built on older
- * text still looked up to date and was granted permission to overwrite.
+ * The engine also advances the `thoughts` counter, so a later save built on older text is not
+ * handed permission to overwrite.
  *
- * Stripping a tag is idempotent — repeating it changes nothing — so a transaction is
- * safe here: the SDK may re-run the callback, and each run recomputes from fresh data.
+ * Only the engine's transport (readDocument / processCommand) is replaced by an in-memory store;
+ * the command is judged by the real applyCommand, so the merge under test is the production one.
  */
 
-const store: Record<string, { userId: string; thoughts: Array<{ id: string; tags: string[] }>; rev?: Record<string, number> }> = {};
+type StoredSermon = { userId: string; thoughts: Array<{ id: string; text: string; date: string; tags: string[] }>; rev?: Record<string, number> };
+const store: Record<string, StoredSermon> = {};
+const revisions: Record<string, number> = {};
 
-/** What a device stored AFTER the cascade took its snapshot. */
+/** What a device stored AFTER the cascade took its snapshot of a sermon. */
 let landsAfterRead: (() => void) | null = null;
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
-  adminDb: {
-    collection: jest.fn(),
-    batch: jest.fn(),
-    runTransaction: jest.fn(),
+  adminDb: { collection: jest.fn() },
+}));
+
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
+jest.mock('@/data-engine/server', () => ({
+  readDocument: async (_owner: string, resource: { collection: string; id: string }) => {
+    const stored = store[resource.id];
+    // FROZEN HERE, deliberately: a lazy read would quietly pick up the other device's write and
+    // the race this test exists to prove would never happen.
+    const snapshot = {
+      resource,
+      value: stored ? clone(stored) : null,
+      metadata: stored ? { protocol: 1, generation: 'g', revision: revisions[resource.id] ?? 1, deleted: false } : null,
+    };
+    // The other device commits right after this read.
+    const landing = landsAfterRead; landsAfterRead = null; landing?.();
+    return snapshot;
+  },
+  processCommand: async (_owner: string, command: { resource: { collection: string; id: string } }) => {
+    const { applyCommand } = jest.requireActual('@/data-engine/protocol') as typeof import('@/data-engine/protocol');
+    const id = command.resource.id;
+    const result = applyCommand(command as never, {
+      resource: command.resource, value: clone(store[id]) as never,
+      metadata: { protocol: 1, generation: 'g', revision: revisions[id] ?? 1, deleted: false },
+    });
+    if (result.kind === 'acknowledged' && result.snapshot.value) {
+      store[id] = result.snapshot.value as unknown as StoredSermon;
+      revisions[id] = (revisions[id] ?? 1) + 1;
+    }
+    return result;
   },
 }));
 
-const sermonRef = (id: string) => ({ id, __id: id });
-
 function wireAdminDb() {
-  (adminDb.collection as jest.Mock).mockImplementation((name: string) => {
-    if (name === 'tags') {
-      const doc = jest.fn(() => ({ delete: jest.fn().mockResolvedValue(undefined) }));
-      const get = jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'tag-1' }] });
-      return { where: () => ({ where: () => ({ limit: () => ({ __kind: 'tags', get }) }) }), doc };
-    }
-    // sermons — read as `where().limit()` inside a transaction or `where().get()` outside one
-    const read = { __kind: 'sermons', get: jest.fn(async () => {
-          const docs = Object.entries(store).map(([id, data]) => {
-            // FROZEN HERE, deliberately. Returning a lazy `data()` would read the
-            // store at call time and quietly pick up the other device's write — the
-            // test would pass while the race it exists to prove never happened.
-            const frozen = JSON.parse(JSON.stringify(data));
-            return { id, ref: sermonRef(id), data: () => frozen };
-          });
-          // The other device commits right after this read.
-          landsAfterRead?.();
-          return { empty: docs.length === 0, forEach: (fn: (d: unknown) => void) => docs.forEach(fn), docs };
-        }) };
-    return {
-      where: () => ({ limit: () => read, get: read.get }),
-      doc: (id: string) => sermonRef(id),
-    };
-  });
-
-  (adminDb.batch as jest.Mock).mockImplementation(() => {
-    const writes: Array<{ id: string; payload: Record<string, unknown> }> = [];
-    return {
-      update: (ref: { __id: string }, payload: Record<string, unknown>) =>
-        writes.push({ id: ref.__id, payload }),
-      commit: jest.fn(async () => {
-        writes.forEach(({ id, payload }) => applyPayload(id, payload));
+  (adminDb.collection as jest.Mock).mockImplementation(() => ({
+    // The one read outside the engine: the cascade lists the owner's sermons before it writes.
+    where: () => ({
+      get: async () => ({
+        docs: Object.entries(store).map(([id, data]) => {
+          const frozen = clone(data);
+          return { id, data: () => frozen };
+        }),
       }),
-    };
-  });
-
-  (adminDb.runTransaction as jest.Mock).mockImplementation(
-    async (fn: (tx: unknown) => Promise<void>) => {
-      let raced = false;
-      let updates: Array<{ ref: { __id: string }; payload: Record<string, unknown> }> = [];
-      const tx = {
-        get: async (ref: { __id?: string; __kind?: string }) => {
-          if (ref.__kind === 'tags') return { empty: false, docs: [{ id: 'tag-1', ref: sermonRef('tag-1'), data: () => ({ userId: 'u1', name: 'Examples', required: false }) }] };
-          if (ref.__kind === 'sermons') {
-            const docs = Object.entries(store).map(([id, data]) => {
-              const frozen = JSON.parse(JSON.stringify(data)); return { id, ref: sermonRef(id), data: () => frozen };
-            });
-            if (landsAfterRead) { raced = true; landsAfterRead(); }
-            return { empty: docs.length === 0, docs };
-          }
-          return { exists: Boolean(ref.__id && store[ref.__id]), data: () => JSON.parse(JSON.stringify(ref.__id ? store[ref.__id] : undefined)), ref };
-        },
-        update: (ref: { __id: string }, payload: Record<string, unknown>) => updates.push({ ref, payload }),
-        delete: (_ref: { __id?: string }) => undefined,
-      };
-      await fn(tx);
-      // Firestore reruns a transaction whose query read raced a concurrent write.
-      // Discard the first attempt's staged writes so the retry reads the new thought.
-      if (raced) { updates = []; raced = false; await fn(tx); }
-      updates.forEach(({ ref, payload }) => applyPayload(ref.__id, payload));
-    }
-  );
+    }),
+  }));
 }
-
-function applyPayload(id: string, payload: Record<string, unknown>) {
-  const target = store[id];
-  Object.entries(payload).forEach(([key, value]) => {
-    if (key.startsWith('rev.')) {
-      const field = key.slice(4);
-      const increment = (value as { __increment?: number })?.__increment ?? 1;
-      target.rev = { ...(target.rev ?? {}), [field]: (target.rev?.[field] ?? 0) + increment };
-    } else {
-      (target as Record<string, unknown>)[key] = value;
-    }
-  });
-}
-
-jest.mock('firebase-admin/firestore', () => ({
-  FieldValue: { increment: (n: number) => ({ __increment: n }) },
-}));
 
 describe('deleting a tag cascades without eating concurrent work', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     Object.keys(store).forEach((key) => delete store[key]);
+    Object.keys(revisions).forEach((key) => delete revisions[key]);
     store['sermon-1'] = {
       userId: 'u1',
-      thoughts: [{ id: 't1', tags: ['Examples', 'Introduction'] }],
+      thoughts: [{ id: 't1', text: 'First', date: '2026-01-01', tags: ['Examples', 'Introduction'] }],
     };
     landsAfterRead = null;
     wireAdminDb();
@@ -128,11 +89,10 @@ describe('deleting a tag cascades without eating concurrent work', () => {
   it('keeps a thought stored after the cascade read its snapshot', async () => {
     landsAfterRead = () => {
       // Dictated on the phone one second after Settings started deleting the tag.
-      store['sermon-1'].thoughts.push({ id: 't-phone', tags: ['Introduction'] });
-      landsAfterRead = null;
+      store['sermon-1'].thoughts.push({ id: 't-phone', text: 'Phone', date: '2026-01-02', tags: ['Introduction'] });
     };
 
-    await removeTagFromSermons('u1', 'Examples');
+    expect(await removeTagFromSermons('u1', 'Examples')).toEqual({ changed: 1, failed: 0 });
 
     const ids = store['sermon-1'].thoughts.map((thought) => thought.id);
     expect(ids).toContain('t-phone');

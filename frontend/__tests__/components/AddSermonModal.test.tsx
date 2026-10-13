@@ -1,523 +1,144 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
-import { persistedWrite } from '@/utils/recoverableWrite';
-import { auth } from '@/services/firebaseAuth.service';
-import { addPreachDate } from '@/services/preachDates.service';
-import { createSermon } from '@/services/sermon.service';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 
-import { TestProviders } from '../../test-utils/test-providers';
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import '@testing-library/jest-dom';
 
-const mockUseAuth = jest.fn<{ user: { uid: string } | null }, []>(() => ({ user: { uid: 'test-user-id' } }));
-const mockUseSeries = jest.fn((_userId: string | null) => ({ series: [] }));
-
-// Mock dependencies
-jest.mock('@/services/sermon.service', () => ({
-  createSermon: jest.fn().mockResolvedValue({
-    id: 'mocked-sermon-id',
-    title: 'Mocked Sermon',
-    verse: 'Mocked Verse',
-    date: '2023-05-01T12:00:00Z',
-    thoughts: [],
-    userId: 'test-user-id'
-  })
+// Sermons are engine-owned: the modal is a thin shell around the engine create stage, so
+// these tests run the REAL engine (only I/O is replaced) and assert on the stored document.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/components/ui/DatePickerField', () => ({
+  __esModule: true,
+  default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
+    <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} />,
 }));
 
-jest.mock('@/services/preachDates.service', () => ({
-  addPreachDate: jest.fn().mockResolvedValue({
-    id: 'pd-1',
-    date: '2026-04-10',
-    status: 'planned',
-    church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-    createdAt: '2026-01-01T00:00:00.000Z'
-  })
-}));
+function setup(ui: React.ReactElement) {
+  const harness = membershipEngineHarness([]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  return { harness, view: render(<DataEngineProvider>{ui}</DataEngineProvider>) };
+}
 
-jest.mock('@/services/firebaseAuth.service', () => ({
-  auth: {
-    currentUser: {
-      uid: 'test-user-id'
-    }
-  }
-}));
+async function typeSermon(title: string, verse: string) {
+  const field = await screen.findByLabelText('addSermon.titleLabel');
+  await waitFor(() => expect(field).toBeEnabled());
+  fireEvent.change(field, { target: { value: title } });
+  fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: verse } });
+  await act(async () => { await settleEngine(); });
+}
 
-jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => mockUseAuth(),
-}));
+async function sentSermon(harness: ReturnType<typeof membershipEngineHarness>) {
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  const [request] = await harness.commits.list('owner');
+  return harness.read(request.baseline.resource).value;
+}
 
-jest.mock('@/hooks/useSeries', () => ({
-  useSeries: (userId: string | null) => mockUseSeries(userId),
-}));
+beforeEach(() => {
+  jest.clearAllMocks();
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
+});
+afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-jest.mock('@/hooks/useUserSettings', () => ({
-  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
-}));
-
-jest.mock('react-day-picker/dist/style.css', () => ({}));
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    refresh: jest.fn()
-  })
-}));
-
-// Mock translations
-jest.mock('react-i18next', () => ({
-  useTranslation: () => {
-    return {
-      t: (key: string) => {
-        const translations: Record<string, string> = {
-          'addSermon.newSermon': 'New Sermon',
-          'addSermon.titleLabel': 'Title',
-          'addSermon.titlePlaceholder': 'Enter sermon title',
-          'addSermon.titleExample': 'Example: Love that transforms',
-          'addSermon.verseLabel': 'Scripture Reference',
-          'addSermon.versePlaceholder': 'Enter scripture reference',
-          'addSermon.verseExample': 'Example: John 3:16-17',
-          'addSermon.seriesLabel': 'Series',
-          'addSermon.noSeriesOption': 'No series',
-          'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
-          'addSermon.plannedDateHint': 'You can add church details later in Calendar',
-          'addSermon.save': 'Save',
-          'addSermon.cancel': 'Cancel',
-          'common.saving': 'Saving...',
-          'calendar.unspecifiedChurch': 'Church not specified',
-        };
-        return translations[key] || key;
-      }
-    };
-  },
-}));
-
-describe('AddSermonModal Component', () => {
-  const mockOnNewSermonCreated = jest.fn();
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
-    mockUseSeries.mockReturnValue({ series: [] });
-    (auth as any).currentUser = { uid: 'test-user-id' };
-  });
-  
-  test('renders add button but not modal initially', () => {
-    render(
-      <TestProviders>
-        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
-      </TestProviders>
-    );
-
-    // Button should be visible
-    expect(screen.getByText('New Sermon')).toBeInTheDocument();
-
-    // Modal should not be visible initially
-    expect(screen.queryByRole('heading', { name: 'New Sermon' })).not.toBeInTheDocument();
-  });
-  
-  test('opens modal when add button is clicked', () => {
-    render(
-      <TestProviders>
-        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
-      </TestProviders>
-    );
-
-    // Click the button to open modal
-    fireEvent.click(screen.getByText('New Sermon'));
-
-    // Modal should now be visible
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-  });
-  
-  test('closes modal when cancel button is clicked', () => {
-    render(
-      <TestProviders>
-        <AddSermonModal onNewSermonCreated={mockOnNewSermonCreated} />
-      </TestProviders>
-    );
-
-    // Open the modal
-    fireEvent.click(screen.getByText('New Sermon'));
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-
-    // Click cancel
-    fireEvent.click(screen.getByText('Cancel'));
-
-    // Modal should be closed
-    expect(screen.queryByRole('heading', { name: 'New Sermon' })).not.toBeInTheDocument();
+describe('AddSermonModal on the data engine', () => {
+  test('renders the add button but not the dialog initially', () => {
+    const { view } = setup(<AddSermonModal />);
+    expect(screen.getByRole('button', { name: 'addSermon.newSermon' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    view.unmount();
   });
 
-  test('calls onClose when provided and cancel is clicked', () => {
+  test('opens the dialog when the add button is clicked and closes it on cancel', async () => {
+    const { view, harness } = setup(<AddSermonModal />);
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.newSermon' }));
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(await harness.commits.list('owner')).toEqual([]);
+    view.unmount();
+  });
+
+  test('calls onClose when provided and cancel is clicked', async () => {
     const onClose = jest.fn();
-
-    render(
-      <TestProviders>
-        <AddSermonModal onClose={onClose} />
-      </TestProviders>
-    );
-
-    fireEvent.click(screen.getByText('New Sermon'));
-    fireEvent.click(screen.getByText('Cancel'));
-
-    expect(onClose).toHaveBeenCalled();
+    const { view } = setup(<AddSermonModal onClose={onClose} isOpen showTriggerButton={false} />);
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    view.unmount();
   });
 
-  test('calls onCancel when provided', () => {
+  test('falls back to onCancel as the close handler when onClose is not given', async () => {
     const onCancel = jest.fn();
+    const { view } = setup(<AddSermonModal onCancel={onCancel} isOpen showTriggerButton={false} />);
+    await screen.findByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+    view.unmount();
+  });
+
+  test('renders the dialog without a trigger button when isOpen is true and the trigger is hidden', async () => {
+    const { view } = setup(<AddSermonModal isOpen showTriggerButton={false} />);
+    expect(screen.queryByRole('button', { name: 'addSermon.newSermon' })).not.toBeInTheDocument();
+    await screen.findByRole('dialog');
+    view.unmount();
+  });
+
+  test('reports its open state to the page behind it', async () => {
+    const onOpenChange = jest.fn();
+    const { view } = setup(<AddSermonModal onOpenChange={onOpenChange} />);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.newSermon' }));
+    await screen.findByRole('dialog');
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    view.unmount();
+  });
+
+  test('stores the typed sermon as one new document owned by the person', async () => {
     const onClose = jest.fn();
-
-    render(
-      <TestProviders>
-        <AddSermonModal onCancel={onCancel} onClose={onClose} />
-      </TestProviders>
-    );
-
-    // Open the modal
-    fireEvent.click(screen.getByText('New Sermon'));
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-
-    // Click cancel
-    fireEvent.click(screen.getByText('Cancel'));
-
-    expect(onCancel).toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    // Modal remains open because parent controls close when onCancel is used
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
+    const { harness, view } = setup(<AddSermonModal isOpen showTriggerButton={false} onClose={onClose} />);
+    await typeSermon('Test Sermon Title', 'Test 1:1-2');
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(await sentSermon(harness)).toMatchObject({
+      title: 'Test Sermon Title', verse: 'Test 1:1-2', userId: 'owner', thoughts: [], date: expect.any(String),
+    });
+    view.unmount();
   });
 
-  test('renders modal when isOpen is true and trigger button is hidden', () => {
-    render(
-      <TestProviders>
-        <AddSermonModal isOpen={true} showTriggerButton={false} />
-      </TestProviders>
-    );
-
-    expect(screen.queryByRole('button', { name: 'New Sermon' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-  });
-
-  test('uses a controlled chevron position for the series selector', () => {
-    render(
-      <TestProviders>
-        <AddSermonModal isOpen={true} showTriggerButton={false} />
-      </TestProviders>
-    );
-
-    const seriesSelect = screen.getByLabelText('Series');
-
-    // The shared Select primitive hides the browser arrow and seats its own at a fixed inset.
-    expect(seriesSelect).toHaveClass('appearance-none', 'pr-11');
-    expect(seriesSelect.parentElement).toHaveClass('relative');
-    expect(seriesSelect.parentElement?.querySelector('svg')).toHaveClass('right-3', 'pointer-events-none');
-  });
-  
-  test('calls createSermon with correct data when form is submitted', async () => {
-    render(
-      <TestProviders>
-        <AddSermonModal />
-      </TestProviders>
-    );
-
-    // Click add button to open modal
-    fireEvent.click(screen.getByText('New Sermon'));
-    
-    // Fill in form fields
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Test Sermon Title' }
-    });
-    
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Test 1:1-2' }
-    });
-    
-    // Submit the form
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    
-    // Check that createSermon was called with correct data
-    await waitFor(() => {
-      expect(createSermon).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Test Sermon Title',
-          verse: 'Test 1:1-2',
-          userId: 'test-user-id',
-          thoughts: [],
-          date: expect.any(String),
-        })
-      );
-    });
-    expect(addPreachDate).not.toHaveBeenCalled();
-  });
-
-  test('creates planned preach date when optional planned date is filled', async () => {
-    render(
-      <TestProviders>
-        <AddSermonModal allowPlannedDate />
-      </TestProviders>
-    );
-
-    fireEvent.click(screen.getByText('New Sermon'));
-
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Planned Sermon Title' }
-    });
-
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Matt 5:1-2' }
-    });
-
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-04-10' }
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(createSermon).toHaveBeenCalled();
-      expect(addPreachDate).toHaveBeenCalledWith(
-        'mocked-sermon-id',
-        expect.objectContaining({
-          date: '2026-04-10',
-          status: 'planned',
-          church: expect.objectContaining({
-            id: 'church-unspecified',
-            name: 'Church not specified'
-          })
-        })
-      );
-    });
-  });
-
-  test('calls onNewSermonCreated when provided', async () => {
-    const onNewSermonCreated = jest.fn();
-    render(
-      <TestProviders>
-        <AddSermonModal onNewSermonCreated={onNewSermonCreated} />
-      </TestProviders>
-    );
-
-    fireEvent.click(screen.getByText('New Sermon'));
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Test Sermon Title' }
-    });
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Test 1:1-2' }
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onNewSermonCreated).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'mocked-sermon-id' })
-      );
-    });
-  });
-
-  test('keeps the modal in saving state after success when closeOnSuccess is false', async () => {
-    const onNewSermonCreated = jest.fn().mockResolvedValue(undefined);
+  test('stores a planned preach date with the unspecified church when only a date is filled', async () => {
     const onClose = jest.fn();
-
-    render(
-      <TestProviders>
-        <AddSermonModal
-          isOpen
-          showTriggerButton={false}
-          closeOnSuccess={false}
-          onClose={onClose}
-          onNewSermonCreated={onNewSermonCreated}
-        />
-      </TestProviders>
-    );
-
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Dashboard Sermon' },
+    const { harness, view } = setup(<AddSermonModal isOpen showTriggerButton={false} allowPlannedDate onClose={onClose} />);
+    await typeSermon('Planned Sermon Title', 'Matt 5:1-2');
+    fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2026-04-10' } });
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(await sentSermon(harness)).toMatchObject({
+      title: 'Planned Sermon Title',
+      preachDates: [{ date: '2026-04-10', status: 'planned', church: { id: 'church-unspecified' } }],
     });
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'John 1:1' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onNewSermonCreated).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'mocked-sermon-id' })
-      );
-    });
-
-    expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Dashboard Sermon')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+    view.unmount();
   });
 
-  test('handles authentication errors gracefully', async () => {
-    (auth as any).currentUser = null;
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-    render(
-      <TestProviders>
-        <AddSermonModal />
-      </TestProviders>
-    );
-    
-    // Click add button to open modal
-    fireEvent.click(screen.getByText('New Sermon'));
-    
-    // Fill in form fields
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Test Sermon Title' }
-    });
-
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Test 1:1-2' }
-    });
-    
-    // Submit the form
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith('User is not authenticated');
-    });
-
-    expect(createSermon).not.toHaveBeenCalled();
-    expect(screen.getByDisplayValue('Test Sermon Title')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-
-    consoleSpy.mockRestore();
+  test('does not offer a planned date unless the caller allows it', async () => {
+    const { view } = setup(<AddSermonModal isOpen showTriggerButton={false} />);
+    await screen.findByRole('dialog');
+    expect(screen.queryByLabelText('Planned date')).not.toBeInTheDocument();
+    view.unmount();
   });
 
-  test('uses null user id for series when user is missing', () => {
-    mockUseAuth.mockReturnValue({ user: null });
-
-    render(
-      <TestProviders>
-        <AddSermonModal />
-      </TestProviders>
-    );
-
-    expect(mockUseSeries).toHaveBeenCalledWith(null);
-  });
-
-  test('handles API errors gracefully', async () => {
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-    // Mock an API error
-    const apiError = new Error('Server error');
-    (createSermon as jest.Mock).mockRejectedValueOnce(apiError);
-
-    render(
-      <TestProviders>
-        <AddSermonModal />
-      </TestProviders>
-    );
-    
-    // Click add button to open modal
-    fireEvent.click(screen.getByText('New Sermon'));
-    
-    // Fill in form fields
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Test Sermon Title' }
-    });
-    
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Test 1:1-2' }
-    });
-    
-    // Submit the form
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    
-    await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith('Error creating sermon:', apiError);
-    });
-
-    expect(screen.getByDisplayValue('Test Sermon Title')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Test 1:1-2')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-
-    consoleSpy.mockRestore();
-  });
-
-  test('delegates create flow to onCreateRequest when provided', async () => {
-    const onCreateRequest = jest.fn(() => persistedWrite(Promise.resolve()));
-    const onClose = jest.fn();
-
-    render(
-      <TestProviders>
-        <AddSermonModal
-          onCreateRequest={onCreateRequest}
-          onClose={onClose}
-          allowPlannedDate
-        />
-      </TestProviders>
-    );
-
-    fireEvent.click(screen.getByText('New Sermon'));
-
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Delegated Sermon' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Luke 4:18' },
-    });
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-05-10' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onCreateRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: 'Delegated Sermon',
-          verse: 'Luke 4:18',
-          plannedDate: '2026-05-10',
-        })
-      );
-      expect(onClose).toHaveBeenCalledTimes(1);
-    });
-
-    expect(createSermon).not.toHaveBeenCalled();
-  });
-
-  test('logs optimistic create errors and keeps modal data intact', async () => {
-    const onCreateRequest = jest.fn(() => persistedWrite(Promise.reject(Object.assign(new Error('optimistic-fail'), { code: 'permission-denied', name: 'FirebaseError' }))));
-    const onClose = jest.fn();
-    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-    render(
-      <TestProviders>
-        <AddSermonModal
-          onCreateRequest={onCreateRequest}
-          onClose={onClose}
-        />
-      </TestProviders>
-    );
-
-    fireEvent.click(screen.getByText('New Sermon'));
-    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
-      target: { value: 'Failed Delegated Sermon' },
-    });
-    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
-      target: { value: 'Acts 1:8' },
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => {
-      expect(onCreateRequest).toHaveBeenCalled();
-    });
-
-    expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByDisplayValue('Failed Delegated Sermon')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Acts 1:8')).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
-    });
-
-    expect(consoleSpy).toHaveBeenCalledWith(
-      'Error creating sermon (optimistic request):',
-      expect.any(Error)
-    );
-
-    consoleSpy.mockRestore();
+  test('keeps the selected series choice behind an explicit load button (catalog is optional)', async () => {
+    const { view } = setup(<AddSermonModal isOpen showTriggerButton={false} />);
+    await screen.findByRole('dialog');
+    expect(screen.getByRole('button', { name: 'workspaces.series.actions.selectSeries' })).toBeInTheDocument();
+    view.unmount();
   });
 });

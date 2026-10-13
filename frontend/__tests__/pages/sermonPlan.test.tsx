@@ -4,11 +4,16 @@ import React from 'react';
 import { toast } from 'sonner';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
-import { getSermonById } from '@/services/sermon.service';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import { savePlanTextViaClient } from '@/services/sermons.client';
 import { updateThought } from '@/services/thought.service';
 import { draftKey, saveDraft } from '@/utils/durableDraft';
 import '@testing-library/jest-dom';
+
+import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
+
+import type { DocumentData, EngineMetadata } from '@/data-engine/types';
 
 jest.mock('sonner', () => ({
   toast: {
@@ -54,42 +59,22 @@ Object.defineProperty(window, 'matchMedia', {
   })),
 });
 
-// Mock hooks
+// The plan page runs on the data engine: it opens the sermon document through the real engine, with
+// only the server and the browser transport replaced. Plan text, thoughts and the outline are stored
+// through the engine writer, so what a click did is read from the document the server holds.
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
+}));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+
 jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'test-user' }, loading: false }),
 }));
 
-// Mock sermon service
+// The legacy readers and writers must stay untouched on the engine.
 jest.mock('@/services/sermon.service', () => ({
-  getSermonById: jest.fn().mockResolvedValue({
-    id: 'test-sermon-id',
-    title: 'Test Sermon',
-    verse: 'Test Verse',
-    date: new Date().toISOString(),
-    thoughts: [
-      { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'] },
-      { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'] },
-      { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
-    ],
-    plan: {
-      introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
-      main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
-      conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
-    },
-    outline: {
-      introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
-      main: [{ id: 'main-p1', text: 'Main Point 1' }],
-      conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
-    },
-    structure: {
-      introduction: ['t1'],
-      main: ['t2'],
-      conclusion: ['t3'],
-    },
-    goal: 'Mock Goal',
-    audience: 'Mock Audience',
-    keyFragments: ['frag1'],
-  }),
+  getSermonById: jest.fn(),
 }));
 
 // The real module with only the write replaced: listing exports by hand meant every new
@@ -361,17 +346,56 @@ const createTestQueryClient = () =>
     },
   });
 
+const resource = { collection: 'sermons', id: 'test-sermon-id' };
+const metadata: EngineMetadata = { protocol: 1, generation: 'g1', revision: 1, deleted: false };
+
+const defaultSermon = (): DocumentData => ({
+  userId: 'test-user',
+  title: 'Test Sermon',
+  verse: 'Test Verse',
+  date: new Date().toISOString(),
+  thoughts: [
+    { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'], date: '2024-01-01' },
+    { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'], date: '2024-01-01' },
+    { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'], date: '2024-01-01' },
+  ],
+  plan: {
+    introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
+    main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
+    conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } },
+  },
+  outline: {
+    introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
+    main: [{ id: 'main-p1', text: 'Main Point 1' }],
+    conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
+  },
+  structure: {
+    introduction: ['t1'],
+    main: ['t2'],
+    conclusion: ['t3'],
+  },
+});
+
+let harness: ReturnType<typeof documentEngineHarness>;
+
+/** The sermon the server holds and this device has a copy of; pass the whole document to replace the default. */
+function openSermon(document: Record<string, unknown> = defaultSermon()) {
+  // Fields left `undefined` are absent from a stored document.
+  harness = documentEngineHarness({ resource, metadata, value: JSON.parse(JSON.stringify(document)) as DocumentData });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+}
+
 const renderWithQueryClient = (ui: React.ReactElement) => {
   const queryClient = createTestQueryClient();
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(<QueryClientProvider client={queryClient}><DataEngineProvider>{ui}</DataEngineProvider></QueryClientProvider>);
 };
+
+const storedPlanText = () => (harness.server.value?.planText ?? {}) as Record<string, string>;
+const storedThoughts = () => (harness.server.value?.thoughts ?? []) as Array<{ id: string; text: string; keyFragments?: string[] }>;
 
 describe('Sermon Plan Page UI Smoke Test', () => {
   // Store original fetch
   const originalFetch = global.fetch;
-
-  // Get the mocked function
-  const mockGetSermonById = jest.mocked(getSermonById);
 
   beforeEach(async () => {
     mockSearchParams = new URLSearchParams();
@@ -380,9 +404,10 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     mockToast.success.mockClear();
     mockToast.error.mockClear();
     mockUpdateThought.mockReset();
-    mockUpdateThought.mockImplementation(async (_sermonId, thought) => thought);
+    mockSavePlanText.mockClear();
     // Ensure we're using real timers for this test
     jest.useRealTimers();
+    window.localStorage.clear();
 
     // Reset fetch mock before each test
     global.fetch = jest.fn().mockImplementation((url, options) => {
@@ -399,74 +424,11 @@ describe('Sermon Plan Page UI Smoke Test', () => {
           return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
         }
       }
-      if (url.endsWith('/api/sermons/test-sermon-id')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({
-            id: 'test-sermon-id',
-            title: 'Test Sermon',
-            verse: 'Test Verse',
-            date: new Date().toISOString(),
-            thoughts: [
-              { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'] },
-              { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'] },
-              { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'] },
-            ],
-            plan: {
-              introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
-              main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
-              conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
-            },
-            outline: {
-              introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
-              main: [{ id: 'main-p1', text: 'Main Point 1' }],
-              conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
-            },
-            structure: {
-              introduction: ['t1'],
-              main: ['t2'],
-              conclusion: ['t3'],
-            },
-            goal: 'Mock Goal',
-            audience: 'Mock Audience',
-            keyFragments: ['frag1'],
-          }),
-        });
-      }
-      // Fallback for unhandled URLs (optional, could throw error)
+      // Fallback for unhandled URLs
       return Promise.resolve({ ok: false, status: 404 });
     });
 
-    // Reset the mock before each test to use the default mock
-    mockGetSermonById.mockReset();
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: [
-        { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], keyFragments: ['frag1'], date: '2024-01-01' },
-        { id: 't2', text: 'Thought 2', outlinePointId: 'main-p1', tags: ['main'], date: '2024-01-01' },
-        { id: 't3', text: 'Thought 3', outlinePointId: 'con-p1', tags: ['conclusion'], date: '2024-01-01' },
-      ],
-      plan: {
-        introduction: { outline: "Intro SermonOutline Mock", outlinePoints: { 'intro-p1': 'Generated Intro Content' } },
-        main: { outline: "Main SermonOutline Mock", outlinePoints: { 'main-p1': 'Generated Main Content' } },
-        conclusion: { outline: "Conclusion SermonOutline Mock", outlinePoints: { 'con-p1': 'Generated Conclusion Content' } }
-      },
-      outline: {
-        introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
-        main: [{ id: 'main-p1', text: 'Main Point 1' }],
-        conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
-      },
-      structure: {
-        introduction: ['t1'],
-        main: ['t2'],
-        conclusion: ['t3'],
-      },
-    });
+    openSermon();
   });
 
   afterEach(() => {
@@ -476,12 +438,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   });
 
   it('shows no notice when every thought is sorted', async () => {
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
+    openSermon({
+      ...defaultSermon(),
       thoughts: [
         { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], date: '2024-01-01' },
       ],
@@ -508,12 +466,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
    * So the screen asks once, and offers all three continuations.
    */
   it('asks how to prepare when the sermon is not whole', async () => {
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
+    openSermon({
+      ...defaultSermon(),
       thoughts: [],
       plan: undefined,
       outline: {
@@ -546,13 +500,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
    */
   it('keeps text of a removed point visible on the readiness screen', async () => {
     window.localStorage.clear();
-    saveDraft(draftKey('user-1', 'test-sermon-id', 'plan:gone-point'), 'A paragraph whose point was removed');
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
+    saveDraft(draftKey('test-user', 'test-sermon-id', 'plan:gone-point'), 'A paragraph whose point was removed');
+    openSermon({
+      ...defaultSermon(),
       thoughts: [],
       plan: undefined,
       outline: { introduction: [], main: [{ id: 'main-p1', text: 'Main Point 1' }], conclusion: [] },
@@ -562,7 +512,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     renderWithQueryClient(<SermonPlanPage />);
 
     expect(await screen.findByText('The plan is not assembled yet')).toBeInTheDocument();
-    expect(screen.getByText('A paragraph whose point was removed')).toBeInTheDocument();
+    expect(await screen.findByText('A paragraph whose point was removed')).toBeInTheDocument();
     window.localStorage.clear();
   }, 15000);
 
@@ -575,12 +525,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
    * amber screen — on the way to the pulpit, the text was simply gone.
    */
   it('shows an already written plan even while thoughts are unsorted', async () => {
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
+    openSermon({
+      ...defaultSermon(),
       // Loose thought: attached to no outline point, so readiness says "not ready".
       thoughts: [{ id: 't-loose', text: 'A thought nobody sorted yet', tags: [], date: new Date().toISOString() }],
       outline: {
@@ -752,17 +698,14 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(saveButtons[0]).toBeEnabled();
     fireEvent.click(saveButtons[0]);
 
-    // The save no longer travels through the server as a whole section: the text goes
-    // straight to storage under the node's own key, and the document is assembled on read.
+    // The text goes into the sermon document under the node's own key, and the plan is assembled on read.
     await waitFor(() => {
-      expect(mockSavePlanText).toHaveBeenCalled();
+      expect(storedPlanText()['intro-p1']).toBe('Updated Intro Content');
     });
-
-    const [sermonId, changedText] = mockSavePlanText.mock.calls.at(-1)!;
-    expect(sermonId).toBe('test-sermon-id');
-    expect(changedText['intro-p1']).toBe('Updated Intro Content');
     // Only the edited node travels — no other point's text rides along.
-    expect(Object.keys(changedText)).toEqual(['intro-p1']);
+    expect(Object.keys(storedPlanText())).toEqual(['intro-p1']);
+    // The legacy writer is not the way out any more.
+    expect(mockSavePlanText).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(mockToast.success).toHaveBeenCalledWith('Point saved');
@@ -795,9 +738,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
   });
 
-  it('shows error toast when save request fails', async () => {
-    mockSavePlanText.mockRejectedValueOnce(new Error('write refused'));
-
+  // A paragraph rewritten on another device since this screen opened is never overwritten by a save:
+  // the person is told, and the other device's words stay stored.
+  it('shows error toast and keeps the other device\'s paragraph when the save is refused', async () => {
     renderWithQueryClient(<SermonPlanPage />);
     await screen.findByTestId('plan-introduction-right-section');
 
@@ -807,12 +750,16 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     const textareas = await screen.findAllByPlaceholderText('No content');
     fireEvent.change(textareas[0], { target: { value: 'Updated Intro Content' } });
 
+    await act(async () => { await harness.remote({ planText: { 'intro-p1': 'Rewritten on the phone' } }); });
+
     const saveButtons = await screen.findAllByTitle('Save');
     fireEvent.click(saveButtons[0]);
 
     await waitFor(() => {
-      expect(mockToast.error).toHaveBeenCalledWith('Failed to save point');
+      expect(mockToast.error).toHaveBeenCalled();
     });
+    expect(mockToast.success).not.toHaveBeenCalledWith('Point saved');
+    expect(storedPlanText()['intro-p1']).toBe('Rewritten on the phone');
   });
 
   it('updates local plan state when generate request succeeds', async () => {
@@ -911,26 +858,12 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(screen.getByText('Updated Thought')).toBeInTheDocument();
     });
+    // The edit is stored in the sermon document, through the engine and not the legacy thought writer.
+    await waitFor(() => expect(storedThoughts().find((thought) => thought.id === 't1')?.text).toBe('Updated Thought'));
+    expect(mockUpdateThought).not.toHaveBeenCalled();
   });
 
-  it('does not roll back a newer key fragment save when an older request fails later', async () => {
-    let rejectFirstSave: ((reason?: unknown) => void) | null = null;
-    let resolveSecondSave: ((value: import('@/models/models').Thought | PromiseLike<import('@/models/models').Thought>) => void) | null = null;
-
-    mockUpdateThought
-      .mockImplementationOnce(
-        () =>
-          new Promise<import('@/models/models').Thought>((_resolve, reject) => {
-            rejectFirstSave = reject;
-          })
-      )
-      .mockImplementationOnce(
-        () =>
-          new Promise<import('@/models/models').Thought>((resolve) => {
-            resolveSecondSave = resolve;
-          })
-      );
-
+  it('keeps the newest key fragment save when two are made in a row', async () => {
     renderWithQueryClient(<SermonPlanPage />);
     await screen.findByTestId('plan-introduction-left-section');
 
@@ -948,28 +881,14 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     await waitFor(() => {
       expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
     });
-
-    await act(async () => {
-      rejectFirstSave?.(new Error('first save failed'));
-    });
-
-    expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
     expect(screen.queryByText('Thought 1')).not.toBeInTheDocument();
 
-    await act(async () => {
-      resolveSecondSave?.({
-        id: 't1',
-        text: 'Saved Thought 2',
-        date: new Date().toISOString(),
-        outlinePointId: 'intro-p1',
-        tags: ['introduction'],
-        keyFragments: ['frag1', 'saved-frag', 'saved-frag-2'],
-      });
-    });
-
     await waitFor(() => {
-      expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
+      const t1 = storedThoughts().find((thought) => thought.id === 't1');
+      expect(t1?.text).toBe('Saved Thought 2');
+      expect(t1?.keyFragments).toEqual(['frag1', 'saved-frag', 'saved-frag-2']);
     });
+    expect(screen.getByText('Saved Thought 2')).toBeInTheDocument();
   });
 
   it('handles copy fallback exceptions and reports copy error', async () => {
@@ -1035,90 +954,70 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('auto-scrolls to a section when section param is provided', async () => {
+  describe('scrolling to the section named in the address', () => {
     const originalRaf = window.requestAnimationFrame;
     const originalScrollIntoView = Element.prototype.scrollIntoView;
-    const scrollIntoView = jest.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
-    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
 
-    jest.useFakeTimers();
-    mockSearchParams = new URLSearchParams('section=introduction');
-
-    renderWithQueryClient(<SermonPlanPage />);
-
-    await screen.findByTestId('plan-introduction-left-section');
-
-    act(() => {
-      jest.runAllTimers();
+    beforeEach(() => {
+      window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
     });
 
-    expect(scrollIntoView).toHaveBeenCalled();
-
-    jest.useRealTimers();
-    window.requestAnimationFrame = originalRaf;
-    Element.prototype.scrollIntoView = originalScrollIntoView;
-  });
-
-  it('auto-scrolls to the main section when the main section param is provided', async () => {
-    const originalRaf = window.requestAnimationFrame;
-    const originalScrollIntoView = Element.prototype.scrollIntoView;
-    const scrollIntoView = jest.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
-    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
-
-    jest.useFakeTimers();
-    mockSearchParams = new URLSearchParams('section=main');
-
-    renderWithQueryClient(<SermonPlanPage />);
-
-    await screen.findByTestId('plan-main-left-section');
-
-    act(() => {
-      jest.runAllTimers();
+    afterEach(() => {
+      window.requestAnimationFrame = originalRaf;
+      Element.prototype.scrollIntoView = originalScrollIntoView;
     });
 
-    expect(scrollIntoView).toHaveBeenCalled();
+    it('auto-scrolls to a section when section param is provided', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=introduction');
 
-    jest.useRealTimers();
-    window.requestAnimationFrame = originalRaf;
-    Element.prototype.scrollIntoView = originalScrollIntoView;
-  });
+      renderWithQueryClient(<SermonPlanPage />);
 
-  it('falls back to querySelector when section param does not match a ref-backed section', async () => {
-    const originalRaf = window.requestAnimationFrame;
-    const originalQuerySelector = document.querySelector;
-    const fallbackElement = document.createElement('div');
-    const fallbackScroll = jest.fn();
-    fallbackElement.scrollIntoView = fallbackScroll;
-    document.querySelector = jest.fn().mockImplementation((selector: string) => {
-      if (selector === '[data-section="appendix"]') {
-        return fallbackElement;
+      await screen.findByTestId('plan-introduction-left-section');
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    });
+
+    it('auto-scrolls to the main section when the main section param is provided', async () => {
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      mockSearchParams = new URLSearchParams('section=main');
+
+      renderWithQueryClient(<SermonPlanPage />);
+
+      await screen.findByTestId('plan-main-left-section');
+
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    });
+
+    it('falls back to querySelector when section param does not match a ref-backed section', async () => {
+      const originalQuerySelector = document.querySelector;
+      const fallbackElement = document.createElement('div');
+      const fallbackScroll = jest.fn();
+      fallbackElement.scrollIntoView = fallbackScroll;
+      document.querySelector = jest.fn().mockImplementation((selector: string) => {
+        if (selector === '[data-section="appendix"]') {
+          return fallbackElement;
+        }
+        return originalQuerySelector.call(document, selector);
+      });
+      mockSearchParams = new URLSearchParams('section=appendix');
+
+      try {
+        renderWithQueryClient(<SermonPlanPage />);
+
+        await screen.findByTestId('plan-introduction-left-section');
+
+        await waitFor(() => expect(fallbackScroll).toHaveBeenCalledWith({
+          behavior: 'smooth',
+          block: 'start'
+        }));
+        expect(document.querySelector).toHaveBeenCalledWith('[data-section="appendix"]');
+      } finally {
+        document.querySelector = originalQuerySelector;
       }
-      return originalQuerySelector.call(document, selector);
     });
-    window.requestAnimationFrame = (callback: FrameRequestCallback) => window.setTimeout(callback, 0);
-
-    jest.useFakeTimers();
-    mockSearchParams = new URLSearchParams('section=appendix');
-
-    renderWithQueryClient(<SermonPlanPage />);
-
-    await screen.findByTestId('plan-introduction-left-section');
-
-    act(() => {
-      jest.runAllTimers();
-    });
-
-    expect(document.querySelector).toHaveBeenCalledWith('[data-section="appendix"]');
-    expect(fallbackScroll).toHaveBeenCalledWith({
-      behavior: 'smooth',
-      block: 'start'
-    });
-
-    jest.useRealTimers();
-    window.requestAnimationFrame = originalRaf;
-    document.querySelector = originalQuerySelector;
   });
 
   it('exports plain and markdown content through export button callbacks', async () => {
@@ -1173,7 +1072,8 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   });
 
   it('renders not-found state and routes back to the sermon page', async () => {
-    mockGetSermonById.mockResolvedValueOnce(null as any);
+    harness = documentEngineHarness({ resource, metadata: { ...metadata, deleted: true }, value: null });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
 
     renderWithQueryClient(<SermonPlanPage />);
 
@@ -1184,12 +1084,10 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   });
 
   it('exports fallback no-content text when verse and plan outlines are missing', async () => {
-    mockGetSermonById.mockResolvedValueOnce({
-      id: 'test-sermon-id',
+    openSermon({
+      ...defaultSermon(),
       title: 'No Verse Sermon',
       verse: '',
-      date: new Date().toISOString(),
-      userId: 'user-1',
       thoughts: [
         { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], date: '2024-01-01' },
       ],
@@ -1208,7 +1106,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
         main: [],
         conclusion: [],
       },
-    } as any);
+    });
 
     renderWithQueryClient(<SermonPlanPage />);
 
@@ -1241,11 +1139,10 @@ describe('Sermon Plan Page UI Smoke Test', () => {
  */
 describe('sub-point text on the paired plan screen', () => {
   const withSubPoint = {
-    id: 'test-sermon-id',
+    userId: 'test-user',
     title: 'Град Божий',
     verse: 'Пс 86',
     date: new Date().toISOString(),
-    userId: 'test-user',
     thoughts: [],
     outline: {
       introduction: [
@@ -1257,9 +1154,11 @@ describe('sub-point text on the paired plan screen', () => {
     planText: { p1: 'Текст самого пункта', 'sub-vz': 'Родословие Адама — Быт 5:1' },
   };
 
-  it('shows the text written under a sub-point', async () => {
-    (getSermonById as jest.Mock).mockResolvedValueOnce(withSubPoint);
+  beforeEach(() => {
+    openSermon(withSubPoint);
+  });
 
+  it('shows the text written under a sub-point', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 
     expect(await screen.findByText('Текст самого пункта')).toBeInTheDocument();
@@ -1271,8 +1170,6 @@ describe('sub-point text on the paired plan screen', () => {
    * the left, and an unscoped query would pass on that one while the cell stayed nameless.
    */
   it('names the sub-point above its own cell, so the text is not orphaned on screen', async () => {
-    (getSermonById as jest.Mock).mockResolvedValueOnce(withSubPoint);
-
     renderWithQueryClient(<SermonPlanPage />);
 
     const editorColumn = (await screen.findAllByTestId('plan-introduction-right-section'))[0];

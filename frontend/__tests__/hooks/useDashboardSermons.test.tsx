@@ -1,152 +1,43 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor, act } from '@testing-library/react';
-import React from 'react';
-import { ReactElement, ReactNode } from 'react';
+import { renderHook } from '@testing-library/react';
 
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
 
 import type { Sermon } from '@/models/models';
 
-// Mock services
-jest.mock('@/services/firebaseAuth.service', () => ({
-  auth: { currentUser: null },
-}));
+/**
+ * THE DASHBOARD'S SERMONS come from the data engine's rows (sermons are engine-owned): the list,
+ * its loading and error state, and a refresh that asks the engine again.
+ */
 
-const mockGetSermons = jest.fn();
+jest.mock('@/hooks/useSermonsDataCollection', () => ({ useSermonsDataCollection: jest.fn() }));
+jest.mock('@/hooks/useServerFirstQuery', () => ({ useServerFirstQuery: () => ({ data: [], isLoading: false, error: null, refetch: jest.fn() }) }));
+jest.mock('@/services/firebaseAuth.service', () => ({ auth: { currentUser: { uid: 'user-1' } } }));
 
-jest.mock('@/services/sermon.service', () => ({
-  getSermons: (...args: unknown[]) => mockGetSermons(...args),
-}));
-
-const { auth: mockAuth } = jest.requireMock('@/services/firebaseAuth.service') as {
-  auth: { currentUser: { uid: string } | null };
-};
-
-const createSermon = (id: string, overrides: Partial<Sermon> = {}): Sermon => ({
-  id,
-  title: `Sermon ${id}`,
-  verse: 'John 3:16',
-  date: '2024-01-01',
-  thoughts: [],
-  userId: 'user-1',
-  ...overrides,
-});
-
-const createTestQueryClient = () => new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: false,
-      staleTime: 0,
-      gcTime: 0,
-    },
-  },
-});
-
-const wrapper = ({ children }: { children: ReactNode }): ReactElement => {
-  return (
-    <QueryClientProvider client={createTestQueryClient()}>
-      {children}
-    </QueryClientProvider>
-  );
-};
+const sermon = (id: string): Sermon => ({ id, title: `Sermon ${id}`, verse: 'John 3:16', date: '2024-01-01', thoughts: [], userId: 'user-1' });
 
 describe('useDashboardSermons', () => {
-  const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  it('returns the engine rows and refreshes the engine', async () => {
+    const refresh = jest.fn().mockResolvedValue(undefined);
+    jest.mocked(useSermonsDataCollection).mockReturnValue({
+      sermons: [sermon('1'), sermon('2')], loading: false, error: null, refresh, state: undefined, complete: true,
+    } as unknown as ReturnType<typeof useSermonsDataCollection>);
 
-  beforeEach(() => {
-    mockAuth.currentUser = null;
-    mockGetSermons.mockReset();
-    localStorage.clear();
+    const { result } = renderHook(() => useDashboardSermons());
+
+    expect(result.current.sermons.map(entry => entry.id)).toEqual(['1', '2']);
+    expect(result.current.loading).toBe(false);
+    await result.current.refresh();
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  afterAll(() => {
-    consoleErrorSpy.mockRestore();
-  });
+  it('passes the engine read error through', () => {
+    jest.mocked(useSermonsDataCollection).mockReturnValue({
+      sermons: [], loading: false, error: 'network', refresh: jest.fn(), state: undefined, complete: false,
+    } as unknown as ReturnType<typeof useSermonsDataCollection>);
 
-  it('fetches sermons for an authenticated user', async () => {
-    const sermons = [createSermon('1'), createSermon('2')];
-    mockAuth.currentUser = { uid: 'user-123' };
-    mockGetSermons.mockResolvedValueOnce(sermons);
+    const { result } = renderHook(() => useDashboardSermons());
 
-    const { result } = renderHook(() => useDashboardSermons(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-      expect(result.current.sermons).toEqual(sermons);
-      expect(result.current.error).toBeNull();
-    });
-
-    expect(mockGetSermons).toHaveBeenCalledWith('user-123');
-  });
-
-  it('uses guest user from localStorage when no authenticated user exists', async () => {
-    const guestUid = 'guest-abc';
-    localStorage.setItem('guestUser', JSON.stringify({ uid: guestUid }));
-    const sermons = [createSermon('3')];
-    mockGetSermons.mockResolvedValueOnce(sermons);
-
-    const { result } = renderHook(() => useDashboardSermons(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-      expect(result.current.sermons).toEqual(sermons);
-    });
-
-    expect(mockGetSermons).toHaveBeenCalledWith(guestUid);
-  });
-
-  it('handles fetch errors gracefully', async () => {
-    mockAuth.currentUser = { uid: 'user-456' };
-    const error = new Error('network');
-    mockGetSermons.mockRejectedValueOnce(error);
-
-    const { result } = renderHook(() => useDashboardSermons(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-      expect(result.current.sermons).toEqual([]);
-      expect(result.current.error).toEqual(error);
-    });
-  });
-
-  it('ignores invalid guestUser entries in localStorage', async () => {
-    localStorage.setItem('guestUser', '{invalid json');
-    mockGetSermons.mockResolvedValueOnce([]);
-
-    const { result } = renderHook(() => useDashboardSermons(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.sermons).toEqual([]);
-    });
-
-    expect(mockGetSermons).not.toHaveBeenCalled();
-  });
-
-  it('refreshes sermons on demand', async () => {
-    mockAuth.currentUser = { uid: 'user-789' };
-    const firstBatch = [createSermon('1')];
-    const secondBatch = [createSermon('2')];
-
-    // First call
-    mockGetSermons.mockResolvedValueOnce(firstBatch);
-
-    const { result } = renderHook(() => useDashboardSermons(), { wrapper });
-
-    await waitFor(() => {
-      expect(result.current.sermons).toEqual(firstBatch);
-    });
-
-    // Setup second call
-    mockGetSermons.mockResolvedValueOnce(secondBatch);
-
-    await act(async () => {
-      await result.current.refresh();
-    });
-
-    await waitFor(() => {
-      expect(result.current.sermons).toEqual(secondBatch);
-    });
-
-    expect(mockGetSermons).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe('network');
   });
 });

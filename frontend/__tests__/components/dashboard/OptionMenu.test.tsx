@@ -9,10 +9,9 @@ import { settleEngine } from '../../../test-utils/documentEngineHarness';
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import { persistedWrite } from '@/utils/recoverableWrite';
 import { Sermon } from '@/models/models';
+import type { ResourceSnapshot } from '@/data-engine/types';
 import { deleteSermon, updateSermon } from '@services/sermon.service';
 import * as preachDatesService from '@services/preachDates.service';
-import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
-import { auth } from '@services/firebaseAuth.service';
 
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -121,44 +120,11 @@ jest.mock('@components/EditSermonModal', () => {
   };
 });
 
-jest.mock('@components/calendar/PreachDateModal', () => {
-  return function MockPreachDateModal({
-    isOpen,
-    onClose,
-    onSave,
-    initialData,
-    defaultChurch,
-  }: {
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (data: any) => Promise<void>;
-    initialData?: any;
-    defaultChurch?: any;
-  }) {
-    if (!isOpen) return null;
-    return (
-      <div
-        data-testid="preach-date-modal"
-        data-initial-church-id={initialData?.church?.id || ''}
-        data-initial-church-name={initialData?.church?.name || ''}
-        data-default-church-name={defaultChurch?.name || ''}
-      >
-        <button
-          onClick={() =>
-            onSave({
-              date: '2024-01-21',
-              church: { id: 'c1', name: 'Test Church', city: 'City' },
-              audience: 'Youth'
-            })
-          }
-        >
-          Save Date
-        </button>
-        <button onClick={onClose}>Close Date</button>
-      </div>
-    );
-  };
-});
+jest.mock('@/components/church/ChurchField', () => ({
+  __esModule: true,
+  default: ({ value, onChange }: any) =>
+    <input aria-label="Church" value={value?.name ?? ''} onChange={event => onChange({ id: 'church-typed', name: event.target.value, city: 'City' })} />,
+}));
 
 // Mock the entire i18n module
 jest.mock('@locales/i18n', () => {}, { virtual: true });
@@ -258,142 +224,6 @@ describe('OptionMenu Component', () => {
     expect(screen.queryByText('sermon.sourceNotes.menuAdd')).not.toBeInTheDocument();
   });
 
-  it('re-arms the proof after a refusal, so a deliberate second press can win', async () => {
-    // Found in the browser, not by a unit test: adopting the server's LIST is only half the
-    // exit. The second press must also vouch for something the server recognises, or the same
-    // click is refused for ever — a dead end dressed as a safety feature.
-    const { StaleWriteError } = jest.requireActual('@/services/conflictSafeUpdate.client');
-    (updateSermon as jest.Mock)
-      .mockRejectedValueOnce(new StaleWriteError('core', 3, 9, { sourceNoteIds: ['from-phone'] }))
-      .mockResolvedValueOnce({ ...mockSermon, sourceNoteIds: ['from-phone', 'mine'] });
-
-    render(
-      <OptionMenu {...defaultProps} sermon={{ ...mockSermon, sourceNoteIds: ['mine'], rev: { core: 3 } }} />
-    );
-    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
-    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
-
-    // Tick another note, or there is nothing to save and the writer is skipped by design.
-    fireEvent.click(
-      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
-    );
-    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
-    // First press vouched for what the dialog opened with.
-    expect((updateSermon as jest.Mock).mock.calls[0][3]).toEqual({ sourceNoteIds: ['mine'] });
-
-    // The dialog now shows the server's list; tick one more and press again.
-    const deadRow = screen.getByTestId('missing-note-row');
-    expect(deadRow).toBeInTheDocument();
-    // The dialog stays LOCKED until the refusal has fully settled — that is the fix for
-    // "dismissable/editable mid-save", so the test has to wait for it rather than race it.
-    const box = () =>
-      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector(
-        'input'
-      ) as HTMLInputElement;
-    await waitFor(() => expect(box()).toBeEnabled());
-
-    fireEvent.click(box());
-    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-
-    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(2));
-    const second = (updateSermon as jest.Mock).mock.calls[1];
-    expect(second[2]).toBe(9); // the revision the refusal reported
-    expect(second[3]).toEqual({ sourceNoteIds: ['from-phone'] }); // what the server actually holds
-
-    // `mockClear` in beforeEach does not drop queued once-implementations, so restore the
-    // suite's default rather than leaving a rejection behind for the next test.
-    (updateSermon as jest.Mock).mockReset();
-    (updateSermon as jest.Mock).mockResolvedValue({});
-  });
-
-  it('keeps the opening proof even if the sermon underneath refreshes while the picker is open', async () => {
-    // The picker holds the ticks it opened with; if the proof were re-read from the refreshed
-    // prop, the guard would bless overwriting whatever the other device just stored. No test
-    // covered this seam before an adversarial review pointed it out.
-    (updateSermon as jest.Mock).mockResolvedValue({});
-    const opened = { ...mockSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
-
-    const { rerender } = render(<OptionMenu {...defaultProps} sermon={opened} />);
-    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
-    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
-
-    // Another device's write arrives and the page re-renders underneath the open dialog.
-    rerender(
-      <OptionMenu
-        {...defaultProps}
-        sermon={{ ...mockSermon, sourceNoteIds: ['from-phone'], rev: { core: 9 } }}
-      />
-    );
-
-    fireEvent.click(
-      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
-    );
-    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-
-    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
-    const call = (updateSermon as jest.Mock).mock.calls[0];
-    expect(call[2]).toBe(3); // revision at OPEN, not the refreshed 9
-    expect(call[3]).toEqual({ sourceNoteIds: ['mine'] }); // list at OPEN
-    (updateSermon as jest.Mock).mockReset();
-    (updateSermon as jest.Mock).mockResolvedValue({});
-  });
-
-  it('still writes when the person toggles away and back to the same set', async () => {
-    // "Same as when I opened it" is not "nothing to do": the server may have moved meanwhile, so
-    // a deliberate choice must reach it. Without `force` this press would be swallowed.
-    (updateSermon as jest.Mock).mockResolvedValue({});
-    render(
-      <OptionMenu {...defaultProps} sermon={{ ...mockSermon, sourceNoteIds: ['note-2'], rev: { core: 3 } }} />
-    );
-    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
-    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
-
-    const box = () =>
-      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector(
-        'input'
-      ) as HTMLElement;
-    // Re-queried each time: the row re-renders between clicks, and a node captured once can be
-    // detached by then — a click on it silently does nothing.
-    fireEvent.click(box()); // untick
-    fireEvent.click(box()); // tick again — back to the opening set
-    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-
-    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
-    expect((updateSermon as jest.Mock).mock.calls[0][1]).toEqual({ sourceNoteIds: ['note-2'] });
-    (updateSermon as jest.Mock).mockReset();
-    (updateSermon as jest.Mock).mockResolvedValue({});
-  });
-
-  it('keeps the copy it was given whole — a link save must not drop detail-only fields', async () => {
-    // The last P1 of the review loop: a design that chose between a "newer" list copy and a
-    // fuller detail copy by one counter could drop `scratch`/`thoughts` from the screen. The menu
-    // now applies a PATCH to the copy its own screen handed it, so there is nothing to choose.
-    (updateSermon as jest.Mock).mockResolvedValue({ ...mockSermon, sourceNoteIds: ['note-2'] });
-    const onUpdate = jest.fn();
-    const fullCopy = {
-      ...mockSermon,
-      sourceNoteIds: [],
-      rev: { core: 3 },
-      scratch: [{ id: 'sc1', text: 'only the detail copy has this', createdAt: '2026-08-16' }],
-    } as Sermon;
-
-    render(<OptionMenu {...defaultProps} onUpdate={onUpdate} sermon={fullCopy} />);
-    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
-    fireEvent.click(screen.getByText('sermon.sourceNotes.menuAdd'));
-    fireEvent.click(
-      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
-    );
-    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
-
-    await waitFor(() => expect(onUpdate).toHaveBeenCalled());
-    const published = onUpdate.mock.calls[0][0] as Sermon;
-    expect(published.sourceNoteIds).toEqual(['note-2']);
-    expect(published.scratch).toHaveLength(1);
-    (updateSermon as jest.Mock).mockReset();
-    (updateSermon as jest.Mock).mockResolvedValue({});
-  });
-
   it('renders correctly with the menu button', () => {
     render(<OptionMenu {...defaultProps} />);
     
@@ -485,279 +315,6 @@ describe('OptionMenu Component', () => {
     expect(screen.queryByTestId('edit-sermon-modal')).not.toBeInTheDocument();
   });
   
-  it('calls onDelete with sermon ID when Delete is clicked and confirmed', async () => {
-    // `resolveOwnerUid()` reads the live auth module, and the cache key it builds is what the
-    // assertions below check — so the owner has to be a real, named value here.
-    const mutableAuth = auth as { currentUser: unknown };
-    const previousUser = mutableAuth.currentUser;
-    mutableAuth.currentUser = { uid: TEST_OWNER_UID };
-    try {
-    // Mock deleteSermon to resolve immediately so we can await it
-    (deleteSermon as jest.Mock).mockImplementation(async () => {
-      return Promise.resolve({});
-    });
-    
-    render(<OptionMenu {...defaultProps} />);
-    
-    // Open the menu
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    
-    // Click Delete, then confirm in the app's own window
-    fireEvent.click(screen.getByText('Delete'));
-    await answerDeleteQuestion('confirm');
-    
-    // Check deleteSermon service was called
-    expect(deleteSermon).toHaveBeenCalledWith('sermon-1');
-    
-    // Wait for async operations to complete
-    await new Promise(resolve => setTimeout(resolve, 0));
-    
-    // Check onDelete was called
-    expect(defaultProps.onDelete).toHaveBeenCalledWith('sermon-1');
-    // BUG-20260905: the sermon page deletes through this branch, so the detail cache has
-    // to be dropped here too — the dashboard's delete mutation does it on its own path.
-    // The EXACT key, owner included: `arrayContaining` would have passed just as happily on
-    // ['sermon', 'somebody-else', 'sermon-1'], which clears a stranger's cache and leaves
-    // this owner's deleted sermon readable.
-    expect(mockRemoveQueries).toHaveBeenCalledWith({
-      queryKey: sermonDetailKey(TEST_OWNER_UID, 'sermon-1'),
-    });
-    // The persisted LIST has to lose the row too, or a cold start offers the deleted sermon again.
-    expect(mockSetQueryData).toHaveBeenCalledWith(sermonListKey(TEST_OWNER_UID), expect.any(Function));
-    } finally {
-      mutableAuth.currentUser = previousUser;
-    }
-  });
-  
-  it('keeps dates but downgrades them to planned when unmarking preached sermon', async () => {
-    const mockOnDelete = jest.fn();
-    const mockOnUpdate = jest.fn();
-
-    // Clear mocks before test
-    mockInvalidateQueries.mockClear();
-
-    const preachedSermon = {
-      ...mockSermon,
-      isPreached: true,
-      preachDates: [
-        { id: 'pd1', date: '2024-01-15', church: { id: 'c1', name: 'Test Church', city: 'City' }, createdAt: '2024-01-01T00:00:00Z' },
-        { id: 'pd2', date: '2024-01-20', church: { id: 'c2', name: 'Another Church', city: 'City2' }, createdAt: '2024-01-01T00:00:00Z' }
-      ]
-    };
-
-    render(
-      <OptionMenu
-        sermon={preachedSermon}
-        onDelete={mockOnDelete}
-        onUpdate={mockOnUpdate}
-      />
-    );
-
-    // Open menu and click unmark button
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
-
-    // Verify preached dates were downgraded (not deleted)
-    await waitFor(() => {
-      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd1', { status: 'planned' });
-      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd2', { status: 'planned' });
-    });
-
-    // Verify sermon was updated with isPreached: false (dates stay in DB)
-    await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalledWith(
-        { ...preachedSermon, isPreached: false },
-        { isPreached: false }
-      );
-    });
-
-    // Verify cache invalidation
-    await waitFor(() => {
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ['calendarSermons'],
-        exact: false
-      });
-    });
-  });
-
-  it('marks sermon as preached using existing planned date without opening modal', async () => {
-    const plannedSermon: Sermon = {
-      ...mockSermon,
-      isPreached: false,
-      preachDates: [
-        {
-          id: 'pd-plan',
-          date: '2026-03-10',
-          status: 'planned',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          createdAt: '2026-02-01T00:00:00Z'
-        }
-      ]
-    };
-
-    render(
-      <OptionMenu
-        sermon={plannedSermon}
-        onDelete={jest.fn()}
-        onUpdate={jest.fn()}
-      />
-    );
-
-    // Open menu and click mark as preached
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    await waitFor(() => {
-      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd-plan', { status: 'preached' });
-      expect(updateSermon).toHaveBeenCalledWith(
-        { ...plannedSermon, isPreached: true },
-        { isPreached: true }
-      );
-    });
-
-    expect(screen.queryByTestId('preach-date-modal')).not.toBeInTheDocument();
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['calendarSermons'],
-      exact: false
-    });
-  });
-
-  it('opens modal to collect details when planned date has unspecified church', async () => {
-    const plannedSermon: Sermon = {
-      ...mockSermon,
-      isPreached: false,
-      church: { id: 'c-grace', name: 'Grace Chapel', city: 'Fresno' },
-      preachDates: [
-        {
-          id: 'pd-plan-unspecified',
-          date: '2026-03-10',
-          status: 'planned',
-          church: { id: 'church-unspecified', name: 'Church not specified', city: '' },
-          createdAt: '2026-02-01T00:00:00Z'
-        }
-      ]
-    };
-
-    render(
-      <OptionMenu
-        sermon={plannedSermon}
-        onDelete={jest.fn()}
-        onUpdate={jest.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    // This door hands over BOTH facts — the dated event as it stands, and the congregation
-    // the sermon is prepared for — and lets the form decide which to show. What the form
-    // then does with a stand-in is proven in its own suite (PreachDateModal.test.tsx),
-    // so the rule is asserted once, where it lives.
-    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
-    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', 'church-unspecified');
-    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-default-church-name', 'Grace Chapel');
-
-    fireEvent.click(screen.getByText('Save Date'));
-
-    await waitFor(() => {
-      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith(
-        'sermon-1',
-        'pd-plan-unspecified',
-        expect.objectContaining({
-          status: 'preached',
-          church: expect.objectContaining({ name: 'Test Church' }),
-          audience: 'Youth'
-        })
-      );
-      expect(preachDatesService.addPreachDate).not.toHaveBeenCalled();
-      expect(updateSermon).toHaveBeenCalledWith(
-        { ...plannedSermon, isPreached: true },
-        { isPreached: true }
-      );
-    });
-  });
-
-  it('opens preached modal when preferred date has empty church name', async () => {
-    const sermonWithMissingChurchName: Sermon = {
-      ...mockSermon,
-      preachDates: [
-        {
-          id: 'pd-empty-name',
-          date: '2026-03-11',
-          status: 'planned',
-          church: { id: 'c1', name: '   ', city: '' },
-          createdAt: '2026-02-01T00:00:00Z',
-        },
-      ],
-    };
-
-    render(
-      <OptionMenu
-        sermon={sermonWithMissingChurchName}
-        onDelete={jest.fn()}
-        onUpdate={jest.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
-    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', 'c1');
-  });
-
-  it('uses router refresh when onUpdate is not provided', async () => {
-    const plannedSermon: Sermon = {
-      ...mockSermon,
-      isPreached: false,
-      preachDates: [
-        {
-          id: 'pd-plan',
-          date: '2026-03-10',
-          status: 'planned',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          createdAt: '2026-02-01T00:00:00Z'
-        }
-      ]
-    };
-
-    render(<OptionMenu sermon={plannedSermon} />);
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    await waitFor(() => {
-      expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd-plan', { status: 'preached' });
-      expect(mockRouterRefresh).toHaveBeenCalled();
-    });
-  });
-
-  it('opens modal and adds preached date when no date exists', async () => {
-    render(
-      <OptionMenu
-        sermon={mockSermon}
-        onDelete={jest.fn()}
-        onUpdate={jest.fn()}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Save Date'));
-
-    await waitFor(() => {
-      expect(preachDatesService.addPreachDate).toHaveBeenCalledWith('sermon-1', expect.objectContaining({
-        status: 'preached'
-      }));
-      expect(updateSermon).toHaveBeenCalledWith(
-        { ...mockSermon, isPreached: true },
-        { isPreached: true }
-      );
-    });
-  });
-
   it.each([false, true])('uses one pinned engine form to toggle preached=%s without legacy writes', async preached => {
     const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
@@ -887,130 +444,6 @@ describe('OptionMenu Component', () => {
     expect(defaultProps.onDelete).not.toHaveBeenCalled();
   });
 
-  it('uses optimistic delete action when provided', async () => {
-    const optimisticActions = buildOptimisticActions();
-
-    render(
-      <OptionMenu
-        {...defaultProps}
-        optimisticActions={optimisticActions}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('Delete'));
-    await answerDeleteQuestion('confirm');
-
-    await waitFor(() => {
-      expect(optimisticActions.deleteSermon).toHaveBeenCalledWith(mockSermon);
-    });
-
-    expect(deleteSermon).not.toHaveBeenCalled();
-  });
-
-  it('uses optimistic mark action for planned preferred date', async () => {
-    const optimisticActions = buildOptimisticActions();
-    const plannedSermon: Sermon = {
-      ...mockSermon,
-      preachDates: [
-        {
-          id: 'pd-plan-optimistic',
-          date: '2026-07-10',
-          status: 'planned',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-
-    render(
-      <OptionMenu
-        sermon={plannedSermon}
-        optimisticActions={optimisticActions}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    await waitFor(() => {
-      expect(optimisticActions.markAsPreachedFromPreferred).toHaveBeenCalledWith(
-        plannedSermon,
-        expect.objectContaining({ id: 'pd-plan-optimistic' })
-      );
-    });
-
-    expect(preachDatesService.updatePreachDate).not.toHaveBeenCalledWith(
-      'sermon-1',
-      'pd-plan-optimistic',
-      expect.objectContaining({ status: 'preached' })
-    );
-  });
-
-  it('uses optimistic unmark action for preached sermon', async () => {
-    const optimisticActions = buildOptimisticActions();
-    const preachedSermon: Sermon = {
-      ...mockSermon,
-      isPreached: true,
-      preachDates: [
-        {
-          id: 'pd-preached',
-          date: '2026-07-10',
-          status: 'preached',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-
-    render(
-      <OptionMenu
-        sermon={preachedSermon}
-        optimisticActions={optimisticActions}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
-
-    await waitFor(() => {
-      expect(optimisticActions.unmarkAsPreached).toHaveBeenCalledWith(preachedSermon);
-    });
-
-    expect(updateSermon).not.toHaveBeenCalledWith(expect.objectContaining({ isPreached: false }));
-  });
-
-  it('uses optimistic savePreachDate action from modal flow', async () => {
-    const optimisticActions = buildOptimisticActions();
-
-    render(
-      <OptionMenu
-        sermon={mockSermon}
-        optimisticActions={optimisticActions}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Save Date'));
-
-    await waitFor(() => {
-      expect(optimisticActions.savePreachDate).toHaveBeenCalledWith(
-        mockSermon,
-        expect.objectContaining({
-          date: '2024-01-21',
-          church: expect.objectContaining({ name: 'Test Church' }),
-          audience: 'Youth',
-        }),
-        null
-      );
-    });
-
-    expect(preachDatesService.addPreachDate).not.toHaveBeenCalled();
-  });
-
   it('disables menu interactions while sync is pending', () => {
     render(
       <OptionMenu
@@ -1023,60 +456,236 @@ describe('OptionMenu Component', () => {
     expect(menuButton).toBeDisabled();
   });
 
-  it('leaves an optimistic mark refusal to the row badge and only closes the menu', async () => {
-    /**
-     * The badge on the sermon row reads the same failed mutation and reports it with the
-     * operation, a retry and a dismiss. An `alert` on top of that was the same refusal
-     * told twice — and the second telling offered no recovery, just an interruption.
-     */
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    const optimisticActions = buildOptimisticActions({
-      markAsPreachedFromPreferred: jest.fn(() => persistedWrite(Promise.reject(new Error('mark failed')))),
-    });
-    const plannedSermon: Sermon = {
-      ...mockSermon,
-      preachDates: [
-        {
-          id: 'pd-plan-error',
-          date: '2026-08-01',
-          status: 'planned',
-          church: { id: 'c1', name: 'Test Church', city: 'City' },
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-    };
+});
 
-    render(
-      <OptionMenu
-        sermon={plannedSermon}
-        optimisticActions={optimisticActions}
-      />
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
-
-    await waitFor(() => {
-      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
-    });
-
-    expect(alertSpy).not.toHaveBeenCalled();
-    alertSpy.mockRestore();
+/**
+ * SERMONS ARE ENGINE-OWNED: every action below runs against the REAL engine (only I/O is
+ * replaced) and asserts on the stored sermon document, never on a legacy writer's arguments.
+ */
+describe('OptionMenu on the data engine', () => {
+  const resource = { collection: 'sermons', id: 'sermon-1' };
+  const noteIds = ['note-1', 'note-2', 'mine', 'from-phone'];
+  const baseSermon: Sermon = { id: 'sermon-1', title: 'Test Sermon', verse: 'John 3:16', date: '2023-01-01', thoughts: [], userId: 'user-1' };
+  const plannedDate = (church: { id: string; name: string; city: string }) => ({
+    id: 'pd-plan', date: '2026-03-10', status: 'planned' as const, church, createdAt: '2026-02-01T00:00:00Z',
   });
 
-  it('DOES speak when there is no optimistic row to speak for it', async () => {
-    // The fallback path writes straight through `updateSermon`: no mutation, no badge,
-    // nobody else. Silence here would be the original defect — a person pressing a menu
-    // item, nothing happening, and no reason given.
-    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    (updateSermon as jest.Mock).mockRejectedValueOnce(new Error('unmark failed'));
+  /** `stored` is what the server holds; `shown` is the copy the screen hands the menu. */
+  function setup(shown: Sermon, stored: Sermon = shown, props: Partial<React.ComponentProps<typeof OptionMenu>> = {}) {
+    const { id: _id, ...value } = stored;
+    const harness = membershipEngineHarness([
+      { resource, value: value as never, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } },
+      ...noteIds.map((note): ResourceSnapshot => ({ resource: { collection: 'studyNotes', id: note }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+        value: { userId: 'user-1', title: note, content: '', scriptureRefs: [], tags: [], isDraft: false } })),
+    ]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><OptionMenu sermon={shown} {...props} /></DataEngineProvider>);
+    return { harness, view, rerender: (next: Sermon) => view.rerender(<DataEngineProvider><OptionMenu sermon={next} {...props} /></DataEngineProvider>) };
+  }
+  const stored = (harness: ReturnType<typeof setup>['harness']) => harness.read(resource).value!;
+  const deliver = (harness: ReturnType<typeof setup>['harness']) => act(async () => { await harness.engine.retry(); await settleEngine(); });
+  const openMenu = () => fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+  const settle = () => act(async () => { await settleEngine(); });
+  async function saveEngineForm() {
+    const save = await screen.findByRole('button', { name: 'buttons.save' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await settle();
+    fireEvent.click(save);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'buttons.save' })).not.toBeInTheDocument());
+  }
+  const noteBox = () => (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLInputElement;
 
-    render(<OptionMenu {...defaultProps} sermon={{ ...mockSermon, isPreached: true }} />);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
+  });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
+  describe('marking and unmarking preached', () => {
+    it('keeps dates but downgrades them to planned when unmarking a preached sermon', async () => {
+      const church = { id: 'c1', name: 'Test Church', city: 'City' };
+      const preached: Sermon = { ...baseSermon, isPreached: true, preachDates: [
+        { id: 'pd1', date: '2024-01-15', status: 'preached', church, createdAt: '2024-01-01T00:00:00Z' },
+        { id: 'pd2', date: '2024-01-20', status: 'preached', church: { id: 'c2', name: 'Another Church', city: 'City2' }, createdAt: '2024-01-01T00:00:00Z' },
+      ] };
+      const { harness, view } = setup(preached);
+      openMenu();
+      fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
+      await saveEngineForm();
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).isPreached).toBe(false));
+      expect(stored(harness).preachDates).toEqual([
+        expect.objectContaining({ id: 'pd1', status: 'planned' }), expect.objectContaining({ id: 'pd2', status: 'planned' }),
+      ]);
+      view.unmount();
+    });
 
-    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('optionMenu.updateError'));
-    alertSpy.mockRestore();
+    it('marks the sermon preached on its existing planned date, keeping that date and its church', async () => {
+      const planned: Sermon = { ...baseSermon, isPreached: false, preachDates: [plannedDate({ id: 'c1', name: 'Test Church', city: 'City' })] };
+      const { harness, view } = setup(planned);
+      openMenu();
+      fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+      await screen.findByLabelText('Date');
+      expect(screen.getByLabelText('Church')).toHaveValue('Test Church');
+      await saveEngineForm();
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).isPreached).toBe(true));
+      expect(stored(harness).preachDates).toEqual([expect.objectContaining({ id: 'pd-plan', date: '2026-03-10', status: 'preached', church: expect.objectContaining({ name: 'Test Church' }) })]);
+      view.unmount();
+    });
+
+    it('collects details when the planned date holds the stand-in church, offering the sermon\'s own congregation', async () => {
+      const planned: Sermon = { ...baseSermon, isPreached: false, church: { id: 'c-grace', name: 'Grace Chapel', city: 'Fresno' },
+        preachDates: [plannedDate({ id: 'church-unspecified', name: 'Church not specified', city: '' })] };
+      const { harness, view } = setup(planned);
+      openMenu();
+      fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+      await waitFor(() => expect(screen.getByLabelText('Church')).toHaveValue('Grace Chapel'));
+
+      fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'Test Church' } });
+      fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Youth' } });
+      await saveEngineForm();
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).isPreached).toBe(true));
+      expect(stored(harness).preachDates).toEqual([expect.objectContaining({ id: 'pd-plan', status: 'preached', audience: 'Youth', church: expect.objectContaining({ name: 'Test Church' }) })]);
+      view.unmount();
+    });
+
+    it('asks for a church before saving when the preferred date has an empty church name', async () => {
+      const planned: Sermon = { ...baseSermon, preachDates: [plannedDate({ id: 'c1', name: '   ', city: '' })] };
+      const { view } = setup(planned);
+      openMenu();
+      fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+      const date = await screen.findByLabelText('Date');
+      await waitFor(() => expect(date).toBeEnabled());
+      await settle();
+      expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
+      fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'Named now' } });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'buttons.save' })).toBeEnabled());
+      view.unmount();
+    });
+
+    it('adds a preached date when the sermon has none', async () => {
+      const { harness, view } = setup(baseSermon);
+      openMenu();
+      fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
+      const date = await screen.findByLabelText('Date');
+      await waitFor(() => expect(date).toBeEnabled());
+      await settle();
+      fireEvent.change(date, { target: { value: '2024-01-21' } });
+      fireEvent.change(screen.getByLabelText('Church'), { target: { value: 'Test Church' } });
+      fireEvent.change(screen.getByLabelText('calendar.audience'), { target: { value: 'Youth' } });
+      await saveEngineForm();
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).isPreached).toBe(true));
+      expect(stored(harness).preachDates).toEqual([expect.objectContaining({ date: '2024-01-21', status: 'preached', audience: 'Youth', church: expect.objectContaining({ name: 'Test Church' }) })]);
+      view.unmount();
+    });
+  });
+
+  describe('deleting', () => {
+    it('SPEAKS when the engine cannot take the deletion: the screen is not told and the person gets a reason', async () => {
+      // No engine under the menu: nothing reports for this action, so silence would be the defect.
+      const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+      const onDelete = jest.fn();
+      render(<OptionMenu sermon={baseSermon} onDelete={onDelete} />);
+      openMenu();
+      fireEvent.click(screen.getByText('Delete'));
+      await answerDeleteQuestion('confirm');
+      await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Error deleting sermon'));
+      expect(onDelete).not.toHaveBeenCalled();
+      alertSpy.mockRestore();
+    });
+  });
+
+  describe('source-note links', () => {
+    const openPicker = (label: string) => { openMenu(); fireEvent.click(screen.getByText(label)); };
+
+    it('re-arms the proof after a refusal, so a deliberate second press can win', async () => {
+      // Found in the browser, not by a unit test: adopting the stored LIST is only half the exit. The
+      // second press must also vouch for something the engine recognises, or the same click is
+      // refused for ever — a dead end dressed as a safety feature.
+      const shown: Sermon = { ...baseSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
+      const { harness, view } = setup(shown, { ...baseSermon, sourceNoteIds: ['from-phone'] });
+      openPicker('sermon.sourceNotes.menuEdit');
+      await settle();
+
+      // Tick another note, or there is nothing to save and the writer is skipped by design.
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      // Refused: the stored list is handed back and shown, and nothing was sent.
+      await screen.findByTestId('missing-note-row');
+      await waitFor(() => expect(noteBox()).toBeEnabled());
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      expect(stored(harness).sourceNoteIds).toEqual(['from-phone']);
+
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+      await deliver(harness);
+      await waitFor(() => expect(stored(harness).sourceNoteIds).toEqual(['from-phone', 'note-2']));
+      view.unmount();
+    });
+
+    it('keeps the opening proof even if the sermon underneath refreshes while the picker is open', async () => {
+      // The picker holds the ticks it opened with; if the proof were re-read from the refreshed
+      // prop, the guard would bless overwriting whatever the other device just stored.
+      const opened: Sermon = { ...baseSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
+      const { harness, view, rerender } = setup(opened, { ...baseSermon, sourceNoteIds: ['from-phone'] });
+      openPicker('sermon.sourceNotes.menuEdit');
+      await settle();
+
+      // Another device's write arrives and the page re-renders underneath the open dialog.
+      rerender({ ...baseSermon, sourceNoteIds: ['from-phone'], rev: { core: 9 } });
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+      await screen.findByTestId('missing-note-row');
+      await deliver(harness);
+      expect(stored(harness).sourceNoteIds).toEqual(['from-phone']);
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      view.unmount();
+    });
+
+    it('still writes when the person toggles away and back to the same set', async () => {
+      // "Same as when I opened it" is not "nothing to do": a deliberate choice must reach the engine
+      // and tell the screen. Without `force` this press would be swallowed.
+      const onUpdate = jest.fn();
+      const shown: Sermon = { ...baseSermon, sourceNoteIds: ['note-2'], rev: { core: 3 } };
+      const { harness, view } = setup(shown, shown, { onUpdate });
+      openPicker('sermon.sourceNotes.menuEdit');
+      await settle();
+
+      // Re-queried each time: the row re-renders between clicks and a captured node can detach.
+      fireEvent.click(noteBox()); // untick
+      fireEvent.click(noteBox()); // tick again — back to the opening set
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+      await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ sourceNoteIds: ['note-2'] })));
+      await deliver(harness);
+      expect(stored(harness).sourceNoteIds).toEqual(['note-2']);
+      view.unmount();
+    });
+
+    it('keeps the copy it was given whole — a link save must not drop detail-only fields', async () => {
+      // A design that chose between a "newer" list copy and a fuller detail copy by one counter could
+      // drop `scratch`/`thoughts` from the screen. The menu applies a PATCH to the copy its own screen
+      // handed it, so there is nothing to choose.
+      const onUpdate = jest.fn();
+      const fullCopy = { ...baseSermon, sourceNoteIds: [], rev: { core: 3 },
+        scratch: [{ id: 'sc1', text: 'only the detail copy has this', createdAt: '2026-08-16' }] } as Sermon;
+      const { harness, view } = setup(fullCopy, { ...baseSermon, sourceNoteIds: [] }, { onUpdate });
+      openPicker('sermon.sourceNotes.menuAdd');
+      await settle();
+      fireEvent.click(noteBox());
+      fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+      await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+      const published = onUpdate.mock.calls[0][0] as Sermon;
+      expect(published.sourceNoteIds).toEqual(['note-2']);
+      expect(published.scratch).toHaveLength(1);
+      await deliver(harness);
+      expect(stored(harness).sourceNoteIds).toEqual(['note-2']);
+      view.unmount();
+    });
   });
 });

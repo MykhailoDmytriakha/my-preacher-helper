@@ -1,3 +1,4 @@
+export {};
 // Mock dependencies - imports are used in jest.mock() setup below
 // Import the mocked module to access the spies
 
@@ -83,6 +84,17 @@ jest.mock('@/data-engine/server', () => ({
   processCommand: jest.fn(),
 }));
 
+// Sermons are engine-owned everywhere: production skips the legacy callback and calls
+// editOwnedDocument. writeOwnedDocument calls it inside its own module, so the road is replaced at
+// writeOwnedDocument: it forwards to mockEditOwnedDocument (the route's real transform, applied to a
+// seeded document). The engine-document test below restores the real road over the mocked command transport.
+const mockEditOwnedDocument = jest.fn();
+const mockWriteOwnedDocument = jest.fn();
+jest.mock('@/data-engine/serverEdit.server', () => ({
+  ...jest.requireActual('@/data-engine/serverEdit.server'),
+  writeOwnedDocument: (...args: unknown[]) => mockWriteOwnedDocument(...args),
+}));
+
 // Mock UUID
 jest.mock('uuid', () => ({
   v4: jest.fn(() => 'mock-uuid'),
@@ -129,6 +141,12 @@ describe('Thoughts API POST', () => {
     (firestoreClient.getCustomTags as jest.Mock).mockResolvedValue([]);
     (sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'user-1', thoughts: [] });
     (openAIClient.createTranscription as jest.Mock).mockResolvedValue(mockTranscription);
+    mockEditOwnedDocument.mockReset();
+    mockWriteOwnedDocument.mockReset();
+    mockWriteOwnedDocument.mockImplementation(async ({ owner, resource, engine }: { owner: string; resource: unknown; engine: unknown }) =>
+      mockEditOwnedDocument(owner, resource, engine as never));
+    mockEditOwnedDocument.mockImplementation(async (_owner: string, _resource: unknown, transform: (doc: Record<string, unknown>) => Record<string, unknown>) =>
+      transform({ userId: 'user-1', thoughts: [], structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } }));
   });
 
   it('returns 401 without a bearer token and never reaches transcription', async () => {
@@ -199,23 +217,11 @@ describe('Thoughts API POST', () => {
       id: 'mock-uuid',
     }));
 
-    // Verify it was saved using sermonsRepository.updateSermonData
-    expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledWith(
-      mockSermonId,
-      expect.objectContaining({
-        thoughts: expect.objectContaining({
-          elements: expect.arrayContaining([
-            expect.objectContaining({
-              text: mockTranscription,
-              tags: []
-            })
-          ])
-        })
-      }),
-      // Third argument names the aggregate whose counter this write advances, so
-      // the server cannot silently change data while the number stays put.
-      'thoughts'
-    );
+    // Verify it was saved through the engine door, as the verified caller, on this sermon.
+    expect(mockEditOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: mockSermonId }, expect.any(Function));
+    const saved = await mockEditOwnedDocument.mock.results[0].value;
+    expect(saved.thoughts).toEqual([expect.objectContaining({ text: mockTranscription, tags: [] })]);
+    expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
 
     spyConsoleWarn.mockRestore();
     spyConsoleLog.mockRestore();
@@ -245,19 +251,18 @@ describe('Thoughts API POST', () => {
       text: "Formatted text",
       tags: ["Примеры"]
     }));
+    expect(mockEditOwnedDocument).toHaveBeenCalledWith('user-1', { collection: 'sermons', id: mockSermonId }, expect.any(Function));
   });
 
   it('lands the voice thought on an engine-owned sermon through the command door, placed in the structure', async () => {
     process.env.DATA_ENGINE_COLLECTIONS = 'sermons';
     try {
       const engineServer = await import('@/data-engine/server');
+      mockWriteOwnedDocument.mockImplementation(jest.requireActual('@/data-engine/serverEdit.server').writeOwnedDocument);
       const metadata = { protocol: 1, generation: 'g1', revision: 3, deleted: false };
       const value = { userId: 'user-1', title: 'Grace', verse: 'John 1:14', date: '2026-09-01', thoughts: [],
         structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } };
       sermonsRepoMock.sermonsRepository.fetchSermonById.mockResolvedValueOnce({ ...value, _dataEngine: metadata });
-      // The legacy bridge refuses an engine-owned document inside its own transaction.
-      sermonsRepoMock.sermonsRepository.updateSermonData.mockRejectedValueOnce(
-        Object.assign(new Error('data-engine-required'), { code: 'data-engine-required', status: 426 }));
       (engineServer.readDocument as jest.Mock).mockResolvedValue({ resource: { collection: 'sermons', id: mockSermonId }, value, metadata });
       (engineServer.processCommand as jest.Mock).mockImplementation(async (_owner: string, command: { operationId: string }) => ({
         kind: 'acknowledged', operationId: command.operationId,
@@ -274,6 +279,8 @@ describe('Thoughts API POST', () => {
       const response = await POST(createMockRequest(formData));
 
       expect(response.status).toBe(200);
+      // Sermons are closed to legacy writers: the old repository write is never attempted.
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
       const [owner, command] = (engineServer.processCommand as jest.Mock).mock.calls[0];
       expect(owner).toBe('user-1');
       expect(command).toMatchObject({ kind: 'update', owner: 'user-1', generation: 'g1',

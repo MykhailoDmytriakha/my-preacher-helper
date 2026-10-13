@@ -32,6 +32,17 @@ jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
   getRequiredAuthenticatedUid: jest.fn(),
 }));
 
+// Sermons are engine-owned everywhere: production skips the legacy callback and calls
+// editOwnedDocument. writeOwnedDocument calls it inside its own module, so the road is replaced at
+// writeOwnedDocument: it forwards to mockEditOwnedDocument, which applies the route's real transform
+// to a seeded current document (the caller's sermon).
+const mockEditOwnedDocument = jest.fn();
+jest.mock('@/data-engine/serverEdit.server', () => ({
+  ...jest.requireActual('@/data-engine/serverEdit.server'),
+  writeOwnedDocument: ({ owner, resource, engine }: { owner: string; resource: unknown; engine: unknown }) =>
+    mockEditOwnedDocument(owner, resource, engine),
+}));
+
 jest.mock('@/api/repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
@@ -136,6 +147,9 @@ describe.each(routeCases)('$name authorization and metering identity', ({ invoke
       outline: { introduction: [], main: [], conclusion: [] },
     });
     (sermonsRepository.updateSermonData as jest.Mock).mockResolvedValue(undefined);
+    mockEditOwnedDocument.mockReset();
+    mockEditOwnedDocument.mockImplementation(async (_owner: string, _resource: unknown, transform: (doc: Record<string, unknown>) => Record<string, unknown>) =>
+      transform({ id: 'sermon-1', userId: 'caller-uid', title: 'Sermon', verse: 'John 3:16', thoughts: [] }));
     ai.mockResolvedValue(aiResult);
   });
 
@@ -160,6 +174,7 @@ describe.each(routeCases)('$name authorization and metering identity', ({ invoke
     expect(response.status).toBe(403);
     expect(ai).not.toHaveBeenCalled();
     expect(sermonsRepository.updateSermonData).not.toHaveBeenCalled();
+    expect(mockEditOwnedDocument).not.toHaveBeenCalled();
   });
 
   it('uses the authenticated caller uid for the AI/metering path', async () => {
@@ -168,5 +183,11 @@ describe.each(routeCases)('$name authorization and metering identity', ({ invoke
     expect(response.status).toBe(200);
     expect(ai).toHaveBeenCalledTimes(1);
     expect(ai.mock.calls[0]).toContain('caller-uid');
+    // A route that stores its result edits the caller's sermon through the engine door, never the legacy repository.
+    for (const [owner, resource] of mockEditOwnedDocument.mock.calls) {
+      expect(owner).toBe('caller-uid');
+      expect(resource).toEqual({ collection: 'sermons', id: 'sermon-1' });
+    }
+    expect(sermonsRepository.updateSermonData).not.toHaveBeenCalled();
   });
 });

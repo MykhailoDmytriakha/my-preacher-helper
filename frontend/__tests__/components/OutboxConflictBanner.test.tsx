@@ -123,13 +123,22 @@ describe('OutboxConflictBanner', () => {
     expect(listOutbox('u1')).toHaveLength(1);
   });
 
-  it('discards the intent only when the person takes the other version', async () => {
+  it('shows the other version first and discards the intent only when the person confirms keeping it', async () => {
+    // Sermons are engine-owned: "take theirs" reads the server's copy through the engine and
+    // shows it; the refused text goes only after the person confirms, and nothing is ever written.
+    mockServerRead.mockResolvedValue({ resource: { collection: 'sermons', id: 's1' }, value: { verse: 'theirs on the server' }, metadata: null });
     conflicted();
     render(<OutboxConflictBanner />);
     await screen.findByText('freshness.conflictTitle');
 
     fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
 
+    expect(await screen.findByText('freshness.theirsNowTitle')).toBeInTheDocument();
+    expect(screen.getByText(/verse: theirs on the server/)).toBeInTheDocument();
+    expect(mockServerRead).toHaveBeenCalledWith({ collection: 'sermons', id: 's1' });
+    expect(listOutbox('u1')).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('freshness.confirmTakeTheirs'));
     await waitFor(() => expect(listOutbox('u1')).toHaveLength(0));
     expect(mockGuardedWrite).not.toHaveBeenCalled();
   });

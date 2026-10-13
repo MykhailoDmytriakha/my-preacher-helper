@@ -1,11 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import { useAuth } from '@/providers/AuthProvider';
-import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { getSermons, updateSermon } from '@services/sermon.service';
+import { settleEngine } from '../../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../../test-utils/membershipEngineHarness';
+import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import {
@@ -16,6 +19,7 @@ import {
   useSourceNotes,
 } from '../useSermonNoteLinks';
 
+import type { ResourceSnapshot } from '@/data-engine/types';
 import type { Sermon, StudyNote } from '@/models/models';
 
 /**
@@ -29,7 +33,9 @@ import type { Sermon, StudyNote } from '@/models/models';
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: jest.fn() }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 jest.mock('@services/studies.service', () => ({ getStudyNotes: jest.fn() }));
-jest.mock('@services/sermon.service', () => ({ getSermons: jest.fn(), updateSermon: jest.fn() }));
+jest.mock('@services/sermon.service', () => ({ getSermons: jest.fn() }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), message: jest.fn() } }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
@@ -38,7 +44,6 @@ jest.mock('react-i18next', () => ({
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockGetStudyNotes = getStudyNotes as jest.MockedFunction<typeof getStudyNotes>;
 const mockGetSermons = getSermons as jest.MockedFunction<typeof getSermons>;
-const mockUpdateSermon = updateSermon as jest.MockedFunction<typeof updateSermon>;
 
 /** Wrapper plus the client itself: the reverse side reads this cache, so tests can inspect it. */
 const harness = () => {
@@ -183,137 +188,155 @@ describe('openingContextOf — what an editor may vouch for', () => {
   });
 });
 
+/**
+ * THE WRITE runs on the data engine: the link list is committed through a document action on the
+ * stored sermon (real engine, only I/O replaced), so these tests assert on the stored document and
+ * on what the hook hands back, not on a legacy writer's arguments.
+ */
 describe('useSourceNoteLink — the write', () => {
-  it('states the revision and the OPENING value, keeping undefined apart from empty', async () => {
-    const target = sermon('s1'); // never linked: the server holds nothing in this field
-    mockUpdateSermon.mockResolvedValue({ ...target, sourceNoteIds: ['n1'] });
-    const onUpdate = jest.fn();
+  const resource = { collection: 'sermons', id: 's1' };
+  const stored = (links?: string[], title = 'Sermon s1'): ResourceSnapshot => ({
+    resource, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    value: { userId: 'u1', title, verse: 'John 1:1', date: '2026-08-10T00:00:00.000Z', thoughts: [], ...(links ? { sourceNoteIds: links } : {}) },
+  });
 
-    const { result } = renderHook(() => useSourceNoteLink(target, onUpdate), {
-      wrapper: wrapper(),
-    });
-    const saved = await result.current.setSourceNotes(['n1'], openingContextOf(target));
+  /** Real engine under the hook; `snapshots` is what the "server" holds. */
+  const engineHarness = (snapshots: ResourceSnapshot[] = [stored()]) => {
+    // A link may only name a live note the person owns, so the notes the tests link to exist.
+    const notes = ['n1', 'n2', 'n3', 'mine', 'extra', 'from-the-phone'].map((id): ResourceSnapshot => ({
+      resource: { collection: 'studyNotes', id }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+      value: { userId: 'u1', title: id, content: '', scriptureRefs: [], tags: [], isDraft: false },
+    }));
+    const engine = membershipEngineHarness([...snapshots, ...notes]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(engine.createBrowser);
+    const { client } = harness();
+    const Wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <DataEngineProvider>{children}</DataEngineProvider>
+      </QueryClientProvider>
+    );
+    return { engine, client, wrapper: Wrapper };
+  };
+  const storedLinks = (engine: ReturnType<typeof membershipEngineHarness>) => engine.read(resource).value?.sourceNoteIds;
+  const deliver = (engine: ReturnType<typeof membershipEngineHarness>) =>
+    act(async () => { await engine.engine.retry(); await settleEngine(); });
+  /** The hook is ready to commit once the engine provider has produced a browser engine. */
+  const ready = async (result: { current: ReturnType<typeof useSourceNoteLink> }) => {
+    await act(async () => { await settleEngine(); });
+    return result;
+  };
+
+  beforeEach(() => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
+
+  it('stores the chosen list on the document and reports a patch, keeping undefined apart from empty', async () => {
+    const target = sermon('s1'); // never linked: the stored document has no such field
+    const { engine, wrapper } = engineHarness();
+    const onPatched = jest.fn();
+
+    const { result } = renderHook(() => useSourceNoteLink(target, onPatched), { wrapper });
+    await ready(result);
+    const saved = await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target)));
+    await deliver(engine);
 
     expect(saved.outcome).toBe('saved');
-    expect(mockUpdateSermon).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 's1', sourceNoteIds: ['n1'] }),
-      { sourceNoteIds: ['n1'] },
-      3,
-      { sourceNoteIds: null }
-    );
-    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ sourceNoteIds: ['n1'] }));
+    await waitFor(() => expect(storedLinks(engine)).toEqual(['n1']));
+    expect(openingContextOf(target).noteIds).toBeNull();
+    expect(onPatched).toHaveBeenCalledWith({ sermonId: 's1', sourceNoteIds: ['n1'] });
   });
 
-  it('vouches for the list the DIALOG opened with, even after the sermon underneath refreshed', async () => {
-    // The defect this locks out: the picker still holds the old ticks while this component
-    // re-renders with the phone's newer sermon. Sending the NEW revision with the OLD selection
-    // would make the guard bless an overwrite of the phone's choice.
+  it('hands back a list chosen elsewhere since the dialog opened, and never overwrites it', async () => {
+    // The defect this locks out: the picker still holds the old ticks while the stored sermon
+    // moved on (the phone chose n2). Saving the old selection must not replace the phone's choice.
     const opened = sermon('s1', ['n1'], 3);
     const opening = openingContextOf(opened);
-    const refreshed = sermon('s1', ['n2'], 7);
-    mockUpdateSermon.mockRejectedValue(
-      new StaleWriteError('core', 3, 7, { sourceNoteIds: ['n2'] })
-    );
+    const { engine, client, wrapper } = engineHarness([stored(['n2'])]);
+    client.setQueryData(['sermons', 'u1'], [opened]);
 
-    const { result, rerender } = renderHook(({ s }: { s: Sermon }) => useSourceNoteLink(s), {
-      wrapper: wrapper(),
-      initialProps: { s: opened },
-    });
-    rerender({ s: refreshed });
+    const { result } = renderHook(() => useSourceNoteLink(opened), { wrapper });
+    await ready(result);
     // The person ticked one more note in the dialog, which is why they are saving at all.
-    const outcome = await result.current.setSourceNotes(['n1', 'n3'], opening);
+    const outcome = await act(() => result.current.setSourceNotes(['n1', 'n3'], opening));
+    await deliver(engine);
 
-    expect(mockUpdateSermon).toHaveBeenCalledWith(
-      expect.anything(),
-      { sourceNoteIds: ['n1', 'n3'] },
-      3, // the revision at OPEN, not the refreshed 7
-      { sourceNoteIds: ['n1'] } // the list at OPEN, not the refreshed ['n2']
-    );
     expect(outcome.outcome).toBe('stale');
     expect(outcome.serverNoteIds).toEqual(['n2']);
-  });
-
-  it('merges the LIST entity in place, without dragging the rest of the saved snapshot in', async () => {
-    const startedFrom = sermon('s1', [], 3, 'Title as the save began');
-    // Firestore accepted the write, and the service answers with the snapshot the save carried.
-    mockUpdateSermon.mockResolvedValue({
-      ...startedFrom,
-      sourceNoteIds: ['n1'],
-      updatedAt: '2026-08-16T23:00:00.000Z',
-      rev: { core: 4 },
-    });
-    const { client, wrapper: Wrapper } = harness();
-    // Meanwhile the list learned a newer title from somewhere else.
-    client.setQueryData(['sermons', 'u1'], [sermon('s1', [], 3, 'Renamed in the list')]);
-
-    const { result } = renderHook(() => useSourceNoteLink(startedFrom), { wrapper: Wrapper });
-    await result.current.setSourceNotes(['n1'], openingContextOf(startedFrom));
-
-    const cached = client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0];
-    expect(cached?.sourceNoteIds).toEqual(['n1']);
-    // Writing the whole entity back would have reverted this title, and `refetchType: 'none'`
-    // would then have persisted the wrong copy to disk.
-    expect(cached?.title).toBe('Renamed in the list');
-    expect(cached?.rev?.core).toBe(4);
-  });
-
-  it('adopts the server list on a refusal, so a second press is not doomed to refuse again', async () => {
-    const target = sermon('s1', ['mine'], 3);
-    mockUpdateSermon.mockRejectedValue(
-      new StaleWriteError('core', 3, 9, { sourceNoteIds: ['from-the-phone'] })
-    );
-    const { client, wrapper: Wrapper } = harness();
-    client.setQueryData(['sermons', 'u1'], [target]);
-
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    const outcome = await result.current.setSourceNotes(['mine', 'extra'], openingContextOf(target));
-
-    expect(outcome).toEqual({
-      outcome: 'stale',
-      serverNoteIds: ['from-the-phone'],
-      serverRevision: 9,
-    });
-    const cached = client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0];
-    expect(cached?.sourceNoteIds).toEqual(['from-the-phone']);
-    expect(cached?.rev?.core).toBe(9);
+    expect(storedLinks(engine)).toEqual(['n2']);
+    expect(engine.transport.send).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith('freshness.staleSaveToast');
   });
 
-  it('treats an offline write as QUEUED — the choice is durable, so it is shown, not refused', async () => {
-    const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockRejectedValue(new OfflineQueuedError('core'));
-    const { client, wrapper: Wrapper } = harness();
+  it('adopts the stored list into the cached list on a refusal, so the screen agrees with it', async () => {
+    const target = sermon('s1', ['mine'], 3);
+    const { client, wrapper } = engineHarness([stored(['from-the-phone'])]);
     client.setQueryData(['sermons', 'u1'], [target]);
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    const outcome = await result.current.setSourceNotes(['n1'], openingContextOf(target));
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    const outcome = await act(() => result.current.setSourceNotes(['mine', 'extra'], openingContextOf(target)));
 
-    expect(outcome.outcome).toBe('queued');
-    // The intent is already in the outbox and will replay through the same guard, so the screen
-    // must agree with it; anything else invites a second press that queues a duplicate.
+    expect(outcome).toEqual({ outcome: 'stale', serverNoteIds: ['from-the-phone'] });
+    expect(client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0].sourceNoteIds).toEqual(['from-the-phone']);
+  });
+
+  it('accepts a second press that matches what is stored now, instead of refusing again', async () => {
+    const target = sermon('s1', ['mine'], 3);
+    const { engine, wrapper } = engineHarness([stored(['from-the-phone'])]);
+
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    const first = await act(() => result.current.setSourceNotes(['mine', 'extra'], openingContextOf(target)));
+    expect(first.outcome).toBe('stale');
+    // The dialog adopted the stored list and the person now picks from there.
+    const adopted = openingContextOf(sermon('s1', first.serverNoteIds, 3));
+    const second = await act(() => result.current.setSourceNotes(['from-the-phone', 'extra'], adopted));
+    await deliver(engine);
+
+    expect(second.outcome).toBe('saved');
+    await waitFor(() => expect(storedLinks(engine)).toEqual(['from-the-phone', 'extra']));
+  });
+
+  it('keeps the choice when the device is offline: stored locally, shown, replayed later, never refused', async () => {
+    const target = sermon('s1', [], 3);
+    const { engine, client, wrapper } = engineHarness([stored([])]);
+    client.setQueryData(['sermons', 'u1'], [target]);
+    jest.mocked(engine.transport.send).mockRejectedValue(new Error('offline'));
+
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    const outcome = await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target)));
+
+    // The engine accepts the write durably, so the dialog is told "saved": delivery is the
+    // engine's business and there is nothing left for a Cancel button to cancel.
+    expect(outcome.outcome).toBe('saved');
     expect(client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0].sourceNoteIds).toEqual(['n1']);
-    expect(toast.message).toHaveBeenCalledWith('freshness.queuedPending');
+    expect(await engine.commits.list('u1')).toHaveLength(1);
     expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('writes nothing when the selection did not change', async () => {
     const target = sermon('s1', ['n1', 'n2'], 3);
+    const { engine, wrapper } = engineHarness([stored(['n1', 'n2'])]);
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: wrapper() });
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
     // Same set, different order — still nothing to save.
-    const outcome = await result.current.setSourceNotes(['n2', 'n1'], openingContextOf(target));
+    const outcome = await act(() => result.current.setSourceNotes(['n2', 'n1'], openingContextOf(target)));
+    await deliver(engine);
 
     expect(outcome.outcome).toBe('unchanged');
-    expect(mockUpdateSermon).not.toHaveBeenCalled();
+    expect(engine.transport.send).not.toHaveBeenCalled();
+    expect(await engine.commits.list('u1')).toEqual([]);
   });
 
-  it('says the save failed on an unknown error instead of failing silently', async () => {
+  it('says the save failed instead of failing silently when the sermon no longer exists', async () => {
     const target = sermon('s1');
-    mockUpdateSermon.mockRejectedValue(new Error('network exploded'));
+    const { wrapper } = engineHarness([]);
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: wrapper() });
-    const outcome = await result.current.setSourceNotes(['n1'], openingContextOf(target));
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    const outcome = await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target)));
 
     expect(outcome.outcome).toBe('failed');
     expect(toast.error).toHaveBeenCalledWith('sermon.sourceNotes.saveError');
@@ -321,138 +344,114 @@ describe('useSourceNoteLink — the write', () => {
   });
 
   it('does nothing at all without a sermon to write to', async () => {
-    const { result } = renderHook(() => useSourceNoteLink(undefined), { wrapper: wrapper() });
+    const { engine, wrapper } = engineHarness();
+    const { result } = renderHook(() => useSourceNoteLink(undefined), { wrapper });
+    await ready(result);
 
-    const outcome = await result.current.setSourceNotes(['n1'], {
-      sermonId: null,
-      noteIds: null,
-      revision: 0,
-    });
+    const outcome = await act(() => result.current.setSourceNotes(['n1'], { sermonId: null, noteIds: null, revision: 0 }));
 
     expect(outcome.outcome).toBe('failed');
-    expect(mockUpdateSermon).not.toHaveBeenCalled();
+    expect(await engine.commits.list('u1')).toEqual([]);
+  });
+
+  it('merges the LIST entity in place, without dragging a stale snapshot in', async () => {
+    const startedFrom = sermon('s1', [], 3, 'Title as the save began');
+    const { client, wrapper } = engineHarness([stored([])]);
+    // Meanwhile the list learned a newer title from somewhere else.
+    client.setQueryData(['sermons', 'u1'], [sermon('s1', [], 3, 'Renamed in the list')]);
+
+    const { result } = renderHook(() => useSourceNoteLink(startedFrom), { wrapper });
+    await ready(result);
+    await act(() => result.current.setSourceNotes(['n1'], openingContextOf(startedFrom)));
+
+    const cached = client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0];
+    expect(cached?.sourceNoteIds).toEqual(['n1']);
+    // Writing the whole entity back would have reverted this title, and `refetchType: 'none'`
+    // would then have persisted the wrong copy to disk.
+    expect(cached?.title).toBe('Renamed in the list');
   });
 
   it('cancels an in-flight list fetch before publishing, so an older response cannot win', async () => {
     const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockResolvedValue({ ...target, sourceNoteIds: ['n1'], rev: { core: 4 } });
-    const { client, wrapper: Wrapper } = harness();
+    const { client, wrapper } = engineHarness([stored([])]);
     client.setQueryData(['sermons', 'u1'], [target]);
     const cancelQueries = jest.spyOn(client, 'cancelQueries');
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    await result.current.setSourceNotes(['n1'], openingContextOf(target));
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target)));
 
-    // Without this, a `getSermons` that started before the write lands after the merge and
-    // quietly restores the old links — and `refetchType: 'none'` asks for no correction.
     expect(cancelQueries).toHaveBeenCalledWith({ queryKey: ['sermons', 'u1'] });
   });
 
   it('writes a DELIBERATE choice even when it equals the value the dialog opened with', async () => {
-    // Open with A, the server moves to B, the person unticks and re-ticks back to A. Skipping
-    // that write would leave B in place while they believe they stored A.
+    // Open with A, the person unticks and re-ticks back to A. Skipping that write would leave a
+    // state they did not choose; with `force` the guard runs instead of short-circuiting.
     const target = sermon('s1', ['n1'], 3);
-    mockUpdateSermon.mockResolvedValue({ ...target, rev: { core: 4 } });
+    const { engine, wrapper } = engineHarness([stored(['n1'])]);
+    const onPatched = jest.fn();
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: wrapper() });
-    const outcome = await result.current.setSourceNotes(['n1'], openingContextOf(target), {
-      force: true,
-    });
+    const { result } = renderHook(() => useSourceNoteLink(target, onPatched), { wrapper });
+    await ready(result);
+    const outcome = await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target), { force: true }));
+    await deliver(engine);
 
     expect(outcome.outcome).toBe('saved');
-    expect(mockUpdateSermon).toHaveBeenCalledTimes(1);
+    expect(onPatched).toHaveBeenCalledWith({ sermonId: 's1', sourceNoteIds: ['n1'] });
+    await waitFor(() => expect(storedLinks(engine)).toEqual(['n1']));
   });
 
   it('refuses a write whose proof belongs to a DIFFERENT sermon', async () => {
     const opening = openingContextOf(sermon('s1', ['n1'], 3));
-    const { result } = renderHook(() => useSourceNoteLink(sermon('s2', ['n1'], 3)), {
-      wrapper: wrapper(),
-    });
+    const { engine, wrapper } = engineHarness();
+    const { result } = renderHook(() => useSourceNoteLink(sermon('s2', ['n1'], 3)), { wrapper });
+    await ready(result);
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    const outcome = await result.current.setSourceNotes(['n1', 'n2'], opening);
+    const outcome = await act(() => result.current.setSourceNotes(['n1', 'n2'], opening));
 
     expect(outcome.outcome).toBe('failed');
-    expect(mockUpdateSermon).not.toHaveBeenCalled();
+    expect(await engine.commits.list('u1')).toEqual([]);
     consoleError.mockRestore();
   });
 
   it('AWAITS the cancellation before touching the cache', async () => {
     const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockResolvedValue({ ...target, sourceNoteIds: ['n1'], rev: { core: 4 } });
-    const { client, wrapper: Wrapper } = harness();
+    const { client, wrapper } = engineHarness([stored([])]);
     client.setQueryData(['sermons', 'u1'], [target]);
     let releaseCancel: () => void = () => {};
     jest
       .spyOn(client, 'cancelQueries')
       .mockImplementation(() => new Promise<void>((resolve) => { releaseCancel = () => resolve(); }));
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    const pending = result.current.setSourceNotes(['n1'], openingContextOf(target));
-    await Promise.resolve();
-    await Promise.resolve();
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.setSourceNotes(['n1'], openingContextOf(target)); });
+    await act(async () => { await settleEngine(); });
 
     // Merging before the cancellation resolves is the bug: an in-flight fetch would land after
     // it and restore the old links. Dropping the `await` must make this fail.
     expect(client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0].sourceNoteIds).toEqual([]);
 
-    releaseCancel();
-    await pending;
+    await act(async () => { releaseCancel(); await pending; });
     expect(client.getQueryData<Sermon[]>(['sermons', 'u1'])?.[0].sourceNoteIds).toEqual(['n1']);
   });
 
-  it('never refetches the document behind the person\'s back', async () => {
-    // When another device also changed the core aggregate, this app does NOT silently swap what is
-    // on screen — that rule is written down in the freshness layer ("never applied for you"). The
-    // projection-based banner is what tells the person, so the writer must not invent a refetch of
-    // its own.
+  it("never refetches the document behind the person's back", async () => {
+    // The projection-based banner is what tells the person about other devices' changes, so the
+    // writer must not invent a refetch of its own: exactly one list invalidation, refetch-free.
     const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockResolvedValue({ ...target, sourceNoteIds: ['n1'], rev: { core: 6 } });
-    const { client, wrapper: Wrapper } = harness();
+    const { client, wrapper } = engineHarness([stored([])]);
     client.setQueryData(['sermons', 'u1'], [target]);
     const invalidate = jest.spyOn(client, 'invalidateQueries');
 
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    await result.current.setSourceNotes(['n1'], openingContextOf(target));
+    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper });
+    await ready(result);
+    await act(() => result.current.setSourceNotes(['n1'], openingContextOf(target)));
 
     expect(invalidate).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sermons', 'u1'], refetchType: 'none' });
-  });
-
-  it('asks for nothing extra when the only writer was us', async () => {
-    const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockResolvedValue({ ...target, sourceNoteIds: ['n1'], rev: { core: 4 } });
-    const { client, wrapper: Wrapper } = harness();
-    client.setQueryData(['sermons', 'u1'], [target]);
-    const invalidate = jest.spyOn(client, 'invalidateQueries');
-
-    const { result } = renderHook(() => useSourceNoteLink(target), { wrapper: Wrapper });
-    await result.current.setSourceNotes(['n1'], openingContextOf(target));
-
-    // Only the list invalidation that pairs with the optimistic merge — no extra read.
-    expect(invalidate).toHaveBeenCalledTimes(1);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sermons', 'u1'], refetchType: 'none' });
-  });
-
-  it('emits a PATCH, not an entity — the merge belongs to whoever owns a copy', async () => {
-    const target = sermon('s1', [], 3);
-    mockUpdateSermon.mockResolvedValue({
-      ...target,
-      sourceNoteIds: ['n1'],
-      updatedAt: '2026-08-17T00:00:00.000Z',
-      rev: { core: 4 },
-    });
-    const onPatched = jest.fn();
-
-    const { result } = renderHook(() => useSourceNoteLink(target, onPatched), { wrapper: wrapper() });
-    await result.current.setSourceNotes(['n1'], openingContextOf(target));
-
-    expect(onPatched).toHaveBeenCalledWith({
-      sermonId: 's1',
-      sourceNoteIds: ['n1'],
-      updatedAt: '2026-08-17T00:00:00.000Z',
-      revision: 4,
-    });
   });
 });
 

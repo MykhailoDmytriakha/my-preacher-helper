@@ -1,23 +1,25 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
 import { QueryProvider } from '@/providers/QueryProvider';
+
+import { settleEngine } from '../../test-utils/documentEngineHarness';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 
 /**
  * Why this file exists NEXT TO `dashboardWriteRefusal.test.tsx`:
  *
- * That suite renders a hand-built harness which wires `syncState` into a SermonCard by
- * hand. It passed while the REAL `/dashboard` dropped `syncStatesById` on the floor and
- * rendered plain links — so a sermon quick-created there could be refused, and the person
- * saw a row that looked saved with no verdict, no text and no way to recover it. The
- * modal is silent by contract, so nothing else was going to speak.
- *
- * The rule this pins down: a screen that STARTS a write must render the reporter for it.
- * Therefore this suite imports the actual page component and nothing else.
+ * That suite renders a hand-built harness. It passed while the REAL `/dashboard` dropped
+ * the reporter on the floor, so a sermon quick-created there could be refused and the person
+ * saw a row that looked saved with no verdict. The rule this pins down: a screen that STARTS
+ * a write must render the reporter for it. Therefore this suite imports the actual page
+ * component, runs the REAL engine (only I/O is replaced) and asserts on what the person sees
+ * and on the stored request. Sermons are engine-owned: the verdict is the collection status
+ * the page draws, not a per-row badge.
  */
-
-const mockCreateSermon = jest.fn();
 
 // A real (empty) persister, not `jest.fn()`: the provider calls `restoreClient` on mount,
 // and a persister that is `undefined` takes the whole QueryClient context down with it.
@@ -35,34 +37,15 @@ jest.mock('@/utils/queryPersister', () => ({
   }),
 }));
 
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@services/firebaseAuth.service', () => ({
   auth: { currentUser: { uid: 'user-1' } },
 }));
 
-jest.mock('@services/sermon.service', () => ({
-  createSermon: (...args: unknown[]) => mockCreateSermon(...args),
-  deleteSermon: jest.fn(),
-  updateSermon: jest.fn(),
-  getSermons: jest.fn().mockResolvedValue([]),
-}));
-
-jest.mock('@services/preachDates.service', () => ({
-  addPreachDate: jest.fn(),
-  deletePreachDate: jest.fn(),
-  updatePreachDate: jest.fn(),
-}));
-
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 
-jest.mock('@/hooks/useSeriesMembership', () => ({
-  useSeriesMembership: () => ({
-    addToSeries: jest.fn(),
-    addRefsToSeries: jest.fn(),
-    removeFromAllSeries: jest.fn(),
-    reorderSeries: jest.fn(),
-  }),
-}));
-
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' } }),
 }));
@@ -116,91 +99,63 @@ jest.mock('@locales/i18n', () => ({
   i18n: { t: (_key: string, fallback?: string) => fallback ?? _key, language: 'en' },
 }));
 
-const permissionDenied = () => {
-  const { FirestoreError } = jest.requireActual<typeof import('firebase/firestore')>('firebase/firestore');
-  const Ctor = FirestoreError as unknown as new (code: string, message: string) => Error & { code: string };
-  return new Ctor('permission-denied', 'Missing or insufficient permissions.');
-};
+
+function renderDashboard() {
+  const harness = membershipEngineHarness([]);
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(
+    <QueryProvider>
+      <DataEngineProvider>
+        <DashboardPage />
+      </DataEngineProvider>
+    </QueryProvider>
+  );
+  return { harness, view };
+}
+
+async function quickCreate() {
+  fireEvent.click(await screen.findByRole('button', { name: 'New sermon' }));
+  const title = await screen.findByLabelText('Title');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Sermon the server refused' } });
+  fireEvent.change(screen.getByLabelText('Scripture Reference'), { target: { value: 'Acts 2:42' } });
+  await act(async () => { await settleEngine(); });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+}
 
 describe('dashboard quick-create — a refused sermon is reported ON the dashboard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons,series';
   });
+  afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
-  it('shows the refusal, the typed text and a way to copy it', async () => {
-    mockCreateSermon.mockRejectedValue(permissionDenied());
+  it('shows the refusal on the dashboard and keeps the typed text in the stored request', async () => {
+    const { harness, view } = renderDashboard();
+    jest.mocked(harness.transport.send).mockImplementation(async command =>
+      ({ kind: 'refused', operationId: command.operationId, code: 'permission-denied' }));
+    await quickCreate();
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
 
-    render(
-      <QueryProvider>
-        <DashboardPage />
-      </QueryProvider>
-    );
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New sermon' }));
-
-    fireEvent.change(await screen.findByLabelText('Title'), {
-      target: { value: 'Sermon the server refused' },
-    });
-    fireEvent.change(screen.getByLabelText('Scripture Reference'), {
-      target: { value: 'Acts 2:42' },
-    });
-    fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
-      target: { value: '2026-09-13' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    // (1) the person is TOLD — by the form, which is the only thing they can see. It
-    // covers the page, so a badge drawn on the row underneath would be unreadable.
-    const formVerdict = await screen.findByRole('alert');
-    expect(formVerdict).toHaveTextContent('Save refused');
-    // Exactly one message: the row keeps quiet while the form owns the screen.
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
-
-    // (2) the draft is still in the fields — nothing was cleared on the way
-    expect(screen.getByLabelText('Title')).toHaveValue('Sermon the server refused');
-    expect(screen.getByLabelText('Scripture Reference')).toHaveValue('Acts 2:42');
-
-    // (3) once the form is closed the row takes over, carrying EVERYTHING that was
-    // entered — a draft handed back without the date is a draft still to be redone.
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    const rowVerdict = await screen.findByRole('alert');
-    expect(rowVerdict).toHaveTextContent('Save refused');
-    expect(rowVerdict).toHaveTextContent('Sermon the server refused');
-    expect(rowVerdict).toHaveTextContent('Acts 2:42');
-    expect(rowVerdict).toHaveTextContent('2026-09-13');
-    expect(within(rowVerdict).getByRole('button', { name: 'Copy text' })).toBeInTheDocument();
+    // The person is TOLD, on the page they are looking at.
+    await waitFor(() => expect(screen.getByText('dataSync.collectionAttention')).toBeInTheDocument());
+    const [request] = await harness.commits.list('user-1');
+    expect(request.state).toBe('refused');
+    expect(JSON.stringify(request)).toContain('Sermon the server refused');
+    expect(JSON.stringify(request)).toContain('Acts 2:42');
+    view.unmount();
   });
 
   it('does not report anything while nothing has failed', async () => {
-    mockCreateSermon.mockResolvedValue({
-      id: 'sermon-ok',
-      userId: 'user-1',
-      title: 'Accepted sermon',
-      verse: 'Acts 2:42',
-      date: '2026-08-14T00:00:00.000Z',
-      thoughts: [],
-    });
+    const { harness, view } = renderDashboard();
+    await quickCreate();
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
 
-    render(
-      <QueryProvider>
-        <DashboardPage />
-      </QueryProvider>
-    );
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New sermon' }));
-    fireEvent.change(await screen.findByLabelText('Title'), {
-      target: { value: 'Accepted sermon' },
-    });
-    fireEvent.change(screen.getByLabelText('Scripture Reference'), {
-      target: { value: 'Acts 2:42' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-
-    await waitFor(() => expect(mockCreateSermon).toHaveBeenCalled());
-    // Absence means something only after the write has answered: let the accepted create
-    // settle and its handlers run, then look for a report.
-    await act(async () => { await mockCreateSermon.mock.results[0].value; });
+    expect(harness.read((await harness.commits.list('user-1'))[0]?.baseline.resource ?? { collection: 'sermons', id: 'none' }).value)
+      .toMatchObject({ title: 'Sermon the server refused' });
+    expect(screen.queryByText('dataSync.collectionAttention')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    view.unmount();
   });
 });

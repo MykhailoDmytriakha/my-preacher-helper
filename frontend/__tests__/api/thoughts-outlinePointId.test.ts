@@ -1,3 +1,4 @@
+export {};
 // Intentionally do NOT import the route at module scope because Next's
 // Request polyfill expects Web Fetch API globals to exist at import time.
 
@@ -24,6 +25,16 @@ jest.mock('next/server', () => ({
       json: async () => data,
     }),
   },
+}));
+
+// Sermons are engine-owned: production calls editOwnedDocument (writeOwnedDocument forwards to it
+// from inside its own module, so the road is replaced at writeOwnedDocument), applied here to a seeded document.
+const mockEditOwnedDocument = jest.fn(async (_owner: string, _resource: unknown, transform: (doc: Record<string, unknown>) => Record<string, unknown>) =>
+  transform({ userId: 'u-1', thoughts: [], structure: { introduction: [], main: [], conclusion: [], ambiguous: [] } }));
+jest.mock('@/data-engine/serverEdit.server', () => ({
+  ...jest.requireActual('@/data-engine/serverEdit.server'),
+  writeOwnedDocument: ({ owner, resource, engine }: { owner: string; resource: unknown; engine: unknown }) =>
+    (mockEditOwnedDocument as (...a: unknown[]) => unknown)(owner, resource, engine),
 }));
 
 jest.mock('@clients/firestore.client', () => ({
@@ -115,5 +126,8 @@ describe('api/thoughts POST attaches outline metadata', () => {
     expect(json.text).toBe('final text');
     expect(json.outlinePointId).toBe('op-1');
     expect(json.subPointId).toBe('sp-1');
+    expect(mockEditOwnedDocument).toHaveBeenCalledWith('u-1', { collection: 'sermons', id: 's-1' }, expect.any(Function));
+    const saved = await mockEditOwnedDocument.mock.results[0].value;
+    expect(saved.thoughts).toEqual([expect.objectContaining({ id: 'thought-fixed-id', outlinePointId: 'op-1', subPointId: 'sp-1' })]);
   });
 });

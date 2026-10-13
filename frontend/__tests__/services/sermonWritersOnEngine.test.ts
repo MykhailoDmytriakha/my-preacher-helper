@@ -24,9 +24,4 @@ describe('legacy sermon writers once the engine owns sermons', () => {
     expect(updateDoc).not.toHaveBeenCalled();
   });
 
-  it('leaves the legacy road open while sermons are not on the engine', async () => {
-    process.env[ON_ENGINE] = 'councils';
-    const outcome = await savePlanModeViaClient('s1', 'manual').then(() => 'written', (error: { code?: string }) => error?.code ?? 'other');
-    expect(outcome).not.toBe('data-engine-required');
-  });
 });

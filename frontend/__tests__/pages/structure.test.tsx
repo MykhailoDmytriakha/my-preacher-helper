@@ -10,7 +10,18 @@ import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hoo
 import { useStructureDnd } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../test-utils/test-providers';
+
+// The page runs on the data engine: it mounts inside the sermon's document provider, over the real
+// engine with only the server and the browser transport replaced. The board's own data hook stays
+// mocked, so each test decides what the board shows.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -121,9 +132,25 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
+function StructureOnEngine() {
+  return (
+    <TestProviders>
+      <DataEngineProvider>
+        <StructurePage />
+      </DataEngineProvider>
+    </TestProviders>
+  );
+}
+
 describe('Structure Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const harness = documentEngineHarness({
+      resource: { collection: 'sermons', id: 'sermon-123' },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'Test Sermon', verse: '', date: '2024-01-01', thoughts: [] },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     mockUseSearchParams.mockReturnValue({
       get: jest.fn((param: string) => {
         if (param === 'sermonId') return 'sermon-123';
@@ -181,9 +208,7 @@ describe('Structure Page', () => {
       for (const scenario of fallbackScenarios) {
         mockedUseSermonStructureData.mockReturnValue(scenario.hookState());
         render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
         scenario.assert();
         cleanup();
@@ -205,9 +230,7 @@ describe('Structure Page', () => {
       });
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       expect(screen.getByTestId('structure-skeleton')).toBeInTheDocument();
@@ -238,9 +261,7 @@ describe('Structure Page', () => {
       mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       await waitFor(() => {
@@ -277,9 +298,7 @@ describe('Structure Page', () => {
       );
 
       render(
-      <TestProviders>
-        <StructurePage />
-      </TestProviders>
+      <StructureOnEngine />
     );
 
       await waitFor(() => {
@@ -312,9 +331,7 @@ describe('Structure Page', () => {
       });
 
       render(
-    <TestProviders>
-      <StructurePage />
-    </TestProviders>
+    <StructureOnEngine />
   );
 
       // The dragged thought shows in its column and again in the drag overlay.
@@ -345,9 +362,7 @@ describe('Structure Page', () => {
       });
 
       render(
-    <TestProviders>
-      <StructurePage />
-    </TestProviders>
+    <StructureOnEngine />
   );
 
       await waitFor(() => {

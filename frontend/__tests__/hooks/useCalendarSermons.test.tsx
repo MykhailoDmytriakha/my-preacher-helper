@@ -19,6 +19,10 @@ jest.mock('@services/preachDates.service', () => ({
   fetchCalendarSermons: jest.fn(),
 }));
 
+// Sermons are engine-owned: the calendar reads the engine's rows.
+const mockEngine = { sermons: [] as Sermon[], loading: false, error: null as string | null, refresh: jest.fn() };
+jest.mock('@/hooks/useSermonsDataCollection', () => ({ useSermonsDataCollection: () => mockEngine }));
+
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
 const mockUseServerFirstQuery = useServerFirstQuery as jest.MockedFunction<typeof useServerFirstQuery>;
 const mockFetchCalendarSermons = fetchCalendarSermons as jest.MockedFunction<typeof fetchCalendarSermons>;
@@ -95,13 +99,12 @@ describe('useCalendarSermons', () => {
       },
     ];
 
-    let capturedOptions: any;
-    mockUseServerFirstQuery.mockImplementation((options: any) => {
-      capturedOptions = options;
-      return buildServerFirstResult(sermons);
-    });
+    mockEngine.sermons = [...sermons, { ...sermons[1], id: 'foreign', userId: 'user-2' }];
+    mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([]));
 
-    const { result } = renderHook(() => useCalendarSermons(startDate, endDate));
+    // The calendar page asks without a range (calendar/page.tsx), so a preached sermon with no
+    // date still reaches the "no date yet" warning.
+    const { result } = renderHook(() => useCalendarSermons());
 
     expect(result.current.pendingSermons).toHaveLength(1);
     expect(result.current.pendingSermons[0].id).toBe('sermon-1');
@@ -110,11 +113,11 @@ describe('useCalendarSermons', () => {
     expect(result.current.sermonsByDate['2024-01-08']).toHaveLength(1);
     expect(result.current.sermonsByDate['2024-01-07T00:00:00.000Z']).toBeUndefined();
 
-    mockFetchCalendarSermons.mockResolvedValue([]);
-    await capturedOptions.queryFn();
-
-    expect(mockFetchCalendarSermons).toHaveBeenCalledWith('user-1', '2024-01-01', '2024-01-31');
-    expect(capturedOptions.enabled).toBe(true);
+    // A range keeps only sermons with a preach date inside it, as the legacy read did.
+    const ranged = renderHook(() => useCalendarSermons(startDate, endDate)).result.current;
+    expect(ranged.sermons.map(entry => entry.id).sort()).toEqual(['sermon-2', 'sermon-3']);
+    expect(mockFetchCalendarSermons).not.toHaveBeenCalled();
+    mockEngine.sermons = [];
   });
 
   it('returns empty data when no user is available', async () => {

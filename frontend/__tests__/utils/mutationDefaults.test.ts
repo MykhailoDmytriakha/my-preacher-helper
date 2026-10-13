@@ -49,82 +49,6 @@ describe('registerOfflineMutationDefaults', () => {
     await expect(mutationFn({ id: 'x', title: 'Unsent words' })).rejects.toMatchObject({ code: 'data-engine-required' });
   });
 
-  describe('the congregation a sermon is prepared for', () => {
-    const NAMED = { id: 'c-grace', name: 'Grace Chapel', city: 'Fresno' };
-    const STAND_IN = { id: 'church-unspecified', name: 'Church not specified', city: '' };
-
-    const runEdit = async (input: Record<string, unknown>) => {
-      const queryClient = new QueryClient();
-      registerOfflineMutationDefaults(queryClient);
-      const updateFn = queryClient.getMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.update)
-        ?.mutationFn as (v: unknown) => Promise<unknown>;
-      return updateFn({ uid: 'u1', sermonId: 's1', newPlannedDateId: 'pd-new', input });
-    };
-
-    beforeEach(() => {
-      mockUpdateSermon.mockResolvedValue({ id: 's1', title: 'T', verse: 'V' } as never);
-      mockAddPreachDate.mockImplementation(async (_sermonId, draft) => ({ ...draft, id: 'pd-new' }) as never);
-      mockUpdatePreachDate.mockImplementation(async (_sermonId, dateId, updates) => ({ id: dateId, ...updates }) as never);
-    });
-
-    it('sends the church to the sermon document', async () => {
-      await runEdit({
-        sermon: { id: 's1', title: 'T', verse: 'V', preachDates: [] },
-        title: 'T', verse: 'V', plannedDate: '', initialPlannedDate: '', church: NAMED,
-      });
-
-      expect(mockUpdateSermon).toHaveBeenCalledWith(
-        expect.objectContaining({ church: NAMED }),
-        expect.objectContaining({ church: NAMED }),
-        expect.anything()
-      );
-    });
-
-    it('is kept even when NO date was given — a congregation is known long before a date', async () => {
-      await runEdit({
-        sermon: { id: 's1', title: 'T', verse: 'V', preachDates: [] },
-        title: 'T', verse: 'V', plannedDate: '', initialPlannedDate: '', church: NAMED,
-      });
-
-      expect(mockUpdateSermon).toHaveBeenCalledTimes(1);
-      expect(mockAddPreachDate).not.toHaveBeenCalled();
-    });
-
-    it('gives a BRAND NEW planned date the church named in the same form', async () => {
-      await runEdit({
-        sermon: { id: 's1', title: 'T', verse: 'V', preachDates: [] },
-        title: 'T', verse: 'V', plannedDate: '2026-09-20', initialPlannedDate: '', church: NAMED,
-      });
-
-      expect(mockAddPreachDate).toHaveBeenCalledWith('s1', expect.objectContaining({ church: NAMED }));
-    });
-
-    it('fills an EXISTING planned date that still holds the stand-in, even when the date itself did not change', async () => {
-      await runEdit({
-        sermon: {
-          id: 's1', title: 'T', verse: 'V',
-          preachDates: [{ id: 'pd-1', date: '2026-09-20', status: 'planned', church: STAND_IN }],
-        },
-        title: 'T', verse: 'V', plannedDate: '2026-09-20', initialPlannedDate: '2026-09-20', church: NAMED,
-      });
-
-      expect(mockUpdatePreachDate).toHaveBeenCalledWith('s1', 'pd-1', { church: NAMED });
-    });
-
-    it('NEVER overwrites a planned date that already names its own congregation', async () => {
-      const OTHER = { id: 'c-other', name: 'Hope Church', city: '' };
-      await runEdit({
-        sermon: {
-          id: 's1', title: 'T', verse: 'V',
-          preachDates: [{ id: 'pd-1', date: '2026-09-20', status: 'planned', church: OTHER }],
-        },
-        title: 'T', verse: 'V', plannedDate: '2026-09-20', initialPlannedDate: '2026-09-20', church: NAMED,
-      });
-
-      expect(mockUpdatePreachDate).not.toHaveBeenCalled();
-    });
-  });
-
   it('does NOT roll the sermon row back when the write was QUEUED, not refused', async () => {
     /**
      * Nominally online, Firestore unreachable: `conflictSafeUpdate` stores the edit in the
@@ -150,11 +74,9 @@ describe('registerOfflineMutationDefaults', () => {
 });
 
 
-it.each(Object.entries(DASHBOARD_SERMON_MUTATION_KEYS))('refuses old %s replay before touching a service when sermons use the engine', async (_operation, key) => {
-  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
-  try {
-    const client = new QueryClient(); registerOfflineMutationDefaults(client);
-    const mutation = client.getMutationDefaults(key).mutationFn as (input: unknown) => Promise<unknown>;
-    await expect(mutation({})).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
-  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; }
+// Sermons are engine-owned: a paused dashboard write of the previous version is refused before any service.
+it.each(Object.entries(DASHBOARD_SERMON_MUTATION_KEYS))('refuses old %s replay before touching a service', async (_operation, key) => {
+  const client = new QueryClient(); registerOfflineMutationDefaults(client);
+  const mutation = client.getMutationDefaults(key).mutationFn as (input: unknown) => Promise<unknown>;
+  await expect(mutation({})).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
 });

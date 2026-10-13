@@ -56,65 +56,13 @@ describe('sermon.service', () => {
     expect(mockApiClient).not.toHaveBeenCalled();
   });
 
-  it('keeps createSermon on the server route', async () => {
-    const sermon = { title: 'Test', verse: 'John 3:16', date: '2024-01-01', userId: 'u1', thoughts: [] };
-    mockApiClient.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ sermon: { ...sermon, id: 'new-id' } }),
-    });
-
-    const result = await createSermon(sermon);
-
-    expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons`, expect.objectContaining({
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
-      body: JSON.stringify(sermon),
-      category: 'crud',
-    }));
-    expect(result.id).toBe('new-id');
-  });
-
-  it('keeps deleteSermon on the server cascade route', async () => {
-    mockApiClient.mockResolvedValueOnce({ ok: true });
-
-    await deleteSermon('s1');
-
-    expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons/s1`, expect.objectContaining({
-      method: 'DELETE',
-      category: 'crud',
-    }));
-  });
-
-  it('preserves a body refusal code over the HTTP status mapping', async () => {
-    mockApiClient.mockResolvedValueOnce({
-      ok: false,
-      status: 403,
-      json: async () => ({ error: 'Payload is invalid', code: 'invalid-argument' }),
-    });
-
-    await expect(
-      createSermon({ title: 'Test', verse: 'John 3:16', date: '2024-01-01', userId: 'u1', thoughts: [] })
-    ).rejects.toMatchObject({
-      message: 'Payload is invalid',
-      code: 'invalid-argument',
-      status: 403,
-    });
-  });
-
-  it('keeps a delete refusal class when the sermon no longer exists', async () => {
-    mockApiClient.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      json: async () => ({ error: 'Sermon not found' }),
-    });
-
-    await expect(deleteSermon('s1')).rejects.toMatchObject({
-      message: 'Sermon not found',
-      code: 'not-found',
-      status: 404,
-    });
+  // Sermons are engine-owned: create and delete go only through the data engine, and the legacy
+  // service refuses before any request.
+  it.each([
+    ['create', () => createSermon({ title: 'Test', verse: 'John 3:16', date: '2024-01-01', userId: 'u1', thoughts: [] } as never)],
+    ['delete', () => deleteSermon('s1')],
+  ])('refuses a legacy %s before any request', async (_name, write) => {
+    await expect(write()).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(mockApiClient).not.toHaveBeenCalled();
   });
 });
-jest.mock('@/utils/authenticatedRequest', () => ({
-  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
-}));

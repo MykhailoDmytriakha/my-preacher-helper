@@ -21,30 +21,13 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock data hook
-jest.mock('@/hooks/useSermon', () => ({
-  // The RULE that decides "there is no sermon here" stays REAL — only the answer it is
-  // given is stubbed. A stubbed rule would keep passing while the screens drift apart.
-  sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing,
-  __esModule: true,
-  default: jest.fn(() => ({
-    sermon: {
-      id: 'sermon-xyz',
-      title: 'Mobile Placement Test Sermon',
-      verse: 'Ps. 23:1',
-      date: '2024-01-01',
-      thoughts: [],
-      structure: {
-        introduction: [],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-    },
-    setSermon: jest.fn(),
-    loading: false,
-  })),
-}));
+// The page runs on the data engine: it opens the sermon document through the real engine,
+// with only the server and the browser transport replaced.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
+jest.mock('@/components/thought/EngineThoughtModal', () => ({ EngineThoughtModal: () => null }));
+jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({ EngineScratchWorkspace: () => <div>Scratch</div> }));
 
 // Mock lightweight child components
 jest.mock('@/components/sermon/SermonHeader', () => () => (
@@ -76,19 +59,37 @@ jest.mock('@/components/sermon/StructureStats', () => () => (
 
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
 
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness } from '../../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../../test-utils/test-providers';
 
+const resource = { collection: 'sermons', id: 'sermon-xyz' };
+
 describe('SermonPage mobile ThoughtsBySection placement', () => {
-  it('renders ThoughtsBySection section between header export buttons and audio recorder (DOM order)', () => {
+  it('renders ThoughtsBySection section between header export buttons and audio recorder (DOM order)', async () => {
+    const harness = documentEngineHarness({
+      resource,
+      value: {
+        userId: 'owner', title: 'Mobile Placement Test Sermon', verse: 'Ps. 23:1', date: '2024-01-01', thoughts: [],
+        structure: { introduction: [], main: [], conclusion: [], ambiguous: [] },
+      },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     const { container } = render(
       <TestProviders>
-        <SermonPage />
+        <DataEngineProvider>
+          <SermonPage />
+        </DataEngineProvider>
       </TestProviders>
     );
 
-    const headerExport = screen.getByTestId('export-buttons');
-    // AudioRecorder is dynamically imported with ssr: false; tests render the loading fallback
-    const recorder = screen.getByText('Loading recorder...');
+    const headerExport = await screen.findByTestId('export-buttons');
+    // AudioRecorder is dynamically imported with ssr: false: the loading fallback stands in the same
+    // place until the module arrives, and the (mocked) recorder replaces it there.
+    const recorder = await screen.findByText(/^(Loading recorder\.\.\.|AudioRecorder)$/);
     const stats = screen.getAllByTestId('structure-stats');
 
     // Both mobile and desktop instances render (CSS classes are not applied in JSDOM)

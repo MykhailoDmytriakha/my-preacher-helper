@@ -3,7 +3,6 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
-import { createSermon } from '@/services/sermon.service';
 import { cutStudyNoteIntoScratch, CutStudyNoteError, fetchNoteCutOutline } from '@/services/studies.service';
 import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachable } from '@/utils/connectivity';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
@@ -36,8 +35,22 @@ jest.mock('@/hooks/useResolvedUid', () => ({
   useResolvedUid: () => ({ uid: 'u1', isAuthLoading: false }),
 }));
 
-jest.mock('@/services/sermon.service', () => ({
-  createSermon: jest.fn(),
+/**
+ * Sermons are engine-owned: the sermon is born through the engine's document action
+ * `create(resource, value)` under the dialog's one client id. The stand-in records the exact
+ * arguments; `mockCreate` receives the value with the resource id folded back in, so the
+ * assertions below read as "what sermon was created".
+ */
+const mockCreate = jest.fn();
+const mockCreateResources: unknown[] = [];
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useDocumentActions: () => ({
+    create: (resource: { collection: string; id: string }, value: Record<string, unknown>) => {
+      mockCreateResources.push(resource);
+      return mockCreate({ ...value, id: resource.id });
+    },
+  }),
 }));
 
 jest.mock('@/services/studies.service', () => ({
@@ -67,7 +80,6 @@ const oneSliceOutline = {
   slices: [{ offset: 0, limit: 13, words: 6300 }],
   corridor: { min: 16, max: 26 },
 };
-const mockCreate = createSermon as jest.Mock;
 
 const refs = [
   { book: '1 Chronicles', chapter: 1, toChapter: 9, fromVerse: 1, id: 'range' },
@@ -131,6 +143,7 @@ describe('pickVerseFromRefs', () => {
 describe('CreateSermonFromNoteModal', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreateResources.length = 0;
     mockOutline.mockResolvedValue(oneSliceOutline);
     mockCut.mockResolvedValue(cutAnswer);
     mockCreate.mockResolvedValue(bornSermon);
@@ -196,7 +209,10 @@ describe('CreateSermonFromNoteModal', () => {
     expect(screen.getByTestId('create-sermon-done')).toHaveTextContent('studiesWorkspace.createSermon.success:{"count":2}');
     expect(openButton()).toHaveFocus();
     await user.click(openButton());
-    expect(mockPush).toHaveBeenCalledWith('/sermons/s-new?mode=raw');
+    // The engine returns nothing to navigate by: the page opens the id the dialog minted.
+    const mintedId = mockCreate.mock.calls[0][0].id as string;
+    expect(mockPush).toHaveBeenCalledWith(`/sermons/${mintedId}?mode=raw`);
+    expect(mockCreateResources).toEqual([{ collection: 'sermons', id: mintedId }]);
 
     expect(mockCut).toHaveBeenCalledWith('n1', { offset: 0, limit: 13, words: 6300 });
     expect(mockCreate).toHaveBeenCalledTimes(1);
@@ -219,8 +235,8 @@ describe('CreateSermonFromNoteModal', () => {
     );
     expect(verseInput()).toHaveValue('1 Пар 4:9-10');
 
-    expect(queryClient.getQueryData(sermonDetailKey('u1', 's-new'))).toEqual(bornSermon);
-    expect((queryClient.getQueryData(sermonListKey('u1')) as Sermon[]).map((sermon) => sermon.id)).toEqual(['s-new', 'older']);
+    expect(queryClient.getQueryData(sermonDetailKey('u1', mintedId))).toEqual(expect.objectContaining({ id: mintedId, title: 'Рука Господня', sourceNoteIds: ['n1'], scratch: atoms }));
+    expect((queryClient.getQueryData(sermonListKey('u1')) as Sermon[]).map((sermon) => sermon.id)).toEqual([mintedId, 'older']);
     for (const key of ['plan', 'cut:0', 'create']) {
       expect(screen.getByTestId(`create-sermon-step-${key}`)).toHaveAttribute('data-status', 'done');
     }
@@ -311,6 +327,7 @@ describe('CreateSermonFromNoteModal', () => {
     expect(mockCut).toHaveBeenCalledTimes(1);
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockCreate.mock.calls[1][0].id).toBe(mockCreate.mock.calls[0][0].id);
+    expect(mockCreateResources[1]).toEqual(mockCreateResources[0]);
   });
 
   it('names a usage cap, an empty cut and an over-long note for what they are', async () => {

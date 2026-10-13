@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { act, render } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
 
@@ -9,6 +9,7 @@ jest.mock('react-i18next', () => ({
 
 // Minimal mocks for heavy deps used in various pages
 jest.mock('@dnd-kit/core', () => ({
+  MeasuringStrategy: { Always: 'always' },
   DndContext: ({ children }: any) => <div>{children}</div>,
   DragOverlay: ({ children }: any) => <div>{children}</div>,
   pointerWithin: jest.fn(),
@@ -32,6 +33,12 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/sermons',
 }));
+
+// Sermon pages run on the data engine: the real engine opens the sermon document, with only the
+// server and the browser transport replaced.
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 // Mock useDashboardSermons to prevent React Query errors
 jest.mock('@/hooks/useDashboardSermons', () => ({
@@ -77,6 +84,10 @@ import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import SettingsPage from '@/(pages)/(private)/settings/page';
 
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+
+import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 import { TestProviders } from '../../test-utils/test-providers';
 
 // Helper that asserts private page does not add global shell classes
@@ -97,12 +108,22 @@ describe('Private pages adhere to single-shell policy', () => {
     ['settings', SettingsPage],
   ];
 
-  it.each(cases)('page %s does not add page-level shell wrappers', (_name, PageComp) => {
+  it.each(cases)('page %s does not add page-level shell wrappers', async (_name, PageComp) => {
+    const harness = documentEngineHarness({
+      resource: { collection: 'sermons', id: 'sermon-1' },
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false },
+      value: { userId: 'owner', title: 'T', verse: 'V', date: '2024-01-01', thoughts: [] },
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     const { container } = render(
       <TestProviders>
-        <PageComp />
+        <DataEngineProvider>
+          <PageComp />
+        </DataEngineProvider>
       </TestProviders>
     );
+    // Let the document arrive: the policy is about the page, not about its loading skeleton.
+    await act(async () => { await settleEngine(); });
     expectNoPageLevelShell(container);
   });
 });

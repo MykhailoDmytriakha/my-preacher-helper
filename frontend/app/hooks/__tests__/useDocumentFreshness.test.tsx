@@ -3,11 +3,9 @@ import { act, renderHook } from '@testing-library/react';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
-import { __resetConnectivityForTests, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
-import {
-  planFreshnessProjection,
-  type PlanFreshnessProjection,
-} from '@/utils/sermonFreshnessProjection';
+import { __resetConnectivityForTests, reportServerReachable } from '@/utils/connectivity';
+
+
 
 type Snapshot = {
   metadata: { hasPendingWrites: boolean; fromCache: boolean };
@@ -495,36 +493,6 @@ describe('a new document starts from knowing nothing', () => {
       expect(result.current.remote).toBeNull();
     });
 
-    it('raises and clears for a planText-only change', () => {
-      const base = {
-        outline: { introduction: [{ id: 'p1', text: 'Point' }], main: [], conclusion: [] },
-        thoughts: [],
-        plan: { introduction: { outline: '' }, main: { outline: '' }, conclusion: { outline: '' } },
-      };
-      const oldPlan = planFreshnessProjection({ ...base, planText: { p1: 'Old' } });
-      const newPlan = planFreshnessProjection({ ...base, planText: { p1: 'New' } });
-      const { result, rerender } = renderHook(
-        ({ known }: { known: PlanFreshnessProjection }) =>
-          useDocumentFreshness<PlanFreshnessProjection>({
-            collection: 'sermons',
-            docId: 'sermon-1',
-            uid: 'uid-1',
-            enabled: true,
-            known,
-            select: (data) => planFreshnessProjection(data),
-          }),
-        { initialProps: { known: oldPlan } }
-      );
-
-      act(() => emit?.(server({ ...base, planText: { p1: 'New' } })));
-      expect(result.current.state).toBe('stale');
-      expect(result.current.remote).toEqual(newPlan);
-
-      rerender({ known: newPlan });
-
-      expect(result.current.state).toBe('fresh');
-      expect(result.current.remote).toBeNull();
-    });
 
     it('keeps the warning when the screen caught up to something else', () => {
       const { result, rerender } = render({ title: 'what the screen had' });
@@ -800,87 +768,6 @@ describe('diagnostic incidents and read-only retry', () => {
 });
 
 
-describe('sermon freshness recovery', () => {
-  const open = () => renderHook(() => useDocumentFreshness({
-    collection: 'sermons', docId: 'sermon', uid: 'owner', enabled: true,
-    known: { title: 'Local' }, select: data => ({ title: data.title as string }),
-  }));
-  beforeEach(() => {
-    jest.useFakeTimers();
-    (readSermonFromServer as jest.Mock).mockReset();
-  });
-  afterEach(() => jest.useRealTimers());
-
-  it('automatically checks a cache-only startup and reports the newer copy without applying it', async () => {
-    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Remote' });
-    const { result } = open();
-    act(() => emit!(server({ title: 'Local' }, { fromCache: true })));
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    expect(readSermonFromServer).toHaveBeenCalledWith('sermon');
-    expect(result.current.state).toBe('stale');
-    expect(result.current.remote).toEqual({ title: 'Remote' });
-    expect(result.current.diagnostics.lastServerResult).toBe('different');
-  });
-
-  // A failed request while the phone says "network" does not switch the check off: the check is
-  // what finds the server again (BUG-20261011-raw-phone-flag-in-read-paths, review of the fix).
-  it('still checks the server after a request that did not reach, while the phone says online', async () => {
-    __resetConnectivityForTests();
-    try {
-      reportServerUnreachable();
-      (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Remote' });
-      open();
-      act(() => emit!(server({ title: 'Local' }, { fromCache: true })));
-      await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-      expect(readSermonFromServer).toHaveBeenCalledWith('sermon');
-    } finally {
-      __resetConnectivityForTests();
-    }
-  });
-
-  it('does not issue recovery traffic after the listener has already confirmed the document', async () => {
-    open();
-    act(() => emit!(server({ title: 'Local' })));
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    expect(readSermonFromServer).not.toHaveBeenCalled();
-  });
-
-  it('keeps failed verification unknown and recovers on a manual retry', async () => {
-    (readSermonFromServer as jest.Mock).mockRejectedValueOnce({ code: 'unavailable' });
-    const { result } = open();
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    expect(result.current.state).toBe('unknown');
-    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Local' });
-    await act(async () => { await result.current.checkAgain(); });
-    expect(result.current.state).toBe('fresh');
-    expect(result.current.diagnostics.incident).toBeNull();
-  });
-
-  it('does not call a committed HTTP version newer while this device has pending writes', async () => {
-    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Old server value' });
-    const { result } = open();
-    act(() => emit!(server({ title: 'Local' }, { hasPendingWrites: true })));
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    expect(result.current.state).toBe('unknown');
-    expect(result.current.remote).toBeNull();
-    expect(result.current.diagnostics.incident?.origin.reason).toBe('pendingChanges');
-    act(() => emit!(server({ title: 'Local' })));
-    expect(result.current.state).toBe('fresh');
-  });
-
-  it('ignores a late recovery answer superseded by a server snapshot', async () => {
-    let finish!: (value: unknown) => void;
-    (readSermonFromServer as jest.Mock).mockReturnValue(new Promise(resolve => { finish = resolve; }));
-    const { result } = open();
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    act(() => emit!(server({ title: 'Local' })));
-    await act(async () => { finish({ title: 'Old' }); });
-    expect(result.current.state).toBe('fresh');
-    expect(result.current.remote).toBeNull();
-  });
-});
-
-
 describe('semantic snapshot comparison', () => {
   it('keeps identical nested maps fresh and still detects a real reference change', () => {
     const local = { scriptureRefs: [{ book: 'Psalms', chapter: 5, fromVerse: 5, toVerse: 5, id: 'r' }] };
@@ -895,45 +782,6 @@ describe('semantic snapshot comparison', () => {
     expect(result.current.state).toBe('stale');
     rerender({ known: { scriptureRefs: [{ ...local.scriptureRefs[0], fromVerse: 4 }] } });
     expect(result.current.state).toBe('fresh');
-  });
-});
-
-// Orders of service used this road until they became engine-owned (where the hook stays silent);
-// it has no caller left and goes with the hook itself.
-describe('independent server reads', () => {
-  afterEach(() => { jest.useRealTimers(); });
-
-  it('detects another device while the SDK is silent and stops polling when unmounted', async () => {
-    jest.useFakeTimers();
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
-    const read = jest.fn().mockResolvedValue({ title: 'Local' });
-    const { result, unmount } = renderHook(() => useDocumentFreshness({
-      collection: 'sermons', docId: 'o1', uid: 'u1', enabled: true,
-      known: { title: 'Local' }, select: data => ({ title: data.title }), readFromServer: read, pollIntervalMs: 15000,
-    }));
-    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
-    read.mockResolvedValue({ title: 'Remote' });
-    await act(async () => { await jest.advanceTimersByTimeAsync(11000); });
-    expect(result.current.state).toBe('stale');
-    expect(result.current.remote).toEqual({ title: 'Remote' });
-    unmount();
-    const calls = read.mock.calls.length;
-    await act(async () => { await jest.advanceTimersByTimeAsync(30000); });
-    expect(read).toHaveBeenCalledTimes(calls);
-  });
-
-  it('does not report an old poll as remote change after a confirmed own save', async () => {
-    let resolve!: (value: { title: string }) => void;
-    const read = jest.fn(() => new Promise<{ title: string }>(done => { resolve = done; }));
-    const { result, rerender } = renderHook(({ title }) => useDocumentFreshness({
-      collection: 'sermons', docId: 'o1', uid: 'u1', enabled: true,
-      known: { title }, select: data => ({ title: data.title }), readFromServer: read,
-    }), { initialProps: { title: 'Before save' } });
-    let check!: Promise<void>;
-    act(() => { check = result.current.checkAgain(); });
-    rerender({ title: 'Own saved title' });
-    await act(async () => { resolve({ title: 'Before save' }); await check; });
-    expect(result.current.state).not.toBe('stale');
   });
 });
 

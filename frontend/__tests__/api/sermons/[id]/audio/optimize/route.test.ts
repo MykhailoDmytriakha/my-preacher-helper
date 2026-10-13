@@ -46,20 +46,17 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
     },
 }));
 
-// The engine road on demand: a test sets what the engine reads at write time; otherwise the real bridge runs.
+// Sermons are engine-owned: production skips the legacy callback and edits the stored document through
+// the engine. writeOwnedDocument is replaced by a stand-in that applies the route's real engine transform
+// to the document as stored: the one the test's Firestore read returns, or `mockEngineCurrent` when a test
+// wants the stored copy to differ from the one read before the AI calls (a concurrent edit).
 let mockEngineCurrent: Record<string, unknown> | null = null;
 let mockEngineWritten: Record<string, unknown> | null = null;
-jest.mock('@/data-engine/serverEdit.server', () => {
-    const actual = jest.requireActual('@/data-engine/serverEdit.server');
-    return {
-        ...actual,
-        writeOwnedDocument: jest.fn(async (options: { engine: (current: Record<string, unknown>) => Record<string, unknown> }) => {
-            if (!mockEngineCurrent) return actual.writeOwnedDocument(options);
-            mockEngineWritten = options.engine(JSON.parse(JSON.stringify(mockEngineCurrent)));
-            return mockEngineWritten;
-        }),
-    };
-});
+const mockWriteOwnedDocument = jest.fn();
+jest.mock('@/data-engine/serverEdit.server', () => ({
+    ...jest.requireActual('@/data-engine/serverEdit.server'),
+    writeOwnedDocument: (options: unknown) => mockWriteOwnedDocument(options),
+}));
 
 jest.mock('@/api/clients/speechOptimization.client', () => ({
     optimizeTextForSpeech: jest.fn(),
@@ -103,6 +100,14 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockEngineCurrent = null;
+        mockEngineWritten = null;
+        mockWriteOwnedDocument.mockReset();
+        mockWriteOwnedDocument.mockImplementation(async (options: { owner: string; resource: { id: string }; engine: (current: Record<string, unknown>) => Record<string, unknown> }) => {
+            const stored = mockEngineCurrent ?? (await mockGet()).data();
+            mockEngineWritten = options.engine(JSON.parse(JSON.stringify(stored)));
+            return mockEngineWritten;
+        });
         (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue(mockUserId);
 
         // Setup Firestore Mocks
@@ -298,7 +303,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
             hardCap: 110,
             resetsAt: '2026-08-01T00:00:00.000Z',
         });
-        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockWriteOwnedDocument).not.toHaveBeenCalled();
     });
 
     it('should preserve existing chunks when processing a single section', async () => {
@@ -327,12 +332,14 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(json.totalChunks).toBe(2);
 
         // Verify update call contains combined chunks
-        expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
-            audioChunks: expect.arrayContaining([
-                expect.objectContaining({ sectionId: 'introduction' }),
-                expect.objectContaining({ sectionId: 'conclusion', text: 'Old Conclusion' })
-            ])
+        expect(mockWriteOwnedDocument).toHaveBeenCalledWith(expect.objectContaining({
+            owner: mockUserId,
+            resource: { collection: 'sermons', id: mockSermonId },
         }));
+        expect(mockEngineWritten?.audioChunks).toEqual(expect.arrayContaining([
+            expect.objectContaining({ sectionId: 'introduction' }),
+            expect.objectContaining({ sectionId: 'conclusion', text: 'Old Conclusion' })
+        ]));
     });
 
     /**
@@ -867,6 +874,6 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         const params = Promise.resolve({ id: mockSermonId });
         const res = await POST(req, { params });
         expect(res.status).toBe(200);
-        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(mockWriteOwnedDocument).not.toHaveBeenCalled();
     });
 });

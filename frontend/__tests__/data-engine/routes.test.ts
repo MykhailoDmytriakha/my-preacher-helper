@@ -65,12 +65,18 @@ describe('DataEngine HTTP routes', () => {
     const collections = process.env.DATA_ENGINE_COLLECTIONS;
     try {
       delete process.env.DATA_ENGINE_ENABLED;
-      process.env.DATA_ENGINE_COLLECTIONS = 'councils';
-      const councilContext = { params: Promise.resolve({ collection: 'councils' }) };
-      const councilDocument = { params: Promise.resolve({ collection: 'councils', id: 'council-1' }) };
+      // 'users' is not engine-owned in code (ENGINE_OWNED_COLLECTIONS), so the env switch alone serves it;
+      // 'studyNoteShareLinks' is neither owned nor listed, so it must stay unserved.
+      expect(ENGINE_OWNED_COLLECTIONS).not.toContain('users');
+      expect(ENGINE_OWNED_COLLECTIONS).not.toContain('studyNoteShareLinks');
+      process.env.DATA_ENGINE_COLLECTIONS = 'users';
+      const unservedContext = { params: Promise.resolve({ collection: 'studyNoteShareLinks' }) };
+      const unservedDocument = { params: Promise.resolve({ collection: 'studyNoteShareLinks', id: 'link-1' }) };
+      const servedContext = { params: Promise.resolve({ collection: 'users' }) };
+      const servedDocument = { params: Promise.resolve({ collection: 'users', id: 'user-1' }) };
 
-      for (const response of [await read(request(), documentContext), await list(request(), listContext),
-        await changes(request('http://localhost/api/data-engine/changes/sermons?after=0'), listContext)]) {
+      for (const response of [await read(request(), unservedDocument), await list(request(), unservedContext),
+        await changes(request('http://localhost/api/data-engine/changes/studyNoteShareLinks?after=0'), unservedContext)]) {
         expect(response.status).toBe(503);
         expect(await response.json()).toEqual({ code: 'data-engine-disabled' });
       }
@@ -78,22 +84,22 @@ describe('DataEngine HTTP routes', () => {
       expect(listDocuments).not.toHaveBeenCalled();
       expect(readCollectionChanges).not.toHaveBeenCalled();
 
-      expect((await read(request(), councilDocument)).status).toBe(200);
-      expect((await list(request(), councilContext)).status).toBe(200);
-      expect((await changes(request('http://localhost/api/data-engine/changes/councils?after=0'), councilContext)).status).toBe(200);
+      expect((await read(request(), servedDocument)).status).toBe(200);
+      expect((await list(request(), servedContext)).status).toBe(200);
+      expect((await changes(request('http://localhost/api/data-engine/changes/users?after=0'), servedContext)).status).toBe(200);
 
-      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'sermons', id: 'sermon-1' } });
+      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'studyNoteShareLinks', id: 'link-1' } });
       expect((await POST(request())).status).toBe(503);
       expect(processCommand).not.toHaveBeenCalled();
 
-      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'councils', id: 'council-1' } });
+      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'users', id: 'user-1' } });
       expect((await POST(request())).status).toBe(200);
       expect(processCommand).toHaveBeenCalledTimes(1);
 
       // The engine reads its own change heads through the same route. That record is its
       // bookkeeping, not a migrated domain, so listing user collections must not cut it off —
       // a client enabled for one collection could otherwise never learn of a remote change.
-      const heads = { params: Promise.resolve({ collection: '_dataEngineHeads', id: JSON.stringify(['owner', 'councils']) }) };
+      const heads = { params: Promise.resolve({ collection: '_dataEngineHeads', id: JSON.stringify(['owner', 'users']) }) };
       expect((await read(request(), heads)).status).toBe(200);
     } finally {
       if (collections === undefined) delete process.env.DATA_ENGINE_COLLECTIONS;
