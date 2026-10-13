@@ -121,8 +121,7 @@ describe('Thoughts API POST', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    process.env.USE_STRUCTURED_OUTPUT = 'true'; // Enable structured output for these tests
-    jest.resetModules(); // Reset cache to re-evaluate module with new env var
+    jest.resetModules();
 
     // Re-require route
     const routeModule = await import('@/api/thoughts/route');

@@ -13,7 +13,7 @@ cannot be copied from the dashboard. Write the WHOLE value every time you change
 |---|---|
 | `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` | `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates,users` |
 | `DATA_ENGINE_COLLECTIONS` (Secret) | the same ten **plus `studyNoteShareLinks`** plus `users` |
-| `DATA_ENGINE_CLOSED_COLLECTIONS` | the ten: `councils,groups,series,sermons,tags,prayerRequests,serviceOrders,studyNotes,studyMaterials,planTemplates` — not `users`, not `studyNoteShareLinks` |
+| `DATA_ENGINE_CLOSED_COLLECTIONS` | **removed 2026-10-13.** It held the ten, which code now closes (`engineOwnedCollections.ts`, `isClosedToLegacyWriters`); the switch remains only for a collection outside that list. Never held `users` or `studyNoteShareLinks` |
 | `firestore.rules` `closedToBrowserWrites` | the same ten (pinned by `rules-test-closed.cjs`) |
 
 **Closure order.** Deploy the rules first, then set the server's closed list and redeploy. The
