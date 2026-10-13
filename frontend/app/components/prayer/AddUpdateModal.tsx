@@ -13,7 +13,7 @@ import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (text: string, recoveryDraft: string) => WriteSubmission;
+  onSubmit: (text: string) => WriteSubmission;
 }
 
 export default function AddUpdateModal({ onClose, onSubmit }: Props) {
@@ -39,7 +39,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     setSaving(true);
     try {
       // usePrayerRequests' add-update recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onSubmit(text.trim(), text), () => undefined);
+      await awaitAcceptance(onSubmit(text.trim()), () => undefined);
       onClose();
     } catch {
       /**

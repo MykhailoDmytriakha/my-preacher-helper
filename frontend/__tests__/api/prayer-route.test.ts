@@ -1,83 +1,29 @@
+import { POST } from 'app/api/prayer/route';
+
+/**
+ * POST /api/prayer stays for shipped bundles. Prayer requests are created only through the data
+ * engine, so a shipped bundle's create is refused with 426 — never 409 — and nothing is stored.
+ */
+
 jest.mock('next/server', () => ({
-  NextResponse: {
-    json: jest.fn().mockImplementation((data, options = {}) => ({
-      status: options.status || 200,
-      json: async () => data,
-    })),
-  },
+  NextResponse: { json: jest.fn((data, options = {}) => ({ status: options.status ?? 200, json: async () => data })) },
 }));
-
-const mockCreate = jest.fn();
-
-jest.mock('@repositories/prayerRequests.repository', () => ({
-  prayerRequestsRepository: {
-    create: (...args: unknown[]) => mockCreate(...args),
-  },
-}));
-
-jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
-  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
-}));
-
-import * as prayerRouteModule from 'app/api/prayer/route';
+const mockAuth = jest.fn();
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: (...args: unknown[]) => mockAuth(...args) }));
+const request = () => ({ json: async () => ({ id: 'p1', userId: 'user-1', title: 'Healing' }) } as Request);
 
 describe('prayer route', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeEach(() => jest.clearAllMocks());
+
+  it('refuses a caller without a verified token', async () => {
+    mockAuth.mockResolvedValue(null);
+    expect((await POST(request())).status).toBe(401);
   });
 
-  it('validates required fields for creation', async () => {
-    const response = await prayerRouteModule.POST({
-      json: async () => ({ userId: 'user-1', title: '   ' }),
-    } as Request);
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: 'Missing required field: title',
-    });
-  });
-
-  it('creates a normalized prayer request payload', async () => {
-    mockCreate.mockResolvedValue({ id: 'p1', title: 'New prayer' });
-
-    const response = await prayerRouteModule.POST({
-      json: async () => ({
-        userId: 'user-1',
-        title: '  New prayer  ',
-        description: '  Context  ',
-        categoryId: 'cat-1',
-        tags: ['family'],
-      }),
-    } as Request);
-
-    expect(mockCreate).toHaveBeenCalledWith(
-      {
-        userId: 'user-1',
-        title: 'New prayer',
-        description: 'Context',
-        categoryId: 'cat-1',
-        tags: ['family'],
-        status: 'active',
-        updates: [],
-      },
-      undefined // no client-supplied id in this request
-    );
-    expect(response.status).toBe(201);
-    await expect(response.json()).resolves.toEqual({ id: 'p1', title: 'New prayer' });
-  });
-
-  it('returns 500 when creation fails', async () => {
-    mockCreate.mockRejectedValue(new Error('boom'));
-
-    const response = await prayerRouteModule.POST({
-      json: async () => ({
-        userId: 'user-1',
-        title: 'New prayer',
-        description: 'Context',
-      }),
-    } as Request);
-
-    expect(response.status).toBe(500);
-    await expect(response.json()).resolves.toEqual({ error: 'Failed to create prayer request' });
+  it('refuses a shipped bundle\'s create with the migration refusal', async () => {
+    mockAuth.mockResolvedValue('user-1');
+    const response = await POST(request());
+    expect(response.status).toBe(426);
+    await expect(response.json()).resolves.toMatchObject({ code: 'data-engine-required' });
   });
 });

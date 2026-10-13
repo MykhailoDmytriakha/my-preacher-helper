@@ -153,16 +153,54 @@ it('archives the previous version\'s unsent plan template edits with their struc
   const structure = { introduction: [{ id: 'p', text: 'Opening point' }], main: [], conclusion: [] };
   const mutation = (operation: string, variables: unknown) => ({ mutationKey: ['planTemplates', operation], state: { variables, status: 'error', submittedAt: 21, isPaused: false } });
   const create = mutation('create', { id: 'tpl-new', userId: 'owner', name: 'Advent', structure });
-  const update = mutation('update', { id: 'tpl', userId: 'owner', updates: { name: 'Lent', structure }, expectedRevision: 3 });
-  jest.mocked(get).mockResolvedValue({ clientState: { mutations: [create, update] } });
+  // The previous version's update named only the template (usePlanTemplates before fd842c4d);
+  // its owner comes from that version's cached list, which is not itself archived.
+  const update = mutation('update', { id: 'tpl', updates: { name: 'Lent', structure }, expectedRevision: 3 });
+  const list = { queryKey: ['planTemplates', 'owner'], state: { data: [{ id: 'tpl', userId: 'owner', name: 'Lent draft', structure }], dataUpdatedAt: 1 } };
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [list], mutations: [create, update] } });
   await preserveLegacyQueryCache(collection => collection === 'planTemplates');
   const copies = await listLegacyQueryCopies('owner');
-  expect(copies.map(copy => copy.collection)).toEqual(['planTemplates', 'planTemplates']);
+  expect(copies.map(copy => [copy.collection, copy.documentId])).toEqual([['planTemplates', 'tpl-new'], ['planTemplates', 'tpl']]);
   expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([create, update]);
 });
 
-it('names every collection it archives, plan templates included', () => {
-  expect(ARCHIVED_COLLECTIONS).toEqual(expect.arrayContaining(['councils', 'groups', 'series', 'sermons', 'users', 'planTemplates']));
+// An update or an answer the previous version never sent is human text that lives only in its paused
+// mutation; on the engine the replay is refused, so this archive is where those words survive.
+it('archives the previous version\'s unsent prayer edits, updates and answers', async () => {
+  installStorageHarness();
+  const mutation = (operation: string, variables: unknown) => ({ mutationKey: ['prayerRequests', operation], state: { variables, status: 'error', submittedAt: 21, isPaused: false } });
+  // Shapes as usePrayerRequests sent them before this change: the prayer's id, never its owner.
+  const update = mutation('addUpdate', { id: 'prayer', updateId: 'u1', text: 'We prayed together', createdAt: 'T' });
+  const answer = mutation('status', { id: 'prayer', status: 'answered', answerText: 'God provided', expectedRevision: 2 });
+  const detail = { queryKey: ['prayerRequest', 'prayer'], state: { data: { id: 'prayer', userId: 'owner', title: 'Healing', status: 'active', updates: [] }, dataUpdatedAt: 1 } };
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [detail], mutations: [update, answer] } });
+  await preserveLegacyQueryCache(collection => collection === 'prayerRequests');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => [copy.collection, copy.documentId])).toEqual([['prayerRequests', 'prayer'], ['prayerRequests', 'prayer']]);
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([update, answer]);
+});
+
+// The hint only says whose a document already was on this device: an edit with no cached row of its
+// own is never handed to whoever happens to be signed in now.
+it('keeps an id-only edit without a cached owner out of every owner\'s list', async () => {
+  installStorageHarness();
+  const answer = { mutationKey: ['prayerRequests', 'status'], state: { variables: { id: 'prayer', status: 'answered', answerText: 'God provided' }, status: 'error', submittedAt: 21, isPaused: false } };
+  const otherList = { queryKey: ['prayerRequests', 'owner'], state: { data: [{ id: 'another', userId: 'owner', title: 'Other' }], dataUpdatedAt: 1 } };
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [otherList], mutations: [answer] } });
+  await preserveLegacyQueryCache(collection => collection === 'prayerRequests');
+  expect(await listLegacyQueryCopies('owner')).toEqual([]);
+});
+
+it('names every collection it archives, plan templates and prayers included', () => {
+  expect(ARCHIVED_COLLECTIONS).toEqual(expect.arrayContaining(['councils', 'groups', 'series', 'sermons', 'users', 'planTemplates', 'prayerRequests']));
+});
+
+// The recovery notice labels each copy with its collection; an archived collection without a label
+// in one language would show the raw key there.
+it.each(['en', 'ru', 'uk'])('labels every archived collection in %s', language => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const labels = require(`../../../locales/${language}/translation.json`).legacyRecovery.collection as Record<string, string>;
+  for (const collection of ARCHIVED_COLLECTIONS) expect(labels[collection]).toEqual(expect.any(String));
 });
 
 describe('settings migration input', () => {

@@ -352,16 +352,15 @@ describe('Prayer Page', () => {
         'active-1',
         { title: 'Edited prayer', description: 'Context', tags: ['hope'] },
         0,
-        { title: 'Pray for church', description: 'Sunday service', tags: ['church'] },
-        undefined
+        { title: 'Pray for church', description: 'Sunday service', tags: ['church'] }
       );
       expect(deletePrayer).toHaveBeenCalledWith('active-1');
-      expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note', undefined);
+      expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('active-1', 'not_answered');
       expect(setStatus).toHaveBeenCalledWith('active-1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      }, undefined);
+      });
     });
 
     // The page delegates editor-owned confirmation to the modal. It must not add a

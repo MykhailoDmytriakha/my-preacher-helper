@@ -273,17 +273,15 @@ export default function PrayerPage() {
     // list screen was a hole straight through the protection: a laptop showing
     // yesterday's list could rename a prayer the phone had rewritten in the
     // morning, and nothing refused it.
-    const { recoveryDraft, ...updates } = payload;
     return updatePrayer(
       editingPrayer.id,
-      updates,
+      payload,
       editingPrayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
       {
         title: editingPrayer.title,
         description: editingPrayer.description ?? null,
         tags: editingPrayer.tags ?? [],
-      },
-      recoveryDraft
+      }
     );
   };
 
@@ -309,7 +307,7 @@ export default function PrayerPage() {
     return submission;
   };
 
-  const handleMarkAnswered = (answerText?: string, recoveryDraft?: string) => {
+  const handleMarkAnswered = (answerText?: string) => {
     if (!markingAnswered) return skippedWrite();
     // The answer is human text. State the revision and the values this modal
     // opened with, and keep the modal open on refusal — the words live nowhere else.
@@ -318,15 +316,14 @@ export default function PrayerPage() {
       'answered',
       answerText,
       markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
-      { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null },
-      recoveryDraft
+      { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null }
     );
   };
 
-  const handleAddUpdate = (text: string, recoveryDraft: string) => {
+  const handleAddUpdate = (text: string) => {
     if (!addingUpdateForId) return refusedWrite('not-found', 'The prayer for this update is gone', t(WRITE_REFUSED_KEY));
     // This is queue-owned at launch; accept silently and let the modal close.
-    return addUpdate(addingUpdateForId, text, recoveryDraft);
+    return addUpdate(addingUpdateForId, text);
   };
 
   const hasFilterChanges =

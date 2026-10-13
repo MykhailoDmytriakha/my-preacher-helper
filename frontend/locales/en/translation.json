@@ -54,7 +54,8 @@
       "sermons": "Sermon",
       "users": "User Settings",
       "planTemplates": "Structure template",
-      "tags": "Tag"
+      "tags": "Tag",
+      "prayerRequests": "Prayer"
     },
     "field": {
       "name": "Name",
@@ -109,7 +110,10 @@
       "color": "Color",
       "templates": "Templates",
       "flow": "Meeting flow",
-      "heldAt": "Held on"
+      "heldAt": "Held on",
+      "answerText": "Answer to the prayer",
+      "text": "Text",
+      "updates": "Updates"
     },
     "unchangedLines": "⋯ {{count}} unchanged",
     "untitled": "Untitled",

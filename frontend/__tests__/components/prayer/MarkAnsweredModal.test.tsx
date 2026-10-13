@@ -32,7 +32,7 @@ describe('MarkAnsweredModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }));
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(undefined, undefined);
+      expect(onSubmit).toHaveBeenCalledWith(undefined);
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
@@ -60,7 +60,7 @@ describe('MarkAnsweredModal', () => {
     expect(enabledSubmitButton).toBeEnabled();
     fireEvent.click(enabledSubmitButton);
 
-    expect(onSubmit).toHaveBeenCalledWith('God provided', '  God provided  ');
+    expect(onSubmit).toHaveBeenCalledWith('God provided');
     expect(screen.getByRole('button', { name: '...' })).toBeDisabled();
 
     resolveSubmit?.();

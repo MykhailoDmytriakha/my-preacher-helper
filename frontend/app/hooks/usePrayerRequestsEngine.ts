@@ -13,7 +13,7 @@ import type { DocumentData } from '@/data-engine/types';
 import type { PrayerRequest, PrayerStatus } from '@/models/models';
 
 type CreatePrayerPayload = Pick<PrayerRequest, 'userId' | 'title'> &
-  Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & { recoveryDraft?: string };
+  Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>>;
 type SaveConflictPayload = { id: string; updates: Partial<PrayerRequest> };
 type StatusConflictPayload = { id: string; status: PrayerStatus; answerText?: string };
 
@@ -116,10 +116,9 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     createPrayer: (payload: CreatePrayerPayload): WriteSubmission & { prayerId: string } => {
       const id = newClientId();
       const at = now();
-      const { recoveryDraft: _draft, ...fields } = payload;
       return {
         ...queuedMutation(`prayer:create:${id}`, reportLate(actions.create(resource(id), JSON.parse(JSON.stringify({
-          ...fields, status: 'active', updates: [], createdAt: at, updatedAt: at,
+          ...payload, status: 'active', updates: [], createdAt: at, updatedAt: at,
         })) as DocumentData))),
         prayerId: id,
       };

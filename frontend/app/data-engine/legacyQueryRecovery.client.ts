@@ -27,7 +27,8 @@ const object = (value: unknown): value is Record<string, unknown> => Boolean(val
 
 type Candidate = Omit<LegacyQueryCopy, 'id'>;
 const OWNER_DETAIL = 'owner-detail';
-const QUERY_SOURCES: Record<string, { collection: string; length: number; kind: 'list' | 'detail' | 'owner-detail' | 'series-detail' }> = {
+type QuerySources = Record<string, { collection: string; length: number; kind: 'list' | 'detail' | 'owner-detail' | 'series-detail' }>;
+const QUERY_SOURCES: QuerySources = {
   councils: { collection: 'councils', length: 2, kind: 'list' },
   groups: { collection: 'groups', length: 2, kind: 'list' },
   'group-detail': { collection: 'groups', length: 2, kind: 'detail' },
@@ -40,6 +41,17 @@ const QUERY_SOURCES: Record<string, { collection: string; length: number; kind: 
   'user-settings': { collection: 'users', length: 2, kind: 'detail' },
 };
 /**
+ * Lists of the previous version that only say WHOSE a document is. Their rows are not archived — a
+ * pre-engine list kept for weeks would surface as copies nobody wrote — but an unsent edit whose
+ * variables carry only the document id (a template rename, a prayer update or answer) takes its
+ * owner from them. Without an owner a copy is kept and never shown (BUG-20261012-archived-edit-without-owner-hidden).
+ */
+const OWNER_HINT_SOURCES: QuerySources = {
+  planTemplates: { collection: 'planTemplates', length: 2, kind: 'list' },
+  prayerRequests: { collection: 'prayerRequests', length: 2, kind: 'list' },
+  prayerRequest: { collection: 'prayerRequests', length: 2, kind: 'detail' },
+};
+/**
  * A legacy query whose collection the engine now owns. Its rows are a session-only view, so the
  * persisted cache must not keep them: the next start would archive a fresh read as if it were an
  * unsaved copy from the previous version, and the count of "local copies" would grow on every visit.
@@ -49,9 +61,9 @@ export function isEngineOwnedLegacyQuery(queryKey: readonly unknown[], enabled: 
   return Boolean(source && enabled(source.collection));
 }
 
-function querySource(query: unknown, enabled: (collection: string) => boolean) {
+function querySource(query: unknown, enabled: (collection: string) => boolean, sources: QuerySources) {
   if (!object(query) || !Array.isArray(query.queryKey) || !object(query.state)) return null;
-  const key = query.queryKey, source = QUERY_SOURCES[String(key[0])];
+  const key = query.queryKey, source = sources[String(key[0])];
   if (!source || !enabled(source.collection) || key.length !== source.length) return null;
   const { collection, kind } = source, detail = kind !== 'list';
   const rows = kind === 'series-detail' ? [object(query.state.data) ? query.state.data.series : null]
@@ -61,8 +73,8 @@ function querySource(query: unknown, enabled: (collection: string) => boolean) {
     savedAt: typeof query.state.dataUpdatedAt === 'number' && Number.isFinite(query.state.dataUpdatedAt) ? query.state.dataUpdatedAt : null };
 }
 
-function queryCopies(query: unknown, enabled: (collection: string) => boolean): Candidate[] {
-  const source = querySource(query, enabled);
+function queryCopies(query: unknown, enabled: (collection: string) => boolean, sources: QuerySources = QUERY_SOURCES): Candidate[] {
+  const source = querySource(query, enabled, sources);
   if (!source) return [];
   return source.rows.flatMap((document: unknown) => {
     // Settings belong to their document ID; older profiles need not store userId.
@@ -89,6 +101,7 @@ const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
   groups: ['create', 'update', 'delete'], series: ['create', 'update', 'delete'],
   planTemplates: ['create', 'update', 'delete'],
   tags: ['add', 'remove', 'update'],
+  prayerRequests: ['create', 'update', 'delete', 'addUpdate', 'status'],
   dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
   'user-settings': ['prepMode', 'audioGeneration', 'structurePreview', 'firstDayOfWeek', 'showAppVersion', 'modelPreference', 'functionModelPreference'],
 };
@@ -176,8 +189,10 @@ async function archiveLegacyQueryCache(enabled: (collection: string) => boolean)
   if (!ARCHIVED_COLLECTIONS.some(enabled)) return;
   const persisted: unknown = await get('react-query-cache', queryCacheStore);
   if (!object(persisted) || !object(persisted.clientState)) return;
-  const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));
-  const mutations = mutationCopies(Array.isArray(persisted.clientState.mutations) ? persisted.clientState.mutations : [], queries, enabled);
+  const persistedQueries: unknown[] = Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : [];
+  const queries = persistedQueries.flatMap(query => queryCopies(query, enabled));
+  const ownerHints = persistedQueries.flatMap(query => queryCopies(query, enabled, OWNER_HINT_SOURCES));
+  const mutations = mutationCopies(Array.isArray(persisted.clientState.mutations) ? persisted.clientState.mutations : [], [...queries, ...ownerHints], enabled);
   const copies = new Map<string, Omit<LegacyQueryCopy, 'id'>[]>();
   for (const candidate of [...queries, ...mutations]) {
       const identity = JSON.stringify([ARCHIVE_KIND, candidate.owner, candidate.collection, candidate.documentId]);

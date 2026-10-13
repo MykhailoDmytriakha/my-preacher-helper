@@ -164,7 +164,8 @@ describe('CreatePrayerModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('passes every raw editor field to recovery before normalising the persisted payload', async () => {
+  // The engine keeps an unsent write in its own queue, so the form hands over only what is stored.
+  it('normalises whitespace and tags in the payload it submits', async () => {
     const onSubmit = jest.fn(() => persistedWrite(Promise.resolve()));
 
     render(<CreatePrayerModal onClose={jest.fn()} onSubmit={onSubmit} />);
@@ -181,11 +182,10 @@ describe('CreatePrayerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Prayer' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+    expect(onSubmit).toHaveBeenCalledWith({
       title: 'Pray for the family',
       description: 'Exact context with spaces',
       tags: ['family', 'health'],
-      recoveryDraft: '  Pray for the family  \n  Exact context with spaces  \n family,  health  ',
-    }));
+    });
   });
 });

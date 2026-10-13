@@ -45,21 +45,6 @@ jest.mock('@/providers/AuthProvider', () => ({
   }),
 }));
 
-// The freshness banner only shows when the record IS stale, so a test about "which banner
-// wins" has to put it there — otherwise it passes with neither on screen.
-const mockFreshness = jest.fn<
-  { state: string; remote: Record<string, unknown> | null; remotelyDeleted: boolean; markSynced: () => void },
-  []
->(() => ({
-  state: 'fresh',
-  remote: null,
-  remotelyDeleted: false,
-  markSynced: jest.fn(),
-}));
-jest.mock('@/hooks/useDocumentFreshness', () => ({
-  useDocumentFreshness: () => mockFreshness(),
-}));
-
 jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => mockUsePrayerRequests(),
 }));
@@ -284,17 +269,16 @@ describe('PrayerDetailPage', () => {
         // Fourth argument = the VALUES the form opened with. Frozen at open, like
         // the revision: a value read at save time would agree with the server by
         // construction, and the check would protect nothing.
-        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] },
-        undefined
+        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] }
       );
-      expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note', undefined);
+      expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
       // Fourth argument = the revision the answer was built from: the answer is
       // human text, so two devices answering must not overwrite each other.
       expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      }, undefined);
+      });
       expect(deletePrayer).toHaveBeenCalledWith('p1');
       // replace, not push — the deleted prayer must not stay one Back away (BUG-20260905).
       expect(mockReplace).toHaveBeenCalledWith('/prayers');
@@ -444,16 +428,9 @@ describe('PrayerDetailPage', () => {
   it('lets the refused ANSWER own the screen — no second banner for the same event', () => {
     /**
      * This page has TWO conflict kinds: a refused edit and a refused answer/status change.
-     * The freshness banner was silenced for the first and not the second, so a refused
-     * answer showed two banners and four competing actions for one event. The conflict
-     * banner holds the person's text, so it is the one that stays.
+     * A refused answer once showed two banners and four competing actions for one event.
+     * The conflict banner holds the person's text, so it is the only one on screen.
      */
-    mockFreshness.mockReturnValue({
-      state: 'stale',
-      remote: { status: 'answered', answerText: 'Другое устройство' },
-      remotelyDeleted: false,
-      markSynced: jest.fn(),
-    });
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
       loading: false,

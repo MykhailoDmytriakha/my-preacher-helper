@@ -13,7 +13,7 @@ import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/ut
 
 interface Props {
   onClose: () => void;
-  onSubmit: (answerText?: string, recoveryDraft?: string) => WriteSubmission;
+  onSubmit: (answerText?: string) => WriteSubmission;
 }
 
 export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
@@ -25,7 +25,7 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
     setSaving(true);
     try {
       const acceptance = await awaitAcceptance(
-        onSubmit(text?.trim() || undefined, text),
+        onSubmit(text?.trim() || undefined),
         // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
         () => undefined
       );

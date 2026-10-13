@@ -14,13 +14,8 @@ import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
-import { recoveryText } from '@/utils/writeRecovery';
 
-export type PrayerFormPayload = Pick<PrayerRequest, 'title'> &
-  Partial<Pick<PrayerRequest, 'description' | 'tags'>> & {
-    /** Exact input before persistence normalises whitespace and tags. */
-    recoveryDraft: string;
-  };
+export type PrayerFormPayload = Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>;
 
 interface Props {
   onClose: () => void;
@@ -57,7 +52,6 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
           title: title.trim(),
           description: description.trim() || undefined,
           tags: tags.length > 0 ? tags : undefined,
-          recoveryDraft: recoveryText([title, description, tagsInput]),
         }),
         // usePrayerRequests' create/update recovery descriptor reports a late refusal while this screen is mounted.
         () => undefined

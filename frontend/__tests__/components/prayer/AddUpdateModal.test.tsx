@@ -77,7 +77,7 @@ describe('AddUpdateModal', () => {
     fireEvent.submit(enabledSubmitButton.closest('form') as HTMLFormElement);
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith('We prayed together', '  We prayed together  ');
+      expect(onSubmit).toHaveBeenCalledWith('We prayed together');
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
@@ -155,10 +155,7 @@ describe('AddUpdateModal', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'Save Update' }).closest('form') as HTMLFormElement);
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith(
-        'Manual note\n\nVoice update from prayer meeting',
-        'Manual note\n\nVoice update from prayer meeting'
-      );
+      expect(onSubmit).toHaveBeenCalledWith('Manual note\n\nVoice update from prayer meeting');
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });

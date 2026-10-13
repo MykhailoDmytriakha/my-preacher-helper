@@ -1,13 +1,6 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
-import {
-  addPrayerUpdate,
-  createPrayerRequest,
-  deletePrayerRequest,
-  setPrayerStatus,
-  updatePrayerRequest,
-} from '@/services/prayerRequests.service';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
 import { createSeries, deleteSeries, updateSeries } from '@/services/series.service';
 import {
@@ -37,7 +30,7 @@ import type {
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote } from '@/models/models';
+import type { Group, PreachDate, Series, Sermon, StudyNote } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -73,23 +66,6 @@ export const PRAYER_MUTATION_KEYS = {
   addUpdate: ['prayerRequests', 'addUpdate'] as const,
   status: ['prayerRequests', 'status'] as const,
 };
-
-interface PrayerAddUpdateVars {
-  id: string;
-  updateId?: string;
-  text: string;
-  createdAt?: string;
-}
-
-interface PrayerStatusVars {
-  id: string;
-  status: PrayerStatus;
-  updatedAt?: string;
-  answeredAt?: string;
-  answerText?: string;
-  /** Must survive persistence, or a replayed "answered" overwrites another device's answer. */
-  expectedRevision?: number | null;
-}
 
 export const TAG_MUTATION_KEYS = {
   add: ['tags', 'add'] as const,
@@ -342,43 +318,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   });
 
   // ---- prayer requests ----
-  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.create, {
-    mutationFn: (payload: Pick<PrayerRequest, 'userId' | 'title'> &
-      Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & { id?: string }) =>
-      createPrayerRequest(payload),
-    onSuccess: invalidate(['prayerRequests']),
-  });
-  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.update, {
-    // Same rule as study notes and series: `expectedRevision` must survive
-    // persistence. A replay that drops it silently becomes an unguarded write and
-    // can overwrite what another device stored while this one was offline.
-    mutationFn: ({
-      id,
-      updates,
-      expectedRevision,
-    }: {
-      id: string;
-      updates: Partial<PrayerRequest>;
-      expectedRevision?: number | null;
-    }) => updatePrayerRequest(id, updates, expectedRevision ?? null),
-    onSuccess: invalidate(['prayerRequests']),
-  });
-  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.delete, {
-    mutationFn: (id: string) => deletePrayerRequest(id),
-    onSuccess: invalidate(['prayerRequests']),
-  });
-  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.addUpdate, {
-    mutationFn: ({ id, updateId, text, createdAt }: PrayerAddUpdateVars) =>
-      addPrayerUpdate(id, { updateId, text, createdAt }),
-    onSuccess: invalidate(['prayerRequests']),
-  });
-  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.status, {
-    // `expectedRevision` must survive persistence here too: a replayed "answered"
-    // carries human text and would otherwise overwrite another device's answer.
-    mutationFn: ({ id, status, answerText, updatedAt, answeredAt, expectedRevision }: PrayerStatusVars) =>
-      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }, undefined, expectedRevision ?? null),
-    onSuccess: invalidate(['prayerRequests']),
-  });
+  // The engine owns prayer requests; a paused edit of the previous version gets the same refusal,
+  // and its text survives in the previous-version archive (legacyQueryRecovery.client.ts).
+  for (const key of Object.values(PRAYER_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('prayerRequests') });
+  }
 
   // ---- tags ----
   // The engine owns tags; a paused edit of the previous version gets the same refusal.
