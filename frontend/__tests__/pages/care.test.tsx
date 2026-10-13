@@ -25,9 +25,7 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
 
 // The plane counts councils in preparation the same way; the hook needs a QueryClient the
 // page test does not build, and the number is the section's own concern.
-jest.mock('@/hooks/useCouncils', () => ({
-  useCouncils: () => ({ councils: [], loading: false }),
-}));
+jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
 
 /** Every section on the plane, grouped into the card it belongs to. */
 const SECTIONS_BY_CARD = {

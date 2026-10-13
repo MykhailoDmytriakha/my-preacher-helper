@@ -24,7 +24,7 @@ jest.mock('@/hooks/useSeriesDetail', () => ({
 }));
 jest.mock('@/hooks/useGroupDetail', () => ({ useGroupDetail: () => ({ group: null }) }));
 jest.mock('@/hooks/useServiceOrders', () => ({ useServiceOrders: () => ({ orders: [] }) }));
-jest.mock('@/hooks/useCouncils', () => ({ useCouncils: () => ({ councils: [] }) }));
+jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
 jest.mock('@/hooks/usePrayerDetail', () => ({ usePrayerDetail: () => ({ prayer: null }) }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key }),

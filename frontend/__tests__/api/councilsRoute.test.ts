@@ -22,9 +22,6 @@ jest.mock('@repositories/councils.repository', () => ({
   councilsRepository: {
     listForOwner: jest.fn(),
     getForOwner: jest.fn(),
-    createForOwner: jest.fn(),
-    replaceForOwner: jest.fn(),
-    deleteForOwner: jest.fn(),
   },
 }));
 
@@ -54,8 +51,8 @@ describe('councils over HTTPS', () => {
     mockUid.mockResolvedValue(null);
     expect((await GET(request('GET'))).status).toBe(401);
     expect((await POST(request('POST', { id: 'c1', council: body() }))).status).toBe(401);
-    expect((await PUT(request('PUT', { council: body(), expectedRev: 0 }), params)).status).toBe(401);
-    expect((await DELETE(request('DELETE'), params)).status).toBe(401);
+    expect((await PUT(request('PUT', { council: body(), expectedRev: 0 }))).status).toBe(401);
+    expect((await DELETE(request('DELETE'))).status).toBe(401);
     expect(repo.listForOwner).not.toHaveBeenCalled();
   });
 
@@ -67,50 +64,17 @@ describe('councils over HTTPS', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store');
   });
 
-  it('creates at the client id and never takes the owner from the payload', async () => {
-    repo.createForOwner.mockResolvedValue({ id: 'c1', userId: 'owner-1', ...body(), rev: 0 } as never);
-    const response = await POST(request('POST', { id: 'c1', council: { ...body(), userId: 'someone-else' } }));
-    // `userId` is not part of the body the schema accepts: the request is refused whole.
-    expect(response.status).toBe(400);
-    expect(repo.createForOwner).not.toHaveBeenCalled();
-
-    const ok = await POST(request('POST', { id: 'c1', council: body() }));
-    expect(ok.status).toBe(201);
-    expect(repo.createForOwner).toHaveBeenCalledWith('owner-1', 'c1', body());
-  });
-
-  it('refuses a section that is too long instead of trimming it', async () => {
-    const council = body();
-    council.topics[0].title = 'x'.repeat(301);
-    const response = await POST(request('POST', { id: 'c1', council }));
-    expect(response.status).toBe(400);
-  });
-
-  it('answers 409 with the current council when the base was superseded', async () => {
-    const current = { id: 'c1', userId: 'owner-1', ...body(), rev: 3 };
-    repo.replaceForOwner.mockResolvedValue({ conflict: true, current } as never);
-    const response = await PUT(request('PUT', { council: body(), expectedRev: 2 }), params);
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual(current);
-    expect(repo.replaceForOwner).toHaveBeenCalledWith('owner-1', 'c1', body(), 2);
-  });
-
-  it('maps a missing or foreign council to 404 on read, replace and delete', async () => {
+  it('maps a missing or foreign council to 404 on read', async () => {
     repo.getForOwner.mockResolvedValue(null);
     expect((await getOne(request('GET'), params)).status).toBe(404);
-    const notFound = Object.assign(new Error('Council not found'), { code: 'not-found' });
-    repo.replaceForOwner.mockRejectedValue(notFound);
-    expect((await PUT(request('PUT', { council: body(), expectedRev: null }), params)).status).toBe(404);
-    repo.deleteForOwner.mockRejectedValue(notFound);
-    expect((await DELETE(request('DELETE'), params)).status).toBe(404);
   });
 });
 
-
-it('returns typed migration refusals for create, replace and delete without confusing ordinary CAS', async () => {
-  const error = Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' });
-  repo.createForOwner.mockRejectedValue(error); repo.replaceForOwner.mockRejectedValue(error); repo.deleteForOwner.mockRejectedValue(error);
-  for (const response of [await POST(request('POST', { id: 'c1', council: body() })), await PUT(request('PUT', { council: body(), expectedRev: 2 }), params), await DELETE(request('DELETE'), params)]) {
+// Councils are written only through the data engine. A shipped bundle still calls these routes, and
+// its council client reads 409 as "conflict, the body is the current council" — so every write it
+// sends is refused with 426, whatever the body says.
+it('refuses a shipped bundle\'s create, replace and delete with 426, never 409', async () => {
+  for (const response of [await POST(request('POST', { id: 'c1', council: body() })), await PUT(request('PUT', { council: body(), expectedRev: 2 })), await DELETE(request('DELETE'))]) {
     expect(response.status).toBe(426); expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
   }
 });

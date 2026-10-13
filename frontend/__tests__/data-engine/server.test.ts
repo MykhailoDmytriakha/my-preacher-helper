@@ -630,16 +630,17 @@ describe('transactional DataEngine server', () => {
     const saved = { ...process.env };
     afterEach(() => { process.env = { ...saved }; });
     it('tells a reader whether legacy writers may still change the collection unseen', async () => {
-      documents.set('councils/a', { userId: 'owner-1', title: 'A' });
+      // `users` is still switched by the environment (the owned collections are always closed).
+      documents.set('users/owner-1', { displayName: 'Mine' });
       // Served by the engine, legacy still open: a legacy write raises no feed event, so the
       // reader must be told the feed alone is not the whole truth.
-      process.env.DATA_ENGINE_COLLECTIONS = 'councils';
-      expect(await listDocuments('owner-1', 'councils')).toMatchObject({ legacyOpen: true });
-      expect(await readCollectionChanges('owner-1', 'councils', 0)).toMatchObject({ legacyOpen: true });
+      process.env.DATA_ENGINE_COLLECTIONS = 'users';
+      expect(await listDocuments('owner-1', 'users')).toMatchObject({ legacyOpen: true });
+      expect(await readCollectionChanges('owner-1', 'users', 0)).toMatchObject({ legacyOpen: true });
       // Closed — the LAST switch of a rollout: from here on the feed is the whole truth.
-      process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
-      expect(await listDocuments('owner-1', 'councils')).not.toHaveProperty('legacyOpen');
-      expect(await readCollectionChanges('owner-1', 'councils', 0)).not.toHaveProperty('legacyOpen');
+      process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
+      expect(await listDocuments('owner-1', 'users')).not.toHaveProperty('legacyOpen');
+      expect(await readCollectionChanges('owner-1', 'users', 0)).not.toHaveProperty('legacyOpen');
     });
   });
 

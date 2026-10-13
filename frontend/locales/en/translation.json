@@ -3605,7 +3605,6 @@
       "carryNeedsTarget": "Create the next council first, then carry the section into it.",
       "toNextCouncil": "To the next council",
       "carryWhere": "Carry to which council?",
-      "carryNew": "To a new council",
       "carriedTo": "carried to \"{{title}}\"",
       "movedToNext": "Section added to \"{{title}}\"",
       "carryGone": "The section is no longer in this council.",

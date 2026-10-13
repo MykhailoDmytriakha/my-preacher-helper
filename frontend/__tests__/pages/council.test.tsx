@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import CouncilListPage from '@/(pages)/(private)/care/council/page';
@@ -17,10 +17,8 @@ import type { Council } from '@/models/models';
  */
 
 const mockPush = jest.fn();
+// The engine create runs in EngineCouncilCreator; here it reports the council created at once.
 const mockCreate = jest.fn();
-
-const state: { councils: Council[]; loading: boolean; error: unknown } = { councils: [], loading: false, error: null };
-const mockRefresh = jest.fn();
 
 // The date field reads the week-start setting (DatePickerField).
 jest.mock('@/hooks/useUserSettings', () => ({ useUserSettings: () => ({ settings: { firstDayOfWeek: 'monday' } }) }));
@@ -29,24 +27,18 @@ jest.mock('next/navigation', () => ({
   useParams: () => ({}),
 }));
 
-jest.mock('@/hooks/useCouncils', () => ({
-  useCouncils: () => ({
-    ...state,
-    refresh: mockRefresh,
-    createCouncil: mockCreate,
-    updateCouncil: jest.fn(),
-    deleteCouncil: jest.fn(),
-  }),
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'u1' } }) }));
+jest.mock('@/(pages)/(private)/care/council/EngineCouncilMigration', () => ({ EngineCouncilMigration: () => null }));
+jest.mock('@/(pages)/(private)/care/council/EngineCouncilCreator', () => ({
+  EngineCouncilCreator: ({ council, onCreated }: { council: { id: string; title: string; date?: string }; onCreated: (id: string) => void }) => {
+    const ReactModule = jest.requireActual<typeof import('react')>('react');
+    ReactModule.useEffect(() => { mockCreate({ title: council.title, date: council.date }); onCreated(council.id); }, []);
+    return null;
+  },
 }));
 
 const engineState: { councils: Council[]; loading: boolean; error: string | null } = { councils: [], loading: false, error: null };
 const mockEngineRefresh = jest.fn();
-let engineCollections = '';
-
-jest.mock('@/data-engine/react.client', () => ({
-  ...jest.requireActual('@/data-engine/react.client'),
-  isCollectionOnEngine: (collection: string) => engineCollections.split(',').includes(collection),
-}));
 jest.mock('@/hooks/useCouncilsDataCollection', () => ({
   useCouncilsDataCollection: () => ({ ...engineState, complete: true, freshness: 'server', serverAnswered: true,
     knownIds: new Set(engineState.councils.map(council => council.id)), refresh: mockEngineRefresh }),
@@ -64,13 +56,9 @@ jest.mock('next/link', () => ({
 describe('Brothers\' council list', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    state.councils = [];
-    state.loading = false;
-    state.error = null;
     engineState.councils = [];
     engineState.loading = false;
     engineState.error = null;
-    engineCollections = '';
   });
 
   // The page counts days from the real clock, and the seeded council is dated 2026-09-18:
@@ -81,30 +69,21 @@ describe('Brothers\' council list', () => {
 
   // The switch is per collection, so the same screen has to answer from whichever reader the
   // deployment migrated — and must not quietly keep rendering the other one's list.
-  it('renders the engine list only where councils are the migrated collection', () => {
+  it('renders the councils the engine collection holds', () => {
     const seeded = seedCouncils('u1', new Date('2026-09-11T00:00:00Z'));
-    state.councils = seeded;
     engineState.councils = [{ ...seeded[0], id: 'from-engine', title: 'Engine council' }];
 
-    const legacy = render(<CouncilListPage />);
-    expect(screen.queryByText('Engine council')).not.toBeInTheDocument();
-    expect(mockEngineRefresh).not.toHaveBeenCalled();
-    legacy.unmount();
-
-    engineCollections = 'councils';
     render(<CouncilListPage />);
     expect(screen.getByText('Engine council')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Engine council/ })).toHaveAttribute('href', '/care/council/from-engine');
   });
 
-  it('reports an engine read failure the same way as the legacy one', () => {
-    engineCollections = 'councils';
+  it('reports an engine read failure and retries the engine read', () => {
     engineState.error = 'engine offline';
     render(<CouncilListPage />);
     expect(screen.getByText('council.readFailed')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('council-retry'));
     expect(mockEngineRefresh).toHaveBeenCalledTimes(1);
-    expect(mockRefresh).not.toHaveBeenCalled();
   });
 
   // The page counts days from the real clock, and the seeded council is dated 2026-09-18:
@@ -114,12 +93,12 @@ describe('Brothers\' council list', () => {
   });
 
   it('says a failed read out loud instead of calling it an empty list', () => {
-    state.error = new Error('permission-denied');
+    engineState.error = 'permission-denied';
     render(<CouncilListPage />);
     expect(screen.getByText('council.readFailed')).toBeInTheDocument();
     expect(screen.queryByText('council.emptyTitle')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('council-retry'));
-    expect(mockRefresh).toHaveBeenCalled();
+    expect(mockEngineRefresh).toHaveBeenCalled();
   });
 
   it('shows the councils being prepared apart from the held ones, each opening its own page', () => {
@@ -127,13 +106,13 @@ describe('Brothers\' council list', () => {
     // still the previous day west of Greenwich — the build machine and a laptop must agree.
     const today = new Date('2026-09-11T12:00:00Z');
     jest.useFakeTimers().setSystemTime(today);
-    state.councils = seedCouncils('u1', today);
+    engineState.councils = seedCouncils('u1', today);
     render(<CouncilListPage />);
 
     const rows = screen.getAllByTestId(/council-row-/);
     expect(rows).toHaveLength(3);
     expect(rows[0]).toHaveTextContent('Совет 18 сентября');
-    expect(rows[0]).toHaveAttribute('href', `/care/council/${state.councils[0].id}`);
+    expect(rows[0]).toHaveAttribute('href', `/care/council/${engineState.councils[0].id}`);
     // Past councils read like a history: the most recent one first.
     expect(rows[1]).toHaveTextContent('Совет 14 августа');
     expect(rows[2]).toHaveTextContent('Совет 3 июля');
@@ -157,8 +136,7 @@ describe('Brothers\' council list', () => {
   });
 
   it('creates a council from the form and opens it', () => {
-    state.councils = seedCouncils('u1');
-    mockCreate.mockReturnValue({ id: 'new-1' });
+    engineState.councils = seedCouncils('u1');
     render(<CouncilListPage />);
 
     fireEvent.click(screen.getByTestId('council-new'));
@@ -167,13 +145,13 @@ describe('Brothers\' council list', () => {
     fireEvent.submit(title.closest('form') as HTMLFormElement);
 
     expect(mockCreate).toHaveBeenCalledWith({ title: 'Совет 2 октября', date: undefined });
-    expect(mockPush).toHaveBeenCalledWith('/care/council/new-1');
+    expect(mockPush).toHaveBeenCalledWith(expect.stringMatching(/^\/care\/council\/.+/));
   });
 
   // BUG-20260927-council-date-ignores-week-start: the browser's own date field starts the week as
   // the browser likes; the app's picker starts it on the day chosen in the settings.
   it("picks the new council's date with the app's date picker, not the browser's", () => {
-    state.councils = seedCouncils('u1');
+    engineState.councils = seedCouncils('u1');
     const { container } = render(<CouncilListPage />);
     fireEvent.click(screen.getByTestId('council-new'));
 
@@ -184,8 +162,7 @@ describe('Brothers\' council list', () => {
   // The browser's date field never let a half-typed or non-existent day through; the text field
   // must keep that for the new council.
   it('does not create a council on a half-typed or non-existent day', () => {
-    state.councils = seedCouncils('u1');
-    mockCreate.mockReturnValue({ id: 'new-1' });
+    engineState.councils = seedCouncils('u1');
     render(<CouncilListPage />);
     fireEvent.click(screen.getByTestId('council-new'));
     const title = screen.getByTestId('council-new-title');
@@ -193,14 +170,16 @@ describe('Brothers\' council list', () => {
     const date = screen.getByLabelText(/council\.newCouncilDate|Дата|Date/i);
     fireEvent.change(title, { target: { value: 'Совет' } });
 
+    // Inside act, so a create the page wrongly started would run before the check below.
     fireEvent.change(date, { target: { value: '2026-1' } });
-    form.requestSubmit();
+    act(() => { form.requestSubmit(); });
     fireEvent.change(date, { target: { value: '2026-02-31' } });
-    form.requestSubmit();
+    act(() => { form.requestSubmit(); });
     expect(mockCreate).not.toHaveBeenCalled();
 
     fireEvent.change(date, { target: { value: '2026-10-05' } });
-    form.requestSubmit();
+    // The create runs through the engine creator, mounted by the submit's state update.
+    act(() => { form.requestSubmit(); });
     expect(mockCreate).toHaveBeenCalledWith({ title: 'Совет', date: '2026-10-05' });
   });
 });

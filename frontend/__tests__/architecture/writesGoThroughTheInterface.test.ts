@@ -91,7 +91,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
    * replay lands last-write-wins on purpose — the person was offline and this is the copy
    * they had; the same choice the prayer journal's offline queue makes.
    */
-  'services/councils.client.ts': 1,
 };
 
 /**

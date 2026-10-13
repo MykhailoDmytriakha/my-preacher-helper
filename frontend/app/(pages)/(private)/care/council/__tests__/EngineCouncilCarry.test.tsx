@@ -36,7 +36,6 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () 
 jest.mock('@/components/council/CouncilOutcomeForm', () => ({
   CouncilOutcomeForm: ({ councilId, topicId }: { councilId: string; topicId: string }) => <div data-testid="engine-outcome-form">{councilId}/{topicId}</div>,
 }));
-jest.mock('@/hooks/useCouncils', () => ({ useCouncil: jest.fn() }));
 jest.mock('@/hooks/useCouncilsRead', () => ({
   useCouncilsRead: () => ({ councils: state.councils, loading: false, error: null, refresh: jest.fn() }),
 }));

@@ -30,7 +30,6 @@ jest.mock('@/data-engine/react.client', () => ({
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () => null }));
 jest.mock('@/components/FloatingTextScaleControls', () => ({ __esModule: true, default: () => null }));
-jest.mock('@/hooks/useCouncils', () => ({ useCouncil: jest.fn() }));
 jest.mock('@/hooks/useCouncilsRead', () => ({
   useCouncilsRead: () => ({ councils: state.council ? [state.council] : [], loading: false, error: null, refresh: jest.fn() }),
 }));

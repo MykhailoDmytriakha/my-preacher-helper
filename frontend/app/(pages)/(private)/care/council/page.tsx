@@ -12,11 +12,8 @@ import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useCouncils } from '@/hooks/useCouncils';
 import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
-import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
@@ -49,11 +46,7 @@ const inputClass =
   'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500';
 
 export default function CouncilListPage() {
-  return isCollectionOnEngine(COUNCILS_COLLECTION) ? <EngineCouncilListPage /> : <LegacyCouncilListPage />;
-}
-
-function LegacyCouncilListPage() {
-  return <CouncilListContent source={useCouncils()} />;
+  return <EngineCouncilListPage />;
 }
 
 /**
@@ -105,7 +98,7 @@ interface CouncilListSource {
   loading: boolean;
   error: unknown;
   refresh: () => unknown;
-  createCouncil: ReturnType<typeof useCouncils>['createCouncil'];
+  createCouncil: (input: { title: string; date?: string }) => Council | undefined;
 }
 
 function CouncilListContent({ source }: { source: CouncilListSource }) {

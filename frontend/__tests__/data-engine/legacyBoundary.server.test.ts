@@ -60,40 +60,49 @@ beforeEach(() => {
   });
 });
 
+// The collections the engine owns in code are closed on every deployment; the switches below still
+// govern the ones that are not (users, studyNoteShareLinks), so the mechanism is exercised on them.
 describe('a collection closed to legacy writers', () => {
   const saved = { ...process.env };
   afterEach(() => { process.env = { ...saved }; });
-  const council = (id: string) => ({ path: `councils/${id}` }) as DocumentReference;
+  const profile = (id: string) => ({ path: `users/${id}` }) as DocumentReference;
+  const shareLink = (id: string) => ({ path: `studyNoteShareLinks/${id}` }) as DocumentReference;
 
   it('refuses update, delete and create of an UNMARKED document once the collection is closed', async () => {
-    process.env.DATA_ENGINE_COLLECTIONS = 'councils';
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
-    records.set('councils/legacy', { userId: 'owner', title: 'Never touched by the engine' });
-    await expect(updateLegacyDocument(council('legacy'), { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
-    await expect(deleteLegacyDocument(council('legacy'))).rejects.toMatchObject({ code: 'data-engine-required' });
-    await expect(createLegacyDocument(council('fresh'), { userId: 'owner', title: 'Invisible to the feed' }, 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.get('councils/legacy')).toEqual({ userId: 'owner', title: 'Never touched by the engine' });
-    expect(records.has('councils/fresh')).toBe(false);
+    process.env.DATA_ENGINE_COLLECTIONS = 'users';
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
+    records.set('users/legacy', { userId: 'owner', title: 'Never touched by the engine' });
+    await expect(updateLegacyDocument(profile('legacy'), { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    await expect(deleteLegacyDocument(profile('legacy'))).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(createLegacyDocument(profile('fresh'), { userId: 'owner', title: 'Invisible to the feed' }, 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(records.get('users/legacy')).toEqual({ userId: 'owner', title: 'Never touched by the engine' });
+    expect(records.has('users/fresh')).toBe(false);
   });
 
   it('leaves an open collection and every other collection writable, as before', async () => {
-    process.env.DATA_ENGINE_COLLECTIONS = 'councils';
-    records.set('councils/legacy', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(council('legacy'), { title: 'Old bundle, still welcome' });
-    expect(records.get('councils/legacy')?.title).toBe('Old bundle, still welcome');
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
-    records.set('sermons/a', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(ref('a'), { title: 'Another domain' });
-    expect(records.get('sermons/a')?.title).toBe('Another domain');
+    process.env.DATA_ENGINE_COLLECTIONS = 'users';
+    records.set('users/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(profile('legacy'), { title: 'Old bundle, still welcome' });
+    expect(records.get('users/legacy')?.title).toBe('Old bundle, still welcome');
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
+    records.set('studyNoteShareLinks/a', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(shareLink('a'), { title: 'Another domain' });
+    expect(records.get('studyNoteShareLinks/a')?.title).toBe('Another domain');
   });
 
   it('ignores a closure that names a collection the engine does not serve', async () => {
     // Closing without serving would leave nobody able to write: a misconfiguration must not
     // become an outage.
-    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'users';
+    records.set('users/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(profile('legacy'), { title: 'Still writable' });
+    expect(records.get('users/legacy')?.title).toBe('Still writable');
+  });
+
+  it('refuses an engine-owned collection with no switch set', async () => {
     records.set('councils/legacy', { userId: 'owner', title: 'Original' });
-    await updateLegacyDocument(council('legacy'), { title: 'Still writable' });
-    expect(records.get('councils/legacy')?.title).toBe('Still writable');
+    await expect(updateLegacyDocument({ path: 'councils/legacy' } as DocumentReference, { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    expect(records.get('councils/legacy')?.title).toBe('Original');
   });
 });
 

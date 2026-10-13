@@ -10,10 +10,7 @@ import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/Counci
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
-import { useCouncil } from '@/hooks/useCouncils';
-import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
   applyOutcome,
@@ -52,14 +49,7 @@ const buttonQuiet =
 export default function CouncilConductPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
-  return isCollectionOnEngine(COUNCILS_COLLECTION)
-    ? <EngineCouncilConductPage councilId={councilId} />
-    : <LegacyCouncilConductPage councilId={councilId} />;
-}
-
-function LegacyCouncilConductPage({ councilId }: { councilId: string }) {
-  const { council, loading, updateCouncil } = useCouncil(councilId);
-  return <CouncilConductContent councilId={councilId} source={{ council, loading, updateCouncil }} />;
+  return <EngineCouncilConductPage councilId={councilId} />;
 }
 
 /** Conducting only ever edits this one council, so the document editor is the whole source. */

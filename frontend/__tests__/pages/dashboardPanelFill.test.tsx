@@ -63,7 +63,7 @@ jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: () => ({ notes: mockN
 jest.mock('@/hooks/useGroups', () => ({ useGroups: () => ({ groups: [] }) }));
 // The week panel reads councils through React Query; this file stubs every hook rather than
 // standing up a client, so the council hook is stubbed the same way.
-jest.mock('@/hooks/useCouncils', () => ({ useCouncils: () => ({ councils: [] }) }));
+jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
 jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => ({ prayerRequests: [], createPrayer: jest.fn() }),
 }));

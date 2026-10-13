@@ -3,8 +3,7 @@ import { CouncilsRepository } from '@/api/repositories/councils.repository';
 import { ServiceOrdersRepository } from '@/api/repositories/serviceOrders.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
-import type { CouncilBody } from '@/api/councils/writeSupport';
-import type { ServiceOrder } from '@/models/models';
+import type { Council, ServiceOrder } from '@/models/models';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: jest.fn(), runTransaction: jest.fn() } }));
 const records = new Map<string, Record<string, unknown>>();
@@ -49,33 +48,9 @@ beforeEach(() => {
   });
 });
 const councils = new CouncilsRepository(), orders = new ServiceOrdersRepository();
-const body = (): CouncilBody => ({ title: 'Council', status: 'preparing', topics: [], createdAt: 'T', updatedAt: 'T' });
+const body = (): Omit<Council, 'id' | 'userId'> => ({ title: 'Council', status: 'preparing', topics: [], createdAt: 'T', updatedAt: 'T' });
 const draft = (catalogKey: 'funeral' | 'wedding'): Omit<ServiceOrder, 'id'> => ({ userId: 'owner', catalogKey, title: catalogKey, steps: [], rank: 1, createdAt: 'T', updatedAt: 'T' });
 
-it('preserves legacy council create replay, CAS rejection, replacement and deletion', async () => {
-  expect((await councils.createForOwner('owner', 'c', body())).rev).toBe(0);
-  expect((await councils.createForOwner('owner', 'c', { ...body(), title: 'Replay' })).title).toBe('Council');
-  const conflict = await councils.replaceForOwner('owner', 'c', { ...body(), title: 'New' }, 1);
-  expect(conflict.conflict).toBe(true); expect(records.get('councils/c')?.title).toBe('Council');
-  expect((await councils.replaceForOwner('owner', 'c', { ...body(), title: 'New' }, 0)).current.rev).toBe(1);
-  await councils.deleteForOwner('owner', 'c'); expect(records.size).toBe(0);
-});
-it.each([null, {}, marker, { ...marker, deleted: true }])('refuses all council mutations on any marker: %j', async metadata => {
-  records.set('councils/c', { ...body(), userId: 'owner', rev: 2, _dataEngine: metadata });
-  const before = JSON.stringify([...records]);
-  for (const operation of [() => councils.createForOwner('owner', 'c', body()), () => councils.replaceForOwner('owner', 'c', body(), null), () => councils.replaceForOwner('owner', 'c', body(), 0), () => councils.deleteForOwner('owner', 'c')]) await expect(operation()).rejects.toMatchObject({ code: 'data-engine-required' });
-  expect(JSON.stringify([...records])).toBe(before);
-});
-it('retries a legacy council replace against migration and keeps the engine version', async () => {
-  records.set('councils/c', { ...body(), userId: 'owner', rev: 0 });
-  transition = () => records.set('councils/c', { ...body(), title: 'Engine', userId: 'owner', rev: 1, _dataEngine: marker });
-  await expect(councils.replaceForOwner('owner', 'c', body(), 0)).rejects.toMatchObject({ code: 'data-engine-required' });
-  expect(attempts).toBe(2); expect(records.get('councils/c')?.title).toBe('Engine');
-});
-it('does not return foreign council create collisions', async () => {
-  records.set('councils/c', { userId: 'other', _dataEngine: marker });
-  await expect(councils.createForOwner('owner', 'c', body())).rejects.toMatchObject({ code: 'permission-denied' });
-});
 it('seeds deterministic missing orders atomically and preserves legacy random-ID catalog entries', async () => {
   records.set('serviceOrders/old-random-id', { ...draft('funeral'), title: 'Edited' });
   const result = await orders.seedMissingForOwner('owner', [draft('funeral'), draft('wedding')]);
@@ -112,7 +87,7 @@ it('retries seed ownership reads when migration wins after the first attempt', a
 });
 
 
-it('preserves owner-filtered legacy reads and refusal for missing or foreign council edits', async () => {
+it('preserves owner-filtered council and order reads, keeping a buried council out', async () => {
   records.set('councils/c', { ...body(), userId: 'owner', rev: 0 });
   records.set('councils/foreign', { ...body(), userId: 'other', rev: 0 });
   records.set('serviceOrders/o', draft('funeral') as unknown as Record<string, unknown>);
@@ -125,6 +100,4 @@ it('preserves owner-filtered legacy reads and refusal for missing or foreign cou
   expect(await councils.getForOwner('owner', 'foreign')).toBeNull();
   expect(await councils.getForOwner('owner', 'missing')).toBeNull();
   expect(await orders.listForOwner('owner')).toHaveLength(1);
-  await expect(councils.replaceForOwner('owner', 'foreign', body(), null)).rejects.toMatchObject({ code: 'not-found' });
-  await expect(councils.deleteForOwner('owner', 'missing')).rejects.toMatchObject({ code: 'not-found' });
 });

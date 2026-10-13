@@ -43,12 +43,10 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
-import { useCouncil } from '@/hooks/useCouncils';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
-import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
@@ -88,13 +86,7 @@ type TopicUpdater = (topic: CouncilTopic) => CouncilTopic;
 export default function CouncilDetailPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
-  return isCollectionOnEngine(COUNCILS_COLLECTION)
-    ? <EngineCouncilDetailPage councilId={councilId} />
-    : <LegacyCouncilDetailPage councilId={councilId} />;
-}
-
-function LegacyCouncilDetailPage({ councilId }: { councilId: string }) {
-  return <CouncilDetailContent source={useCouncil(councilId)} />;
+  return <EngineCouncilDetailPage councilId={councilId} />;
 }
 
 /**
@@ -147,11 +139,9 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     readOnly: document.readOnly,
     error: document.error ?? list.error, refresh: document.refresh,
     updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
-    deleteCouncil: (id: string) => { void document.deleteCouncil(id).catch(report); },
+    // Resolves whether the delete is held; a refusal is reported here and the page stays.
+    deleteCouncil: (id: string) => document.deleteCouncil(id).then(() => true, (error: unknown) => { report(error); return false; }),
     carryTopicToNext,
-    // Carrying into a council that does not exist yet needs a create and a carry in one act;
-    // the engine has no such command, so the choice is not offered where it could only fail.
-    canCarryToNew: false,
   };
   return <>
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} className="mb-4"
@@ -169,10 +159,8 @@ interface CouncilDetailSource {
   error: unknown;
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council) => void;
-  deleteCouncil: (id: string) => void;
+  deleteCouncil: (id: string) => Promise<boolean>;
   carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Council | undefined;
-  /** Absent means yes: the legacy road creates the next council on the way. */
-  canCarryToNew?: boolean;
   /** The council is a copy for reading: nothing on the page offers a change it could not keep. */
   readOnly?: boolean;
 }
@@ -180,7 +168,7 @@ interface CouncilDetailSource {
 function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, canCarryToNew = true, readOnly = false } = source;
+  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
@@ -470,7 +458,6 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onRemove={() => removeTopic(topic.id)}
                 onCarryToNext={(targetId) => carryToNext(topic, targetId)}
                 carryTargets={carryTargets}
-                canCarryToNew={canCarryToNew}
                 carriedTo={topic.carriedToCouncilId ? councilsById[topic.carriedToCouncilId] : undefined}
               />
             </li>
@@ -501,10 +488,11 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
       <ConfirmModal
         isOpen={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          deleteCouncil(council.id);
+        onConfirm={async () => {
           setConfirmDelete(false);
-          router.push('/care/council');
+          // Leaving closes the council's editor, so the page waits until the delete is held; replace,
+          // not push: Back must not reopen a council that is gone (BUG-20261012-council-delete-false-failure).
+          if (await deleteCouncil(council.id)) router.replace('/care/council');
         }}
         title={t('council.detail.delete')}
         description={t('council.detail.deleteConfirm')}
@@ -542,7 +530,6 @@ function TopicCard({
   onRemove,
   onCarryToNext,
   carryTargets,
-  canCarryToNew,
   carriedTo,
 }: {
   engineCouncilId?: string;
@@ -558,7 +545,6 @@ function TopicCard({
   onCarryToNext: (targetId?: string | 'new') => void;
   /** Councils being prepared — when there is more than one, the person picks where the section goes. */
   carryTargets: Council[];
-  canCarryToNew: boolean;
   /** The council this section was carried to, when it was. */
   carriedTo?: Council;
 }) {
@@ -877,16 +863,6 @@ function TopicCard({
                             {target.date ? ` · ${formatDateOnly(target.date)}` : ''}
                           </Chip>
                         ))}
-                        {canCarryToNew && <Chip
-                          size="md"
-                          tone="neutral"
-                          onClick={() => {
-                            setChoosingTarget(false);
-                            onCarryToNext('new');
-                          }}
-                        >
-                          {t('council.topic.carryNew')}
-                        </Chip>}
                       </div>
                     </div>
                   )}
