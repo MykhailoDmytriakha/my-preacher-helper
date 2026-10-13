@@ -171,12 +171,6 @@ jest.mock('@headlessui/react', () => {
   };
 });
 
-// Mock SeriesSelector
-jest.mock('@/components/series/SeriesSelector', () => {
-  return function MockSeriesSelector() {
-    return <div data-testid="series-selector">Series Selector</div>;
-  };
-});
 
 // OptionMenu (reused from the dashboard for sermon-level actions) pulls in React Query /
 // router; stub it here so SermonHeader stays a focused unit test. OptionMenu has its own tests.

@@ -5,7 +5,6 @@ import { useEffect, useRef } from 'react';
 
 import { useAuth } from '@/providers/AuthProvider';
 import { replayOutbox } from '@/services/outboxReplay.client';
-import { replayMembershipOutbox } from '@/services/seriesMembership.client';
 
 /** Fired after every drain so any visible conflict UI can re-read the queue. */
 export const OUTBOX_CHANGED_EVENT = 'outbox:changed';
@@ -38,10 +37,7 @@ export function OutboxDrain() {
       if (runningRef.current) return;
       runningRef.current = true;
       try {
-        const [outbox] = await Promise.allSettled([
-          replayOutbox(uid),
-          replayMembershipOutbox(uid),
-        ]);
+        const [outbox] = await Promise.allSettled([replayOutbox(uid)]);
         // Refresh what the replay actually WROTE. Without this the person's own
         // queued edit lands on the server while the screen still holds the old
         // value, and the freshness listener reports it as "changed on another

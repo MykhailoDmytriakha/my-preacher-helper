@@ -2,24 +2,24 @@
 
 import { useEffect, useRef } from 'react';
 
-import { isCollectionOnEngine, useDataMembership } from '@/data-engine/react.client';
+import { useDataMembership } from '@/data-engine/react.client';
 import { hydrateSeries } from '@/utils/seriesDocument';
 
 import type { Series, SeriesItem } from '@/models/models';
 
 /** Form adapter only: the engine owns the opening copies, selection and durable Save. */
 export function useEngineSeriesField(member: Pick<SeriesItem, 'type' | 'refId'>) {
-  const enabled = isCollectionOnEngine('series'), action = useDataMembership();
+  const action = useDataMembership();
   const attempted = useRef<object | null>(null);
   useEffect(() => {
-    if (!enabled || !action.ready || attempted.current === action.recoveryIdentity) return;
+    if (!action.ready || attempted.current === action.recoveryIdentity) return;
     attempted.current = action.recoveryIdentity;
     void action.begin().catch(() => undefined);
   });
   const rows = action.values.map(row => hydrateSeries({ ...row.value, id: row.id } as unknown as Series));
   const selected = rows.find(row => row.items?.some(item => item.type === member.type && item.refId === member.refId));
   return {
-    enabled, action, seriesId: selected?.id ?? '', changed: action.action !== null,
+    action, seriesId: selected?.id ?? '', changed: action.action !== null,
     options: rows.map(row => ({ id: row.id, label: row.title || row.theme })),
     loading: action.phase === null,
     disabled: action.phase !== 'editing',

@@ -45,31 +45,27 @@ const docSnap = (id: string, data: Record<string, unknown>, exists = true) => ({
   data: () => data,
 });
 
-// Groups are written only through the data engine; the two reads the legacy series hooks still use remain.
+// Groups are written only through the data engine; the list read the legacy membership sweep uses remains.
 describe('groups.service reads', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('reads the owner\'s groups newest first and one group through the client SDK', async () => {
+  it('reads the owner\'s groups newest first through the client SDK', async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
         docSnap('g-old', { ...baseGroup, title: 'Old', updatedAt: '2026-02-10T00:00:00.000Z' }),
         docSnap('g-new', { ...baseGroup, title: 'New', updatedAt: '2026-02-11T00:00:00.000Z' }),
       ],
     });
-    // The document read for the screen belongs to whoever is signed in (jest.setup: test-user-id).
-    mockGetDoc.mockResolvedValueOnce(docSnap('g-new', { ...baseGroup, userId: 'test-user-id', title: 'New' }));
 
     const service = await importServiceWithClientMocks();
     const all = await service.getAllGroups('user-1');
-    const detail = await service.getGroupById('g-new');
 
     expect(all.map((group) => group.id)).toEqual(['g-new', 'g-old']);
-    expect(detail?.id).toBe('g-new');
     expect(mockWhere).toHaveBeenCalledWith('userId', '==', 'user-1');
   });
 
   it('exposes no group writer', async () => {
     const service = await importServiceWithClientMocks();
-    expect(Object.keys(service).sort()).toEqual(['getAllGroups', 'getGroupById']);
+    expect(Object.keys(service).sort()).toEqual(['getAllGroups']);
   });
 });

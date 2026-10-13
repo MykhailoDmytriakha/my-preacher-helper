@@ -96,17 +96,6 @@ jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' }, loading: false }),
 }));
 
-const mockRemoveFromAllSeries = jest.fn();
-const mockAddToSeries = jest.fn();
-jest.mock('@/hooks/useSeriesMembership', () => ({
-  useSeriesMembership: () => ({
-    addToSeries: mockAddToSeries,
-    addRefsToSeries: jest.fn(),
-    removeFromAllSeries: mockRemoveFromAllSeries,
-    reorderSeries: jest.fn(),
-  }),
-}));
-
 // Mock the Icons component
 jest.mock('@components/Icons', () => ({
   DotsVerticalIcon: () => <div data-testid="dots-vertical-icon" />,
@@ -855,16 +844,7 @@ describe('OptionMenu Component', () => {
       updatedAt: '2026-01-01',
     }];
 
-    const openQuestion = async () => {
-      render(<OptionMenu {...defaultProps} series={series as never} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from Series' }));
-      return screen.findByRole('dialog', { name: 'Remove the sermon from "Advent"?' });
-    };
-
-    it.each(['move', 'remove'] as const)('uses a pinned engine action for %s when series is enabled', async mode => {
-      const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+    it.each(['move', 'remove'] as const)('uses a pinned engine action for %s', async mode => {
       const { id: sourceId, ...source } = series[0];
       const item = { ...source.items[0], position: 1 }; source.items = [item];
       const harness = membershipEngineHarness([
@@ -883,37 +863,10 @@ describe('OptionMenu Component', () => {
         fireEvent.click(save); await act(async () => { await harness.engine.retry(); await settleEngine(); });
         await waitFor(() => expect(harness.read({ collection: 'series', id: sourceId }).value!.items).toEqual([]));
         expect(harness.read({ collection: 'series', id: 'target' }).value!.items).toEqual(mode === 'move' ? [expect.objectContaining({ type: 'sermon', refId: 'sermon-1', position: 1 })] : []);
-        expect(mockRemoveFromAllSeries).not.toHaveBeenCalled(); expect(mockAddToSeries).not.toHaveBeenCalled(); expect(harness.transport.send).toHaveBeenCalledTimes(1);
+        expect(harness.transport.send).toHaveBeenCalledTimes(1);
       } finally {
         view.unmount();
-        if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-        else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
       }
-    });
-
-    it('names the series, says the sermon stays, and answers with the menu item\'s own words', async () => {
-      const question = await openQuestion();
-
-      expect(question).toHaveTextContent('The sermon itself stays.');
-      expect(within(question).getByRole('button', { name: 'Remove from Series' })).toBeInTheDocument();
-      expect(mockRemoveFromAllSeries).not.toHaveBeenCalled();
-
-      await act(async () => {
-        fireEvent.click(within(question).getByRole('button', { name: 'Remove from Series' }));
-      });
-
-      expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({ type: 'sermon', refId: 'sermon-1' });
-    });
-
-    it('leaves the series alone when the person keeps it', async () => {
-      const question = await openQuestion();
-
-      await act(async () => {
-        fireEvent.click(within(question).getByRole('button', { name: 'Keep it' }));
-      });
-
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-      expect(mockRemoveFromAllSeries).not.toHaveBeenCalled();
     });
   });
 

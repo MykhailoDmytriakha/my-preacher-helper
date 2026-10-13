@@ -67,7 +67,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   'services/conflictSafeUpdate.client.ts': 5,
   'services/sermons.client.ts': 10,
   'services/atomicUpdate.client.ts': 3,
-  'services/series.service.ts': 2,
   // A cross-series move, deliberately all-or-nothing — and invisible to this test until
   // `writeBatch` was added to what it looks for.
   'services/seriesMembership.client.ts': 4,

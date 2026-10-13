@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
-import { isCollectionOnEngine, useDataMembership } from '@/data-engine/react.client';
+import { useDataMembership } from '@/data-engine/react.client';
 import { churchForNewPreachDate } from '@/utils/church';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateSeries } from '@/utils/seriesDocument';
@@ -77,7 +77,7 @@ export function EngineCreateSermonModal({ recoveryId, preSelectedSeriesId, allow
           {t('addSermon.createWithoutSeries')}
         </button>
       </div>}
-      {isCollectionOnEngine('series') && creation && !creation.seriesOpened && action.phase === 'editing' && <button type="button"
+      {creation && !creation.seriesOpened && action.phase === 'editing' && <button type="button"
         className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={openingSeries || saving} onClick={() => { void openSeries(); }}>
         {t(openingSeries ? 'workspaces.series.loadingSeries' : 'workspaces.series.actions.selectSeries')}
       </button>}

@@ -9,8 +9,6 @@ import { EngineEditSermonModal } from '@/components/sermon/EngineEditSermonModal
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
-import { useSeries } from '@/hooks/useSeries';
-import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
@@ -22,7 +20,6 @@ import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
-import { getSeriesForRef } from '@/utils/seriesMembership';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
 import { updateSermon } from '@services/sermon.service';
@@ -76,20 +73,12 @@ function SermonEditor({
    *
    * The create door offers a series and this one did not, so changing your mind meant
    * finding a menu item you had to know about — and the natural reading of that absence
-   * was "the link is broken". The value is DERIVED from the loaded playlist
+   * was "the link is broken". The value is DERIVED from the engine's playlist rows
    * (`series.items` is the sole truth), never from the deprecated `sermon.seriesId`.
    */
-  const { series: seriesList, loading: seriesLoading } = useSeries(null);
-  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
   const engineSeries = useEngineSeriesField({ type: 'sermon', refId: sermon.id });
-  const currentSeriesId = getSeriesForRef(sermon.id, seriesList)?.id ?? '';
-  const [seriesId, setSeriesId] = useState(currentSeriesId);
-  const seriesTouchedRef = React.useRef(false);
-  // Until the person touches the field, it follows the list: the playlist may still be
-  // loading when this opens, and a field frozen at "" would then offer to unfile the sermon.
-  const legacySeriesId = seriesTouchedRef.current ? seriesId : currentSeriesId;
-  const shownSeriesId = engineSeries.enabled ? engineSeries.seriesId : legacySeriesId;
-  const seriesChanged = engineSeries.enabled ? engineSeries.changed : seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
+  const shownSeriesId = engineSeries.seriesId;
+  const seriesChanged = engineSeries.changed;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<FailureWords | null>(null);
   const formEditedRef = React.useRef(false);
@@ -124,19 +113,10 @@ function SermonEditor({
     seriesChanged;
 
   /**
-   * The engine awaits durable local capture only. The legacy sweep remains fire-and-forget
-   * because its network persistence does not resolve offline. Each writer owns delivery
-   * reporting independently of the sermon's metadata write.
+   * The engine awaits durable local capture only; it owns delivery reporting independently of
+   * the sermon's metadata write.
    */
-  const applySeriesChange = () => {
-    if (!seriesChanged) return;
-    if (engineSeries.enabled) return engineSeries.save();
-    if (shownSeriesId) {
-      addToSeries(shownSeriesId, { type: 'sermon', refId: sermon.id });
-      return;
-    }
-    removeFromAllSeries({ type: 'sermon', refId: sermon.id });
-  };
+  const applySeriesChange = () => (seriesChanged ? engineSeries.save() : undefined);
 
   const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
     const preachDates = baseSermon.preachDates || [];
@@ -313,25 +293,18 @@ function SermonEditor({
         if ('verse' in patch) setVerse(patch.verse ?? '');
         if ('church' in patch) setChurch(patch.church);
         if ('plannedDate' in patch) setPlannedDate(patch.plannedDate ?? '');
-        if ('seriesId' in patch) {
-          if (engineSeries.enabled) { void engineSeries.change(patch.seriesId ?? '').catch(() => undefined); return; }
-          seriesTouchedRef.current = true;
-          setSeriesId(patch.seriesId ?? '');
-        }
+        if ('seriesId' in patch) void engineSeries.change(patch.seriesId ?? '').catch(() => undefined);
       }}
       onSubmit={handleSubmit}
-      onCancel={() => {
-        if (engineSeries.enabled) void engineSeries.cancel().then(onClose).catch(() => undefined);
-        else onClose();
-      }}
+      onCancel={() => { void engineSeries.cancel().then(onClose).catch(() => undefined); }}
       submitLabel={t('buttons.save')}
       saving={isSubmitting}
-      submitDisabled={!hasChanges || (engineSeries.enabled && engineSeries.unsettled)}
+      submitDisabled={!hasChanges || engineSeries.unsettled}
       error={saveError ? sayFailure(saveError, t) : ''}
-      seriesOptions={engineSeries.enabled ? engineSeries.options : seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
-      seriesLoading={engineSeries.enabled ? engineSeries.loading : seriesLoading}
-      seriesDisabled={engineSeries.enabled && engineSeries.disabled}
-      seriesStatus={engineSeries.enabled && <DataMembershipStatus action={{ ...engineSeries.action, retry: engineSeries.retry }} />}
+      seriesOptions={engineSeries.options}
+      seriesLoading={engineSeries.loading}
+      seriesDisabled={engineSeries.disabled}
+      seriesStatus={<DataMembershipStatus action={{ ...engineSeries.action, retry: engineSeries.retry }} />}
       showPlannedDate
       detailsHint={t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
     />

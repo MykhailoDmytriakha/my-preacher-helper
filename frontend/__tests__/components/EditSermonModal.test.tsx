@@ -211,13 +211,14 @@ describe('EditSermonModal Component', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled(); // Initially disabled with no changes
   });
 
-  test('calls onClose when cancel button is clicked', () => {
+  // Cancel first lets the engine's series field drop an unsaved choice, then closes.
+  test('calls onClose when cancel button is clicked', async () => {
     render(<EditSermonModal {...mockProps} />);
     
     const cancelButton = screen.getByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelButton);
     
-    expect(mockProps.onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockProps.onClose).toHaveBeenCalledTimes(1));
   });
 
   test('enables save button when changes are made', () => {

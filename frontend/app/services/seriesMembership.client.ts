@@ -1,7 +1,7 @@
 import { doc, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
-import { assertLegacyClientWriteAllowed, isCollectionOnEngine } from '@/data-engine/clientPolicy';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
 import { revisionBump } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
@@ -206,51 +206,6 @@ function enqueueMembershipTransforms(uid: string, transforms: SeriesTransform[])
     // screen as unsaved, instead of a success that evaporates on reload.
     throw new MembershipQueueFullError();
   }
-}
-
-/**
- * Re-apply this owner's queued membership operations to what is ACTUALLY stored.
- *
- * Records are removed BY ID and only after the transaction that carried them
- * committed, so an operation queued while the commit was in flight stays queued
- * instead of vanishing unsubmitted. A failure keeps everything, so a person's
- * offline "add this sermon to the series" is never silently forgotten.
- */
-export async function replayMembershipOutbox(uid: string | null | undefined): Promise<number> {
-  if (!uid || isCollectionOnEngine('series')) return 0;
-  const entries = listMembershipEntries(uid);
-  if (entries.length === 0) return 0;
-
-  /**
-   * ONE ENVELOPE AT A TIME — a dead operation must not poison the live ones.
-   *
-   * Replaying the whole queue as a single batch looked tidy and was a hard-law
-   * regression: the ninth review showed that one operation whose target series had
-   * been deleted elsewhere made the commit throw, rolling back a perfectly good
-   * addition to a DIFFERENT series — and then repeating the same poisoned batch every
-   * minute, forever. HEAD skipped a missing document, so the independent operation
-   * still landed.
-   *
-   * Each entry now commits on its own: a failure keeps ITS record and leaves the
-   * others alone.
-   */
-  const store = membershipStore();
-  let replayed = 0;
-  for (const entry of entries) {
-    try {
-      await commitSeriesBatch([entry.transform]);
-      try {
-        store?.removeItem(`${MEMBERSHIP_PREFIX}${entry.id}`);
-      } catch {
-        /* it already landed; a leftover record replays as a no-op */
-      }
-      replayed += 1;
-    } catch (error) {
-      // Kept for the next drain. Nothing else in the queue is affected.
-      console.error('membershipOutbox: replay failed for', entry.id, error);
-    }
-  }
-  return replayed;
 }
 
 export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<void> {

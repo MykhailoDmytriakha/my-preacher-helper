@@ -3,12 +3,10 @@ import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-librar
 import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
-import { useSeries } from '@/hooks/useSeries';
-import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
-import type { Series, Sermon } from '@/models/models';
+import type { Sermon } from '@/models/models';
 
 jest.mock('@/services/sermon.service', () => ({
   updateSermon: jest.fn(),
@@ -21,8 +19,30 @@ jest.mock('@/services/preachDates.service', () => ({
   deletePreachDate: jest.fn(),
 }));
 
-jest.mock('@/hooks/useSeries', () => ({ useSeries: jest.fn() }));
-jest.mock('@/hooks/useSeriesMembership', () => ({ useSeriesMembership: jest.fn() }));
+/*
+ * The series field is the engine's (useEngineSeriesField): the playlist rows say which series the
+ * sermon is in, and a change is one membership action saved with the form. The stand-in keeps its
+ * own selection so the dialog redraws the way the real field does.
+ */
+const mockChange = jest.fn();
+const mockSave = jest.fn(async () => undefined);
+const mockField = { seriesId: 's1', loading: false };
+jest.mock('@/components/series/useEngineSeriesField', () => {
+  const ReactActual = jest.requireActual('react') as typeof React;
+  return {
+    useEngineSeriesField: () => {
+      const [seriesId, setSeriesId] = ReactActual.useState(mockField.seriesId);
+      return {
+        action: {}, seriesId, changed: seriesId !== mockField.seriesId,
+        options: [{ id: 's1', label: 'Первая серия' }, { id: 's2', label: 'Вторая серия' }],
+        loading: mockField.loading, disabled: false, unsettled: false,
+        change: async (id: string) => { mockChange(id); setSeriesId(id); },
+        save: mockSave, cancel: async () => undefined, retry: jest.fn(),
+      };
+    },
+  };
+});
+jest.mock('@/data-engine/DataMembershipStatus', () => ({ DataMembershipStatus: () => null }));
 
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'u1' } }),
@@ -53,14 +73,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-const mockUseSeries = jest.mocked(useSeries);
-const mockUseSeriesMembership = jest.mocked(useSeriesMembership);
 const mockUpdateSermon = jest.mocked(updateSermon);
-
-const seriesList = [
-  { id: 's1', title: 'Первая серия', items: [{ id: 'i1', type: 'sermon', refId: 'sermon-1' }] },
-  { id: 's2', title: 'Вторая серия', items: [] },
-] as unknown as Series[];
 
 const sermon: Sermon = {
   id: 'sermon-1',
@@ -70,9 +83,6 @@ const sermon: Sermon = {
   thoughts: [],
   userId: 'u1',
 };
-
-const addToSeries = jest.fn();
-const removeFromAllSeries = jest.fn();
 
 const renderModal = (props: Partial<React.ComponentProps<typeof EditSermonModal>> = {}) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -89,40 +99,35 @@ const save = () => fireEvent.click(screen.getByRole('button', { name: 'buttons.s
 describe('the edit door can move a sermon between series', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseSeries.mockReturnValue({ series: seriesList, loading: false } as never);
-    mockUseSeriesMembership.mockReturnValue({
-      addToSeries,
-      removeFromAllSeries,
-      addRefsToSeries: jest.fn(),
-      reorderSeries: jest.fn(),
-    } as never);
+    mockField.seriesId = 's1';
+    mockField.loading = false;
     mockUpdateSermon.mockResolvedValue({ ...sermon } as never);
   });
 
-  it('opens on the series the sermon is actually in, derived from the playlist', () => {
+  it('opens on the series the engine\'s playlist rows put the sermon in', () => {
     renderModal();
 
     expect(seriesField().value).toBe('s1');
   });
 
-  it('moves the sermon through the one membership writer when another series is chosen', async () => {
+  it('moves the sermon through the one membership action when another series is chosen', async () => {
     renderModal();
 
     fireEvent.change(seriesField(), { target: { value: 's2' } });
+    expect(mockChange).toHaveBeenCalledWith('s2');
     save();
 
-    await waitFor(() => expect(addToSeries).toHaveBeenCalledWith('s2', { type: 'sermon', refId: 'sermon-1' }));
-    expect(removeFromAllSeries).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
   });
 
   it('takes the sermon out of every series when "no series" is chosen', async () => {
     renderModal();
 
     fireEvent.change(seriesField(), { target: { value: '' } });
+    expect(mockChange).toHaveBeenCalledWith('');
     save();
 
-    await waitFor(() => expect(removeFromAllSeries).toHaveBeenCalledWith({ type: 'sermon', refId: 'sermon-1' }));
-    expect(addToSeries).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
   });
 
   it('leaves membership alone when only the title changed', async () => {
@@ -132,8 +137,8 @@ describe('the edit door can move a sermon between series', () => {
     save();
 
     await waitFor(() => expect(mockUpdateSermon).toHaveBeenCalled());
-    expect(addToSeries).not.toHaveBeenCalled();
-    expect(removeFromAllSeries).not.toHaveBeenCalled();
+    expect(mockChange).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
   });
 
   it('lets a series change alone be saved, with nothing else edited', () => {
@@ -145,7 +150,7 @@ describe('the edit door can move a sermon between series', () => {
   });
 
   it('says the series are still loading rather than showing an empty picker', () => {
-    mockUseSeries.mockReturnValue({ series: [], loading: true } as never);
+    mockField.loading = true;
 
     renderModal();
 

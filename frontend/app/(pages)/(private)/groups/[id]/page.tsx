@@ -38,17 +38,15 @@ import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
-import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
 import Select from '@/components/ui/Select';
-import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
-import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
@@ -96,7 +94,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const groupsUserId = user?.uid ?? null;
   const { series } = useSeries(groupsUserId);
-  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
 
   // Which series this group belongs to — DERIVED from series.items (sole truth).
   const groupSeries = group ? getSeriesForRef(group.id, series) : undefined;
@@ -240,23 +237,8 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     }
   };
 
-  // Series binding now flows through the client playlist sweep (series.items is
-  // the sole truth) — one-to-one is enforced by construction (add removes the
-  // group from any other series in the same atomic batch). Fire-and-forget +
-  // optimistic, so it works offline like every other membership op.
-  const handleSeriesSelect = (seriesId: string) => {
-    if (!group) return;
-    // Membership writes are fire-and-forget sweeps: the optimistic binding on
-    // screen is the acceptance signal, and a terminal refusal now speaks for
-    // itself from useSeriesMembership. Announcing success here contradicted it.
-    addToSeries(seriesId, { type: 'group', refId: group.id });
-    setIsSeriesSelectorOpen(false);
-  };
-
   const handleUnlinkSeries = () => {
-    if (!group) return;
-    if (isCollectionOnEngine('series')) { setEngineRemovalOpen(true); return; }
-    removeFromAllSeries({ type: 'group', refId: group.id });
+    if (group) setEngineRemovalOpen(true);
   };
 
   // The private layout owns the sign-in flow; no editor is shown without a user.
@@ -541,9 +523,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         </div>
       </div>
 
-      {isSeriesSelectorOpen && (isCollectionOnEngine('series')
-        ? <SeriesMembershipDialog seriesId={groupSeries?.id ?? ''} mode="target" member={{ type: 'group', refId: group.id }} onClose={() => setIsSeriesSelectorOpen(false)} />
-        : <SeriesSelector mode="change" currentSeriesId={groupSeries?.id} onSelect={handleSeriesSelect} onClose={() => setIsSeriesSelectorOpen(false)} />)}
+      {isSeriesSelectorOpen && <SeriesMembershipDialog seriesId={groupSeries?.id ?? ''} mode="target" member={{ type: 'group', refId: group.id }} onClose={() => setIsSeriesSelectorOpen(false)} />}
       {engineRemovalOpen && <SeriesMembershipDialog seriesId={groupSeries?.id ?? ''} mode="remove" member={{ type: 'group', refId: group.id }} onClose={() => setEngineRemovalOpen(false)} />}
 
 

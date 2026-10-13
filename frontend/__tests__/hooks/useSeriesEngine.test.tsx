@@ -4,12 +4,12 @@ import type { ReactNode } from 'react';
 import { useDataCollection } from '@/data-engine/react.client';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
-import { createSeries, deleteSeries, getAllSeries, updateSeries } from '@/services/series.service';
+import { getAllSeries } from '@/services/series.service';
 
-jest.mock('@/data-engine/react.client', () => ({ isCollectionOnEngine: () => true, useDataCollection: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({ useDataCollection: jest.fn() }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'owner', isAuthLoading: false }) }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => false }));
-jest.mock('@/services/series.service', () => ({ createSeries: jest.fn(), deleteSeries: jest.fn(), getAllSeries: jest.fn(), updateSeries: jest.fn() }));
+jest.mock('@/services/series.service', () => ({ getAllSeries: jest.fn() }));
 const row = (title: string) => ({ resource: { collection: 'series', id: 's' }, value: { userId: 'owner', title, sermonIds: ['sermon'] }, metadata: null });
 function setup() {
   const refresh = jest.fn(async () => undefined);
@@ -25,16 +25,13 @@ afterAll(() => {
   if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
   else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
 });
-it('uses the public collection overlay and refresh even offline, with no legacy reads or writes', async () => {
+it('uses the public collection overlay and refresh even offline, with no legacy reads', async () => {
   const t = setup(), { result } = renderHook(() => useSeries('owner'), { wrapper: t.wrapper });
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(result.current.series[0]).toMatchObject({ title: 'Queued title', items: [{ type: 'sermon', refId: 'sermon' }] });
   await act(async () => { await result.current.refreshSeries(); }); expect(t.refresh).toHaveBeenCalledTimes(1);
-  expect(() => result.current.createNewSeries({ title: 'Wrong path' } as never)).toThrow('DataEngine');
-  expect(() => result.current.updateExistingSeries('s', { title: 'Wrong path' })).toThrow('DataEngine');
-  expect(() => result.current.deleteExistingSeries('s')).toThrow('DataEngine');
   expect(t.client.getMutationCache().getAll()).toHaveLength(0);
-  for (const legacy of [getAllSeries, createSeries, updateSeries, deleteSeries]) expect(legacy).not.toHaveBeenCalled();
+  expect(getAllSeries).not.toHaveBeenCalled();
   t.client.clear();
 });
 it('does not expose another owner and respects an empty overlay over stale cached snapshots', () => {

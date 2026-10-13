@@ -15,31 +15,26 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import CreateSeriesModal from '@/components/series/CreateSeriesModal';
 import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
 import SeriesCard from '@/components/series/SeriesCard';
 import { SeriesGridSkeleton } from '@/components/skeletons/SeriesCardSkeleton';
 import Select from '@/components/ui/Select';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
-import { useSeries } from '@/hooks/useSeries';
+import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 import '@locales/i18n';
+
+import type { Series } from '@/models/models';
 
 type StatusFilter = 'all' | 'draft' | 'active' | 'completed';
 type SortOption = 'recent' | 'title' | 'sermons';
 
 export default function SeriesPage() {
   const { user } = useAuth();
-  return isCollectionOnEngine('series') ? <EngineSeriesPage key={user?.uid ?? ''} /> : <LegacySeriesPage />;
-}
-function LegacySeriesPage() {
-  const { user } = useAuth();
-  const source = useSeries(user?.uid ?? null);
-  return <SeriesView source={source} />;
+  return <EngineSeriesPage key={user?.uid ?? ''} />;
 }
 function EngineSeriesPage() {
   const source = useSeriesDataCollection(), router = useRouter();
@@ -65,19 +60,15 @@ function EngineSeriesPage() {
   </>;
 }
 function SeriesView({ source, onCreate, feedback }: {
-  source: Pick<ReturnType<typeof useSeries>, 'series' | 'loading'> & { error: unknown; refreshSeries: () => unknown }
-    & Partial<Pick<ReturnType<typeof useSeries>, 'createNewSeries'>>;
-  onCreate?: () => void; feedback?: ReactNode;
+  source: { series: Series[]; loading: boolean; error: unknown; refreshSeries: () => unknown };
+  onCreate: () => void; feedback?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { series, loading, error, createNewSeries, refreshSeries } = source;
+  const { series, loading, error, refreshSeries } = source;
 
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sort, setSort] = useState<SortOption>('recent');
-
-  const handleCreateSeries = (seriesData: Parameters<NonNullable<typeof createNewSeries>>[0]) => createNewSeries!(seriesData);
 
   const filteredSeries = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -143,7 +134,7 @@ function SeriesView({ source, onCreate, feedback }: {
             {t('common.refresh', { defaultValue: 'Refresh' })}
           </button>
           <button
-            onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
+            onClick={onCreate}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
           >
             <PlusIcon className="h-5 w-5" />
@@ -290,7 +281,7 @@ function SeriesView({ source, onCreate, feedback }: {
           </p>
           <div className="mt-5 flex justify-center">
             <button
-              onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
+              onClick={onCreate}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
             >
               <PlusIcon className="h-5 w-5" />
@@ -308,9 +299,6 @@ function SeriesView({ source, onCreate, feedback }: {
         </div>
       )}
 
-      {showCreateModal && (
-        <CreateSeriesModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateSeries} />
-      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
-import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import { useSeriesRead } from '@/hooks/useSeriesRead';
 import useSermon from '@/hooks/useSermon';
 
 // Mock the hooks
@@ -14,8 +14,8 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('@/hooks/useSermon', () => jest.fn());
-jest.mock('@/hooks/useSeriesDetail', () => ({
-  useSeriesDetail: jest.fn(),
+jest.mock('@/hooks/useSeriesRead', () => ({
+  useSeriesRead: jest.fn(),
 }));
 jest.mock('@/hooks/useGroupRead', () => ({
   useGroupRead: jest.fn(),
@@ -48,7 +48,7 @@ describe('Breadcrumbs', () => {
   const mockUsePathname = usePathname as jest.Mock;
   const mockUseSearchParams = useSearchParams as jest.Mock;
   const mockUseSermon = useSermon as jest.Mock;
-  const mockUseSeriesDetail = useSeriesDetail as jest.Mock;
+  const mockUseSeriesRead = useSeriesRead as jest.Mock;
   const mockUseGroupRead = useGroupRead as jest.Mock;
   const mockUsePrayerDetail = usePrayerDetail as jest.Mock;
 
@@ -62,7 +62,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -80,7 +80,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -99,7 +99,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -126,7 +126,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -143,7 +143,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockImplementation((key: string) => (key === 'source' ? 'note' : null)),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -160,7 +160,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -177,7 +177,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: mockSeries });
+    mockUseSeriesRead.mockReturnValue({ series: mockSeries });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -193,7 +193,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -217,7 +217,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -234,7 +234,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -249,7 +249,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -266,7 +266,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: mockGroup });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -282,7 +282,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -298,7 +298,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: { id: 'test-group-id', title: 'Family Group #1' } });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -314,7 +314,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -336,7 +336,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({
       prayer: { id: 'prayer-1', title: 'Healing Prayer' },
@@ -358,7 +358,7 @@ describe('Breadcrumbs', () => {
       get: jest.fn().mockReturnValue(null),
     });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
@@ -376,7 +376,7 @@ describe('Breadcrumbs', () => {
     mockUsePathname.mockReturnValue('/care/orders/order-1');
     mockUseSearchParams.mockReturnValue({ get: jest.fn().mockReturnValue(null) });
     mockUseSermon.mockReturnValue({ sermon: null });
-    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseSeriesRead.mockReturnValue({ series: null });
     mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 

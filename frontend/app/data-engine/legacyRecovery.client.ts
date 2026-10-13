@@ -1,6 +1,5 @@
 'use client';
 
-import { isCollectionOnEngine } from './clientPolicy';
 
 import type { ResourceRef } from './types';
 
@@ -100,5 +99,5 @@ function membershipSource(key: string, payload: Record<string, unknown>, owner: 
     || !object(payload.transform) || typeof payload.transform.seriesId !== 'string' || !payload.transform.seriesId) return null;
   const resource = { collection: 'series', id: payload.transform.seriesId };
   if (requested && (requested.collection !== resource.collection || requested.id !== resource.id)) return null;
-  return { kind: 'outbox', resource, documentId: resource.id, aggregate: 'membership', status: isCollectionOnEngine('series') ? 'migration-required' : null };
+  return { kind: 'outbox', resource, documentId: resource.id, aggregate: 'membership', status: 'migration-required' };
 }

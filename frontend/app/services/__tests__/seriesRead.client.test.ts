@@ -1,8 +1,8 @@
 import { getDoc, getDocs } from 'firebase/firestore';
 
-import { getAllGroups, getGroupById } from '@/services/groups.service';
+import { getAllGroups } from '@/services/groups.service';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
-import { getAllSeries, getSeriesById } from '@/services/series.service';
+import { getAllSeries } from '@/services/series.service';
 import { getStudyNotes } from '@services/studies.service';
 
 /**
@@ -95,42 +95,5 @@ describe('owner lists that were left on one road', () => {
     await getStudyNotes('u1');
 
     expect(mockRead).toHaveBeenCalledWith('studyNotes', 'u1', expect.any(Promise), expect.any(Function));
-  });
-});
-
-describe('one series and one group go through the guarded document read', () => {
-  it('asks for the series by its own collection and owner, so a silent browser has a second road', async () => {
-    const series = await getSeriesById('s1');
-
-    expect(mockReadDocument).toHaveBeenCalledWith(
-      'series',
-      'u1',
-      's1',
-      expect.any(Promise),
-      expect.any(Function)
-    );
-    expect(series).toMatchObject({ id: 's1', title: 'Первая серия' });
-  });
-
-  it('does the same for one group', async () => {
-    (getDoc as jest.Mock).mockResolvedValue({ exists: () => true, id: 'g1', data: () => storedGroup });
-
-    const group = await getGroupById('g1');
-
-    expect(mockReadDocument).toHaveBeenCalledWith(
-      'groups',
-      'u1',
-      'g1',
-      expect.any(Promise),
-      expect.any(Function)
-    );
-    expect(group).toMatchObject({ id: 'g1', title: 'Молодёжь' });
-  });
-
-  it('shapes a server answer the same way the browser answer is shaped', async () => {
-    await getSeriesById('s1');
-
-    const shape = mockReadDocument.mock.calls[0][4] as (docs: Record<string, unknown>[]) => { id: string }[];
-    expect(shape([{ ...storedSeries, id: 's9' }])[0]).toMatchObject({ id: 's9', title: 'Первая серия' });
   });
 });

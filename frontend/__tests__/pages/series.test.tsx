@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import React from 'react';
 
 import SeriesPage from '@/(pages)/(private)/series/page';
@@ -20,24 +20,48 @@ jest.mock('@/components/series/SeriesCard', () => {
     );
 });
 
-jest.mock('@/components/series/CreateSeriesModal', () => {
-    return ({ onClose, onCreate }: { onClose: () => void; onCreate: (data: any) => void }) => (
-        <div data-testid="create-series-modal">
+// Stub exposes the props the page passes, so tests can assert the arguments.
+jest.mock('@/components/series/EngineCreateSeriesModal', () => ({
+    EngineCreateSeriesModal: ({ seriesId, recoveryId, onClose, onQueued }: { seriesId: string; recoveryId?: string; onClose: () => void; onQueued: (id: string) => void }) => (
+        <div data-testid="engine-create-series-modal" data-series-id={seriesId} data-recovery-id={recoveryId ?? ''}>
             <button data-testid="close-modal" onClick={onClose}>Close</button>
-            <button data-testid="create-series-btn" onClick={() => onCreate({ title: 'New Series' })}>Create</button>
+            <button data-testid="queue-create" onClick={() => onQueued(seriesId)}>Queue</button>
         </div>
-    );
-});
+    ),
+}));
 
 jest.mock('@/components/skeletons/SeriesCardSkeleton', () => ({
     SeriesGridSkeleton: () => <div data-testid="series-grid-skeleton">Loading...</div>,
 }));
 
 // Mock hooks
-const mockUseSeries = jest.fn();
+const mockUseSeriesDataCollection = jest.fn();
+const mockPush = jest.fn();
 
-jest.mock('@/hooks/useSeries', () => ({
-    useSeries: () => mockUseSeries(),
+jest.mock('@/hooks/useSeriesDataCollection', () => ({
+    useSeriesDataCollection: () => mockUseSeriesDataCollection(),
+}));
+
+jest.mock('next/navigation', () => ({
+    useRouter: () => ({ push: mockPush, replace: jest.fn() }),
+}));
+
+jest.mock('@/utils/clientId', () => ({
+    newClientId: jest.fn(() => 'fresh-series-id'),
+}));
+
+// The page reads the engine through these; there is no DataEngineProvider in this test.
+jest.mock('@/data-engine/react.client', () => ({
+    useDataEngine: jest.fn(() => ({ browser: null, owner: 'test-user-id' })),
+    useRecoveryDiscovery: jest.fn(() => ({ choices: [], loading: false, error: null, recover: jest.fn() })),
+}));
+
+jest.mock('@/data-engine/DataCollectionStatus', () => ({
+    DataCollectionStatus: ({ state }: { state: unknown }) => <div data-testid="collection-status">{state ? 'has-state' : 'no-state'}</div>,
+}));
+
+jest.mock('@/data-engine/DataSyncStatus', () => ({
+    DataSyncStatus: ({ subject }: { subject: unknown }) => <div data-testid="sync-status">{String(subject)}</div>,
 }));
 
 // Mock Auth Provider
@@ -115,16 +139,22 @@ const mockSeries = [
     },
 ];
 
+const withCollection = (patch: Record<string, unknown> = {}) =>
+    mockUseSeriesDataCollection.mockReturnValue({
+        series: [],
+        loading: false,
+        error: null,
+        refreshSeries: jest.fn(),
+        state: null,
+        complete: true,
+        freshness: 'fresh',
+        ...patch,
+    });
+
 describe('Series Page', () => {
     beforeEach(() => {
         jest.clearAllMocks();
-        mockUseSeries.mockReturnValue({
-            series: mockSeries,
-            loading: false,
-            error: null,
-            createNewSeries: jest.fn(),
-            refreshSeries: jest.fn(),
-        });
+        withCollection({ series: mockSeries });
     });
 
     afterEach(() => {
@@ -293,12 +323,11 @@ describe('Series Page', () => {
 
     describe('Loading State', () => {
         it('shows skeleton when loading', () => {
-            mockUseSeries.mockReturnValue({
+            withCollection({
                 series: [],
                 loading: true,
                 error: null,
-                createNewSeries: jest.fn(),
-                refreshSeries: jest.fn(),
+                    refreshSeries: jest.fn(),
             });
 
             render(<SeriesPage />);
@@ -309,12 +338,11 @@ describe('Series Page', () => {
 
     describe('Empty State', () => {
         it('shows empty message when no series exist', () => {
-            mockUseSeries.mockReturnValue({
+            withCollection({
                 series: [],
                 loading: false,
                 error: null,
-                createNewSeries: jest.fn(),
-                refreshSeries: jest.fn(),
+                    refreshSeries: jest.fn(),
             });
 
             render(<SeriesPage />);
@@ -326,12 +354,11 @@ describe('Series Page', () => {
 
     describe('Error State', () => {
         it('shows error message when loading fails', () => {
-            mockUseSeries.mockReturnValue({
+            withCollection({
                 series: [],
                 loading: false,
                 error: new Error('Failed to load'),
-                createNewSeries: jest.fn(),
-                refreshSeries: jest.fn(),
+                    refreshSeries: jest.fn(),
             });
 
             render(<SeriesPage />);
@@ -341,60 +368,57 @@ describe('Series Page', () => {
     });
 
     describe('Create Series Modal', () => {
-        it('opens create modal when clicking New Series button', () => {
+        it('opens the engine create modal with a fresh id when clicking New Series', () => {
             render(<SeriesPage />);
 
-            const newSeriesButton = screen.getByText('New Series');
-            fireEvent.click(newSeriesButton);
+            expect(screen.queryByTestId('engine-create-series-modal')).not.toBeInTheDocument();
+            fireEvent.click(screen.getByText('New Series'));
 
-            expect(screen.getByTestId('create-series-modal')).toBeInTheDocument();
+            const modal = screen.getByTestId('engine-create-series-modal');
+            expect(modal).toHaveAttribute('data-series-id', 'fresh-series-id');
+            expect(modal).toHaveAttribute('data-recovery-id', '');
+        });
+
+        it('keeps creation reachable from the empty state', () => {
+            withCollection({ series: [] });
+            render(<SeriesPage />);
+
+            fireEvent.click(screen.getAllByText('New Series')[1]);
+
+            expect(screen.getByTestId('engine-create-series-modal')).toHaveAttribute('data-series-id', 'fresh-series-id');
         });
 
         it('closes modal when close button is clicked', () => {
             render(<SeriesPage />);
 
-            // Open modal
             fireEvent.click(screen.getByText('New Series'));
-            expect(screen.getByTestId('create-series-modal')).toBeInTheDocument();
+            expect(screen.getByTestId('engine-create-series-modal')).toBeInTheDocument();
 
-            // Close modal
             fireEvent.click(screen.getByTestId('close-modal'));
-            expect(screen.queryByTestId('create-series-modal')).not.toBeInTheDocument();
+            expect(screen.queryByTestId('engine-create-series-modal')).not.toBeInTheDocument();
+            expect(mockPush).not.toHaveBeenCalled();
         });
 
-        it('calls createNewSeries when creating a series', async () => {
-            const mockCreateNewSeries = jest.fn().mockResolvedValue({});
-            mockUseSeries.mockReturnValue({
-                series: mockSeries,
-                loading: false,
-                error: null,
-                createNewSeries: mockCreateNewSeries,
-                refreshSeries: jest.fn(),
-            });
-
+        it('navigates to the new series and closes the modal once the create is queued', () => {
             render(<SeriesPage />);
 
-            // Open modal
             fireEvent.click(screen.getByText('New Series'));
+            fireEvent.click(screen.getByTestId('queue-create'));
 
-            // Create series
-            fireEvent.click(screen.getByTestId('create-series-btn'));
-
-            await waitFor(() => {
-                expect(mockCreateNewSeries).toHaveBeenCalledWith({ title: 'New Series' });
-            });
+            expect(mockPush).toHaveBeenCalledTimes(1);
+            expect(mockPush).toHaveBeenCalledWith('/series/fresh-series-id');
+            expect(screen.queryByTestId('engine-create-series-modal')).not.toBeInTheDocument();
         });
     });
 
     describe('Refresh Functionality', () => {
         it('calls refreshSeries when clicking refresh button', () => {
             const mockRefreshSeries = jest.fn();
-            mockUseSeries.mockReturnValue({
+            withCollection({
                 series: mockSeries,
                 loading: false,
                 error: null,
-                createNewSeries: jest.fn(),
-                refreshSeries: mockRefreshSeries,
+                    refreshSeries: mockRefreshSeries,
             });
 
             render(<SeriesPage />);

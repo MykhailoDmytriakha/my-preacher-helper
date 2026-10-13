@@ -183,7 +183,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
               {readOnly ? null : reorderHint ?? t('workspaces.series.detail.dragToReorder')}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {!readOnly && <button
               onClick={onAddSermons}
               className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"

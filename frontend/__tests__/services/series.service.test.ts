@@ -69,93 +69,18 @@ describe('series.service', () => {
     jest.dontMock('firebase/firestore');
   });
 
-  it('reads, creates, and metadata-updates series through the client SDK', async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        docSnap('series-a', { ...baseSeries, title: 'A' }),
-        docSnap('series-b', { ...baseSeries, title: 'B', startDate: '2024-02-01T00:00:00Z' }),
-      ],
-    });
-    // The document read for the screen belongs to whoever is signed in (jest.setup: test-user-id);
-    // another owner's cached copy is refused (cross-account entry, BUGS.md).
-    mockGetDoc
-      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, userId: 'test-user-id', title: 'B' }))
-      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, title: 'B' }));
-    mockSetDoc.mockResolvedValueOnce(undefined);
-    mockUpdateDoc.mockResolvedValueOnce(undefined);
-
+  // Series are written only through the data engine; the list read the legacy membership sweep uses remains.
+  it('reads the owner\'s series through the client SDK', async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [docSnap('series-1', baseSeries)] });
     const service = await importServiceWithClientMocks();
     const all = await service.getAllSeries('user-1');
-    const detail = await service.getSeriesById('series-b');
-    const created = await service.createSeries({ ...baseSeries, id: 'client-series-id' });
-    const updated = await service.updateSeries('series-b', { title: 'Updated', sermonIds: ['ignored'] } as any);
-
-    expect(all.map((series) => series.id)).toEqual(['series-b', 'series-a']);
-    expect(detail?.id).toBe('series-b');
-    expect(created.id).toBe('client-series-id');
-    expect(updated.title).toBe('Updated');
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'series', id: 'client-series-id' }),
-      expect.objectContaining({ title: 'Series A' })
-    );
-    expect(mockUpdateDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'series', id: 'series-b' }),
-      expect.not.objectContaining({ sermonIds: ['ignored'] })
-    );
+    expect(all.map((series) => series.id)).toEqual(['series-1']);
+    expect(mockWhere).toHaveBeenCalledWith('userId', '==', 'user-1');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('keeps deleteSeries on the server route (Admin-SDK delete-cleanup)', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true });
-
+  it('exposes no series writer', async () => {
     const service = await importServiceWithClientMocks();
-    await service.deleteSeries('series-1');
-
-    expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/series/series-1'), expect.objectContaining({
-      method: 'DELETE',
-      headers: { Authorization: 'Bearer test-token' },
-    }));
+    expect(Object.keys(service).sort()).toEqual(['getAllSeries']);
   });
-
-  it('keeps an HTTP refusal class when server delete cannot find the series', async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      json: async () => ({ error: 'Series has already been deleted' }),
-    });
-
-    const service = await importServiceWithClientMocks();
-
-    await expect(service.deleteSeries('series-1')).rejects.toMatchObject({
-      message: 'Series has already been deleted',
-      code: 'not-found',
-      status: 404,
-    });
-  });
-
-  it('no longer exposes membership operations (moved to the client playlist sweep)', async () => {
-    const service = await importServiceWithClientMocks();
-    // Add/remove/reorder of sermons & groups are now written by the client sweep
-    // (useSeriesMembership + seriesMembership.client), not this fetch service.
-    expect((service as Record<string, unknown>).addSermonToSeries).toBeUndefined();
-    expect((service as Record<string, unknown>).removeSermonFromSeries).toBeUndefined();
-    expect((service as Record<string, unknown>).reorderSermons).toBeUndefined();
-    expect((service as Record<string, unknown>).addGroupToSeries).toBeUndefined();
-    expect((service as Record<string, unknown>).removeSeriesItem).toBeUndefined();
-    expect((service as Record<string, unknown>).reorderSeriesItems).toBeUndefined();
-  });
-});
-jest.mock('@/utils/authenticatedRequest', () => ({
-  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
-}));
-
-it('refuses every legacy series CRUD write before SDK or HTTP when the collection is migrated', async () => {
-  jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
-  try {
-    const service = await importServiceWithClientMocks();
-    await expect(service.createSeries(baseSeries)).rejects.toMatchObject({ code: 'data-engine-required' });
-    await expect(service.updateSeries('s', { title: 'changed' })).rejects.toMatchObject({ code: 'data-engine-required' });
-    await expect(service.deleteSeries('s')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(mockGetClientDb).not.toHaveBeenCalled(); expect(mockFetch).not.toHaveBeenCalled();
-  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; delete process.env.NEXT_PUBLIC_API_BASE; }
 });

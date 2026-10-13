@@ -162,47 +162,16 @@ describe('atomic legacy boundary', () => {
 });
 
 
-describe('legacy repository cascades are atomic', () => {
+describe('legacy repository cascades', () => {
   const repository = new SeriesRepository();
-  const sermonItem = { id: 's', type: 'sermon', refId: 'a', position: 1 };
-  const groupItem = { id: 'g', type: 'group', refId: 'g', position: 2 };
-  const seedSeries = (withGroup = false) => {
-    records.set('series/list', { userId: 'owner', items: withGroup ? [sermonItem, groupItem] : [sermonItem], sermonIds: ['a'] });
+  // Series are engine-owned (engineOwnedCollections.ts): the legacy sermon delete would detach the
+  // sermon from its series, so it is refused whole, before anything is written.
+  it('refuses the legacy sermon delete cascade whole when a series would change', async () => {
+    records.set('series/list', { userId: 'owner', items: [{ id: 's', type: 'sermon', refId: 'a', position: 1 }], sermonIds: ['a'] });
     records.set('sermons/a', { userId: 'owner', title: 'Keep', seriesId: 'list' });
-    if (withGroup) records.set('groups/g', { userId: 'owner', seriesId: 'list' });
-  };
-  it('detaches its sermons and deletes the series in one transaction', async () => {
-    seedSeries(); await repository.deleteSeriesAndDetach('list', 'owner');
-    expect(records.has('series/list')).toBe(false);
-    expect(records.get('sermons/a')).toMatchObject({ title: 'Keep', seriesId: null });
-  });
-  // Groups are engine-owned (engineOwnedCollections.ts): no legacy writer touches one, so a cascade
-  // that would detach a group is refused whole, before anything is written.
-  it('refuses the entire cascade when a member is a group', async () => {
-    seedSeries(true);
     const original = JSON.stringify([...records]);
-    await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(repository.deleteSermonAndDetachFromAllSeries('a', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(JSON.stringify([...records])).toBe(original);
-  });
-  it.each(['series/list', 'sermons/a'])('refuses the entire cascade when %s is migrated', async path => {
-    seedSeries(); records.set(path, { ...records.get(path), _dataEngine: marker });
-    const original = JSON.stringify([...records]);
-    await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(JSON.stringify([...records])).toBe(original);
-  });
-  it('preserves foreign and reassigned backrefs and supports legacy sermonIds', async () => {
-    seedSeries(); records.set('series/list', { userId: 'owner', sermonIds: ['a'], items: [] });
-    records.set('sermons/a', { userId: 'other', seriesId: 'list', _dataEngine: marker });
-    await repository.deleteSeriesAndDetach('list', 'owner');
-    expect(records.get('sermons/a')?.seriesId).toBe('list');
-    seedSeries(); records.set('sermons/a', { userId: 'owner', seriesId: 'new-list' });
-    await repository.deleteSeriesAndDetach('list', 'owner');
-    expect(records.get('sermons/a')?.seriesId).toBe('new-list');
-  });
-  it('refuses oversized series rather than deleting with partial cleanup', async () => {
-    records.set('series/list', { userId: 'owner', sermonIds: Array.from({ length: 100 }, (_, index) => String(index)) });
-    await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(records.has('series/list')).toBe(true);
   });
   it('strips a deleted tag from the owner\'s sermons and preserves untouched thoughts', async () => {
     records.set('sermons/a', { userId: 'owner', thoughts: [{ id: 'a', text: 'Keep', tags: ['Topic', 'Other'] }, { id: 'b', text: 'No tags' }] });

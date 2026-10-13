@@ -1,7 +1,6 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
-import { createSeries, deleteSeries, updateSeries } from '@/services/series.service';
 import {
   createSermon as createSermonRequest,
   deleteSermon as deleteSermonRequest,
@@ -28,7 +27,7 @@ import type {
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { PreachDate, Series, Sermon } from '@/models/models';
+import type { PreachDate, Sermon } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -285,28 +284,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   }
 
   // ---- series ----
-  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.create, {
-    mutationFn: (payload: Omit<Series, 'id'> & { id?: string }) => createSeries(payload),
-    onSuccess: invalidate(['series']),
-  });
-  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.update, {
-    // Same rule as study notes: `expectedRevision` must survive persistence, or a
-    // replay after reload silently downgrades a guarded save to an unchecked one.
-    mutationFn: ({
-      seriesId,
-      updates,
-      expectedRevision,
-    }: {
-      seriesId: string;
-      updates: Partial<Series>;
-      expectedRevision?: number | null;
-    }) => updateSeries(seriesId, updates, expectedRevision ?? null),
-    onSuccess: invalidate(['series']),
-  });
-  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.delete, {
-    mutationFn: (seriesId: string) => deleteSeries(seriesId),
-    onSuccess: invalidate(['series']),
-  });
+  // The engine owns series; a paused edit of the previous version gets the same refusal, and its
+  // text survives in the previous-version archive (legacyQueryRecovery.client.ts).
+  for (const key of Object.values(SERIES_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('series') });
+  }
 
   // ---- prayer requests ----
   // The engine owns prayer requests; a paused edit of the previous version gets the same refusal,

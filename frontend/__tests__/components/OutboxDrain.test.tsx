@@ -2,7 +2,6 @@ import { render } from '@testing-library/react';
 
 import { OutboxDrain } from '@/components/OutboxDrain';
 import { replayOutbox } from '@/services/outboxReplay.client';
-import { replayMembershipOutbox } from '@/services/seriesMembership.client';
 
 /**
  * The worker must exist on EVERY private screen.
@@ -21,20 +20,14 @@ jest.mock('@/services/outboxReplay.client', () => ({
     .fn()
     .mockResolvedValue({ replayed: 0, conflicted: 0, failed: 0, touched: [] }),
 }));
-jest.mock('@/services/seriesMembership.client', () => ({
-  replayMembershipOutbox: jest.fn().mockResolvedValue(0),
-}));
-
 const mockReplay = replayOutbox as jest.MockedFunction<typeof replayOutbox>;
-const mockMembership = replayMembershipOutbox as jest.MockedFunction<typeof replayMembershipOutbox>;
 
 describe('OutboxDrain', () => {
   beforeEach(() => {
     mockReplay.mockClear();
-    mockMembership.mockClear();
   });
 
-  it('drains text edits AND membership operations on mount, rendering nothing', async () => {
+  it('drains text edits on mount, rendering nothing', async () => {
     const { container } = render(<OutboxDrain />);
 
     // Renders nothing at all: it can therefore be mounted on a screen that hides
@@ -42,7 +35,6 @@ describe('OutboxDrain', () => {
     expect(container).toBeEmptyDOMElement();
     await Promise.resolve();
     expect(mockReplay).toHaveBeenCalledWith('u1');
-    expect(mockMembership).toHaveBeenCalledWith('u1');
   });
 
   it('drains again when the connection comes back', async () => {

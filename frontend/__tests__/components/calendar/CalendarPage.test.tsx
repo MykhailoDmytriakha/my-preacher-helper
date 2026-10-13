@@ -251,9 +251,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -293,9 +290,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -341,9 +335,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -372,9 +363,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -405,9 +393,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -436,9 +421,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -480,9 +462,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -518,9 +497,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -544,9 +520,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -572,9 +545,6 @@ describe('CalendarPage', () => {
       loading: false,
       error: null,
       refreshSeries: jest.fn(),
-      createNewSeries: jest.fn(),
-      updateExistingSeries: jest.fn(),
-      deleteExistingSeries: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({

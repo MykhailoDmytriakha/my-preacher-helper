@@ -1,15 +1,13 @@
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group } from '@/models/models';
-import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
+import { readOwnerList } from '@/services/ownerListRead.client';
 import { hydrateGroup } from '@/utils/groupDocument';
-import { auth } from '@services/firebaseAuth.service';
 
 /*
- * Groups are written only through the data engine (engineOwnedCollections.ts). What stays here are
- * the two reads the legacy series hooks still use (useSeriesDetail, useSeriesMembership); they go
- * when series leave the legacy road.
+ * Groups are written only through the data engine (engineOwnedCollections.ts). What stays here is
+ * the list read the legacy membership sweep (useSeriesMembership) still uses; it goes with it.
  */
 const GROUPS_COLLECTION = 'groups';
 
@@ -30,19 +28,4 @@ async function getAllGroupsViaClient(userId: string): Promise<Group[]> {
   return readOwnerList(GROUPS_COLLECTION, userId, readGroupsViaSdk(userId), shapeGroups);
 }
 
-async function readOneGroupViaSdk(groupId: string): Promise<Group | undefined> {
-  const db = getClientDb();
-  const snap = await getDoc(doc(db, GROUPS_COLLECTION, groupId));
-  if (!snap.exists()) return undefined;
-  return hydrateGroup({ ...(snap.data() as Omit<Group, 'id'>), id: snap.id } as Group);
-}
-
-async function getGroupByIdViaClient(groupId: string): Promise<Group | undefined> {
-  const owner = auth.currentUser?.uid;
-  if (!owner) return readOneGroupViaSdk(groupId);
-  return readOwnerDocument(GROUPS_COLLECTION, owner, groupId, readOneGroupViaSdk(groupId), shapeGroups);
-}
-
 export const getAllGroups = async (userId: string): Promise<Group[]> => getAllGroupsViaClient(userId);
-
-export const getGroupById = async (groupId: string): Promise<Group | undefined> => getGroupByIdViaClient(groupId);

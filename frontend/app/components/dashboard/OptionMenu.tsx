@@ -10,7 +10,6 @@ import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDial
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useDocumentActions } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
-import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import {
   applySourceNoteLinkPatch,
   openingContextOf,
@@ -31,7 +30,6 @@ import { getSeriesForRef } from "@/utils/seriesMembership";
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
-import SeriesSelector from "@components/series/SeriesSelector";
 import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
 import * as preachDatesService from "@services/preachDates.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
@@ -115,7 +113,6 @@ export default function OptionMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
   // The app's own "are you sure?" window — the browser's box looked foreign on an iPhone.
   const { confirm, confirmDialog } = useConfirm();
 
@@ -429,34 +426,13 @@ export default function OptionMenu({
     closeMenu();
   };
 
-  const handleRemoveFromSeries = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const handleRemoveFromSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
     if (!currentSeries) return;
-    if (isCollectionOnEngine('series')) { setSeriesSelectorMode('remove'); setShowSeriesSelector(true); closeMenu(); return; }
-    // A question of its own, naming the series — it used to be the button's label with "?" glued on.
-    // The answer button repeats the menu item the person just chose, and the note says the sermon
-    // stays: "remove" next to a sermon otherwise reads as deleting it.
-    const confirmed = await confirm({
-      title: { key: 'workspaces.series.actions.removeFromSeriesConfirm', values: { series: currentSeries.title ?? '' } },
-      description: { key: 'workspaces.series.actions.removeFromSeriesKeepsSermon' },
-      confirmText: { key: 'workspaces.series.actions.removeFromSeries' },
-    });
-    if (!confirmed) return;
-    // Sweep-all: drop this sermon from every series it sits in. Fire-and-forget +
-    // optimistic (the badge derives from the series list cache the sweep updates).
-    removeFromAllSeries({ type: 'sermon', refId: sermon.id });
-    invalidateCalendarCache();
+    setSeriesSelectorMode('remove');
+    setShowSeriesSelector(true);
     closeMenu();
-  };
-
-  const handleSeriesSelected = (seriesId: string) => {
-    // ADD/MOVE via the playlist sweep: one-to-one is enforced by construction —
-    // the sermon is removed from any other series in the same atomic batch, so
-    // "change series" needs no separate remove step.
-    addToSeries(seriesId, { type: 'sermon', refId: sermon.id });
-    invalidateCalendarCache();
-    setShowSeriesSelector(false);
   };
 
   return (
@@ -583,11 +559,8 @@ export default function OptionMenu({
         defaultStatus="preached"
       />
 
-      {showSeriesSelector && (isCollectionOnEngine('series')
-        ? <SeriesMembershipDialog seriesId={currentSeries?.id ?? ''} member={{ type: 'sermon', refId: sermon.id }}
-          mode={seriesSelectorMode === 'remove' ? 'remove' : 'target'} onClose={() => setShowSeriesSelector(false)} />
-        : <SeriesSelector onClose={() => setShowSeriesSelector(false)} onSelect={handleSeriesSelected}
-          currentSeriesId={currentSeries?.id} mode={seriesSelectorMode === 'remove' ? 'change' : seriesSelectorMode} />)}
+      {showSeriesSelector && <SeriesMembershipDialog seriesId={currentSeries?.id ?? ''} member={{ type: 'sermon', refId: sermon.id }}
+        mode={seriesSelectorMode === 'remove' ? 'remove' : 'target'} onClose={() => setShowSeriesSelector(false)} />}
 
       {showSourceNotePicker && sourceNoteOpening && (
         <SourceNotePickerModal

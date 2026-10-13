@@ -5,16 +5,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isCollectionOnEngine, useDataMembership, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDataMembership, useRecoveryDiscovery } from '@/data-engine/react.client';
 
 const SeriesMembershipDialog = dynamic(() => import('./SeriesMembershipDialog').then(module => module.SeriesMembershipDialog), { ssr: false });
 const EngineCreateSermonModal = dynamic(() => import('../sermon/EngineCreateSermonModal').then(module => module.EngineCreateSermonModal), { ssr: false });
 
 /** One recovery owner per workspace, including after the originating page unmounts. */
 export function SeriesMembershipRecovery() {
-  return isCollectionOnEngine('series') || isCollectionOnEngine('sermons') ? <WorkspaceRecovery /> : null;
-}
-function WorkspaceRecovery() {
   const { t } = useTranslation(), actions = useDataMembership();
   const [selected, setSelected] = useState<{ identity: object; id: string; creation: boolean } | null>(null);
   const id = selected?.identity === actions.recoveryIdentity ? selected.id : null;

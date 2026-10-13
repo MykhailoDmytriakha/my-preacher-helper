@@ -19,8 +19,8 @@ jest.mock('@/data-engine/react.client', () => ({
   useDataForm: () => ({ active: false, busy: false, data: null, begin: jest.fn(), cancel: jest.fn(), update: jest.fn(), save: jest.fn() }),
 }));
 jest.mock('@/hooks/useSermon', () => jest.fn(() => ({ sermon: { id: 'sermon-1', title: 'Old sermon title' }, loading: false })));
-jest.mock('@/hooks/useSeriesDetail', () => ({
-  useSeriesDetail: jest.fn(() => ({ series: { id: 'series-1', title: 'Old series title' }, loading: false })),
+jest.mock('@/hooks/useSeriesRead', () => ({
+  useSeriesRead: jest.fn(() => ({ series: { id: 'series-1', title: 'Old series title' }, loading: false })),
 }));
 jest.mock('@/hooks/useServiceOrders', () => ({ useServiceOrders: () => ({ orders: [] }) }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));

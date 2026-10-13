@@ -56,13 +56,13 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     onCancel={() => { void cancel().catch(() => undefined); }} submitLabel={t('buttons.save')}
     saving={saving || form.busy} readOnly={loading || !form.active || form.status?.phase === 'deleted'}
     submitDisabled={!form.durable || series.unsettled || (!form.dirty && !series.changed)} showPlannedDate
-    seriesOptions={series.enabled ? series.options : undefined} seriesLoading={series.loading} seriesDisabled={series.disabled}
+    seriesOptions={series.options} seriesLoading={series.loading} seriesDisabled={series.disabled}
     detailsHint={t('editSermon.plannedDateHint')}
     seriesStatus={<div className="space-y-3 p-4 empty:hidden">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
         onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} />
-      {series.enabled && <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />}
+      <DataMembershipStatus action={{ ...series.action, retry: series.retry }} />
     </div>} />;
 }

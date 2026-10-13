@@ -1,45 +1,29 @@
-import { seriesRepository } from '@repositories/series.repository';
-
 import { DELETE } from 'app/api/series/[id]/route';
 
-jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
-jest.mock('@repositories/series.repository', () => ({ seriesRepository: {
-  fetchSeriesById: jest.fn(), deleteSeriesAndDetach: jest.fn(),
-} }));
+/**
+ * DELETE /api/series/:id stays for shipped bundles. Series are deleted only through the data engine,
+ * so a shipped bundle's delete is refused with 426 — never 404 or 409 — and nothing is touched.
+ */
+
 jest.mock('next/server', () => ({ NextResponse: { json: (data: unknown, options: { status?: number } = {}) => ({
-  status: options.status || 200, json: async () => data,
+  status: options.status ?? 200, json: async () => data,
 }) } }));
-jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1') }));
+const mockAuth = jest.fn();
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: (...args: unknown[]) => mockAuth(...args) }));
+const request = () => new Request('http://localhost/api/series/s1', { method: 'DELETE' });
 
 describe('/api/series/[id] DELETE', () => {
-  const remove = () => DELETE({} as Request, { params: Promise.resolve({ id: 's1' }) });
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValue({ id: 's1', userId: 'user-1' });
-    (seriesRepository.deleteSeriesAndDetach as jest.Mock).mockResolvedValue(undefined);
+  beforeEach(() => jest.clearAllMocks());
+
+  it('refuses a caller without a verified token', async () => {
+    mockAuth.mockResolvedValue(null);
+    expect((await DELETE(request())).status).toBe(401);
   });
-  it('returns success when already missing', async () => {
-    (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValue(null);
-    expect((await remove()).status).toBe(200);
-    expect(seriesRepository.deleteSeriesAndDetach).not.toHaveBeenCalled();
-  });
-  it('delegates the entire cascade to one atomic repository operation', async () => {
-    expect((await remove()).status).toBe(200);
-    expect(seriesRepository.deleteSeriesAndDetach).toHaveBeenCalledWith('s1', 'user-1');
-  });
-  it('refuses foreign ownership before deletion', async () => {
-    (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValue({ userId: 'other' });
-    expect((await remove()).status).toBe(403);
-    expect(seriesRepository.deleteSeriesAndDetach).not.toHaveBeenCalled();
-  });
-  it('surfaces protected cascade refusal instead of reporting success', async () => {
-    (seriesRepository.deleteSeriesAndDetach as jest.Mock).mockRejectedValue(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
-    const response = await remove();
+
+  it('refuses a shipped bundle\'s delete with the migration refusal', async () => {
+    mockAuth.mockResolvedValue('user-1');
+    const response = await DELETE(request());
     expect(response.status).toBe(426);
-    expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
-  });
-  it('returns 500 on ordinary deletion failure', async () => {
-    (seriesRepository.deleteSeriesAndDetach as jest.Mock).mockRejectedValue(new Error('boom'));
-    expect((await remove()).status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ code: 'data-engine-required' });
   });
 });

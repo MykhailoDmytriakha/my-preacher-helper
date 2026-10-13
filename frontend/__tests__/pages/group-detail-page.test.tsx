@@ -83,21 +83,6 @@ jest.mock('@/hooks/useSeries', () => ({
   useSeries: jest.fn(() => ({ series: [{ id: 'mock-series-1', title: 'Mock Series', color: '#000000' }] })),
 }));
 
-// Series binding now flows through the client playlist sweep. Stable factory-scoped
-// spies so tests can assert the sweep was invoked (and so the hook's useMutation/
-// useQueryClient internals never run in this provider-less test).
-jest.mock('@/hooks/useSeriesMembership', () => {
-  const addToSeries = jest.fn();
-  const removeFromAllSeries = jest.fn();
-  const value = { addToSeries, addRefsToSeries: jest.fn(), removeFromAllSeries, reorderSeries: jest.fn() };
-  return {
-    __esModule: true,
-    useSeriesMembership: () => value,
-    // Test-only handle to the stable spies (not part of the real module surface).
-    __membershipSpies: { addToSeries, removeFromAllSeries },
-  };
-});
-
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: jest.fn(() => ({ user: { uid: 'user-1' } })),
 }));
@@ -139,27 +124,12 @@ jest.mock('@/components/ui/ConfirmModal', () => {
   };
 });
 
-jest.mock('@/components/series/SeriesSelector', () => ({
-  __esModule: true,
-  default: ({ onSelect, onClose }: any) => (
-    <div data-testid="series-selector-mock">
-      <button onClick={() => onSelect('mock-series-1')}>Select Mock Series</button>
-      <button onClick={onClose}>Close Selector</button>
-    </div>
-  ),
-}));
-
 const mockUseSeries = useSeries as jest.MockedFunction<typeof useSeries>;
 const mockUseAuth = jest.mocked(useAuth);
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
 
 // The membership sweep exposes stable spies (see the jest.mock factory above).
-const { addToSeries: mockAddToSeries, removeFromAllSeries: mockRemoveFromAllSeries } = (
-  jest.requireMock('@/hooks/useSeriesMembership') as {
-    __membershipSpies: { addToSeries: jest.Mock; removeFromAllSeries: jest.Mock };
-  }
-).__membershipSpies;
 
 const DEFAULT_SERIES = [{ id: 'mock-series-1', title: 'Mock Series', color: '#000000' }];
 // A series whose items list this group — so the derive shows the linked chip.
@@ -218,13 +188,9 @@ const createMockGroup = (overrides: Partial<any> = {}) =>
     ...overrides,
   }) as any;
 describe('GroupDetailPage', () => {
-  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
-    // Series stay on the legacy SeriesSelector branch here; only the engine describe below opts in.
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups';
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
     mockHasGroupsAccess.mockResolvedValue(false);
     mockUseParams.mockReturnValue({ id: 'group-1' });
@@ -233,8 +199,6 @@ describe('GroupDetailPage', () => {
 
   afterEach(() => {
     jest.useRealTimers();
-    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
   });
 
   /** Seeds the stored group document and renders the page inside a real DataEngineProvider. */
@@ -462,58 +426,9 @@ describe('GroupDetailPage', () => {
     expect(stored.flow.map((item: any) => item.id)).toEqual(['flow-1']);
   });
 
-  it('assigns a group to a series through the legacy selector', async () => {
-    setupGroupPage({ seriesId: null });
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Assign to series' }));
-    expect(await screen.findByTestId('series-selector-mock')).toBeInTheDocument();
-
-    // Select a series from the mock — binding goes through the client sweep.
-    fireEvent.click(screen.getByText('Select Mock Series'));
-
-    await waitFor(() => {
-      expect(mockAddToSeries).toHaveBeenCalledWith('mock-series-1', { type: 'group', refId: 'group-1' });
-      // NO success message: the membership sweep is fire-and-forget, so a message
-      // here would land next to the refusal that follows. The optimistic binding on
-      // screen is the acceptance signal; a terminal refusal speaks for itself from
-      // useSeriesMembership.
-      expect(mockToastSuccess).not.toHaveBeenCalledWith('Assigned to series');
-      expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument(); // modal closes
-    });
-  });
-
-  it('edits and unlinks an existing series assignment through the legacy selector', async () => {
-    // The group's membership is DERIVED from series.items, so the fixture
-    // must list this group in the series to render the linked chip.
-    mockUseSeries.mockReturnValue({ series: SERIES_WITH_GROUP } as any);
-    setupGroupPage({ seriesId: 'mock-series-1' });
-
-    expect(await screen.findByRole('link', { name: 'Mock Series' })).toHaveAttribute('href', '/series/mock-series-1');
-
-    // Edit flow
-    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-    await waitFor(() => expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument());
-
-    // Test the close button mechanism of the mock
-    fireEvent.click(screen.getByText('Close Selector'));
-    await waitFor(() => expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument());
-
-    // Unlink flow — sweep-all removal of this group from every series.
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    await waitFor(() => {
-      expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({ type: 'group', refId: 'group-1' });
-      // Same reason as the assign flow above: no success on a launch-time return.
-      expect(mockToastSuccess).not.toHaveBeenCalledWith('Unlinked from series');
-    });
-  });
 });
 
 describe('GroupDetailPage with the actual data engine', () => {
-  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-  afterEach(() => {
-    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
-  });
   function setupEnginePage() {
     mockUseParams.mockReturnValue({ id: 'group-1' });
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
@@ -556,11 +471,10 @@ describe('GroupDetailPage with the actual data engine', () => {
     expect(harness.transport.send).not.toHaveBeenCalled();
     view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
   });
-  it('uses one pinned engine action for series assignment without calling the legacy sweep', async () => {
-    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups,series';
+  it('uses one pinned engine action for series assignment', async () => {
     mockUseParams.mockReturnValue({ id: 'group-1' });
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
-    mockUseSeries.mockReturnValue({ series: [] } as never); mockAddToSeries.mockClear();
+    mockUseSeries.mockReturnValue({ series: [] } as never);
     const item = { id: 'group-group-1', type: 'group', refId: 'group-1', position: 1 };
     const harness = membershipEngineHarness([
       { resource: { collection: 'groups', id: 'group-1' }, metadata: null, value: {
@@ -579,7 +493,7 @@ describe('GroupDetailPage with the actual data engine', () => {
     await act(async () => { await harness.engine.retry(); await settleEngine(); });
     await waitFor(() => expect(harness.read({ collection: 'series', id: 'Target' }).value!.items).toEqual([item]));
     expect(harness.read({ collection: 'series', id: 'Source' }).value!.items).toEqual([]);
-    expect(mockAddToSeries).not.toHaveBeenCalled(); expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
+    expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
   });
   it('durably owns the last keystroke before navigation and delivers it on reconnect', async () => {
     const { harness, Workspace, view } = setupEnginePage();

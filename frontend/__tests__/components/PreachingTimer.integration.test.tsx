@@ -49,21 +49,9 @@ jest.mock('../../app/hooks/useSermon', () => ({
   default: mockSermonImpl,
 }));
 
-// Mock useSeriesDetail
-const mockSeriesImpl = () => ({
-  series: { id: '456', title: 'Test Series' },
-  loading: false,
-  error: null
-});
-
-jest.mock('@/hooks/useSeriesDetail', () => ({
-  useSeriesDetail: mockSeriesImpl,
-}));
-jest.mock('@hooks/useSeriesDetail', () => ({
-  useSeriesDetail: mockSeriesImpl,
-}));
-jest.mock('../../app/hooks/useSeriesDetail', () => ({
-  useSeriesDetail: mockSeriesImpl,
+// Mock the breadcrumb's series read
+jest.mock('@/hooks/useSeriesRead', () => ({
+  useSeriesRead: () => ({ series: { id: '456', title: 'Test Series' }, loading: false, error: null }),
 }));
 
 jest.mock('next/navigation', () => ({

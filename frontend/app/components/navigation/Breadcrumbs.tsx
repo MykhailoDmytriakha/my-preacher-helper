@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
-import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import { useSeriesRead } from '@/hooks/useSeriesRead';
 import useSermon from '@/hooks/useSermon';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -180,7 +180,7 @@ const capitalizeWords = (value: string) =>
 type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 
 type SermonData = ReturnType<typeof useSermon>['sermon'];
-type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
+type SeriesData = ReturnType<typeof useSeriesRead>['series'];
 type GroupData = ReturnType<typeof useGroupRead>['group'];
 type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
 
@@ -331,7 +331,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   // The page that holds the document publishes the title it shows; the legacy reader only fills in
   // until it does (on the data engine that cache never sees an engine rename).
   const { sermon: storedSermon } = useSermon(sermonId || '');
-  const { series: storedSeries } = useSeriesDetail(seriesId || '');
+  const { series: storedSeries } = useSeriesRead(seriesId || '');
   const shownSermonTitle = useShellTitle('sermons', sermonId);
   const shownSeriesTitle = useShellTitle('series', seriesId);
   const sermon = useMemo<SermonData>(() => (sermonId && shownSermonTitle !== null
