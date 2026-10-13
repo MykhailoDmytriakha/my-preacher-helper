@@ -1153,7 +1153,9 @@ describe('sub-point text on the paired plan screen', () => {
     renderWithQueryClient(<SermonPlanPage />);
 
     const editorColumn = (await screen.findAllByTestId('plan-introduction-right-section'))[0];
-    expect(within(editorColumn).getByText('Перепись в ВЗ')).toBeInTheDocument();
-    expect(within(editorColumn).getByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
+    // The column renders before its cells' text arrives from the document; on the two-core build
+    // machine that gap is long enough for a synchronous query to miss the text (deploy of 2026-10-13).
+    expect(await within(editorColumn).findByText('Перепись в ВЗ')).toBeInTheDocument();
+    expect(await within(editorColumn).findByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
   });
 });
