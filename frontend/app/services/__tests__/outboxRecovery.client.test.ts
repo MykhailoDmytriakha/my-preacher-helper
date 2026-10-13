@@ -1,4 +1,4 @@
-import { pendingOutboxConflicts, pendingOutboxRecovery, replayOutbox } from '../outboxReplay.client';
+import { pendingOutboxConflicts, replayOutbox } from '../outboxReplay.client';
 import { enqueueWrite, listOutbox, markOutboxRecoveryRequired } from '../writeOutbox.client';
 
 const mockWrite = jest.fn();
@@ -13,12 +13,12 @@ describe('legacy replay terminal recovery', () => {
   it.each(['data-engine-required', 'permission-denied', 'firestore/permission-denied'])('holds %s without replaying or offering normal conflict overwrite', async code => {
     mockWrite.mockRejectedValue(Object.assign(new Error('refused'), { code }));
     expect(await replayOutbox('owner')).toMatchObject({ recoveryRequired: 1, failed: 0, replayed: 0 });
-    const [retained] = pendingOutboxRecovery('owner');
+    const [retained] = listOutbox('owner');
     expect(retained).toMatchObject({ ...original, status: code === 'data-engine-required' ? 'migration-required' : 'blocked' });
     expect(pendingOutboxConflicts('owner')).toEqual([]);
     await replayOutbox('owner');
     expect(mockWrite).toHaveBeenCalledTimes(1);
-    expect(pendingOutboxRecovery('other')).toEqual([]);
+    expect(listOutbox('other')).toEqual([]);
   });
   it('recognizes the exact HTTP boundary message but keeps ambiguous errors pending', async () => {
     mockWrite.mockRejectedValueOnce(new Error('data-engine-required'));
@@ -56,7 +56,7 @@ it('holds an enabled collection before contacting either old transport, keeping 
   try {
     expect(await replayOutbox('owner')).toMatchObject({ recoveryRequired: 1, replayed: 0 });
     expect(mockWrite).not.toHaveBeenCalled();
-    expect(pendingOutboxRecovery('owner')).toEqual([{ ...entry, status: 'migration-required', recoveryReason: 'data-engine-required' }]);
+    expect(listOutbox('owner')).toEqual([{ ...entry, status: 'migration-required', recoveryReason: 'data-engine-required' }]);
   } finally {
     if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;

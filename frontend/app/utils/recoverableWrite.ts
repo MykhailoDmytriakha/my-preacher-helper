@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
-import { isBrowserOffline } from '@/utils/connectivity';
 import {
   showRecoverableWriteFailure,
   subscribeToTerminalMutationFailures,
@@ -203,17 +202,6 @@ export function queuedMutation(receipt: string, request: Promise<unknown>): Writ
 }
 
 /**
- * SAVED OR QUEUED, BY THE PHONE'S OWN FLAG: queued while the phone says there is no network, waited
- * for otherwise. For writes whose outcome cannot decide it — a Firestore SDK write offline neither
- * fails nor finishes, the SDK's persisted queue holds it — and for the dashboard's mixed sermon
- * writes, which used this rule first. Never the connection icon (owner's rule 3,
- * BUG-20260908-cached-response-counts-as-live-connection). An HTTP write uses `mutationOutcomeWrite`.
- */
-export function acceptByPhoneFlag(receipt: string, request: Promise<unknown>): WriteSubmission {
-  return isBrowserOffline() ? queuedMutation(receipt, request) : persistedWrite(request);
-}
-
-/**
  * A React Query mutation accepted by WHAT HAPPENED to it, not by the connection icon at launch
  * (owner's rule 3, BUG-20260908-cached-response-counts-as-live-connection).
  *
@@ -275,70 +263,6 @@ export function mutationOutcomeWrite<T>(
   });
   void acceptance.catch(() => undefined);
   return { acceptance, persistence, request };
-}
-
-/**
- * The STRONGEST acceptance available offline: wait until the write is visible in the
- * client SDK's own local replica, then report `queued`.
- *
- * Why it is worth the extra code: `queuedMutation` accepts on LAUNCH — ownership is
- * assumed. Here ownership is OBSERVED: the document really carries this payload, so
- * the editor closes on evidence rather than on optimism, and an early refusal (which
- * rejects `request` before the replica ever shows it) still keeps the draft on screen.
- *
- * `waitForReplica` resolves when the caller sees its own payload in a snapshot — the
- * caller owns that check because only it knows the document's shape.
- */
-export function replicaAcceptedWrite(
-  receipt: string,
-  replica: { seen: Promise<void>; stop: () => void },
-  request: Promise<unknown>
-): WriteSubmission {
-  const persistence = request.then(() => undefined);
-  /**
-   * Two INDEPENDENT channels of evidence, and neither may veto the other.
-   *
-   * A plain `Promise.race` looked equivalent and was not, in two ways that both cost
-   * the person their edit:
-   *
-   *   1. OFFLINE THE REPLICA NEVER SPEAKS. `conflictSafeUpdate` stores an offline edit
-   *      in its OWN outbox (localStorage) and throws `OfflineQueuedError` — Firestore is
-   *      never written, so the local replica has nothing to show. The race then saw a
-   *      rejection, called a successfully stored edit a refusal, and rolled it back.
-   *   2. A FAILING OBSERVER IS NOT A FAILING WRITE. If `onSnapshot` errors (a denied
-   *      READ, say) while the write itself succeeds, the rejected watcher won the race
-   *      and the person was told their saved edit had failed.
-   *
-   * So: either channel may ACCEPT; only `persistence` may REFUSE.
-   */
-  const acceptance = new Promise<WriteAcceptance>((resolve, reject) => {
-    replica.seen.then(
-      () => resolve({ kind: 'queued', receipt }),
-      // The watcher died; the write may still be fine. Say nothing and let
-      // `persistence` — the only channel that knows the write's fate — decide.
-      () => undefined
-    );
-    persistence.then(
-      () => resolve({ kind: 'persisted' }),
-      (error) => {
-        if (isOfflineQueuedError(error)) {
-          resolve({ kind: 'queued', receipt });
-          return;
-        }
-        reject(error);
-      }
-    );
-  });
-  // `Promise.race` does NOT cancel the loser, so a refusal left the replica listener
-  // subscribed forever and every retry stacked another one. Stopping it on ANY outcome
-  // is the difference between a watcher and a leak.
-  void acceptance.then(
-    () => replica.stop(),
-    () => replica.stop()
-  );
-  void persistence.catch(() => undefined);
-  void acceptance.catch(() => undefined);
-  return { acceptance, persistence };
 }
 
 /**

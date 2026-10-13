@@ -163,11 +163,6 @@ function recordReplayConflict(entry: OutboxEntry, error: unknown): boolean {
   return false;
 }
 
-/** Kept separate from conflicts: legacy "keep mine" must never replay these. */
-export function pendingOutboxRecovery(uid: string): OutboxEntry[] {
-  return listOutbox(uid).filter(entry => entry.status === 'migration-required' || entry.status === 'blocked');
-}
-
 const ENGINE_REQUIRED = 'data-engine-required';
 
 function replayRecoveryReason(error: unknown): 'data-engine-required' | 'permission-denied' | null {

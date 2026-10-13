@@ -17,7 +17,7 @@ For an engine-owned collection, write through the public facade in `frontend/app
 These compatibility paths are not templates for new features.
 
 - `conflictSafeUpdate(...)` compares the value the editor opened with (the baseline) against the server, then writes or refuses; offline it queues the intent. It bumps the aggregate's counter `rev.<aggregate>` itself.
-- `revisionedUpdate(...)` is the named unguarded door, for writes where a refusal would be wrong (cleanup). It still advances the counter through `revisionBump(aggregate)`.
+- `revisionedUpdate` / `revisionedBatch` / `revisionBump`, the unguarded doors, were removed on 2026-10-13: their last callers went with the legacy writers.
 - Never a bare `updateDoc` / `setDoc` for an own-document write: it silently drops the race check, the outbox and the typed errors. `frontend/__tests__/architecture/writesGoThroughTheInterface.test.ts` freezes the remaining direct writes per file — a number may only go down. It also counts `writeBatch` and `runTransaction`; it cannot see an aliased import.
 - Per-item leaf writes (`planText.<nodeId>`): scope the check to that item's baseline, not the whole aggregate — otherwise editing two different points reports a conflict that does not exist.
 - Every writer of a field moves its counter: scripts and migrations included (`frontend/scripts/migrate-plan-text.js` bumps `rev.plan`), and a second writer of the same field bumps the same revision before scheduling its write (outline Apply and the manual save both write `sermon.outline`).

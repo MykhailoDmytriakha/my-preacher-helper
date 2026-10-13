@@ -19,8 +19,9 @@ import { applicationFiles } from './firestoreBoundary';
  *
  *   `conflictSafeUpdate(...)` — compares what the caller started from, writes or REFUSES,
  *                              queues the intent when there is no connection.
- *   `revisionedUpdate(...)`   — deliberately unguarded, still advances the counter. For
- *                              writes where a refusal would be wrong (cleanup, for instance).
+ *
+ * (Its unguarded siblings `revisionedUpdate` and `revisionedBatch` were removed on 2026-10-13
+ * with the last legacy writers; collections on the data engine write through the engine.)
  *
  * A bare `updateDoc`/`setDoc` is neither, so it silently opts out of both. This test cannot
  * migrate the writers that predate the rule, and pretending otherwise would either fail from
@@ -47,25 +48,8 @@ const APP_ROOT = path.join(__dirname, '..', '..', 'app');
  * writer has no answer to "what happens when the other device saved first".
  */
 const FROZEN_DIRECT_WRITES: Record<string, number> = {
-  /*
-   * The interface itself: `revisionedUpdate`, the guarded transaction — and, since 2026-09-10,
-   * `revisionedBatch`, which is why this number went from 3 to 5.
-   *
-   * RAISED DELIBERATELY, AND THE REASON BELONGS HERE. The rule above says never to raise a
-   * number, because a new direct write usually means a writer with no answer to "what happens
-   * when the other device saved first". This one has an answer, and it is the reason it exists:
-   * it writes PLACEMENT — the order a hand-arranged list sits in — never words. The later
-   * arrangement wins on purpose; refusing would leave a person watching rows spring back. What
-   * it cannot do is land in halves, and that is exactly what it was added for: spreading a list
-   * whose numbers ran out of room used to be written one document at a time, and a refusal in
-   * the middle left the arrangement partly rewritten on the server with nothing able to repair
-   * it. Every counter still moves, so an edit to the CONTENT of those documents can still be
-   * refused properly.
-   *
-   * A future raise of this number needs the same thing: the answer written down, here.
-   */
-  'services/conflictSafeUpdate.client.ts': 5,
-  'services/atomicUpdate.client.ts': 3,
+  // The interface itself: the guarded transaction and its offline fallback.
+  'services/conflictSafeUpdate.client.ts': 2,
   // A cross-series move, deliberately all-or-nothing — and invisible to this test until
   // `writeBatch` was added to what it looks for.
   // Server-side counters, on documents no editor competes for.
@@ -104,7 +88,7 @@ describe('every document write goes through the conflict-safe interface', () => 
     const newcomers = Object.keys(counts).filter((file) => !(file in FROZEN_DIRECT_WRITES));
     expect({
       newcomers,
-      how: 'Write through conflictSafeUpdate (guarded) or revisionedUpdate (deliberately not), both in services/conflictSafeUpdate.client.ts.',
+      how: 'Write through the data engine (data-engine/react.client.tsx); a collection outside it uses conflictSafeUpdate in services/conflictSafeUpdate.client.ts.',
     }).toEqual({ newcomers: [], how: expect.any(String) });
   });
 

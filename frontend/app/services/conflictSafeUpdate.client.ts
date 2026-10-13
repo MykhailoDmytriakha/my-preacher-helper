@@ -1,10 +1,7 @@
 import {
-  increment,
   runTransaction,
   type DocumentReference,
   type FieldValue,
-  updateDoc,
-  writeBatch,
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
@@ -78,85 +75,6 @@ export function readRevision(data: Record<string, unknown> | undefined, aggregat
   const rev = (data?.rev ?? {}) as Record<string, unknown>;
   const value = rev[aggregate];
   return typeof value === 'number' ? value : 0;
-}
-
-/**
- * Field patch that advances an aggregate's counter WITHOUT a transaction.
- *
- * EVERY writer of an aggregate must advance its counter, or the counter lies: a
- * writer that changes the data while leaving the number alone makes a later stale
- * save look up-to-date, and the guard then hands it permission to overwrite. That
- * is worse than having no guard, because the app now CONFIRMS the overwrite.
- *
- * `increment` is a server-side FieldValue, so this rides the ordinary `updateDoc`
- * path: it stays atomic under concurrency AND keeps working offline, where
- * transactions do not. Unguarded writers use this; guarded ones get the bump from
- * `conflictSafeUpdate` itself.
- */
-export function revisionBump(aggregate: string): Record<string, FieldValue> {
-  return { [`rev.${aggregate}`]: increment(1) };
-}
-
-/**
- * THE OTHER DOOR: a write that is deliberately NOT guarded, but still honest.
- *
- * Some writes must never be refused. Deleting the text of a node that no longer exists is
- * cleanup — refusing it would leave debris and tell the person their deletion failed. A
- * refusal there costs something and protects nothing.
- *
- * It exists as a NAMED export rather than as a bare `updateDoc` at the call site so the
- * choice is visible and countable. "Unguarded" then reads as a decision someone made and
- * explained, instead of as a writer that never heard about the guard —
- * `__tests__/architecture/writesGoThroughTheInterface.test.ts` counts every remaining bare
- * write and refuses to let the number grow.
- *
- * The counter still advances: a writer that changes data while leaving the number alone
- * makes a later stale save look current, and the guard then CONFIRMS the overwrite. And
- * because this is an ordinary `updateDoc`, it keeps working offline, where transactions
- * do not run at all.
- */
-export async function revisionedUpdate(
-  ref: DocumentReference,
-  patch: { [field: string]: FieldValue | Partial<unknown> | null | undefined },
-  aggregate: string
-): Promise<void> {
-  await updateDoc(ref, { ...patch, ...revisionBump(aggregate) });
-}
-
-/**
- * SEVERAL DOCUMENTS, ONE OUTCOME — the third door, and the only one that writes more than one.
- *
- * It exists for a change that is meaningless in halves: spreading a hand-arranged list back out
- * when the numbers between its rows have run out of room. Written one by one, a refusal in the
- * middle leaves the order half-changed on the server while the screen shows something else, and
- * no rollback from the browser can repair it — the writes that landed are already someone
- * else's truth. A batch either all lands or none of it does.
- *
- * Deliberately UNGUARDED per document, and that is the right answer here rather than an
- * oversight: these patches carry placement, never words. Two devices disagreeing about the
- * order of a list is not a conflict worth refusing — the later arrangement simply wins — while
- * a refusal would leave a person staring at rows that sprang back. Every counter still moves,
- * so an edit to the CONTENT of those documents can still be refused properly.
- *
- * OFFLINE IT IS ACCEPTED, NOT REFUSED — and a caller that assumes otherwise will be wrong.
- * Firestore stores a batch in its local queue and leaves `commit()` pending until the server
- * acknowledges it. A caller may check the connection first to keep the ordinary offline case
- * out, but it must not promise a refusal: the check can be a moment out of date, and the batch
- * still lands whole later. Whatever the caller shows meanwhile has to stay true under that.
- */
-export async function revisionedBatch(
-  entries: {
-    ref: DocumentReference;
-    patch: { [field: string]: FieldValue | Partial<unknown> | null | undefined };
-    aggregate: string;
-  }[]
-): Promise<void> {
-  if (entries.length === 0) return;
-  const batch = writeBatch(getClientDb());
-  entries.forEach(({ ref, patch, aggregate }) => {
-    batch.update(ref, { ...patch, ...revisionBump(aggregate) });
-  });
-  await batch.commit();
 }
 
 /** The write could not be attempted; it is queued and will replay through the guard. */

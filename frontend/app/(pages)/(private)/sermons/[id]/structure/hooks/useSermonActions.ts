@@ -471,8 +471,8 @@ export function useSermonActions({
             }
         })();
 
-        // atomicUpdate uses a transaction online, which has no durable owner after
-        // this tab closes. Offline it falls back to Firestore's persistent queue.
+        // Offline the editor is released once the write is queued; online it waits for the
+        // server's answer (`queuedMutation` / `persistedWrite` in utils/recoverableWrite.ts).
         return isBrowserOffline()
             ? queuedMutation(`thought:update:${currentSermon.id}:${updatedItem.id}`, persistence)
             : persistedWrite(persistence);

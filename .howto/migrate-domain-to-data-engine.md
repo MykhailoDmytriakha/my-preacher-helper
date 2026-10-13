@@ -20,7 +20,7 @@ The canonical implementation is now `frontend/app/data-engine/` in `main`. Move 
 
 ## Legacy paths (unconverted collections only)
 
-These compatibility mechanisms are not templates for new features: `conflictSafeUpdate`, `revisionedUpdate`, `recoverableWrite`, `useDocumentFreshness` and its projections, `seriesMembership.client.ts`, `ownerListRead.client.ts`, and React Query paused mutations. They remain relevant only while their collections have not migrated. Keep the architecture exception ledger shrinking.
+These compatibility mechanisms are not templates for new features: `conflictSafeUpdate`, `recoverableWrite`, `useDocumentFreshness` and its projections, `seriesMembership.client.ts`, `ownerListRead.client.ts`, and React Query paused mutations. They remain relevant only while their collections have not migrated. Keep the architecture exception ledger shrinking.
 
 ## Why
 

@@ -4,7 +4,6 @@ import {
   refusedWrite,
   persistedWrite,
   queuedWrite,
-  replicaAcceptedWrite,
   skippedWrite,
 } from '@/utils/recoverableWrite';
 
@@ -171,50 +170,6 @@ describe('recoverableWrite — refusals reach the right side', () => {
     });
   });
 
-  it('an offline-queued write is ACCEPTED even though the replica never shows it', async () => {
-    // The defect this pins down: an offline edit is stored in the outbox (IndexedDB),
-    // NOT in Firestore, so the local replica has nothing to display and `seen` never
-    // resolves. Treating the resulting OfflineQueuedError as a refusal told the person
-    // their successfully stored edit had failed — and rolled it back off the screen.
-    const replica = { seen: new Promise<void>(() => undefined), stop: jest.fn() };
-    const submission = replicaAcceptedWrite(
-      'thought:offline',
-      replica,
-      Promise.reject(offlineQueued())
-    );
-
-    await expect(awaitAcceptance(submission, () => undefined)).resolves.toEqual({
-      kind: 'queued',
-      receipt: 'thought:offline',
-    });
-    expect(replica.stop).toHaveBeenCalled();
-  });
-
-  it('a failing replica watcher does not fail a write the server accepted', async () => {
-    // A denied READ kills the snapshot listener while the WRITE succeeds. The watcher
-    // used to win the race and report failure for an edit that was saved.
-    const replica = { seen: Promise.reject(new Error('listener died')), stop: jest.fn() };
-    const submission = replicaAcceptedWrite('thought:blind', replica, Promise.resolve('ok'));
-
-    await expect(awaitAcceptance(submission, () => undefined)).resolves.toEqual({
-      kind: 'persisted',
-    });
-  });
-
-  it('a refusal still reaches the editor when the replica watcher is silent', async () => {
-    const replica = { seen: new Promise<void>(() => undefined), stop: jest.fn() };
-    const submission = replicaAcceptedWrite(
-      'thought:refused',
-      replica,
-      Promise.reject(refusal())
-    );
-
-    await expect(awaitAcceptance(submission, () => undefined)).rejects.toMatchObject({
-      code: 'permission-denied',
-    });
-    expect(replica.stop).toHaveBeenCalled();
-  });
-
   it('does not leave an unhandled rejection when nobody observes the submission', async () => {
     const unhandled = jest.fn();
     process.on('unhandledRejection', unhandled);
@@ -264,16 +219,6 @@ describe('mutationOutcomeWrite — saved or queued by what happened, not by the 
     await expect(submission.acceptance).resolves.toEqual({ kind: 'queued', receipt: 'receipt-1' });
     expect(attempts).toBe(1);
     expect(client.getMutationCache().getAll()[0].state.isPaused).toBe(true);
-  });
-
-  it('leaves a Firestore SDK write to the phone-flag rule: queued while the phone has no network, waited for otherwise', async () => {
-    // Such a write offline neither fails nor finishes, so its outcome cannot decide. A shortcut inside
-    // the outcome helper was refused twice by review (BUG-20261011-sdk-write-queued-before-owned).
-    const { acceptByPhoneFlag } = jest.requireActual('@/utils/recoverableWrite');
-    const spy = jest.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
-    await expect(acceptByPhoneFlag('receipt-1', new Promise(() => undefined)).acceptance).resolves.toEqual({ kind: 'queued', receipt: 'receipt-1' });
-    spy.mockReturnValue(true);
-    await expect(acceptByPhoneFlag('receipt-2', Promise.resolve('ok')).acceptance).resolves.toEqual({ kind: 'persisted' });
   });
 
   it('does not call an HTTP write queued before React Query has paused it — nothing durable holds it yet', async () => {

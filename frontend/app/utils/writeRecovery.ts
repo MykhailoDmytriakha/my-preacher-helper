@@ -58,39 +58,6 @@ export function showRecoverableWriteFailure({
 }
 
 /**
- * A LATE REFUSAL IS ALWAYS SAID, AND THE TEXT ALWAYS COMES BACK.
- *
- * A write outlives the screen that started it, so a refusal can land after the editor
- * has closed — and then nothing on screen is waiting to report it. Two failure modes
- * were measured here, and this function exists to make both impossible:
- *
- *   - SILENCE: recovery lived in the closed editor's own state, so the edit vanished
- *     from the document and the person was told nothing at all.
- *   - DOUBLE-TELLING: the closed editor toasted AND its owner reported, so the same
- *     refusal arrived twice, in two different wordings.
- *
- * So the message is shown exactly once, here, and the editor is additionally reopened
- * with the rejected text when the person is still on that screen. The return value
- * says whether the text came back into an editor or only into the message.
- */
-export function reportLateRefusal({
-  isEditorMounted,
-  reopenEditor,
-  toast: toastArgs,
-}: {
-  isEditorMounted: boolean;
-  reopenEditor: () => void;
-  toast: Parameters<typeof showRecoverableWriteFailure>[0];
-}): 'editor' | 'toast' {
-  showRecoverableWriteFailure(toastArgs);
-  if (isEditorMounted) {
-    reopenEditor();
-    return 'editor';
-  }
-  return 'toast';
-}
-
-/**
  * Every failure any reporter has already spoken for, ACROSS the app rather than per
  * hook. Two screens can listen to the same kind of write — a list and a detail page,
  * say — and a per-hook set cannot see the other's messages, so one refusal arrived
