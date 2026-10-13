@@ -1,7 +1,7 @@
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { getCanonicalTagForSection, normalizeStructureTag, type StructureSectionId } from '@/utils/structureTags';
-import { findThoughtSectionInStructure, insertThoughtIdInStructure, removeThoughtIdFromStructure, resolveSectionForNewThought } from '@/utils/thoughtOrdering';
+import { findThoughtSectionInStructure, insertThoughtIdInStructure, removeThoughtIdFromStructure, resolveSectionForNewThought, resolveSectionFromOutline, resolveSectionFromTags, type SectionKey } from '@/utils/thoughtOrdering';
 
 import type { Sermon, SermonOutline, Thought } from '@/models/models';
 
@@ -9,7 +9,7 @@ export type ThoughtFieldPatch = Partial<Omit<Thought, 'id'>>;
 const fields = new Set(['text', 'tags', 'date', 'outlinePointId', 'subPointId', 'position', 'isLocked', 'keyFragments']);
 
 /** Pure domain transforms; persistence, ancestors and conflict resolution belong to DataEngine. */
-const withPlacement = (current: Sermon, thought: Thought, thoughts: Thought[], intended?: StructureSectionId): Sermon => {
+const withPlacement = (current: Sermon, thought: Thought, thoughts: Thought[], intended?: SectionKey): Sermon => {
   const section = intended ?? resolveSectionForNewThought({ sermon: current, outlinePointId: thought.outlinePointId, tags: thought.tags });
   const structure = insertThoughtIdInStructure({
     structure: current.structure ?? current.thoughtsBySection, section, thoughtId: thought.id,
@@ -38,9 +38,14 @@ export const patchSermonThought = (current: Sermon, id: string, patch: ThoughtFi
     && !Object.prototype.hasOwnProperty.call(patch, 'subPointId')) next.subPointId = null;
   const thoughts = current.thoughts.map(item => item.id === id ? next : item);
   const previousSection = findThoughtSectionInStructure(current.structure ?? current.thoughtsBySection, id);
-  const nextSection = resolveSectionForNewThought({ sermon: current, outlinePointId: next.outlinePointId, tags: next.tags });
+  // The reading order of thoughtOrdering: an outline point names the section, then where the person put
+  // it (a board drag stores the column only), then tags. A tag counts only when this edit changed it.
+  const tagSection = resolveSectionFromTags(next.tags);
+  const retagged = tagSection !== null && tagSection !== resolveSectionFromTags(existing.tags);
+  const nextSection = resolveSectionFromOutline(current, next.outlinePointId ?? null)
+    ?? (retagged ? tagSection : previousSection ?? tagSection ?? 'ambiguous');
   return previousSection !== nextSection || (existing.outlinePointId ?? null) !== (next.outlinePointId ?? null)
-    ? withPlacement(current, next, thoughts) : { ...current, thoughts };
+    ? withPlacement(current, next, thoughts, nextSection) : { ...current, thoughts };
 };
 export const deleteSermonThought = (current: Sermon, id: string): Sermon => {
   const thoughts = current.thoughts.filter(item => item.id !== id);

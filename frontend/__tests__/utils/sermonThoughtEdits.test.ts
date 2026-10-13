@@ -1,5 +1,5 @@
 import { nestPointUnderPoint, outdentSubPoint } from '@/utils/outlineDnd';
-import { addSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { addSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { preservesSermonLinks } from '@/data-engine/sermonIntegrity';
 import type { Sermon, SermonOutline } from '@/models/models';
 import type { DocumentData } from '@/data-engine/types';
@@ -51,4 +51,36 @@ it('follows a promoted subpoint into its new section', () => {
   const next = replaceSermonOutline(original, outdentSubPoint(outline, 'sub', 'introduction', 0));
   expect(next.thoughts).toEqual([{ ...a, outlinePointId: 'sub', subPointId: null, tags: ['custom', 'intro'] }, b]);
   expect(next.structure).toMatchObject({ introduction: ['a'], main: ['b'] }); valid(next);
+});
+
+describe('an edit keeps a thought where the person put it unless the edit names another section', () => {
+  // A board drag stores the column in the structure only (no section tag); `c` sits in the introduction that way.
+  const loose = { id: 'c', text: 'Placed by hand', date: 'today', tags: ['custom'] };
+  const placed = { ...original, thoughts: [a, b, loose],
+    structure: { introduction: ['c'], main: ['a', 'b'], conclusion: [], ambiguous: [] } } as Sermon;
+
+  it('a text edit never moves it', () => {
+    const next = patchSermonThought(placed, 'c', { text: 'Placed by hand, reworded' });
+    expect(next.structure).toMatchObject({ introduction: ['c'], ambiguous: [] });
+    expect(next.thoughts.find(item => item.id === 'c')?.text).toBe('Placed by hand, reworded');
+  });
+
+  it('leaving its outline point keeps it in the same column, among the unassigned', () => {
+    const tagless = { ...placed, thoughts: [{ ...a, tags: ['custom'] }, b, loose] } as Sermon;
+    const next = patchSermonThought(tagless, 'a', { outlinePointId: null });
+    expect(next.structure?.main).toContain('a');
+    expect(next.structure?.ambiguous).not.toContain('a');
+  });
+
+  it('an outline point in another section moves it there', () => {
+    const withConclusion = { ...placed, outline: { ...outline, conclusion: [{ id: 'p3', text: 'End' }] } } as Sermon;
+    const next = patchSermonThought(withConclusion, 'c', { outlinePointId: 'p3' });
+    expect(next.structure).toMatchObject({ introduction: [], conclusion: ['c'] });
+  });
+
+  it('a section tag the edit itself sets moves it there', () => {
+    const next = patchSermonThought(placed, 'c', { tags: ['custom', 'main'] });
+    expect(next.structure?.introduction).not.toContain('c');
+    expect(next.structure?.main).toContain('c');
+  });
 });
