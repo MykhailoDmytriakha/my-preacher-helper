@@ -72,6 +72,7 @@ it('recovers unfinished titles and notes after restart and Cancel never sends th
   fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
   await ready('Recovered outline'); await ready('Recovered sub');
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await deliver(harness); expect(harness.transport.send).not.toHaveBeenCalled();
   expect(harness.read(resource).value).toEqual(original.value); restored.unmount();

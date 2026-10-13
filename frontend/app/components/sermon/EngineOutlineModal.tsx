@@ -50,7 +50,7 @@ export function EngineOutlineModal({ sermonId, onClose, withScratch = false }: {
   return <FormDialog title={t('planEditor.title')} size="wide" onClose={onClose} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
-        submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
+        submitLabel={t(withScratch ? 'scratch.board.apply' : 'buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}
         submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
     <div className="space-y-4">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}

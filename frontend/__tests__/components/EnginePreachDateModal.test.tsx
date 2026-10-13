@@ -76,7 +76,8 @@ it('recovers a new date and all fields without submitting or duplicating it', as
 });
 it('cancels a new date without writing', async () => {
   const { harness, view } = setup({ kind: 'add' }); await ready(); editNotes('Cancelled'); await settle();
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' })); await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' })); await settle();
   expect(harness.transport.send).not.toHaveBeenCalled(); expect(dates(harness)).toHaveLength(2); view.unmount();
 });
 it('marks the preferred date and flag atomically without marking other dates', async () => {

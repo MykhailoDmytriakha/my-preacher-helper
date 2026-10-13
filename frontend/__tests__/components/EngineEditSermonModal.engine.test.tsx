@@ -100,6 +100,7 @@ it('cancels typed metadata and planned dates without submitting or offering canc
   fireEvent.change(screen.getByLabelText('Planned date'), { target: { value: '2099-11-01' } });
   await act(async () => { await settleEngine(); });
   fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready();
   expect(screen.getByLabelText('addSermon.titleLabel')).toHaveValue('Opening');

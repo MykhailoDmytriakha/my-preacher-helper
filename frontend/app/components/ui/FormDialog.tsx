@@ -5,6 +5,7 @@ import React, { useId, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { FORM_COLORS } from '@/utils/themeColors';
 
@@ -135,10 +136,13 @@ interface FormActionsProps {
   cancelDisabled?: boolean;
   savingLabel?: string;
   tone?: FormTone;
+  /** Cancel would throw away changes made here: it asks first (`useDiscardQuestion`). */
+  unsaved?: boolean;
 }
 
-export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submitDisabled = false, cancelDisabled = false, savingLabel, tone = 'blue' }: FormActionsProps) {
+export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submitDisabled = false, cancelDisabled = false, savingLabel, tone = 'blue', unsaved = false }: FormActionsProps) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   return (
     <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
       {/*
@@ -146,7 +150,7 @@ export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submit
         person may always walk away from a dialog, and the write has its own recovery if it
         lands afterwards. Only the caller may shut it, through `cancelDisabled`.
       */}
-      <FormButton variant="secondary" onClick={onCancel} disabled={cancelDisabled}>
+      <FormButton variant="secondary" onClick={() => { void askBeforeDiscard(unsaved, onCancel); }} disabled={cancelDisabled}>
         {cancelLabel}
       </FormButton>
       {/*
@@ -168,6 +172,7 @@ export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submit
         )}
         <span>{saving ? savingLabel ?? t('common.saving') : submitLabel}</span>
       </FormButton>
+      {discardDialog}
     </div>
   );
 }

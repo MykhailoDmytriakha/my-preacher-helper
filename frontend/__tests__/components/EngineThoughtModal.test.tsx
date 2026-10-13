@@ -81,6 +81,7 @@ it('recovers unsent creation after restart with its original identity and Cancel
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('');
   fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'Cancel this' } }); await settle();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await deliver(harness); expect(harness.transport.send).toHaveBeenCalledTimes(1); restored.unmount();
 });
@@ -204,4 +205,19 @@ it('creates a fresh second thought while the first saved creation is still offli
   expect(new Set(pending.map(item => item.id)).size).toBe(4);
   send.mockImplementation(online); await deliver(harness);
   expect(harness.read(resource).value?.thoughts).toEqual(pending); view.unmount();
+});
+
+// BUG-20261003-one-click-delete-other-screens: Cancel was the one click that lost dictated text for good.
+it('asks before Cancel throws typed text away, and keeping on editing keeps it', async () => {
+  const { harness, view } = setup(); await ready('');
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('');
+  fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'Dictated words' } }); await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.keep' }));
+  await waitFor(() => expect(screen.getAllByRole('dialog')).toHaveLength(1)); await settle();
+  expect(screen.getByLabelText('Thought')).toHaveValue('Dictated words');
+  await save(); await deliver(harness);
+  expect(JSON.stringify(harness.read(resource).value?.thoughts)).toContain('Dictated words'); view.unmount();
 });

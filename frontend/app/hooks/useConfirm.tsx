@@ -102,4 +102,24 @@ export function useConfirm(): {
   return { confirm, confirmDialog, withdraw };
 }
 
+/**
+ * CANCEL THAT THROWS AWAY WHAT THE PERSON CHANGED ASKS FIRST; with nothing changed it just closes.
+ * A form's Cancel discards its draft, while its close button and Escape keep it for later — so
+ * Cancel was the one click that lost dictated text for good (BUG-20261003-one-click-delete-other-screens).
+ */
+export function useDiscardQuestion(): {
+  askBeforeDiscard: (unsaved: boolean, discard: () => void) => Promise<void>;
+  discardDialog: React.ReactElement;
+} {
+  const { confirm, confirmDialog } = useConfirm();
+  const askBeforeDiscard = useCallback(async (unsaved: boolean, discard: () => void) => {
+    if (unsaved && !(await confirm({
+      title: { key: 'common.discardChanges.title' }, description: { key: 'common.discardChanges.description' },
+      confirmText: { key: 'common.discardChanges.confirm' }, cancelText: { key: 'common.discardChanges.keep' },
+    }))) return;
+    discard();
+  }, [confirm]);
+  return { askBeforeDiscard, discardDialog: confirmDialog };
+}
+
 export default useConfirm;

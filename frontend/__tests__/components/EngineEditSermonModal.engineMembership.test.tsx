@@ -65,6 +65,7 @@ it('cancels staged membership without sending and supports an empty complete ser
   fireEvent.change(await screen.findByLabelText('addSermon.seriesLabel'), { target: { value: 'Target' } });
   await act(async () => { await settleEngine(); });
   fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(first.onClose).toHaveBeenCalled());
   expect(await first.harness.engine.listMembershipRecovery()).toEqual([]);
   expect(first.harness.transport.send).not.toHaveBeenCalled(); first.view.unmount();

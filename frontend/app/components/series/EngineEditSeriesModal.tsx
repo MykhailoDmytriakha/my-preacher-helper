@@ -52,7 +52,7 @@ export function EngineEditSeriesModal({ seriesId, onClose }: { seriesId: string;
     footer={
       <FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }}
         cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')}
-        saving={loading || form.busy} submitDisabled={!form.active || !form.status?.canSave} />
+        saving={loading || form.busy} submitDisabled={!form.active || !form.status?.canSave} unsaved={form.dirty} />
     }>
     <div className="space-y-5">
       <fieldset disabled={loading || !form.active || form.busy}>

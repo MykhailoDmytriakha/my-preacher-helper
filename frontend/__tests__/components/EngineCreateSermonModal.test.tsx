@@ -71,6 +71,7 @@ it('recovers the whole creation after closing and restarting without sending or 
 it('cancels unsent input without creating a resource or leaving a recovery choice', async () => {
   const { harness, view } = setup(); await typeSermon();
   fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   await act(async () => { await settleEngine(); });
   expect(await harness.engine.listMembershipRecovery()).toEqual([]); expect(await harness.commits.list('owner')).toEqual([]);
@@ -124,4 +125,16 @@ it('restores an unavailable preset and requires an explicit choice before saving
   expect(harness.transport.send).toHaveBeenCalledTimes(1);
   expect(jest.mocked(harness.transport.send).mock.calls[0][0].kind).toBe('create');
   expect(queued).not.toHaveBeenCalled(); restored.unmount();
+});
+
+it('closes an untouched new sermon at once, also when the screen chose its series', async () => {
+  for (const series of [undefined, 'target']) {
+    const { view } = setup(true, series);
+    const title = await screen.findByLabelText('addSermon.titleLabel'); await waitFor(() => expect(title).toBeEnabled());
+    if (series) await waitFor(() => expect(screen.getByLabelText('addSermon.seriesLabel')).toHaveValue(series));
+    await act(async () => { await settleEngine(); });
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    view.unmount();
+  }
 });

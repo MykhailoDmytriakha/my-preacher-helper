@@ -1582,6 +1582,12 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "discardChanges": {
+      "title": "Discard your changes?",
+      "description": "What you typed or changed in this window will be lost.",
+      "confirm": "Discard",
+      "keep": "Keep editing"
+    },
     "fillRequiredField": "Fill in \"{{field}}\"",
     "noData": "No local data is available.",
     "done": "Done",

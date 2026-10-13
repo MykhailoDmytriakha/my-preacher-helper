@@ -91,7 +91,8 @@ it('recovers an edited AI proposal and its consumed-note intent after restart wi
 it('cancels a manual placement without deleting its source note or altering the outline', async () => {
   const { harness, view } = setup(); await ready(); manualPlace(); await settle();
   expect(harness.transport.send).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' })); await settle();
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' })); await settle();
   expect(harness.read(resource).value).toEqual(original.value); expect(harness.transport.send).not.toHaveBeenCalled(); view.unmount();
 });
 it.each(['changed', 'deleted'] as const)('refuses whole Apply when the source note was %s elsewhere', async kind => {

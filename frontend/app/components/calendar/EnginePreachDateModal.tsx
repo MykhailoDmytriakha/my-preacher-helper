@@ -7,12 +7,14 @@ import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
+import { contentFingerprint } from '@/utils/contentFingerprint';
 import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
 
 import { PreachDateFields } from './PreachDateFields';
 import { patchPreachDate, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';
 
 import type { PreachDateAction } from './preachDateForm';
+import type { DocumentData } from '@/data-engine/types';
 import type { PreachDate, Sermon } from '@/models/models';
 
 /** Dates and the fallback status share one pinned, durable action and one delivery. */
@@ -37,6 +39,14 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   }, [form, action, newRow, target]);
   const row = value?.preachDates?.find(date => date.id === target);
   const removal = action.kind === 'unmark' || action.kind === 'delete';
+  // The form stages its own starting row on open, so it is dirty before anyone types: what the
+  // person changed is the difference from that starting row.
+  const unsaved = (() => {
+    try {
+      const prepared = initial && preparePreachDate(initial as unknown as DocumentData, action, { ...newRow, id: target }) as unknown as Sermon;
+      return Boolean(prepared && value) && contentFingerprint(prepared ? prepared.preachDates ?? [] : []) !== contentFingerprint(value?.preachDates ?? []);
+    } catch { return false; }
+  })();
   const valid = removal || Boolean(row && toDateOnlyKey(row.date) && row.church.name.trim());
   const readOnly = loading || !form.active || form.busy || form.status?.phase === 'deleted';
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
@@ -52,7 +62,7 @@ export function EnginePreachDateModal({ sermonId, action, onClose }: {
   return <FormDialog title={t(title)} onClose={onClose} showCloseButton onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void form.cancel().then(onClose).catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
       submitLabel={t(action.kind === 'delete' ? 'common.delete' : 'buttons.save')} savingLabel={t('buttons.saving')}
-      saving={form.busy} cancelDisabled={form.busy} submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
+      saving={form.busy} cancelDisabled={form.busy} unsaved={unsaved} submitDisabled={readOnly || !valid || !form.dirty || !form.durable || !form.status?.canSave} />}>
     <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
       onKeepLocal={valid ? form.keepLocal : undefined} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}

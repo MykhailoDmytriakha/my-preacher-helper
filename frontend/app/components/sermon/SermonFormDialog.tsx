@@ -8,6 +8,7 @@ import ChurchField from '@/components/church/ChurchField';
 import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW, GROUP_CARD, GROUP_HINT, GROUP_TITLE } from '@/components/ui/formCardClasses';
 import FormDialog from '@/components/ui/FormDialog';
 import Select from '@/components/ui/Select';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import DatePickerField from '@components/ui/DatePickerField';
 
@@ -48,6 +49,8 @@ interface SermonFormDialogProps {
   onSubmit: (event: React.FormEvent) => void;
   onCancel: () => void;
   onDismiss?: () => void;
+  /** Cancel would throw away changes made here: it asks first (`useDiscardQuestion`). */
+  unsaved?: boolean;
   submitLabel: string;
   saving: boolean;
   /** Save stays down until there is something to save (the edit door uses this). */
@@ -81,6 +84,7 @@ export default function SermonFormDialog({
   onSubmit,
   onCancel,
   onDismiss,
+  unsaved = false,
   submitLabel,
   saving,
   submitDisabled = false,
@@ -96,6 +100,7 @@ export default function SermonFormDialog({
   verseMaxRows = 10,
 }: SermonFormDialogProps) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const locked = saving || readOnly;
   const fieldId = (name: string) => `sermon-form-${name}`;
 
@@ -148,7 +153,7 @@ export default function SermonFormDialog({
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
       <button
         type="button"
-        onClick={onCancel}
+        onClick={() => { void askBeforeDiscard(unsaved, onCancel); }}
         disabled={saving}
         className="rounded-xl px-4 py-2.5 font-medium text-gray-600 transition hover:bg-gray-200/70 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:bg-gray-800"
       >
@@ -174,6 +179,7 @@ export default function SermonFormDialog({
         )}
         <span>{saving ? t('common.saving', { defaultValue: 'Saving...' }) : submitLabel}</span>
       </button>
+      {discardDialog}
     </div>
   );
 

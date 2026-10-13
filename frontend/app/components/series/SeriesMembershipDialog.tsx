@@ -60,7 +60,7 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={editing ? (
       <FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('common.cancel')}
-        submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} />
+        submitLabel={t('common.save')} saving={saving} submitDisabled={!action.durable || !action.action} unsaved={action.action !== null} />
     ) : undefined}>
     <div className="space-y-4">
       <DataMembershipStatus action={{ ...action, retry: action.phase ? action.retry : open }} onDiscarded={onClose} />

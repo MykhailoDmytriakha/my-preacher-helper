@@ -106,7 +106,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
-        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy}
+        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}
         submitDisabled={readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
     <div className="space-y-5">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} onRetry={form.retry}

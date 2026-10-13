@@ -79,6 +79,7 @@ it('retries a locally failed cancellation without restoring or sending the disca
   await act(async () => { await settleEngine(); });
   harness.disk.writeFailure = true;
   fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await screen.findByRole('alert');
   harness.disk.writeFailure = false;
   fireEvent.click(screen.getByRole('button', { name: 'dataSync.retry' }));

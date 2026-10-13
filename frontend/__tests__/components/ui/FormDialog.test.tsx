@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 
@@ -68,4 +68,24 @@ it('supports independent validation and cancellation locks with a caller-specifi
   expect(screen.getByRole('button', { name: 'Saving update' })).toHaveAttribute('aria-busy', 'true');
   expect(screen.getByRole('button', { name: 'Saving update' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+});
+
+// Cancel discards the form's draft while the close button keeps it, so with changes made it asks first
+// (BUG-20261003-one-click-delete-other-screens); with nothing changed it closes at once.
+it('asks before Cancel throws away changes, and only then', async () => {
+  const cancel = jest.fn();
+  const props = { onCancel: cancel, cancelLabel: 'Cancel', submitLabel: 'Save', saving: false };
+  const { rerender } = render(<FormActions {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'common.discardChanges.confirm' })).not.toBeInTheDocument();
+  rerender(<FormActions {...props} unsaved />);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(await screen.findByRole('dialog', { name: 'common.discardChanges.title' })).toHaveAccessibleDescription('common.discardChanges.description');
+  fireEvent.click(screen.getByRole('button', { name: 'common.discardChanges.keep' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(cancel).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
+  await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
 });

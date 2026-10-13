@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
@@ -69,5 +69,22 @@ describe('the save button holds its ground while it saves', () => {
     renderForm(true);
 
     expect(screen.getByRole('button', { name: /Saving/ })).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('asks before Cancel throws away changes, and closes untouched forms at once', async () => {
+    const cancel = jest.fn();
+    const form = (unsaved: boolean) => <SermonFormDialog heading="Новая проповедь" values={{ title: '', verse: '', church: undefined, plannedDate: '', seriesId: '' }}
+      onChange={jest.fn()} onSubmit={jest.fn()} onCancel={cancel} submitLabel="Сохранить" saving={false} unsaved={unsaved} />;
+    const { rerender } = render(form(false));
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    expect(cancel).toHaveBeenCalledTimes(1);
+    rerender(form(true));
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.keep' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'common.discardChanges.keep' })).not.toBeInTheDocument());
+    expect(cancel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'addSermon.cancel' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
+    await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
   });
 });

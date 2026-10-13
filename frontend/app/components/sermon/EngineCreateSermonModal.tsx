@@ -61,12 +61,15 @@ export function EngineCreateSermonModal({ recoveryId, preSelectedSeriesId, allow
     } catch { /* The same stage preserves both the input and the delivery identity. */ }
     finally { if (mounted.current) setSaving(false); }
   };
+  // The creation starts empty (a series the screen chose aside), so whatever it holds is the person's.
+  const unsaved = Boolean(String(value.title ?? '').trim() || String(value.verse ?? '').trim() || value.church || dates.length
+    || (seriesId && seriesId !== preSelectedSeriesId));
   const cancel = async () => { if (action.phase === 'editing') await action.cancel(); onClose(); };
   return <SermonFormDialog heading={t('addSermon.newSermon')}
     values={{ title: String(value.title ?? ''), verse: String(value.verse ?? ''), church: value.church as unknown as Church | undefined,
       plannedDate: dates[0]?.date ?? '', seriesId }} onChange={change}
     onSubmit={event => { event.preventDefault(); void save(); }} onDismiss={onClose}
-    onCancel={() => { void cancel().catch(() => undefined); }} submitLabel={t('addSermon.save')}
+    onCancel={() => { void cancel().catch(() => undefined); }} unsaved={unsaved} submitLabel={t('addSermon.save')}
     saving={saving} readOnly={!creation || action.phase !== 'editing'} submitDisabled={!action.durable || Boolean(creation?.requestedSeriesId)}
     showPlannedDate={allowPlannedDate || dates.length > 0} detailsHint={t('addSermon.groupLaterHint')}
     seriesOptions={creation?.seriesOpened ? options : undefined}

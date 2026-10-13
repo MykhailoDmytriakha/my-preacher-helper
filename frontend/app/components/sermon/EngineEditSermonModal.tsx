@@ -53,7 +53,7 @@ export function EngineEditSermonModal({ sermonId, onClose }: { sermonId: string;
     values={{ title: value?.title ?? '', verse: value?.verse ?? '', church: value?.church as Church | undefined,
       plannedDate: plannedDate?.date ?? '', seriesId: series.seriesId }} onChange={change}
     onSubmit={event => { event.preventDefault(); void save(); }} onDismiss={onClose}
-    onCancel={() => { void cancel().catch(() => undefined); }} submitLabel={t('buttons.save')}
+    onCancel={() => { void cancel().catch(() => undefined); }} unsaved={form.dirty || series.changed} submitLabel={t('buttons.save')}
     saving={saving || form.busy} readOnly={loading || !form.active || form.status?.phase === 'deleted'}
     submitDisabled={!form.durable || series.unsettled || (!form.dirty && !series.changed)} showPlannedDate
     seriesOptions={series.options} seriesLoading={series.loading} seriesDisabled={series.disabled}
