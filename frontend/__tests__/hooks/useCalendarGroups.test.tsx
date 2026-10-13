@@ -2,89 +2,47 @@ import { renderHook } from '@testing-library/react';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useCalendarGroups } from '@/hooks/useCalendarGroups';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { fetchCalendarGroups } from '@/services/groups.service';
+import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: jest.fn(),
-}));
+/**
+ * THE CALENDAR'S GROUPS come from the data engine's rows: the signed-in owner's groups with a
+ * meeting inside the range the calendar asks for.
+ */
 
-jest.mock('@/hooks/useServerFirstQuery', () => ({
-  useServerFirstQuery: jest.fn(),
-}));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: jest.fn() }));
+jest.mock('@/hooks/useGroupsDataCollection', () => ({ useGroupsDataCollection: jest.fn() }));
 
-jest.mock('@/services/groups.service', () => ({
-  fetchCalendarGroups: jest.fn(),
-}));
+const group = (id: string, userId: string, dates: string[]) => ({
+  id, userId, title: id, status: 'draft', templates: [], flow: [], createdAt: 'c', updatedAt: 'u',
+  meetingDates: dates.map((date, index) => ({ id: `${id}-${index}`, date, createdAt: 'c' })),
+});
+const refreshGroups = jest.fn();
 
-const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;
-const mockUseServerFirstQuery = useServerFirstQuery as jest.MockedFunction<typeof useServerFirstQuery>;
-const mockFetchCalendarGroups = fetchCalendarGroups as jest.MockedFunction<typeof fetchCalendarGroups>;
-
-const buildServerFirstResult = <TData,>(data: TData) =>
-  ({
-    data,
-    isLoading: false,
-    error: null,
-    refetch: jest.fn(),
-    isOnline: true,
-  } as unknown as ReturnType<typeof useServerFirstQuery>);
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.mocked(useAuth).mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+  jest.mocked(useGroupsDataCollection).mockReturnValue({
+    groups: [group('inside', 'user-1', ['2026-02-10']), group('before', 'user-1', ['2026-01-05']),
+      group('undated', 'user-1', []), group('foreign', 'user-2', ['2026-02-10'])],
+    loading: false, error: null, refreshGroups,
+  } as unknown as ReturnType<typeof useGroupsDataCollection>);
+});
 
 describe('useCalendarGroups', () => {
-  it('asks the service for the range it was given', async () => {
-    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
-
-    const startDate = new Date('2026-02-01T00:00:00.000Z');
-    const endDate = new Date('2026-02-28T00:00:00.000Z');
-
-    const groups = [
-      {
-        id: 'g1',
-        title: 'Group 1',
-        meetingDates: [
-          { id: 'd1', date: '2026-02-11T00:00:00.000Z', createdAt: 'x' },
-          { id: 'd2', date: '2026-02-11', createdAt: 'x' },
-        ],
-      },
-      {
-        id: 'g2',
-        title: 'Group 2',
-        meetingDates: [{ id: 'd3', date: '2026-02-12', createdAt: 'x' }],
-      },
-    ] as any;
-
-    let capturedOptions: any;
-    mockUseServerFirstQuery.mockImplementation((options: any) => {
-      capturedOptions = options;
-      return buildServerFirstResult(groups);
-    });
-
-    const { result } = renderHook(() => useCalendarGroups(startDate, endDate));
-
-    // The hook fetches; turning meetings into days is `groupEntries` and is tested there.
-    expect(result.current.groups).toHaveLength(2);
-    expect(capturedOptions.enabled).toBe(true);
-
-    mockFetchCalendarGroups.mockResolvedValue([]);
-    await capturedOptions.queryFn();
-    expect(mockFetchCalendarGroups).toHaveBeenCalledWith('user-1', '2026-02-01', '2026-02-28');
+  it('returns the owner\'s groups that meet inside the range', () => {
+    const { result } = renderHook(() => useCalendarGroups(new Date('2026-02-01T00:00:00.000Z'), new Date('2026-02-28T00:00:00.000Z')));
+    expect(result.current.groups.map(entry => entry.id)).toEqual(['inside']);
+    expect(result.current.refetch).toBe(refreshGroups);
   });
 
-  it('returns empty query payload when user is not available', async () => {
-    mockUseAuth.mockReturnValue({ user: null } as any);
-
-    let capturedOptions: any;
-    mockUseServerFirstQuery.mockImplementation((options: any) => {
-      capturedOptions = options;
-      return buildServerFirstResult([]);
-    });
-
+  it('returns every dated group of the owner when no range is given', () => {
     const { result } = renderHook(() => useCalendarGroups());
-    const queried = await capturedOptions.queryFn();
+    expect(result.current.groups.map(entry => entry.id)).toEqual(['inside', 'before']);
+  });
 
+  it('returns nothing when nobody is signed in', () => {
+    jest.mocked(useAuth).mockReturnValue({ user: null } as unknown as ReturnType<typeof useAuth>);
+    const { result } = renderHook(() => useCalendarGroups());
     expect(result.current.groups).toEqual([]);
-    expect(capturedOptions.enabled).toBe(false);
-    expect(queried).toEqual([]);
-    expect(mockFetchCalendarGroups).not.toHaveBeenCalled();
   });
 });

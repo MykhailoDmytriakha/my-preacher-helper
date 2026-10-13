@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
-import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { useGroupRead } from '@/hooks/useGroupRead';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
@@ -17,8 +17,8 @@ jest.mock('@/hooks/useSermon', () => jest.fn());
 jest.mock('@/hooks/useSeriesDetail', () => ({
   useSeriesDetail: jest.fn(),
 }));
-jest.mock('@/hooks/useGroupDetail', () => ({
-  useGroupDetail: jest.fn(),
+jest.mock('@/hooks/useGroupRead', () => ({
+  useGroupRead: jest.fn(),
 }));
 // The trail names an order of service by its title, so the component asks the section's hook
 // for it. Mocked here like every other detail source: the trail's job is the trail, and a live
@@ -49,7 +49,7 @@ describe('Breadcrumbs', () => {
   const mockUseSearchParams = useSearchParams as jest.Mock;
   const mockUseSermon = useSermon as jest.Mock;
   const mockUseSeriesDetail = useSeriesDetail as jest.Mock;
-  const mockUseGroupDetail = useGroupDetail as jest.Mock;
+  const mockUseGroupRead = useGroupRead as jest.Mock;
   const mockUsePrayerDetail = usePrayerDetail as jest.Mock;
 
   beforeEach(() => {
@@ -63,7 +63,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -81,7 +81,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -100,7 +100,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -127,7 +127,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -144,7 +144,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -161,7 +161,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -178,7 +178,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: mockSeries });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -194,7 +194,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -218,7 +218,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -235,7 +235,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -250,7 +250,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -267,7 +267,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: mockGroup });
+    mockUseGroupRead.mockReturnValue({ group: mockGroup });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -283,7 +283,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -299,7 +299,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: { id: 'test-group-id', title: 'Family Group #1' } });
+    mockUseGroupRead.mockReturnValue({ group: { id: 'test-group-id', title: 'Family Group #1' } });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -315,7 +315,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -337,7 +337,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({
       prayer: { id: 'prayer-1', title: 'Healing Prayer' },
     });
@@ -359,7 +359,7 @@ describe('Breadcrumbs', () => {
     });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
@@ -377,7 +377,7 @@ describe('Breadcrumbs', () => {
     mockUseSearchParams.mockReturnValue({ get: jest.fn().mockReturnValue(null) });
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
-    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUseGroupRead.mockReturnValue({ group: null });
     mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);

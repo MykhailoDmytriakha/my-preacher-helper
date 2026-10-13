@@ -9,15 +9,12 @@ jest.mock('next/navigation', () => ({ useParams: () => ({ id: 'group-1' }), useR
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/hooks/useGroupDetail', () => ({ useGroupDetail: () => { throw new Error('Legacy editor reached'); } }));
 jest.mock('@/hooks/useConductTimer', () => ({ useConductTimer: () => ({ timeLeft: null, isOvertime: false }) }));
 jest.mock('@/components/groups/conduct/ConductBlock', () => ({ __esModule: true, default: ({ flowItem }: { flowItem: { durationMin: number } }) => <div><span>Conducting now</span><span>Duration: {flowItem.durationMin}</span></div> }));
 jest.mock('@/components/groups/conduct/ConductOverview', () => ({ __esModule: true, default: () => <div>Overview</div> }));
 
 const flow = (durationMin = 5) => [{ id: 'block', templateId: 'template', order: 1, durationMin }];
-const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups'; });
-afterEach(() => { if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous; });
+beforeEach(() => { jest.clearAllMocks(); });
 function setup() {
   const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
     metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {

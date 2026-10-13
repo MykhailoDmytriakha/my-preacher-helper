@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, type ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
@@ -9,20 +9,7 @@ import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { useBufferedText } from '@/components/ui/useBufferedText';
 import { Group } from '@/models/models';
-import { useAuth } from '@/providers/AuthProvider';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
-import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
-
-interface CreateGroupModalProps {
-  onClose: () => void;
-  /**
-   * CANONICAL: a write prop returns a `WriteSubmission`, never `Promise<void>`.
-   * From here `Promise<void>` cannot tell "the write started" from "the write was
-   * accepted", and that indistinguishability is the bug this contract removes.
-   * See frontend/docs/recoverable-writes.md.
-   */
-  onCreate: (group: Omit<Group, 'id'>) => WriteSubmission;
-}
 
 const generateMeetingDateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -38,50 +25,6 @@ const generateMeetingDateId = () => {
 
   return `meeting-${timeSeed}-${Math.random().toString(36).slice(2, 9)}`;
 };
-
-export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModalProps) {
-  const { t } = useTranslation();
-  const { user } = useAuth();
-
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [firstMeetingDate, setFirstMeetingDate] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    try {
-      setSaving(true);
-      // Wait for ACCEPTANCE, not for the call to return. A refusal that arrives
-      // before anything owns this write rejects here, and the catch below keeps the
-      // form open with every field intact — which is the whole contract.
-      await awaitAcceptance(
-        onCreate(createGroupDraft(user?.uid || '', title, description, firstMeetingDate, t)),
-        // useGroups' create recovery descriptor reports a late refusal with this draft
-        // while the groups screen is mounted; after that it is the tracked navigation debt.
-        () => undefined
-      );
-
-      onClose();
-    } catch (error) {
-      /**
-       * NO message here — this is the canonical example, and it must show the rule
-       * rather than break it. `useGroups` declares the recovery descriptor for this
-       * write: it carries the title and description, offers "copy my text", and keeps
-       * reporting after this modal closes. The modal's duty on a refusal is to stay
-       * open with everything the person typed still in it.
-       */
-      console.error('Failed to create group:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return <CreateGroupView title={title} setTitle={setTitle} description={description} setDescription={setDescription}
-    firstMeetingDate={firstMeetingDate} setFirstMeetingDate={setFirstMeetingDate} saving={saving}
-    onClose={onClose} handleSubmit={handleSubmit} />;
-}
 
 export function CreateGroupView({ title, setTitle, description, setDescription, firstMeetingDate, setFirstMeetingDate,
   saving, onClose, handleSubmit, feedback }: {

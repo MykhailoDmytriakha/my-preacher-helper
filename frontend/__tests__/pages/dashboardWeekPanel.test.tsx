@@ -64,7 +64,7 @@ jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
 }));
 jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [] }) }));
 jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: () => ({ notes: [] }) }));
-jest.mock('@/hooks/useGroups', () => ({ useGroups: () => ({ groups: [group] }) }));
+jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [group] }) }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: mockCouncils, loading: false, error: null, refresh: jest.fn() }) }));
 jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => ({ prayerRequests: [], createPrayer: jest.fn() }),

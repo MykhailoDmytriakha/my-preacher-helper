@@ -2,7 +2,6 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { toast } from 'sonner';
 
 import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
-import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
@@ -36,13 +35,6 @@ jest.mock('next/navigation', () => ({
     push: mockPush,
     replace: mockReplace,
   }),
-}));
-
-jest.mock('lodash/debounce', () => jest.fn((fn) => {
-  const debounced = (...args: any[]) => fn(...args);
-  debounced.cancel = jest.fn();
-  debounced.flush = jest.fn();
-  return debounced;
 }));
 
 jest.mock('@dnd-kit/core', () => ({
@@ -85,10 +77,6 @@ jest.mock('@dnd-kit/utilities', () => ({
       toString: () => '',
     },
   },
-}));
-
-jest.mock('@/hooks/useGroupDetail', () => ({
-  useGroupDetail: jest.fn(),
 }));
 
 jest.mock('@/hooks/useSeries', () => ({
@@ -161,11 +149,9 @@ jest.mock('@/components/series/SeriesSelector', () => ({
   ),
 }));
 
-const mockUseGroupDetail = useGroupDetail as jest.MockedFunction<typeof useGroupDetail>;
 const mockUseSeries = useSeries as jest.MockedFunction<typeof useSeries>;
 const mockUseAuth = jest.mocked(useAuth);
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
-const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
 const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
 
 // The membership sweep exposes stable spies (see the jest.mock factory above).
@@ -231,76 +217,73 @@ const createMockGroup = (overrides: Partial<any> = {}) =>
     seriesPosition: null,
     ...overrides,
   }) as any;
-
 describe('GroupDetailPage', () => {
-  const updateGroupDetail = jest.fn();
-  const addMeetingDate = jest.fn();
-  const updateMeetingDate = jest.fn();
-  const removeMeetingDate = jest.fn();
-  const deleteGroupDetail = jest.fn();
+  const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
 
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useRealTimers();
-    (window as any).confirm = jest.fn(() => true);
+    // Series stay on the legacy SeriesSelector branch here; only the engine describe below opts in.
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups';
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
     mockHasGroupsAccess.mockResolvedValue(false);
     mockUseParams.mockReturnValue({ id: 'group-1' });
     mockUseSeries.mockReturnValue({ series: DEFAULT_SERIES } as any);
-    updateGroupDetail.mockResolvedValue(undefined);
-    addMeetingDate.mockResolvedValue(undefined);
-    updateMeetingDate.mockResolvedValue(undefined);
-    removeMeetingDate.mockResolvedValue(undefined);
-    deleteGroupDetail.mockResolvedValue(undefined);
-
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup(),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
   });
 
   afterEach(() => {
     jest.useRealTimers();
+    if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;
   });
 
-  it('renders loading state', () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: null,
-      loading: true,
-      error: null,
-    } as any);
-    render(<GroupDetailPage />);
+  /** Seeds the stored group document and renders the page inside a real DataEngineProvider. */
+  function setupGroupPage(overrides: Partial<any> = {}, { cached = true }: { cached?: boolean } = {}) {
+    const { id: _id, ...value } = createMockGroup(overrides);
+    const harness = documentEngineHarness(
+      { resource: { collection: 'groups', id: 'group-1' },
+        metadata: { protocol: 1, generation: 'group-generation', revision: 1, deleted: false }, value },
+      { cached },
+    );
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    // Pushes everything the page queued to the (fake) server and returns what it now stores.
+    // `pagehide` makes the editor save now instead of waiting out its autosave delay.
+    const delivered = async () => {
+      // First let the edit land in the draft and the editor re-arm its page-hide listener ...
+      await act(async () => { await settleEngine(); });
+      await act(async () => { window.dispatchEvent(new Event('pagehide')); await settleEngine(); });
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      return harness.server.value as any;
+    };
+    return { harness, view, delivered };
+  }
+
+  it('shows a loading skeleton before the document arrives', async () => {
+    setupGroupPage({}, { cached: false });
     expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+    expect(screen.queryByDisplayValue('Family Group')).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Family Group')).toBeInTheDocument();
+    expect(document.querySelectorAll('.animate-pulse')).toHaveLength(0);
   });
 
-  it('renders error state', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: null,
-      loading: false,
-      error: new Error('boom'),
-    } as any);
+  it('shows the load error when the group no longer exists', async () => {
+    const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
+      metadata: { protocol: 1, generation: 'group-generation', revision: 2, deleted: true }, value: null },
+    { cached: false });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
 
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('Failed to load group')).toBeInTheDocument();
-    });
+    expect(await screen.findByText('Failed to load group')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete group' })).not.toBeInTheDocument();
   });
 
   it('populates meeting date fields from group data', async () => {
-    render(<GroupDetailPage />);
+    setupGroupPage();
 
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('2026-02-11')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('Hall')).toBeInTheDocument();
-      expect(screen.getByDisplayValue('Youth')).toBeInTheDocument();
-    });
+    expect(await screen.findByDisplayValue('2026-02-11')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Hall')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Youth')).toBeInTheDocument();
   });
 
   it('never lets one long word widen the page: its columns may shrink below their widest word', async () => {
@@ -308,130 +291,104 @@ describe('GroupDetailPage', () => {
     // block note or content made the page 1298 px on an 820 px iPad and hid "Start meeting"
     // (BUG-20261010-group-long-note-pushes-start-off-screen). `grid-cols-1` and `minmax(0,1fr)`
     // give the tracks a zero minimum. jsdom lays nothing out; the width is measured in WebKit.
-    render(<GroupDetailPage />);
-    await waitFor(() => expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument());
+    setupGroupPage();
+    await screen.findByDisplayValue('Family Group');
 
     const pageGrid = screen.getByRole('heading', { name: 'Group Flow' }).closest('.grid');
     expect(pageGrid).toHaveClass('grid-cols-1', 'xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]');
   });
 
-  it('deletes group and navigates back to /groups', async () => {
-    render(<GroupDetailPage />);
+  it('deletes the group only after confirmation, removes it from the store and replaces the route with /groups', async () => {
+    const { harness, delivered } = setupGroupPage();
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete group' }));
+    expect(await screen.findByText(/Delete this group permanently\?/)).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
-    });
+    // Cancelling changes nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await delivered();
+    expect(harness.server.value).not.toBeNull();
+    expect(mockReplace).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
-    await waitFor(() => {
-      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => expect(deleteGroupDetail).toHaveBeenCalledTimes(1));
     // replace, not push: the page we are leaving is the group that was just deleted,
     // so it must not stay one Back away — BUG-20260905.
-    expect(mockReplace).toHaveBeenCalledWith('/groups');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/groups'));
+    expect(mockPush).not.toHaveBeenCalled();
+    await delivered();
+    expect(harness.server.value).toBeNull();
   });
 
-  // NOTE: delete is now fire-and-forget (deleteGroupDetail -> deleteMutation.mutate);
-  // it resolves immediately even on failure, and a failed delete surfaces its toast
-  // from the hook's deleteMutation.onError (covered in useGroupDetail.test.tsx),
-  // not from this page. So there is no page-level delete-failure path to assert.
-
-  it.each([true, false])('opens immediately without a beta check when online is %s', (online) => {
+  it.each([true, false])('opens immediately without a beta check when online is %s', async (online) => {
     const onlineSpy = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
     try {
-      render(<GroupDetailPage />);
+      const { view } = setupGroupPage();
 
-      expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
-      expect(mockUseGroupDetail).toHaveBeenCalledWith('group-1');
+      expect(await screen.findByRole('button', { name: 'Delete group' })).toBeInTheDocument();
       expect(mockUseSeries).toHaveBeenCalledWith('user-1');
       expect(mockHasGroupsAccess).not.toHaveBeenCalled();
       expect(screen.queryByText('Groups workspace is disabled')).not.toBeInTheDocument();
+      view.unmount();
     } finally {
       onlineSpy.mockRestore();
     }
   });
 
-  it('disables queries and hides the editor after logout', () => {
-    const { rerender, container } = render(<GroupDetailPage />);
-    expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
+  it('hides the editor when signed out', async () => {
+    const { view } = setupGroupPage();
+    expect(await screen.findByRole('button', { name: 'Delete group' })).toBeInTheDocument();
 
     mockUseAuth.mockReturnValue({ user: null } as any);
-    rerender(<GroupDetailPage />);
+    view.rerender(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
 
-    expect(mockUseGroupDetail).toHaveBeenLastCalledWith('');
+    expect(screen.queryByRole('button', { name: 'Delete group' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(mockUseSeries).toHaveBeenLastCalledWith(null);
-    expect(container).toBeEmptyDOMElement();
   });
 
   it('renders empty flow placeholder when no blocks exist', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({ templates: [], flow: [], meetingDates: [] }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
+    setupGroupPage({ templates: [], flow: [], meetingDates: [] });
 
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByText('No blocks yet')).toBeInTheDocument();
-    });
+    expect(await screen.findByText('No blocks yet')).toBeInTheDocument();
   });
 
-  it('triggers save handlers for flow add/edit/delete actions', async () => {
-    render(<GroupDetailPage />);
+  it('stores flow add, edit and delete actions in the group document', async () => {
+    const { delivered } = setupGroupPage();
+    await screen.findByDisplayValue('Family Group');
 
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
-    });
-
+    // Add a block: the new template and flow item are stored together.
     fireEvent.click(screen.getByRole('button', { name: 'Add block' }));
     fireEvent.click(screen.getByRole('button', { name: 'Main topic' }));
+    let stored = await delivered();
+    expect(stored.templates).toHaveLength(2);
+    expect(stored.flow).toHaveLength(2);
 
+    // Edit the original block through the side editor.
     fireEvent.click(screen.getAllByText('Main topic')[0]);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Block Name (Template)')).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByLabelText('Block Name (Template)'), { target: { value: 'Updated Block' } });
+    fireEvent.change(await screen.findByLabelText('Block Name (Template)'), { target: { value: 'Updated Block' } });
     fireEvent.change(screen.getByLabelText('Duration (min)'), { target: { value: '30' } });
+    stored = await delivered();
+    expect(stored.templates.find((template: any) => template.id === 'tpl-1').title).toBe('Updated Block');
+    expect(stored.flow.find((item: any) => item.id === 'flow-1').durationMin).toBe(30);
+
+    // Cycle the block status (filled -> empty).
     fireEvent.click(screen.getByTitle('Filled'));
+    stored = await delivered();
+    expect(stored.templates.find((template: any) => template.id === 'tpl-1').status).toBe('empty');
 
-    const updatedBlockRow = screen.getAllByText('Updated Block')[0];
-    fireEvent.click(updatedBlockRow);
-    fireEvent.click(updatedBlockRow);
-    fireEvent.click(updatedBlockRow);
-
+    // Delete the original block: its flow item and its now unreferenced template go away.
     fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => {
-      expect(updateGroupDetail).toHaveBeenCalled();
-    });
+    stored = await delivered();
+    expect(stored.flow.map((item: any) => item.id)).not.toContain('flow-1');
+    expect(stored.templates.map((template: any) => template.id)).not.toContain('tpl-1');
+    expect(stored.flow).toHaveLength(1);
   });
 
   it('pins the block editor below the measured app nav and bounds it to the window', async () => {
-    render(<GroupDetailPage />);
-    await waitFor(() => expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument());
+    setupGroupPage();
+    await screen.findByDisplayValue('Family Group');
     fireEvent.click(screen.getByRole('button', { name: 'Add block' }));
     fireEvent.click(screen.getByRole('button', { name: 'Main topic' }));
     fireEvent.click(screen.getAllByText('Main topic')[0]);
@@ -445,172 +402,77 @@ describe('GroupDetailPage', () => {
     expect(panel.style.getPropertyValue('--flow-editor-max-h')).toBe('671px');
   });
 
-  it('handles drag-end reorder and schedules autosave', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({
-        templates: [
-          {
-            id: 'tpl-1',
-            type: 'topic',
-            title: 'Main topic',
-            content: 'Discussion content',
-            status: 'filled',
-            scriptureRefs: [],
-            questions: [],
-            createdAt: 'x',
-            updatedAt: 'x',
-          },
-          {
-            id: 'tpl-2',
-            type: 'notes',
-            title: 'Second block',
-            content: 'Second block content',
-            status: 'draft',
-            scriptureRefs: [],
-            questions: [],
-            createdAt: 'x',
-            updatedAt: 'x',
-          },
-        ],
-        flow: [
-          {
-            id: 'flow-1',
-            templateId: 'tpl-1',
-            order: 1,
-            durationMin: 25,
-          },
-          {
-            id: 'flow-2',
-            templateId: 'tpl-2',
-            order: 2,
-            durationMin: 10,
-          },
-        ],
-      }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
-
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
-    });
+  it('stores the new flow order after a drag-end reorder', async () => {
+    const templates = [
+      { id: 'tpl-1', type: 'topic', title: 'Main topic', content: 'Discussion content', status: 'filled',
+        scriptureRefs: [], questions: [], createdAt: 'x', updatedAt: 'x' },
+      { id: 'tpl-2', type: 'notes', title: 'Second block', content: 'Second block content', status: 'draft',
+        scriptureRefs: [], questions: [], createdAt: 'x', updatedAt: 'x' },
+    ];
+    const flow = [
+      { id: 'flow-1', templateId: 'tpl-1', order: 1, durationMin: 25 },
+      { id: 'flow-2', templateId: 'tpl-2', order: 2, durationMin: 10 },
+    ];
+    const { harness, delivered } = setupGroupPage({ templates, flow });
+    await screen.findByDisplayValue('Family Group');
+    expect((harness.server.value as any).flow.map((item: any) => item.id)).toEqual(['flow-1', 'flow-2']);
 
     fireEvent.click(screen.getByRole('button', { name: 'Trigger drag end' }));
 
-    await waitFor(() => {
-      expect(updateGroupDetail).toHaveBeenCalled();
-    });
-
-    expect(mockArrayMove).toHaveBeenCalled();
+    const stored = await delivered();
+    expect(stored.flow.map((item: any) => [item.id, item.order])).toEqual([['flow-2', 1], ['flow-1', 2]]);
   });
 
-  it('adds meeting date when there is no existing date', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({ meetingDates: [] }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
-
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
-    });
+  it('stores a meeting date when there is no existing date', async () => {
+    const { delivered } = setupGroupPage({ meetingDates: [] });
+    await screen.findByDisplayValue('Family Group');
 
     const dateInput = screen.getByPlaceholderText('No date') as HTMLInputElement;
     fireEvent.focus(dateInput);
     fireEvent.change(dateInput, { target: { value: '2026-03-01' } });
 
-    await waitFor(() => {
-      expect(addMeetingDate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          date: '2026-03-01',
-        })
-      );
-    });
+    const stored = await delivered();
+    expect(stored.meetingDates).toHaveLength(1);
+    expect(stored.meetingDates[0]).toEqual(expect.objectContaining({ date: '2026-03-01' }));
   });
 
-  it('removes meeting date when date field is cleared', async () => {
-    render(<GroupDetailPage />);
+  it('removes the meeting date from the store when the date field is cleared', async () => {
+    const { delivered } = setupGroupPage();
+    const dateInput = await screen.findByDisplayValue('2026-02-11');
 
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('2026-02-11')).toBeInTheDocument();
-    });
-
-    const dateInput = screen.getByDisplayValue('2026-02-11') as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '' } });
 
-    await waitFor(() => {
-      expect(removeMeetingDate).toHaveBeenCalledWith('date-1');
-    });
+    const stored = await delivered();
+    expect(stored.meetingDates).toEqual([]);
   });
 
-  it('shows toast error when autosave fails', async () => {
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    updateGroupDetail.mockRejectedValueOnce(new Error('save failed'));
+  it('stores edited title, description and meeting location', async () => {
+    const { delivered } = setupGroupPage();
+    fireEvent.change(await screen.findByDisplayValue('Family Group'), { target: { value: 'Updated Group' } });
 
-    render(<GroupDetailPage />);
+    fireEvent.change(screen.getByDisplayValue('Group description'), { target: { value: 'Updated Description' } });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'New Hall' } });
 
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
-    });
-
-    fireEvent.change(screen.getByDisplayValue('Family Group'), {
-      target: { value: 'Broken save' },
-    });
-
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalled();
-    });
-
-    consoleErrorSpy.mockRestore();
+    const stored = await delivered();
+    expect(stored.title).toBe('Updated Group');
+    expect(stored.description).toBe('Updated Description');
+    expect(stored.meetingDates[0]).toEqual(expect.objectContaining({ id: 'date-1', date: '2026-02-11', location: 'New Hall', audience: 'Youth' }));
+    // Untouched content is carried over unchanged.
+    expect(stored.status).toBe('active');
+    expect(stored.flow.map((item: any) => item.id)).toEqual(['flow-1']);
   });
 
-  it('handles assigning a group to a series', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({ seriesId: null }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
+  it('assigns a group to a series through the legacy selector', async () => {
+    setupGroupPage({ seriesId: null });
 
-    render(<GroupDetailPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Assign to series' }));
+    expect(await screen.findByTestId('series-selector-mock')).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Assign to series' })).toBeInTheDocument();
-    });
-
-    // Open the selector modal
-    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument();
-    });
-
-    // Select a series from the mock — binding goes through the client sweep now.
+    // Select a series from the mock — binding goes through the client sweep.
     fireEvent.click(screen.getByText('Select Mock Series'));
 
     await waitFor(() => {
-      expect(mockAddToSeries).toHaveBeenCalledWith('mock-series-1', {
-        type: 'group',
-        refId: 'group-1',
-      });
+      expect(mockAddToSeries).toHaveBeenCalledWith('mock-series-1', { type: 'group', refId: 'group-1' });
       // NO success message: the membership sweep is fire-and-forget, so a message
       // here would land next to the refusal that follows. The optimistic binding on
       // screen is the acceptance signal; a terminal refusal speaks for itself from
@@ -620,26 +482,13 @@ describe('GroupDetailPage', () => {
     });
   });
 
-  it('handles editing and unlinking an existing series assignment', async () => {
-    // The group's membership is DERIVED from series.items now, so the fixture
+  it('edits and unlinks an existing series assignment through the legacy selector', async () => {
+    // The group's membership is DERIVED from series.items, so the fixture
     // must list this group in the series to render the linked chip.
     mockUseSeries.mockReturnValue({ series: SERIES_WITH_GROUP } as any);
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({ seriesId: 'mock-series-1' }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
+    setupGroupPage({ seriesId: 'mock-series-1' });
 
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('link', { name: 'Mock Series' })).toHaveAttribute('href', '/series/mock-series-1');
-    });
+    expect(await screen.findByRole('link', { name: 'Mock Series' })).toHaveAttribute('href', '/series/mock-series-1');
 
     // Edit flow
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -657,68 +506,10 @@ describe('GroupDetailPage', () => {
       expect(mockToastSuccess).not.toHaveBeenCalledWith('Unlinked from series');
     });
   });
-
-  // This test uses fake timers and must be last to avoid polluting other tests
-  it('auto-saves edited group details and meeting date after debounce', async () => {
-    const { unmount } = render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByDisplayValue('Family Group')).toBeInTheDocument();
-    });
-
-    // Switch to fake timers after component has rendered and settled
-    jest.useFakeTimers();
-
-    const titleInput = screen.getByDisplayValue('Family Group');
-    const descriptionTextarea = screen.getByDisplayValue('Group description');
-    fireEvent.change(titleInput, { target: { value: '  Updated Group  ' } });
-    fireEvent.change(descriptionTextarea, { target: { value: '  Updated Description  ' } });
-
-    // Also update meeting location
-    const locationInput = screen.getByDisplayValue('Hall');
-    fireEvent.change(locationInput, { target: { value: 'New Hall' } });
-
-    // Advance past debounce delay (500ms) + saved status timer (2000ms)
-    await act(async () => {
-      jest.advanceTimersByTime(3000);
-    });
-
-    // Only the fields the user actually touched are sent. Sending everything
-    // means a stale tab's title edit overwrites newer templates/flow text
-    // written from another device.
-    const sentPayloads = (updateGroupDetail as jest.Mock).mock.calls.map((call) => call[0]);
-    const sentKeys = new Set(sentPayloads.flatMap((payload) => Object.keys(payload)));
-
-    expect(sentKeys.has('title')).toBe(true);
-    expect(sentKeys.has('description')).toBe(true);
-    // Untouched fields must never appear.
-    expect(sentKeys.has('status')).toBe(false);
-    expect(sentKeys.has('templates')).toBe(false);
-    expect(sentKeys.has('flow')).toBe(false);
-    expect(sentPayloads.at(-1)).toEqual(
-      expect.objectContaining({ description: 'Updated Description' })
-    );
-
-    // Meeting date should be updated (existing meeting id = 'date-1')
-    expect(updateMeetingDate).toHaveBeenCalledWith(
-      'date-1',
-      expect.objectContaining({
-        date: '2026-02-11',
-        location: 'New Hall',
-        audience: 'Youth',
-      })
-    );
-
-    // Unmount before restoring real timers to flush pending debounces
-    unmount();
-    jest.useRealTimers();
-  });
 });
-
 
 describe('GroupDetailPage with the actual data engine', () => {
   const previousCollections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
-  beforeEach(() => { process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups'; });
   afterEach(() => {
     if (previousCollections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
     else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previousCollections;

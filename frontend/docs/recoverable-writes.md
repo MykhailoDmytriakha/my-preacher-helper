@@ -22,13 +22,13 @@ Acceptance has three distinct outcomes:
 
 A refusal is **not** an outcome. It **rejects** `acceptance`, so the editor catches it and stays open with the person's text. The MESSAGE is not the editor's job: the hook's recovery descriptor says it and carries the text (see “Who reports a late refusal”). The one exception is a write that never reached a mutation at all — `refusedWrite`, used when there is no signed-in user or the document is gone. No descriptor can ever see such a write, so it ANNOUNCES ITSELF — the translated sentence is a required argument, and no editor repeats it. The editor just holds the draft.
 
-## Canonical example: creating a group
+## Canonical example: creating a prayer
 
-Read these three files in order:
+Read these three files in order (the group example that stood here left with the legacy group hook on 2026-10-12):
 
-- **Hook** — `app/hooks/useGroups.ts`: `createNewGroup` returns `queuedMutation(...)`; nearby, `useWriteRecovery(...)` receives one descriptor instead of a hand-built subscription.
-- **Editor** — `app/components/groups/CreateGroupModal.tsx`: the prop is typed as `WriteSubmission`; submit awaits `awaitAcceptance`, and on refusal keeps the form and its text open.
-- **Page** — `app/(pages)/(private)/groups/page.tsx`: passes the submission to the editor and **does not announce success**.
+- **Hook** — `app/hooks/usePrayerRequestsEngine.ts`: `createPrayer` returns `queuedMutation(...)` around the data engine's create; a late refusal is reported by the hook.
+- **Editor** — `app/components/prayer/CreatePrayerModal.tsx`: the prop is typed as `WriteSubmission`; submit awaits `awaitAcceptance`, and on refusal keeps the form and its text open.
+- **Page** — `app/(pages)/(private)/prayers/page.tsx`: passes the submission to the editor and **does not announce success**.
 
 The core is `app/utils/recoverableWrite.ts`; its tests are in `__tests__/utils/recoverableWrite.test.ts`.
 

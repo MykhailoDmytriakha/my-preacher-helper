@@ -79,7 +79,7 @@ jest.mock('@/hooks/useUserSettings', () => ({
 // The panels around the sermon list are not what this suite is about.
 jest.mock('@/hooks/useSeries', () => ({ useSeries: () => ({ series: [] }) }));
 jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: () => ({ notes: [] }) }));
-jest.mock('@/hooks/useGroups', () => ({ useGroups: () => ({ groups: [] }) }));
+jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [] }) }));
 jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => ({ prayerRequests: [], createPrayer: jest.fn() }),
 }));

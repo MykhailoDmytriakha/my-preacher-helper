@@ -22,7 +22,6 @@ jest.mock('@/hooks/useSermon', () => jest.fn(() => ({ sermon: { id: 'sermon-1', 
 jest.mock('@/hooks/useSeriesDetail', () => ({
   useSeriesDetail: jest.fn(() => ({ series: { id: 'series-1', title: 'Old series title' }, loading: false })),
 }));
-jest.mock('@/hooks/useGroupDetail', () => ({ useGroupDetail: () => ({ group: null }) }));
 jest.mock('@/hooks/useServiceOrders', () => ({ useServiceOrders: () => ({ orders: [] }) }));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
 jest.mock('@/hooks/usePrayerDetail', () => ({ usePrayerDetail: () => ({ prayer: null }) }));

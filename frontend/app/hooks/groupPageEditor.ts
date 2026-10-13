@@ -1,7 +1,7 @@
 import type { Group } from '@/models/models';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
-/** Shared presentation contract; persistence belongs to the selected data adapter. */
+/** What the group page draws and edits; every change is persisted by the data engine (useGroupPageEditor). */
 export interface GroupPageEditor {
   group: Group | null;
   loading: boolean;
@@ -23,8 +23,6 @@ export interface GroupPageEditor {
   meetingAudience: string;
   setMeetingAudience: Dispatch<SetStateAction<string>>;
   meetingFieldsEnabled: boolean;
-  debouncedSave: () => void;
-  saveStatus: string;
   deleteGroupDetail: () => void | Promise<void>;
   feedback: ReactNode;
 }

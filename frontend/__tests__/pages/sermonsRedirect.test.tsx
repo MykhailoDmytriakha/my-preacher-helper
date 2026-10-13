@@ -217,8 +217,8 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => mockUsePrayerRequests(),
 }));
 
-jest.mock('@/hooks/useGroups', () => ({
-  useGroups: () => mockUseGroups(),
+jest.mock('@/hooks/useGroupsRead', () => ({
+  useGroupsRead: () => mockUseGroups(),
 }));
 
 jest.mock('@/components/ui/DatePickerField', () => ({

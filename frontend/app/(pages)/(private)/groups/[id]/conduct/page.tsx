@@ -8,11 +8,10 @@ import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
 import { useGroupConductForm } from '@/hooks/useGroupConductForm';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
-import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { GroupFlowItem } from '@/models/models';
 import { normalizeFlow } from '@/utils/groupFlow';
 
@@ -24,13 +23,9 @@ type Phase = 'preflight' | 'conducting' | 'overview';
 export default function ConductPage() {
   const { id } = useParams();
   const groupId = typeof id === 'string' ? id : '';
-  return isCollectionOnEngine('groups')
-    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group-conduct', autoSave: false, readOnlyCopy: true }}><EngineConductPage groupId={groupId} /></DataDocumentProvider>
-    : <LegacyConductPage groupId={groupId} />;
-}
-function LegacyConductPage({ groupId }: { groupId: string }) {
-  const { group, loading, updateGroupDetail } = useGroupDetail(groupId);
-  return <ConductView groupId={groupId} group={group} loading={loading} saveFlow={flow => updateGroupDetail({ flow })} />;
+  return <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group-conduct', autoSave: false, readOnlyCopy: true }}>
+    <EngineConductPage groupId={groupId} />
+  </DataDocumentProvider>;
 }
 function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);

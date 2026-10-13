@@ -1,15 +1,13 @@
 import { renderHook } from '@testing-library/react';
 
-import { isCollectionOnEngine, useDataCollection } from '@/data-engine/react.client';
+import { useDataCollection } from '@/data-engine/react.client';
 import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 import { useCalendarGroups } from '@/hooks/useCalendarGroups';
-import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 
-jest.mock('@/data-engine/react.client', () => ({ isCollectionOnEngine: jest.fn(), useDataCollection: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({ useDataCollection: jest.fn() }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
-jest.mock('@/hooks/useServerFirstQuery', () => ({ useServerFirstQuery: jest.fn(() => ({ data: [], isLoading: false })) }));
 beforeEach(() => {
-  jest.clearAllMocks(); jest.mocked(isCollectionOnEngine).mockReturnValue(true);
+  jest.clearAllMocks();
   jest.mocked(useDataCollection).mockReturnValue({ loading: false, readOnly: false, error: null, refresh: jest.fn(), state: {
     complete: true, freshness: 'server', checking: false, error: null, version: 5, snapshots: [
       { resource: { collection: 'groups', id: 'a' }, metadata: null, value: { userId: 'owner', title: 'Updated', updatedAt: '2', meetingDates: [{ id: 'm', date: '2026-09-19', createdAt: '1' }] } },
@@ -32,15 +30,12 @@ it('uses the shared submitted projection while keeping completeness and status a
   expect(result.current.complete).toBe(false);
   expect(result.current.state?.documents?.[0].pending).toBe(true);
 });
-it('keeps the engine read idle when the domain or reader is inactive', () => {
-  jest.mocked(isCollectionOnEngine).mockReturnValue(false);
-  renderHook(() => useGroupsDataCollection()); expect(useDataCollection).toHaveBeenLastCalledWith(null);
-  jest.mocked(isCollectionOnEngine).mockReturnValue(true);
+it('keeps the engine read idle when the reader is inactive', () => {
   renderHook(() => useGroupsDataCollection(false)); expect(useDataCollection).toHaveBeenLastCalledWith(null);
+  renderHook(() => useGroupsDataCollection()); expect(useDataCollection).toHaveBeenLastCalledWith('groups');
 });
-it('uses the same engine rows for the calendar and disables its old query', () => {
+it('uses the same engine rows for the calendar', () => {
   const { result, rerender } = renderHook(({ start }) => useCalendarGroups(new Date(start), new Date('2026-09-20T00:00:00Z')), { initialProps: { start: '2026-09-19T00:00:00Z' } });
   expect(result.current.groups.map(group => group.id)).toEqual(['a']);
-  expect(useServerFirstQuery).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
   rerender({ start: '2026-09-20T00:00:00Z' }); expect(result.current.groups).toEqual([]);
 });

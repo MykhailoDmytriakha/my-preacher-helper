@@ -113,9 +113,9 @@ describe('GroupCard', () => {
     expect(screen.getByText('No date')).toBeInTheDocument();
   });
 
-  it('calls delete handler and reflects deleting state', () => {
+  it('calls the delete handler from the card menu', () => {
     const onDelete = jest.fn();
-    const { rerender } = render(
+    render(
       <GroupCard
         group={{
           id: 'g1',
@@ -138,30 +138,6 @@ describe('GroupCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More options' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onDelete).toHaveBeenCalledTimes(1);
-
-    rerender(
-      <GroupCard
-        group={{
-          id: 'g1',
-          userId: 'user-1',
-          title: 'Group 1',
-          status: 'completed',
-          templates: [],
-          flow: [],
-          meetingDates: [],
-          createdAt: 'x',
-          updatedAt: 'x',
-          seriesId: null,
-          seriesPosition: null,
-        }}
-        onDelete={onDelete}
-        deleting
-      />
-    );
-
-    // Menu should show deleting state when opened
-    fireEvent.click(screen.getByRole('button', { name: 'More options' }));
-    expect(screen.getByRole('button', { name: 'Deleting...' })).toBeDisabled();
   });
 
   it('renders series badge and handles series click', () => {

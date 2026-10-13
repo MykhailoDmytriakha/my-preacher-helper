@@ -12,34 +12,25 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
-import CreateGroupModal from '@/components/groups/CreateGroupModal';
 import { EngineCreateGroupModal } from '@/components/groups/EngineCreateGroupModal';
 import { EngineDeleteGroupModal } from '@/components/groups/EngineDeleteGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
-import ConfirmModal from '@/components/ui/ConfirmModal';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
-import { useGroups } from '@/hooks/useGroups';
+import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { newClientId } from '@/utils/clientId';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 import type { ReactNode } from 'react';
 import '@locales/i18n';
 
 export default function GroupsPage() {
   const { user } = useAuth();
-  return isCollectionOnEngine('groups') ? <EngineGroupsPage key={user?.uid ?? ''} /> : <LegacyGroupsPage />;
-}
-function LegacyGroupsPage() {
-  const { user } = useAuth();
-  const source = useGroups(user?.uid ?? null);
-  return <GroupsView source={source} />;
+  return <EngineGroupsPage key={user?.uid ?? ''} />;
 }
 function EngineGroupsPage() {
   const source = useGroupsDataCollection();
@@ -70,18 +61,14 @@ function EngineGroupsPage() {
   </>;
 }
 function GroupsView({ source, onCreate, onDelete, feedback }: {
-  source: Pick<ReturnType<typeof useGroups>, 'groups' | 'loading'> & { error: unknown; refreshGroups: () => unknown }
-    & Partial<Pick<ReturnType<typeof useGroups>, 'createNewGroup' | 'deleteExistingGroup'>> & { complete?: boolean };
-  onCreate?: () => void; onDelete?: (group: Group) => void; feedback?: ReactNode;
+  source: { groups: Group[]; loading: boolean; error: unknown; refreshGroups: () => unknown; complete?: boolean };
+  onCreate: () => void; onDelete: (group: Group) => void; feedback?: ReactNode;
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const groupsUserId = user?.uid ?? null;
-  const { groups, loading, error, refreshGroups, createNewGroup, deleteExistingGroup } = source;
+  const { groups, loading, error, refreshGroups } = source;
   const { series } = useSeries(groupsUserId);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
-  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
 
   useEffect(() => {
     recordDiagnostic('route-check', { source: 'groups', result: user?.uid ? 'allowed' : 'unauthenticated' });
@@ -93,49 +80,6 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
     const drafts = groups.filter((group) => group.status === 'draft').length;
     return { total: groups.length, active, completed, drafts };
   }, [groups]);
-
-  /**
-   * CANONICAL: the page hands the submission straight to the editor and does not
-   * interpret it. Closing on acceptance and keeping the draft on refusal both live
-   * in the modal, which is the only place that still owns the typed text.
-   *
-   * There is deliberately NO success message: the write is accepted by a durable
-   * queue (`queued`), never `persisted`, and `announceIfPersisted` is the only way
-   * to announce a save — so this path CANNOT claim one. Before the contract it did,
-   * and against deny rules the person saw "Group created successfully" next to
-   * "Save refused" (measured live 2026-08-12).
-   */
-  // The page hands the submission over and does nothing else: CreateGroupModal awaits
-  // acceptance and calls `onClose` itself. Closing here TOO made the canonical example
-  // teach a duplicate mechanism — the first thing a newcomer would copy.
-  const handleCreateGroup = (payload: Omit<Group, 'id'>) => createNewGroup!(payload);
-
-  const handleDeleteGroupTrigger = (group: Group) => {
-    if (onDelete) onDelete(group); else setGroupToDelete(group);
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!groupToDelete) return;
-
-    try {
-      setDeletingGroupId(groupToDelete.id);
-      // Same reason as create: the row leaving the list is the acceptance signal, and a
-      // refusal restores it — so no success message here. Await ACCEPTANCE, not the
-      // call: `await` on the submission object would resolve instantly and swallow an
-      // early refusal, which is what the whole contract exists to prevent.
-      await awaitAcceptance(deleteExistingGroup!(groupToDelete.id), () => undefined);
-      setGroupToDelete(null);
-    } catch (errorValue) {
-      // Reported by the delete descriptor in useGroups — one refusal, one reporter.
-      console.error('Failed to delete group:', errorValue);
-    } finally {
-      setDeletingGroupId(null);
-    }
-  };
-
-  // The private layout owns the sign-in flow; no workspace is shown without a user.
-  if (!user?.uid) return null;
-
 
   return (
     <section className="space-y-6">
@@ -167,7 +111,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
               {t('common.refresh', { defaultValue: 'Refresh' })}
             </button>
             <button
-              onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
+              onClick={onCreate}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -262,7 +206,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
             {t('workspaces.groups.empty', { defaultValue: 'No groups yet. Create your first group.' })}
           </p>
           <button
-            onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
+            onClick={onCreate}
             className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
           >
             <PlusIcon className="h-4 w-4" />
@@ -276,34 +220,12 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
               key={group.id}
               group={group}
               series={series}
-              onDelete={() => handleDeleteGroupTrigger(group)}
-              deleting={deletingGroupId === group.id}
+              onDelete={() => onDelete(group)}
             />
           ))}
         </div>
       )}
 
-      {showCreateModal && (
-        <CreateGroupModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateGroup} />
-      )}
-
-      <ConfirmModal
-        isOpen={!!groupToDelete}
-        onClose={() => setGroupToDelete(null)}
-        onConfirm={handleConfirmDelete}
-        title={t('workspaces.groups.actions.deleteConfirmTitle', { defaultValue: 'Delete Group' })}
-        description={
-          groupToDelete
-            ? `${t('workspaces.groups.actions.deleteConfirm', {
-              defaultValue: 'Delete this group permanently?',
-            })} "${groupToDelete.title}"`
-            : t('workspaces.groups.actions.deleteConfirm', {
-              defaultValue: 'Delete this group permanently?',
-            })
-        }
-        confirmText={t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
-        isDeleting={!!deletingGroupId}
-      />
     </section>
   );
 }

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddGroupToSeriesModal from '@/components/series/AddGroupToSeriesModal';
-import { useGroups } from '@/hooks/useGroups';
+import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
 const makeFirestoreError = (code: string, message = code): Error & { code: string } => {
@@ -12,10 +12,10 @@ const makeFirestoreError = (code: string, message = code): Error & { code: strin
 };
 
 const mockAddGroups = jest.fn();
-const mockUseGroups = useGroups as jest.MockedFunction<typeof useGroups>;
+const mockUseGroups = useGroupsRead as jest.MockedFunction<typeof useGroupsRead>;
 
 jest.mock('react-dom', () => ({ ...jest.requireActual('react-dom'), createPortal: (node: React.ReactNode) => node }));
-jest.mock('@/hooks/useGroups', () => ({ useGroups: jest.fn() }));
+jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: jest.fn() }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -41,7 +41,7 @@ describe('AddGroupToSeriesModal write refusal', () => {
     mockUseGroups.mockReturnValue({
       groups: [{ id: 'group-1', title: 'Exact refused group', description: 'The selected membership' }],
       loading: false,
-    } as ReturnType<typeof useGroups>);
+    } as ReturnType<typeof useGroupsRead>);
   });
 
   it('keeps a refused group membership selected instead of closing as if it were attached', async () => {

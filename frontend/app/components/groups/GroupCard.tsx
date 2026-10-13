@@ -23,7 +23,6 @@ interface GroupCardProps {
   group: Group;
   series?: Series[];
   onDelete?: () => void;
-  deleting?: boolean;
 }
 
 const statusTones: Record<Group['status'], ChipTone> = {
@@ -87,7 +86,7 @@ const formatMeetingDate = (value: string): string | null => {
   }).format(parsed);
 };
 
-export default function GroupCard({ group, series = [], onDelete, deleting = false }: GroupCardProps) {
+export default function GroupCard({ group, series = [], onDelete }: GroupCardProps) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -169,13 +168,10 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
                   closeMenu();
                   onDelete();
                 }}
-                disabled={deleting}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:text-red-400 dark:hover:bg-red-950/30"
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
               >
                 <TrashIcon className="h-4 w-4" />
-                {deleting
-                  ? t('common.deleting', { defaultValue: 'Deleting...' })
-                  : t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
+                {t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
               </button>
             </div>
           )}

@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import AddGroupToSeriesModal from '@/components/series/AddGroupToSeriesModal';
-import { useGroups } from '@/hooks/useGroups';
+import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { queuedWrite } from '@/utils/recoverableWrite';
 
-jest.mock('@/hooks/useGroups', () => ({
-  useGroups: jest.fn(),
+jest.mock('@/hooks/useGroupsRead', () => ({
+  useGroupsRead: jest.fn(),
 }));
 
 jest.mock('@/providers/AuthProvider', () => ({
@@ -19,7 +19,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-const mockUseGroups = useGroups as jest.MockedFunction<typeof useGroups>;
+const mockUseGroups = useGroupsRead as jest.MockedFunction<typeof useGroupsRead>;
 
 describe('AddGroupToSeriesModal', () => {
   beforeEach(() => {

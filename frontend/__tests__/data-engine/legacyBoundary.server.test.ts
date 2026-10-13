@@ -164,19 +164,27 @@ describe('atomic legacy boundary', () => {
 
 describe('legacy repository cascades are atomic', () => {
   const repository = new SeriesRepository();
-  const items = [{ id: 's', type: 'sermon', refId: 'a', position: 1 }, { id: 'g', type: 'group', refId: 'g', position: 2 }];
-  const seedSeries = () => {
-    records.set('series/list', { userId: 'owner', items, sermonIds: ['a'] });
+  const sermonItem = { id: 's', type: 'sermon', refId: 'a', position: 1 };
+  const groupItem = { id: 'g', type: 'group', refId: 'g', position: 2 };
+  const seedSeries = (withGroup = false) => {
+    records.set('series/list', { userId: 'owner', items: withGroup ? [sermonItem, groupItem] : [sermonItem], sermonIds: ['a'] });
     records.set('sermons/a', { userId: 'owner', title: 'Keep', seriesId: 'list' });
-    records.set('groups/g', { userId: 'owner', seriesId: 'list' });
+    if (withGroup) records.set('groups/g', { userId: 'owner', seriesId: 'list' });
   };
-  it('detaches mixed members and deletes the series in one transaction', async () => {
+  it('detaches its sermons and deletes the series in one transaction', async () => {
     seedSeries(); await repository.deleteSeriesAndDetach('list', 'owner');
     expect(records.has('series/list')).toBe(false);
     expect(records.get('sermons/a')).toMatchObject({ title: 'Keep', seriesId: null });
-    expect(records.get('groups/g')?.seriesId).toBeNull();
   });
-  it.each(['series/list', 'sermons/a', 'groups/g'])('refuses the entire cascade when %s is migrated', async path => {
+  // Groups are engine-owned (engineOwnedCollections.ts): no legacy writer touches one, so a cascade
+  // that would detach a group is refused whole, before anything is written.
+  it('refuses the entire cascade when a member is a group', async () => {
+    seedSeries(true);
+    const original = JSON.stringify([...records]);
+    await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(JSON.stringify([...records])).toBe(original);
+  });
+  it.each(['series/list', 'sermons/a'])('refuses the entire cascade when %s is migrated', async path => {
     seedSeries(); records.set(path, { ...records.get(path), _dataEngine: marker });
     const original = JSON.stringify([...records]);
     await expect(repository.deleteSeriesAndDetach('list', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });

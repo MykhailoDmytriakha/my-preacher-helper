@@ -1,6 +1,5 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
-import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
 import { createSeries, deleteSeries, updateSeries } from '@/services/series.service';
 import {
@@ -30,7 +29,7 @@ import type {
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { Group, PreachDate, Series, Sermon, StudyNote } from '@/models/models';
+import type { PreachDate, Series, Sermon, StudyNote } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -280,18 +279,11 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey });
 
   // ---- groups ----
-  queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.create, {
-    mutationFn: (payload: Omit<Group, 'id'> & { id?: string }) => createGroup(payload),
-    onSuccess: invalidate(['groups']),
-  });
-  queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.update, {
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<Group> }) => updateGroup(id, updates),
-    onSuccess: invalidate(['groups']),
-  });
-  queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.delete, {
-    mutationFn: (groupId: string) => deleteGroup(groupId),
-    onSuccess: invalidate(['groups']),
-  });
+  // The engine owns groups; a paused edit of the previous version gets the same refusal, and its
+  // text survives in the previous-version archive (legacyQueryRecovery.client.ts).
+  for (const key of Object.values(GROUP_MUTATION_KEYS)) {
+    queryClient.setMutationDefaults(key, { mutationFn: refuseLegacyReplay('groups') });
+  }
 
   // ---- series ----
   queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.create, {

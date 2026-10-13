@@ -1,77 +1,29 @@
-import { groupsRepository } from '@repositories/groups.repository';
-import { seriesRepository } from '@repositories/series.repository';
+import { DELETE } from '@/api/groups/[id]/route';
 
-import { DELETE } from 'app/api/groups/[id]/route';
-
-jest.mock('@repositories/groups.repository', () => ({
-  groupsRepository: {
-    fetchGroupById: jest.fn(),
-    deleteGroup: jest.fn(),
-  },
-}));
-
-jest.mock('@repositories/series.repository', () => ({
-  seriesRepository: {
-    removeGroupFromAllSeries: jest.fn(),
-  },
-}));
+/**
+ * DELETE /api/groups/:id stays for shipped bundles. Groups are deleted only through the data engine,
+ * so a shipped bundle's delete is refused with 426 — never 404 or 409 — and nothing is touched.
+ */
 
 jest.mock('next/server', () => ({
-  NextResponse: {
-    json: jest.fn().mockImplementation((data, options = {}) => ({
-      status: options.status || 200,
-      json: async () => data,
-    })),
-  },
+  NextResponse: { json: jest.fn((data, options = {}) => ({ status: options.status ?? 200, json: async () => data })) },
 }));
+const mockAuth = jest.fn();
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: (...args: unknown[]) => mockAuth(...args) }));
+const request = () => new Request('http://localhost/api/groups/g1', { method: 'DELETE' });
 
-jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
-  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
-}));
-
-// The PUT /api/groups/[id] handler (server series-binding cascade) was removed in
-// the playlist migration — a group's series membership now lives in series.items
-// and is written by the client sweep. Only DELETE (delete-cleanup) remains.
 describe('/api/groups/[id] route', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
+  beforeEach(() => jest.clearAllMocks());
+
+  it('refuses a caller without a verified token', async () => {
+    mockAuth.mockResolvedValue(null);
+    expect((await DELETE(request())).status).toBe(401);
   });
 
-  describe('DELETE', () => {
-    it('returns success message when group is already missing', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce(null);
-
-      const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'missing' }) });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.message).toBe('Group not found');
-    });
-
-    it('deletes group and removes links from series', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1', userId: 'user-1' });
-      (seriesRepository.removeGroupFromAllSeries as jest.Mock).mockResolvedValueOnce(undefined);
-      (groupsRepository.deleteGroup as jest.Mock).mockResolvedValueOnce(undefined);
-
-      const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'g1' }) });
-      const data = await response.json();
-
-      // The repository owns the group/series cleanup transaction; the route must
-      // not perform a second best-effort series write.
-      expect(seriesRepository.removeGroupFromAllSeries).not.toHaveBeenCalled();
-      expect(groupsRepository.deleteGroup).toHaveBeenCalledWith('g1', 'user-1');
-      expect(response.status).toBe(200);
-      expect(data.message).toBe('Group deleted successfully');
-    });
-
-    it('returns 500 on delete failure', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockRejectedValueOnce(new Error('boom'));
-
-      const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'g1' }) });
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.message).toBe('Failed to delete group');
-    });
+  it('refuses a shipped bundle\'s delete with the migration refusal', async () => {
+    mockAuth.mockResolvedValue('owner');
+    const response = await DELETE(request());
+    expect(response.status).toBe(426);
+    await expect(response.json()).resolves.toMatchObject({ code: 'data-engine-required' });
   });
 });

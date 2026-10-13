@@ -47,8 +47,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     meetingLocation: first?.location ?? '', setMeetingLocation: meetingField('location'),
     meetingAudience: first?.audience ?? '', setMeetingAudience: meetingField('audience'),
     meetingFieldsEnabled: Boolean(first?.date),
-    // Compatibility with the shared view; update() already persists and the engine schedules delivery.
-    debouncedSave: () => undefined, saveStatus: '', deleteGroupDetail: data.deleteGroupDetail,
+    deleteGroupDetail: data.deleteGroupDetail,
     feedback: <DataSyncStatus subject={data.document.recoveryIdentity} status={data.status} error={data.error}
       onKeepLocal={data.keepLocal} onAcceptRemote={data.acceptRemote} onRetry={data.refresh}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}

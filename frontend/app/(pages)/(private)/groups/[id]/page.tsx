@@ -46,7 +46,6 @@ import Select from '@/components/ui/Select';
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
-import { useLegacyGroupPageEditor } from '@/hooks/useLegacyGroupPageEditor';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
@@ -71,13 +70,9 @@ export default function GroupDetailPage() {
   const id = useRouteId();
   const { user } = useAuth();
   const groupId = user?.uid && typeof id === 'string' ? id : '';
-  return isCollectionOnEngine('groups')
-    ? <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group', readOnlyCopy: true }}><EngineGroupPage groupId={groupId} /></DataDocumentProvider>
-    : <LegacyGroupPage groupId={groupId} />;
-}
-
-function LegacyGroupPage({ groupId }: { groupId: string }) {
-  return <GroupDetailView editor={useLegacyGroupPageEditor(groupId)} />;
+  return <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group', readOnlyCopy: true }}>
+    <EngineGroupPage groupId={groupId} />
+  </DataDocumentProvider>;
 }
 function EngineGroupPage({ groupId }: { groupId: string }) {
   const editor = useGroupPageEditor(groupId);
@@ -94,7 +89,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const { user } = useAuth();
   const { group, loading, title, setTitle, description, setDescription, status, setStatus,
     templates, setTemplates, flow, setFlow, meetingDate, setMeetingDate, meetingLocation, setMeetingLocation,
-    meetingAudience, setMeetingAudience, debouncedSave, saveStatus, deleteGroupDetail, feedback,
+    meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -133,7 +128,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         const reindexed = newFlow.map((item, idx) => ({ ...item, order: idx + 1 }));
         return normalizeFlow(reindexed);
       });
-      debouncedSave();
     }
   };
 
@@ -170,7 +164,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     const nextFlowItem = createFlowItem(nextTemplate.id, flow.length + 1);
     setFlow((prev) => normalizeFlow([...prev, nextFlowItem]));
     setSelectedFlowItemId(nextFlowItem.id);
-    debouncedSave();
   };
 
   const updateTemplate = (templateId: string, updates: Partial<GroupBlockTemplate>) => {
@@ -185,7 +178,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
           : template
       )
     );
-    debouncedSave();
   };
 
   const removeFlowBlock = (flowItemId: string) => {
@@ -197,7 +189,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
       setTemplates((prev) => prev.filter((t) => t.id !== item.templateId));
     }
     if (selectedFlowItemId === flowItemId) setSelectedFlowItemId(null);
-    debouncedSave();
   };
 
   const cycleStatus = (templateId: string) => {
@@ -209,7 +200,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         return { ...template, status: nextStatus, updatedAt: new Date().toISOString() };
       })
     );
-    debouncedSave();
   };
 
   const updateFlowItem = (itemId: string, updates: Partial<GroupFlowItem>) => {
@@ -225,7 +215,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         )
       )
     );
-    debouncedSave();
   };
 
   const handleDeleteGroup = async () => {
@@ -318,7 +307,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
           </button>
 
           <div className="flex items-center gap-2">
-            <GroupSaveStatus status={saveStatus} t={t} />
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deletingGroup}
@@ -337,12 +325,12 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
           <div className="flex flex-col gap-3">
             <LiveTextInput
               value={title}
-              onChange={(value) => { setTitle(value); debouncedSave(); }}
+              onChange={(value) => { setTitle(value); }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-2xl font-bold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
             />
             <LiveTextArea
               value={description}
-              onChange={(value) => { setDescription(value); debouncedSave(); }}
+              onChange={(value) => { setDescription(value); }}
               rows={2}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
@@ -354,7 +342,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 size="sm"
                 accent="blue"
                 value={status}
-                onChange={(event) => { setStatus(event.target.value as typeof status); debouncedSave(); }}
+                onChange={(event) => { setStatus(event.target.value as typeof status); }}
                 wrapperClassName="w-44"
                 aria-label={t('workspaces.series.form.status')}
               >
@@ -413,7 +401,6 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                 value={meetingDate}
                 onChange={(nextDate) => {
                   setMeetingDate(nextDate);
-                  debouncedSave();
                 }}
                 placeholder={t('workspaces.groups.meetings.datePlaceholder', { defaultValue: 'No date' })}
                 wrapperClassName="w-full"
@@ -425,7 +412,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               <LiveTextInput
                 disabled={!meetingFieldsEnabled}
                 value={meetingLocation}
-                onChange={(value) => { setMeetingLocation(value); debouncedSave(); }}
+                onChange={(value) => { setMeetingLocation(value); }}
                 placeholder={t('workspaces.groups.meetings.location', { defaultValue: 'Location' })}
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
@@ -435,7 +422,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               <LiveTextInput
                 disabled={!meetingFieldsEnabled}
                 value={meetingAudience}
-                onChange={(value) => { setMeetingAudience(value); debouncedSave(); }}
+                onChange={(value) => { setMeetingAudience(value); }}
                 placeholder={t('workspaces.groups.meetings.audience', { defaultValue: 'Audience' })}
                 className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
@@ -510,9 +497,9 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
                             selectedFlowItemId === flowItem.id ? null : flowItem.id
                           )}
                           onStatusCycle={() => cycleStatus(template.id)}
-                          onMoveUp={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up')); debouncedSave(); }}
-                          onMoveDown={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down')); debouncedSave(); }}
-                          onDuplicate={() => { setFlow((prev) => duplicateFlowItem(prev, flowItem.id)); debouncedSave(); }}
+                          onMoveUp={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'up')); }}
+                          onMoveDown={() => { setFlow((prev) => moveFlowItem(prev, flowItem.id, 'down')); }}
+                          onDuplicate={() => { setFlow((prev) => duplicateFlowItem(prev, flowItem.id)); }}
                           onDelete={() => removeFlowBlock(flowItem.id)}
                         />
                       );
@@ -575,23 +562,5 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         isDeleting={deletingGroup}
       />
     </section>
-  );
-}
-
-function GroupSaveStatus({ status, t }: { status: string; t: ReturnType<typeof useTranslation>['t'] }) {
-  return (
-    <>
-      {status === 'saving' && (
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          {t('common.saving', { defaultValue: 'Saving...' })}
-        </span>
-      )}
-      {status === 'saved' && (
-        <span className="text-xs text-emerald-600 dark:text-emerald-400">
-          <CheckCircleIcon className="mr-1 inline h-3.5 w-3.5" />
-          {t('common.saved', { defaultValue: 'Saved' })}
-        </span>
-      )}
-    </>
   );
 }
