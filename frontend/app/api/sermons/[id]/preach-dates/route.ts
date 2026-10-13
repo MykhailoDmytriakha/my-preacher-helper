@@ -1,69 +1,11 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-import { toDateOnlyKey } from '@/utils/dateOnly';
+import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
-
-// POST /api/sermons/[id]/preach-dates
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    try {
-        const uid = await getRequiredAuthenticatedUid(request);
-        if (!uid) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const { id } = await params;
-        const sermon = await sermonsRepository.fetchSermonById(id);
-        if (!sermon) {
-            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
-        }
-        if (sermon.userId !== uid) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
-
-        const data = await request.json();
-
-        // Validation
-        if (!data.date || !data.church || !data.church.name) {
-            return NextResponse.json({ error: 'Missing required fields: date and church name' }, { status: 400 });
-        }
-
-        const normalizedDate = toDateOnlyKey(data.date);
-        if (!normalizedDate) {
-            return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
-        }
-
-        data.date = normalizedDate;
-
-        if (data.status && data.status !== 'planned' && data.status !== 'preached') {
-            return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
-        }
-
-        const preachDate = await sermonsRepository.addPreachDate(id, data);
-        return NextResponse.json({ preachDate });
-    } catch (error: unknown) {
-    const boundary = legacyBoundaryResponse(error);
-    if (boundary) return boundary;
-        const { id } = await params;
-        console.error(`Error adding preach date to sermon ${id}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === SERMON_NOT_FOUND_ERROR) {
-            return NextResponse.json({ error: errorMessage }, { status: 404 });
-        }
-        const refusal = resolveFirestoreWriteRefusal(error);
-        if (refusal) {
-            return NextResponse.json(
-                { error: errorMessage, code: refusal.code },
-                { status: refusal.status }
-            );
-        }
-        return NextResponse.json({ error: 'Failed to add preach date' }, { status: 500 });
-    }
-}
 
 // GET /api/sermons/[id]/preach-dates
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -93,4 +35,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
         return NextResponse.json({ error: 'Failed to fetch preach dates' }, { status: 500 });
     }
+}
+
+/** POST stays for shipped bundles: preach dates are written only through the data engine (426 refusal). */
+export async function POST(request: Request) {
+  return refuseLegacyWriteRoute(request);
 }

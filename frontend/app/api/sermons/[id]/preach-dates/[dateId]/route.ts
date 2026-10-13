@@ -1,115 +1,13 @@
-import { NextResponse } from 'next/server';
+import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 
-import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
-import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-import { toDateOnlyKey } from '@/utils/dateOnly';
-import { sermonsRepository } from '@repositories/sermons.repository';
-
-import type { PreachDate } from '@/models/models';
-
-const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
-
-// PUT /api/sermons/[id]/preach-dates/[dateId]
-export async function PUT(
-    request: Request,
-    { params }: { params: Promise<{ id: string; dateId: string }> }
-) {
-    try {
-        const uid = await getRequiredAuthenticatedUid(request);
-        if (!uid) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const { id, dateId } = await params;
-        const sermon = await sermonsRepository.fetchSermonById(id);
-        if (!sermon) {
-            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
-        }
-        if (sermon.userId !== uid) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
-
-        const updates = await request.json() as Partial<PreachDate>;
-
-        // Basic validation to prevent updating id or createdAt
-        const { id: _id, createdAt: _createdAt, ...safeUpdates } = updates;
-        if (
-            safeUpdates.status &&
-            safeUpdates.status !== 'planned' &&
-            safeUpdates.status !== 'preached'
-        ) {
-            return NextResponse.json({ error: 'Invalid status value' }, { status: 400 });
-        }
-
-        if (safeUpdates.date !== undefined) {
-            const normalizedDate = toDateOnlyKey(safeUpdates.date);
-            if (!normalizedDate) {
-                return NextResponse.json({ error: 'Invalid date format' }, { status: 400 });
-            }
-            safeUpdates.date = normalizedDate;
-        }
-
-        const preachDate = await sermonsRepository.updatePreachDate(id, dateId, safeUpdates);
-        return NextResponse.json({ preachDate });
-    } catch (error: unknown) {
-    const boundary = legacyBoundaryResponse(error);
-    if (boundary) return boundary;
-        const { id, dateId } = await params;
-        console.error(`Error updating preach date ${dateId} in sermon ${id}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === SERMON_NOT_FOUND_ERROR || errorMessage === "Preach date not found") {
-            return NextResponse.json({ error: errorMessage }, { status: 404 });
-        }
-        const refusal = resolveFirestoreWriteRefusal(error);
-        if (refusal) {
-            return NextResponse.json(
-                { error: errorMessage, code: refusal.code },
-                { status: refusal.status }
-            );
-        }
-        return NextResponse.json({ error: 'Failed to update preach date' }, { status: 500 });
-    }
+/**
+ * PUT and DELETE stay for shipped bundles. Preach dates are written only through the data engine,
+ * so an old bundle's write gets the 426 refusal.
+ */
+export async function PUT(request: Request) {
+  return refuseLegacyWriteRoute(request);
 }
 
-// DELETE /api/sermons/[id]/preach-dates/[dateId]
-export async function DELETE(
-    request: Request,
-    { params }: { params: Promise<{ id: string; dateId: string }> }
-) {
-    try {
-        const uid = await getRequiredAuthenticatedUid(request);
-        if (!uid) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const { id, dateId } = await params;
-        const sermon = await sermonsRepository.fetchSermonById(id);
-        if (!sermon) {
-            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
-        }
-        if (sermon.userId !== uid) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-        }
-
-        await sermonsRepository.deletePreachDate(id, dateId);
-        return NextResponse.json({ message: 'Preach date deleted' });
-    } catch (error: unknown) {
-    const boundary = legacyBoundaryResponse(error);
-    if (boundary) return boundary;
-        const { id, dateId } = await params;
-        console.error(`Error deleting preach date ${dateId} from sermon ${id}:`, error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === SERMON_NOT_FOUND_ERROR) {
-            return NextResponse.json({ error: errorMessage }, { status: 404 });
-        }
-        const refusal = resolveFirestoreWriteRefusal(error);
-        if (refusal) {
-            return NextResponse.json(
-                { error: errorMessage, code: refusal.code },
-                { status: refusal.status }
-            );
-        }
-        return NextResponse.json({ error: 'Failed to delete preach date' }, { status: 500 });
-    }
+export async function DELETE(request: Request) {
+  return refuseLegacyWriteRoute(request);
 }

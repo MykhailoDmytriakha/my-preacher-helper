@@ -7,7 +7,6 @@ const get = jest.fn();
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: () => ({ doc: () => ({ get: () => get() }) }) } }));
 jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: jest.fn() }));
 jest.mock('@repositories/sermons.repository', () => ({ sermonsRepository: {} }));
-jest.mock('@repositories/series.repository', () => ({ seriesRepository: {} }));
 jest.mock('next/server', () => ({ NextResponse: { json: jest.fn((data, options = {}) => ({ status: options.status ?? 200, json: async () => data })) } }));
 
 const run = () => GET({} as Request, { params: Promise.resolve({ id: 'sermon' }) });

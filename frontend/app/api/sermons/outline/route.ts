@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
-
 
 // GET /api/sermons/outline?sermonId=<id>
 export async function GET(request: Request) {
@@ -41,47 +41,7 @@ export async function GET(request: Request) {
   }
 }
 
-// PUT /api/sermons/outline?sermonId=<id>
+/** PUT stays for shipped bundles: the plan is written only through the data engine (426 refusal). */
 export async function PUT(request: Request) {
-  try {
-    const uid = await getRequiredAuthenticatedUid(request);
-    if (!uid) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const sermonId = searchParams.get("sermonId");
-    
-    if (!sermonId) {
-      return NextResponse.json({ error: "sermonId is required" }, { status: 400 });
-    }
-    const sermon = await sermonsRepository.fetchSermonById(sermonId);
-    if (!sermon) {
-      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
-    }
-    if (sermon.userId !== uid) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    
-    const { outline } = await request.json();
-    console.log(`Updating sermon outline for sermon ${sermonId}`);
-    console.log(`SermonOutline data:`, outline);
-    
-    if (!outline) {
-      return NextResponse.json({ error: "SermonOutline data is required" }, { status: 400 });
-    }
-    
-    // Use repository to update the sermon outline
-    const updatedOutline = await sermonsRepository.updateSermonOutline(sermonId, outline);
-    
-    return NextResponse.json(updatedOutline);
-  } catch (error: unknown) {
-    const boundary = legacyBoundaryResponse(error);
-    if (boundary) return boundary;
-    if ((error as Error).message === SERMON_NOT_FOUND_ERROR) {
-      return NextResponse.json({ error: (error as Error).message }, { status: 404 });
-    }
-    console.error("Error updating sermon outline:", error);
-    return NextResponse.json({ error: 'Failed to update sermon outline' }, { status: 500 });
-  }
+  return refuseLegacyWriteRoute(request);
 }

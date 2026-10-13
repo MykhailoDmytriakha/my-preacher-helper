@@ -1,10 +1,10 @@
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 import { GET, POST } from 'app/api/sermons/[id]/preach-dates/route';
 
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
-    addPreachDate: jest.fn(),
     fetchSermonById: jest.fn(),
   },
 }));
@@ -28,140 +28,20 @@ describe('/api/sermons/[id]/preach-dates route', () => {
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ id: 's1', userId: 'user-1' });
   });
 
-  describe('POST', () => {
-    it('returns 400 when required fields are missing', async () => {
-      const response = await POST(
-        { json: jest.fn().mockResolvedValue({ date: '2026-02-15' }) } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
+  describe('POST (legacy write route, closed)', () => {
+    const post = () => POST(new Request('http://localhost/api/sermons/s1/preach-dates', { method: 'POST' }));
 
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Missing required fields: date and church name');
-      expect(sermonsRepository.addPreachDate).not.toHaveBeenCalled();
+    it('answers 401 without a verified token and reads nothing', async () => {
+      (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValueOnce(null);
+      expect((await post()).status).toBe(401);
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
     });
 
-    it('returns 400 for invalid date format', async () => {
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: 'not-a-date',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Invalid date format');
-      expect(sermonsRepository.addPreachDate).not.toHaveBeenCalled();
-    });
-
-    it('returns 400 for invalid status value', async () => {
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: '2026-02-15',
-            status: 'invalid-status',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('Invalid status value');
-      expect(sermonsRepository.addPreachDate).not.toHaveBeenCalled();
-    });
-
-    it('normalizes timestamp to date-only and creates preach date', async () => {
-      (sermonsRepository.addPreachDate as jest.Mock).mockResolvedValueOnce({
-        id: 'pd1',
-        date: '2026-02-15',
-      });
-
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: '2026-02-15T16:00:00.000Z',
-            status: 'planned',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(sermonsRepository.addPreachDate).toHaveBeenCalledWith(
-        's1',
-        expect.objectContaining({
-          date: '2026-02-15',
-          status: 'planned',
-        })
-      );
-      expect(response.status).toBe(200);
-      expect(data.preachDate.id).toBe('pd1');
-    });
-
-    it('returns 404 when sermon is not found', async () => {
-      (sermonsRepository.addPreachDate as jest.Mock).mockRejectedValueOnce(new Error('Sermon not found'));
-
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: '2026-02-15',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 'missing-sermon' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('Sermon not found');
-    });
-
-    it('preserves an Admin Firestore refusal across the HTTP boundary', async () => {
-      (sermonsRepository.addPreachDate as jest.Mock).mockRejectedValueOnce(
-        Object.assign(new Error('Missing or insufficient permissions.'), { code: 7 })
-      );
-
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: '2026-02-15',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(403);
-      expect(data).toEqual({
-        error: 'Missing or insufficient permissions.',
-        code: 'permission-denied',
-      });
-    });
-
-    it('returns 500 on unexpected error', async () => {
-      (sermonsRepository.addPreachDate as jest.Mock).mockRejectedValueOnce(new Error('boom'));
-
-      const response = await POST(
-        {
-          json: jest.fn().mockResolvedValue({
-            date: '2026-02-15',
-            church: { id: 'c1', name: 'Church' },
-          }),
-        } as any,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data.error).toBe('Failed to add preach date');
+    it('answers 426 data-engine-required with a token and writes nothing', async () => {
+      const response = await post();
+      expect(response.status).toBe(426);
+      expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
     });
   });
 

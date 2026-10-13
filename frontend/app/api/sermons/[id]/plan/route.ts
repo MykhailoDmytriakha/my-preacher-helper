@@ -6,13 +6,13 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { studiesRepository } from '@/api/repositories/studies.repository';
 import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
-import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
-import { SermonContent, ThoughtInStructure } from '@/models/models';
+import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
-import { generateNotePlanPoint, generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
+import { generateNotePlanPoint, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 export const dynamic = 'force-dynamic';
@@ -62,96 +62,9 @@ export async function GET(
     return generateSermonPointContent(id, outlinePointId, uid, style || undefined);
   }
 
-  // Validate section parameter - must be provided and valid
-  if (!section) {
-    console.log('Missing section parameter');
-    return jsonNoStore(
-      { error: 'Section parameter is required. Must be one of: introduction, main, conclusion' },
-      { status: 400 }
-    );
-  }
-
-  if (!['introduction', 'main', 'conclusion'].includes(section.toLowerCase())) {
-    console.log('Invalid section parameter:', section);
-    return jsonNoStore(
-      { error: 'Invalid section. Must be one of: introduction, main, conclusion' },
-      { status: 400 }
-    );
-  }
-
-  console.log('Section specified:', section, 'generating plan for specific section');
-
-  try {
-    // Fetch the sermon
-    const sermon = await sermonsRepository.fetchSermonById(id);
-    if (!sermon) {
-      return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
-    }
-    if (sermon.userId !== uid) {
-      return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    assertLegacyWritable(sermon);
-    // Generate the plan for the specified section (only pass style when provided)
-    const sectionName = section.toLowerCase();
-    const result = style
-      ? await generatePlanForSection(sermon, sectionName, style, uid)
-      : await generatePlanForSection(sermon, sectionName, 'memory', uid);
-
-    // If generation failed, return error status
-    if (!result.success) {
-      return jsonNoStore(
-        {
-          error: `Failed to generate ${section} plan`,
-          plan: result.plan
-        },
-        { status: 500 }
-      );
-    }
-
-    const normalizedPlan = normalizeGeneratedSection(section, result.plan);
-
-    // Store the updated plan in the database
-    try {
-      // Get existing plan or create a new one
-      const existingPlan = ('plan' in sermon ? sermon.plan : null) || {
-        introduction: { outline: '' },
-        main: { outline: '' },
-        conclusion: { outline: '' }
-      };
-
-      // Update the section that was just generated
-      const updatedPlan: SermonContent = {
-        introduction: (existingPlan as SermonContent)?.introduction || { outline: '' },
-        main: (existingPlan as SermonContent)?.main || { outline: '' },
-        conclusion: (existingPlan as SermonContent)?.conclusion || { outline: '' }
-      };
-
-      // The section was validated above; update only that aggregate.
-      const sectionKey = section.toLowerCase() as keyof SermonContent;
-      updatedPlan[sectionKey] = normalizedPlan[sectionKey];
-
-      // Save to database
-      await sermonsRepository.updateSermonContent(id, updatedPlan);
-      console.log(`Saved ${section} plan to database for sermon ${id}`);
-    } catch (saveError: unknown) {
-      const boundary = legacyBoundaryResponse(saveError);
-      if (boundary) return boundary;
-      const errorMessage = saveError instanceof Error ? saveError.message : ERROR_MESSAGES.UNKNOWN_ERROR;
-      console.error(`Error saving plan to database: ${errorMessage}`);
-      // Continue and return the plan even if saving fails
-    }
-
-    return jsonNoStore(normalizedPlan);
-  } catch (error: unknown) {
-    if (isUsageCapReachedError(error)) return usageCapResponse(error);
-    const errorMessage = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR;
-    console.error(`Error generating plan for section ${section}:`, error);
-    return legacyBoundaryResponse(error) ?? jsonNoStore(
-      { error: 'Failed to generate plan', details: errorMessage },
-      { status: 500 }
-    );
-  }
+  // A whole section generated and SAVED here is the legacy write road; only shipped bundles ask for
+  // it. The plan is written only through the data engine, so it gets the 426 refusal.
+  return refuseLegacyWriteRoute(request);
 }
 
 // Helper function to generate content for a specific outline point
@@ -328,90 +241,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-// PUT /api/sermons/:id/plan - saves sermon plan to database
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const uid = await getRequiredAuthenticatedUid(request);
-    if (!uid) {
-      return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
-    // Get the sermon to confirm it exists
-    const sermon = await sermonsRepository.fetchSermonById(id);
-    if (!sermon) {
-      return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
-    }
-    if (sermon.userId !== uid) {
-      return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    // Parse the request body to get the plan
-    const planData = await request.json();
-    console.log("get new planData to save", planData);
-
-    // Validate the plan structure
-    if (!planData || typeof planData !== 'object') {
-      return jsonNoStore({ error: 'Invalid plan data' }, { status: 400 });
-    }
-
-    /**
-     * ONLY THE SECTIONS THE CALLER STATES.
-     *
-     * This used to fill in every absent section with an empty outline and write the
-     * whole plan, so a save of ONE point in ONE section carried the caller's hours-old
-     * copy of the other two — and replaced an introduction rewritten on another device
-     * that morning, silently. An absent section now means "not mine to write".
-     */
-    const sections: Partial<SermonContent> = {};
-    (['introduction', 'main', 'conclusion'] as const).forEach((key) => {
-      const given = planData[key];
-      if (!given) return;
-      sections[key] = {
-        outline: given.outline || '',
-        ...(given.outlinePoints && { outlinePoints: given.outlinePoints }),
-      };
-    });
-
-    if (!Object.keys(sections).length) {
-      return jsonNoStore({ error: 'Invalid plan data' }, { status: 400 });
-    }
-
-    await sermonsRepository.updateSermonContentSections(id, sections);
-
-    return jsonNoStore({ success: true, plan: sections });
-  } catch (error: unknown) {
-    const boundary = legacyBoundaryResponse(error);
-    if (boundary) return boundary;
-    if (isUsageCapReachedError(error)) return usageCapResponse(error);
-    const { id } = await params;
-    console.error(`Error saving plan for sermon ${id}:`, error);
-    return jsonNoStore(
-      { error: 'Failed to save plan', details: (error as Error).message },
-      { status: 500 }
-    );
-  }
-}
-
-function normalizeGeneratedSection(section: string, plan: SermonContent): SermonContent {
-  // Validate and normalize the plan structure
-  const normalizedPlan = {
-    introduction: { outline: '' },
-    main: { outline: '' },
-    conclusion: { outline: '' }
-  };
-
-  // Update only the section that was generated, ensuring all sections exist
-  if (section.toLowerCase() === 'introduction') {
-    normalizedPlan.introduction = plan.introduction || { outline: '' };
-  } else if (section.toLowerCase() === 'main') {
-    normalizedPlan.main = plan.main || { outline: '' };
-  } else if (section.toLowerCase() === 'conclusion') {
-    normalizedPlan.conclusion = plan.conclusion || { outline: '' };
-  }
-
-  return normalizedPlan;
+/** PUT stays for shipped bundles: the plan text is written only through the data engine (426 refusal). */
+export async function PUT(request: Request) {
+  return refuseLegacyWriteRoute(request);
 }

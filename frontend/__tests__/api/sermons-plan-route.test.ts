@@ -89,8 +89,6 @@ describe('Sermon Plan Route', () => {
 
     // Setup repository mock
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(mockSermon);
-    (sermonsRepository.updateSermonContent as jest.Mock).mockResolvedValue({});
-    (sermonsRepository.updateSermonContentSections as jest.Mock).mockResolvedValue({});
     (sermonsRepository.fetchAdjacentOutlinePoints as jest.Mock).mockResolvedValue({
       previousPoint: { text: 'Prev' },
       nextPoint: { text: 'Next' },
@@ -117,7 +115,11 @@ describe('Sermon Plan Route', () => {
     console.error = originalConsoleError;
   });
 
-  describe('GET /api/sermons/:id/plan (without section)', () => {
+  describe('GET /api/sermons/:id/plan without outlinePointId (legacy whole-section save, closed)', () => {
+    const withSection = (section: string | null) => ({
+      nextUrl: { searchParams: { get: jest.fn((key: string) => (key === 'section' ? section : null)) } },
+    }) as unknown as NextRequest;
+
     it('returns 401 before loading the sermon when the token is missing', async () => {
       (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValueOnce(null);
 
@@ -127,184 +129,13 @@ describe('Sermon Plan Route', () => {
       expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
     });
 
-    it('should return 400 when section parameter is missing', async () => {
-      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
+    it.each([null, 'introduction', 'main', 'conclusion'])('refuses section=%s with 426, generating and saving nothing', async section => {
+      const response = await GET(withSection(section), { params: Promise.resolve({ id: 'test-sermon-123' }) });
 
-      expect(response.status).toBe(400);
-      expect(responseData).toHaveProperty('error');
-      expect(responseData.error).toContain('Section parameter is required');
-    });
-  });
-
-  describe('GET /api/sermons/:id/plan?section=<section>', () => {
-    it('returns 403 without invoking AI for a non-owner', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({
-        ...mockSermon,
-        userId: 'other-user',
-      });
-      const request = {
-        nextUrl: { searchParams: { get: jest.fn((key: string) => key === 'section' ? 'introduction' : null) } },
-      } as unknown as NextRequest;
-
-      const response = await GET(request, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-
-      expect(response.status).toBe(403);
-      expect(generatePlanForSection).not.toHaveBeenCalled();
-    });
-
-    it('should generate plan for specific section', async () => {
-      // Reset the mock for this specific test
-      (generatePlanForSection as jest.Mock).mockClear();
-      (generatePlanForSection as jest.Mock).mockResolvedValue({
-        plan: { 
-          introduction: { outline: 'Introduction outline' },
-          main: { outline: '' },
-          conclusion: { outline: '' }
-        },
-        success: true
-      });
-      
-      // Mock request with section parameter
-      const mockRequestWithSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'introduction';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      // Verify only one section was generated
-      expect(generatePlanForSection).toHaveBeenCalledTimes(1);
-      expect(generatePlanForSection).toHaveBeenCalledWith(mockSermon, 'introduction', 'memory', 'user-123');
-
-      // Verify response structure
-      expect(responseData).toHaveProperty('introduction');
-      expect(responseData).toHaveProperty('main');
-      expect(responseData).toHaveProperty('conclusion');
-    });
-
-    it('should return 404 when sermon is not found', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
-
-      const mockRequestWithSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'main';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'missing-sermon' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(responseData).toHaveProperty('error');
-    });
-
-    it('should return 500 when plan generation fails', async () => {
-      (generatePlanForSection as jest.Mock).mockResolvedValue({
-        plan: { introduction: { outline: '' }, main: { outline: '' }, conclusion: { outline: '' } },
-        success: false,
-      });
-
-      const mockRequestWithSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'conclusion';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(responseData).toHaveProperty('error');
-    });
-
-    it('returns migration refusal when a document transitions during AI generation', async () => {
-      (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValueOnce(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
-      const request = { nextUrl: { searchParams: { get: (key: string) => key === 'section' ? 'main' : null } } } as unknown as NextRequest;
-      const response = await GET(request, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       expect(response.status).toBe(426);
       expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
-    });
-
-    it('should still return plan when save fails', async () => {
-      (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValue(new Error('save failed'));
-
-      const mockRequestWithSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'introduction';
-              if (param === 'style') return 'memory';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(responseData).toHaveProperty('introduction');
-    });
-
-    it('should return 500 when generation throws', async () => {
-      (generatePlanForSection as jest.Mock).mockRejectedValue(new Error('AI error'));
-
-      const mockRequestWithSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'main';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(responseData).toHaveProperty('error');
-    });
-
-    it('should return 400 for invalid section parameter', async () => {
-      // Mock request with invalid section
-      const mockRequestWithInvalidSection = {
-        nextUrl: {
-          searchParams: {
-            get: jest.fn().mockImplementation((param) => {
-              if (param === 'section') return 'invalid-section';
-              return null;
-            })
-          }
-        }
-      } as unknown as NextRequest;
-
-      const response = await GET(mockRequestWithInvalidSection, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(responseData).toHaveProperty('error');
-      expect(responseData.error).toContain('Invalid section');
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
+      expect(generatePlanForSection).not.toHaveBeenCalled();
     });
   });
 
@@ -517,78 +348,24 @@ describe('Sermon Plan Route', () => {
     });
   });
 
-  describe('PUT /api/sermons/:id/plan', () => {
-    it('should return 404 when sermon is not found', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(null);
+  describe('PUT /api/sermons/:id/plan (legacy write route, closed)', () => {
+    const put = () => PUT(
+      { json: jest.fn().mockResolvedValue({ main: { outline: 'Main, edited here' } }) } as unknown as NextRequest,
+    );
 
-      const mockRequest = {
-        json: jest.fn().mockResolvedValue({}),
-      } as unknown as NextRequest;
+    it('answers 401 without a verified token and reads nothing', async () => {
+      (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValueOnce(null);
 
-      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'missing-sermon' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(responseData).toHaveProperty('error');
+      expect((await put()).status).toBe(401);
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
     });
 
-    it('should return 400 for invalid plan data', async () => {
-      const mockRequest = {
-        json: jest.fn().mockResolvedValue(null),
-      } as unknown as NextRequest;
+    it('answers 426 data-engine-required with a token and writes nothing', async () => {
+      const response = await put();
 
-      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(responseData).toHaveProperty('error');
-    });
-
-    /**
-     * ONE PERSON, TWO DEVICES, HOURS APART. The plan editor saves ONE point of ONE
-     * section, but used to PUT the whole plan — so the two sections it never touched
-     * travelled as this laptop's hours-old copy and replaced an introduction rewritten
-     * on the phone that morning. Nothing warned anybody.
-     */
-    it('writes ONLY the sections the caller states, leaving the others untouched', async () => {
-      const mockRequest = {
-        json: jest.fn().mockResolvedValue({
-          main: { outline: 'Main, edited here', outlinePoints: { p2: 'Main point' } },
-        }),
-      } as unknown as NextRequest;
-
-      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-
-      expect(response.status).toBe(200);
-      expect(sermonsRepository.updateSermonContentSections).toHaveBeenCalledWith('test-sermon-123', {
-        main: { outline: 'Main, edited here', outlinePoints: { p2: 'Main point' } },
-      });
-      // NOT the whole plan: an absent section must not be written at all, and must
-      // certainly not be invented as an empty one.
-      const [, written] = (sermonsRepository.updateSermonContentSections as jest.Mock).mock.calls[0];
-      expect(Object.keys(written)).toEqual(['main']);
-    });
-
-    it('should save plan content and return success', async () => {
-      const mockRequest = {
-        json: jest.fn().mockResolvedValue({
-          introduction: { outline: 'Intro', outlinePoints: { p1: 'Intro point' } },
-          main: { outline: 'Main', outlinePoints: { p2: 'Main point' } },
-          conclusion: { outline: 'Conclusion' },
-        }),
-      } as unknown as NextRequest;
-
-      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      const responseData = await response.json();
-
-      expect(sermonsRepository.updateSermonContentSections).toHaveBeenCalledWith(
-        'test-sermon-123',
-        expect.objectContaining({ introduction: expect.any(Object), main: expect.any(Object), conclusion: expect.any(Object) })
-      );
-      expect(responseData).toHaveProperty('success', true);
-      expect(responseData.plan).toHaveProperty('introduction');
-      expect(responseData.plan).toHaveProperty('main');
-      expect(responseData.plan).toHaveProperty('conclusion');
+      expect(response.status).toBe(426);
+      expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
     });
   });
 });

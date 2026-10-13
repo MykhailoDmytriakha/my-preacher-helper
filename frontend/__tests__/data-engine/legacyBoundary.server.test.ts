@@ -1,5 +1,4 @@
 /** @jest-environment node */
-import { SeriesRepository } from '@/api/repositories/series.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { assertLegacyWritable, createLegacyDocument, deleteLegacyDocument, legacyBoundaryResponse, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { removeTagFromSermons } from '@/data-engine/serverEdit.server';
@@ -195,16 +194,6 @@ describe('atomic legacy boundary', () => {
 
 
 describe('legacy repository cascades', () => {
-  const repository = new SeriesRepository();
-  // Series are engine-owned (engineOwnedCollections.ts): the legacy sermon delete would detach the
-  // sermon from its series, so it is refused whole, before anything is written.
-  it('refuses the legacy sermon delete cascade whole when a series would change', async () => {
-    records.set('series/list', { userId: 'owner', items: [{ id: 's', type: 'sermon', refId: 'a', position: 1 }], sermonIds: ['a'] });
-    records.set('sermons/a', { userId: 'owner', title: 'Keep', seriesId: 'list' });
-    const original = JSON.stringify([...records]);
-    await expect(repository.deleteSermonAndDetachFromAllSeries('a', 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
-    expect(JSON.stringify([...records])).toBe(original);
-  });
   // Sermons are engine-owned: each sermon is rewritten by an engine update command, not a legacy
   // transaction. The engine's transport is the in-memory `records`; the command is judged by the real
   // applyCommand, so refusals and merges are the production ones.

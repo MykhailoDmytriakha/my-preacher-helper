@@ -474,249 +474,32 @@ describe('Thoughts API route additional coverage', () => {
     });
   });
 
-  describe('DELETE', () => {
-    it('removes a thought from the sermon', async () => {
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'to remove' },
-      });
+  describe.each([['DELETE'], ['PUT']] as const)('%s (legacy write route, closed)', method => {
+    const call = (request: Request) => (method === 'DELETE' ? DELETE(request) : PUT(request));
+    const body = { sermonId: 'sermon-1', thought: { id: 'thought-1', text: 'x' } };
 
-      const response = await DELETE(request);
-      const data = await response.json();
+    it('answers 401 without a verified token and writes nothing', async () => {
+      const request = { json: async () => body, url: 'http://localhost/api/thoughts', headers: new Headers() } as unknown as Request;
 
-      expect(response.status).toBe(200);
-      expect(data).toEqual({ message: 'Thought deleted successfully.' });
-      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledTimes(1);
+      expect((await call(request)).status).toBe(401);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
+      expect(runTransactionMock).not.toHaveBeenCalled();
+      expect(mockEditOwnedDocument).not.toHaveBeenCalled();
     });
 
-    it('returns 400 when sermonId or thought is missing', async () => {
-      const request = createJsonRequest({ sermonId: 'sermon-1' });
+    it('answers 426 data-engine-required with a token and writes nothing', async () => {
+      const response = await call(createJsonRequest(body));
 
-      const response = await DELETE(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'sermonId and thought are required' });
-    });
-  });
-
-  describe('PUT', () => {
-    it('returns 400 when sermonId or thought is missing', async () => {
-      const request = createJsonRequest({ sermonId: 'sermon-1' });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'sermonId and thought are required' });
-    });
-
-    it('returns 400 when thought is missing required fields', async () => {
-      fetchSermonByIdMock.mockResolvedValueOnce({
-        id: 'sermon-1',
-        thoughts: [{ id: 'thought-1', text: 'original' }],
-        userId: 'user-1',
-      });
-
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1' }, // missing text
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'Thought is missing required fields' });
-    });
-
-    it('returns 400 when thought.id is missing', async () => {
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { text: 'missing id' },
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data).toEqual({ error: 'Thought id is required' });
-    });
-
-    it('returns 404 when sermon is not found', async () => {
-      fetchSermonByIdMock.mockResolvedValueOnce(null);
-
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'update' },
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data).toEqual({ error: 'Sermon not found' });
-    });
-
-    it('returns 404 when thought is not found in sermon', async () => {
-      fetchSermonByIdMock.mockResolvedValueOnce({
-        id: 'sermon-1',
-        thoughts: [],
-        userId: 'user-1',
-      });
-
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'update' },
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data).toEqual({ error: 'Thought not found in sermon' });
-    });
-
-    it('updates a thought in a transaction', async () => {
-      const oldThought = {
-        id: 'thought-1',
-        text: 'old',
-        date: '2024-01-01',
-        tags: ['Tag1'],
-        outlinePointId: 'op-old',
-        position: 3,
-      };
-
-      fetchSermonByIdMock.mockResolvedValueOnce({
-        id: 'sermon-1',
-        thoughts: [oldThought],
-        userId: 'user-1',
-      });
-
-      const sermonDocRef = { id: 'sermon-1', update: jest.fn() };
-      docMock.mockReturnValueOnce(sermonDocRef);
-
-      const transactionUpdateMock = jest.fn();
-      runTransactionMock.mockImplementationOnce(async (callback: (transaction: any) => Promise<void>) => {
-        const transaction = {
-          get: jest.fn().mockResolvedValue({
-            exists: true,
-            data: () => ({ thoughts: [oldThought], userId: 'user-1' }),
-          }),
-          update: transactionUpdateMock,
-        };
-        await callback(transaction);
-      });
-
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: {
-          id: 'thought-1',
-          text: 'new',
-          outlinePointId: 'op-new',
-        },
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data).toEqual(
-        expect.objectContaining({
-          id: 'thought-1',
-          text: 'new',
-          date: '2024-01-01',
-          tags: ['Tag1'],
-          outlinePointId: 'op-new',
-          position: 3,
-        })
-      );
-
-      expect(transactionUpdateMock).toHaveBeenCalledWith(sermonDocRef, {
-        thoughts: expect.arrayContaining([
-          expect.objectContaining({ id: 'thought-1', text: 'new' }),
-        ]),
-        updatedAt: expect.any(String),
-        // Every writer of an aggregate advances its counter, or the counter lies —
-        // and this Admin mirror bypasses Security Rules, so nothing else catches it.
-        'rev.thoughts': { __increment: 1 },
-      });
-    });
-
-    it('removes deprecated structural tags during thought updates', async () => {
-      const oldThought = {
-        id: 'thought-1',
-        text: 'old',
-        date: '2024-01-01',
-        tags: ['Основная часть', 'Примеры'],
-      };
-
-      fetchSermonByIdMock.mockResolvedValueOnce({
-        id: 'sermon-1',
-        thoughts: [oldThought],
-        userId: 'user-1',
-      });
-
-      const sermonDocRef = { id: 'sermon-1', update: jest.fn() };
-      docMock.mockReturnValueOnce(sermonDocRef);
-
-      const transactionUpdateMock = jest.fn();
-      runTransactionMock.mockImplementationOnce(async (callback: (transaction: any) => Promise<void>) => {
-        const transaction = {
-          get: jest.fn().mockResolvedValue({
-            exists: true,
-            data: () => ({ thoughts: [oldThought], userId: 'user-1' }),
-          }),
-          update: transactionUpdateMock,
-        };
-        await callback(transaction);
-      });
-
-      const response = await PUT(createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'new' },
-      }));
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.tags).toEqual(['Примеры']);
-      expect(transactionUpdateMock).toHaveBeenCalledWith(sermonDocRef, {
-        thoughts: [expect.objectContaining({ id: 'thought-1', tags: ['Примеры'] })],
-        updatedAt: expect.any(String),
-        'rev.thoughts': { __increment: 1 },
-      });
-    });
-
-    it('returns 500 when transaction fails', async () => {
-      const oldThought = {
-        id: 'thought-1',
-        text: 'old',
-        date: '2024-01-01',
-        tags: ['Tag1'],
-      };
-
-      fetchSermonByIdMock.mockResolvedValueOnce({
-        id: 'sermon-1',
-        thoughts: [oldThought],
-        userId: 'user-1',
-      });
-
-      runTransactionMock.mockRejectedValueOnce(new Error('transaction failed'));
-
-      const request = createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'new' },
-      });
-
-      const response = await PUT(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(500);
-      expect(data).toEqual({ error: 'Failed to update thought.' });
+      expect(response.status).toBe(426);
+      expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+      expect(fetchSermonByIdMock).not.toHaveBeenCalled();
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
+      expect(runTransactionMock).not.toHaveBeenCalled();
+      expect(mockEditOwnedDocument).not.toHaveBeenCalled();
     });
   });
 
-  describe('ownership enforcement across mutation methods', () => {
+  describe('ownership enforcement on the manual POST', () => {
     beforeEach(() => {
       fetchSermonByIdMock.mockResolvedValue({
         id: 'sermon-1',
@@ -730,14 +513,6 @@ describe('Thoughts API route additional coverage', () => {
         sermonId: 'sermon-1',
         thought: { id: 'thought-1', text: 'new', date: '2024-01-01', tags: [] },
       }, 'http://localhost/api/thoughts?manual=true'))],
-      ['DELETE', () => DELETE(createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'old' },
-      }))],
-      ['PUT', () => PUT(createJsonRequest({
-        sermonId: 'sermon-1',
-        thought: { id: 'thought-1', text: 'new' },
-      }))],
     ])('returns 403 for a non-owner on %s', async (_label, invoke) => {
       const response = await invoke();
 
