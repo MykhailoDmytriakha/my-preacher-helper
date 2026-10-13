@@ -14,6 +14,7 @@ import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useAuth } from '@/providers/AuthProvider';
 import { hydrateSeries } from '@/utils/seriesDocument';
+import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
 
 import type { Series, SeriesItem } from '@/models/models';
 
@@ -78,9 +79,13 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
 }
 
 interface ChoicesProps { current: SeriesItem[]; selected: Member[]; onChange: (refs: Member[]) => Promise<void> }
+interface ChoiceRow { id: string; title: string; matches?: (tokens: string[]) => boolean }
+const titleMatches = (title: string) => (tokens: string[]) => tokens.every(token => title.toLocaleLowerCase().includes(token));
 function SermonChoices(props: ChoicesProps) {
-  const source = useDashboardSermons();
-  return <MemberChoices {...props} type="sermon" rows={source.sermons.map(sermon => ({ id: sermon.id, title: sermon.title }))}
+  const { t } = useTranslation(), source = useDashboardSermons();
+  // The sermon list's own search: title, verse, thought text and tags.
+  return <MemberChoices {...props} type="sermon" rows={source.sermons.map(sermon => ({ id: sermon.id, title: sermon.title,
+    matches: (tokens: string[]) => matchesSermonQuery(sermon, tokens, { searchInTitleVerse: true, searchInThoughts: true, searchInTags: true }, t) }))}
     loading={source.loading} error={source.error} />;
 }
 function GroupChoices(props: ChoicesProps) {
@@ -89,13 +94,14 @@ function GroupChoices(props: ChoicesProps) {
     loading={source.loading} error={source.error} />;
 }
 function MemberChoices({ type, rows, loading, error, current, selected, onChange }: ChoicesProps & {
-  type: Member['type']; rows: { id: string; title: string }[]; loading: boolean; error: unknown;
+  type: Member['type']; rows: ChoiceRow[]; loading: boolean; error: unknown;
 }) {
   const { t } = useTranslation(), [query, setQuery] = useState('');
   const selectedOfType = selected.filter(ref => ref.type === type);
-  const choices = [...rows, ...selectedOfType.filter(ref => !rows.some(row => row.id === ref.refId)).map(ref => ({ id: ref.refId, title: t(UNKNOWN_LABEL) }))]
+  const unknown: ChoiceRow[] = selectedOfType.filter(ref => !rows.some(row => row.id === ref.refId)).map(ref => ({ id: ref.refId, title: t(UNKNOWN_LABEL) }));
+  const choices = [...rows, ...unknown]
     .filter(row => !current.some(item => same(item, { type, refId: row.id })) || selectedOfType.some(ref => ref.refId === row.id))
-    .filter(row => row.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+    .filter(row => (row.matches ?? titleMatches(row.title))(tokenizeQuery(query)));
   return <div className="space-y-3">
     <input aria-label={t('common.search')} value={query} onChange={event => setQuery(event.target.value)} className="w-full rounded-lg border bg-transparent px-3 py-2" />
     {loading && <p>{t('common.loading')}</p>}
@@ -156,7 +162,7 @@ function TargetChoices({ action, member, disabled }: { action: ReturnType<typeof
   return <fieldset disabled={disabled} className="space-y-3">
     <input aria-label={t('common.search')} value={query} onChange={event => setQuery(event.target.value)} className="w-full rounded-lg border bg-transparent px-3 py-2" />
     <label className={CHOICE_STYLE}><input type="radio" name="target-series" checked={!targetId} onChange={() => change('')} />{t('addSermon.noSeriesOption')}</label>
-    <div className="max-h-80 space-y-2 overflow-auto">{rows.filter(row => (row.title ?? row.theme ?? '').toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row =>
+    <div className="max-h-80 space-y-2 overflow-auto">{rows.filter(row => [row.title, row.theme, row.bookOrTopic].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row =>
       <label key={row.id} className={CHOICE_STYLE}><input type="radio" name="target-series" checked={targetId === row.id} onChange={() => change(row.id)} />
         <span>{row.title || row.theme || t(UNKNOWN_LABEL)}</span></label>)}</div>
   </fieldset>;
