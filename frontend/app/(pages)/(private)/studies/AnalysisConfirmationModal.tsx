@@ -9,7 +9,8 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 
-import { BibleLocale } from './bibleData';
+import type { AppLocale } from '@/utils/appLocale';
+
 
 export interface AnalysisResultData {
     title?: string;
@@ -22,7 +23,7 @@ interface AnalysisConfirmationModalProps {
     onClose: () => void;
     onApply: (data: AnalysisResultData) => void;
     result: AnalysisResultData | null;
-    bibleLocale: BibleLocale;
+    bibleLocale: AppLocale;
     currentTitle?: string;
     currentTags?: string[];
     currentScriptureRefs?: ScriptureReference[];

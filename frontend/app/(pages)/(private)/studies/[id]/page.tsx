@@ -43,15 +43,14 @@ import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraft
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
-import { BibleLocale } from '../bibleData';
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
-import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
@@ -64,11 +63,13 @@ import { useNoteAutoSave } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
+import type { AppLocale } from '@/utils/appLocale';
+
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
-function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: BibleLocale) {
+function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: AppLocale) {
     const noteId = useRouteId();
 
     const searchQuery = searchParams.get('search')?.trim() || '';

@@ -5,10 +5,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { resolveBibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
@@ -150,7 +150,7 @@ export default function SourceNotePickerModal({
     return () => document.removeEventListener('keydown', onTab);
   }, [mounted]);
 
-  const bibleLocale = useMemo(() => resolveBibleLocale(i18n.language), [i18n.language]);
+  const bibleLocale = useMemo(() => resolveAppLocale(i18n.language), [i18n.language]);
 
   const tokens = useMemo(() => query.trim().toLowerCase().split(/\s+/).filter(Boolean), [query]);
 

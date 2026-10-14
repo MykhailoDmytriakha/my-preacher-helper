@@ -1,4 +1,4 @@
-import { parseReferenceText } from '../referenceParser';
+import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 
 describe('referenceParser', () => {
   const aliasCases: Array<[string, string]> = [

@@ -1,5 +1,5 @@
-import { getBookById } from '@/(pages)/(private)/studies/bibleData';
-import { parseReferenceText } from '@/(pages)/(private)/studies/referenceParser';
+import { getBookById } from '@/utils/bibleBooks';
+import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { chapterCount } from '@/utils/versification';
 
 import type { BibleId } from '@/utils/bibles';

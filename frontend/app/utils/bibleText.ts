@@ -1,4 +1,4 @@
-import { BIBLE_BOOKS_DATA } from '@/(pages)/(private)/studies/bibleData';
+import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { BIBLE_TEXT_CACHE, isBookShaped } from '@/utils/bibleTextCache';
 import { chapterCount } from '@/utils/versification';

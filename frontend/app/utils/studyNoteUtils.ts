@@ -1,8 +1,7 @@
 import { formatScriptureReference, formatScriptureReferences, scriptureReferenceSearchText } from '@/utils/scriptureReference';
 
-import { BibleLocale } from '../(pages)/(private)/studies/bibleData';
-
 import type { StudyNote } from '@/models/models';
+import type { AppLocale } from '@/utils/appLocale';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 /**
@@ -13,7 +12,7 @@ import type { ScriptureRefShape } from '@/utils/scriptureReference';
  */
 export function studyNoteOwnName(
   note: { title?: string; scriptureRefs?: readonly ScriptureRefShape[] | null },
-  locale: BibleLocale
+  locale: AppLocale
 ): string | undefined {
   const title = note.title?.trim();
   if (title) return title;
@@ -31,7 +30,7 @@ export function studyNoteOwnName(
 export function matchesStudyNoteQuery(
   note: StudyNote,
   tokens: string[],
-  bibleLocale: BibleLocale
+  bibleLocale: AppLocale
 ): boolean {
   if (tokens.length === 0) return true;
   const refs = (note.scriptureRefs ?? [])
@@ -47,7 +46,7 @@ export function matchesStudyNoteQuery(
  */
 export function formatStudyNoteForCopy(
   note: StudyNote,
-  bibleLocale: BibleLocale
+  bibleLocale: AppLocale
 ): string {
   let markdown = '';
 

@@ -1,5 +1,4 @@
-import { getLocalizedAbbrev, getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
-import { BOOK_ABBREVIATIONS } from '@/(pages)/(private)/studies/bookAbbreviations';
+import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { CANONICAL_BIBLE, referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -39,8 +38,8 @@ export interface ScriptureRefShape {
 
 export interface ScriptureRefFormat {
   /**
-   * The interface language. Omitted for `short`, the book falls back to the Russian
-   * abbreviation table — the behaviour the app has always had for a missing locale.
+   * The interface language. Omitted for `short`, the book is abbreviated in Russian — the
+   * behaviour the app has always had for a missing locale.
    */
   locale?: AppLocale;
   style?: ScriptureRefStyle;
@@ -49,7 +48,7 @@ export interface ScriptureRefFormat {
 function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat): string {
   if (style === 'canonical') return book;
   if (style === 'long') return getLocalizedBookName(book, locale ?? 'en');
-  return locale ? getLocalizedAbbrev(book, locale) : BOOK_ABBREVIATIONS[book] || book;
+  return getLocalizedAbbrev(book, locale ?? 'ru');
 }
 
 /**

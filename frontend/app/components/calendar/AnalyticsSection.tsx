@@ -11,7 +11,6 @@ import { format } from "date-fns";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BookInfo } from "@/(pages)/(private)/studies/bibleData";
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
 import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import MonthlySermonsModal from "@/components/calendar/MonthlySermonsModal";
@@ -19,6 +18,7 @@ import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { Sermon } from "@/models/models";
 import { formatMonthTitle } from '@/utils/appLocale';
+import { BookInfo } from "@/utils/bibleBooks";
 
 interface AnalyticsSectionProps {
     sermonsByDate: Record<string, Sermon[]>;

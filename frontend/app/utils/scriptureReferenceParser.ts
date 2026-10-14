@@ -1,6 +1,5 @@
 import { ScriptureReference } from '@/models/models';
-
-import { getBookByName, getBookIds } from './bibleData';
+import { getBookByName, getBookIds } from '@/utils/bibleBooks';
 
 type BookMatch = { book: string; remaining: string[] };
 

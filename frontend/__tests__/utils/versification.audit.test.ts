@@ -14,7 +14,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { getBookIds } from '@/(pages)/(private)/studies/bibleData';
+import { getBookIds } from '@/utils/bibleBooks';
 import { numberingEntries, placesIn, type VersePlace } from '@/utils/versification';
 
 import type { BibleId } from '@/utils/bibles';

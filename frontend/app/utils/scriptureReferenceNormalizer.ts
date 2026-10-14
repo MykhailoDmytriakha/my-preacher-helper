@@ -1,11 +1,12 @@
-import { BIBLE_BOOKS_DATA, getBookByName, getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
-import { getReferenceBookAliases, parseReferenceText } from '@/(pages)/(private)/studies/referenceParser';
 import { detectTextLocale } from '@/utils/appLocale';
+import { BIBLE_BOOKS_DATA, getBookByName, getLocalizedBookName } from '@/utils/bibleBooks';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
+import { getReferenceBookAliases, parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { formatRussianOrdinal } from '@utils/russianOrdinals';
 
-import type { BibleLocale } from '@/(pages)/(private)/studies/bibleData';
+import type { AppLocale } from '@/utils/appLocale';
+
 
 const REFERENCE_PREFIX = '(^|[\\s([{"\'«„“])';
 const ORDINAL_SUFFIX = '(?:[-–—]?(?:я|й|ая|ый|ой|ое|го|му|м|ю|е|х))?';
@@ -56,13 +57,13 @@ type ParsedScriptureReference = NonNullable<ReturnType<typeof parseReferenceText
 const hasExplicitReferenceSignal = (value: string, verse?: string): boolean =>
   Boolean(verse) || /[:]|(?:^|\s)(?:глава|главу|главе|главы|глав|стих|стиха|стихе|стихи|стихов|chapter|chapters|chap\.?|verse|verses|v\.?)(?:\s|$)/iu.test(value);
 
-const detectLocale = (value: string): BibleLocale => detectTextLocale(value);
+const detectLocale = (value: string): AppLocale => detectTextLocale(value);
 
 // The reference was written in the text's own language, so it is numbered by that language's
 // Bible and printed back in it unchanged: "Пс 22" stays Psalm 22.
 const formatReferenceForProse = (
   ref: NonNullable<ReturnType<typeof parseReferenceText>>,
-  locale: BibleLocale
+  locale: AppLocale
 ): string => {
   const formatted = formatScriptureReference({ ...ref, bible: referenceBibleFor(locale) }, { locale: locale });
   return locale === 'en'
@@ -105,7 +106,7 @@ const parseReferenceForTts = (
   chapter: string,
   verse: string,
   toVerse: string | undefined,
-  locale: BibleLocale
+  locale: AppLocale
 ): ParsedScriptureReference | null => {
   const parsed = parseReferenceText([bookAlias, chapter, verse, toVerse].filter(Boolean).join(' '));
   if (parsed) {

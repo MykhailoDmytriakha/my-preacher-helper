@@ -3,9 +3,10 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { getLocalizedAbbrev, getLocalizedBookName, resolveBibleLocale, type BibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
+import { resolveAppLocale } from '@/utils/appLocale';
+import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, bookSlug, fetchBookText, parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
 import { placeIn } from '@/utils/versification';
@@ -15,6 +16,8 @@ import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './Bib
 import { bookSequence, booksOf } from './bookOrder';
 import { currentEntryId, placeInBook, readEntryFrom, readEntryPlace, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
 import { buildMinimapLayout } from './minimapLayout';
+
+import type { AppLocale } from '@/utils/appLocale';
 
 type Place = { chapter: number; verse: number };
 
@@ -101,7 +104,7 @@ function WayBack({ label, floating, onClick }: { label: string; floating: boolea
 }
 
 /** The end of the book leads on in the translation's order: after Jude comes Romans in the Synodal. */
-function BookEnd({ bookId, bible, locale, wide, onOpen }: { bookId: string; bible: BibleId; locale: BibleLocale; wide: boolean; onOpen: (bookId: string) => void }) {
+function BookEnd({ bookId, bible, locale, wide, onOpen }: { bookId: string; bible: BibleId; locale: AppLocale; wide: boolean; onOpen: (bookId: string) => void }) {
   const { t } = useTranslation();
   const order = bookSequence(booksOf(bible));
   const at = order.indexOf(bookId);
@@ -137,7 +140,7 @@ function BookEnd({ bookId, bible, locale, wide, onOpen }: { bookId: string; bibl
 
 /** The chapter button; a book of one chapter says so instead. */
 function ChapterControl({ bookId, bible, locale, current, text, wide, onPick }: {
-  bookId: string; bible: BibleId; locale: BibleLocale; current: number; text: BookText; wide: boolean; onPick: (chapter: number) => void;
+  bookId: string; bible: BibleId; locale: AppLocale; current: number; text: BookText; wide: boolean; onPick: (chapter: number) => void;
 }) {
   const { t } = useTranslation();
   if (text.chapters.length === 1) {
@@ -170,7 +173,7 @@ function LoadNotice({ status, onRetry }: { status: LoadState['status']; onRetry:
 /** A phone, reading: the way back and the book's pill under the thumb. Nothing when neither is due. */
 function PhoneBar({ wayBack, onWayBack, showPill, bookId, bible, currentChapter, text, locale, onOpen }: {
   wayBack: string | null; onWayBack: () => void; showPill: boolean;
-  bookId: string; bible: BibleId; currentChapter: number; text: BookText; locale: BibleLocale; onOpen: (bookId: string, place: Place) => void;
+  bookId: string; bible: BibleId; currentChapter: number; text: BookText; locale: AppLocale; onOpen: (bookId: string, place: Place) => void;
 }) {
   if (!wayBack && !showPill) return null;
   return (
@@ -194,7 +197,7 @@ function wayBackPlace(from: LastPlace | null, bookId: string | undefined, bible:
 
 export function BibleBookReader({ bookId, bible, initialPlace, initialBible, onOpenBook, onChangeBible }: BibleBookReaderProps) {
   const { t, i18n } = useTranslation();
-  const locale = resolveBibleLocale(i18n.language);
+  const locale = resolveAppLocale(i18n.language);
   const wide = useMediaQuery('(min-width: 768px)', false);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);

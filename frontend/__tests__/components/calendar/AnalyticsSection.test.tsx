@@ -1,5 +1,5 @@
 // Mock bibleData before any imports
-jest.mock('@/(pages)/(private)/studies/bibleData', () => {
+jest.mock('@/utils/bibleBooks', () => {
     const baseBooks = [
         { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },
         { id: 'Exodus', chapters: 40, names: { en: 'Exodus', ru: 'Исход', uk: 'Вихід' }, abbrev: { en: 'Exod', ru: 'Исх', uk: 'Вих' } },
@@ -67,7 +67,6 @@ jest.mock('@/(pages)/(private)/studies/bibleData', () => {
             const lower = name.toLowerCase();
             return books[name] || books[lower] || null;
         }),
-        BibleLocale: { en: 'en', ru: 'ru', uk: 'uk' }
     };
 });
 

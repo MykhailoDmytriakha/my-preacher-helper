@@ -1,5 +1,4 @@
-import { getBookIds } from '@/(pages)/(private)/studies/bibleData';
-
+import { getBookIds } from '@/utils/bibleBooks';
 
 import { NUMBERINGS, type Numbering, type TableId } from './numberings';
 import { KJV_TABLE, ORIGINAL_VERSE_COUNTS, SYNODAL_TABLE, type NumberingRule } from './tables';

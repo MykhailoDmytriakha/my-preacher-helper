@@ -2,8 +2,9 @@
 
 import { useTranslation } from 'react-i18next';
 
-import { getLocalizedAbbrev, getLocalizedBookName, resolveBibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { resolveAppLocale } from '@/utils/appLocale';
+import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { bookIdFromSlug, bookSlug } from '@/utils/bibleText';
 import { placeIn } from '@/utils/versification';
 
@@ -24,7 +25,7 @@ type BibleBookListProps = {
 
 export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: BibleBookListProps) {
   const { t, i18n } = useTranslation();
-  const locale = resolveBibleLocale(i18n.language);
+  const locale = resolveAppLocale(i18n.language);
   const lastBookId = lastPlace ? bookIdFromSlug(lastPlace.slug) : undefined;
   // "Continue" in the Bible read now, even when the place was left in another one.
   const continueAt = lastPlace && lastBookId

@@ -33,10 +33,9 @@ import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 
-
-import type { BibleLocale } from '../bibleData';
 import type { DocumentData } from '@/data-engine/types';
 import type { ScriptureReference, Sermon } from '@/models/models';
+import type { AppLocale } from '@/utils/appLocale';
 
 /**
  * A SERMON IS BORN FROM A NOTE — in the open, step by step.
@@ -109,7 +108,7 @@ export interface CreateSermonFromNoteModalProps {
  * app's notes, so "has a verse" alone would pick "1 Chr 1-9" over "1 Chr 4:9-10"; the
  * range is recognised by its `toChapter` and formatted as a range, not as verse 1.
  */
-export function pickVerseFromRefs(refs: ScriptureReference[], locale: BibleLocale): string {
+export function pickVerseFromRefs(refs: ScriptureReference[], locale: AppLocale): string {
   if (!refs || refs.length === 0) return '';
   const isRange = (ref: ScriptureReference) => typeof ref.toChapter === 'number' && ref.toChapter !== ref.chapter;
   const hasVerse = (ref: ScriptureReference) => typeof ref.fromVerse === 'number' && ref.fromVerse > 0;

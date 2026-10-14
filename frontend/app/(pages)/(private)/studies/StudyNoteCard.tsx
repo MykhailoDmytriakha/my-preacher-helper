@@ -26,12 +26,13 @@ import { UI_COLORS } from '@/utils/themeColors';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
-import { BibleLocale } from './bibleData';
+import type { AppLocale } from '@/utils/appLocale';
+
 
 
 interface StudyNoteCardProps {
   note: StudyNote;
-  bibleLocale: BibleLocale;
+  bibleLocale: AppLocale;
   isExpanded: boolean;
   /** Folds this one card open or shut, without leaving the list. */
   onToggleExpand: (noteId: string) => void;

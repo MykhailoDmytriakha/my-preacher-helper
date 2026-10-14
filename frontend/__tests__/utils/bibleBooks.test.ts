@@ -1,4 +1,4 @@
-import { getBookByName, getLocalizedAbbrev } from '../bibleData';
+import { getBookByName, getLocalizedAbbrev } from '@/utils/bibleBooks';
 
 describe('bibleData helpers', () => {
   it('resolves books by localized names and abbreviations', () => {

@@ -1,4 +1,4 @@
-import { getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
+import { getLocalizedBookName } from '@/utils/bibleBooks';
 import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
 
 /**

@@ -20,9 +20,8 @@ import ts from 'typescript';
 const APP = join(__dirname, '..', '..', 'app');
 const CYRILLIC = /[А-Яа-яЁёІіЇїЄєҐґ]/;
 const ALLOWED: Record<string, string> = {
-  [join('(pages)', '(private)', 'studies', 'bibleData.ts')]: 'Bible book names in every language',
-  [join('(pages)', '(private)', 'studies', 'bookAbbreviations.ts')]: 'book abbreviations people type, to read references',
-  [join('(pages)', '(private)', 'studies', 'referenceParser.ts')]: 'reference spellings people type, to read them',
+  [join('utils', 'bibleBooks.ts')]: 'Bible book names in every language',
+  [join('utils', 'scriptureReferenceParser.ts')]: 'reference spellings people type, to read them',
   [join('utils', 'scriptureReferenceNormalizer.ts')]: 'reference spellings people type, to read them',
   [join('utils', 'russianOrdinals.ts')]: 'Russian ordinal words, to read references such as «первое послание»',
   [join('components', 'calendar', 'calendarAnalytics.ts')]: 'reference spellings people type, to read them',

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { BIBLE_BOOKS_DATA } from '@/(pages)/(private)/studies/bibleData';
+import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import { PROTESTANT_BOOKS, SYNODAL_BOOKS, bookSequence, booksOf } from '@/components/bible/bookOrder';
 import { bookSlug } from '@/utils/bibleText';
 

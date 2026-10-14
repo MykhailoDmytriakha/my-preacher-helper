@@ -5,14 +5,16 @@ import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, 
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { getLocalizedAbbrev, getLocalizedBookName, type BibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { chapterCount } from '@/utils/versification';
 
 import { booksOf } from './bookOrder';
 import { placeFromReference, type GoToPlace } from './goTo';
+
+import type { AppLocale } from '@/utils/appLocale';
 
 
 type Place = { chapter: number; verse: number };
@@ -236,7 +238,7 @@ export function ChapterPicker({ bookId, bible, bookName, current, text, wide, on
 type BookChoicesProps = {
   bookId: string;
   bible: BibleId;
-  locale: BibleLocale;
+  locale: AppLocale;
   wide: boolean;
   /** The open book takes the focus; not where the line above it does. */
   focusCurrent: boolean;
@@ -291,11 +293,11 @@ function BookChoices({ bookId, bible, locale, wide, focusCurrent, onPick }: Book
  * The reader's own numbering — the Synodal text's, as its headings show it — so it is spelled here,
  * like the reader's other labels, and not through the stored-reference formatter (which renumbers psalms).
  */
-const placeName = (place: GoToPlace, locale: BibleLocale) =>
+const placeName = (place: GoToPlace, locale: AppLocale) =>
   `${getLocalizedBookName(place.bookId, locale)} ${place.chapter}${place.verse > 1 ? `:${place.verse}` : ''}`;
 
 /** "John 3:16" in one line: the place it points to shows under it while typing; Enter opens it. */
-function GoToLine({ bible, locale, wide, onGo }: { bible: BibleId; locale: BibleLocale; wide: boolean; onGo: (place: GoToPlace) => void }) {
+function GoToLine({ bible, locale, wide, onGo }: { bible: BibleId; locale: AppLocale; wide: boolean; onGo: (place: GoToPlace) => void }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const typed = query.trim() !== '';
@@ -351,7 +353,7 @@ type NavigatorProps = {
   currentChapter: number;
   /** The open book's text, for how its chapters begin. */
   text: BookText | null;
-  locale: BibleLocale;
+  locale: AppLocale;
   wide: boolean;
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -431,7 +433,7 @@ type BookPickerProps = {
   bible: BibleId;
   currentChapter: number;
   text: BookText | null;
-  locale: BibleLocale;
+  locale: AppLocale;
   wide: boolean;
   onOpen: (bookId: string, place: Place) => void;
 };

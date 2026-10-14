@@ -8,10 +8,10 @@ import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
+import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { chapterCount, verseCount } from '@/utils/versification';
 
-import { getBooksForDropdown } from './bibleData';
 
 /**
  * Reference scope determines the level of specificity.

@@ -1,7 +1,10 @@
-import { BIBLE_BOOKS_DATA, BibleLocale, BookInfo, getBookByName } from "@/(pages)/(private)/studies/bibleData";
+
 import { PreachDate, Sermon } from "@/models/models";
+import { BIBLE_BOOKS_DATA, BookInfo, getBookByName } from "@/utils/bibleBooks";
 import { toDateOnlyKey } from "@/utils/dateOnly";
 import { isPreachDatePreached } from "@/utils/preachDateStatus";
+
+import type { AppLocale } from "@/utils/appLocale";
 
 export type SermonsByDate = Record<string, Sermon[]>;
 export type BookPreachEntry = { sermon: Sermon; preachDate: PreachDate };
@@ -214,12 +217,12 @@ const findDashBookMatch = (verseText: string, locale: string): string | null => 
     const bookAfterDash = verseText.match(/-\s*([А-Яа-яA-Za-z]+)\s+/);
     if (!bookAfterDash) return null;
     const possibleBook = bookAfterDash[1];
-    const bookMatch = getBookByName(possibleBook, locale as BibleLocale);
+    const bookMatch = getBookByName(possibleBook, locale as AppLocale);
     return bookMatch ? bookMatch.id : null;
 };
 
 const resolveMatchedBook = (verseText: string, locale: string): string | null => {
-    const exactMatch = getBookByName(verseText, locale as BibleLocale);
+    const exactMatch = getBookByName(verseText, locale as AppLocale);
     if (exactMatch) return exactMatch.id;
 
     const dashMatch = findDashBookMatch(verseText, locale);
@@ -261,7 +264,7 @@ const isBridgePreventionTriggered = (variant: string, startIndex: number, tokens
 
 const shouldPreferSingleTokenMatch = (len: number, sliceTokens: string[], resultId: string, locale: string): boolean => {
     if (len <= 1) return false;
-    const firstTokenMatch = getBookByName(sliceTokens[0], locale as BibleLocale);
+    const firstTokenMatch = getBookByName(sliceTokens[0], locale as AppLocale);
     return !!(firstTokenMatch && firstTokenMatch.id === resultId && isNumericToken(sliceTokens[1]));
 };
 
@@ -269,7 +272,7 @@ const tryAlphaPrefixMatch = (len: number, variant: string, locale: string): stri
     if (len !== 1) return null;
     const alphaPart = variant.match(/^(\p{L}{2,})/u)?.[1];
     if (alphaPart) {
-        const alphaMatch = getBookByName(alphaPart, locale as BibleLocale);
+        const alphaMatch = getBookByName(alphaPart, locale as AppLocale);
         if (alphaMatch) return alphaMatch.id;
     }
     return null;
@@ -284,7 +287,7 @@ const tryMatchVariantsForSlice = (
     sliceTokens: string[]
 ): { bookId: string; consumed: number } | null => {
     for (const variant of getTokenVariants(slice)) {
-        const matched = getBookByName(variant, locale as BibleLocale);
+        const matched = getBookByName(variant, locale as AppLocale);
         const resultId: string | null = matched ? matched.id : resolveMatchedBook(variant, locale);
 
         if (resultId) {

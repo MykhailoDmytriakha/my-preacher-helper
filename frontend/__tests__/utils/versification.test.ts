@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { getBookIds } from '@/(pages)/(private)/studies/bibleData';
+import { getBookIds } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { chapterCount, numberingEntries, placeIn, placesIn, placesInEach, verseCount, type VersePlace } from '@/utils/versification';
 

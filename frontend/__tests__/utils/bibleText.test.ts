@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BIBLE_BOOKS_DATA } from '@/(pages)/(private)/studies/bibleData';
+import { BIBLE_BOOKS_DATA } from '@/utils/bibleBooks';
 import {
   bookIdFromSlug, bookSlug, bookTextUrl, fetchBookText, isBookText, parseVerse, verseWords, warmBibleText, warmBibleTextOnce,
 } from '@/utils/bibleText';
