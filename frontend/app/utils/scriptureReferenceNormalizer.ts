@@ -2,6 +2,7 @@ import { BIBLE_BOOKS_DATA, getBookByName, getLocalizedBookName } from '@/(pages)
 import { getReferenceBookAliases, parseReferenceText } from '@/(pages)/(private)/studies/referenceParser';
 import { detectTextLocale } from '@/utils/appLocale';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { formatRussianOrdinal } from '@utils/russianOrdinals';
 
 import type { BibleLocale } from '@/(pages)/(private)/studies/bibleData';
@@ -57,11 +58,13 @@ const hasExplicitReferenceSignal = (value: string, verse?: string): boolean =>
 
 const detectLocale = (value: string): BibleLocale => detectTextLocale(value);
 
+// The reference was written in the text's own language, so it is numbered by that language's
+// Bible and printed back in it unchanged: "Пс 22" stays Psalm 22.
 const formatReferenceForProse = (
   ref: NonNullable<ReturnType<typeof parseReferenceText>>,
   locale: BibleLocale
 ): string => {
-  const formatted = formatScriptureReference(ref, { locale: locale });
+  const formatted = formatScriptureReference({ ...ref, bible: referenceBibleFor(locale) }, { locale: locale });
   return locale === 'en'
     ? formatted.replace(/\.(?=\d)/u, ' ')
     : formatted.replace(/\.(?=\d)/u, '. ');
@@ -104,7 +107,7 @@ const parseReferenceForTts = (
   toVerse: string | undefined,
   locale: BibleLocale
 ): ParsedScriptureReference | null => {
-  const parsed = parseReferenceText([bookAlias, chapter, verse, toVerse].filter(Boolean).join(' '), locale);
+  const parsed = parseReferenceText([bookAlias, chapter, verse, toVerse].filter(Boolean).join(' '));
   if (parsed) {
     return parsed;
   }
@@ -155,7 +158,7 @@ export function normalizeSpokenScriptureReferences(text: string): string {
       }
 
       const parseableReference = [bookAlias, chapter, verse, toVerse].filter(Boolean).join(' ');
-      const parsed = parseReferenceText(parseableReference, locale);
+      const parsed = parseReferenceText(parseableReference);
 
       if (!parsed) {
         return match;
@@ -170,7 +173,7 @@ export function normalizeSpokenScriptureReferences(text: string): string {
         return match;
       }
 
-      const parsed = parseReferenceText([bookAlias, chapter].join(' '), locale);
+      const parsed = parseReferenceText([bookAlias, chapter].join(' '));
 
       if (!parsed) {
         return match;

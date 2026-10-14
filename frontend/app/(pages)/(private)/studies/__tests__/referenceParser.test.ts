@@ -97,22 +97,16 @@ describe('referenceParser', () => {
     });
   });
 
-  it('converts Psalm numbers from Septuagint (ru) to Hebrew storage', () => {
-    const parsed = parseReferenceText('Пс 22 1', 'ru');
-    expect(parsed).toEqual({
-      book: 'Psalms',
-      chapter: 23,
-      fromVerse: 1,
-    });
+  // The numbers stay as written: the Bible they belong to is stored beside them by the caller,
+  // and the numbering module shows them in another Bible (BUG-20261012-psalm-verse-numbering-not-mapped:
+  // moving the chapter here by one, the verse left as typed, put "Пс 50:12" on the wrong verse).
+  it('keeps Psalm numbers as written', () => {
+    expect(parseReferenceText('Пс 22 1')).toEqual({ book: 'Psalms', chapter: 22, fromVerse: 1 });
+    expect(parseReferenceText('Пс 50:12')).toEqual({ book: 'Psalms', chapter: 50, fromVerse: 12 });
   });
 
-  it('converts Psalm chapter range from Septuagint', () => {
-    const parsed = parseReferenceText('Пс 22-24', 'ru');
-    expect(parsed).toEqual({
-      book: 'Psalms',
-      chapter: 23,
-      toChapter: 25,
-    });
+  it('keeps a Psalm chapter range as written', () => {
+    expect(parseReferenceText('Пс 22-24')).toEqual({ book: 'Psalms', chapter: 22, toChapter: 24 });
   });
 
   it('resolves English abbreviations through bible data lookup', () => {

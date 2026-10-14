@@ -40,7 +40,8 @@ it('generates without thoughts from the full trusted study and node reminders, w
   expect(await response.json()).toEqual({ contentByNodeId: { p: '- Cue', sub: '- Detail' }, missingMaterial: {} });
   expect(generateNotePlanPoint).toHaveBeenCalledWith(expect.objectContaining({
     point: sermon.outline!.main[0], thoughts: [],
-    notes: [expect.objectContaining({ content: note.content, scriptureRefs: [JSON.stringify(note.scriptureRefs[0])] })],
+    // References reach the model in one numbering, as text: "John 10", not the stored object.
+    notes: [expect.objectContaining({ content: note.content, scriptureRefs: ['John 10'] })],
   }), 'memory', 'u');
 });
 

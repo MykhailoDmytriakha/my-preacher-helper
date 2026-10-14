@@ -298,8 +298,22 @@ describe('StudyNoteShareLinksRepository', () => {
     mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
     mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Text', scriptureRefs: [{ id: 'r', book: 'Luke', chapter: 5, fromVerse: '17', toVerse: 26, text: 'private annotation' }] }) });
     const shared = await repository.readSharedNote('token');
-    expect(shared?.scriptureRefs).toEqual([{ id: 'r', book: 'Luke', chapter: 5, toVerse: 26 }]);
+    expect(shared?.scriptureRefs).toEqual([{ id: 'r', bible: 'kjv', book: 'Luke', chapter: 5, toVerse: 26 }]);
     expect(JSON.stringify(shared)).not.toContain('private annotation');
+  });
+
+  it('publishes the Bible a reference is numbered by, reading an old one in the language of the note', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    // "Пс 50:12" typed in Russian before references kept their Bible was stored as Psalms 51:12.
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Сердце чистое сотвори во мне', scriptureRefs: [
+      { id: 'old', book: 'Psalms', chapter: 51, fromVerse: 12 },
+      { id: 'new', bible: 'kjv', book: 'Psalms', chapter: 23 },
+    ] }) });
+    const shared = await repository.readSharedNote('token');
+    expect(shared?.scriptureRefs).toEqual([
+      { id: 'old', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 },
+      { id: 'new', bible: 'kjv', book: 'Psalms', chapter: 23 },
+    ]);
   });
 
   it.each([undefined, { userId: 'foreign', content: 'Private' }, { userId: 'owner', content: 'Deleted', _dataEngine: { deleted: true } }, { userId: 'owner' }])('does not publicly expose an unavailable or foreign note: %j', async data => {

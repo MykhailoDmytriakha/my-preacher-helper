@@ -9,8 +9,10 @@ import { useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
+import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
@@ -49,6 +51,8 @@ export interface StudyNoteDirectory {
 export function useStudyNoteDirectory(options: { enabled?: boolean } = {}): StudyNoteDirectory {
   const { enabled = true } = options;
   const { uid, isAuthLoading } = useResolvedUid();
+  const { i18n } = useTranslation();
+  const locale = resolveAppLocale(i18n?.language);
   /**
    * WHEN THIS CONSUMER STARTED LOOKING.
    *
@@ -67,8 +71,10 @@ export function useStudyNoteDirectory(options: { enabled?: boolean } = {}): Stud
     enabled: !!uid && enabled,
   });
   const loading = (isAuthLoading || query.isLoading) && enabled;
+  // Read as every screen reads a note: an old reference named by the Bible of the note's words.
+  const notes = useMemo(() => (query.data ?? []).map((note) => withNoteReferenceBibles(note, locale)), [query.data, locale]);
   return {
-    notes: query.data ?? [],
+    notes,
     loading,
     /**
      * KNOWN-GOOD means a fetch actually SUCCEEDED and nothing is in flight.

@@ -8,14 +8,10 @@ import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
+import { referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { chapterCount, verseCount } from '@/utils/versification';
 
-import {
-  getBooksForDropdown,
-  getChapterCount,
-  getVerseCount,
-  psalmHebrewToSeptuagint,
-  psalmSeptuagintToHebrew,
-} from './bibleData';
+import { getBooksForDropdown } from './bibleData';
 
 /**
  * Reference scope determines the level of specificity.
@@ -42,7 +38,7 @@ interface ScriptureRefPickerProps {
 /**
  * Detect scope from an existing reference.
  */
-function detectScope(ref?: ScriptureReference): ReferenceScope {
+function detectScope(ref?: Omit<ScriptureReference, 'id'>): ReferenceScope {
   if (!ref) return REFERENCE_SCOPE_VERSES; // Default for new refs
   if (ref.chapter === undefined) return REFERENCE_SCOPE_BOOK;
   if (ref.toChapter !== undefined) return REFERENCE_SCOPE_CHAPTER_RANGE;
@@ -70,34 +66,24 @@ export default function ScriptureRefPicker({
   // Get localized book list for dropdown
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);
 
+  // The picker counts chapters and verses the way the person's Bible does, and the reference it
+  // gives back is numbered by that Bible: Psalm 50 of the Synodal has 21 verses, Psalm 51 of the
+  // King James 19.
+  const bible = referenceBibleFor(bibleLocale);
+  // A reference being edited is shown in the person's Bible, whichever Bible it was written in.
+  const [shown] = useState(() => (initialRef ? referenceIn(withStoredBible(initialRef, bibleLocale), bible) : undefined));
+
   // Reference scope state
-  const [scope, setScope] = useState<ReferenceScope>(() => detectScope(initialRef));
+  const [scope, setScope] = useState<ReferenceScope>(() => detectScope(shown));
 
-  // Convert initial chapter from Hebrew (storage) to locale numbering for display
-  const getInitialChapter = () => {
-    if (!initialRef?.chapter) return 1;
-    if (initialRef.book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-      return psalmHebrewToSeptuagint(initialRef.chapter);
-    }
-    return initialRef.chapter;
-  };
-
-  const getInitialToChapter = () => {
-    if (!initialRef?.toChapter) return 1;
-    if (initialRef.book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-      return psalmHebrewToSeptuagint(initialRef.toChapter);
-    }
-    return initialRef.toChapter;
-  };
-
-  const [book, setBook] = useState(initialRef?.book || 'Genesis');
-  const [chapter, setChapter] = useState(getInitialChapter());
-  const [toChapter, setToChapter] = useState(getInitialToChapter());
-  const [fromVerse, setFromVerse] = useState(initialRef?.fromVerse || 1);
-  const [toVerse, setToVerse] = useState<number | ''>(initialRef?.toVerse || '');
+  const [book, setBook] = useState(shown?.book || 'Genesis');
+  const [chapter, setChapter] = useState(shown?.chapter || 1);
+  const [toChapter, setToChapter] = useState(shown?.toChapter || 1);
+  const [fromVerse, setFromVerse] = useState(shown?.fromVerse || 1);
+  const [toVerse, setToVerse] = useState<number | ''>(shown?.toVerse || '');
 
   // Get max chapters for current book
-  const maxChapters = useMemo(() => getChapterCount(book), [book]);
+  const maxChapters = useMemo(() => chapterCount(bible, book), [bible, book]);
 
   // Generate chapter options
   const chapterOptions = useMemo(() => {
@@ -105,7 +91,7 @@ export default function ScriptureRefPicker({
   }, [maxChapters]);
 
   // Get max verses for current book and chapter (dynamic based on selection)
-  const maxVerses = useMemo(() => getVerseCount(book, chapter), [book, chapter]);
+  const maxVerses = useMemo(() => verseCount(bible, book, chapter), [bible, book, chapter]);
 
   // Generate verse options (1 to maxVerses for current chapter)
   const verseOptions = useMemo(() => {
@@ -165,31 +151,23 @@ export default function ScriptureRefPicker({
   const layer = useModalLayer({ onClose: onCancel });
 
   const handleConfirm = () => {
-    // Convert chapters from locale numbering to Hebrew (storage) for Psalms
-    const convertChapter = (ch: number) => {
-      if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-        return psalmSeptuagintToHebrew(ch);
-      }
-      return ch;
-    };
-
-    const ref: Omit<ScriptureReference, 'id'> = { book };
+    const ref: Omit<ScriptureReference, 'id'> = { bible, book };
 
     if (scope === REFERENCE_SCOPE_BOOK) {
       // Book-only reference
       // ref stays as { book }
     } else if (scope === REFERENCE_SCOPE_CHAPTER) {
       // Single chapter reference
-      ref.chapter = convertChapter(chapter);
+      ref.chapter = chapter;
     } else if (scope === REFERENCE_SCOPE_CHAPTER_RANGE) {
       // Chapter range
-      ref.chapter = convertChapter(chapter);
+      ref.chapter = chapter;
       if (toChapter > chapter) {
-        ref.toChapter = convertChapter(toChapter);
+        ref.toChapter = toChapter;
       }
     } else {
       // Verse or verse range
-      ref.chapter = convertChapter(chapter);
+      ref.chapter = chapter;
       ref.fromVerse = fromVerse;
       if (toVerse && toVerse >= fromVerse) {
         ref.toVerse = toVerse;

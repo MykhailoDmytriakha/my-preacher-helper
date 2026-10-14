@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/api/clients/ai/providerId';
+import type { BibleId } from '@/utils/bibles';
 
 export interface Thought {
   id: string;
@@ -550,6 +551,13 @@ export type SermonDraft = SermonContent;
  */
 export interface ScriptureReference {
   id: string;
+  /**
+   * The Bible whose numbering the chapter and verses are in — the one the person wrote the
+   * reference in ("Пс 50:12" of the Synodal). Shown in the reader's Bible through
+   * `utils/scriptureReferenceNumbering.ts`. Absent on references stored before 2026-10-14; those
+   * are given one where a note is read (`withNoteReferenceBibles`).
+   */
+  bible?: BibleId;
   book: string;
   /** Chapter number. Omit if reference is to entire book. */
   chapter?: number;

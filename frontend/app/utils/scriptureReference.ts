@@ -1,31 +1,35 @@
-import {
-  getLocalizedAbbrev,
-  getLocalizedBookName,
-  psalmHebrewToSeptuagint,
-} from '@/(pages)/(private)/studies/bibleData';
+import { getLocalizedAbbrev, getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
 import { BOOK_ABBREVIATIONS } from '@/(pages)/(private)/studies/bookAbbreviations';
+import { CANONICAL_BIBLE, referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 
 import type { AppLocale } from '@/utils/appLocale';
+import type { BibleId } from '@/utils/bibles';
 
 /**
  * A SCRIPTURE REFERENCE AS TEXT — one reading of its shape, three faces.
  *
  * Eight functions used to do this, each with its own opinion: whether a verse beats a leftover
- * chapter range, whether "5:17-17" is a range, whether Psalm 23 of the stored Hebrew numbering
- * is Psalm 22 in a Russian Bible. They drifted exactly as copies do — the calendar printed
+ * chapter range, whether "5:17-17" is a range, whether Psalm 23 of the King James is Psalm 22 in
+ * a Russian Bible. They drifted exactly as copies do — the calendar printed
  * "Luke 5:17-26" under a note whose own chips read "Лк.5:17-26".
  *
  * The SHAPE is read once, here. What legitimately differs is only the FACE:
  *
  * - `short`     — "Лк.5:17-26". Chips, compact labels. The book abbreviated in the interface
- *                 language, the Psalms renumbered for Russian and Ukrainian readers.
+ *                 language.
  * - `long`      — "От Луки 5:17-26". Text a person reads: cards, previews, search.
- * - `canonical` — "Luke 5:17-26". The stored English name and the stored numbering, for AI
+ * - `canonical` — "Luke 5:17-26". The stored English name in the King James numbering, for AI
  *                 prompts and anything a machine compares. Never shown as the interface's words.
+ *
+ * The NUMBERS are the reader's Bible's: a reference is kept in the Bible it was written in and
+ * shown in the Bible of the interface's language — "Пс 50:12" for a Russian reader is "Ps 51:10"
+ * for an English one (`scriptureReferenceNumbering.ts`).
  */
 export type ScriptureRefStyle = 'short' | 'long' | 'canonical';
 
 export interface ScriptureRefShape {
+  /** The Bible whose numbering the chapter and verses are in; absent on references written before it was kept. */
+  bible?: BibleId;
   book: string;
   chapter?: number;
   toChapter?: number;
@@ -48,19 +52,25 @@ function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat):
   return locale ? getLocalizedAbbrev(book, locale) : BOOK_ABBREVIATIONS[book] || book;
 }
 
-/** The stored numbering is Hebrew; Russian and Ukrainian Bibles number the Psalms by the Septuagint. */
-function chapterFor(book: string, chapter: number, { locale, style = 'short' }: ScriptureRefFormat): number {
-  if (style === 'canonical' || book !== 'Psalms') return chapter;
-  return locale === 'ru' || locale === 'uk' ? psalmHebrewToSeptuagint(chapter) : chapter;
+/**
+ * The reference in the Bible it is read in: the canonical face in the King James, the others in
+ * the Bible of the interface's language, and with no language as it was written. A reference that
+ * does not name its Bible is read the way the interface typed it before Bibles were kept.
+ */
+function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short' }: ScriptureRefFormat): ScriptureRefShape {
+  if (style === 'canonical') return referenceIn(ref, CANONICAL_BIBLE);
+  if (!locale) return ref;
+  return referenceIn(withStoredBible(ref, locale), referenceBibleFor(locale));
 }
 
-export function formatScriptureReference(ref: ScriptureRefShape, format: ScriptureRefFormat = {}): string {
-  const book = bookFor(ref.book, format);
-  if (ref.chapter === undefined) return book;
+export function formatScriptureReference(stored: ScriptureRefShape, format: ScriptureRefFormat = {}): string {
+  const book = bookFor(stored.book, format);
+  if (stored.chapter === undefined) return book;
 
+  const ref = inReadersBible(stored, format);
   // The short face glues the book to the chapter ("Лк.5"); the other two read as prose.
   const joint = (format.style ?? 'short') === 'short' ? '.' : ' ';
-  const chapter = chapterFor(ref.book, ref.chapter, format);
+  const chapter = ref.chapter;
 
   // A verse wins even when a chapter range is also present — old data carries both.
   if (ref.fromVerse !== undefined) {
@@ -72,7 +82,7 @@ export function formatScriptureReference(ref: ScriptureRefShape, format: Scriptu
   }
 
   if (ref.toChapter !== undefined && ref.toChapter !== ref.chapter) {
-    return `${book}${joint}${chapter}-${chapterFor(ref.book, ref.toChapter, format)}`;
+    return `${book}${joint}${chapter}-${ref.toChapter}`;
   }
 
   return `${book}${joint}${chapter}`;
@@ -122,8 +132,8 @@ export function studyNoteSearchText(
 /**
  * EXACTLY the text this search matched before it learned the displayed forms: the full name with
  * the STORED chapter number, as the pre-filter used to build it (missing parts included, so a
- * search that found a note before still does). A Psalm is stored by the Hebrew numbering and shown
- * by the Septuagint one in Russian and Ukrainian; the number a person knows must still find it.
+ * search that found a note before still does). The stored numbers are those of the Bible the
+ * reference was written in, and may differ from the ones shown; the number a person knows must still find it.
  */
 function storedNumberingSearchText(ref: ScriptureRefShape, locale: AppLocale): string {
   return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`;

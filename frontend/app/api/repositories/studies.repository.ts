@@ -1,6 +1,7 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { StudyMaterial, StudyNote } from '@/models/models';
 import { isEngineTombstone } from '@/utils/engineTombstone';
+import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
@@ -18,7 +19,9 @@ export class StudiesRepository {
   async getNote(id: string): Promise<StudyNote | null> {
     const doc = await adminDb.collection(NOTES_COLLECTION).doc(id).get();
     if (!doc.exists || isEngineTombstone(doc.data())) return null;
-    const data = doc.data() as StudyNote;
+    // References stored before they kept their Bible are read in the language of the note's words;
+    // a note with no words keeps them as stored, read as the King James — what the server always did.
+    const data = withNoteReferenceBibles(doc.data() as StudyNote, 'en');
     return { ...data, id: doc.id, scriptureRefs: data.scriptureRefs || [], tags: data.tags || [],
       materialIds: data.materialIds || [], isDraft: computeDraft(data) };
   }

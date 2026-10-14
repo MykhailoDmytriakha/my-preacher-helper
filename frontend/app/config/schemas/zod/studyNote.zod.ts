@@ -24,7 +24,7 @@ export const ScriptureRefSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("Chapter number (use Hebrew/Protestant numbering for Psalms). Omit if reference is to entire book."),
+    .describe("Chapter number exactly as the note writes it — never renumbered between Bibles. Omit if reference is to entire book."),
   toChapter: z
     .number()
     .int()

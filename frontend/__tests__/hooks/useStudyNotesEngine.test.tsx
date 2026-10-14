@@ -75,6 +75,27 @@ describe('study notes on the engine', () => {
     expect(store.get('n1')!.content).toBe('Laptop rewrite');
   });
 
+  // BUG-20261012-psalm-verse-numbering-not-mapped: "Пс 50:12" typed in Russian was stored as
+  // Psalms 51:12 — the chapter moved, the verse not. The note is read with its Bible named, so an
+  // English screen and the AI get Ps 51:10, and editing it is not mistaken for a change elsewhere.
+  it('reads an old reference in the language of the note, and an edit of it is not a change made elsewhere', async () => {
+    store.set('n1', note({ title: 'Покаяние', content: 'Сердце чистое', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] }));
+    const { result } = render();
+    const read = result.current.notes[0];
+    expect(read.scriptureRefs).toEqual([{ id: 'r1', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 }]);
+
+    const added = [...read.scriptureRefs, { id: 'r2', bible: 'rst' as const, book: 'Psalms', chapter: 22 }];
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: added }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeNull();
+    expect(store.get('n1')!.scriptureRefs).toEqual(added);
+  });
+
   it('never writes relations or unknown fields from an edit, and recomputes the draft flag', async () => {
     const { result } = render();
     await act(async () => {

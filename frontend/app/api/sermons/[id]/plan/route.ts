@@ -10,6 +10,7 @@ import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
 import { generateNotePlanPoint, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
@@ -210,7 +211,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }))),
       notes: notes.map((note) => ({
         id: note!.id, title: note!.title ?? '', content: note!.content,
-        scriptureRefs: (note!.scriptureRefs ?? []).map((ref) => JSON.stringify(ref)),
+        // One numbering for the model, whatever Bible each reference was written in: "Psalms 51:10".
+        scriptureRefs: (note!.scriptureRefs ?? []).map((ref) => formatScriptureReference(ref, { style: 'canonical' })),
       })),
       thoughts: getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId).map((thought) => ({
         text: thought.text, subPointId: thought.subPointId, keyFragments: thought.keyFragments,

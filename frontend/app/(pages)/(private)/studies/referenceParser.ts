@@ -1,6 +1,6 @@
 import { ScriptureReference } from '@/models/models';
 
-import { getBookByName, getBookIds, BibleLocale, psalmSeptuagintToHebrew } from './bibleData';
+import { getBookByName, getBookIds } from './bibleData';
 
 type BookMatch = { book: string; remaining: string[] };
 
@@ -50,7 +50,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   { english: 'Esther', aliases: ['есфирь', 'книга есфири', 'эстирь', 'есф', 'естер', 'ест'] },
   // Wisdom/Poetry
   { english: 'Job', aliases: ['иов', 'книга иова', 'йов'] },
-  { english: 'Psalms', aliases: ['псалтирь', 'пс', 'псал', 'псалми'] },
+  { english: 'Psalms', aliases: ['псалтирь', 'пс', 'псал', 'псалми', 'psalm'] },
   { english: 'Proverbs', aliases: ['притчи', 'поу́чения', 'притч', 'притчи соломоновы', 'прит', 'приповістки', 'прип'] },
   { english: 'Ecclesiastes', aliases: ['екклесиаст', 'проповедник', 'екк', 'ек', 'екклезіяст', 'еккл'] },
   { english: 'Song of Solomon', aliases: ['песнь песней', 'песнь-песней', 'песн', 'песнь', 'пісня пісень', 'пісн'] },
@@ -278,29 +278,13 @@ const resolveBookFromTokens = (
   return { matched, consumed };
 };
 
-const isLxxLocale = (locale?: BibleLocale): locale is 'ru' | 'uk' => locale === 'ru' || locale === 'uk';
-
-const convertPsalmIfNeeded = (book: string, chapter: number, locale?: BibleLocale): number => {
-  if (book === 'Psalms' && isLxxLocale(locale)) {
-    return psalmSeptuagintToHebrew(chapter);
-  }
-  return chapter;
-};
-
-const parseChapterRangeReference = (
-  book: string,
-  rangeMatch: RegExpMatchArray,
-  locale?: BibleLocale
-): ParsedReference | null => {
-  let fromChapter = Number(rangeMatch[1]);
-  let toChapter = Number(rangeMatch[2]);
+const parseChapterRangeReference = (book: string, rangeMatch: RegExpMatchArray): ParsedReference | null => {
+  const fromChapter = Number(rangeMatch[1]);
+  const toChapter = Number(rangeMatch[2]);
 
   if (isNaN(fromChapter) || isNaN(toChapter) || fromChapter <= 0 || toChapter <= 0) {
     return null;
   }
-
-  fromChapter = convertPsalmIfNeeded(book, fromChapter, locale);
-  toChapter = convertPsalmIfNeeded(book, toChapter, locale);
 
   return {
     book,
@@ -309,22 +293,16 @@ const parseChapterRangeReference = (
   };
 };
 
-const buildReferenceFromNumbers = (
-  book: string,
-  numbers: number[],
-  locale?: BibleLocale
-): ParsedReference | null => {
+const buildReferenceFromNumbers = (book: string, numbers: number[]): ParsedReference | null => {
   if (numbers.length === 0) {
     return { book };
   }
 
   if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
 
-  const [rawChapter, fromVerse, maybeTo] = numbers;
-  let chapter = rawChapter;
+  const [chapter, fromVerse, maybeTo] = numbers;
 
   if (numbers.length === 1) {
-    chapter = convertPsalmIfNeeded(book, chapter, locale);
     return {
       book,
       chapter,
@@ -332,8 +310,6 @@ const buildReferenceFromNumbers = (
   }
 
   if (!chapter || !fromVerse) return null;
-
-  chapter = convertPsalmIfNeeded(book, chapter, locale);
 
   const parsed: ParsedReference = {
     book,
@@ -351,22 +327,20 @@ const buildReferenceFromNumbers = (
  * Parse a Scripture reference string into structured data.
  * Supports multiple locales (en, ru, uk) with localized book names and abbreviations.
  *
- * IMPORTANT: For Psalms, the chapter number is converted from the user's locale numbering
- * to the standard Hebrew/Protestant numbering for storage.
- * - EN uses Hebrew numbering (stored as-is)
- * - RU/UK use Septuagint numbering (converted to Hebrew for storage)
+ * The numbers are read as written: "Пс 22" is chapter 22 of whichever Bible the person reads.
+ * Which Bible that is the caller says, by the `bible` it stores with the result
+ * (`referenceBibleFor`); showing it in another Bible is `utils/scriptureReferenceNumbering.ts`.
  *
  * Supported formats:
  * - Book only: "Ezekiel", "Иезекииль" -> { book: "Ezekiel" }
- * - Chapter only: "Пс 23", "Romans 8" -> { book: "Psalms", chapter: 24 }
+ * - Chapter only: "Пс 23", "Romans 8" -> { book: "Psalms", chapter: 23 }
  * - Chapter range: "Мф 5-7", "Matthew 5-7" -> { book: "Matthew", chapter: 5, toChapter: 7 }
  * - Verse: "Ин 3:16" -> { book: "John", chapter: 3, fromVerse: 16 }
  * - Verse range: "Ис 4:5-8" -> { book: "Isaiah", chapter: 4, fromVerse: 5, toVerse: 8 }
  *
  * @param raw - The raw reference string
- * @param locale - The user's locale for proper Psalm numbering conversion
  */
-export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedReference | null {
+export function parseReferenceText(raw: string): ParsedReference | null {
   const { dashNormalized, normalized } = normalizeInput(raw);
   const allTokensNaive = splitTokensNaive(normalized);
 
@@ -390,11 +364,11 @@ export function parseReferenceText(raw: string, locale?: BibleLocale): ParsedRef
 
   // Handle chapter range pattern
   if (isChapterRangeFormat && rangeMatch) {
-    return parseChapterRangeReference(matched.book, rangeMatch, locale);
+    return parseChapterRangeReference(matched.book, rangeMatch);
   }
 
   // Get remaining numbers after book name
   const numbers = tokens.slice(consumed).map((t) => Number(t));
 
-  return buildReferenceFromNumbers(matched.book, numbers, locale);
+  return buildReferenceFromNumbers(matched.book, numbers);
 }

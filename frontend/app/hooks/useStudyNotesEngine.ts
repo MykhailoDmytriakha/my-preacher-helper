@@ -5,10 +5,12 @@ import { useDataCollection, useDocumentActions } from '@/data-engine/react.clien
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
+import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
 import { getConnectivityStatus } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -36,8 +38,13 @@ const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
   return { acceptance, persistence };
 };
 
-export function engineNote(value: DocumentData, id: string): StudyNote {
-  const note = value as unknown as StudyNote;
+/**
+ * A stored note as the screens read it. Its references each name their Bible: one stored before
+ * references kept it is read in the language of the note's words (`withNoteReferenceBibles`), and
+ * `locale` — the reader's — only decides for a note with no words.
+ */
+export function engineNote(value: DocumentData, id: string, locale: AppLocale): StudyNote {
+  const note = withNoteReferenceBibles(value as unknown as StudyNote, locale);
   return { ...note, id, scriptureRefs: note.scriptureRefs || [], tags: note.tags || [], materialIds: note.materialIds || [], isDraft: isDraft(note) };
 }
 
@@ -60,7 +67,8 @@ type NoteUpdate = {
  * keep-mine / take-theirs. Offline a write is reported as queued, not saved (`accepted`).
  */
 export function useStudyNotesEngine(enabled: boolean) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = resolveAppLocale(i18n?.language);
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useDataCollection(enabled && uid ? 'studyNotes' : null);
   const actions = useDocumentActions();
@@ -68,8 +76,8 @@ export function useStudyNotesEngine(enabled: boolean) {
   const inFlight = useRef(new Set<string>());
 
   const notes = useMemo(() => (collection.state?.documents ?? [])
-    .flatMap(row => row.value ? [engineNote(row.value, row.resource.id)] : [])
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [collection.state?.documents]);
+    .flatMap(row => row.value ? [engineNote(row.value, row.resource.id, locale)] : [])
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [collection.state?.documents, locale]);
 
   const once = (key: string, run: () => Promise<unknown>): WriteSubmission | null => {
     if (inFlight.current.has(key)) return null;
@@ -117,8 +125,11 @@ export function useStudyNotesEngine(enabled: boolean) {
             stale = null;
             if (!current) throw new Error('Study note not found');
             const stored = (current.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE] ?? 0;
+            // The baseline is the note as the editor read it, so the stored note is compared read the
+            // same way: an old reference given its Bible on reading is not a change made elsewhere.
+            const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
             const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field =>
-              field in expectedBaseline && !same(current[field], expectedBaseline[field]) && !same(current[field], patch[field])) : [];
+              field in expectedBaseline && !same(read[field], expectedBaseline[field]) && !same(read[field], patch[field])) : [];
             if (changedElsewhere.length) {
               stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));
@@ -127,7 +138,7 @@ export function useStudyNotesEngine(enabled: boolean) {
             const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             // The engine moves the stored counter itself; this is the value it will reach.
-            saved = { ...engineNote(next, id), revision: stored + 1 };
+            saved = { ...engineNote(next, id, locale), revision: stored + 1 };
             return next;
           });
           if (stale) throw stale;

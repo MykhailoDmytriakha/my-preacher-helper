@@ -22,6 +22,11 @@ describe('normalizeSpokenScriptureReferences', () => {
     ).toBe('В Евангелии Ин. 3:16 сказано о любви Бога.');
   });
 
+  it('keeps a dictated Psalm on the number said', () => {
+    expect(normalizeSpokenScriptureReferences('Пс 22 глава 1 стих')).toBe('Пс. 22:1');
+    expect(normalizeSpokenScriptureReferences('Psalm 23 chapter 1 verse')).toBe('Ps 23:1');
+  });
+
   it('keeps existing references stable except for prose spacing', () => {
     expect(
       normalizeSpokenScriptureReferences('Смотри Второзаконие 10:11 и Ин. 3:16.')

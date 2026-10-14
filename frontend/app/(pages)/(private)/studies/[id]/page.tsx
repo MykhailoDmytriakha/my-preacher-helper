@@ -42,6 +42,7 @@ import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
+import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
@@ -293,8 +294,9 @@ function useNoteAIAssistant({
 
         if (data.scriptureRefs && data.scriptureRefs.length > 0) {
             setScriptureRefs((prev: ScriptureReference[]) => {
+                // The same place counts once whichever Bible numbers it (Пс 22 and Ps 23).
                 const newRefs = data.scriptureRefs!.filter((nr: ScriptureReference) =>
-                    !prev.some((er: ScriptureReference) => er.book === nr.book && er.chapter === nr.chapter && er.fromVerse === nr.fromVerse)
+                    !prev.some((er: ScriptureReference) => sameScriptureReference(er, nr))
                 ).map((ref: Omit<ScriptureReference, 'id'>) => ({ ...ref, id: makeId() }));
                 return [...prev, ...newRefs];
             });
@@ -810,9 +812,11 @@ export default function StudyNoteEditorPage() {
     // A draft is only worth surfacing when it actually differs from what the
     // editor is showing. Identical text means the last save did land and the
     // draft is simply the same thing said twice.
+    // A draft kept before references named their Bible is read the way the note itself is.
+    const recoveredDraft = useMemo(() => (recovered ? withNoteReferenceBibles(recovered, bibleLocale) : recovered), [recovered, bibleLocale]);
     const unsavedRecovery = useMemo(
-        () => (recovered && !sameNoteDraft(recovered, draftPayload) ? recovered : null),
-        [recovered, draftPayload]
+        () => (recoveredDraft && !sameNoteDraft(recoveredDraft, draftPayload) ? recoveredDraft : null),
+        [recoveredDraft, draftPayload]
     );
 
     const editorIsDirty = useMemo(
@@ -1054,9 +1058,10 @@ export default function StudyNoteEditorPage() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
+                                            const parsed = parseReferenceText(quickRefInput.trim());
                                             if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
-                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
+                                            // Typed as the person's Bible numbers it, and kept so.
+                                            setScriptureRefs(prev => [...prev, { ...parsed, bible: referenceBibleFor(bibleLocale), id: makeId() }]);
                                             setQuickRefInput('');
                                         }
                                     }}

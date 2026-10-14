@@ -1,5 +1,7 @@
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { ScriptureReference, StudyNote, StudyNoteShareLink } from '@/models/models';
+import { isBibleId } from '@/utils/bibles';
+import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 
 const SHARE_LINKS_COLLECTION = 'studyNoteShareLinks';
 
@@ -16,8 +18,8 @@ const finiteNumber = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 
 /**
- * A reference as the public may see it: book and coordinates only. The stored object can also
- * carry the author's own `text` snippet, which a link never publishes.
+ * A reference as the public may see it: book, coordinates and the Bible they are numbered by. The
+ * stored object can also carry the author's own `text` snippet, which a link never publishes.
  */
 function publicReference(value: unknown): ScriptureReference | null {
   if (!value || typeof value !== 'object') return null;
@@ -29,6 +31,7 @@ function publicReference(value: unknown): ScriptureReference | null {
   const toVerse = finiteNumber(raw.toVerse);
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
+    ...(isBibleId(raw.bible) ? { bible: raw.bible } : {}),
     book: raw.book,
     ...(chapter !== undefined ? { chapter } : {}),
     ...(toChapter !== undefined ? { toChapter } : {}),
@@ -39,9 +42,11 @@ function publicReference(value: unknown): ScriptureReference | null {
 
 function toSharedNote(shareLink: StudyNoteShareLink, data: Record<string, unknown>, content: string): SharedNote {
   const title = typeof data.title === 'string' ? data.title.trim() : '';
-  const scriptureRefs = Array.isArray(data.scriptureRefs)
+  const stored = Array.isArray(data.scriptureRefs)
     ? data.scriptureRefs.map(publicReference).filter((reference): reference is ScriptureReference => reference !== null)
     : [];
+  // An old reference is read in the language of the note's words, as everywhere a note is read.
+  const { scriptureRefs } = withNoteReferenceBibles({ title, content, scriptureRefs: stored }, 'en');
   return {
     shareLink,
     content,

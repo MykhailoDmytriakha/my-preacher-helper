@@ -124,7 +124,7 @@ describe('analyzeStudyNote', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: "studies.note.analyze_all",
-          promptVersion: 'v2',
+          promptVersion: 'v3',
         }),
       })
     );
@@ -235,6 +235,7 @@ describe('analyzeStudyNote', () => {
 
     // Joel 2:1 - toVerse should be removed
     expect(result.data?.scriptureRefs?.[0]).toEqual({
+      bible: 'kjv',
       book: 'Joel',
       chapter: 2,
       fromVerse: 1,
@@ -243,6 +244,7 @@ describe('analyzeStudyNote', () => {
 
     // Matthew 5:1-12 - should keep range
     expect(result.data?.scriptureRefs?.[1]).toEqual({
+      bible: 'kjv',
       book: 'Matthew',
       chapter: 5,
       fromVerse: 1,
@@ -251,6 +253,7 @@ describe('analyzeStudyNote', () => {
 
     // Romans 6:6 - toVerse should be removed
     expect(result.data?.scriptureRefs?.[2]).toEqual({
+      bible: 'kjv',
       book: 'Romans',
       chapter: 6,
       fromVerse: 6,
@@ -304,7 +307,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ bible: 'kjv', book: 'Ezekiel' });
   });
 
   it('should accept chapter-only references', async () => {
@@ -330,7 +333,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Romans', chapter: 8 });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ bible: 'kjv', book: 'Romans', chapter: 8 });
   });
 
   it('should accept chapter-range references', async () => {
@@ -357,6 +360,7 @@ describe('analyzeStudyNote', () => {
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
     expect(result.data?.scriptureRefs?.[0]).toEqual({
+      bible: 'kjv',
       book: 'Matthew',
       chapter: 5,
       toChapter: 7,
@@ -414,7 +418,7 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
-    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ bible: 'kjv', book: 'Ezekiel' });
   });
 
   it('should remove toChapter when it equals chapter (single chapter, not a range)', async () => {
@@ -444,6 +448,7 @@ describe('analyzeStudyNote', () => {
 
     // Romans 8 - toChapter should be removed
     expect(result.data?.scriptureRefs?.[0]).toEqual({
+      bible: 'kjv',
       book: 'Romans',
       chapter: 8,
     });
@@ -451,6 +456,7 @@ describe('analyzeStudyNote', () => {
 
     // Matthew 5-7 - should keep range
     expect(result.data?.scriptureRefs?.[1]).toEqual({
+      bible: 'kjv',
       book: 'Matthew',
       chapter: 5,
       toChapter: 7,
@@ -462,8 +468,8 @@ describe('analyzeStudyNote', () => {
     const mockResponse = {
       title: 'Test',
       scriptureRefs: [
-        { book: 'Hebrews', chapter: 10, toChapter: 10, fromVerse: 22, toVerse: 22 },
-        { book: 'Exodus', chapter: 13, toChapter: 13, fromVerse: 19, toVerse: 19 },
+        { bible: 'kjv', book: 'Hebrews', chapter: 10, toChapter: 10, fromVerse: 22, toVerse: 22 },
+        { bible: 'kjv', book: 'Exodus', chapter: 13, toChapter: 13, fromVerse: 19, toVerse: 19 },
       ],
       tags: ['Test'],
     };
@@ -481,8 +487,8 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toEqual([
-      { book: 'Hebrews', chapter: 10, fromVerse: 22 },
-      { book: 'Exodus', chapter: 13, fromVerse: 19 },
+      { bible: 'kjv', book: 'Hebrews', chapter: 10, fromVerse: 22 },
+      { bible: 'kjv', book: 'Exodus', chapter: 13, fromVerse: 19 },
     ]);
   });
 
@@ -514,10 +520,10 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(4);
-    expect(result.data?.scriptureRefs?.[0]).toEqual({ book: 'Ezekiel' });
-    expect(result.data?.scriptureRefs?.[1]).toEqual({ book: 'Ezekiel', chapter: 1 });
-    expect(result.data?.scriptureRefs?.[2]).toEqual({ book: 'Ezekiel', chapter: 10, toChapter: 11 });
-    expect(result.data?.scriptureRefs?.[3]).toEqual({ book: 'Ezekiel', chapter: 40, toChapter: 48 });
+    expect(result.data?.scriptureRefs?.[0]).toEqual({ bible: 'rst', book: 'Ezekiel' });
+    expect(result.data?.scriptureRefs?.[1]).toEqual({ bible: 'rst', book: 'Ezekiel', chapter: 1 });
+    expect(result.data?.scriptureRefs?.[2]).toEqual({ bible: 'rst', book: 'Ezekiel', chapter: 10, toChapter: 11 });
+    expect(result.data?.scriptureRefs?.[3]).toEqual({ bible: 'rst', book: 'Ezekiel', chapter: 40, toChapter: 48 });
   });
 
   it('should filter out references with fromVerse but no chapter', async () => {
@@ -545,6 +551,7 @@ describe('analyzeStudyNote', () => {
     expect(result.success).toBe(true);
     expect(result.data?.scriptureRefs).toHaveLength(1);
     expect(result.data?.scriptureRefs?.[0]).toEqual({
+      bible: 'kjv',
       book: 'John',
       chapter: 3,
       fromVerse: 16,
@@ -582,6 +589,7 @@ describe('analyzeStudyNote', () => {
     // Verify specific unique references exist
     const danielRef = result.data?.scriptureRefs?.find(r => r.book === 'Daniel');
     expect(danielRef).toEqual({
+      bible: 'kjv',
       book: 'Daniel',
       chapter: 1,
       fromVerse: 9,
@@ -589,6 +597,7 @@ describe('analyzeStudyNote', () => {
 
     const matthewRef = result.data?.scriptureRefs?.find(r => r.book === 'Matthew');
     expect(matthewRef).toEqual({
+      bible: 'kjv',
       book: 'Matthew',
       chapter: 5
     });
@@ -626,6 +635,20 @@ describe('analyzeStudyNote', () => {
     expect(uniqueTags.size).toBe(result.data?.tags?.length);
   });
 
+  it('stores the numbers the note writes with the Bible of the note\'s language', async () => {
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: { title: 'Покаяние', scriptureRefs: [{ book: 'Psalms', chapter: 50, fromVerse: 12 }], tags: [] },
+      refusal: null,
+      error: null,
+    });
+    const russian = await analyzeStudyNote('Пс 50:12 — сердце чистое сотвори во мне, Боже');
+    expect(russian.data?.scriptureRefs).toEqual([{ bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 }]);
+
+    const ukrainian = await analyzeStudyNote('Пс 50:12 — серце чисте створи мені, Боже');
+    expect(ukrainian.data?.scriptureRefs).toEqual([{ bible: 'ubio', book: 'Psalms', chapter: 50, fromVerse: 12 }]);
+  });
+
   it('should include CRITICAL book name mappings in prompt for Russian notes', async () => {
     // Arrange
     (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
@@ -654,7 +677,11 @@ describe('analyzeStudyNote', () => {
     expect(systemPrompt).toContain('NOT "2 Kings"');
 
     // Check that prompt includes Psalm conversion rules
-    expect(systemPrompt).toContain('PSALM NUMBERING CONVERSION');
-    expect(systemPrompt).toContain('Septuagint → Hebrew');
+    // Numbers are kept as the note writes them; the Bible of the note's language is stored with
+    // them (BUG-20261012-psalm-verse-numbering-not-mapped: the "+1" asked here moved the chapter
+    // and left the verse, so "Пс 50:12" was kept on the wrong verse).
+    expect(systemPrompt).toContain('NUMBERS AS WRITTEN');
+    expect(systemPrompt).not.toContain('add +1');
+    expect(systemPrompt).not.toContain('Septuagint → Hebrew');
   });
 });

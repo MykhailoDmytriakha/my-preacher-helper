@@ -10,6 +10,7 @@
  */
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { noteLanguage, referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, detectDominantLanguage } from "./promptBuilder";
@@ -133,7 +134,7 @@ ${languageDirective}
 SCRIPTURE REFERENCE RULES:
 - Extract ALL Bible references mentioned in the note (explicit or implied)
 - Book names MUST be in English: Genesis, Exodus, Matthew, John, Psalms, etc.
-- Use Hebrew/Protestant chapter numbering for Psalms
+- Chapter and verse numbers EXACTLY as the note writes them — never renumber (see NUMBERS AS WRITTEN)
 - **PRIMARY RULE: EXTRACT ALL SCRIPTURE REFERENCES** - Your job is to find and return EVERY Scripture reference mentioned in the note
   * Do NOT limit yourself to any arbitrary number (no "2-5" or "up to 10" limits)
   * Short note with many citations? Return all of them.
@@ -173,15 +174,12 @@ Epistles (remove prefixes):
 **EXAMPLE:** If Russian text says "во 2 Царств 7 глава" → you MUST return { book: "2 Samuel", chapter: 7 }
 **NOT** { book: "2 Kings" } - that would be wrong!
 
-**PSALM NUMBERING CONVERSION (CRITICAL for Russian/Ukrainian notes):**
-- Storage format ALWAYS uses Hebrew/Protestant numbering (KJV, NIV, ESV)
-- When analyzing Russian/Ukrainian notes, users refer to Psalms using Septuagint/Orthodox numbering
-- YOU MUST CONVERT Septuagint → Hebrew before returning:
-  * Psalms 1-9 and 148-150: Same in both (no conversion needed)
-  * Psalms 10-147 (Septuagint) → add +1 to get Hebrew number
-  * Example: Russian user writes "Псалом 22" → return { book: "Psalms", chapter: 23 }
-  * Example: Russian user writes "Псалом 90" → return { book: "Psalms", chapter: 91 }
-- For English notes: use the number as-is (already Hebrew)
+**NUMBERS AS WRITTEN (CRITICAL):**
+- Return chapter and verse numbers exactly as the note writes them. Do NOT convert between numberings (no "+1" for Psalms): the app knows which Bible the note's language reads and maps the numbers itself.
+  * Russian note "Псалом 22" → { book: "Psalms", chapter: 22 }
+  * Russian note "Пс 50:12" → { book: "Psalms", chapter: 50, fromVerse: 12 }
+  * English note "Psalm 23" → { book: "Psalms", chapter: 23 }
+- A reference you infer with no number written: number it the way a Bible in the note's language does. Russian and Ukrainian Bibles number the Psalms by the Septuagint: "the Lord is my shepherd" is Psalm 22 in a Russian note and Psalm 23 in an English one.
 
 - IMPORTANT: Extract MULTIPLE references when the note discusses different sections:
   * If a note discusses "the book of Ezekiel" AND mentions events in specific chapters, extract BOTH the book-level reference AND the chapter-specific references
@@ -235,7 +233,7 @@ Input: "Псалом 22 говорит о Господе как пастыре..
 Output:
 {
   "title": "Господь - мой пастырь",
-  "scriptureRefs": [{ "book": "Psalms", "chapter": 23 }],  // 22 + 1 = 23 (Septuagint → Hebrew)
+  "scriptureRefs": [{ "book": "Psalms", "chapter": 22 }],  // as written: no renumbering
   "tags": ["Псалтирь", "Пастырь", "провидение"]
 }
 
@@ -289,8 +287,8 @@ Output:
   "title": "Библейские свидетельства о творении Богом",
   "scriptureRefs": [
     { "book": "Genesis", "chapter": 1, "fromVerse": 1 },
-    { "book": "Psalms", "chapter": 20, "fromVerse": 1 },  // Пс 19 + 1 = 20 (Septuagint → Hebrew)
-    { "book": "Psalms", "chapter": 34, "fromVerse": 6 },  // Пс 33 + 1 = 34
+    { "book": "Psalms", "chapter": 19, "fromVerse": 1 },  // Пс 19:1 as written
+    { "book": "Psalms", "chapter": 33, "fromVerse": 6 },  // Пс 33:6 as written
     { "book": "Isaiah", "chapter": 40, "fromVerse": 28 },
     { "book": "Jeremiah", "chapter": 10, "fromVerse": 12 },
     { "book": "John", "chapter": 1, "fromVerse": 3 },
@@ -416,7 +414,7 @@ export async function analyzeStudyNote(
       // Четыре разных разбора — четыре имени. Раньше все писались под одним, и
       // «плохо разобрал заметку целиком» было неотличимо от «плохо расставил теги».
       promptName: STUDY_NOTE_PROMPT_KEYS[analysisType],
-      promptVersion: "v2",
+      promptVersion: "v3",
       expectedLanguage: telemetryExpectedLanguage === "unknown" ? null : telemetryExpectedLanguage,
       systemPrompt,
       userMessage,
@@ -533,7 +531,11 @@ export async function analyzeStudyNote(
       }
     }
 
-    const uniqueRefs = Array.from(uniqueRefsMap.values());
+    // The numbers are as the note writes them, so they belong to the Bible of the note's language
+    // ("Пс 50:12" of a Russian note is the Synodal 50:12) — stored with it and shown in the
+    // reader's Bible by `utils/scriptureReferenceNumbering.ts`.
+    const bible = referenceBibleFor(noteLanguage({ content: noteContent }, 'en'));
+    const uniqueRefs = Array.from(uniqueRefsMap.values()).map((ref) => ({ ...ref, bible }));
 
     // Deduplicate tags (case-sensitive, exact match)
     const uniqueTags = Array.from(new Set(rawTags));

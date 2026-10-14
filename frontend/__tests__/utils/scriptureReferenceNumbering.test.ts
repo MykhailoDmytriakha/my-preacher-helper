@@ -1,0 +1,172 @@
+import fs from 'fs';
+import path from 'path';
+
+import { engineNote } from '@/hooks/useStudyNotesEngine';
+import { formatScriptureReference } from '@/utils/scriptureReference';
+import {
+  noteLanguage,
+  referenceIn,
+  sameScriptureReference,
+  withNoteReferenceBibles,
+  withStoredBible,
+} from '@/utils/scriptureReferenceNumbering';
+
+import type { BibleId } from '@/utils/bibles';
+import type { ScriptureRefShape } from '@/utils/scriptureReference';
+
+/** A verse of the committed text, to show that a mapped pair is the same verse and not a neighbour. */
+function verseText(bible: BibleId, book: string, chapter: number, verse: number): string {
+  const file = path.join(__dirname, '../../public/bible-text', bible, 'v1', `${book.toLowerCase().replace(/ /g, '-')}.json`);
+  const data = JSON.parse(fs.readFileSync(file, 'utf8')) as { chapters: string[][] };
+  return data.chapters[chapter - 1][verse - 1];
+}
+
+const ps = (bible: BibleId, chapter: number, fromVerse?: number, toVerse?: number): ScriptureRefShape => ({
+  bible, book: 'Psalms', chapter, ...(fromVerse !== undefined ? { fromVerse } : {}), ...(toVerse !== undefined ? { toVerse } : {}),
+});
+
+describe('a reference in another Bible', () => {
+  it('finds the same verse, not the one with the same number', () => {
+    expect(referenceIn(ps('rst', 50, 12), 'kjv')).toEqual(ps('kjv', 51, 10));
+    expect(referenceIn(ps('kjv', 51, 10), 'rst')).toEqual(ps('rst', 50, 12));
+    expect(verseText('rst', 'Psalms', 50, 12)).toMatch(/^¶?Сердце чистое/);
+    expect(verseText('kjv', 'Psalms', 51, 10)).toMatch(/^¶?Create in me a clean heart/);
+  });
+
+  it('keeps a whole chapter whole where it is one chapter there', () => {
+    expect(referenceIn(ps('rst', 22), 'kjv')).toEqual(ps('kjv', 23));
+    expect(referenceIn(ps('kjv', 23), 'rst')).toEqual(ps('rst', 22));
+    expect(referenceIn(ps('kjv', 51), 'rst')).toEqual(ps('rst', 50));
+    expect(referenceIn(ps('rst', 50), 'kjv')).toEqual(ps('kjv', 51));
+    expect(referenceIn(ps('rst', 22), 'ubio')).toEqual(ps('ubio', 22));
+  });
+
+  it('gives the chapters a merged psalm is divided into, and the verses of a divided one', () => {
+    expect(referenceIn(ps('rst', 9), 'kjv')).toEqual({ bible: 'kjv', book: 'Psalms', chapter: 9, toChapter: 10 });
+    expect(referenceIn(ps('rst', 113), 'kjv')).toEqual({ bible: 'kjv', book: 'Psalms', chapter: 114, toChapter: 115 });
+    expect(referenceIn(ps('rst', 114), 'kjv')).toEqual(ps('kjv', 116, 1, 9));
+    expect(referenceIn(ps('rst', 115), 'kjv')).toEqual(ps('kjv', 116, 10, 19));
+    expect(referenceIn(ps('rst', 147), 'kjv')).toEqual(ps('kjv', 147, 12, 20));
+    expect(referenceIn(ps('kjv', 147), 'rst')).toEqual({ bible: 'rst', book: 'Psalms', chapter: 146, toChapter: 147 });
+  });
+
+  it('moves a range into the chapter that holds it, and covers a range split across two chapters', () => {
+    expect(referenceIn(ps('rst', 9, 22, 39), 'kjv')).toEqual(ps('kjv', 10, 1, 18));
+    expect(referenceIn(ps('rst', 9, 20, 25), 'kjv')).toEqual({ bible: 'kjv', book: 'Psalms', chapter: 9, toChapter: 10 });
+  });
+
+  it('keeps a chapter whose verses stand in two chapters with a gap between as the chapter holding most of it', () => {
+    // King James Romans 16:25-27 is Synodal Romans 14:24-26: "Romans 14-16" would name chapter 15.
+    expect(referenceIn({ bible: 'kjv', book: 'Romans', chapter: 16 }, 'rst')).toEqual({ bible: 'rst', book: 'Romans', chapter: 16 });
+    expect(referenceIn({ bible: 'rst', book: 'Romans', chapter: 14 }, 'kjv')).toEqual({ bible: 'kjv', book: 'Romans', chapter: 14 });
+    expect(referenceIn({ bible: 'ubio', book: 'Romans', chapter: 16 }, 'rst')).toEqual({ bible: 'rst', book: 'Romans', chapter: 16 });
+    expect(referenceIn({ bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 }, 'rst'))
+      .toEqual({ bible: 'rst', book: 'Romans', chapter: 14, fromVerse: 24, toVerse: 26 });
+  });
+
+  it('maps the places where numberings part outside the Psalms', () => {
+    const joel = { book: 'Joel', chapter: 2, fromVerse: 28 };
+    expect(referenceIn({ ...joel, bible: 'rst' }, 'ubio')).toEqual({ book: 'Joel', bible: 'ubio', chapter: 3, fromVerse: 1 });
+    expect(referenceIn({ ...joel, bible: 'rst' }, 'kjv')).toEqual({ ...joel, bible: 'kjv' });
+    expect(referenceIn({ bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 25, toVerse: 27 }, 'rst'))
+      .toEqual({ bible: 'rst', book: 'Romans', chapter: 14, fromVerse: 24, toVerse: 26 });
+  });
+
+  it('leaves alone what it cannot place: no Bible, its own Bible, a book alone, a verse that Bible lacks', () => {
+    const legacy = { book: 'Psalms', chapter: 51, fromVerse: 12 };
+    expect(referenceIn(legacy, 'rst')).toBe(legacy);
+    const own = ps('rst', 50, 12);
+    expect(referenceIn(own, 'rst')).toBe(own);
+    const book = { bible: 'rst' as const, book: 'Psalms' };
+    expect(referenceIn(book, 'kjv')).toBe(book);
+    const missing = { bible: 'rst' as const, book: 'Romans', chapter: 16, fromVerse: 25 };
+    expect(referenceIn(missing, 'kjv')).toBe(missing);
+  });
+
+  it('carries the rest of the stored reference along', () => {
+    expect(referenceIn({ ...ps('rst', 50, 12), id: 'r1', text: 'Сердце чистое' } as ScriptureRefShape, 'kjv'))
+      .toEqual({ ...ps('kjv', 51, 10), id: 'r1', text: 'Сердце чистое' });
+  });
+});
+
+describe('a reference written before references knew their Bible', () => {
+  // "Пс 50:12" typed in Russian was kept as Psalms 51:12: the chapter moved by one, the verse as typed.
+  const old = { id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 };
+
+  it('is read back in the Bible it was typed in', () => {
+    expect(withStoredBible(old, 'ru')).toEqual({ ...old, bible: 'rst', chapter: 50 });
+    expect(withStoredBible(old, 'uk')).toEqual({ ...old, bible: 'ubio', chapter: 50 });
+    expect(withStoredBible(old, 'en')).toEqual({ ...old, bible: 'kjv' });
+  });
+
+  it('gets the chapter the old rule moved, a chapter range too, and nothing else', () => {
+    expect(withStoredBible({ book: 'Psalms', chapter: 5, toChapter: 24 }, 'ru')).toEqual({ book: 'Psalms', bible: 'rst', chapter: 5, toChapter: 23 });
+    expect(withStoredBible({ book: 'Psalms', chapter: 148 }, 'ru')).toEqual({ book: 'Psalms', bible: 'rst', chapter: 148 });
+    expect(withStoredBible({ book: 'Romans', chapter: 16, fromVerse: 25 }, 'ru')).toEqual({ book: 'Romans', bible: 'rst', chapter: 16, fromVerse: 25 });
+  });
+
+  it('then reads right in every other Bible: the verse an English reader and the AI get', () => {
+    expect(referenceIn(withStoredBible(old, 'ru'), 'kjv')).toEqual({ ...old, bible: 'kjv', chapter: 51, fromVerse: 10 });
+  });
+
+  it('is left alone once it names its Bible', () => {
+    const named = { ...ps('kjv', 23), id: 'r2' };
+    expect(withStoredBible(named, 'ru')).toBe(named);
+  });
+});
+
+describe('the language a note was written in', () => {
+  it('is the language of its words, and the reader’s when it has none', () => {
+    expect(noteLanguage({ title: 'Покаяние', content: '' }, 'en')).toBe('ru');
+    expect(noteLanguage({ content: 'Серце чисте створи мені, Боже' }, 'ru')).toBe('uk');
+    expect(noteLanguage({ content: 'A clean heart' }, 'ru')).toBe('en');
+    expect(noteLanguage({ title: '', content: '  12 ' }, 'uk')).toBe('uk');
+  });
+
+  it('names the Bible of every old reference of a note, and leaves a note with nothing old as it is', () => {
+    const note = { title: 'Покаяние', content: 'Пс 50:12', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }, { ...ps('kjv', 23), id: 'r2' }] };
+    expect(withNoteReferenceBibles(note, 'en').scriptureRefs).toEqual([
+      { id: 'r1', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 },
+      { ...ps('kjv', 23), id: 'r2' },
+    ]);
+    const current = { title: 'x', scriptureRefs: [{ ...ps('rst', 50), id: 'r3' }] };
+    expect(withNoteReferenceBibles(current, 'en')).toBe(current);
+    const none = { title: 'x', scriptureRefs: [] };
+    expect(withNoteReferenceBibles(none, 'en')).toBe(none);
+  });
+});
+
+describe('two references to the same place', () => {
+  it('match whichever Bibles they were written in', () => {
+    expect(sameScriptureReference(ps('rst', 50, 12), ps('kjv', 51, 10))).toBe(true);
+    expect(sameScriptureReference(ps('rst', 50, 12), ps('kjv', 51, 12))).toBe(false);
+    expect(sameScriptureReference(ps('rst', 22), ps('kjv', 23))).toBe(true);
+    expect(sameScriptureReference({ book: 'John', chapter: 3, fromVerse: 16, toVerse: 16 }, { book: 'John', chapter: 3, fromVerse: 16 })).toBe(true);
+  });
+});
+
+describe('a reference on the screen — BUG-20261012-psalm-verse-numbering-not-mapped', () => {
+  it('a new one: its author sees what was typed, an English screen and the AI the same verse', () => {
+    const typed = { bible: 'rst' as const, book: 'Psalms', chapter: 50, fromVerse: 12 };
+    expect(formatScriptureReference(typed, { locale: 'ru' })).toBe('Пс.50:12');
+    expect(formatScriptureReference(typed, { locale: 'uk' })).toBe('Пс.50:12');
+    expect(formatScriptureReference(typed, { locale: 'en', style: 'long' })).toBe('Psalms 51:10');
+    expect(formatScriptureReference(typed, { style: 'canonical' })).toBe('Psalms 51:10');
+  });
+
+  it('an old one, read through its note: unchanged for its author, the right verse for everyone else', () => {
+    // "Пс 50:12" typed in Russian before references kept their Bible: stored as Psalms 51:12.
+    const stored = { userId: 'u', title: 'Покаяние', content: 'Сердце чистое', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] };
+    const [ref] = engineNote(stored, 'n1', 'en').scriptureRefs;
+    expect(formatScriptureReference(ref, { locale: 'ru' })).toBe('Пс.50:12');
+    expect(formatScriptureReference(ref, { locale: 'en', style: 'long' })).toBe('Psalms 51:10');
+    expect(formatScriptureReference(ref, { style: 'canonical' })).toBe('Psalms 51:10');
+  });
+
+  it('an old one that never passed through a note is shown as it always was', () => {
+    const stored = { book: 'Psalms', chapter: 23 };
+    expect(formatScriptureReference(stored, { locale: 'ru' })).toBe('Пс.22');
+    expect(formatScriptureReference(stored, { locale: 'en' })).toBe('Ps.23');
+    expect(formatScriptureReference(stored, { style: 'canonical' })).toBe('Psalms 23');
+  });
+});

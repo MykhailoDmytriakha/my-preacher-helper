@@ -15,9 +15,9 @@ A Bible is one entry keyed by its own id, never by its language: its text, its n
 
 ## Traps
 
-- `getChapterCount` in `studies/bibleData.ts` is the King James count; a Bible's own count is `chapterCount(bible, book)` (Joel has 4 chapters in Ohienko).
+- A Bible's own chapter and verse counts are `chapterCount(bible, book)` and `verseCount(bible, book, chapter)` (Joel has 4 chapters in Ohienko); `BIBLE_BOOKS_DATA[].chapters` in `studies/bibleData.ts` is the King James count.
 - The tables come from bibletags-versification (MIT, `THIRD_PARTY_NOTICES.md`); regenerate them with `scripts/build-versification.mjs`, never by hand.
-- Study-note references still use the chapter-only psalm convention of `bibleData` (BUG-20261012-psalm-verse-numbering-not-mapped): moving them onto `placesIn` changes how stored references read and waits for the owner's decision.
+- Study-note references name the Bible they were written in (`bible` on `ScriptureReference`) and are shown through the same mapping (`utils/scriptureReferenceNumbering.ts`, recipe `format-scripture-reference.md`). A new Bible is a new `bible` value there too: `referenceBibleFor` says which Bible a person writes in.
 
 ## Why
 
