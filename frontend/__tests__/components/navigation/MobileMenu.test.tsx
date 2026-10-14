@@ -120,9 +120,10 @@ describe('MobileMenu Component', () => {
     expect(screen.getByText('•')).toBeInTheDocument();
   });
 
-  test('keeps all eight destinations and highlights care on prayer detail routes', () => {
+  test('keeps all nine destinations and highlights care on prayer detail routes', () => {
     render(<MobileMenu isOpen onLogout={mockLogout} pathname="/prayers/123" />);
-    expect(screen.getAllByRole('link')).toHaveLength(8);
+    expect(screen.getAllByRole('link')).toHaveLength(9);
+    expect(screen.getByRole('link', { name: 'navigation.bible' })).toHaveAttribute('href', '/bible');
     expect(screen.getByRole('link', { name: 'navigation.care' })).toHaveAttribute('aria-current', 'page');
   });
 

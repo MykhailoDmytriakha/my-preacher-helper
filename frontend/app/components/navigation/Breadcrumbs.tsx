@@ -35,6 +35,11 @@ type SegmentConfig = {
 };
 
 const segmentLabels: Record<string, SegmentConfig> = {
+  bible: {
+    labelKey: 'navigation.bible',
+    defaultLabel: 'Bible',
+    href: '/bible'
+  },
   settings: {
     labelKey: 'navigation.settings',
     defaultLabel: 'Settings',

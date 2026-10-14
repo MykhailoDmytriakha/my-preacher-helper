@@ -255,6 +255,11 @@ export function getBooksForDropdown(locale: BibleLocale): Array<{ id: string; na
 /**
  * Convert a Psalm number from Hebrew/Protestant (KJV) to Septuagint/Orthodox (RST/UKR).
  * Note: This is an approximation. Some Psalms are split/merged between traditions.
+ *
+ * The storage convention of study-note references only, chapter for chapter: the exact place of a
+ * verse in each Bible is `utils/versification` (`placesIn`). Moving the notes onto it changes how
+ * references already stored this way read (BUG-20261012-psalm-verse-numbering-not-mapped), so it
+ * waits for the owner's decision on those.
  */
 export function psalmHebrewToSeptuagint(hebrewPsalm: number): number {
   if (hebrewPsalm <= 9) return hebrewPsalm;

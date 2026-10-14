@@ -19,6 +19,9 @@ let mockOptions: {
 
 jest.mock('@serwist/next/worker', () => ({ defaultCache: [] }));
 jest.mock('serwist', () => ({
+  CacheFirst: jest.fn().mockImplementation(function (this: { options: unknown }, options: unknown) {
+    this.options = options;
+  }),
   NetworkOnly: jest.fn(),
   Serwist: jest.fn().mockImplementation((options) => {
     mockOptions = options;
@@ -115,6 +118,42 @@ describe('service worker transport boundary', () => {
     const shared = { waitUntil: jest.fn(), data: { type: 'offline-page-seen', url: 'https://my-preacher-helper.com/share/notes/token' } };
     mockListeners.get('message')!(shared);
     expect(shared.waitUntil).not.toHaveBeenCalled();
+  });
+
+  it('keeps the Bible text in its own cache, answered first, before the default rules', async () => {
+    // 66 book files would push each other out of the default 32-entry static-JSON cache.
+    const { CacheFirst } = jest.requireMock('serwist');
+    const index = mockOptions.runtimeCaching.findIndex(rule => rule.handler instanceof CacheFirst);
+    expect(index).toBe(1);
+    type BiblePlugin = {
+      cacheWillUpdate: (args: { response: Response }) => Promise<Response | null>;
+      handlerDidError: (args: { request: Request }) => Promise<Response>;
+    };
+    const options = (mockOptions.runtimeCaching[index].handler as { options: { cacheName: string; plugins: BiblePlugin[] } }).options;
+    expect(options.cacheName).toBe('bible-text');
+    // Only a book is kept, checked before the background write: a "200" Wi-Fi sign-in page or a JSON
+    // error must never become the book.
+    const keep = (response: Response) => options.plugins[0].cacheWillUpdate({ response });
+    const json = (body: unknown, status = 200) =>
+      new PlatformResponse(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } }) as unknown as Response;
+    const book = json({ id: 'Jude', source: 720, chapters: [['¶Иуда']] });
+    await expect(keep(book)).resolves.toBe(book);
+    await expect(keep(json({ error: 'gateway' }))).resolves.toBeNull();
+    await expect(keep(json({ id: 'Jude', chapters: [[]] }))).resolves.toBeNull();
+    await expect(keep(json({ id: 'Jude', chapters: [['a']] }, 404))).resolves.toBeNull();
+    await expect(keep(new PlatformResponse('<html>', { status: 200, headers: { 'content-type': 'text/html' } }) as unknown as Response)).resolves.toBeNull();
+    // A store that refuses to read must not keep the book from the network.
+    const answer = new PlatformResponse('{}') as unknown as Response;
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(answer).mockRejectedValueOnce(new TypeError('offline'));
+    const request = new Request('https://my-preacher-helper.com/bible-text/rst/v1/jude.json');
+    await expect(options.plugins[0].handlerDidError({ request })).resolves.toBe(answer);
+    await expect(options.plugins[0].handlerDidError({ request })).resolves.toMatchObject({ status: 503 });
+    fetchSpy.mockRestore();
+    const matches = (href: string) => mockOptions.runtimeCaching[index].matcher({ url: new URL(href) });
+    expect(matches('https://my-preacher-helper.com/bible-text/rst/v1/1-timothy.json')).toBe(true);
+    expect(matches('https://my-preacher-helper.com/bible')).toBe(false);
+    expect(matches('https://my-preacher-helper.com/api/bible-text/x.json')).toBe(false);
+    expect(matches('https://elsewhere.example/bible-text/rst/v1/1-timothy.json')).toBe(false);
   });
 
   it('answers every private API request from the network only, first among the rules', () => {

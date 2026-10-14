@@ -1,6 +1,7 @@
 import { defaultCache } from "@serwist/next/worker";
-import { NetworkOnly, Serwist } from "serwist";
+import { CacheFirst, NetworkOnly, Serwist } from "serwist";
 
+import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
 import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
@@ -49,6 +50,30 @@ const runtimeCaching: RuntimeCaching[] = [
   {
     matcher: ({ url }) => url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/share/"),
     handler: new NetworkOnly(),
+  },
+  /**
+   * THE BIBLE TEXT STAYS ON THE DEVICE. A book's file never changes under its address (a new text
+   * gets a new version folder, `utils/bibleTextCache.ts`), so the copy is answered first and kept
+   * without expiry, in its own cache. Without this rule the default static-JSON rule would take the
+   * 66 books into a 32-entry, 24-hour cache, where they would push each other out. Only a book is
+   * kept: a "200" sign-in page of a hotel Wi-Fi or a JSON error must not become the book for ever.
+   * The check runs here, before the write — the worker writes in the background, after it has
+   * answered the page, so the page throwing a bad copy away could otherwise lose the race. A store
+   * that refuses to read sends the request to the network instead of failing it.
+   */
+  {
+    matcher: ({ url }) => url.origin === self.origin && isBibleTextPath(url.pathname),
+    handler: new CacheFirst({
+      cacheName: BIBLE_TEXT_CACHE,
+      plugins: [{
+        cacheWillUpdate: async ({ response }) => {
+          if (!isBibleTextAnswer(response)) return null;
+          const data: unknown = await response.clone().json().catch(() => null);
+          return isBookShaped(data) ? response : null;
+        },
+        handlerDidError: async ({ request }) => fetch(request).catch(() => new Response(null, { status: 503 })),
+      }],
+    }),
   },
   {
     matcher: ({ request }) => isRscNavigation(request, self.origin),

@@ -225,6 +225,12 @@ const NAV_ITEM_THEMES = {
     indicator: 'text-blue-600 dark:text-blue-300',
     hover: 'hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:hover:border-blue-500/40 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
   },
+  bible: {
+    pill: 'border-indigo-500 text-indigo-600 dark:border-indigo-400 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
+    menu: 'text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40',
+    indicator: 'text-indigo-600 dark:text-indigo-300',
+    hover: 'hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300'
+  },
   studies: {
     pill: 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
     menu: 'text-emerald-600 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',

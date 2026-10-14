@@ -60,7 +60,7 @@ let memory: DiagnosticEvent[] = [];
  * new section is added without being named here.
  */
 const ROUTE_SEGMENTS = new Set([
-  'admin', 'calendar', 'care', 'conduct', 'council', 'dashboard', 'groups', 'limits', 'manual', 'new',
+  'admin', 'bible', 'calendar', 'care', 'conduct', 'council', 'dashboard', 'groups', 'limits', 'manual', 'new',
   'notes', 'orders', 'plan', 'prayers', 'series', 'sermons', 'settings', 'share', 'share-links',
   'structure', 'studies', 'tags', 'templates', 'user',
 ]);

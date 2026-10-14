@@ -9,6 +9,8 @@ import {
   HeartIcon,
 } from '@heroicons/react/24/outline';
 
+import { BibleIcon } from '@/components/bible/BibleIcon';
+
 import type { NavItemThemeKey } from '@/utils/themeColors';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -30,6 +32,15 @@ export const primaryNavItems: PrimaryNavItem[] = [
     defaultLabel: 'Dashboard',
     icon: HomeIcon,
     matchers: [/^\/dashboard(\/|$)/]
+  },
+  {
+    key: 'bible',
+    href: '/bible',
+    labelKey: 'navigation.bible',
+    defaultLabel: 'Bible',
+    icon: BibleIcon,
+    matchers: [/^\/bible(\/|$)/],
+    theme: 'bible'
   },
   {
     key: 'sermons',

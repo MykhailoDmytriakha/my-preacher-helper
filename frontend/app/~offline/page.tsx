@@ -48,6 +48,9 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   { test: (p) => p === '/groups', Component: lazy(() => import('@/(pages)/(private)/groups/page')) },
   { test: (p) => p === '/prayers', Component: lazy(() => import('@/(pages)/(private)/prayers/page')) },
   { test: (p) => p === '/studies', Component: lazy(() => import('@/(pages)/(private)/studies/page')) },
+  // One address for the whole Bible: the book is a search parameter switched in the page, so a
+  // book never opened online still opens offline once /bible itself has been seen.
+  { test: (p) => p === '/bible', Component: lazy(() => import('@/(pages)/(private)/bible/page')) },
   { test: (p) => p === '/calendar', Component: lazy(() => import('@/(pages)/(private)/calendar/page')) },
   // Param detail routes — single-segment match.
   { test: (p) => /^\/sermons\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },
