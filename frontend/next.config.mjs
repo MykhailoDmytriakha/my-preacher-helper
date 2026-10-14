@@ -141,6 +141,15 @@ const nextConfig = {
   reactStrictMode: true, // Enable Strict Mode to surface issues early
   ...(typegenDistDir ? { distDir: typegenDistDir } : {}),
 
+  // The dev server drops a compiled route after 60 s without requests and compiles it again on the
+  // next one: after a pause, the requests of a returning tab took 16 s each (2026-10-14), past the
+  // client's 5–8 s deadlines, so the app read them as "not reached" and said it was offline
+  // (BUG-20261014-offline-banner-after-idle-tab). Routes stay compiled for a day; production has
+  // nothing to compile and ignores this.
+  ...(process.env.NODE_ENV === "development"
+    ? { onDemandEntries: { maxInactiveAge: 24 * 60 * 60 * 1000, pagesBufferLength: 1000 } }
+    : {}),
+
   typescript: {
     ignoreBuildErrors: externalTypecheck,
     ...(typegenDistDir ? { tsconfigPath: "tsconfig.build.json" } : {}),
