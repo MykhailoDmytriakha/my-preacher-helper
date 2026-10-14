@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
-import { DataEngineMigrationGate, queryCacheMayBeOverwritten, shouldPersistLegacyQuery } from '@/data-engine/react.client';
+import { DataEngineMigrationGate, queryCacheMayBeOverwritten, shouldPersistLegacyMutation, shouldPersistLegacyQuery } from '@/data-engine/react.client';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { isConnectionFailure } from '@/utils/apiClient';
@@ -36,9 +36,13 @@ export const PERSISTED_CACHE_MAX_AGE = Infinity;
 // eternal pending badges. The data they carry is not lost — an offline
 // client-SDK write sits in Firestore's own persistent queue, and a killed
 // in-flight server call could not be replayed from here either way.
+// A legacy write of a collection the engine owns is never persisted: the old writer refuses it and
+// the migration archive already keeps its words (BUG-20261013-legacy-copies-return-after-accept).
 export const shouldDehydrateMutation = (mutation: {
   state: { isPaused: boolean; status: string };
-}): boolean => mutation.state.isPaused || mutation.state.status === 'error';
+  options: { mutationKey?: readonly unknown[] };
+}): boolean => (mutation.state.isPaused || mutation.state.status === 'error')
+  && shouldPersistLegacyMutation(mutation.options.mutationKey);
 
 /**
  * A RESTORE SLOWER THAN THE SILENCE THRESHOLD (BUG-20260927-engine-open-hangs-on-silent-device-storage)

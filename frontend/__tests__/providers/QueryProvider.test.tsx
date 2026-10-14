@@ -203,19 +203,19 @@ describe('QueryProvider', () => {
 
   describe('shouldDehydrateMutation', () => {
     it('persists paused (offline-queued) mutations — resumePausedMutations replays them', () => {
-      expect(shouldDehydrateMutation({ state: { isPaused: true, status: 'pending' } })).toBe(true);
+      expect(shouldDehydrateMutation({ state: { isPaused: true, status: 'pending' }, options: {} })).toBe(true);
     });
 
     it('persists error mutations — rehydrated as retryable error badges', () => {
-      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'error' } })).toBe(true);
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'error' }, options: {} })).toBe(true);
     });
 
     it('does NOT persist in-flight pending mutations — v5 cannot resume them (zombie badges)', () => {
-      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'pending' } })).toBe(false);
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'pending' }, options: {} })).toBe(false);
     });
 
     it('does NOT persist successful mutations', () => {
-      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'success' } })).toBe(false);
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'success' }, options: {} })).toBe(false);
     });
   });
 });

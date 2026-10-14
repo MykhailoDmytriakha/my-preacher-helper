@@ -321,7 +321,10 @@ with a `useSermon` shape read the engine document through `useEngineSermonSource
 
 Legacy React Query rows of an engine-owned collection are session-only
 (`shouldPersistLegacyQuery`): persisting them would make the next start archive a fresh read as
-an unsaved copy from the previous version.
+an unsaved copy from the previous version. Its failed and paused legacy writes are session-only
+too (`shouldPersistLegacyMutation`): the archive already holds their words, and saved again they
+were archived again on every start, so a copy the person removed came back
+(BUG-20261013-legacy-copies-return-after-accept).
 
 ## Preserving previous clients' input
 

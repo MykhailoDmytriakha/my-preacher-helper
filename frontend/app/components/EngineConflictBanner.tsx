@@ -11,6 +11,7 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
+import { fieldLabel } from '@/utils/storedFieldLabel';
 
 import type { EditorRecord } from '@/data-engine/controller';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
@@ -27,9 +28,10 @@ const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft
  */
 type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deletedHere' | 'refusedDelete' | 'several';
 /**
- * `screen`: the draft belongs to a screen's editor, so it is decided on that screen, not here —
- * when `decidable`: a screen opened now takes the work over. Otherwise (several chains of requests,
- * between which the engine never picks) no screen can, and the stored version is offered here.
+ * `screen`: the draft belongs to a screen's editor, so its words are kept on that screen, not here —
+ * when `decidable`: a screen opened now takes the work over; the stored version is offered here as
+ * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
+ * and the stored version is the one choice, offered here.
  */
 interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; heldOpen?: boolean; formWork?: boolean }
 
@@ -37,6 +39,10 @@ interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: s
 const REFUSED_TITLE = 'dataSync.phase.refused';
 const CONFLICT_TITLE = 'freshness.conflictTitle';
 const COPY_ACTION = 'freshness.copyTextAction';
+const ACCEPT_REMOTE = 'dataSync.acceptRemote';
+const BUTTON = 'rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-60';
+const PRIMARY_BUTTON = `${BUTTON} bg-amber-600 text-white hover:bg-amber-700`;
+const SECONDARY_BUTTON = `${BUTTON} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`;
 const NOTICE_BOX = 'mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10';
 const NOTICE_TITLE = 'font-medium text-amber-900 dark:text-amber-200';
 const NOTICE_BODY = 'mt-0.5 text-amber-800/80 dark:text-amber-200/70';
@@ -54,11 +60,57 @@ const show = (value: unknown): string => {
   }
   return JSON.stringify(value, null, 2);
 };
+type Item = Record<string, unknown> & { id: string };
+const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
+/** Fields that name an item first, when it has them; any other words come after. */
+const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
+/**
+ * What the person wrote in one item, field by field: text, a list of short texts (questions,
+ * references), never an id, a link to another item or a moment written down by the app.
+ */
+function itemWords(item: Item): [string, string][] {
+  const words = (field: string, value: unknown): string => {
+    if (field === 'id' || /Ids?$/.test(field) || BOOKKEEPING.has(field)) return '';
+    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : value.trim();
+    return Array.isArray(value) && value.every(entry => typeof entry === 'string') ? value.join(', ') : '';
+  };
+  const fields = [...NAMING_FIELDS.filter(field => field in item), ...Object.keys(item).filter(field => !NAMING_FIELDS.includes(field))];
+  return fields.map((field): [string, string] => [field, words(field, item[field])]).filter(([, text]) => text);
+}
+/**
+ * One changed item in words: the words that changed, with its name first when the name stayed;
+ * just its name when only its place or links changed. Null when it has no words at all.
+ */
+function changedItem(item: Item, before: Item | undefined): string | null {
+  const words = itemWords(item);
+  if (!words.length) return null;
+  const was = new Map(before ? itemWords(before) : []);
+  const changed = words.filter(([field, text]) => was.get(field) !== text);
+  const [name] = words;
+  if (!changed.length) return name[1];
+  return (changed.includes(name) ? changed : [name, ...changed]).map(([, text]) => text).join('\n');
+}
+/**
+ * A list of items with ids reads as the words of the items this version added or changed — never
+ * their ids, positions or links, and never the items it left as they were
+ * (BUG-20261013-refused-thoughts-notice-shows-raw-data). An item changed without any words is
+ * never hidden: then the whole list is shown as stored, as is any other list.
+ */
+const showList = (value: unknown[], base: unknown): string => {
+  if (!value.every(isItem)) return show(value);
+  const before = new Map((Array.isArray(base) ? base.filter(isItem) : []).map(item => [item.id, item]));
+  const changed = value.filter(item => JSON.stringify(before.get(item.id)) !== JSON.stringify(item))
+    .map(item => changedItem(item, before.get(item.id)));
+  return changed.includes(null) ? show(value) : changed.join('\n\n');
+};
 /** Every field a version changed against its base, as "field: value" — steps, tags and structure included. */
-function changedText(value: DocumentData | null | undefined, base: DocumentData | null | undefined): string {
+function changedText(value: DocumentData | null | undefined, base: DocumentData | null | undefined, name: (field: string) => string): string {
   if (!value) return '';
   return Object.keys(value).filter(field => !BOOKKEEPING.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
-    .map(field => `${field}: ${show(value[field])}`).join('\n\n');
+    .map(field => {
+      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field]) : show(value[field]);
+      return shown ? `${name(field)}: ${shown}` : '';
+    }).filter(Boolean).join('\n\n');
 }
 
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -83,11 +135,13 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
  * side of a relation or a sermon born from a note has no open editor to show a late answer — a
  * sermon's one-shot actions used to fall outside a fixed list of collections and were answered
  * nowhere. Those are decided here. A screen's draft, refused after the person left that screen, is
- * only SHOWN here, with the way back: that screen offers the choice when opened (a second place
- * deciding one draft is how an answer gets taken twice). Once decided there, the draft stops
- * waiting (`reconcileRecoveryRecord`) and the entry goes (BUG-20260813-late-refusal-silent-after-navigation).
+ * shown here with the way back: keeping its words needs that screen's editor. Only the stored
+ * version is taken here, by `takeStoredVersion`, which settles every copy of the draft, a screen
+ * still open in another tab included (BUG-20261013-screen-draft-notice-offers-no-choice). Once
+ * decided, the draft stops waiting (`reconcileRecoveryRecord`) and the entry goes
+ * (BUG-20260813-late-refusal-silent-after-navigation).
  */
-function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[]): Waiting[] {
+function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[], name: (field: string) => string): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
   // A screen's draft is listed for an ANSWER the server gave; one waiting only on a conflict seen
@@ -101,9 +155,10 @@ function waitingDocuments(records: readonly { record: EditorRecord }[], journal:
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
       const drafts = decided.filter(entry => isOneShotRecord(entry) !== screen && sameResource(entry.checkpoint.confirmed.resource, resource));
       const { checkpoint } = drafts[0];
+      // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
       documents.push({ resource, kind: kindOf(drafts, refused), screen,
-        mine: drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value)).filter(Boolean),
-        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null) });
+        mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name)).filter(Boolean))],
+        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name) });
     }
   }
   return documents;
@@ -137,13 +192,17 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0);
+  // Field names in the person's words, as on the list of legacy copies. Read through a ref: `t` is
+  // no key for the list's effect — a new function on a render would restart it in a loop.
+  const fieldNameRef = useRef((field: string) => fieldLabel(t, field));
+  fieldNameRef.current = (field: string) => fieldLabel(t, field);
 
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     if (!browser || !owner) { setWaiting([]); return; }
     try {
       const [records, journal] = await Promise.all([browser.engine.listRecoverable(), browser.engine.listPending()]);
-      const listed = await Promise.all(waitingDocuments(records, journal).map(async entry => (
+      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current).map(async entry => (
         entry.screen ? { ...entry, formWork: await browser.engine.formWorkPending(entry.resource),
           decidable: await browser.engine.screenDecides(entry.resource), heldOpen: await browser.engine.answerHeldOpen(entry.resource) } : entry)));
       // A form's answer is resolved by its form, as it always was; it is not said here.
@@ -192,7 +251,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const mine = entry.mine.join('\n\n———\n\n');
   if (entry.screen) {
     return entry.decidable
-      ? <ScreenDraftNotice entry={entry} mine={mine} onCopy={() => { void copyToClipboard(mine); }} />
+      ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void settle('theirs'); }} />
       : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void settle('theirs'); }} />;
   }
   if (entry.kind === 'conflict') {
@@ -219,9 +278,6 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const [title, body] = heading[entry.kind];
   const deletion = entry.kind === 'deletedHere' || entry.kind === 'refusedDelete';
   const shown = deletion ? entry.theirs : mine;
-  const buttonClass = 'rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-60';
-  const primary = `${buttonClass} bg-amber-600 text-white hover:bg-amber-700`;
-  const secondary = `${buttonClass} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`;
   return (
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
@@ -232,16 +288,16 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       <div className="mt-3 flex flex-wrap gap-2">
         {deletion ? (
           <>
-            <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={primary}>{t('dataSync.keepRecord')}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle('mine'); }} className={secondary}>
+            <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={PRIMARY_BUTTON}>{t('dataSync.keepRecord')}</button>
+            <button type="button" disabled={busy} onClick={() => { void settle('mine'); }} className={SECONDARY_BUTTON}>
               {entry.kind === 'refusedDelete' ? t('dataSync.retryDelete') : t('dataSync.deleteAnyway')}
             </button>
           </>
         ) : (
           <>
-            <button type="button" disabled={busy || !mine} onClick={() => { void copyToClipboard(mine); }} className={primary}>{t(COPY_ACTION)}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={secondary}>
-              {entry.kind === 'deletedThere' || entry.kind === 'refusedCreate' ? t('freshness.discardAction') : t('dataSync.acceptRemote')}
+            <button type="button" disabled={busy || !mine} onClick={() => { void copyToClipboard(mine); }} className={PRIMARY_BUTTON}>{t(COPY_ACTION)}</button>
+            <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={SECONDARY_BUTTON}>
+              {entry.kind === 'deletedThere' || entry.kind === 'refusedCreate' ? t('freshness.discardAction') : t(ACCEPT_REMOTE)}
             </button>
           </>
         )}
@@ -252,14 +308,18 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
 
 /**
  * A SCREEN'S DRAFT THE SERVER ANSWERED AFTER THE PERSON LEFT THAT SCREEN — said once, anywhere,
- * with its text, and the way to the screen that decides it. No choice is made here.
+ * with its text. Keeping the words needs that screen's editor, so it is reached by the link; the
+ * stored version is taken here (BUG-20261013-screen-draft-notice-offers-no-choice): a notice on
+ * every page with nothing to decide in it was all the person saw. `takeStoredVersion` settles every
+ * copy of the draft, the screen open in another tab included.
  */
-function ScreenDraftNotice({ entry, mine, onCopy }: { entry: Waiting; mine: string; onCopy: () => void }) {
+function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
+  entry: Waiting; mine: string; busy: boolean; onCopy: () => void; onTakeStored: () => void;
+}) {
   const { t } = useTranslation();
   const href = documentScreenHref(entry.resource);
   const title = entry.kind === 'refused' || entry.kind === 'refusedCreate' || entry.kind === 'refusedDelete'
     ? t(REFUSED_TITLE) : t(CONFLICT_TITLE);
-  const buttonClass = 'rounded-lg px-3 py-1.5 font-medium transition-colors';
   return (
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
@@ -268,13 +328,9 @@ function ScreenDraftNotice({ entry, mine, onCopy }: { entry: Waiting; mine: stri
         <pre className={NOTICE_TEXT}>{mine}</pre>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {href && <Link href={href} className={`${buttonClass} bg-amber-600 text-white hover:bg-amber-700`}>{t('dataSync.openToDecide')}</Link>}
-        {mine && (
-          <button type="button" onClick={onCopy}
-            className={`${buttonClass} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`}>
-            {t(COPY_ACTION)}
-          </button>
-        )}
+        {href && <Link href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</Link>}
+        <button type="button" disabled={busy} onClick={onTakeStored} className={SECONDARY_BUTTON}>{t(ACCEPT_REMOTE)}</button>
+        {mine && <button type="button" disabled={busy} onClick={onCopy} className={SECONDARY_BUTTON}>{t(COPY_ACTION)}</button>}
       </div>
     </div>
   );
@@ -291,17 +347,16 @@ function UndecidableScreenDrafts({ entry, mine, busy, onCopy, onTakeStored }: {
   const { t } = useTranslation();
   const title = entry.kind === 'refused' || entry.kind === 'refusedCreate' || entry.kind === 'refusedDelete'
     ? t(REFUSED_TITLE) : t(CONFLICT_TITLE);
-  const buttonClass = 'rounded-lg px-3 py-1.5 font-medium transition-colors disabled:opacity-60';
   return (
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       <p className={NOTICE_BODY}>{t('dataSync.screenDraftsUndecidable')}</p>
       {mine && <pre className={NOTICE_TEXT}>{mine}</pre>}
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" disabled={busy || !mine} onClick={onCopy} className={`${buttonClass} bg-amber-600 text-white hover:bg-amber-700`}>{t(COPY_ACTION)}</button>
+        <button type="button" disabled={busy || !mine} onClick={onCopy} className={PRIMARY_BUTTON}>{t(COPY_ACTION)}</button>
         <button type="button" disabled={busy} onClick={onTakeStored}
-          className={`${buttonClass} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`}>
-          {t('dataSync.acceptRemote')}
+          className={SECONDARY_BUTTON}>
+          {t(ACCEPT_REMOTE)}
         </button>
       </div>
     </div>

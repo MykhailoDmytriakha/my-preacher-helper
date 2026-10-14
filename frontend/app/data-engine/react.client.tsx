@@ -13,7 +13,7 @@ import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
-import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
+import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { mergeFields } from './protocol';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -145,6 +145,10 @@ export function queryCacheMayBeOverwritten(): boolean {
 /** Whether the persisted query cache may keep this query; engine-owned collections are session-only. */
 export function shouldPersistLegacyQuery(queryKey: readonly unknown[]): boolean {
   return !isEngineOwnedLegacyQuery(queryKey, isCollectionOnEngine);
+}
+
+export function shouldPersistLegacyMutation(mutationKey: readonly unknown[] | undefined): boolean {
+  return !isEngineOwnedLegacyMutation(mutationKey, isCollectionOnEngine);
 }
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */

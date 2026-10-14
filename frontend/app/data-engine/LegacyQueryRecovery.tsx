@@ -9,6 +9,7 @@ import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
 import { getCookieLanguage } from '@/services/userSettings.service';
 import { answerWithin } from '@/utils/deviceStorage';
+import { fieldLabel } from '@/utils/storedFieldLabel';
 import { DEFAULT_LANGUAGE } from '@locales/constants';
 import { i18n } from '@locales/i18n';
 
@@ -94,15 +95,6 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   </div>;
 }
 
-/** Fields whose name the person should read in their own words; any other field shows as stored. */
-const NAMED_FIELDS = new Set(['title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
-  'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
-  'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
-  'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
-  // Every other field the person writes in councils, groups, series, sermons, prayers and study notes (models.ts).
-  'scratch', 'insights', 'planText', 'planMode', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church',
-  'audioChunks', 'audioMetadata', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt',
-  'answerText', 'text', 'updates', 'content', 'scriptureRefs']);
 // Every archived collection is shown by name, so each one has a label in legacyRecovery.collection.
 const NAMED_COLLECTIONS = new Set(ARCHIVED_COLLECTIONS);
 
@@ -274,7 +266,7 @@ function useCopyFormatting() {
     day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }), [i18n.language]);
   const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');
-  const fieldName = (field: string) => NAMED_FIELDS.has(field) ? t(`legacyRecovery.field.${field}`) : field;
+  const fieldName = (field: string) => fieldLabel(t, field);
   const shown = (value: unknown): string => {
     if (value === undefined || value === null) return t('legacyRecovery.absent');
     if (typeof value === 'string') return value.trim() ? value : t('legacyRecovery.empty');

@@ -7,6 +7,8 @@ import { DataEngineProvider, useDataDocument, useDocumentActions } from '@/data-
 import { editorIdentity } from '@/data-engine/editorIdentity';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
+import type { DocumentData } from '@/data-engine/types';
+
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -72,7 +74,7 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(actions?.ready).toBe(true));
     await act(async () => { await actions!.commit(resource, current => ({ ...current!, title: 'Refused title', content: 42 as never })); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
-    expect(screen.getByText(/title: Refused title/)).toBeInTheDocument();
+    expect(screen.getByText(/legacyRecovery\.field\.title: Refused title/)).toBeInTheDocument();
     expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
@@ -155,8 +157,8 @@ describe('a late answer to a one-shot change of a sermon', () => {
   beforeEach(() => { process.env[ON_ENGINE] = 'sermons'; actions = null; mockPathname = '/dashboard'; });
   afterEach(() => { delete process.env[ON_ENGINE]; });
 
-  const setupSermon = () => {
-    const harness = documentEngineHarness({ resource: sermon, value: storedSermon, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+  const setupSermon = (value: DocumentData = storedSermon) => {
+    const harness = documentEngineHarness({ resource: sermon, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
     return harness;
@@ -207,9 +209,67 @@ describe('a late answer to a one-shot change of a sermon', () => {
     expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument();
     expect(screen.getByText('dataSync.screenDraftBody')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toHaveAttribute('href', '/sermons/sermon-1');
-    // No choice is made here: that screen offers it.
-    expect(screen.queryByText('dataSync.acceptRemote')).not.toBeInTheDocument();
+    // Keeping the words needs the screen's editor; taking the stored version does not (owner, 2026-10-13).
+    expect(screen.getByText('dataSync.acceptRemote')).toBeInTheDocument();
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+  });
+
+  /** BUG-20261013-screen-draft-notice-offers-no-choice: the notice stood on every page with nothing to decide. */
+  it('takes the stored version from any page, and the refused draft does not come back', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await screenDraftLeftBehind(harness);
+    await waitFor(() => expect(screen.getByText(/Typed on the sermon page/)).toBeInTheDocument());
+
+    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText(/Typed on the sermon page/)).not.toBeInTheDocument());
+    expect(await harness.engine.listRecoverable(sermon)).toHaveLength(0);
+    expect((await harness.engine.listPending()).filter(entry => entry.state === 'refused')).toHaveLength(0);
+
+    // The screen opened again starts from the stored version, with nothing refused to answer.
+    const reopened = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'after-choice'));
+    await act(async () => { await settleEngine(); });
+    expect(reopened.getState().checkpoint.draft?.verse).toBe('John 1:14');
+    reopened.close({ flush: false });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
+    expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument();
+  });
+
+  it('says the same words once however many openings of the screen kept a copy of the draft', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await screenDraftLeftBehind(harness);
+    // The screen opened again and left again without a choice: one more copy of the same draft.
+    for (const suffix of ['second-visit', 'third-visit']) {
+      const visit = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', suffix));
+      await act(async () => { await settleEngine(); });
+      visit.close({ flush: false });
+      await act(async () => { await settleEngine(); });
+    }
+    await waitFor(() => expect(screen.getByText(/Typed on the sermon page/)).toBeInTheDocument());
+    const shown = screen.getByText(/Typed on the sermon page/).textContent ?? '';
+    expect(shown.match(/Typed on the sermon page/g)).toHaveLength(1);
+  });
+
+  it('shows changed thoughts by their words, without ids, positions or the thoughts left as they were', async () => {
+    const kept = { id: 'thought-kept-1', text: 'A thought nobody touched', tags: [], position: 1000, outlinePointId: null, date: '2026-09-01T00:00:00.000Z' };
+    const harness = setupSermon({ ...storedSermon, thoughts: [kept] });
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    const screenEditor = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'thoughts'));
+    await act(async () => {
+      await screenEditor.edit({ ...storedSermon, date: 8 as never, thoughts: [kept,
+        { id: 'thought-new-7f2a', text: 'My new thought', tags: ['intro'], position: 2000, outlinePointId: 'op-1740984747334', date: '2026-09-02T00:00:00.000Z' }] });
+      await screenEditor.save(); await settleEngine(); await settleEngine();
+    });
+    screenEditor.close({ flush: false });
+
+    await waitFor(() => expect(screen.getByText(/My new thought/)).toBeInTheDocument());
+    const shown = screen.getByText(/My new thought/).textContent ?? '';
+    expect(shown).not.toMatch(/thought-new-7f2a|op-1740984747334|position|outlinePointId|"tags"/);
+    expect(shown).not.toMatch(/A thought nobody touched/);
+    // The field is named in the person's words, as on the list of legacy copies — not "thoughts:".
+    expect(shown).toMatch(/legacyRecovery\.field\.thoughts: /);
+    expect(shown).not.toMatch(/(^|\n)thoughts: /);
   });
 
   it('shows a plan\'s refused text as the text, without node ids or the mode it picked itself', async () => {
@@ -331,5 +391,49 @@ describe('a late answer to a one-shot change of a sermon', () => {
     function ScreenOnActionSlot() { useDataDocument(sermon, { slot: 'action' }); return null; }
     expect(() => render(<DataEngineProvider><ScreenOnActionSlot /></DataEngineProvider>)).toThrow(/reserved for one-shot actions/);
     spy.mockRestore();
+  });
+});
+
+/** Codex-style review 2026-10-13: a list's changed item must never lose the words the person typed. */
+describe('a group\'s refused screen draft shows every word the person changed', () => {
+  const group = { collection: 'groups', id: 'group-1' };
+  const at = '2026-09-01T00:00:00.000Z';
+  const prayer = { id: 'tpl-1', type: 'prayer', title: 'Opening prayer', summary: '', content: 'Old words', questions: [], status: 'draft', createdAt: at, updatedAt: at };
+  const step = { id: 'flow-1', templateId: 'tpl-1', order: 1, durationMin: 5, instanceNotes: 'Old note' };
+  const storedGroup = { userId: 'owner', title: 'Home group', description: '', status: 'active', templates: [prayer], flow: [step], meetingDates: [],
+    createdAt: at, updatedAt: at };
+  beforeEach(() => { actions = null; mockPathname = '/dashboard'; });
+
+  const refusedGroupDraft = async (changes: Record<string, unknown>) => {
+    const harness = documentEngineHarness({ resource: group, value: storedGroup, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    const editor = await harness.engine.openEditor(group, editorIdentity('test-tab', group, 'default', 'group-page'));
+    // A title that is not text: the server refuses the whole change.
+    await act(async () => { await editor.edit({ ...storedGroup, ...changes, title: 42 as never }); await editor.save(); await settleEngine(); await settleEngine(); });
+    editor.close({ flush: false });
+    await act(async () => { await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.screenDraftBody')).toBeInTheDocument());
+    return screen.getByText('dataSync.screenDraftBody').closest('[role="alert"]')?.querySelector('pre')?.textContent ?? '';
+  };
+
+  it('shows a block\'s rewritten content, with its title to say which block', async () => {
+    const shown = await refusedGroupDraft({ templates: [{ ...prayer, content: 'The words I prayed over', updatedAt: '2026-09-02T00:00:00.000Z' }] });
+    expect(shown).toMatch(/The words I prayed over/);
+    expect(shown).toMatch(/Opening prayer/);
+    expect(shown).not.toMatch(/tpl-1|Old words/);
+  });
+
+  it('shows a step\'s note, which has none of a thought\'s fields', async () => {
+    const shown = await refusedGroupDraft({ flow: [{ ...step, instanceNotes: 'Ask about last week first' }] });
+    expect(shown).toMatch(/Ask about last week first/);
+    expect(shown).not.toMatch(/flow-1|templateId/);
+  });
+
+  it('never hides a changed item it has no words for: it is shown as stored', async () => {
+    const shown = await refusedGroupDraft({ flow: [{ ...step, instanceNotes: undefined, durationMin: 12 }] });
+    expect(shown).toMatch(/12/);
+    expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
   });
 });

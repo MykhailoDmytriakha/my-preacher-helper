@@ -110,6 +110,17 @@ const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
 };
 const MUTATION_COLLECTIONS: Record<string, string> = { dashboardSermons: 'sermons', preachDates: 'sermons', 'user-settings': 'users', 'study-notes': 'studyNotes' };
 const mutationCollection = (prefix: string): string => MUTATION_COLLECTIONS[prefix] ?? prefix;
+/**
+ * A legacy write whose collection the engine now owns: the old writer refuses it, and the archive
+ * keeps its words. Like the rows of such a collection it lives for the session only — saved again,
+ * it would be archived again on the next start, and a copy the person removed would come back
+ * (BUG-20261013-legacy-copies-return-after-accept).
+ */
+export function isEngineOwnedLegacyMutation(mutationKey: readonly unknown[] | undefined, enabled: (collection: string) => boolean): boolean {
+  if (!Array.isArray(mutationKey) || mutationKey.length !== 2) return false;
+  const [prefix, operation] = mutationKey;
+  return Boolean(MUTATION_OPERATIONS[String(prefix)]?.includes(String(operation)) && enabled(mutationCollection(String(prefix))));
+}
 /** Every collection whose previous-version copies this archive keeps; the gate mounts when one is on the engine. */
 export const ARCHIVED_COLLECTIONS: readonly string[] = [...new Set([
   ...Object.values(QUERY_SOURCES).map(source => source.collection),
@@ -133,9 +144,9 @@ function mutationIdentity(collection: string, operation: string, variables: unkn
 function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (collection: string) => boolean): Candidate[] {
   return mutations.flatMap((mutation): Candidate[] => {
     if (!object(mutation) || !Array.isArray(mutation.mutationKey) || !object(mutation.state)) return [];
+    if (!isEngineOwnedLegacyMutation(mutation.mutationKey, enabled)) return [];
     const [prefix, operation] = mutation.mutationKey;
     const collection = mutationCollection(String(prefix));
-    if (mutation.mutationKey.length !== 2 || !MUTATION_OPERATIONS[String(prefix)]?.includes(String(operation)) || !enabled(collection)) return [];
     const { documentId, explicitOwner, title } = mutationIdentity(collection, String(operation), mutation.state.variables);
     const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
     // Old deletes have only an ID. An ambiguous owner remains quarantined (owner='').
