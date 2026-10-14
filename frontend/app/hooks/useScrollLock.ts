@@ -81,12 +81,18 @@ function acquire(): void {
     pinned,
   };
 
-  body.style.overflow = 'hidden';
+  // The root alone holds the page. Hidden overflow on the body as well turns the body into a
+  // scroll box of its own: every sticky layer inside it (the app nav, a reader's line) drops back
+  // to its place at the top of the page, and focus given back to a button in such a layer
+  // scrolls the page there — the reader landed at the start of the book (2026-10-14).
   html.style.overflow = 'hidden';
   // Without this the page shifts sideways by the scrollbar's width the moment a dialog opens.
   if (gap > 0) body.style.paddingRight = `${gap}px`;
 
   if (pinned) {
+    // The pinned road keeps the hidden body it was proven with on the owner's iPad; releasing it
+    // puts the reader back by hand, so a scroll that happens while pinned does not stay.
+    body.style.overflow = 'hidden';
     body.style.position = 'fixed';
     body.style.top = `-${page.scrollY}px`;
     body.style.width = '100%';

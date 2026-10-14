@@ -23,13 +23,13 @@ const renderDialog = (props: Partial<React.ComponentProps<typeof FormDialog>> = 
 
 describe('an open dialog holds the page still', () => {
   afterEach(() => {
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   it('locks the page while it is open', () => {
     renderDialog();
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
   });
 
   it('gives the page back when it closes', () => {
@@ -37,13 +37,13 @@ describe('an open dialog holds the page still', () => {
 
     unmount();
 
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('locks the page in its banded form too', () => {
     renderDialog({ footer: <button type="button">Сохранить</button> });
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
   });
 });
 

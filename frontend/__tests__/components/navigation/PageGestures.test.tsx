@@ -109,6 +109,9 @@ describe('Page touch gestures', () => {
     Object.defineProperty(page, 'clientHeight', { configurable: true, value: 200 });
     start(); move(); end(); page.style.overflowY = '';
     document.body.style.overflow = 'hidden'; start(); move(); end();
+    // The scroll lock holds the root alone off iOS: a held root is an open layer too.
+    document.body.style.overflow = ''; document.documentElement.style.overflow = 'hidden'; start(); move(); end();
+    document.documentElement.style.overflow = '';
     expect(refresh).not.toHaveBeenCalled();
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'focused-editor' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });

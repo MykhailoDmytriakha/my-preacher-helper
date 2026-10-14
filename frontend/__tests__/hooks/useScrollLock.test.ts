@@ -3,36 +3,36 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 
 describe('useScrollLock', () => {
     beforeEach(() => {
-        document.body.style.overflow = 'auto';
+        document.documentElement.style.overflow = 'auto';
     });
 
     afterEach(() => {
-        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
     });
 
     it('locks scroll when isLocked is true', () => {
         renderHook(() => useScrollLock(true));
-        expect(document.body.style.overflow).toBe('hidden');
+        expect(document.documentElement.style.overflow).toBe('hidden');
     });
 
     it('does not lock scroll when isLocked is false', () => {
         renderHook(() => useScrollLock(false));
-        expect(document.body.style.overflow).toBe('auto');
+        expect(document.documentElement.style.overflow).toBe('auto');
     });
 
     it('unlocks scroll on unmount', () => {
         const { unmount } = renderHook(() => useScrollLock(true));
-        expect(document.body.style.overflow).toBe('hidden');
+        expect(document.documentElement.style.overflow).toBe('hidden');
         unmount();
-        expect(document.body.style.overflow).toBe('auto');
+        expect(document.documentElement.style.overflow).toBe('auto');
     });
 
     it('restores original overflow on unmount', () => {
-        document.body.style.overflow = 'scroll';
+        document.documentElement.style.overflow = 'scroll';
         const { unmount } = renderHook(() => useScrollLock(true));
-        expect(document.body.style.overflow).toBe('hidden');
+        expect(document.documentElement.style.overflow).toBe('hidden');
         unmount();
-        expect(document.body.style.overflow).toBe('scroll');
+        expect(document.documentElement.style.overflow).toBe('scroll');
     });
 });
 
@@ -45,7 +45,7 @@ describe('useScrollLock', () => {
  */
 describe('useScrollLock — more than one lock, and more than one platform', () => {
     beforeEach(() => {
-        document.body.style.overflow = 'auto';
+        document.documentElement.style.overflow = 'auto';
         document.body.style.position = '';
         document.body.style.top = '';
     });
@@ -56,16 +56,31 @@ describe('useScrollLock — more than one lock, and more than one platform', () 
 
         first.unmount();
 
-        expect(document.body.style.overflow).toBe('hidden');
+        expect(document.documentElement.style.overflow).toBe('hidden');
 
         second.unmount();
+        expect(document.documentElement.style.overflow).toBe('auto');
+    });
+
+    it('holds the page by the root alone, so the body never becomes a scroll box of its own', () => {
+        // With `overflow: hidden` on both the root and the body, the body turns into a scroll
+        // box: every sticky layer inside it (the app nav, the Bible's book line) drops back to
+        // the top of the page, and focus returned to a button in such a layer scrolled the
+        // reader to the start of the book (owner, 2026-10-14: 1 Cor 14 → 1 Cor 1).
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = 'auto';
+        const { unmount } = renderHook(() => useScrollLock(true));
+        expect(document.documentElement.style.overflow).toBe('hidden');
         expect(document.body.style.overflow).toBe('auto');
+        unmount();
+        expect(document.documentElement.style.overflow).toBe('');
+        document.body.style.overflow = '';
     });
 
     it('leaves the page alone when a lock was never armed', () => {
         const { unmount } = renderHook(() => useScrollLock(false));
         unmount();
-        expect(document.body.style.overflow).toBe('auto');
+        expect(document.documentElement.style.overflow).toBe('auto');
     });
 
     describe('on a device where hidden overflow is not enough', () => {

@@ -17,7 +17,7 @@ describe('TagCatalogModal', () => {
   afterEach(() => {
     jest.runOnlyPendingTimers();
     jest.useRealTimers();
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   const defaultProps = {
@@ -47,7 +47,7 @@ describe('TagCatalogModal', () => {
   it('shows no results and resets body scroll on close', () => {
     const { rerender } = render(<TagCatalogModal {...defaultProps} />);
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.tagCatalog.searchPlaceholder'), {
       target: { value: 'zzz' },
@@ -55,7 +55,7 @@ describe('TagCatalogModal', () => {
     expect(screen.getByText('studiesWorkspace.tagCatalog.noResults')).toBeInTheDocument();
 
     rerender(<TagCatalogModal {...defaultProps} isOpen={false} />);
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('closes on backdrop click, Escape key, and done button', () => {

@@ -31,13 +31,13 @@ function Window({
 
 describe('a modal layer holds the page still', () => {
   afterEach(() => {
-    document.body.style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   it('locks the page while it is on screen', () => {
     render(<Window name="one" onClose={jest.fn()} />);
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
   });
 
   it('gives the page back when it leaves', () => {
@@ -45,13 +45,13 @@ describe('a modal layer holds the page still', () => {
 
     unmount();
 
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('holds nothing while it is mounted but not shown', () => {
     render(<Window name="one" onClose={jest.fn()} active={false} />);
 
-    expect(document.body.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('keeps the page locked while a second window is still open', () => {
@@ -64,7 +64,7 @@ describe('a modal layer holds the page still', () => {
 
     rerender(<Window name="two" onClose={jest.fn()} />);
 
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
   });
 });
 

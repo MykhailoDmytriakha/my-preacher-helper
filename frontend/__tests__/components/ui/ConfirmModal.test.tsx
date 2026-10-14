@@ -122,9 +122,9 @@ describe('ConfirmModal inside the app\'s window stack', () => {
 
   it('holds the page still while it is open', () => {
     const { unmount } = render(<ConfirmModal isOpen onClose={jest.fn()} onConfirm={jest.fn()} title="Удалить?" />);
-    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
     unmount();
-    expect(document.body.style.overflow).not.toBe('hidden');
+    expect(document.documentElement.style.overflow).not.toBe('hidden');
   });
 
   it('refuses Escape while the deletion is running', () => {
