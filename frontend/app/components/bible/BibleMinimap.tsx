@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 
-import { MINIMAP_GEOMETRY, firstVisibleLine, minimapOffset, verseAtY, type MinimapLayout } from './minimapLayout';
+import { MINIMAP_GEOMETRY, firstVisibleLine, frameOnMap, minimapOffset, verseAtY, type MinimapLayout } from './minimapLayout';
 
 type VersePlace = { chapter: number; verse: number };
 
@@ -62,7 +62,7 @@ export function visibleVerseRange(rows: HTMLElement[], topInset: number, viewpor
  * verse. A map taller than the window scrolls with the page. Drawn on a canvas: a long book has
  * thousands of strokes, too many for elements.
  */
-export function BibleMinimap({ layout, textRef, chapterLabel, placeLabel, title, onJump, readingTop }: BibleMinimapProps) {
+function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, title, onJump, readingTop }: BibleMinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLElement[]>([]);
   const offsetRef = useRef(0);
@@ -85,9 +85,11 @@ export function BibleMinimap({ layout, textRef, chapterLabel, placeLabel, title,
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, MAP_WIDTH, height);
 
-    const viewportHeight = window.innerHeight;
-    const scrollable = Math.max(1, document.documentElement.scrollHeight - viewportHeight);
-    const offset = minimapOffset(layout.height, height, window.scrollY / scrollable);
+    // The frame around what is on screen, on the map; the map is scrolled by it. With no verse laid
+    // out yet there is no frame, and the map stays where it was.
+    const range = visibleVerseRange(rowsRef.current, readingTop, window.innerHeight);
+    const frame = range ? frameOnMap(layout, range) : null;
+    const offset = frame ? minimapOffset(layout.height, height, frame) : offsetRef.current;
     offsetRef.current = offset;
     const dark = isDark();
 
@@ -108,16 +110,13 @@ export function BibleMinimap({ layout, textRef, chapterLabel, placeLabel, title,
       context.fillText(chapterLabel(label.chapter), 0, y);
     }
 
-    const range = visibleVerseRange(rowsRef.current, readingTop, viewportHeight);
-    if (range) {
-      const [first, last] = range;
-      const top = (layout.verseTop[first.chapter - 1]?.[first.verse - 1] ?? 0) - offset - 2;
-      const bottom = (layout.verseTop[last.chapter - 1]?.[last.verse - 1] ?? 0) - offset + MINIMAP_GEOMETRY.lineStep * 2;
+    if (frame) {
+      const top = frame.top - offset;
       context.fillStyle = dark ? 'rgba(129, 140, 248, 0.18)' : 'rgba(99, 102, 241, 0.12)';
       context.strokeStyle = dark ? '#818cf8' : '#a5b4fc';
       context.lineWidth = 1;
-      context.fillRect(0, top, MAP_WIDTH - 12, Math.max(6, bottom - top));
-      context.strokeRect(0.5, top + 0.5, MAP_WIDTH - 13, Math.max(6, bottom - top) - 1);
+      context.fillRect(0, top, MAP_WIDTH - 12, frame.height);
+      context.strokeRect(0.5, top + 0.5, MAP_WIDTH - 13, frame.height - 1);
     }
   }, [boxHeight, chapterLabel, layout, readingTop]);
 
@@ -206,3 +205,6 @@ export function BibleMinimap({ layout, textRef, chapterLabel, placeLabel, title,
     </div>
   );
 }
+
+/** Drawn again only when the book or the reading top changes: the reader's line re-renders on every verse. */
+export const BibleMinimap = memo(BibleMinimapStrip);

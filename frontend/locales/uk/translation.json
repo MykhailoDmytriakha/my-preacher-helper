@@ -333,6 +333,8 @@
     "previousBook": "← {{book}}",
     "backTo": "← {{place}}",
     "backToLabel": "Повернутися: {{place}}",
+    "placeVerse": "{{chapter}}, вірш {{verse}}",
+    "wayBack": { "note": "Нотатка", "notes": "Нотатки", "plan": "План", "sermon": "Проповідь", "group": "Група", "order": "Порядок служіння", "page": "Назад" },
     "navigate": "Книга і розділ: {{place}}",
     "chooseTranslation": "Вибір перекладу",
     "changeTranslation": "{{translation}}: вибрати інший переклад",

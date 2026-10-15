@@ -243,6 +243,9 @@ jest.mock('react-i18next', () => ({
 }));
 
 
+/** The verse's paragraph by its whole text: the reference it opens with is a link of its own. */
+const versePart = (text: string) => (_: string, element: Element | null) => element?.tagName === 'P' && element.textContent === text;
+
 describe('SermonHeader Component', () => {
   const mount = (sermon: Sermon, series?: Series[], overrides: Partial<SermonHeaderEditor> = {}) => {
     const editor = buildEditor({ title: sermon.title, verse: sermon.verse ?? '' }, overrides);
@@ -276,8 +279,23 @@ describe('SermonHeader Component', () => {
       mount(mockSermon);
 
       expect(screen.getByRole('heading', { name: 'Test Sermon Title' })).toBeInTheDocument();
-      expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
+      expect(screen.getByText(versePart('John 3:16 - For God so loved the world that he gave his one and only Son'))).toBeInTheDocument();
       expect(screen.getByTestId('export-buttons')).toBeInTheDocument();
+    });
+
+    it('opens the passage the verse names in the Bible, with the way back to this sermon', () => {
+      const push = jest.fn();
+      const navigation = jest.requireMock<{ useRouter: () => unknown }>('next/navigation');
+      const useRouter = jest.spyOn(navigation, 'useRouter').mockReturnValue({ push });
+      try {
+        mount(mockSermon);
+        fireEvent.click(screen.getByRole('button', { name: 'John 3:16' }));
+        const href = new URL(String(push.mock.calls[0]?.[0]), 'https://app.test');
+        expect(href.pathname).toBe('/bible');
+        expect(Object.fromEntries(href.searchParams)).toMatchObject({ book: 'john', at: '3:16', to: '16', from: `/sermons/${mockSermon.id}` });
+      } finally {
+        useRouter.mockRestore();
+      }
     });
 
     it('hands the sermon to the source-note chips, in the identity row', () => {
@@ -471,7 +489,7 @@ describe('SermonHeader Component', () => {
       fireEvent.keyDown(verseTextarea, { key: 'Escape' });
 
       // Should return to display mode with original text
-      expect(await screen.findByText(verseText)).toBeInTheDocument();
+      expect(await screen.findByText(versePart(verseText))).toBeInTheDocument();
       expect(editor.verseForm.save).not.toHaveBeenCalled();
     });
   });

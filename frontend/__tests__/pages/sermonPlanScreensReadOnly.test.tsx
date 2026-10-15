@@ -121,6 +121,8 @@ const READING_BUTTONS = [
   'plan.switchToStructure',
   'plan.unassignedNotice.sortAction',
   'plan.unassignedNotice.dismissAction',
+  // The sermon's verse opens the Bible at it: reading, nothing written.
+  '1 Chronicles 4:9-10',
 ];
 const WRITING_BUTTONS = /^(plan\.(save|editMode|viewMode|markKeyFragments|generate|regenerate|renamePoint|renameSubPoint|deletePoint|deleteSubPoint|addPoint|addSubPoint|fromNote\.entry)|structure\.)/;
 

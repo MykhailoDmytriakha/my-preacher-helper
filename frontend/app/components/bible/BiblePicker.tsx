@@ -179,14 +179,16 @@ type ChapterPickerProps = {
   bible: BibleId;
   bookName: string;
   current: number;
+  /** The verse the person is at: the button names the place as a reference does, "12:3". */
+  verse: number;
   /** The open book's text, for how a chapter begins. */
   text: BookText | null;
   wide: boolean;
   onPick: (chapter: number) => void;
 };
 
-/** "Chapter 12 ▾": every chapter of the book in one window. */
-export function ChapterPicker({ bookId, bible, bookName, current, text, wide, onPick }: ChapterPickerProps) {
+/** "12:3 ▾": the place, and every chapter of the book in one window. */
+export function ChapterPicker({ bookId, bible, bookName, current, verse, text, wide, onPick }: ChapterPickerProps) {
   const { t, chapterLabel, countLabel } = usePickerWords();
   const [open, setOpen] = useState(false);
   const [pointed, setPointed] = useState<number | null>(null);
@@ -207,11 +209,11 @@ export function ChapterPicker({ bookId, bible, bookName, current, text, wide, on
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={t('bible.changeChapter', { chapter: label(current) })}
+        aria-label={t('bible.changeChapter', { chapter: t('bible.placeVerse', { chapter: label(current), verse }) })}
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[15px] font-semibold text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40 ${triggerBorder(open)}`}
+        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[15px] font-semibold tabular-nums text-indigo-700 transition hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950/40 ${triggerBorder(open)}`}
       >
-        {wide ? label(current) : t(bookId === 'Psalms' ? 'bible.psalmShort' : 'bible.chapterShort', { number: current })}
+        {current}:{verse}
         <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="start" wide={wide} label={t('bible.chooseChapter')}>
@@ -491,12 +493,13 @@ export function BookPicker({ bookId, bible, currentChapter, text, locale, wide, 
  * A phone, reading: "Gen 12 ▴" under the thumb once the line at the top has gone. It opens the same
  * window at this book's chapters; "All books" there leads to every book.
  */
-export function ReadingPill({ bookId, bible, currentChapter, text, locale, onOpen }: Omit<BookPickerProps, 'wide'>) {
+export function ReadingPill({ bookId, bible, currentChapter, currentVerse, text, locale, onOpen }: Omit<BookPickerProps, 'wide'> & { currentVerse: number }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const manyChapters = chapterCount(bible, bookId) > 1;
-  const label = manyChapters ? `${getLocalizedAbbrev(bookId, locale)} ${currentChapter}` : getLocalizedBookName(bookId, locale);
+  // The place as a reference names it: "Rom 16:21"; a book of one chapter by its verse alone, "Jude 3".
+  const label = `${getLocalizedAbbrev(bookId, locale)} ${manyChapters ? `${currentChapter}:${currentVerse}` : currentVerse}`;
 
   const close = () => {
     setOpen(false);

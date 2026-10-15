@@ -1,4 +1,4 @@
-import { MINIMAP_GEOMETRY, buildMinimapLayout, firstVisibleLine, minimapOffset, verseAtY } from '@/components/bible/minimapLayout';
+import { MINIMAP_GEOMETRY, buildMinimapLayout, firstVisibleLine, frameOnMap, minimapOffset, verseAtY } from '@/components/bible/minimapLayout';
 
 const geometry = { ...MINIMAP_GEOMETRY, width: 90, charsPerLine: 90, lineStep: 3, verseGap: 1, chapterGap: 8, labelHeight: 13 };
 
@@ -52,10 +52,46 @@ describe('verseAtY', () => {
 });
 
 describe('minimapOffset', () => {
-  it('stays still while the map fits, and moves with the page when it does not', () => {
-    expect(minimapOffset(400, 600, 0.5)).toBe(0);
-    expect(minimapOffset(1600, 600, 0)).toBe(0);
-    expect(minimapOffset(1600, 600, 0.5)).toBe(500);
-    expect(minimapOffset(1600, 600, 1.4)).toBe(1000);
+  it('stays still while the map fits, and shows the start and the end of a longer book', () => {
+    expect(minimapOffset(400, 600, { top: 200, height: 50 })).toBe(0);
+    expect(minimapOffset(1600, 600, { top: 0, height: 50 })).toBe(0);
+    expect(minimapOffset(1600, 600, { top: 1550, height: 50 })).toBe(1000);
+  });
+
+  // BUG-20261015-minimap-frame-clipped-at-book-end: moved by the page's scroll, the map let the frame
+  // run past the bottom of the box over the last tenth of a long book.
+  it('keeps the frame whole inside the box wherever it stands in the book', () => {
+    const layoutHeight = 1600;
+    const boxHeight = 600;
+    const height = 50;
+    for (let top = 0; top <= layoutHeight - height; top += 10) {
+      const drawnTop = top - minimapOffset(layoutHeight, boxHeight, { top, height });
+      expect(drawnTop).toBeGreaterThanOrEqual(0);
+      expect(drawnTop + height).toBeLessThanOrEqual(boxHeight);
+    }
+  });
+
+  it('keeps the top of a frame taller than the box in sight', () => {
+    const frame = { top: 50, height: 150 };
+    expect(frame.top - minimapOffset(1000, 120, frame)).toBe(0);
+  });
+});
+
+describe('frameOnMap', () => {
+  it('frames the verses on screen and ends with the map at the last verse of the book', () => {
+    const layout = buildMinimapLayout([['a', 'b'], ['c', 'd', 'e']]);
+    const middle = frameOnMap(layout, [{ chapter: 1, verse: 2 }, { chapter: 2, verse: 1 }]);
+    expect(middle.top).toBe(layout.verseTop[0][1] - 2);
+    expect(middle.top + middle.height).toBe(layout.verseTop[1][0] + MINIMAP_GEOMETRY.lineStep * 2);
+    const end = frameOnMap(layout, [{ chapter: 2, verse: 3 }, { chapter: 2, verse: 3 }]);
+    expect(end.top + end.height).toBe(layout.height);
+  });
+
+  it('takes in the label of a chapter whose first verse is on screen, so the map stands still at the start of the book', () => {
+    const layout = buildMinimapLayout([['a', 'b'], ['c', 'd', 'e']]);
+    const start = frameOnMap(layout, [{ chapter: 1, verse: 1 }, { chapter: 1, verse: 2 }]);
+    expect(start.top).toBe(0);
+    expect(minimapOffset(layout.height + 400, 400, start)).toBe(0);
+    expect(frameOnMap(layout, [{ chapter: 2, verse: 1 }, { chapter: 2, verse: 2 }]).top).toBe(layout.labels[1].y);
   });
 });

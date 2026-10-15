@@ -95,12 +95,34 @@ export function verseAtY(layout: MinimapLayout, y: number): { chapter: number; v
 }
 
 /**
- * How far the map is scrolled. A map taller than its box moves with the page, as an editor's
- * minimap does: at the top of the book it shows the start, at the bottom the end.
+ * The frame around the verses on screen, from the first to the last, in the map's own coordinates.
+ * A chapter's first verse brings its label in, as the page shows the heading above it: at the start
+ * of the book the frame starts at the top of the map, so the map stands still and "Chapter 1" shows.
+ * It ends with the map: a short last verse of the book would carry it past the end, and its bottom
+ * edge off the box.
  */
-export function minimapOffset(layoutHeight: number, boxHeight: number, pageProgress: number): number {
+export function frameOnMap(
+  layout: MinimapLayout,
+  [first, last]: [{ chapter: number; verse: number }, { chapter: number; verse: number }],
+): { top: number; height: number } {
+  const label = first.verse === 1 ? layout.labels.find((candidate) => candidate.chapter === first.chapter) : undefined;
+  const top = label ? label.y : (layout.verseTop[first.chapter - 1]?.[first.verse - 1] ?? 0) - 2;
+  const bottom = Math.min(layout.height, (layout.verseTop[last.chapter - 1]?.[last.verse - 1] ?? 0) + MINIMAP_GEOMETRY.lineStep * 2);
+  return { top, height: Math.max(6, bottom - top) };
+}
+
+/**
+ * How far the map is scrolled. A map taller than its box moves with the frame around what is on
+ * screen, as an editor's minimap does: the frame has travelled the same share of the map as of the
+ * box, so it stays whole inside the box — at the start of the book the map shows the start, at its
+ * end the end. Moved by the page's scroll instead, the map let the frame run off the bottom: the
+ * page is taller than the text (its end, the room below), and the share left out the frame's height.
+ */
+export function minimapOffset(layoutHeight: number, boxHeight: number, frame: { top: number; height: number }): number {
   const overflow = layoutHeight - boxHeight;
   if (overflow <= 0) return 0;
-  const progress = Math.min(1, Math.max(0, pageProgress));
-  return Math.round(overflow * progress);
+  const travel = layoutHeight - frame.height;
+  const progress = travel > 0 ? Math.min(1, Math.max(0, frame.top / travel)) : 1;
+  // A frame taller than the box cannot stay whole: its top stays in sight, where reading starts.
+  return Math.min(Math.round(overflow * progress), Math.max(0, frame.top));
 }

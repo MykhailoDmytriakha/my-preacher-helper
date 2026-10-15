@@ -67,10 +67,12 @@ jest.mock('@/hooks/useSermonNoteLinks', () => ({
   ...jest.requireActual('@/hooks/useSermonNoteLinks'),
   useSourceNotes: () => ({ notes: mockSourceNotes, missingIds: [], loading: false }),
 }));
+const mockPush = jest.fn();
+let mockPathname = '/sermons/sermon-1/plan';
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
   useSearchParams: () => mockSearchParams,
-  usePathname: () => '/sermons/sermon-1/plan',
+  usePathname: () => mockPathname,
 }));
 jest.mock('@/services/outline.service', () => ({ updateSermonOutline: jest.fn() }));
 jest.mock('@/services/sermons.client', () => ({
@@ -225,6 +227,7 @@ describe('the plan header is the same in every mode', () => {
     mockSearchParams = new URLSearchParams();
     mockSermon = sermonFixture();
     mockSourceNotes = [];
+    mockPathname = '/sermons/sermon-1/plan';
   });
 
   it('is mounted by the paired editor', async () => {
@@ -303,6 +306,26 @@ describe('the plan header is the same in every mode', () => {
     expect(
       within(screen.getByTestId('plan-page-header')).getByTestId('source-note-chip')
     ).toHaveTextContent('Jabez, a study');
+  });
+
+  /** The verse's opening reference leads into the Bible, and the reader offers the way back to this plan. */
+  it('opens the Bible at the passage the verse names, with the way back to the plan, on every route', async () => {
+    // The hand-written editor saves its cells before any door out, so the move may come a moment later.
+    const openVerse = async () => {
+      mockPush.mockClear();
+      const link = within(screen.getByTestId('plan-header-verse')).getByRole('button', { name: '1 Chronicles 4:9-10' });
+      act(() => { link.click(); });
+      await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
+      return Object.fromEntries(new URL(mockPush.mock.calls[0][0], 'https://app.test').searchParams);
+    };
+
+    await renderPage(<AiPlanPage />);
+    expect(await openVerse()).toEqual(expect.objectContaining({ book: '1-chronicles', at: '4:9', to: '10', from: '/sermons/sermon-1/plan' }));
+
+    document.body.innerHTML = '';
+    mockPathname = '/sermons/sermon-1/plan/manual';
+    await renderPage(<ManualConspectusPage />);
+    expect(await openVerse()).toEqual(expect.objectContaining({ book: '1-chronicles', at: '4:9', to: '10', from: '/sermons/sermon-1/plan/manual' }));
   });
 
   /**

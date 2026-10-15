@@ -37,6 +37,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
@@ -1003,6 +1004,12 @@ export default function StudyNoteEditorPage() {
         setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
     };
 
+    // Read, a reference opens the Bible at its verse, with the way back to this note.
+    const openInBible = (ref: ScriptureReference) => {
+        const href = bibleHref(ref, { locale: bibleLocale, from: noteId ? `/studies/${noteId}` : undefined });
+        if (href) router.push(href);
+    };
+
     // The note's own properties. They are ONE instance, handed either to the side
     // panel or to the narrow-screen tray below the text — never both, because each
     // carries live inputs and pickers.
@@ -1044,7 +1051,7 @@ export default function StudyNoteEditorPage() {
                                         key={ref.id}
                                         reference={ref}
                                         isEditing={isEditing ? editingRefIndex === idx : false}
-                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : undefined}
+                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : () => openInBible(ref)}
                                         onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
                                     />
                                 ))}

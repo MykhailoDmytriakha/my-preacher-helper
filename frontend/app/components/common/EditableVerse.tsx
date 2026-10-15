@@ -6,11 +6,17 @@ import { useTranslation } from 'react-i18next';
 
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 
+import ScriptureOpening from './ScriptureOpening';
+
 import type { ManualTextBinding } from './manualTextBinding';
+import type { LeadingReference } from '@/utils/bibleLink';
 
 interface EditableVerseProps {
   initialVerse: string;
   onSave: (newVerse: string) => Promise<void>;
+  /** The reference the verse opens with (`leadingReference`): shown as a link into the Bible. */
+  openingReference?: LeadingReference | null;
+  onOpenReference?: (href: string) => void;
   disabled?: boolean;
   manual?: ManualTextBinding;
   textSizeClass?: string;
@@ -23,6 +29,8 @@ interface EditableVerseProps {
 const EditableVerse: React.FC<EditableVerseProps> = ({
   initialVerse,
   onSave,
+  openingReference = null,
+  onOpenReference,
   disabled = false,
   manual,
   textSizeClass = 'text-sm',
@@ -188,7 +196,7 @@ const EditableVerse: React.FC<EditableVerseProps> = ({
       ) : (
         <div className="flex items-center gap-2 group min-w-0">
           <p className={`${textSizeClass} text-gray-600 dark:text-gray-300 font-medium whitespace-pre-line break-words flex-grow`}>
-            {initialVerse}
+            <ScriptureOpening text={initialVerse} reference={openingReference} onOpen={onOpenReference} />
           </p>
           <button
             onClick={handleEditClick}

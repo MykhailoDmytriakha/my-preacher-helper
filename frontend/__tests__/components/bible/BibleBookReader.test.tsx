@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { BibleBookReader } from '@/components/bible/BibleBookReader';
+import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
 import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
-import { saveEntryPlace } from '@/components/bible/lastPlace';
+import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
 import { verseCount } from '@/utils/versification';
 
 // A book of the real shape: Ruth has four chapters, and the reader refuses a file that does not.
@@ -122,6 +122,169 @@ describe('BibleBookReader', () => {
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
       window.history.replaceState(null, '');
     }
+  });
+
+  it('names the place on the chapter button as a reference names it', async () => {
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
+    await screen.findByText('Итак прежде всего');
+    expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+  });
+
+  it('lights the passage a link named, then lets it fade on its own', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    try {
+      const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} passageEnd={2} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      const row = (key: string) => container.querySelector(`[data-verse="${key}"]`);
+      expect(row('1:1')).toHaveAttribute('data-arrival', 'on');
+      expect(row('1:2')).toHaveAttribute('data-arrival', 'on');
+      expect(row('2:1')).not.toHaveAttribute('data-arrival');
+      act(() => { jest.advanceTimersByTime(4900); });
+      expect(row('1:1')).toHaveAttribute('data-arrival', 'on');
+      act(() => { jest.advanceTimersByTime(100); });
+      expect(row('1:1')).toHaveAttribute('data-arrival', 'off');
+      act(() => { jest.advanceTimersByTime(3600); });
+      expect(row('1:1')).not.toHaveAttribute('data-arrival');
+    } finally {
+      jest.useRealTimers();
+      window.history.replaceState(null, '');
+    }
+  });
+
+  it('lights the passage for the time left when the book is drawn anew, as in a Bible that arrives a moment late', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    window.history.replaceState(null, '');
+    try {
+      const link = { bible: 'rst', initialBible: 'rst', bookId: 'Ruth', initialPlace: { chapter: 1, verse: 1 }, passageEnd: 2 } as const;
+      const first = render(<BibleBookReader {...link} onChangeBible={jest.fn()} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      act(() => { jest.advanceTimersByTime(2000); });
+      first.unmount();
+      // The first reader kept this entry's place, so the new one is not a new arrival.
+      saveEntryPlace(currentEntryId(), { chapter: 1, verse: 1, bible: 'rst' });
+      const { container } = render(<BibleBookReader {...link} onChangeBible={jest.fn()} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      const row = container.querySelector('[data-verse="1:2"]');
+      expect(row).toHaveAttribute('data-arrival', 'on');
+      act(() => { jest.advanceTimersByTime(2500); });
+      expect(row).toHaveAttribute('data-arrival', 'on');
+      act(() => { jest.advanceTimersByTime(600); });
+      expect(row).toHaveAttribute('data-arrival', 'off');
+    } finally {
+      jest.useRealTimers();
+      window.history.replaceState(null, '');
+    }
+  });
+
+  // Codex review 2026-10-15: the timers of the passage before were cleared, its light was not — it stayed lit for good.
+  it('takes the light from the passage before when another link opens in the same reader', async () => {
+    jest.useFakeTimers({ advanceTimers: true });
+    window.history.replaceState(null, '');
+    try {
+      const props = { bible: 'rst', initialBible: 'rst', bookId: 'Ruth' } as const;
+      const { container, rerender } = render(<BibleBookReader {...props} onChangeBible={jest.fn()} onOpenBook={jest.fn()} initialPlace={{ chapter: 1, verse: 1 }} passageEnd={2} />);
+      await screen.findByText('Итак прежде всего');
+      const row = (key: string) => container.querySelector(`[data-verse="${key}"]`);
+      expect(row('1:2')).toHaveAttribute('data-arrival', 'on');
+      rerender(<BibleBookReader {...props} onChangeBible={jest.fn()} onOpenBook={jest.fn()} initialPlace={{ chapter: 3, verse: 1 }} passageEnd={1} />);
+      expect(row('3:1')).toHaveAttribute('data-arrival', 'on');
+      expect(row('1:1')).not.toHaveAttribute('data-arrival');
+      expect(row('1:2')).not.toHaveAttribute('data-arrival');
+    } finally {
+      jest.useRealTimers();
+      window.history.replaceState(null, '');
+    }
+  });
+
+  // A short book on a tall screen: the page measures as the window, and the first room fell short.
+  it.each([1200, 3000])('gives a short book enough room for its last verse to reach the reading top, in a window %i px tall', async (windowHeight) => {
+    const realHeight = window.innerHeight;
+    const realRect = Element.prototype.getBoundingClientRect;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: windowHeight });
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (this.dataset?.verse === '4:1') return { top: 500, bottom: 530, left: 0, right: 600, width: 600, height: 30, x: 0, y: 500, toJSON: () => ({}) } as DOMRect;
+      return realRect.call(this);
+    };
+    const room = () => parseFloat(document.querySelector('article')?.style.marginBottom ?? '') || 0;
+    // 800 px of content and the room under it — and never shorter than the window, as a browser measures.
+    const scrollHeight = jest.spyOn(document.documentElement, 'scrollHeight', 'get').mockImplementation(() => Math.max(window.innerHeight, 800 + room()));
+    // What counts is the room at the moment of the jump: later passes grew it, but the page had already stopped short.
+    let scrollableAtJump = -1;
+    scrollIntoView.mockImplementation(() => { scrollableAtJump = document.documentElement.scrollHeight - window.innerHeight; });
+    try {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 4, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Четвёртая глава');
+      const readingTop = Number(/--reading-top: (\d+)px/.exec(document.querySelector('[style*="--reading-top:"]')?.getAttribute('style') ?? '')?.[1] ?? 0);
+      expect(scrollIntoView).toHaveBeenCalled();
+      expect(scrollableAtJump).toBeGreaterThanOrEqual(500 - readingTop);
+    } finally {
+      scrollIntoView.mockImplementation(() => undefined);
+      scrollHeight.mockRestore();
+      Element.prototype.getBoundingClientRect = realRect;
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: realHeight });
+    }
+  });
+
+  // Codex review 2026-10-15: at the very end, a taller window clamped the page before the room grew, and the last verse slid down.
+  it('keeps a reader at the very end of the book at the end when the window grows taller', async () => {
+    const realHeight = window.innerHeight;
+    const scrollHeight = jest.spyOn(document.documentElement, 'scrollHeight', 'get').mockReturnValue(5000);
+    try {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 963 });
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+      await screen.findByText('Четвёртая глава');
+      Object.defineProperty(window, 'scrollY', { value: 5000 - 963, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      // The window grows; the browser has already clamped the page to its new end.
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1163 });
+      Object.defineProperty(window, 'scrollY', { value: 5000 - 1163, configurable: true });
+      jest.mocked(window.scrollTo).mockClear();
+      act(() => { window.dispatchEvent(new Event('resize')); });
+      expect(window.scrollTo).toHaveBeenCalledWith({ top: document.documentElement.scrollHeight - 1163 });
+
+      // Read in the middle, a resize leaves the page where it is.
+      Object.defineProperty(window, 'scrollY', { value: 1000, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      jest.mocked(window.scrollTo).mockClear();
+      act(() => { window.dispatchEvent(new Event('resize')); });
+      expect(window.scrollTo).not.toHaveBeenCalled();
+    } finally {
+      scrollHeight.mockRestore();
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: realHeight });
+    }
+  });
+
+  it('lights nothing when the entry comes back to where it was read: Back is not a new arrival', async () => {
+    window.history.replaceState({ bibleEntry: 'entry-back' }, '');
+    saveEntryPlace('entry-back', { chapter: 1, verse: 2, bible: 'rst' });
+    const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} passageEnd={2} onOpenBook={jest.fn()} />);
+    await screen.findByText('Итак прежде всего');
+    expect(container.querySelector('[data-arrival]')).toBeNull();
+  });
+
+  it('offers the way back to the screen a reference was tapped on', async () => {
+    const push = jest.fn();
+    // The module object itself: a wildcard import is a copy, and a spy on it never reaches the reader.
+    const navigation = jest.requireMock<{ useRouter: () => unknown }>('next/navigation');
+    const useRouter = jest.spyOn(navigation, 'useRouter').mockReturnValue({ push });
+    try {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} cameFrom="/studies/n1" onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+      expect(push).toHaveBeenCalledWith('/studies/n1');
+    } finally {
+      useRouter.mockRestore();
+    }
+  });
+
+  it('leaves room under the book for its last verse to come to the reading top, and no more', () => {
+    // The last verse 4 863 px down the page, the reading top at 137 px, a window 963 px high.
+    expect(roomBelow(4863, 137, 963, 5000)).toBe(690);
+    // With that room the page scrolls to 4 726, and 4 726 + 137 is the last verse's top, a pixel over.
+    expect(5000 + 690 - 963 + 137).toBe(4863 + 1);
+    // A page already long enough under the last verse gets nothing.
+    expect(roomBelow(1000, 137, 963, 3000)).toBe(0);
   });
 
   it('ignores a verse the book does not have and opens at the start', async () => {
@@ -405,12 +568,13 @@ describe('BibleBookReader', () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Jude" initialPlace={null} onOpenBook={jest.fn()} />);
       await screen.findByText('Иуда, раб Иисуса Христа');
       expect(screen.queryByRole('button', { name: 'bible.changeChapter' })).not.toBeInTheDocument();
-      expect(screen.getByText('bible.oneChapter')).toBeInTheDocument();
+      // No button, but the place still named as a reference names it.
+      expect(screen.getByLabelText('bible.placeVerse')).toHaveTextContent('1:1');
     });
 
     it('opens, on a phone, the chapters of the book being read from the pill at the bottom, and every book from there', async () => {
       const onOpen = jest.fn();
-      render(<ReadingPill bookId="Ruth" bible="rst" currentChapter={3} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" onOpen={onOpen} />);
+      render(<ReadingPill bookId="Ruth" bible="rst" currentChapter={3} currentVerse={1} text={{ id: 'Ruth', chapters: book.chapters }} locale="en" onOpen={onOpen} />);
       await userEvent.click(screen.getByRole('button', { name: 'bible.navigate' }));
       const sheet = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
       expect(within(sheet).getByRole('button', { current: true })).toHaveTextContent('3');
@@ -433,7 +597,7 @@ describe('BibleBookReader', () => {
         return { top, bottom: top + 44, left: 300, right: 420, width: 120, height: 44, x: 300, y: top, toJSON: () => ({}) } as DOMRect;
       };
       try {
-        render(<ChapterPicker bookId="Ruth" bible="rst" bookName="Ruth" current={1} text={{ id: 'Ruth', chapters: book.chapters }} wide onPick={jest.fn()} />);
+        render(<ChapterPicker bookId="Ruth" bible="rst" bookName="Ruth" current={1} verse={1} text={{ id: 'Ruth', chapters: book.chapters }} wide onPick={jest.fn()} />);
         await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
         expect(screen.getByRole('dialog')).toHaveStyle({ top: '122px' });
       } finally {
@@ -443,7 +607,7 @@ describe('BibleBookReader', () => {
 
     it('says on a computer how the chapter under the pointer begins', async () => {
       const text = { id: 'Ruth', chapters: book.chapters };
-      render(<ChapterPicker bookId="Ruth" bible="rst" bookName="Ruth" current={1} text={text} wide onPick={jest.fn()} />);
+      render(<ChapterPicker bookId="Ruth" bible="rst" bookName="Ruth" current={1} verse={1} text={text} wide onPick={jest.fn()} />);
       await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
       // Four chapters make a row of four on a computer, not a row of ten with six empty places.
       expect(within(screen.getByRole('dialog')).getByText('1').parentElement).toHaveStyle({ gridTemplateColumns: 'repeat(4, 2.75rem)' });

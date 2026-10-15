@@ -292,6 +292,19 @@ describe('StudyNoteCard', () => {
 
 
   describe('Search Highlighting', () => {
+    // Codex review 2026-10-15: the reference chips a search shows on a folded card had no handler, so a press opened the note.
+    it('opens the Bible from a reference chip a search shows on a folded card, not the note', () => {
+      const note = createTestNote({
+        id: 'note-ref-match',
+        content: 'All things work together',
+        scriptureRefs: [{ id: 'r1', book: 'Romans', chapter: 8, fromVerse: 28 }],
+      });
+      render(<StudyNoteCard note={note} bibleLocale="en" isExpanded={false} onToggleExpand={jest.fn()} onEdit={jest.fn()} searchQuery="Romans" />);
+      fireEvent.click(screen.getByRole('button', { name: 'Romans 8:28' }));
+      expect(mockPush).toHaveBeenCalledTimes(1);
+      expect(mockPush.mock.calls[0][0]).toMatch(/^\/bible\?book=romans&at=8%3A28/);
+    });
+
     it('highlights matching text in title when searchQuery is provided', () => {
       const note = createTestNote({
         id: 'note-search-1',

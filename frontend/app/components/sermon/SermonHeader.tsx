@@ -13,8 +13,10 @@ import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import { SermonStatusChip, getSermonStatusDateTexts } from '@/components/sermon/SermonStatusChip';
 import SourceNoteChips from '@/components/sermon/SourceNoteChips';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { leadingReference } from '@/utils/bibleLink';
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
 import { buildChipClasses } from '@utils/chipClasses';
@@ -57,6 +59,7 @@ export interface SermonHeaderProps {
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor }) => {
   const { t } = useTranslation();
   const router = useRouter();
+  const { locale } = useAppLocale();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
@@ -180,6 +183,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
       <div className="order-1 min-w-0 text-base md:text-lg lg:order-2 lg:col-span-2">
           <EditableVerse
             initialVerse={editor.values.verse || ''}
+            openingReference={leadingReference(editor.values.verse || '', { locale, from: `/sermons/${sermon.id}` })}
+            onOpenReference={(href) => router.push(href)}
             onSave={editor.verseForm.save}
             manual={editor.verseForm}
             disabled={isReadOnly}

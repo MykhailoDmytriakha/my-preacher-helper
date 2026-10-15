@@ -19,6 +19,7 @@ import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
+import { bibleHref } from '@/utils/bibleLink';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
@@ -155,6 +156,13 @@ export default function StudyNoteCard({
     (ref: ScriptureRefShape) => formatScriptureReference(ref, { locale: bibleLocale, style: 'long' }),
     [bibleLocale]
   );
+
+  // A reference chip opens the Bible at its verse; the card's own click opens or folds the card.
+  const openInBible = (event: React.SyntheticEvent, ref: ScriptureRefShape) => {
+    event.stopPropagation();
+    const href = bibleHref(ref, { locale: bibleLocale, from: `${window.location.pathname}${window.location.search}` });
+    if (href) router.push(href);
+  };
 
   const searchTokens = useMemo(
     () => (searchQuery ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean) : []),
@@ -367,7 +375,7 @@ export default function StudyNoteCard({
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {matchingRefs.map((ref) => (
-                                  <Chip key={ref.id} tone="emerald" size="sm" icon={<BookmarkIcon className="h-3 w-3" />}>
+                                  <Chip key={ref.id} tone="emerald" size="sm" icon={<BookmarkIcon className="h-3 w-3" />} ariaLabel={formatRef(ref)} onClick={(event) => openInBible(event, ref)}>
                                     <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
                                   </Chip>
                                 ))}
@@ -497,7 +505,12 @@ export default function StudyNoteCard({
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.scriptureRefs.map((ref) => (
-                  <Chip key={ref.id} tone="emerald">
+                  <Chip
+                    key={ref.id}
+                    tone="emerald"
+                    ariaLabel={formatRef(ref)}
+                    onClick={(event) => openInBible(event, ref)}
+                  >
                     {searchQuery ? (
                       <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
                     ) : (

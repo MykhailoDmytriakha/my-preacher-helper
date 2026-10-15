@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useRef, useState } from "react";
 
+import ScriptureOpening from "@/components/common/ScriptureOpening";
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import SourceNoteChips from "@/components/sermon/SourceNoteChips";
+import { useAppLocale } from "@/hooks/useAppLocale";
+import { leadingReference } from "@/utils/bibleLink";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { hasPlan } from "@/utils/sermonPlanAccess";
@@ -110,6 +114,18 @@ export default function PlanPageHeader({
   readOnly = false,
 }: PlanPageHeaderProps) {
   const sectionMenuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const query = useSearchParams()?.toString();
+  const { locale } = useAppLocale();
+  // The way back is this very screen, its query too: "?source=note" is what keeps the note editor open.
+  const here = `${pathname ?? `/sermons/${sermonId}/plan`}${query ? `?${query}` : ""}`;
+  // Leaving saves the cells being edited first, as switching editors does, and stays put when the save refuses.
+  const openInBible = (href: string) => {
+    if (!beforeSwitch) { router.push(href); return; }
+    // A save that fails stays put like one that refuses; the editor says why.
+    void beforeSwitch().then((saved) => { if (saved) router.push(href); }, () => undefined);
+  };
   const [showSectionMenu, setShowSectionMenu] = useState(false);
 
   const noContentText = t("plan.noContent");
@@ -167,8 +183,13 @@ export default function PlanPageHeader({
             data-testid="plan-header-verse"
             className="border-l-4 border-blue-500 pl-4 dark:border-blue-400"
           >
+            {/* The passage the verse opens with leads into the Bible, and "← Plan" brings the person back. */}
             <p className="whitespace-pre-line text-lg italic text-gray-700 dark:text-gray-300">
-              {sermon.verse}
+              <ScriptureOpening
+                text={sermon.verse}
+                reference={leadingReference(sermon.verse, { locale, from: here })}
+                onOpen={openInBible}
+              />
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t("common.scripture")}</p>
           </div>

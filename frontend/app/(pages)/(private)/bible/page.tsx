@@ -9,6 +9,7 @@ import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { newEntryState, parsePlaceParam, readLastPlace, type LastPlace } from '@/components/bible/lastPlace';
 import { readTranslation, saveTranslation } from '@/components/bible/translation';
 import { resolveAppLocale } from '@/utils/appLocale';
+import { parsePassageEnd, wayBackPath } from '@/utils/bibleLink';
 import { isBibleId, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -20,7 +21,9 @@ import '@locales/i18n';
  * History API instead of a router navigation: no server round trip, so a book never opened online
  * still opens offline once /bible has been seen (the offline shell keeps one page per address).
  * `/bible` lists the books, `/bible?book=1-timothy&at=1:18&tr=rst` opens a book at a verse of a Bible
- * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads).
+ * (`tr`: the Bible the place is numbered in; the book opens in the Bible this device reads). A
+ * reference tapped elsewhere adds `to` (the passage to light) and `from` (the way back) — the
+ * address is built and read by `utils/bibleLink.ts`.
  */
 export default function BiblePage() {
   const { t, i18n } = useTranslation();
@@ -29,6 +32,8 @@ export default function BiblePage() {
   const slug = searchParams?.get('book') ?? null;
   const place = parsePlaceParam(searchParams?.get('at'));
   const placeBible = searchParams?.get('tr');
+  const passageEnd = parsePassageEnd(searchParams?.get('to'));
+  const cameFrom = wayBackPath(searchParams?.get('from'));
   const bookId = slug ? bookIdFromSlug(slug) : undefined;
   const [lastPlace, setLastPlace] = useState<LastPlace | null>(null);
   const [storageFailed, setStorageFailed] = useState(false);
@@ -135,6 +140,8 @@ export default function BiblePage() {
       bible={bible}
       initialPlace={place}
       initialBible={isBibleId(placeBible) ? placeBible : bible}
+      passageEnd={passageEnd}
+      cameFrom={cameFrom}
       onOpenBook={openBook}
       onChangeBible={changeBible}
     />

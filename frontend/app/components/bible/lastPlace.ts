@@ -104,6 +104,26 @@ export function currentEntryId(): string {
   return id;
 }
 
+/**
+ * The passage a link brought this entry to and until when it stays lit (`Date.now()` time). Kept
+ * with the entry, not the reader: a Bible switch draws the book in a new reader.
+ */
+const ARRIVAL_KEY = 'bibleArrival';
+export type EntryArrival = { link: string; litUntil: number };
+
+/** Call after mount. */
+export function readEntryArrival(): EntryArrival | null {
+  const value = ((window.history.state ?? {}) as Record<string, unknown>)[ARRIVAL_KEY];
+  if (!value || typeof value !== 'object') return null;
+  const { link, litUntil } = value as Partial<EntryArrival>;
+  return typeof link === 'string' && typeof litUntil === 'number' ? { link, litUntil } : null;
+}
+
+export function saveEntryArrival(arrival: EntryArrival): void {
+  const state = (window.history.state ?? {}) as Record<string, unknown>;
+  window.history.replaceState({ ...state, [ARRIVAL_KEY]: arrival }, '');
+}
+
 /** A place read in a history entry, with the Bible it was read in. */
 export type EntryPlace = Place & { bible: BibleId };
 
