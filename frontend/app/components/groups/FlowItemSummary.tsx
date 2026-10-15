@@ -2,6 +2,7 @@
 
 import { useTranslation } from 'react-i18next';
 
+import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 
 import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -31,7 +32,7 @@ export function FlowItemSummary({ flowItem, template, fullNotes = false, childre
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-            {flowItem.instanceTitle || template?.title}
+            <ScriptureText text={flowItem.instanceTitle || template?.title || ''} />
           </span>
         </div>
         {content && (
@@ -57,7 +58,7 @@ export function FlowItemSummary({ flowItem, template, fullNotes = false, childre
         {children}
         {notes && (
           <p className={`mt-0.5 break-words text-xs italic text-indigo-500 dark:text-indigo-400 ${fullNotes ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
-            {notes}
+            <ScriptureText text={notes} />
           </p>
         )}
       </div>

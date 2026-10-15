@@ -1,11 +1,12 @@
 'use client';
 
 import React, { memo, useCallback, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
+import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, ScriptureText, useScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { codeFenceFor } from '@/utils/markdownFence';
 import HighlightedText from '@components/HighlightedText';
 
@@ -45,6 +46,13 @@ const formatStructuredBlocks = (text: string) => {
 
 const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
+    // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
+    const scriptureLinks = useScriptureLinks();
+    const linkLocale = scriptureLinks?.locale;
+    const rehypePlugins = useMemo(
+        () => [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], ...(linkLocale ? [[rehypeScriptureLinks, linkLocale]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+        [linkLocale]
+    );
 
     const renderHighlighted = useCallback(
         (node: React.ReactNode) =>
@@ -61,8 +69,9 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                 // rehype-raw parses embedded raw HTML (e.g. <u>) into the tree;
                 // rehype-sanitize then strips anything outside the safe schema.
                 // Order matters: raw must run before sanitize.
-                rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
+                rehypePlugins={rehypePlugins}
                 components={{
+                    [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink,
                     // Override link behavior to open in new tab
                     a: ({ ...props }) => (
                         <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
@@ -168,7 +177,8 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                                         {searchQuery ? (
                                             <HighlightedText text={String(children).replace(/\n$/, '')} searchQuery={searchQuery} />
                                         ) : (
-                                            String(children).replace(/\n$/, '')
+                                            // A quote often names its passage: it opens like any other reference.
+                                            <ScriptureText text={String(children).replace(/\n$/, '')} />
                                         )}
                                     </div>
                                 </div>
@@ -177,7 +187,7 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
 
                         return <code className={className} {...props}>{children}</code>;
                     }
-                }}
+                } as Components}
             >
                 {processedContent}
             </ReactMarkdown>

@@ -1,7 +1,8 @@
-import React from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useMemo } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, useScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 
 import styles from './PlanMarkdown.module.css';
@@ -40,11 +41,20 @@ function groupPlanSections() {
   };
 }
 
+/** A reference in a plan is drawn as a link by the shared piece, only where the screen opens it. */
+const LINK_COMPONENTS = { [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink } as Components;
+
 /** A complete section body owns its indentation in reading, preaching and PDF output. */
 export default function PlanMarkdown({ markdown, className = '' }: { markdown: string; className?: string }) {
+  // Preaching opens a reference over the plan, the plan page goes to the Bible; a PDF has no links.
+  const linkLocale = useScriptureLinks()?.locale;
+  const rehypePlugins = useMemo(
+    () => [groupPlanSections, ...(linkLocale ? [[rehypeScriptureLinks, linkLocale]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+    [linkLocale]
+  );
   return (
     <div className={`markdown-content ${styles.content} ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[groupPlanSections]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={rehypePlugins} components={linkLocale ? LINK_COMPONENTS : undefined}>
         {preparePlanMarkdown(markdown)}
       </ReactMarkdown>
     </div>

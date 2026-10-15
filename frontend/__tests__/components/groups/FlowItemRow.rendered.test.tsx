@@ -8,6 +8,7 @@ jest.unmock('rehype-sanitize');
 
 import { fireEvent, render, screen } from '@testing-library/react';
 
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 
 import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
@@ -68,4 +69,31 @@ it("wraps a leader's note that has no spaces inside the row", () => {
         />
     );
     expect(screen.getByText(word)).toHaveClass('break-words');
+});
+
+// On the group page a reference in a block's text is a link to the Bible (the page gives the way to
+// open it): pressing it opens the passage and does not select the block it sits in.
+it('opens a reference in the block text without selecting the block', () => {
+    const onSelect = jest.fn();
+    const onOpen = jest.fn();
+    render(
+        <ScriptureLinks onOpen={onOpen}>
+            <FlowItemRow
+                flowItem={{ ...flowItem, instanceTitle: 'Чтение: Рим 13', instanceNotes: 'Дома: Еф 4:1' }}
+                template={{ ...template, content: 'Бытие 13:1–12.\n\nВот здесь мне особенно нравится текст.' }}
+                index={0} isSelected={false} isFirst isLast
+                onSelect={onSelect} onStatusCycle={jest.fn()} onMoveUp={jest.fn()} onMoveDown={jest.fn()}
+                onDuplicate={jest.fn()} onDelete={jest.fn()}
+            />
+        </ScriptureLinks>
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Бытие 13:1–12' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Genesis', chapter: 13, fromVerse: 1, toVerse: 12, label: 'Бытие 13:1–12' }));
+    expect(onSelect).not.toHaveBeenCalled();
+    // The block's title and the leader's note carry their references too.
+    fireEvent.click(screen.getByRole('button', { name: 'Рим 13' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Еф 4:1' }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Romans', chapter: 13 }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Ephesians', chapter: 4, fromVerse: 1 }));
+    expect(onSelect).not.toHaveBeenCalled();
 });

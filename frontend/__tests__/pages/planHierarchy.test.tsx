@@ -1,7 +1,7 @@
 jest.unmock('react-markdown');
 jest.unmock('remark-gfm');
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { Document, Packer } from 'docx';
 import JSZip from 'jszip';
 import React from 'react';
@@ -73,9 +73,13 @@ describe('plan heading ownership across reading and exports', () => {
     render(<FullPlanContent combinedPlan={{ introduction: '', main: markdown, conclusion: '' }} t={key => key} noContentText="Empty" />);
     const child = screen.getByText('Child thesis').closest('[data-plan-body-level]');
     expect(child).toHaveStyle({ paddingInlineStart: '3rem' });
-    for (const text of ['Child bullet', 'John 3:16: Child verse', 'Child quote']) {
+    for (const text of ['Child bullet', 'Child quote']) {
       expect(child).toContainElement(screen.getByText(text));
     }
+    // The verse's reference is a link where it stands; the paragraph keeps its words and its place.
+    const verse = screen.getByText((_, node) => node?.tagName === 'P' && node.textContent === 'John 3:16: Child verse');
+    expect(child).toContainElement(verse);
+    expect(within(verse).getByRole('button', { name: 'John 3:16' })).toBeInTheDocument();
     expect(child).not.toContainElement(screen.getByText('Sibling text'));
     expect(screen.getByText('Sibling text').closest('[data-plan-body-level]')).toHaveStyle({ paddingInlineStart: '3rem' });
     expect(screen.getByText('Next parent text').closest('[data-plan-body-level]')).toHaveStyle({ paddingInlineStart: '1.5rem' });

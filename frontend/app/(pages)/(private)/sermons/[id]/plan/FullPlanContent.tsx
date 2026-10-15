@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { ScriptureLinks } from "@/components/bible/ScriptureLinks";
 import { VerseSheet, type SheetReference } from "@/components/bible/VerseSheet";
 import ScriptureOpening from "@/components/common/ScriptureOpening";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
@@ -172,8 +173,9 @@ export default function FullPlanContent({
   const mainToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.MAIN];
   const conclusionToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.CONCLUSION];
 
+  // Every reference in the plan opens over it, as the sermon's verse does: "Быт. 6:13" mid-sentence too.
   return (
-    <>
+    <ScriptureLinks onOpen={setVerse}>
       {sermonTitle && isPreachingMode && (
         <div className="mb-4">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
@@ -260,6 +262,6 @@ export default function FullPlanContent({
       </div>
 
       <VerseSheet reference={verse} onClose={() => setVerse(null)} keepVisible={keepVisibleTop ? { top: keepVisibleTop } : undefined} />
-    </>
+    </ScriptureLinks>
   );
 }

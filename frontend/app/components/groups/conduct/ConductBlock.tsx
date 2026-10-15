@@ -5,6 +5,7 @@ import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ScriptureLinks, ScriptureText } from '@/components/bible/ScriptureLinks';
 import { VerseSheet, type SheetReference } from '@/components/bible/VerseSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -12,18 +13,17 @@ import { Chip } from '@/components/ui/Chip';
 import { formatTime, useConductTimer } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
-import { namesAPlace, referenceFromText, referencesInText } from '@/utils/bibleLink';
+import { namesAPlace, referenceFromText } from '@/utils/bibleLink';
 import { referenceBibleFor, sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
 
 type BlockReference = { key: string; label: string; reference: SheetReference | null };
 
 /**
- * The passages a block names, each place once: those kept with it, then those its title, text and
- * questions name — a leader writes "Прочитайте Рим 12:1–2" into the text, so most of them are
- * there. Typed as the person reads: in the Bible of the interface's language. A kept reference
- * that names no place to open ("see the handout", "Рим 25") stays a label.
+ * The passages kept with a block, each place once, typed in the Bible of the interface's language.
+ * A kept reference that names no place to open ("see the handout", "Рим 25") stays a label. The
+ * references a leader writes into the text are links where they stand (`ScriptureLinks`).
  */
-function blockReferences(kept: string[], texts: string[], locale: AppLocale): BlockReference[] {
+function blockReferences(kept: string[], locale: AppLocale): BlockReference[] {
   const found: BlockReference[] = [];
   const add = (label: string, reference: SheetReference | null) => {
     const same = reference
@@ -35,7 +35,6 @@ function blockReferences(kept: string[], texts: string[], locale: AppLocale): Bl
     const reference = referenceFromText(raw, referenceBibleFor(locale));
     add(raw, reference && namesAPlace(reference) ? reference : null);
   });
-  texts.forEach((text) => referencesInText(text, locale).forEach(({ raw, reference }) => add(raw, reference)));
   return found;
 }
 
@@ -89,8 +88,8 @@ export default function ConductBlock({
   const locale = resolveAppLocale(i18n?.language);
   const title = flowItem.instanceTitle || template.title;
   const references = useMemo(
-    () => blockReferences(template.scriptureRefs ?? [], [title, template.content ?? '', ...(template.questions ?? [])], locale),
-    [template.scriptureRefs, title, template.content, template.questions, locale]
+    () => blockReferences(template.scriptureRefs ?? [], locale),
+    [template.scriptureRefs, locale]
   );
 
   const hasDuration = !!(flowItem.durationMin && flowItem.durationMin > 0);
@@ -124,7 +123,9 @@ export default function ConductBlock({
   const globalDisplay = globalTimeLeft !== null ? formatTime(globalTimeLeft) : null;
   const globalColor = globalIsOvertime ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-400';
 
+  // A reference anywhere in the block — its text, a question, a note — opens over the meeting.
   return (
+    <ScriptureLinks onOpen={setVerse}>
     <div className="flex h-full flex-col">
       {/* Header */}
       <div ref={headerRef} className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -170,7 +171,7 @@ export default function ConductBlock({
       {/* The bottom inset lets the last line scroll clear of the floating text size button. */}
       <div className="flex-1 overflow-y-auto px-5 pb-20 pt-6">
         <div className="meeting-scaled">
-          <h1 className="mb-[0.5em] break-words text-[1.9em] font-bold text-gray-900 dark:text-gray-100">{title}</h1>
+          <h1 className="mb-[0.5em] break-words text-[1.9em] font-bold text-gray-900 dark:text-gray-100"><ScriptureText text={title} /></h1>
 
           {template.content && (
             // Written in the rich Markdown editor, so it is Markdown: shown raw, ** and ## reached the screen.
@@ -202,7 +203,7 @@ export default function ConductBlock({
               {template.questions.map((q, i) => (
                 <li key={i} className="flex gap-[0.5em] text-[0.875em] text-gray-700 dark:text-gray-300">
                   <span className="font-semibold text-gray-400">{i + 1}.</span>
-                  <span className="min-w-0 break-words">{q}</span>
+                  <span className="min-w-0 break-words"><ScriptureText text={q} /></span>
                 </li>
               ))}
             </ul>
@@ -224,7 +225,7 @@ export default function ConductBlock({
             // Plain text from a text area, not Markdown: kept as typed, and as large as the body.
             // Capped and scrolled on its own, so long notes at 200% cannot squeeze the block away.
             <div className="meeting-scaled max-h-[40vh] overflow-y-auto border-t border-gray-100 bg-amber-50/60 px-5 py-4 dark:border-gray-700 dark:bg-amber-950/20">
-              <p className="whitespace-pre-wrap break-words text-[0.875em] text-gray-700 dark:text-gray-300">{flowItem.instanceNotes}</p>
+              <p className="whitespace-pre-wrap break-words text-[0.875em] text-gray-700 dark:text-gray-300"><ScriptureText text={flowItem.instanceNotes ?? ''} /></p>
             </div>
           )}
         </div>
@@ -281,5 +282,6 @@ export default function ConductBlock({
 
       <VerseSheet reference={verse} onClose={() => setVerse(null)} keepVisible={keepVisible} />
     </div>
+    </ScriptureLinks>
   );
 }

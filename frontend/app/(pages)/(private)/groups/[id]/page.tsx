@@ -32,6 +32,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
@@ -45,6 +46,7 @@ import Select from '@/components/ui/Select';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
+import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
@@ -74,9 +76,15 @@ export default function GroupDetailPage() {
 }
 function EngineGroupPage({ groupId }: { groupId: string }) {
   const editor = useGroupPageEditor(groupId);
-  return editor.readOnly && editor.group
-    ? <GroupReadOnlyContent group={editor.group} />
-    : <GroupDetailView editor={editor} />;
+  // A reference in a block's text opens the Bible there, and "← Group" brings the person back.
+  const { openReference } = useOpenInBible(undefined, `/groups/${groupId}`);
+  return (
+    <ScriptureLinks onOpen={openReference}>
+      {editor.readOnly && editor.group
+        ? <GroupReadOnlyContent group={editor.group} />
+        : <GroupDetailView editor={editor} />}
+    </ScriptureLinks>
+  );
 }
 function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const router = useRouter();

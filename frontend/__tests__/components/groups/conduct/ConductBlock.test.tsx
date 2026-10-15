@@ -252,21 +252,20 @@ describe('ConductBlock', () => {
   });
 
   // A leader writes the passages into the block's text: the block editor has no list of them.
-  it('offers the passages the block\'s text and questions name, each once, and opens them over the meeting', () => {
-    const template = {
-      ...mockTemplate,
-      content: 'Прочитайте **Рим 12:1–2** и Рим 13. Даниил 3 года молился. Рим 8:28 и Рим 8:28-28.',
-      questions: ['Что значит Рим 12:1-2 для нас?', 'Как жить по Еф 4:1?'],
-    };
-    render(<ConductBlock {...defaultProps} template={template} />);
-    const chips = ['Рим 12:1–2', 'Рим 13', 'Рим 8:28', 'Еф 4:1'];
-    // One chip per place, however it is written.
-    expect(screen.getAllByRole('button', { name: /^(Рим|Еф) / })).toHaveLength(chips.length);
-    // Pressed while leading: a finger's height.
-    chips.forEach((label) => expect(screen.getByRole('button', { name: label })).toHaveClass('min-h-11'));
+  // The block's Markdown is checked against the real renderer (ConductBlock.rendered.test.tsx);
+  // here the plain text around it: the title, a question, the leader's notes.
+  it('makes the references in the title, questions and notes links in place that open over the meeting', () => {
+    const template = { ...mockTemplate, title: 'Чтение: Рим 13', questions: ['Как жить по Еф 4:1?', 'Даниил 3 года молился — почему?'] };
+    render(<ConductBlock {...defaultProps} template={template} flowItem={{ ...mockFlowItem, instanceNotes: 'Дома: Пс 22.' }} />);
+    expect(screen.getByRole('button', { name: 'Рим 13' }).closest('h1')).toHaveTextContent('Чтение: Рим 13');
+    const ephesians = screen.getByRole('button', { name: 'Еф 4:1' });
+    expect(ephesians.closest('li')).toHaveTextContent('Как жить по Еф 4:1?');
+    expect(ephesians).toHaveClass('underline');
     expect(screen.queryByRole('button', { name: /Даниил/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Рим 13' }));
-    expect(screen.getByRole('dialog', { name: 'Рим 13' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Notes'));
+    expect(screen.getByRole('button', { name: 'Пс 22' })).toBeInTheDocument();
+    fireEvent.click(ephesians);
+    expect(screen.getByRole('dialog', { name: 'Еф 4:1' })).toBeInTheDocument();
   });
 
   it('keeps a label the app cannot read as a reference, or that names no place, as a plain label', () => {

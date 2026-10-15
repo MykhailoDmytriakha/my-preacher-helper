@@ -1,5 +1,7 @@
 'use client';
 
+import { SCRIPTURE_LINK_CLASSES } from '@/components/bible/ScriptureLinks';
+
 import type { LeadingReference } from '@/utils/bibleLink';
 
 interface ScriptureOpeningProps {
@@ -23,7 +25,7 @@ export default function ScriptureOpening({ text, reference = null, onOpen }: Scr
       <button
         type="button"
         onClick={() => onOpen(reference.href, reference)}
-        className="rounded font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-4 transition hover:decoration-indigo-600 dark:text-indigo-300 dark:decoration-indigo-500/60 dark:hover:decoration-indigo-300"
+        className={SCRIPTURE_LINK_CLASSES}
       >
         {text.slice(0, reference.end)}
       </button>

@@ -35,6 +35,9 @@ jest.mock('next/navigation', () => ({
     push: mockPush,
     replace: mockReplace,
   }),
+  // A reference in a block opens the Bible with the way back here.
+  usePathname: () => '/groups/group-1',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@dnd-kit/core', () => ({

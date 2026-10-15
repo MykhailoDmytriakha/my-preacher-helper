@@ -1,5 +1,14 @@
+import { SCRIPTURE_LINK_MARK } from '@/components/bible/ScriptureLinks';
 import { copyTextWithSelection } from '@/utils/clipboard';
 import { debugLog } from "@/utils/debugMode";
+
+/** The plan's markup with its reference links back as their words: a document gets text, not buttons. */
+function withReferencesAsWords(element: HTMLElement): string {
+  if (!element.querySelector(`[${SCRIPTURE_LINK_MARK}]`)) return element.innerHTML ?? '';
+  const copy = element.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll(`[${SCRIPTURE_LINK_MARK}]`).forEach((link) => link.replaceWith(document.createTextNode(link.textContent ?? '')));
+  return copy.innerHTML;
+}
 
 /**
  * COPYING THE PLAN WITH ITS FORMATTING — one implementation, both editors.
@@ -17,7 +26,7 @@ export async function copyFormattedFromElement(element: HTMLDivElement | null): 
   }
 
   const plainText = element.innerText ?? '';
-  const htmlContent = element.innerHTML ?? '';
+  const htmlContent = withReferencesAsWords(element);
 
   const advancedClipboardAvailable =
     typeof window !== 'undefined' &&
