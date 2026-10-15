@@ -7,7 +7,8 @@ interface ScriptureOpeningProps {
   text: string;
   /** The reference the text opens with (`leadingReference`), or null when it names none. */
   reference?: LeadingReference | null;
-  onOpen?: (href: string) => void;
+  /** The address into the Bible, and the reference itself for a screen that shows it in place. */
+  onOpen?: (href: string, opening: LeadingReference) => void;
 }
 
 /**
@@ -21,7 +22,7 @@ export default function ScriptureOpening({ text, reference = null, onOpen }: Scr
     <>
       <button
         type="button"
-        onClick={() => onOpen(reference.href)}
+        onClick={() => onOpen(reference.href, reference)}
         className="rounded font-semibold text-indigo-700 underline decoration-indigo-300 underline-offset-4 transition hover:decoration-indigo-600 dark:text-indigo-300 dark:decoration-indigo-500/60 dark:hover:decoration-indigo-300"
       >
         {text.slice(0, reference.end)}

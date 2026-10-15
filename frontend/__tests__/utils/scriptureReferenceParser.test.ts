@@ -106,6 +106,11 @@ describe('referenceParser', () => {
     expect(parseReferenceText('Пс 50:12')).toEqual({ book: 'Psalms', chapter: 50, fromVerse: 12 });
   });
 
+  it('reads a Psalm named by the word people say, "Псалом 22"', () => {
+    expect(parseReferenceText('Псалом 22')).toEqual({ book: 'Psalms', chapter: 22 });
+    expect(parseReferenceText('псалом 90:1', { locale: 'uk' })).toEqual({ book: 'Psalms', chapter: 90, fromVerse: 1 });
+  });
+
   it('keeps a Psalm chapter range as written', () => {
     expect(parseReferenceText('Пс 22-24')).toEqual({ book: 'Psalms', chapter: 22, toChapter: 24 });
   });

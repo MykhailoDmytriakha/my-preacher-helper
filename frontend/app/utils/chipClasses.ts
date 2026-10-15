@@ -2,7 +2,7 @@ import { CHIP_TONES, type ChipTone } from '@/utils/themeColors';
 
 export type { ChipTone };
 
-export type ChipSize = 'xs' | 'sm' | 'md';
+export type ChipSize = 'xs' | 'sm' | 'md' | 'lg';
 
 /**
  * How loud the label is. It is a PROP and not something a caller appends, because Tailwind
@@ -34,6 +34,12 @@ export const CHIP_SIZE_CLASSES: Record<ChipSize, string> = {
    * now the size of every other content label.
    */
   md: 'gap-1 px-3 py-1 text-xs',
+  /**
+   * A chip a finger presses while leading — a meeting's passage, which opens its text. A
+   * finger's height, and its words a share of the text around it, so it grows with the
+   * meeting's text size.
+   */
+  lg: 'min-h-11 gap-1.5 px-4 py-1 text-[0.9375em]',
 };
 
 const CHIP_WEIGHT_CLASSES: Record<ChipWeight, string> = {

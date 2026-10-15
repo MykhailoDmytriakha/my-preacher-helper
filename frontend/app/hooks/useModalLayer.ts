@@ -42,6 +42,11 @@ export interface ModalLayerProps {
 /** Every layer currently on screen, oldest first — so the topmost one can answer alone. */
 const layers: HTMLElement[] = [];
 
+/** Whether `element` is the topmost window on screen — the one the keyboard belongs to. */
+export function isTopmostLayer(element: HTMLElement): boolean {
+  return layers.length > 0 && layers[layers.length - 1] === element;
+}
+
 /**
  * Whether any window stands over the page — a held page, a modal, a dialog, an open menu. What is
  * under it answers neither the page's gestures nor its keyboard shortcuts.

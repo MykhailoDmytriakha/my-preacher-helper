@@ -51,7 +51,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   { english: 'Esther', aliases: ['есфирь', 'книга есфири', 'эстирь', 'есф', 'естер', 'ест'] },
   // Wisdom/Poetry
   { english: 'Job', aliases: ['иов', 'книга иова', 'йов'] },
-  { english: 'Psalms', aliases: ['псалтирь', 'пс', 'псал', 'псалми', 'psalm'] },
+  { english: 'Psalms', aliases: ['псалтирь', 'пс', 'псал', 'псалми', 'псалом', 'псалмы', 'psalm'] },
   { english: 'Proverbs', aliases: ['притчи', 'поу́чения', 'притч', 'притчи соломоновы', 'прит', 'приповістки', 'прип'] },
   { english: 'Ecclesiastes', aliases: ['екклесиаст', 'проповедник', 'екк', 'ек', 'екклезіяст', 'еккл'] },
   { english: 'Song of Solomon', aliases: ['песнь песней', 'песнь-песней', 'песн', 'песнь', 'пісня пісень', 'пісн'] },
@@ -232,26 +232,39 @@ const resolveParsingTokens = ({
   return { tokens: allTokensNaive, isChapterRangeFormat: false, rangeMatch };
 };
 
-const resolveBook = (input: string, locale?: AppLocale): BookMatch | null => {
+const exactBookOf = (input: string, locale?: AppLocale): string | null => {
   // The language it is written in first: "1Цар" is 1 Samuel in Russian and 1 Kings in Ukrainian.
   const own = locale ? getBookByWrittenName(input, locale) : undefined;
-  if (own) return { book: own.id, remaining: [] };
+  if (own) return own.id;
 
-  const normalized = input.toLowerCase();
-  const direct = BOOK_ALIASES[normalized];
-  if (direct) return { book: direct, remaining: [] };
+  const direct = BOOK_ALIASES[input.toLowerCase()];
+  if (direct) return direct;
 
   // Try bibleData lookup (supports all locales)
   const bookInfo = getBookByName(input);
-  if (bookInfo) return { book: bookInfo.id, remaining: [] };
+  if (bookInfo) return bookInfo.id;
 
   // As people write it: "1 Ин" for "1Ин", "1Иоанна" for "1 Иоанна", "И Нав" for "И.Нав" (dots are spaces by now).
-  const written = getBookByWrittenName(input);
-  if (written) return { book: written.id, remaining: [] };
+  return getBookByWrittenName(input)?.id ?? null;
+};
+
+/**
+ * The book a name is written for — a book's name, its abbreviation or a known alias, as people write
+ * it ("Рим.", "1 Пар", "Песнь-Песней") — and never a guess from its first letters: in prose "A" and
+ * "Is" are words, not Amos and Isaiah. The reference field keeps that guess (`parseReferenceText`).
+ */
+export function exactBook(name: string, locale?: AppLocale): string | null {
+  const words = name.replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
+  return words ? exactBookOf(words, locale) : null;
+}
+
+const resolveBook = (input: string, locale?: AppLocale): BookMatch | null => {
+  const exact = exactBookOf(input, locale);
+  if (exact) return { book: exact, remaining: [] };
 
   // Fallback: find canonical book ID starting with input
-  const bookIds = getBookIds();
-  const found = bookIds.find((id) => id.toLowerCase().startsWith(normalized));
+  const normalized = input.toLowerCase();
+  const found = getBookIds().find((id) => id.toLowerCase().startsWith(normalized));
   if (found) return { book: found, remaining: [] };
 
   return null;

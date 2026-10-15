@@ -2,8 +2,8 @@ import { getBookById } from '@/utils/bibleBooks';
 import { BIBLES } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
 import { referenceBibleFor, withStoredBible } from '@/utils/scriptureReferenceNumbering';
-import { parseReferenceText } from '@/utils/scriptureReferenceParser';
-import { chapterCount } from '@/utils/versification';
+import { exactBook, parseReferenceText } from '@/utils/scriptureReferenceParser';
+import { chapterCount, verseCount } from '@/utils/versification';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -115,8 +115,8 @@ export function bibleHrefForText(raw: string, options: BibleLinkOptions): string
   return ref ? bibleHref(ref, options) : null;
 }
 
-/** Where a text's opening reference ends, and the address it opens. */
-export type LeadingReference = { end: number; href: string };
+/** Where a text's opening reference ends, the address it opens, and the reference itself (for the verse window). */
+export type LeadingReference = { end: number; href: string; reference: ScriptureRefShape & { bible: BibleId } };
 
 /**
  * THE REFERENCE A TEXT OPENS WITH — "Еф 1:15 — «Посему и я…»", "1 Пар. 4:9–10",
@@ -135,9 +135,92 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
     // A chapter at least: a book named alone in prose is an ordinary word as often as a reference.
     const ref = typedReference(candidate, options.locale);
     const href = ref?.chapter ? bibleHref(ref, options) : null;
-    if (href) found = { end, href };
+    if (ref && href) found = { end, href, reference: ref };
   }
   return found;
+}
+
+/** A reference found in prose: where it stands in the text, as it was written, and what it names. */
+export type ReferenceInText = { start: number; end: number; raw: string; reference: ScriptureRefShape & { bible: BibleId } };
+
+/**
+ * Whether a reference names a place its Bible has — the chapter, and the verse it starts at — so a
+ * screen can offer to open it. "Рим 25" and "Рим 8:999" name nothing to open.
+ */
+export function namesAPlace(ref: ScriptureRefShape & { bible: BibleId }): boolean {
+  const chapters = chapterCount(ref.bible, ref.book);
+  if (!ref.chapter || ref.chapter > chapters) return false;
+  // A verse wins over a chapter range left beside it; a range of whole chapters ends in the book.
+  if (ref.fromVerse) return ref.fromVerse <= verseCount(ref.bible, ref.book, ref.chapter);
+  return ref.toChapter === undefined || ref.toChapter <= chapters;
+}
+
+/**
+ * The numbers right after a book's name in prose — "13", "12:1", "12:1–2", "5-7" — and not a digit,
+ * a letter or a verse more. A passage across a chapter end ("Ис 52:13–53:12") gives its first verse:
+ * the reference model has no such passage yet (BUG-20261015-cross-chapter-passage-misread).
+ */
+const NUMBERS_IN_PROSE = /^\s*(\d+(?:[:.]\d+)?(?:\s*[-–—]\s*\d+)?)(?![\d\p{L}_@/\\]|[:.]\d|\.\p{L})/u;
+/**
+ * The words a whole chapter may be followed by and stay a chapter: the word "chapter" itself, or the
+ * word that joins the next reference of a list. Any other word makes it prose — "Даниил 3 года",
+ * "Job 2 children", "A 2 point plan" — and prose is never guessed.
+ */
+const STILL_A_CHAPTER = /^\s+(?:и|или|а|та|і|й|чи|and|or|глав[аеуы]?|chapters?|розділ[иу]?)(?=[\s,.;:!?)]|$)/iu;
+/** The marks a reference may open with in prose: brackets, quotes, Markdown emphasis. */
+const OPENING_MARKS = /^[([«"'“„*_]*/u;
+
+/**
+ * EVERY REFERENCE A TEXT NAMES — "Прочитайте Рим 12:1–2 и обсудите", "(1 Кор 13:4–7)", "Рим 13, Еф 6",
+ * "Рим.12:1-2" as the app prints it — read in the interface's Bible, as a person types them. A book's
+ * name must read as a book all by itself and be followed only by its numbers, so prose stays prose:
+ * "Иоанн пришёл 3-4 раза" names nothing; a chapter alone followed by what it counts is a count —
+ * "Даниил 3 года"; and a place the book does not have is no reference.
+ */
+export function referencesInText(text: string, locale: AppLocale): ReferenceInText[] {
+  // Words end at spaces and at list marks: "Рим 8:28;Еф 4:1" holds two.
+  const words = Array.from(text.matchAll(/[^\s,;]+/g));
+  const found: ReferenceInText[] = [];
+  let after = 0;
+  words.forEach((word, first) => {
+    // Opening marks are not the name: "(Рим", "«Рим", "**Рим". A word opening with anything else —
+    // "//John3", "@Ин3" — is an address or a handle, not a reference.
+    const start = (word.index ?? 0) + (OPENING_MARKS.exec(word[0])?.[0].length ?? 0);
+    if (start < after || !/[\p{L}\d]/u.test(text[start] ?? '')) return;
+    // The longest name first: "1 Кор" before "1", "Песнь Песней" before "Песнь".
+    for (let last = Math.min(first + 3, words.length - 1); last >= first; last -= 1) {
+      const wordStart = Math.max(start, words[last].index ?? 0);
+      const wordEnd = (words[last].index ?? 0) + words[last][0].length;
+      // The name ends where its word ends, or where its numbers start inside it: "Рим.12:1", "Ин3:16".
+      const glued = /^\d*[^\d]+?(?=\d)/u.exec(text.slice(wordStart, wordEnd));
+      for (const nameEnd of [wordEnd, ...(glued ? [wordStart + glued[0].length] : [])]) {
+        const reference = referenceAt(text, start, nameEnd, locale);
+        if (!reference) continue;
+        found.push(reference);
+        after = reference.end;
+        return;
+      }
+    }
+  });
+  return found;
+}
+
+/** The reference whose book's name runs from `start` to `nameEnd` in the text, when it is one. */
+function referenceAt(text: string, start: number, nameEnd: number, locale: AppLocale): ReferenceInText | null {
+  const name = text.slice(start, nameEnd);
+  // A name may open with its number ("1 Кор") and holds no other; a comma ends a word, not a book.
+  if (!/\p{L}/u.test(name) || /\d/.test(name.replace(/^\d+/, '')) || /[,;:]$/.test(name)) return null;
+  const numbers = NUMBERS_IN_PROSE.exec(text.slice(nameEnd));
+  if (!numbers) return null;
+  const end = nameEnd + numbers[0].length;
+  // Read with a space where the numbers were glued on: the parser reads "Ин 3:16", not "Ин3:16".
+  const spaced = `${name} ${numbers[1]}`;
+  if (!isReferenceShaped(spaced, locale)) return null;
+  const reference = typedReference(spaced, locale);
+  if (!reference || !namesAPlace(reference)) return null;
+  const rest = text.slice(end);
+  if (!/[:.]/.test(numbers[1]) && /^\s+\p{L}/u.test(rest) && !STILL_A_CHAPTER.test(rest)) return null;
+  return { start, end, raw: text.slice(start, end), reference };
 }
 
 /** Chapter and verse as written after a book: "3", "3:16", "4:9-10", "3:16-4:2", "22:1, 3-5". */
@@ -154,7 +237,5 @@ function isReferenceShaped(candidate: string, locale: AppLocale): boolean {
   const numbers = NUMBERS_AFTER_BOOK.exec(normalized);
   if (!numbers) return false;
   const name = normalized.slice(0, numbers.index).trim();
-  if (!/\p{L}/u.test(name)) return false;
-  const named = parseReferenceText(name, { locale });
-  return Boolean(named && !named.chapter);
+  return /\p{L}/u.test(name) && exactBook(name, locale) !== null;
 }

@@ -15,6 +15,9 @@ const mockTimerReturn = {
   isWarning: false,
 };
 
+// The verse window's text: read once, never resolved here — what is asserted is that the window opens over the block.
+jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn(() => new Promise(() => undefined)) }));
+
 jest.mock('@/hooks/useConductTimer', () => ({
   useConductTimer: jest.fn(() => mockTimerReturn),
   formatTime: (s: number) => {
@@ -235,5 +238,42 @@ describe('ConductBlock', () => {
   it('does not show notes toggle when instanceNotes empty', () => {
     render(<ConductBlock {...defaultProps} flowItem={{ ...mockFlowItem, instanceNotes: undefined }} />);
     expect(screen.queryByText('Notes')).not.toBeInTheDocument();
+  });
+
+  // 2.5.6: a reference of the block opens its text over the meeting; the block and its timer stay where they are.
+  it('opens a reference of the block over the meeting and closes it back to the same block', () => {
+    render(<ConductBlock {...defaultProps} template={{ ...mockTemplate, scriptureRefs: ['Рим 8:28', 'see the handout'] }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Рим 8:28' }));
+    expect(screen.getByRole('dialog', { name: 'Рим 8:28' })).toBeInTheDocument();
+    expect(screen.getByText('Main Topic')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'bible.sheet.close' })[0]);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(defaultProps.onNext).not.toHaveBeenCalled();
+  });
+
+  // A leader writes the passages into the block's text: the block editor has no list of them.
+  it('offers the passages the block\'s text and questions name, each once, and opens them over the meeting', () => {
+    const template = {
+      ...mockTemplate,
+      content: 'Прочитайте **Рим 12:1–2** и Рим 13. Даниил 3 года молился. Рим 8:28 и Рим 8:28-28.',
+      questions: ['Что значит Рим 12:1-2 для нас?', 'Как жить по Еф 4:1?'],
+    };
+    render(<ConductBlock {...defaultProps} template={template} />);
+    const chips = ['Рим 12:1–2', 'Рим 13', 'Рим 8:28', 'Еф 4:1'];
+    // One chip per place, however it is written.
+    expect(screen.getAllByRole('button', { name: /^(Рим|Еф) / })).toHaveLength(chips.length);
+    // Pressed while leading: a finger's height.
+    chips.forEach((label) => expect(screen.getByRole('button', { name: label })).toHaveClass('min-h-11'));
+    expect(screen.queryByRole('button', { name: /Даниил/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Рим 13' }));
+    expect(screen.getByRole('dialog', { name: 'Рим 13' })).toBeInTheDocument();
+  });
+
+  it('keeps a label the app cannot read as a reference, or that names no place, as a plain label', () => {
+    render(<ConductBlock {...defaultProps} template={{ ...mockTemplate, scriptureRefs: ['see the handout', 'Рим 25'] }} />);
+    expect(screen.getByText('see the handout')).toBeInTheDocument();
+    expect(screen.getByText('Рим 25')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'see the handout' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Рим 25' })).not.toBeInTheDocument();
   });
 });

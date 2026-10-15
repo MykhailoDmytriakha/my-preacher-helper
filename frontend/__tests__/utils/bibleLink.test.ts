@@ -1,4 +1,4 @@
-import { bibleHref, bibleHrefForText, leadingReference, parsePassageEnd, referenceFromText, wayBackKind, wayBackPath } from '@/utils/bibleLink';
+import { bibleHref, bibleHrefForText, leadingReference, namesAPlace, parsePassageEnd, referenceFromText, referencesInText, wayBackKind, wayBackPath } from '@/utils/bibleLink';
 
 const query = (href: string | null) => Object.fromEntries(new URL(href ?? '/none', 'https://app.test').searchParams);
 
@@ -78,6 +78,10 @@ describe('leadingReference — the passage a sermon\'s verse names first', () =>
     expect(lead(text)).toEqual(expected);
   });
 
+  it('gives the reference itself with its address, for a screen that shows it in place', () => {
+    expect(leadingReference('Рим 12:1-2 Итак умоляю вас', { locale: 'ru' })?.reference).toEqual({ bible: 'rst', book: 'Romans', chapter: 12, fromVerse: 1, toVerse: 2, toChapter: undefined });
+  });
+
   it('reads an English verse in the King James', () => {
     expect(lead('James 1:22 But be ye doers of the word', 'en')).toMatchObject({ text: 'James 1:22', book: 'james', at: '1:22', tr: 'kjv' });
   });
@@ -106,6 +110,110 @@ describe('leadingReference — the passage a sermon\'s verse names first', () =>
     expect(lead('Ин 3:16 2 ученика')).toMatchObject({ text: 'Ин 3:16', at: '3:16', to: '16' });
     expect(lead('Мф 5:3-12; Лк 6:20')).toMatchObject({ text: 'Мф 5:3-12', book: 'matthew' });
     expect(lead('Песнь Песней 2:1 Я нарцисс Саронский')).toMatchObject({ text: 'Песнь Песней 2:1', book: 'song-of-solomon' });
+  });
+});
+
+describe('referencesInText — every reference a text names', () => {
+  const found = (text: string, locale: 'ru' | 'uk' | 'en' = 'ru') =>
+    referencesInText(text, locale).map(({ start, end, raw, reference }) => {
+      expect(text.slice(start, end)).toBe(raw);
+      const { book, chapter, fromVerse, toVerse } = reference;
+      return [raw, `${book} ${chapter}${fromVerse ? `:${fromVerse}` : ''}${toVerse ? `-${toVerse}` : ''}`];
+    });
+
+  it('finds a reference inside a sentence, without the words or marks around it', () => {
+    expect(found('Прочитайте Рим 12:1–2 и обсудите.')).toEqual([['Рим 12:1–2', 'Romans 12:1-2']]);
+    expect(found('Прочитаем вместе (1 Кор 13:4–7).')).toEqual([['1 Кор 13:4–7', '1 Corinthians 13:4-7']]);
+    expect(found('**Рим 8:28** — главный стих')).toEqual([['Рим 8:28', 'Romans 8:28']]);
+    expect(found('«Деян. 2:42–47»')).toEqual([['Деян. 2:42–47', 'Acts 2:42-47']]);
+  });
+
+  it('finds every reference of a list, joined by commas, semicolons or a word', () => {
+    expect(found('Рим 13, Еф 6')).toEqual([['Рим 13', 'Romans 13'], ['Еф 6', 'Ephesians 6']]);
+    expect(found('Рим 13 и Еф 6:10–18')).toEqual([['Рим 13', 'Romans 13'], ['Еф 6:10–18', 'Ephesians 6:10-18']]);
+    expect(found('Римлянам 12:1-2; Матфея 5:3')).toEqual([['Римлянам 12:1-2', 'Romans 12:1-2'], ['Матфея 5:3', 'Matthew 5:3']]);
+    expect(found('Read Romans 8:28 and John 3', 'en')).toEqual([['Romans 8:28', 'Romans 8:28'], ['John 3', 'John 3']]);
+  });
+
+  it('reads the forms people write: a numbered book apart or together, a whole name, a Psalm by its word', () => {
+    expect(found('1Ин 4:8 и 1 Иоанна 4:16')).toEqual([['1Ин 4:8', '1 John 4:8'], ['1 Иоанна 4:16', '1 John 4:16']]);
+    expect(found('Песнь Песней 2:1 и Псалом 22')).toEqual([['Песнь Песней 2:1', 'Song of Solomon 2:1'], ['Псалом 22', 'Psalms 22']]);
+    // The number after a book of one chapter is its verse.
+    expect(found('Иуд 3.')).toEqual([['Иуд 3', 'Jude 1:3']]);
+  });
+
+  it('reads a reference as the app prints it, the book glued to its numbers', () => {
+    expect(found('Рим.12:1-2')).toEqual([['Рим.12:1-2', 'Romans 12:1-2']]);
+    expect(found('Мф.5:3–4 и Ин3:16, 1Ин3:16')).toEqual([['Мф.5:3–4', 'Matthew 5:3-4'], ['Ин3:16', 'John 3:16'], ['1Ин3:16', '1 John 3:16']]);
+  });
+
+  it('reads a whole chapter that ends its phrase, is called a chapter, or joins the next reference', () => {
+    expect(found('Чтение: Рим 12. Вопросы ниже')).toEqual([['Рим 12', 'Romans 12']]);
+    expect(found('Прочитайте Римлянам 12 главу')).toEqual([['Римлянам 12', 'Romans 12']]);
+    expect(found('Пс 22 и Пс 23')).toEqual([['Пс 22', 'Psalms 22'], ['Пс 23', 'Psalms 23']]);
+    expect(found('Рим 8:28;Еф 4:1')).toEqual([['Рим 8:28', 'Romans 8:28'], ['Еф 4:1', 'Ephesians 4:1']]);
+  });
+
+  it('gives a passage across a chapter end by its first verse, never as another passage', () => {
+    // BUG-20261015-cross-chapter-passage-misread: the parser would read it as Isaiah 52:13–53.
+    expect(found('Ис 52:13–53:12')).toEqual([['Ис 52:13', 'Isaiah 52:13']]);
+  });
+
+  it.each([
+    // A chapter alone followed by an ordinary word is prose: a count, a name, never guessed.
+    'Даниил 3 года молился',
+    'Иов 2 секунды молчал',
+    'John 3 times',
+    'Job 2 children',
+    'Прочитайте Рим 12 вместе',
+    // A book is named exactly, never by its first letters.
+    'A 2 point plan',
+    'see A 2.',
+    // Addresses and identifiers.
+    'John3@example.com',
+    '//John3',
+    'Ин3_test',
+    'john3.com',
+    // A book's name must read as a book by itself.
+    'Иоанн пришёл 3-4 раза',
+    'В 2023 году глава 3 была',
+    // A place the book does not have.
+    'Рим 25',
+    'Рим 8:999',
+    'Откр 22-999999999999',
+    // Times, dates, a name before a comma, a link.
+    'в 3:30 встреча',
+    'Рим, 12 апостолов',
+    'https://x.com/Рим 12',
+    '',
+  ])('finds nothing in %p', (text) => {
+    expect(found(text)).toEqual([]);
+  });
+
+  it('stops where the reference stops', () => {
+    expect(found('Ин 3:16 2 ученика')).toEqual([['Ин 3:16', 'John 3:16']]);
+    expect(found('Мф 5:3,4')).toEqual([['Мф 5:3', 'Matthew 5:3']]);
+  });
+
+  it('reads a long text at once', () => {
+    const text = 'Прочитайте Рим 12:1–2 и обсудите, что значит жить по Еф 4:1. Иов 2 раза сказал. '.repeat(250);
+    const started = Date.now();
+    expect(found(text)).toHaveLength(500);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe('namesAPlace — a reference with somewhere to open', () => {
+  it('needs the chapter, the verse it starts at, and a chapter range that ends in the book', () => {
+    // In its own Bible: Romans 16 has 24 verses in the Synodal and 27 in the King James.
+    expect(namesAPlace({ bible: 'rst', book: 'Romans', chapter: 16, fromVerse: 24 })).toBe(true);
+    expect(namesAPlace({ bible: 'rst', book: 'Romans', chapter: 16, fromVerse: 27 })).toBe(false);
+    expect(namesAPlace({ bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 27 })).toBe(true);
+    expect(namesAPlace({ bible: 'rst', book: 'Romans', chapter: 17 })).toBe(false);
+    expect(namesAPlace({ bible: 'rst', book: 'Romans', chapter: 8, fromVerse: 40 })).toBe(false);
+    expect(namesAPlace({ bible: 'rst', book: 'Matthew', chapter: 5, toChapter: 7 })).toBe(true);
+    expect(namesAPlace({ bible: 'rst', book: 'Revelation', chapter: 21, toChapter: 23 })).toBe(false);
+    expect(namesAPlace({ bible: 'rst', book: 'Romans' })).toBe(false);
   });
 });
 

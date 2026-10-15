@@ -335,6 +335,7 @@
     "backToLabel": "Вернуться: {{place}}",
     "placeVerse": "{{chapter}}, стих {{verse}}",
     "wayBack": { "note": "Заметка", "notes": "Заметки", "plan": "План", "sermon": "Проповедь", "group": "Группа", "order": "Порядок служения", "page": "Назад" },
+    "sheet": { "close": "Закрыть текст", "backToPassage": "К стиху", "backToChapter": "К главе {{number}}", "backToPsalm": "К псалму {{number}}" },
     "navigate": "Книга и глава: {{place}}",
     "chooseTranslation": "Выбор перевода",
     "changeTranslation": "{{translation}}: выбрать другой перевод",

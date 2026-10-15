@@ -1,7 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { VerseSheet, type SheetReference } from "@/components/bible/VerseSheet";
+import ScriptureOpening from "@/components/common/ScriptureOpening";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
+import { useAppLocale } from "@/hooks/useAppLocale";
 import { TimerPhase } from "@/types/TimerState";
+import { leadingReference } from "@/utils/bibleLink";
 
 import {
   MARKDOWN_SECTION_VARIANT_CLASSES,
@@ -36,6 +40,8 @@ export interface FullPlanContentProps {
   timerState?: PlanTimerState | null;
   isPreachingMode?: boolean;
   noContentText: string;
+  /** What stays in sight above the verse window while it is open: the preaching timer bar. */
+  keepVisibleTop?: RefObject<HTMLElement | null>;
 }
 
 export default function FullPlanContent({
@@ -46,7 +52,12 @@ export default function FullPlanContent({
   timerState,
   isPreachingMode,
   noContentText,
+  keepVisibleTop,
 }: FullPlanContentProps) {
+  // The sermon's verse opens over the plan: preaching, its timer and the place in the plan stay as they are.
+  const { locale } = useAppLocale();
+  const [verse, setVerse] = useState<SheetReference | null>(null);
+  const opening = sermonVerse ? leadingReference(sermonVerse, { locale }) : null;
   const checkPhaseCompleted = useCallback((phase: TimerPhase, currentPhase: TimerPhase): boolean => {
     const phaseOrder: TimerPhase[] = ["introduction", "main", "conclusion", "finished"];
     const phaseIndex = phaseOrder.indexOf(phase);
@@ -173,7 +184,11 @@ export default function FullPlanContent({
       {sermonVerse && (
         <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${introductionToneClasses.border}`}>
           <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
-            {sermonVerse}
+            <ScriptureOpening
+              text={sermonVerse}
+              reference={opening}
+              onOpen={(_href, lead) => setVerse({ ...lead.reference, label: sermonVerse.slice(0, lead.end) })}
+            />
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
@@ -243,6 +258,8 @@ export default function FullPlanContent({
           />
         </div>
       </div>
+
+      <VerseSheet reference={verse} onClose={() => setVerse(null)} keepVisible={keepVisibleTop ? { top: keepVisibleTop } : undefined} />
     </>
   );
 }

@@ -331,6 +331,7 @@
     "backToLabel": "Back to {{place}}",
     "placeVerse": "{{chapter}}, verse {{verse}}",
     "wayBack": { "note": "Note", "notes": "Notes", "plan": "Plan", "sermon": "Sermon", "group": "Group", "order": "Service order", "page": "Back" },
+    "sheet": { "close": "Close the text", "backToPassage": "Back to the verse", "backToChapter": "Back to chapter {{number}}", "backToPsalm": "Back to Psalm {{number}}" },
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",
     "changeTranslation": "{{translation}}: choose another translation",

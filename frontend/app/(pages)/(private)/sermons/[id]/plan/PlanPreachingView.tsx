@@ -37,11 +37,13 @@ export default function PlanPreachingView({
   onTimerFinished,
   onSetDuration,
 }: PlanPreachingViewProps) {
+  // The timer bar stays in sight over the verse window.
+  const timerBarRef = React.useRef<HTMLDivElement | null>(null);
   return (
     <>
       <PlanMarkdownGlobalStyles variant="preaching" />
       <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900">
-        <div className="page-gesture-follow fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <div ref={timerBarRef} className="page-gesture-follow fixed top-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
           <PreachingTimer
             initialDuration={preachingDuration !== null ? preachingDuration : 0}
             className="border-0 shadow-none"
@@ -68,6 +70,7 @@ export default function PlanPreachingView({
                 timerState={timerState}
                 isPreachingMode={isPlanPreaching}
                 noContentText={noContentText}
+                keepVisibleTop={timerBarRef}
               />
             </div>
           </main>

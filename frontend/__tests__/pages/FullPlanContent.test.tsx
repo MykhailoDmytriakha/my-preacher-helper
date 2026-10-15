@@ -1,7 +1,10 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 
 import FullPlanContent from "@/(pages)/(private)/sermons/[id]/plan/FullPlanContent";
+
+// The verse window's text: read once, never resolved here — what is asserted is that the window opens over the plan.
+jest.mock("@/utils/bibleText", () => ({ ...jest.requireActual("@/utils/bibleText"), fetchBookText: jest.fn(() => new Promise(() => undefined)) }));
 
 const t = (key: string, options?: Record<string, unknown>) => {
   if (key === "sections.introduction") return "Introduction";
@@ -122,5 +125,24 @@ describe("FullPlanContent", () => {
     expect(screen.getByText("Sermon title")).toBeInTheDocument();
     expect(screen.getByText("John 3:16")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  // 2.5.6: preaching, the sermon's verse opens over the plan — the timer and the place in the plan stay.
+  it("opens the passage the verse names over the plan, and closes back to it", () => {
+    render(
+      <FullPlanContent
+        sermonTitle="Sermon title"
+        sermonVerse="John 3:16 For God so loved the world"
+        combinedPlan={basePlan}
+        t={t}
+        noContentText="No content"
+        isPreachingMode
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "John 3:16" }));
+    expect(screen.getByRole("dialog", { name: "John 3:16" })).toBeInTheDocument();
+    expect(screen.getByText("Intro text")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

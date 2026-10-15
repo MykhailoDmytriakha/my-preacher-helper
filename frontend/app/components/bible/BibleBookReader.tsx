@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -10,12 +10,13 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { bookIdFromSlug, bookSlug, fetchBookText, parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
+import { bookIdFromSlug, bookSlug, fetchBookText, type BookText } from '@/utils/bibleText';
 import { placeIn, placesIn } from '@/utils/versification';
 
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
 import { bookSequence, booksOf } from './bookOrder';
+import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
 import { buildMinimapLayout } from './minimapLayout';
 
@@ -42,76 +43,9 @@ type BibleBookReaderProps = {
 
 type LoadState = { status: 'loading' } | { status: 'ready'; text: BookText } | { status: 'error' };
 
-function Segment({ segment }: { segment: Extract<VerseSegment, { kind: 'text' }> }) {
-  const className = [
-    segment.added ? 'italic text-gray-500 dark:text-gray-400' : '',
-    segment.jesus ? 'text-rose-800 dark:text-rose-300' : '',
-  ].filter(Boolean).join(' ');
-  return className ? <span className={className}>{segment.text}</span> : <>{segment.text}</>;
-}
-
-/**
- * A verse a link came to is lit at once (`data-arrival="on"`) and, the attribute taken away, fades
- * back to the page on its own. The light is one layer under the text (`::before`, below the text
- * card's own layer — the card is `isolate`), 6 px wider than the verse on every side, so it moves
- * no line. One layer, not a background plus a ring: rows stand on fractional pixels, and the two
- * edges, each smoothed on its own, left a light line between lit verses. The colour is solid, the
- * indigo tint already mixed into the card: the layers of a passage overlap, and a see-through tint
- * darkens where they meet. Lit verses standing together are one block — only the first rounds its
- * top corners and only the last its bottom ones, so the edges run straight.
- */
-const ARRIVAL_CLASSES = [
-  'relative before:pointer-events-none before:absolute before:-inset-1.5 before:-z-10 before:rounded-lg',
-  '[[data-arrival]+&]:before:rounded-t-none [&:has(+[data-arrival])]:before:rounded-b-none',
-  'before:transition-[background-color] before:duration-[3600ms] before:ease-out data-[arrival=on]:before:duration-0',
-  'data-[arrival=on]:before:bg-[#e8e8fd] dark:data-[arrival=on]:before:bg-[#272f51]',
-].join(' ');
 /** How long the verse stays lit before it starts to fade (the owner, 2026-10-15: five seconds). */
 const ARRIVAL_LIT_MS = 5000;
-const ARRIVAL_ATTRIBUTE = 'data-arrival';
 const ARRIVAL_FADE_MS = 3600;
-
-function VerseRow({ chapter, verse, raw, lang }: { chapter: number; verse: number; raw: string; lang: string }) {
-  const { opensParagraph, segments } = parseVerse(raw);
-  return (
-    // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
-    <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: 'var(--reading-top)' }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
-      <span className="w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500">
-        {verse}
-      </span>
-      {/* The text is in its Bible's language whatever the interface speaks: a screen reader reads it so. */}
-      <p lang={lang} className="min-w-0 flex-1 font-serif text-[1.1875rem] leading-[1.65] text-gray-800 dark:text-gray-100">
-        {segments.map((segment, index) =>
-          segment.kind === 'break' ? <br key={index} /> : <Fragment key={index}><Segment segment={segment} /></Fragment>
-        )}
-      </p>
-    </div>
-  );
-}
-
-/** The whole book as one ribbon: chapters follow each other with only a thin line between them. */
-const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord }: { text: BookText; lang: string; chapterWord: (chapter: number) => string }) {
-  return (
-    <>
-      {text.chapters.map((verses, chapterIndex) => {
-        const chapter = chapterIndex + 1;
-        return (
-          // The room above a chapter is a margin, outside the section: a jump puts the heading at the
-          // reading top and the last verse of the chapter before stays above it, not counted as the place.
-          <section key={chapter} aria-label={chapterWord(chapter)} data-chapter={chapter} style={{ scrollMarginTop: 'var(--reading-top)' }} className={chapterIndex === 0 ? '' : 'mt-6'}>
-            <div className="flex items-center gap-3 pb-2 pl-10">
-              <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">{chapterWord(chapter)}</h2>
-              <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
-            </div>
-            {verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} />
-            ))}
-          </section>
-        );
-      })}
-    </>
-  );
-});
 
 /** "← Rom 5": back to the place in the book this one was opened from. */
 function WayBack({ label, floating, onClick }: { label: string; floating: boolean; onClick: () => void }) {

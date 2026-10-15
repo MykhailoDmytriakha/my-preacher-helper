@@ -2,14 +2,42 @@
 
 import { Bars3Icon, PauseIcon, PlayIcon } from '@heroicons/react/24/outline';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { VerseSheet, type SheetReference } from '@/components/bible/VerseSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import { formatTime, useConductTimer } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
+import { namesAPlace, referenceFromText, referencesInText } from '@/utils/bibleLink';
+import { referenceBibleFor, sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
+
+type BlockReference = { key: string; label: string; reference: SheetReference | null };
+
+/**
+ * The passages a block names, each place once: those kept with it, then those its title, text and
+ * questions name — a leader writes "Прочитайте Рим 12:1–2" into the text, so most of them are
+ * there. Typed as the person reads: in the Bible of the interface's language. A kept reference
+ * that names no place to open ("see the handout", "Рим 25") stays a label.
+ */
+function blockReferences(kept: string[], texts: string[], locale: AppLocale): BlockReference[] {
+  const found: BlockReference[] = [];
+  const add = (label: string, reference: SheetReference | null) => {
+    const same = reference
+      ? found.some((each) => each.reference && sameScriptureReference(each.reference, reference))
+      : found.some((each) => !each.reference && each.label === label);
+    if (!same) found.push({ key: `${found.length}|${label}`, label, reference: reference ? { ...reference, label } : null });
+  };
+  kept.forEach((raw) => {
+    const reference = referenceFromText(raw, referenceBibleFor(locale));
+    add(raw, reference && namesAPlace(reference) ? reference : null);
+  });
+  texts.forEach((text) => referencesInText(text, locale).forEach(({ raw, reference }) => add(raw, reference)));
+  return found;
+}
 
 interface ConductBlockProps {
   flowItem: GroupFlowItem;
@@ -50,8 +78,20 @@ export default function ConductBlock({
   onPeek,
   onCompleteAll,
 }: ConductBlockProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [notesOpen, setNotesOpen] = useState(false);
+  // A reference of the block opens over the meeting: the block, its timer and the meeting's clock
+  // stay as they are. The bar above and the timer below stay in sight.
+  const [verse, setVerse] = useState<SheetReference | null>(null);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const timerRef = useRef<HTMLDivElement | null>(null);
+  const keepVisible = useMemo(() => ({ top: headerRef, bottom: timerRef }), []);
+  const locale = resolveAppLocale(i18n?.language);
+  const title = flowItem.instanceTitle || template.title;
+  const references = useMemo(
+    () => blockReferences(template.scriptureRefs ?? [], [title, template.content ?? '', ...(template.questions ?? [])], locale),
+    [template.scriptureRefs, title, template.content, template.questions, locale]
+  );
 
   const hasDuration = !!(flowItem.durationMin && flowItem.durationMin > 0);
 
@@ -63,7 +103,6 @@ export default function ConductBlock({
   );
 
   const isLastBlock = index === total - 1;
-  const title = flowItem.instanceTitle || template.title;
   const hasNotes = !!(flowItem.instanceNotes && flowItem.instanceNotes.trim());
 
   // Record elapsed then perform navigation action
@@ -88,7 +127,7 @@ export default function ConductBlock({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+      <div ref={headerRef} className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         {/* "≡" peek — records time and pauses */}
         <button
           onClick={() => go(onPeek)}
@@ -140,12 +179,19 @@ export default function ConductBlock({
             </div>
           )}
 
-          {template.scriptureRefs && template.scriptureRefs.length > 0 && (
+          {references.length > 0 && (
             <div className="mt-[1em] flex flex-wrap gap-2">
-              {template.scriptureRefs.map((ref) => (
+              {references.map(({ key, label, reference }) => (
                 // `anywhere`, not `break-words`: inside the chip's flex label only it lets a long reference wrap.
-                <Chip key={ref} tone="blue" className="max-w-full [overflow-wrap:anywhere]">
-                  {ref}
+                // A reference the app reads opens its text over the meeting; one it does not stays a label.
+                <Chip
+                  key={key}
+                  tone="blue"
+                  size="lg"
+                  className="max-w-full [overflow-wrap:anywhere]"
+                  onClick={reference ? () => setVerse(reference) : undefined}
+                >
+                  {label}
                 </Chip>
               ))}
             </div>
@@ -185,7 +231,7 @@ export default function ConductBlock({
       )}
 
       {/* Block timer — always visible */}
-      <div className="border-t border-gray-200 px-5 py-3 text-center dark:border-gray-700">
+      <div ref={timerRef} className="border-t border-gray-200 px-5 py-3 text-center dark:border-gray-700">
         <span className={`font-mono text-3xl font-bold tabular-nums transition-colors ${blockTimerColor}`}>
           {blockDisplayTime}
         </span>
@@ -232,6 +278,8 @@ export default function ConductBlock({
         above this screen's own layer (z-[200] on the conduct page).
       */}
       <FloatingTextScaleControls className="!bottom-44 !right-6 z-[210]" />
+
+      <VerseSheet reference={verse} onClose={() => setVerse(null)} keepVisible={keepVisible} />
     </div>
   );
 }

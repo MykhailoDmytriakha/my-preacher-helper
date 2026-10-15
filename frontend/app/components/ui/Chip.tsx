@@ -17,7 +17,7 @@ export interface ChipProps {
    * `md` is the app's chip: the size the Scripture reference on a study note has always
    * been, and now the size every other content label is. `sm` is for dense rows where
    * chips sit inside a card among running text; `xs` for micro labels like a calendar
-   * row's PREACHED.
+   * row's PREACHED; `lg` for a chip pressed while leading a meeting.
    */
   size?: ChipSize;
   /**
@@ -58,6 +58,7 @@ const REMOVE_ICON_CLASSES: Record<ChipSize, string> = {
   xs: 'h-2.5 w-2.5',
   sm: 'h-3 w-3',
   md: 'h-3.5 w-3.5',
+  lg: 'h-4 w-4',
 };
 
 /**
