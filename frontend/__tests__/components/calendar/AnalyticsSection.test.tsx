@@ -30,6 +30,9 @@ jest.mock('@/utils/bibleBooks', () => {
 
     return {
         BIBLE_BOOKS_DATA: [...baseBooks, ...fillerBooks],
+        // The books here are this test's own table, read through getBookByName below; the lookup by
+        // written form finds nothing, so every name takes that path.
+        getBookByWrittenName: jest.fn(() => undefined),
         getBookByName: jest.fn((name: string, _locale?: string) => {
             const books: Record<string, any> = {
                 'Genesis': { id: 'Genesis', chapters: 50, names: { en: 'Genesis', ru: 'Бытие', uk: 'Буття' }, abbrev: { en: 'Gen', ru: 'Быт', uk: 'Бут' } },

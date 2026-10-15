@@ -170,3 +170,26 @@ describe('calendarAnalytics', () => {
         });
     });
 });
+
+// BUG-20261015-spaced-numbered-abbreviation-not-read: "1Цар" is 1 Samuel in Russian and 1 Kings in Ukrainian;
+// written with a space, the Ukrainian one fell to the Russian reading before its own was tried.
+describe('a numbered book abbreviated alike in two languages', () => {
+  it.each([
+    ['1 Цар 19:12', 'uk', '1 Kings'],
+    ['1Цар 19:12', 'uk', '1 Kings'],
+    ['2 Цар 2:11', 'uk', '2 Kings'],
+    ['1 Цар 3:10', 'ru', '1 Samuel'],
+    ['3 Цар 19:12', 'ru', '1 Kings'],
+  ])('reads %p in %s as %s', (verse, locale, book) => {
+    expect(extractBookIdsFromVerse(verse, locale)).toEqual([book]);
+  });
+
+  // Codex review 2026-10-15: the language arrives as "ru-RU" from the cookie too, and the new lookup threw on it.
+  it.each([
+    ['Ин 3:16', 'ru-RU', 'John'],
+    ['1 Цар 19:12', 'uk-UA', '1 Kings'],
+    ['John 3:16', 'en-US', 'John'],
+  ])('reads %p with the regional language %s', (verse, locale, book) => {
+    expect(extractBookIdsFromVerse(verse, locale)).toEqual([book]);
+  });
+});

@@ -130,6 +130,36 @@ const bookByAbbrevEN = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.en.toLowerC
 const bookByAbbrevRU = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.ru.toLowerCase(), b]));
 const bookByAbbrevUK = new Map(BIBLE_BOOKS_DATA.map((b) => [b.abbrev.uk.toLowerCase(), b]));
 
+/*
+ * A BOOK AS PEOPLE WRITE IT: case, spaces and dots do not count — "1 Ин", "1Ин" and "1ин" are one
+ * book, "И.Нав" and "И Нав" another. A language given is the only one read: "1Цар" is 1 Samuel in
+ * Russian (1 Царств) and 1 Kings in Ukrainian (1 Царів).
+ */
+const writtenKey = (word: string) => word.toLowerCase().replace(/[\s.]/g, '');
+const WRITTEN_LOCALES: AppLocale[] = ['en', 'ru', 'uk'];
+const writtenNames = Object.fromEntries(WRITTEN_LOCALES.map((locale) => [locale, new Map(BIBLE_BOOKS_DATA.map((b) => [writtenKey(b.names[locale]), b]))])) as Record<AppLocale, Map<string, BookInfo>>;
+const writtenAbbrevs = Object.fromEntries(WRITTEN_LOCALES.map((locale) => [locale, new Map(BIBLE_BOOKS_DATA.map((b) => [writtenKey(b.abbrev[locale]), b]))])) as Record<AppLocale, Map<string, BookInfo>>;
+
+/**
+ * The book a name or abbreviation is written for, in `locale` when it is one of the three; with none
+ * (or a value that is none of them, as "ru-RU" from a cookie), every language, names before
+ * abbreviations, as `getBookByName`.
+ */
+export function getBookByWrittenName(word: string, locale?: AppLocale): BookInfo | undefined {
+  const key = writtenKey(word);
+  if (!key) return undefined;
+  const locales = locale && WRITTEN_LOCALES.includes(locale) ? [locale] : WRITTEN_LOCALES;
+  for (const each of locales) {
+    const found = writtenNames[each].get(key);
+    if (found) return found;
+  }
+  for (const each of locales) {
+    const found = writtenAbbrevs[each].get(key);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /**
  * Get book info by canonical ID (English name).
  */

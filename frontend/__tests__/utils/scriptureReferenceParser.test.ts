@@ -1,3 +1,4 @@
+import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 
 describe('referenceParser', () => {
@@ -116,5 +117,47 @@ describe('referenceParser', () => {
       chapter: 1,
       fromVerse: 1,
     });
+  });
+});
+
+/**
+ * BUG-20261015-spaced-numbered-abbreviation-not-read: a person writes "1 Ин 4:8" as readily as
+ * "1Ин 4:8", "1Иоанна" as "1 Иоанна", "И.Нав" with its dot — 53 of these forms read as nothing.
+ * And "1Цар" is 1 Samuel in Russian but 1 Kings in Ukrainian: the language it is written in decides.
+ */
+describe('a book as people write it', () => {
+  const locales = ['ru', 'uk', 'en'] as const;
+  const writtenForms = (word: string) => new Set([word, word.replace(/^(\d)\s+/, '$1'), word.replace(/^(\d)(?=\S)/, '$1 ')]);
+
+  it.each(locales)('reads every book of the Bible by its %s name and abbreviation, with or without the space after its number', (locale) => {
+    const misread: string[] = [];
+    for (const id of getBookIds()) {
+      for (const word of [getLocalizedAbbrev(id, locale), getLocalizedBookName(id, locale)]) {
+        for (const form of writtenForms(word)) {
+          const parsed = parseReferenceText(`${form} 1:1`, { locale });
+          if (parsed?.book !== id) misread.push(`"${form}" → ${parsed?.book ?? 'nothing'} (${id})`);
+        }
+      }
+    }
+    expect(misread).toEqual([]);
+  });
+
+  it('reads an abbreviation two languages share in the language it is written in', () => {
+    expect(parseReferenceText('1 Цар 1:1', { locale: 'uk' })?.book).toBe('1 Kings');
+    expect(parseReferenceText('2Цар 3:4', { locale: 'uk' })?.book).toBe('2 Kings');
+    expect(parseReferenceText('1 Цар 1:1', { locale: 'ru' })?.book).toBe('1 Samuel');
+    // With no language given, the Russian reading stays, as before.
+    expect(parseReferenceText('1 Цар 1:1')?.book).toBe('1 Samuel');
+  });
+
+  it('reads with every language when the one given is none of the three', () => {
+    expect(parseReferenceText('1 Ин 4:8', { locale: 'ru-RU' as never })?.book).toBe('1 John');
+  });
+
+  it('reads the spaced and dotted forms with no language given too', () => {
+    expect(parseReferenceText('1 Ин 4:8')).toEqual({ book: '1 John', chapter: 4, fromVerse: 8 });
+    expect(parseReferenceText('1 Ів 4:8')?.book).toBe('1 John');
+    expect(parseReferenceText('И.Нав 1:9')).toEqual({ book: 'Joshua', chapter: 1, fromVerse: 9 });
+    expect(parseReferenceText('1 Kgs 19:12')?.book).toBe('1 Kings');
   });
 });

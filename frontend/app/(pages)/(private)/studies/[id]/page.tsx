@@ -1066,7 +1066,7 @@ export default function StudyNoteEditorPage() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim());
+                                            const parsed = parseReferenceText(quickRefInput.trim(), { locale: bibleLocale });
                                             if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
                                             // Typed as the person's Bible numbers it, and kept so.
                                             setScriptureRefs(prev => [...prev, { ...parsed, bible: referenceBibleFor(bibleLocale), id: makeId() }]);

@@ -1,10 +1,9 @@
 
 import { PreachDate, Sermon } from "@/models/models";
-import { BIBLE_BOOKS_DATA, BookInfo, getBookByName } from "@/utils/bibleBooks";
+import { resolveAppLocale, type AppLocale } from "@/utils/appLocale";
+import { BIBLE_BOOKS_DATA, BookInfo, getBookByName, getBookByWrittenName } from "@/utils/bibleBooks";
 import { toDateOnlyKey } from "@/utils/dateOnly";
 import { isPreachDatePreached } from "@/utils/preachDateStatus";
-
-import type { AppLocale } from "@/utils/appLocale";
 
 export type SermonsByDate = Record<string, Sermon[]>;
 export type BookPreachEntry = { sermon: Sermon; preachDate: PreachDate };
@@ -287,7 +286,9 @@ const tryMatchVariantsForSlice = (
     sliceTokens: string[]
 ): { bookId: string; consumed: number } | null => {
     for (const variant of getTokenVariants(slice)) {
-        const matched = getBookByName(variant, locale as AppLocale);
+        // As written, in the verse's language first ("uk-UA" read as "uk"): "1 Цар" is 1 Kings in Ukrainian,
+        // and the fuzzy search below, across languages, would reach the Russian 1 Царств (1 Samuel) before it.
+        const matched = getBookByWrittenName(variant, resolveAppLocale(locale)) ?? getBookByName(variant, locale as AppLocale);
         const resultId: string | null = matched ? matched.id : resolveMatchedBook(variant, locale);
 
         if (resultId) {

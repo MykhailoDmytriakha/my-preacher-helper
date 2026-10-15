@@ -1,4 +1,5 @@
 import { getBookById } from '@/utils/bibleBooks';
+import { BIBLES } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
 import { referenceBibleFor, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
@@ -68,7 +69,8 @@ export function parsePassageEnd(value: string | null | undefined): number | null
 export function referenceFromText(raw: string, bible: BibleId): (ScriptureRefShape & { bible: BibleId }) | null {
   // Digits alone are no reference: the parser would take "3" for the start of "3 John".
   if (!/\p{L}/u.test(raw)) return null;
-  const parsed = parseReferenceText(raw.trim());
+  // Read in the language of its Bible: "1Цар" is 1 Samuel in the Synodal, 1 Kings in Ohienko.
+  const parsed = parseReferenceText(raw.trim(), { locale: BIBLES[bible].language });
   const book = parsed ? getBookById(parsed.book) : undefined;
   if (!parsed || !book) return null;
   if (parsed.chapter && !parsed.fromVerse && chapterCount(bible, book.id) === 1) {
@@ -129,7 +131,7 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
     // The punctuation that ends the reference ("Агг 1:5-14:", "Еф 1:15,") is not part of it.
     const end = (word.index ?? 0) + word[0].replace(/[.,:;]+$/, '').length;
     const candidate = text.slice(0, end);
-    if (!isReferenceShaped(candidate)) continue;
+    if (!isReferenceShaped(candidate, options.locale)) continue;
     // A chapter at least: a book named alone in prose is an ordinary word as often as a reference.
     const ref = typedReference(candidate, options.locale);
     const href = ref?.chapter ? bibleHref(ref, options) : null;
@@ -147,12 +149,12 @@ const NUMBERS_AFTER_BOOK = /(\d+(?:[:.]\d+)?(?:\s*-\s*\d+(?:[:.]\d+)?)?(?:\s*,\s
  * prose that generosity makes "Иоанн пришёл 3-4 раза" John 3–4 and "Ин 3:16 2 ученика" a longer
  * reference. Here the name must read as a book all by itself, with nothing after it but numbers.
  */
-function isReferenceShaped(candidate: string): boolean {
+function isReferenceShaped(candidate: string, locale: AppLocale): boolean {
   const normalized = candidate.replace(/[–—]/g, '-');
   const numbers = NUMBERS_AFTER_BOOK.exec(normalized);
   if (!numbers) return false;
   const name = normalized.slice(0, numbers.index).trim();
   if (!/\p{L}/u.test(name)) return false;
-  const named = parseReferenceText(name);
+  const named = parseReferenceText(name, { locale });
   return Boolean(named && !named.chapter);
 }

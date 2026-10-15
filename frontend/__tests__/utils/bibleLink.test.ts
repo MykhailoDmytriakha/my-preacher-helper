@@ -94,6 +94,14 @@ describe('leadingReference — the passage a sermon\'s verse names first', () =>
     expect(lead(text)).toBeNull();
   });
 
+  // BUG-20261015-spaced-numbered-abbreviation-not-read: the number and the book written apart, and a book two languages abbreviate alike.
+  it('reads a numbered book written with a space, and a shared abbreviation in the language of the verse', () => {
+    expect(lead('1 Ин 4:8 Бог есть любовь')).toMatchObject({ text: '1 Ин 4:8', book: '1-john', at: '4:8' });
+    expect(lead('1 Ів 4:8 Бог є любов', 'uk')).toMatchObject({ text: '1 Ів 4:8', book: '1-john', at: '4:8' });
+    expect(lead('1 Цар 19:12 тихий голос', 'uk')).toMatchObject({ book: '1-kings', at: '19:12' });
+    expect(lead('1 Цар 3:10 Говори, Господи', 'ru')).toMatchObject({ book: '1-samuel', at: '3:10' });
+  });
+
   it('stops where the reference stops: a number after it is a word, a second reference is not the first', () => {
     expect(lead('Ин 3:16 2 ученика')).toMatchObject({ text: 'Ин 3:16', at: '3:16', to: '16' });
     expect(lead('Мф 5:3-12; Лк 6:20')).toMatchObject({ text: 'Мф 5:3-12', book: 'matthew' });

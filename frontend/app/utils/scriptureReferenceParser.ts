@@ -1,5 +1,7 @@
 import { ScriptureReference } from '@/models/models';
-import { getBookByName, getBookIds } from '@/utils/bibleBooks';
+import { getBookByName, getBookByWrittenName, getBookIds } from '@/utils/bibleBooks';
+
+import type { AppLocale } from '@/utils/appLocale';
 
 type BookMatch = { book: string; remaining: string[] };
 
@@ -230,7 +232,11 @@ const resolveParsingTokens = ({
   return { tokens: allTokensNaive, isChapterRangeFormat: false, rangeMatch };
 };
 
-const resolveBook = (input: string): BookMatch | null => {
+const resolveBook = (input: string, locale?: AppLocale): BookMatch | null => {
+  // The language it is written in first: "1Цар" is 1 Samuel in Russian and 1 Kings in Ukrainian.
+  const own = locale ? getBookByWrittenName(input, locale) : undefined;
+  if (own) return { book: own.id, remaining: [] };
+
   const normalized = input.toLowerCase();
   const direct = BOOK_ALIASES[normalized];
   if (direct) return { book: direct, remaining: [] };
@@ -238,6 +244,10 @@ const resolveBook = (input: string): BookMatch | null => {
   // Try bibleData lookup (supports all locales)
   const bookInfo = getBookByName(input);
   if (bookInfo) return { book: bookInfo.id, remaining: [] };
+
+  // As people write it: "1 Ин" for "1Ин", "1Иоанна" for "1 Иоанна", "И Нав" for "И.Нав" (dots are spaces by now).
+  const written = getBookByWrittenName(input);
+  if (written) return { book: written.id, remaining: [] };
 
   // Fallback: find canonical book ID starting with input
   const bookIds = getBookIds();
@@ -250,7 +260,8 @@ const resolveBook = (input: string): BookMatch | null => {
 type ParsedReference = Omit<ScriptureReference, 'id'>;
 
 const resolveBookFromTokens = (
-  tokens: string[]
+  tokens: string[],
+  locale?: AppLocale
 ): {
   matched: BookMatch;
   consumed: number;
@@ -265,7 +276,7 @@ const resolveBookFromTokens = (
   let consumed = 0;
   for (let i = maybeBookParts.length - 1; i >= 0; i -= 1) {
     const candidate = maybeBookParts[i];
-    const res = resolveBook(candidate);
+    const res = resolveBook(candidate, locale);
     if (res) {
       matched = res;
       consumed = i + 1;
@@ -338,8 +349,10 @@ const buildReferenceFromNumbers = (book: string, numbers: number[]): ParsedRefer
  * - Verse range: "Ис 4:5-8" -> { book: "Isaiah", chapter: 4, fromVerse: 5, toVerse: 8 }
  *
  * @param raw - The raw reference string
+ * @param options.locale - The language it is written in, when known: an abbreviation two languages
+ *   share ("1Цар") is read in it. Without it the Russian reading of such an abbreviation stays.
  */
-export function parseReferenceText(raw: string): ParsedReference | null {
+export function parseReferenceText(raw: string, options: { locale?: AppLocale } = {}): ParsedReference | null {
   const { dashNormalized, normalized } = normalizeInput(raw);
   const allTokensNaive = splitTokensNaive(normalized);
 
@@ -357,7 +370,7 @@ export function parseReferenceText(raw: string): ParsedReference | null {
   // Need at least 1 token for book-only references
   if (tokens.length < 1) return null;
 
-  const matchResult = resolveBookFromTokens(tokens);
+  const matchResult = resolveBookFromTokens(tokens, options.locale);
   if (!matchResult) return null;
   const { matched, consumed } = matchResult;
 
