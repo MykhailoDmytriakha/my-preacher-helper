@@ -1,6 +1,6 @@
 import { detectTextLocale, type AppLocale } from '@/utils/appLocale';
 import { bibleForLocale, isBibleId, type BibleId } from '@/utils/bibles';
-import { placesIn, verseCount, type VersePlace } from '@/utils/versification';
+import { chapterCount, placesIn, verseCount, type VersePlace } from '@/utils/versification';
 
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
@@ -85,7 +85,9 @@ function versesOf(bible: BibleId, ref: ScriptureRefShape & { chapter: number }):
     const last = Math.min(ref.toVerse ?? ref.fromVerse, verseCount(bible, book, chapter));
     return Array.from({ length: Math.max(0, last - ref.fromVerse + 1) }, (_, i) => ({ book, chapter, verse: ref.fromVerse! + i }));
   }
-  const chapters = Array.from({ length: Math.max(1, (ref.toChapter ?? chapter) - chapter + 1) }, (_, i) => chapter + i);
+  // A range is read up to the book's last chapter: "Откр 22-999999999999" is not a billion chapters to walk.
+  const last = Math.min(ref.toChapter ?? chapter, chapterCount(bible, book));
+  const chapters = Array.from({ length: Math.max(1, last - chapter + 1) }, (_, i) => chapter + i);
   return chapters.flatMap((c) => Array.from({ length: verseCount(bible, book, c) }, (_, i) => ({ book, chapter: c, verse: i + 1 })));
 }
 
@@ -107,6 +109,19 @@ function versesThere(to: BibleId, from: BibleId, verses: VersePlace[]): VersePla
 }
 
 /**
+ * Every verse the reference covers, as the Bible `to` numbers them, in order: "Пс 50:12" of the
+ * Synodal is Ps 51:10 in the King James, a whole Psalm keeps all its verses across the renumbering,
+ * and — as everywhere — a verse wins over a chapter range left beside it. A reference with no Bible
+ * or no chapter covers nothing.
+ */
+export function versesHeldIn(ref: ScriptureRefShape, to: BibleId): VersePlace[] {
+  const from = ref.bible;
+  if (!isBibleId(from) || ref.chapter === undefined) return [];
+  const verses = versesOf(from, { ...ref, chapter: ref.chapter });
+  return from === to ? verses : versesThere(to, from, verses);
+}
+
+/**
  * The same reference in another Bible. A verse or a range of verses becomes the verses that hold
  * it there (Пс 50:12 → Ps 51:10); a whole chapter stays a whole chapter where it is one there
  * (Пс 22 → Ps 23) and becomes its verses where it is a part (Пс 114 → Ps 116:1-9). A range that
@@ -118,7 +133,7 @@ export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T
   if (!isBibleId(from) || from === to || ref.chapter === undefined) return ref;
 
   const { book } = ref;
-  const held = versesThere(to, from, versesOf(from, { ...ref, chapter: ref.chapter }));
+  const held = versesHeldIn(ref, to);
   const start = held[0];
   const end = held.at(-1);
   if (!start || !end) return ref;

@@ -7,6 +7,7 @@ import {
   noteLanguage,
   referenceIn,
   sameScriptureReference,
+  versesHeldIn,
   withNoteReferenceBibles,
   withStoredBible,
 } from '@/utils/scriptureReferenceNumbering';
@@ -23,6 +24,26 @@ function verseText(bible: BibleId, book: string, chapter: number, verse: number)
 
 const ps = (bible: BibleId, chapter: number, fromVerse?: number, toVerse?: number): ScriptureRefShape => ({
   bible, book: 'Psalms', chapter, ...(fromVerse !== undefined ? { fromVerse } : {}), ...(toVerse !== undefined ? { toVerse } : {}),
+});
+
+describe('the verses a reference covers in a Bible', () => {
+  it('gives them as that Bible numbers them, a whole Psalm all of it', () => {
+    expect(versesHeldIn(ps('rst', 50, 12), 'kjv')).toEqual([{ book: 'Psalms', chapter: 51, verse: 10 }]);
+    expect(versesHeldIn(ps('rst', 22), 'kjv').map((place) => place.chapter)).toEqual(Array(6).fill(23));
+    expect(versesHeldIn(ps('rst', 22), 'rst')).toHaveLength(6);
+  });
+
+  it('walks a chapter range only as far as the book goes', () => {
+    const ref = { bible: 'rst' as BibleId, book: 'Revelation', chapter: 21, toChapter: 999_999_999_999 };
+    expect(new Set(versesHeldIn(ref, 'rst').map((place) => place.chapter))).toEqual(new Set([21, 22]));
+    // The same reference compared or moved to another Bible no longer walks a billion chapters either.
+    expect(referenceIn(ref, 'kjv')).toMatchObject({ chapter: 21, toChapter: 22 });
+  });
+
+  it('covers nothing without a Bible or a chapter', () => {
+    expect(versesHeldIn({ book: 'Romans', chapter: 8 }, 'rst')).toEqual([]);
+    expect(versesHeldIn({ bible: 'rst', book: 'Romans' }, 'rst')).toEqual([]);
+  });
 });
 
 describe('a reference in another Bible', () => {
