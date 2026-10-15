@@ -18,6 +18,7 @@ jest.mock('react-i18next', () => ({
         'sections.main': 'Main',
         'sections.conclusion': 'Conclusion',
         'actions.close': 'Close',
+        'common.close': 'Close',
       };
       if (Object.prototype.hasOwnProperty.call(translationOverrides, key)) {
         return translationOverrides[key] ?? '';
@@ -29,7 +30,6 @@ jest.mock('react-i18next', () => ({
 
 describe('ViewPlanMenu', () => {
   afterEach(() => {
-    document.body.innerHTML = '';
     translationOverrides = {};
   });
 
@@ -70,6 +70,56 @@ describe('ViewPlanMenu', () => {
       onStartPreachingMode,
     };
   }
+
+  it('dismisses a section with Escape', async () => {
+    renderMenu();
+    fireEvent.click(screen.getByRole('button', { name: /view plan/i }));
+    fireEvent.click(screen.getByRole('button', { name: /introduction/i }));
+    expect(await screen.findByText('Plan - Introduction')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Plan - Introduction')).not.toBeInTheDocument();
+    });
+  });
+
+  it('unmounts the open section when its menu leaves the page', async () => {
+    const { unmount } = renderMenu();
+    fireEvent.click(screen.getByRole('button', { name: /view plan/i }));
+    fireEvent.click(screen.getByRole('button', { name: /main/i }));
+    expect(await screen.findByText('Plan - Main')).toBeInTheDocument();
+
+    unmount();
+
+    expect(screen.queryByText('Plan - Main')).not.toBeInTheDocument();
+  });
+
+  it('holds the background, keeps Tab inside, and restores focus when dismissed', async () => {
+    renderMenu();
+    const trigger = screen.getByRole('button', { name: /view plan/i });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: /main/i }));
+    const dialog = await screen.findByRole('dialog', { name: 'Plan - Main' });
+    const close = screen.getByTitle('Close');
+    expect(document.documentElement.style.overflow).toBe('hidden');
+    expect(close).toHaveFocus();
+
+    fireEvent.keyDown(close, { key: 'Tab' });
+    expect(close).toHaveFocus();
+    fireEvent.click(dialog);
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(dialog.parentElement!);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.documentElement.style.overflow).not.toBe('hidden');
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: /introduction/i }));
+    expect(await screen.findByRole('dialog', { name: 'Plan - Introduction' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 
   it('opens a section modal with rendered markdown and closes it', async () => {
     renderMenu();

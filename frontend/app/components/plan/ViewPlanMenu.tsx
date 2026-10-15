@@ -1,14 +1,10 @@
 import { BookOpen, ChevronDown, ScrollText } from "lucide-react";
 import React from "react";
-import ReactDOM from "react-dom/client";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
-import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
-import { getPlanMarkdownStyles } from './markdownStyles';
+import PlanSectionDialog, { type PlanSection } from './PlanSectionDialog';
 
 
 interface ViewPlanMenuProps {
@@ -26,27 +22,6 @@ interface ViewPlanMenuProps {
   onStartPreachingMode?: () => void;
 }
 
-interface MarkdownRendererProps {
-  markdown: string;
-  section?: 'introduction' | 'main' | 'conclusion';
-}
-
-const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
-  const sectionClass = section ? `prose-${section}` : '';
-  const sectionDivClass = section ? `${section}-section` : '';
-  
-  // Sanitize the markdown content
-  const sanitizedMarkdown = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown)));
-
-  return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {sanitizedMarkdown}
-      </ReactMarkdown>
-    </div>
-  );
-};
-
 const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
   sermonId,
   combinedPlan,
@@ -59,88 +34,24 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const openSectionModal = (section: 'introduction' | 'main' | 'conclusion') => {
+  const [selectedSection, setSelectedSection] = React.useState<PlanSection | null>(null);
+  const viewButtonRef = React.useRef<HTMLButtonElement>(null);
+
+  const openSectionModal = (section: PlanSection) => {
     setShowSectionMenu(false);
-    
-    // Map to canonical section colors
-    const getSectionColors = (sec: 'introduction' | 'main' | 'conclusion') => {
-      const colors = sec === 'main' ? SERMON_SECTION_COLORS.mainPart : SERMON_SECTION_COLORS[sec];
-      return colors;
-    };
-    
-    const sectionContent = combinedPlan[section] || t("plan.noContent");
-    const sectionTitle = t(`sections.${section}`);
-    
-    // Create a modal for viewing the section
-    const modal = document.createElement('div');
-    modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
-    
-    // Create the content container
-    const content = document.createElement('div');
-    content.className = 'bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg';
-    
-    // Add header
-    const header = document.createElement('div');
-    header.className = 'flex justify-between items-center mb-4';
-    
-    const title = document.createElement('h2');
-    title.className = 'text-xl font-bold';
-    title.textContent = `${t("plan.pageTitle")} - ${sectionTitle}`;
-    
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.className = 'flex gap-2';
-    
-    // Create close button
-    const closeButton = document.createElement('button');
-    closeButton.className = 'flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700';
-    closeButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`;
-    closeButton.title = t("actions.close") || "Close";
-    
-    closeButton.addEventListener('click', () => {
-      document.body.removeChild(modal);
-    });
-    
-    buttonsContainer.appendChild(closeButton);
-    header.appendChild(title);
-    header.appendChild(buttonsContainer);
-    
-    content.appendChild(header);
-    modal.appendChild(content);
-    
-    // Add markdown content
-    const markdownContent = document.createElement('div');
-    markdownContent.className = 'prose dark:prose-invert max-w-none mb-4';
-    // Inject consistent markdown styles
-    const styleEl = document.createElement('style');
-    styleEl.innerHTML = getPlanMarkdownStyles();
-    content.appendChild(styleEl);
-    
-    // Create content wrapper with vertical border
-    const contentWrapper = document.createElement('div');
-    {
-      const sc = getSectionColors(section);
-      contentWrapper.className = `pl-2 border-l-4 ${sc.border.split(' ')[0]} dark:${sc.darkBorder} prose-${section}`;
-    }
-    
-    // Render React component inside the div
-    const root = ReactDOM.createRoot(markdownContent);
-    root.render(
-      <MarkdownRenderer 
-        markdown={sectionContent} 
-        section={section}
-      />
-    );
-    
-    contentWrapper.appendChild(markdownContent);
-    content.appendChild(contentWrapper);
-    modal.appendChild(content);
-    document.body.appendChild(modal);
+    setSelectedSection(section);
+  };
+  const closeSectionModal = () => {
+    setSelectedSection(null);
+    viewButtonRef.current?.focus();
   };
 
   return (
+    <>
     <div className="flex flex-wrap gap-2" ref={sectionMenuRef}>
       <div className="relative w-full sm:w-auto">
         <button
+          ref={viewButtonRef}
           onClick={() => setShowSectionMenu(!showSectionMenu)}
           className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto"
         >
@@ -207,6 +118,10 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
         {t("plan.preachButton") || "Preach"}
       </button>
     </div>
+    {selectedSection && (
+      <PlanSectionDialog section={selectedSection} markdown={combinedPlan[selectedSection]} onClose={closeSectionModal} />
+    )}
+    </>
   );
 };
 
