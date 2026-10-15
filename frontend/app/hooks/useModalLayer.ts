@@ -42,6 +42,19 @@ export interface ModalLayerProps {
 /** Every layer currently on screen, oldest first — so the topmost one can answer alone. */
 const layers: HTMLElement[] = [];
 
+/**
+ * Whether any window stands over the page — a held page, a modal, a dialog, an open menu. What is
+ * under it answers neither the page's gestures nor its keyboard shortcuts.
+ */
+export function hasOpenLayer(): boolean {
+  // A held page: the scroll lock holds the root, and on iOS pins the body too (useScrollLock).
+  const root = document.documentElement.style;
+  const body = document.body.style;
+  if (root.overflow === 'hidden' || body.overflow === 'hidden' || body.position === 'fixed') return true;
+  return Array.from(document.querySelectorAll<HTMLElement>('[data-modal-layer], [aria-modal="true"], dialog[open], [role="menu"]'))
+    .some(element => !element.hidden && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
+}
+
 export function useModalLayer({
   onClose,
   closeDisabled = false,

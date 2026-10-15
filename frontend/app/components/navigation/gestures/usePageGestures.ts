@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { isIPadStandalonePwa } from '@/utils/pwaEnv';
 
-import { gestureBlockReason, hasOpenLayer, pageAtTop } from './touchTargets';
+import { gestureBlockReason, pageAtTop } from './touchTargets';
 
 export const PULL_THRESHOLD = 72;
 export const BACK_THRESHOLD = 90;
