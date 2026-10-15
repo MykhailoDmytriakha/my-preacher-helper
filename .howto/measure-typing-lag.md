@@ -18,6 +18,7 @@ The Chrome automation window is usually reported as hidden (`document.visibility
 
 - `requestAnimationFrame` never fires, so frame-gap samplers read zero; a `screenshot` action does render one frame, so layout that is re-measured in rAF (e.g. `useWindowFittedPanel`) updates only after a screenshot — take one before reading such values (2026-10-03, the group page side panel);
 - `PerformanceObserver({ type: 'event' })` records nothing for text inserted by the `type` action.
+- A script that `await`s a frame does not end when the tool gives up on it ("Runtime.evaluate timed out"): it waits, and the next `screenshot` frame resumes it — on whatever page is open by then. A loop of `scrollTo(...)` + frame waits once finished there and left the next book scrolled to its very end, which read as an app bug (2026-10-13, the Bible reader; the page sat at exactly `scrollHeight - innerHeight`). Measure with synchronous reads (`getBoundingClientRect` forces layout) or `setTimeout`, never with frame waits, and reload the page after a timed-out script.
 
 What works: a capture listener on `input` that posts a `MessageChannel` message and times its arrival. The message runs after the event's synchronous work, so the gap is how long that keystroke held the main thread — exactly what freezes the field. Work that React defers (`useDeferredValue`, transitions) runs later and is not counted, which is the point. Type one letter per `type` action with a pause between them, and click the field again after any big re-render — a click queued behind a render does not focus it.
 
