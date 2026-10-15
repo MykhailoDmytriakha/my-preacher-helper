@@ -250,10 +250,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, onO
 
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
   // at the verse itself. A verse the chapter does not have opens the chapter.
+  // The verse jumped to is the place until the page moves from where the jump left it: a verse near
+  // the end of a book cannot reach the top, and the verse that does is not where the person is.
+  const broughtRef = useRef<{ place: Place; scrollY: number } | null>(null);
   const jumpTo = useCallback(({ chapter, verse }: Place) => {
     const root = textRef.current;
     const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
-    (row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`))?.scrollIntoView({ block: 'start' });
+    const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
+    if (!target) return;
+    target.scrollIntoView({ block: 'start' });
+    broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: window.scrollY };
   }, []);
 
   // Where to open: where this history entry was read (Back, Forward, a reload, another Bible chosen),
@@ -273,9 +279,15 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, onO
     const asked = here(startChapter && startVerse ? { chapter: startChapter, verse: startVerse } : null, initialBible);
     const entry = entryRef.current ? readEntryPlace(entryRef.current) : null;
     const entryPlace = entry ? here(entry, entry.bible) : null;
+    const linked = placeInBook(text.chapters, entryPlace) ? null : placeInBook(text.chapters, asked);
     const target = placeInBook(text.chapters, entryPlace)
-      ?? placeInBook(text.chapters, asked)
+      ?? linked
       ?? placeInBook(text.chapters, asked ? { chapter: asked.chapter, verse: 1 } : null);
+    // A link numbered in another Bible is this entry's place as the link named it, until the person
+    // moves — as a place read in another Bible is.
+    if (linked && initialBible !== bible && startChapter && startVerse && entryRef.current) {
+      saveEntryPlace(entryRef.current, { chapter: startChapter, verse: startVerse, bible: initialBible });
+    }
     setCurrentChapter(target?.chapter ?? 1);
     if (target) jumpTo(target);
     else window.scrollTo({ top: 0 });
@@ -297,15 +309,23 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, onO
       timer = null;
       const current = placeRef.current;
       if (!current) return;
-      saveLastPlace({ slug: bookSlug(bookId), chapter: current.chapter, verse: current.verse, bible });
-      if (entryRef.current) saveEntryPlace(entryRef.current, { ...current, bible });
+      // Brought here from another Bible and not moved: the place stays as it was read there. One
+      // verse here can hold two of that Bible (a psalm's title and its first words), and the way
+      // back from this one would open the first of them.
+      const kept = entryRef.current ? readEntryPlace(entryRef.current) : null;
+      const opened = kept && kept.bible !== bible ? placeIn(bible, kept.bible, { book: bookId, chapter: kept.chapter, verse: kept.verse }) : null;
+      const place = kept && opened && opened.chapter === current.chapter && opened.verse === current.verse ? kept : { ...current, bible };
+      saveLastPlace({ slug: bookSlug(bookId), ...place });
+      if (entryRef.current) saveEntryPlace(entryRef.current, place);
     };
     const note = () => {
       if (leavingRef.current) return;
-      const range = visibleVerseRange(rows, readingTopRef.current, window.innerHeight);
-      if (range) {
-        placeRef.current = range[0];
-        setCurrentChapter(range[0].chapter);
+      // Moved from where a jump left the page: from here the place is what the top shows.
+      if (broughtRef.current && Math.abs(window.scrollY - broughtRef.current.scrollY) >= 1) broughtRef.current = null;
+      const here = broughtRef.current?.place ?? visibleVerseRange(rows, readingTopRef.current, window.innerHeight)?.[0];
+      if (here) {
+        placeRef.current = here;
+        setCurrentChapter(here.chapter);
       }
       if (timer === null) timer = window.setTimeout(store, 400);
     };

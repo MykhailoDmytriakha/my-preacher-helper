@@ -74,7 +74,7 @@ describe('placesIn — one place in every Bible', () => {
     }
   });
 
-  it('gives every verse that holds the place where the other Bible divides it', () => {
+  it('gives every verse that is the place where the other Bible divides it', () => {
     // Rev 20:9 is two verses of the Synodal; a psalm's title and first words, two verses there too.
     expect(short(placesIn('rst', 'kjv', at('Revelation', 20, 9)))).toBe('20:8 20:9');
     expect(short(placesIn('rst', 'kjv', at('Psalms', 3, 1)))).toBe('3:1 3:2');
@@ -87,6 +87,35 @@ describe('placesIn — one place in every Bible', () => {
     expect(placesInEach(['rst', 'ubio'], 'kjv', at('Psalms', 23, 1))).toEqual({ rst: [at('Psalms', 22, 1)], ubio: [at('Psalms', 22, 1)] });
     expect(placesIn('rst', 'rst', at('John', 3, 16))).toEqual([at('John', 3, 16)]);
   });
+
+  it('is the verses that open and close with the place\'s words, not a neighbour holding a few of them', () => {
+    // "and I died" closes Rom 7:9 of the King James and opens 7:10 of the Synodal: 7:10 is 7:10,
+    // and the King James 7:9 is the Synodal 7:9.
+    expect(short(placesIn('kjv', 'rst', at('Romans', 7, 10)))).toBe('7:10');
+    expect(short(placesIn('rst', 'kjv', at('Romans', 7, 9)))).toBe('7:9');
+    // "Shall we give, or shall we not give?" ends Mark 12:14 of the Synodal and opens 12:15 there.
+    expect(short(placesIn('rst', 'kjv', at('Mark', 12, 15)))).toBe('12:15');
+    expect(placeIn('kjv', 'rst', at('Romans', 7, 10))).toEqual(at('Romans', 7, 10));
+    expect(placeIn('rst', 'kjv', at('Romans', 7, 9))).toEqual(at('Romans', 7, 9));
+    expect(placeIn('kjv', 'rst', at('Romans', 9, 12))).toEqual(at('Romans', 9, 12));
+    expect(placeIn('kjv', 'ubio', at('Romans', 9, 12))).toEqual(at('Romans', 9, 12));
+  });
+
+  it.each([['rst', 'kjv'], ['kjv', 'rst'], ['ubio', 'rst'], ['rst', 'ubio'], ['ubio', 'kjv'], ['kjv', 'ubio']] as const)(
+    'opens every verse of %s in %s where switching back finds it again, unless that Bible keeps it whole with its neighbour',
+    (home, away) => {
+      const drift = numberingEntries(home)
+        .filter(([place]) => {
+          const landing = placeIn(away, home, place);
+          const back = landing && placeIn(home, away, landing);
+          const home_again = back && back.chapter === place.chapter && back.verse === place.verse;
+          // One verse there holding this one and its neighbour: the way back can only open the first of them.
+          return !home_again && placesIn(away, home, place).length > 1;
+        })
+        .map(([place]) => `${place.book} ${place.chapter}:${place.verse}`);
+      expect(drift).toEqual([]);
+    },
+  );
 
   it('finds nothing for a place the Bible does not have', () => {
     expect(placesIn('kjv', 'rst', at('John', 3, 99))).toEqual([]);

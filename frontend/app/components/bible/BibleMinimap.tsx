@@ -20,6 +20,12 @@ type BibleMinimapProps = {
 
 const MAP_WIDTH = 132;
 const BOTTOM_MARGIN = 24;
+/**
+ * A strip of a row thinner than this under the reading top is no line a person reads: the browser
+ * scrolls by whole pixels and lays text out at fractions of one, so a verse jumped to lands up to a
+ * pixel low and leaves the one above that sliver — which counted as the place, a verse higher.
+ */
+const SLIVER_PX = 1;
 
 const isDark = () => typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -41,7 +47,7 @@ export function visibleVerseRange(rows: HTMLElement[], topInset: number, viewpor
     const [chapter, verse] = (row.dataset.verse ?? '1:1').split(':').map(Number);
     return { chapter, verse };
   };
-  const first = Math.min(rows.length - 1, firstWhere((row) => row.getBoundingClientRect().bottom > topInset));
+  const first = Math.min(rows.length - 1, firstWhere((row) => row.getBoundingClientRect().bottom > topInset + SLIVER_PX));
   // A row with no size is not laid out (the page is not shown yet): there is no place to read, and
   // "the last verse" — what the search lands on then — must not be taken for one.
   const firstBox = rows[first].getBoundingClientRect();

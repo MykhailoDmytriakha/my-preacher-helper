@@ -29,15 +29,30 @@ const fromLoc = (loc: number): VersePlace => ({
   verse: loc % 1_000,
 });
 
+/**
+ * A verse of this Bible that a verse of the original, or its words `from`–`to`, stands in, and
+ * whether the verse opens or closes with them.
+ */
+type Placement = { at: number; opens: boolean; closes: boolean; from: number; to: number };
+const WHOLE = { from: 1, to: Infinity };
+
 type Rules = {
-  exact: Map<number, number[]>;
+  exact: Map<number, Placement[]>;
   ranges: Map<number, { from: number; to: number; rule: NumberingRule }[]>;
 };
 
-/** Where a rule's value puts the verse at `loc`. A title the tables number verse 0 is verse 1 here. */
-const target = (rule: NumberingRule, loc: number): number => {
+/**
+ * Where a rule's value puts the verse at `loc` (its words, when the key names a part: "45007010:4-").
+ * A title the tables number verse 0 is verse 1 here. A value that names words from the second on
+ * ("45007009:16-") puts it after another verse's words; one that names words up to some ("…:1-15"),
+ * before them.
+ */
+const placement = (rule: NumberingRule, loc: number, key: string): Placement => {
   const at = typeof rule === 'number' ? loc + rule : Number(rule.slice(0, 8));
-  return at % 1_000 === 0 ? at + 1 : at;
+  const whole = typeof rule === 'number' || !/:\d/.test(rule);
+  const part = /^\d{8}:(\d+)-(\d*)$/.exec(key);
+  const words = part ? { from: Number(part[1]), to: part[2] ? Number(part[2]) : Infinity } : WHOLE;
+  return { at: at % 1_000 === 0 ? at + 1 : at, opens: whole || /:1-/.test(rule as string), closes: whole || /-$/.test(rule as string), ...words };
 };
 
 function collectRules(numbering: Numbering): Rules {
@@ -65,7 +80,7 @@ function collectRules(numbering: Numbering): Rules {
     }
     // "BBCCCVVV" or a part of it, "BBCCCVVV:W1-W2": every part adds a verse the original one lands on.
     const list = rules.exact.get(loc) ?? [];
-    list.push(target(rule, loc));
+    list.push(placement(rule, loc, key));
     rules.exact.set(loc, list);
   }
   return rules;
@@ -78,18 +93,32 @@ type Compiled = {
   inverse: Map<number, number[]>;
   /** Verses per chapter, by BBCCC. */
   verses: Map<number, number>;
+  /** A verse of this Bible → the verses of the original it holds, and which of their words. */
+  parts: Map<number, Part[]>;
+  /** A verse of this Bible → the word of the original its text opens with, and the one it closes with. */
+  opener: Map<number, Word>;
+  closer: Map<number, Word>;
 };
+
+/** A word of the original: its verse and its place in it, `Infinity` for the last. */
+type Word = { origin: number; word: number };
+
+type Part = { origin: number; from: number; to: number };
 
 function compile(numbering: Numbering): Compiled {
   const rules = collectRules(numbering);
   const forward = new Map<number, number[]>();
   const inverse = new Map<number, number[]>();
   const verses = new Map<number, number>();
+  const parts = new Map<number, Part[]>();
+  const opener = new Map<number, Word>();
+  const closer = new Map<number, Word>();
   ORIGINAL_VERSE_COUNTS.forEach((chapters, bookIndex) => chapters.forEach((count, chapterIndex) => {
     for (let verse = 1; verse <= count; verse += 1) {
       const loc = toLoc(bookIndex + 1, chapterIndex + 1, verse);
       const range = rules.ranges.get(chapterOf(loc))?.find((entry) => verse >= entry.from && verse <= entry.to);
-      const targets = [...new Set(rules.exact.get(loc) ?? (range ? [target(range.rule, loc)] : [loc]))].sort((a, b) => a - b);
+      const placements: Placement[] = rules.exact.get(loc) ?? [range ? placement(range.rule, loc, '') : { at: loc, opens: true, closes: true, ...WHOLE }];
+      const targets = [...new Set(placements.map(({ at }) => at))].sort((a, b) => a - b);
       forward.set(loc, targets);
       for (const at of targets) {
         const sources = inverse.get(at) ?? [];
@@ -97,9 +126,16 @@ function compile(numbering: Numbering): Compiled {
         inverse.set(at, sources);
         verses.set(chapterOf(at), Math.max(verses.get(chapterOf(at)) ?? 0, at % 1_000));
       }
+      // The original is walked in order: of two verses joined into one here, the first opens it and
+      // the last closes it.
+      for (const { at, opens, closes, from, to } of placements) {
+        parts.set(at, [...(parts.get(at) ?? []), { origin: loc, from, to }]);
+        if (opens && !opener.has(at)) opener.set(at, { origin: loc, word: from });
+        if (closes) closer.set(at, { origin: loc, word: to });
+      }
     }
   }));
-  return { forward, inverse, verses };
+  return { forward, inverse, verses, parts, opener, closer };
 }
 
 const compiled = new Map<BibleId, Compiled>();
@@ -132,19 +168,37 @@ export function verseCount(bible: BibleId, bookId: string, chapter: number): num
 }
 
 /**
- * Every verse of `to` that holds the place read in `from`, in order — one verse mostly, two where
- * `to` divides what `from` keeps whole. Empty when `from` has no such verse.
+ * The verses of `to` that are the place read in `from`, in order — one verse mostly, two where `to`
+ * divides what `from` keeps whole: from the one that opens with the place's words to the one that
+ * closes with them. A verse that only ends with the place's first words, or only begins with its
+ * last ones, is a neighbour: "and I died" closes Rom 7:9 of the King James and opens 7:10 of the
+ * Synodal, and 7:10 is 7:10 in both. Empty when `from` has no such verse.
  */
 export function placesIn(to: BibleId, from: BibleId, place: VersePlace): VersePlace[] {
+  const { held, found } = locsIn(to, from, place);
+  const { opener, closer } = numberingOf(to);
+  const isOwn = (word: Word | undefined) =>
+    !!word && held.some((part) => part.origin === word.origin && part.from <= word.word && word.word <= part.to);
+  let first = found.findIndex((loc) => isOwn(opener.get(loc)));
+  let last = found.length - 1;
+  while (last > 0 && !isOwn(closer.get(found[last]))) last -= 1;
+  if (first < 0) first = 0;
+  if (!isOwn(closer.get(found[last]))) last = found.length - 1;
+  // Words that end one verse there and begin the next, and neither verse is theirs alone: both.
+  return (first <= last ? found.slice(first, last + 1) : found).map(fromLoc);
+}
+
+/** What of the original the place holds, and the verses of `to` that hold it, in order. */
+function locsIn(to: BibleId, from: BibleId, place: VersePlace): { held: Part[]; found: number[] } {
   const book = bookNumber(place.book);
-  if (!book || place.verse < 1 || place.verse > verseCount(from, place.book, place.chapter)) return [];
-  if (to === from) return [place];
+  if (!book || place.verse < 1 || place.verse > verseCount(from, place.book, place.chapter)) return { held: [], found: [] };
+  let loc = toLoc(book, place.chapter, place.verse);
+  if (to === from) return { held: [], found: [loc] };
   const source = numberingOf(from);
   // A verse the original does not have (none in the three Bibles now) stands for the nearest one before it.
-  let loc = toLoc(book, place.chapter, place.verse);
   while (!source.inverse.has(loc) && loc % 1_000 > 1) loc -= 1;
   const origins = source.inverse.get(loc);
-  if (!origins) return [];
+  if (!origins) return { held: [], found: [] };
   const { forward } = numberingOf(to);
   // A verse of the original divided into as many parts in both Bibles: part for part (Neh 7:68–69
   // of the King James are the Synodal 7:68–69). Kept whole in one of them: all its parts.
@@ -154,10 +208,10 @@ export function placesIn(to: BibleId, from: BibleId, place: VersePlace): VersePl
     const part = here.indexOf(loc);
     return part >= 0 && here.length > 1 && here.length === there.length ? [there[part]] : there;
   });
-  return [...new Set(found)].sort((a, b) => a - b).map(fromLoc);
+  return { held: source.parts.get(loc) ?? [], found: [...new Set(found)].sort((a, b) => a - b) };
 }
 
-/** The first verse of `to` that holds the place: where a reader opens. */
+/** The first verse of `to` that is the place: where a reader opens. */
 export function placeIn(to: BibleId, from: BibleId, place: VersePlace): VersePlace | null {
   return placesIn(to, from, place)[0] ?? null;
 }

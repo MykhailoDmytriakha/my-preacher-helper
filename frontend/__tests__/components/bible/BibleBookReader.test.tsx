@@ -91,6 +91,39 @@ describe('BibleBookReader', () => {
     }
   });
 
+  it('takes the verse it opened at for the place until the page is moved, though a verse near the end cannot reach the top', async () => {
+    // Rom 16:25 three verses before the end: the page stops short, and the top shows 16:15.
+    const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
+    let topRow = '1:1';
+    const realRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      if (!verse) return realRect.call(this);
+      const top = 16 + (order.indexOf(verse) - order.indexOf(topRow)) * 40;
+      return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    window.history.replaceState({ bibleEntry: 'entry-end' }, '');
+    const entry = () => JSON.parse(window.sessionStorage.getItem('bible:entry:entry-end') ?? 'null');
+    try {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Итак прежде всего');
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(entry()).toEqual({ chapter: 1, verse: 2, bible: 'rst' });
+
+      // The person scrolls: from here the place is what the top shows.
+      Object.defineProperty(window, 'scrollY', { value: 120, configurable: true });
+      topRow = '2:1';
+      window.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(entry()).toEqual({ chapter: 2, verse: 1, bible: 'rst' });
+    } finally {
+      Element.prototype.getBoundingClientRect = realRect;
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      window.history.replaceState(null, '');
+    }
+  });
+
   it('ignores a verse the book does not have and opens at the start', async () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 999, verse: 999 }} onOpenBook={jest.fn()} />);
     await screen.findByText('Итак прежде всего');
@@ -245,12 +278,63 @@ describe('BibleBookReader', () => {
       window.history.replaceState(null, '');
     });
 
+    it('keeps the place as it was read in the other Bible while the person stays where it opened, so switching back finds the very verse', async () => {
+      servePsalms();
+      let topRow = '51:1';
+      const realRect = Element.prototype.getBoundingClientRect;
+      Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        const verse = this.dataset?.verse;
+        if (!verse) return realRect.call(this);
+        const order = Array.from(document.querySelectorAll<HTMLElement>('[data-verse]')).map((row) => row.dataset.verse);
+        const top = 16 + (order.indexOf(verse) - order.indexOf(topRow)) * 40;
+        return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+      };
+      window.history.replaceState({ bibleEntry: 'entry-switch' }, '');
+      // "Have mercy upon me, O God" is 50:3 of the Synodal, after a title of two verses; the King
+      // James keeps the title within 51:1, which holds all three — and leads back to the first.
+      saveEntryPlace('entry-switch', { chapter: 50, verse: 3, bible: 'rst' });
+      const entry = () => JSON.parse(window.sessionStorage.getItem('bible:entry:entry-switch') ?? 'null');
+      try {
+        render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={null} onOpenBook={jest.fn()} />);
+        await screen.findByText('Psalm 51:1');
+        window.dispatchEvent(new Event('scroll'));
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(entry()).toEqual({ chapter: 50, verse: 3, bible: 'rst' });
+        // "Continue" on the list keeps it too.
+        expect(JSON.parse(window.localStorage.getItem('bible:last-place') ?? 'null')).toEqual({ slug: 'psalms', chapter: 50, verse: 3, bible: 'rst' });
+
+        Object.defineProperty(window, 'scrollY', { value: 120, configurable: true });
+        topRow = '51:4';
+        window.dispatchEvent(new Event('scroll'));
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(entry()).toEqual({ chapter: 51, verse: 4, bible: 'kjv' });
+        expect(JSON.parse(window.localStorage.getItem('bible:last-place') ?? 'null')).toEqual({ slug: 'psalms', chapter: 51, verse: 4, bible: 'kjv' });
+      } finally {
+        Element.prototype.getBoundingClientRect = realRect;
+        Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+        window.history.replaceState(null, '');
+      }
+    });
+
     it('opens a link numbered in another Bible at its place in this one', async () => {
       servePsalms();
       render(<BibleBookReader bible="kjv" initialBible="rst" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 50, verse: 12 }} onOpenBook={jest.fn()} />);
       await screen.findByText('Psalm 51:10');
       // "A clean heart": Synodal 50:12 is King James 51:10.
       expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-verse="51:10"]')]);
+    });
+
+    it('keeps a link numbered in another Bible as it named the place, so that Bible opens the very verse', async () => {
+      servePsalms();
+      window.history.replaceState({ bibleEntry: 'entry-link' }, '');
+      try {
+        // Synodal 50:3 is in King James 51:1, which holds the title too: back in the Synodal, 50:1.
+        render(<BibleBookReader bible="kjv" initialBible="rst" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 50, verse: 3 }} onOpenBook={jest.fn()} />);
+        await screen.findByText('Psalm 51:1');
+        expect(JSON.parse(window.sessionStorage.getItem('bible:entry:entry-link') ?? 'null')).toEqual({ chapter: 50, verse: 3, bible: 'rst' });
+      } finally {
+        window.history.replaceState(null, '');
+      }
     });
   });
 

@@ -72,6 +72,17 @@ describe('a reference in another Bible', () => {
       .toEqual({ bible: 'rst', book: 'Romans', chapter: 14, fromVerse: 24, toVerse: 26 });
   });
 
+  it('is the same verse where a verse boundary only moved by a few words, not it and its neighbour', () => {
+    // "and I died" closes Rom 7:9 of the King James and opens 7:10 of the Synodal.
+    const romans = (bible: 'rst' | 'kjv', fromVerse: number) => ({ bible, book: 'Romans', chapter: 7, fromVerse });
+    expect(referenceIn(romans('rst', 10), 'kjv')).toEqual(romans('kjv', 10));
+    expect(referenceIn(romans('kjv', 9), 'rst')).toEqual(romans('rst', 9));
+    expect(referenceIn({ bible: 'kjv', book: 'Mark', chapter: 12, fromVerse: 15 }, 'rst')).toEqual({ bible: 'rst', book: 'Mark', chapter: 12, fromVerse: 15 });
+    // A verse the other Bible divides in two is still both: Rev 20:9 of the King James.
+    expect(referenceIn({ bible: 'kjv', book: 'Revelation', chapter: 20, fromVerse: 9 }, 'rst'))
+      .toEqual({ bible: 'rst', book: 'Revelation', chapter: 20, fromVerse: 8, toVerse: 9 });
+  });
+
   it('leaves alone what it cannot place: no Bible, its own Bible, a book alone, a verse that Bible lacks', () => {
     const legacy = { book: 'Psalms', chapter: 51, fromVerse: 12 };
     expect(referenceIn(legacy, 'rst')).toBe(legacy);
@@ -141,6 +152,7 @@ describe('two references to the same place', () => {
     expect(sameScriptureReference(ps('rst', 50, 12), ps('kjv', 51, 10))).toBe(true);
     expect(sameScriptureReference(ps('rst', 50, 12), ps('kjv', 51, 12))).toBe(false);
     expect(sameScriptureReference(ps('rst', 22), ps('kjv', 23))).toBe(true);
+    expect(sameScriptureReference({ bible: 'rst', book: 'Romans', chapter: 7, fromVerse: 10 }, { bible: 'kjv', book: 'Romans', chapter: 7, fromVerse: 10 })).toBe(true);
     expect(sameScriptureReference({ book: 'John', chapter: 3, fromVerse: 16, toVerse: 16 }, { book: 'John', chapter: 3, fromVerse: 16 })).toBe(true);
   });
 });
