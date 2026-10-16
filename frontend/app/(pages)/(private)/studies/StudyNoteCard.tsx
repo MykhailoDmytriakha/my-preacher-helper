@@ -20,6 +20,7 @@ import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
 import { bibleHref } from '@/utils/bibleLink';
+import { formatDateForLocale } from '@/utils/dateFormatter';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
@@ -110,7 +111,7 @@ export default function StudyNoteCard({
   onShare,
   hasShareLink = false,
 }: StudyNoteCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
 
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
@@ -145,7 +146,7 @@ export default function StudyNoteCard({
     if (diffDays === 1) return t('common.yesterday');
     if (diffDays < 7) return t('common.daysAgo', { count: diffDays });
     if (diffDays < 30) return t('common.weeksAgo', { count: Math.floor(diffDays / 7) });
-    return date.toLocaleDateString();
+    return formatDateForLocale(date, i18n?.language);
   };
 
   // Check if note needs AI analysis (no title, no refs, no tags)
@@ -552,7 +553,7 @@ export default function StudyNoteCard({
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDateForLocale(note.createdAt, i18n?.language)}</span>
             </div>
           </div>
         </div>

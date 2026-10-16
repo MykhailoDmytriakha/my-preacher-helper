@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Chip } from '@/components/ui/Chip';
 import { Group, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
+import { formatDateForLocale } from '@/utils/dateFormatter';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 
 import type { ChipTone } from '@/utils/chipClasses';
@@ -75,19 +76,19 @@ const resolvePrimaryMeetingDate = (meetingDates: Group['meetingDates']) => {
   return latest ? { date: latest.raw, isUpcoming: false } : null;
 };
 
-const formatMeetingDate = (value: string): string | null => {
+const formatMeetingDate = (value: string, language?: string): string | null => {
   const parsed = parseMeetingDate(value);
   if (!parsed) return null;
 
-  return new Intl.DateTimeFormat(undefined, {
+  return formatDateForLocale(parsed, language, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
-  }).format(parsed);
+  });
 };
 
 export default function GroupCard({ group, series = [], onDelete }: GroupCardProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +109,7 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
     ? t('workspaces.groups.itemsLabel.nextMeeting', { defaultValue: 'Next meeting' })
     : t('workspaces.groups.itemsLabel.lastMeeting', { defaultValue: 'Last meeting' });
   const meetingDateValue = primaryMeetingDate
-    ? (formatMeetingDate(primaryMeetingDate.date) ||
+    ? (formatMeetingDate(primaryMeetingDate.date, i18n?.language) ||
       t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' }))
     : t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' });
 
@@ -214,7 +215,7 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
           <div className="rounded-lg bg-gray-50 px-2 py-2 text-center dark:bg-gray-900/60">
             <div className="inline-flex max-w-full items-center gap-1">
               <CalendarDaysIcon className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{meetingDateValue}</span>
+              <span className="min-w-0 break-words">{meetingDateValue}</span>
             </div>
             <div className="mt-1 text-[11px] opacity-80">{meetingDateLabel}</div>
           </div>

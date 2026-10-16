@@ -69,3 +69,43 @@ Local evidence is retained in the same ignored case artifact directory: `care-he
 4. Enter and leave reorder mode without moving an item. Open and cancel the new-council form without submitting it.
 5. Check English/Ukrainian labels, empty-list states, and light/dark styles; use a phone/tablet where available.
 6. Record deployed revision, browser, screenshots and outcomes. Keep production acceptance pending until these checks run.
+
+## BUG-20261012-dates-in-browser-locale
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+The interface language now controls numeric dates, timestamps and month names in the affected displays. `formatDateForLocale` and `formatDateTimeForLocale` extend the existing `utils/dateFormatter.ts`, normalize language through `resolveAppLocale`, reuse its date parser and preserve caller options. A missing/unknown language resolves to English instead of the browser default. ISO calendar dates keep their local calendar day; timestamps retain local time and seconds. Invalid metadata dates render blank. Existing fixed-format `formatDate` / `formatDateOnly` contracts remain unchanged.
+
+On base `f13ccf21`, five real component regressions failed on rendered text: prayer, study, series and share-link dates showed `1/15/2026` in Russian, and a group meeting showed `Jan 15, 2026`. Those assertions pass after the fix and exercise language changes without remounting. The separate formatter/settings tests cover all three locales, regional codes, fallback, options, invalid values, calendar days, timestamps and the visible build label.
+
+A negative control temporarily ignored language in the shared formatter: 9 of the 16 new tests failed for the original formatting reason; 7 unaffected cases passed. The source was restored byte-for-byte and all 16 tests passed again. Existing prayer, group, series and share-page behavior suites also passed.
+
+| Affected display | Automated evidence | Localhost evidence |
+|---|---|---|
+| Prayer cards | `dateLocaleScreens.test.tsx`, existing card suite | Russian card before/after; browser language remained en-US |
+| Prayer detail and updates | Existing page suites; formatter timestamp tests | en/uk/ru switched through normal menu; three dated updates retained time/seconds and stayed readable on an already loaded offline screen |
+| Study cards | `dateLocaleScreens.test.tsx` | Collapsed/expanded older QA note, both date labels |
+| Study-note metadata | Shared formatter tests | Existing note: creation date in the side panel |
+| Share-link list | `dateLocaleScreens.test.tsx`, existing page suite | Existing links: numeric creation dates |
+| Share-note window | Shared formatter option tests | Existing link: localized day/month and unchanged share controls |
+| Group cards | `dateLocaleScreens.test.tsx`, existing card suite; browser geometry assertion | Localized month and complete date at 320/390/640/834/1280px |
+| Series start date | `dateLocaleScreens.test.tsx` | Both existing detail screens opened; neither has a startDate, so that conditional label was not observed live |
+| Build timestamp in Settings | `ShowVersionToggle.dateLocale.test.tsx` mounts the real component with a build-time fixture | Not observed live: this dev server has no configured build timestamp |
+| Legacy recovery dates | Canonical locale fallback; existing `LegacyQueryRecovery.test.tsx` | No archived-copy fixture was forced into live storage; this fallback was not observed live |
+
+The geometry check `frontend/test-utils/assertGroupMeetingDatesReadable.ts` caught a consequence during visual acceptance: a Russian date needed 89px in a 78px cell. The date span now wraps inside the existing group-card grid. The same browser check failed before that adjustment and passed at all five widths afterward. The primary agent visually inspected final phone and desktop screenshots; complete day/month/year remain visible. There is no new data-writing path.
+
+The mechanism audit includes all default-locale Date/Intl calls. The two server feedback-email timestamps are developer diagnostics and stay unchanged. Other date displays already pass the app language (dashboard, admin, usage labels), or have an explicit English fallback. Word-count number formatting and diagnostic timezone inspection are outside this date-display class.
+
+Gates: 20 final targeted tests passed. On the final code, full Jest passed 801 suites / 8250 tests (3 suites / 17 tests skipped), full TypeScript and ESLint passed (0 errors / 29 inherited warnings), and production build passed including route types and its TypeScript check. Independent review found no material issues, repeated the 16 new tests and checked the final date-wrapping adjustment and screenshots.
+
+Evidence is retained in the ignored case artifact directory: `dates-locale-red.log`, `dates-locale-mutation.log`, `dates-group-layout-red.json`, browser measurements/screenshots and `dates-locale-verification.json`. The regression tests, browser assertion, this manifest and the bug-ID commit retain the durable trace. Language was restored to Russian; no content was edited and no share link was created/deleted. Offline mode was restored in a finally block. Browser checks used Chromium at 390px and 1280px, plus the five-width group-date matrix; these are not physical-device acceptance.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision contains this fix; use an authorized test account with the browser language different from the app language.
+2. In prayer list/detail, change app language en → uk → ru without reloading. Verify date format, answered date and update timestamps, including hours/seconds. Restore the language.
+3. Check an older study card collapsed/expanded, note metadata, an existing share-link list and its share window. Preserve their content and links.
+4. Check dated and undated groups at 320/390/640/834/1280px: complete day/month/year, no clipping, unchanged meeting selection and start controls.
+5. Use a test series with startDate, an enabled deployed build timestamp, and a safe pre-existing archived-copy fixture where available. Verify these three labels explicitly; they had the local live-fixture limits listed above.
+6. Repeat on an already loaded screen offline, restore connectivity, and record the deployed revision, screenshots and outcomes. Production acceptance remains pending until executed.

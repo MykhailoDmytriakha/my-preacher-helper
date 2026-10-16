@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
+import { resolveAppLocale } from './appLocale';
 import { parseDateOnlyAsLocalDate } from './dateOnly';
 
 const NO_DATE_LABEL = 'No date';
@@ -24,6 +25,31 @@ const parseDateTime = (value: string): Date | null => {
 
   return parsedDateOnly;
 };
+
+/** Display dates follow the app language; a missing language never delegates to the browser. */
+const formatForLocale = (
+  value: string | Date,
+  language: string | null | undefined,
+  includeTime: boolean,
+  options?: Intl.DateTimeFormatOptions,
+): string => {
+  const date = typeof value === 'string' ? parseDateTime(value) : value;
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const locale = resolveAppLocale(language);
+  return includeTime ? date.toLocaleString(locale, options) : date.toLocaleDateString(locale, options);
+};
+
+export const formatDateForLocale = (
+  value: string | Date,
+  language?: string | null,
+  options?: Intl.DateTimeFormatOptions,
+): string => formatForLocale(value, language, false, options);
+
+export const formatDateTimeForLocale = (
+  value: string | Date,
+  language?: string | null,
+  options?: Intl.DateTimeFormatOptions,
+): string => formatForLocale(value, language, true, options);
 
 export const extractIsoString = (value: unknown): string | null => {
   if (!value) return null;

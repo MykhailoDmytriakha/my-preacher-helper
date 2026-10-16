@@ -8,6 +8,7 @@ import { Chip } from '@/components/ui/Chip';
 import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
 import { getCookieLanguage } from '@/services/userSettings.service';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { answerWithin } from '@/utils/deviceStorage';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { DEFAULT_LANGUAGE } from '@locales/constants';
@@ -262,7 +263,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
 /** How a copy's dates, field names and values read to the person — one lens for the row and the clipboard. */
 function useCopyFormatting() {
   const { t, i18n } = useTranslation();
-  const dateFormat = useMemo(() => new Intl.DateTimeFormat(i18n.language || undefined, {
+  const dateFormat = useMemo(() => new Intl.DateTimeFormat(resolveAppLocale(i18n.language), {
     day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
   }), [i18n.language]);
   const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');

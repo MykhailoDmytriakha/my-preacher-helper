@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { formatDateForLocale } from '@/utils/dateFormatter';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 
@@ -127,7 +128,7 @@ export default function ShareNoteModal({
   if (!isOpen || !note) return null;
 
   const createdOn = shareLink
-    ? new Date(shareLink.createdAt).toLocaleDateString(i18n?.language || undefined, { day: 'numeric', month: 'long' })
+    ? formatDateForLocale(shareLink.createdAt, i18n?.language, { day: 'numeric', month: 'long' })
     : '';
 
   const modalContent = (

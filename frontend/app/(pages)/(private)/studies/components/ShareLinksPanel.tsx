@@ -8,6 +8,7 @@ import Select from '@/components/ui/Select';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { formatDateForLocale } from '@/utils/dateFormatter';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 
@@ -34,7 +35,7 @@ export default function ShareLinksPanel({
   onCreate,
   onDelete,
 }: ShareLinksPanelProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
@@ -188,7 +189,7 @@ export default function ShareLinksPanel({
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 md:text-center">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.createdLabel')}:</span>
-                    {new Date(link.createdAt).toLocaleDateString()}
+                    {formatDateForLocale(link.createdAt, i18n?.language)}
                   </div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-center tabular-nums">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.viewsLabel')}:</span>

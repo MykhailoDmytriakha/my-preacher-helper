@@ -39,6 +39,7 @@ import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
+import { formatDateForLocale } from '@/utils/dateFormatter';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -655,7 +656,8 @@ const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
 function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
     const created = new Date(note.createdAt);
     const updated = new Date(note.updatedAt);
-    const format = (d: Date) => (Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString());
+    const { i18n } = useTranslation();
+    const format = (d: Date) => formatDateForLocale(d, i18n?.language);
     return (
         <>
             <div>{t('notePanel.created', { date: format(created) })}</div>
