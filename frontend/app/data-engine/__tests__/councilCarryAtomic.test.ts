@@ -227,3 +227,167 @@ describe('one-shot council carry ownership', () => {
     engine.dispose();
   });
 });
+
+
+describe('durable atomic carry into an existing council', () => {
+  function existingTarget(s: ReturnType<typeof setup>) {
+    const target: ResourceSnapshot = { resource: { collection: 'councils', id: 'next' },
+      metadata: { protocol: 1, generation: 'target-generation', revision: 4, deleted: false },
+      value: { ...s.created, title: 'Already prepared', topics: [{ id: 'already', title: 'Existing words', questions: [], options: [] }] } };
+    s.rows.set('councils/next', clone(target)); s.cached.set('councils/next', clone(target));
+    const to = new DataSession(target);
+    to.edit({ ...target.value, topics: [...target.value!.topics as DocumentData[], ...s.created.topics as DocumentData[]] });
+    return { target, captures: [s.captures[0], { editorId: 'existing-target-action', captured: to.checkpoint(), predecessorId: null }] };
+  }
+
+  it('durably owns both existing councils offline and resumes one command without replacing destination words', async () => {
+    const s = setup(), { captures } = existingTarget(s), first = s.make();
+    const saved = await first.queue.saveAtomic(captures);
+    await first.queue.drain(false);
+    expect(saved).toHaveLength(2);
+    expect(saved.every(request => request.atomic?.kind === 'council-carry')).toBe(true);
+    expect(s.transport.send).not.toHaveBeenCalled();
+    first.close();
+    const restarted = s.make();
+    await restarted.queue.drain(true);
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(s.rows.get('councils/next')?.value?.topics).toMatchObject([{ title: 'Existing words' }, { title: 'Unfinished matter' }]);
+    expect(s.rows.get('councils/source')?.value?.topics).toMatchObject([{ carriedToCouncilId: 'next' }]);
+    expect(jest.mocked(s.transport.send).mock.calls[0][0]).toMatchObject({ relation: 'council-carry' });
+    expect(jest.mocked(s.transport.send).mock.calls[0][0]).not.toHaveProperty('edits.1.create');
+    restarted.close();
+  });
+
+  it('shows both sides offline and reopens the same destination copy after restart', async () => {
+    const s = setup(); existingTarget(s);
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'parent');
+    const captured = await source.carryCouncilTopicToExisting('topic', 'next');
+    expect(captured.value?.topics).toMatchObject([{ title: 'Existing words' }, { title: 'Unfinished matter' }]);
+    const target = await engine.openEditor(captured.resource, 'target-page');
+    expect(target.getState().checkpoint.draft?.topics).toEqual(captured.value?.topics);
+    const ids = (await s.store.list('owner')).map(request => request.id);
+    expect(ids).toHaveLength(2); engine.dispose();
+    const restarted = s.makeEngine().engine, reopened = await restarted.openEditor(captured.resource, 'reopened-target');
+    expect(reopened.getState().checkpoint.draft?.topics).toEqual(captured.value?.topics);
+    expect((await s.store.list('owner')).map(request => request.id)).toEqual(ids);
+    restarted.dispose();
+  });
+
+  it('chains two carries to the same destination with distinct copy identities', async () => {
+    const s = setup(); existingTarget(s);
+    (s.source.value!.topics as DocumentData[]).push({ id: 'second', title: 'Second matter', questions: [], options: [] });
+    s.rows.set('councils/source', clone(s.source)); s.cached.set('councils/source', clone(s.source));
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'parent');
+    await source.carryCouncilTopicToExisting('topic', 'next');
+    const second = await source.carryCouncilTopicToExisting('second', 'next');
+    const requests = await s.store.list('owner'), targets = requests.filter(request => request.baseline.resource.id === 'next');
+    expect(targets).toHaveLength(2); expect(targets[1].predecessor).toBe(targets[0].id);
+    const topics = second.value!.topics as DocumentData[];
+    expect(topics.map(topic => topic.title)).toEqual(['Existing words', 'Unfinished matter', 'Second matter']);
+    expect(new Set(topics.map(topic => topic.id)).size).toBe(3);
+    engine.setOnline(true); await engine.retry();
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(s.rows.get('councils/next')?.value?.topics).toEqual(topics);
+    engine.dispose();
+  });
+
+  it('carries into a newly created council that is still queued offline', async () => {
+    const s = setup();
+    (s.source.value!.topics as DocumentData[]).push({ id: 'second', title: 'Second matter', questions: [], options: [] });
+    s.rows.set('councils/source', clone(s.source)); s.cached.set('councils/source', clone(s.source));
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'parent');
+    const first = await source.carryCouncilTopicToNew('topic', 'Next council');
+    const second = await source.carryCouncilTopicToExisting('second', first.resource.id);
+    expect(second.value?.topics).toMatchObject([{ title: 'Unfinished matter' }, { title: 'Second matter' }]);
+    engine.setOnline(true); await engine.retry();
+    expect(s.transport.send).toHaveBeenCalledTimes(2);
+    expect(s.rows.get(resourceKey(first.resource))?.value?.topics).toHaveLength(2);
+    engine.dispose();
+  });
+
+  it('preserves a saved destination predecessor and excludes its later unsent words', async () => {
+    const s = setup(), { target } = existingTarget(s), { engine } = s.makeEngine();
+    const destination = await engine.openEditor(target.resource, 'destination-parent');
+    await destination.commit(value => ({ ...value, title: 'Saved destination title' }));
+    await destination.edit({ ...destination.getState().checkpoint.draft, title: 'Unsent destination title' });
+    destination.close();
+    const source = await engine.openEditor(s.source.resource, 'source-parent');
+    const carried = await source.carryCouncilTopicToExisting('topic', 'next');
+    expect(carried.value?.title).toBe('Saved destination title');
+    const requests = await s.store.list('owner'), predecessor = requests.find(request => !request.atomic)!;
+    expect(requests.find(request => request.atomic && request.baseline.resource.id === 'next')?.predecessor).toBe(predecessor.id);
+    engine.setOnline(true); await engine.retry();
+    expect(s.rows.get('councils/next')?.value?.title).toBe('Saved destination title');
+    engine.dispose();
+  });
+
+  it('discards both refused effects and preserves later unrelated destination words', async () => {
+    const s = setup(); existingTarget(s);
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'source-parent');
+    await source.carryCouncilTopicToExisting('topic', 'next');
+    const target = await engine.openEditor({ collection: 'councils', id: 'next' }, 'target-parent');
+    const draft = target.getState().checkpoint.draft!;
+    await target.edit({ ...draft, title: 'Later title', topics: (draft.topics as DocumentData[]).map(topic => topic.id === 'already' ? { ...topic, summary: 'Later destination words' } : topic) });
+    s.refuse(); engine.setOnline(true); await engine.retry();
+    const action = source.getActions()[0]; expect(action.delivery.canDiscard).toBe(true);
+    await source.discardAction(action.id);
+    expect(source.getState().checkpoint.draft?.topics).toMatchObject([{ title: 'Unfinished matter' }]);
+    expect((source.getState().checkpoint.draft!.topics as DocumentData[])[0]).not.toHaveProperty('carriedToCouncilId');
+    expect(target.getState().checkpoint.draft).toMatchObject({ title: 'Later title', topics: [{ id: 'already', summary: 'Later destination words' }] });
+    expect(target.getState().checkpoint.draft?.topics).toHaveLength(1);
+    engine.dispose();
+  });
+
+  it('keeps words edited inside the copied topic recoverable when its refused carry is discarded', async () => {
+    const s = setup(); existingTarget(s);
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'source-parent');
+    await source.carryCouncilTopicToExisting('topic', 'next');
+    const target = await engine.openEditor({ collection: 'councils', id: 'next' }, 'target-parent');
+    const draft = target.getState().checkpoint.draft!;
+    await target.edit({ ...draft, topics: (draft.topics as DocumentData[]).map(topic => topic.id === 'already' ? topic : { ...topic, summary: 'New words typed in the copy' }) });
+    s.refuse(); engine.setOnline(true); await engine.retry();
+    await source.discardAction(source.getActions()[0].id);
+    expect(target.getState().checkpoint.draft?.topics).toMatchObject([{ id: 'already' }, { summary: 'New words typed in the copy' }]);
+    expect(target.getState().checkpoint.conflicts.length).toBeGreaterThan(0);
+    engine.dispose();
+  });
+
+  it.each(['foreign', 'deleted', 'held'])('refuses an unavailable %s destination before saving either effect', async variant => {
+    const s = setup(), { target } = existingTarget(s);
+    if (variant === 'foreign') target.value!.userId = 'another-owner';
+    if (variant === 'deleted') { target.value = null; target.metadata!.deleted = true; }
+    if (variant === 'held') target.value!.status = 'held';
+    s.cached.set('councils/next', clone(target));
+    const { engine } = s.makeEngine(), source = await engine.openEditor(s.source.resource, 'parent');
+    await expect(source.carryCouncilTopicToExisting('topic', 'next')).rejects.toThrow();
+    expect(await s.store.list('owner')).toEqual([]);
+    expect((source.getState().checkpoint.draft!.topics as DocumentData[])[0]).not.toHaveProperty('carriedToCouncilId');
+    engine.dispose();
+  });
+
+  it('refuses an ambiguous destination chain instead of selecting a guessed predecessor', async () => {
+    const s = setup(), { target } = existingTarget(s), { engine } = s.makeEngine();
+    const left = await engine.openEditor(target.resource, 'left'), right = await engine.openEditor(target.resource, 'right');
+    await left.commit(value => ({ ...value, title: 'Left saved words' }));
+    await right.commit(value => ({ ...value, title: 'Right saved words' }));
+    const before = await s.store.list('owner');
+    const source = await engine.openEditor(s.source.resource, 'source-parent');
+    await expect(source.carryCouncilTopicToExisting('topic', 'next')).rejects.toMatchObject({ code: 'resolve-version-first' });
+    expect(await s.store.list('owner')).toEqual(before);
+    expect((source.getState().checkpoint.draft!.topics as DocumentData[])[0]).not.toHaveProperty('carriedToCouncilId');
+    engine.dispose();
+  });
+
+  it('replays a lost reply without appending the existing-destination copy twice', async () => {
+    const s = setup(), { captures } = existingTarget(s), first = s.make();
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    jest.mocked(s.transport.send).mockImplementationOnce(async command => { await send(command); throw new Error('Lost reply'); });
+    await first.queue.saveAtomic(captures); await first.queue.drain(true).catch(() => undefined);
+    const command = jest.mocked(s.transport.send).mock.calls[0][0]; first.close();
+    const restarted = s.make(); await restarted.queue.drain(true);
+    expect(jest.mocked(s.transport.send).mock.calls[1][0]).toEqual(command);
+    expect(s.rows.get('councils/next')?.value?.topics).toHaveLength(2);
+    expect(s.rows.get('councils/next')?.metadata?.revision).toBe(5);
+    restarted.close();
+  });
+});

@@ -44,7 +44,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
   });
   const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
-    actions: [], carryCouncilTopicToNew: jest.fn(), discardAction: jest.fn(),
+    actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
     data: session.checkpoint().draft,
     confirmed: session.checkpoint().confirmed,

@@ -785,6 +785,10 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       cancelScheduledSave();
       return run(editor => editor.carryCouncilTopicToNew(topicId, title));
     },
+    carryCouncilTopicToExisting: (topicId: string, destinationId: string) => {
+      cancelScheduledSave();
+      return run(editor => editor.carryCouncilTopicToExisting(topicId, destinationId));
+    },
     discardAction: (id: string) => run(editor => editor.discardAction(id)),
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },

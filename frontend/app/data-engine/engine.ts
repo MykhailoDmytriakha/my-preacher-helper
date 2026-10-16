@@ -1,7 +1,7 @@
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
-import { captureCouncilCarry } from './councilCarry';
+import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -67,6 +67,7 @@ export interface ManagedEditor {
   getDelivery(): JournalEntry[];
   getActions(): Array<{ id: string; delivery: MembershipDelivery }>;
   carryCouncilTopicToNew(topicId: string, title: string): Promise<ResourceSnapshot>;
+  carryCouncilTopicToExisting(topicId: string, destinationId: string): Promise<ResourceSnapshot>;
   discardAction(id: string): Promise<void>;
   form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
@@ -885,6 +886,36 @@ export class DataEngine {
         this.assertCurrent(owner, generation);
         if (entry.closed) throw new Error('Editor is no longer active');
       };
+      const carryCouncilTopic = (topicId: string, title: string, destinationId?: string): Promise<ResourceSnapshot> => {
+        active();
+        const key = JSON.stringify([owner, frozen, topicId]);
+        const existing = this.councilCarries.get(key); if (existing) return existing;
+        const pinned = copy(controller.getState().checkpoint);
+        const copyId = this.options.operationId(), targetId = destinationId ?? copyId, now = new Date().toISOString();
+        const run = async () => {
+          let targetSnapshot = destinationId ? await this.peekCached({ collection: 'councils', id: destinationId }) : null;
+          this.assertCurrent(owner, generation);
+          const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+          if (destinationId && !targetSnapshot) targetSnapshot = requests.find(request => request.owner === owner
+            && sameResource(request.baseline.resource, { collection: 'councils', id: destinationId }))?.baseline
+            ?? await this.read({ collection: 'councils', id: destinationId });
+          this.assertCurrent(owner, generation);
+          const captured = captureCouncilCarry(owner, editorId, pinned, requests, topicId, targetId, title, now,
+            targetSnapshot ? pinCouncilDestination(owner, targetSnapshot, requests) : undefined, copyId);
+          const saved = await this.commits.saveAtomic(captured.captures); this.assertCurrent(owner, generation);
+          // Durable ownership survives navigation; adoption only updates a parent still on screen.
+          if (!entry.closed) {
+            try { await controller.adoptManualCommit(saved[0], [['topics', { id: topicId }, 'carriedToCouncilId']]); }
+            catch (error) { this.reportFailure(error, frozen); }
+          }
+          this.assertCurrent(owner, generation);
+          await this.prepareCommits(); this.backgroundDrain();
+          return captured.destination;
+        };
+        const pending = run(); this.councilCarries.set(key, pending);
+        void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
+        return pending;
+      };
       const managed: ManagedEditor = {
         getState: () => { active(); return controller.getState(); },
         getObservation: () => { active(); return copy(entry.observation); },
@@ -896,29 +927,8 @@ export class DataEngine {
             && sameResource(request.baseline.resource, frozen) && !['acknowledged', 'cancelled'].includes(request.state))
             .map(request => ({ id: request.id, delivery: describeActionDelivery(owner, request.atomic!.participants, requests, this.pending) }));
         },
-        carryCouncilTopicToNew: (topicId, title) => {
-          active();
-          const key = JSON.stringify([owner, frozen, topicId]);
-          const existing = this.councilCarries.get(key); if (existing) return existing;
-          const pinned = copy(controller.getState().checkpoint);
-          const targetId = this.options.operationId(), now = new Date().toISOString();
-          const run = async () => {
-            const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-            const captured = captureCouncilCarry(owner, editorId, pinned, requests, topicId, targetId, title, now);
-            const saved = await this.commits.saveAtomic(captured.captures); this.assertCurrent(owner, generation);
-            // Durable ownership survives navigation; adoption only updates a parent still on screen.
-            if (!entry.closed) {
-              try { await controller.adoptManualCommit(saved[0], [['topics', { id: topicId }, 'carriedToCouncilId']]); }
-              catch (error) { this.reportFailure(error, frozen); }
-            }
-            this.assertCurrent(owner, generation);
-            await this.prepareCommits(); this.backgroundDrain();
-            return captured.destination;
-          };
-          const pending = run(); this.councilCarries.set(key, pending);
-          void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
-          return pending;
-        },
+        carryCouncilTopicToNew: (topicId, title) => carryCouncilTopic(topicId, title),
+        carryCouncilTopicToExisting: (topicId, destinationId) => carryCouncilTopic(topicId, '', destinationId),
         discardAction: async id => {
           active();
           const requests = await this.commits.list(); active();

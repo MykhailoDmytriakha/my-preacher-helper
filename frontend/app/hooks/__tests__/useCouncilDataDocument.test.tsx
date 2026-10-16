@@ -4,7 +4,7 @@ import { useDataDocument } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 
 import type { DocumentData } from '@/data-engine/types';
-import type { Council, CouncilTopic } from '@/models/models';
+import type { CouncilTopic } from '@/models/models';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'), useDataDocument: jest.fn(),
@@ -50,17 +50,12 @@ describe('useCouncilDataDocument', () => {
     expect(next).not.toHaveProperty('id');
   });
 
-  it('carries a section by marking it, leaving the destination to the engine', async () => {
-    const { result, update, commit } = setup();
+  it('captures an existing destination through the same whole-action facade as a new council', async () => {
+    const carryCouncilTopicToExisting = jest.fn().mockResolvedValue(undefined);
+    const { result, update, commit } = setup(stored(), { carryCouncilTopicToExisting });
     await act(async () => { await result.current.carryTopicToNext('council-1', topic('t1'), 'target'); });
-
-    const next = applied(commit, stored()) as unknown as Council;
-    expect(next.topics[0]).toMatchObject({ id: 't1', carriedToCouncilId: 'target' });
-    // Exactly one write leaves the screen: the destination copy is not the screen's business.
-    expect(commit).toHaveBeenCalledTimes(1);
-    // A carry is an ACT, saved at once as its own request. Left to the shared autosave, two
-    // carries inside its 750 ms window land in one draft, and the policy refuses a save that
-    // moves two sections — each carry must reach the engine alone.
+    expect(carryCouncilTopicToExisting).toHaveBeenCalledWith('t1', 'target');
+    expect(commit).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
 

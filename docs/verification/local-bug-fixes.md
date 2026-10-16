@@ -729,3 +729,35 @@ regression tests and commit carry the durable Git trace. Main was pinned eebdc09
 5. Visit all six care screens online, then open them through the offline shell, including nested
    council conduct/order IDs. Check an unknown long address at320/390/820/1280 and actual phone/tablet.
 6. Record real production/browser/device outcomes. No push, merge, PR or deploy happened in this unit.
+
+
+## Carry into an existing council while offline
+
+Stage: locally verified, independently source-reviewed and accepted by a fresh agent against the exact manifest below. Both listed BUGS.md records are locally closed; production is pending.
+
+Bugs: BUG-20261016-existing-council-carry-invisible-offline and BUG-20261016-existing-council-carry-content-unchecked.
+
+The existing-destination hook now calls the same whole-action engine capture as creation. Both source and destination own durable participants. Destination pinning uses confirmed content and one proven saved chain, excluding unsent typing and refusing ambiguous/failed chains. Repeated carries use distinct stable copy IDs and preserve both predecessors. Source discard restores only its mark; destination discard reverses its append, retaining unrelated later words and keeping edited copied content recoverable through conflict. The shared server/client validator requires one matching copy, no old outcome and unchanged existing destination topics. Valid legacy commands keep their immutable delivery identity.
+
+RED: atomic/hook3failed/14passed; server4failed/59passed; differential rollback1failed with the copy incorrectly retained. Final9suites280tests pass. Full816suites8630tests pass,3suites17tests skipped,131.562s. TypeScript0; ESLint0errors26baselinewarnings. Production build17.74s, buildtypecheck11.66s; buildID lUufxIG2wfmCDfjkwEsn1. All18frontend hashes stayed unchanged after final gates and browser.
+
+Actual Chromium localhost3047 on cloned owned snapshots/synthetic topics: one existing destination and multiple-target chooser both capture2participants; source mark, old destination topic and copied topic survive offline navigation/reload; reconnect keeps IDs. Width390/820 has no horizontal overflow; primary inspected desktop1280 and phone/tablet screenshots including the copied words, question, answer and option. API writes were blocked: actual server ACK is covered by transaction/transport tests, not this browser run. All QA contexts closed; original Groups tab online. Recovery draft banner remains an already tracked separate issue. Physical devices/Safari/owner and production acceptance are pending.
+
+Local manifest: .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/council-carry-existing-verification.json
+SHA-256: 5f64d9b54a4d28a90710fcc6a2b4cfb699f8764cf69f1d05391a1f1ec01de58a. The ignored case keeps complete proof; this registry, regression tests and local commit keep the Git trace.
+
+### Production acceptance after separately authorized merge
+
+1. Confirm deployed revision/build. Use disposable owned councils: one held source with unfinished text, and one preparing destination with existing topics. Offline, carry once, open destination, reload: old topics plus exactly one matching copy remain; source is marked.
+2. Repeat with several preparing councils: opening the chooser saves nothing, selection lands only in the chosen council. Carry two topics to the same destination and confirm distinct copies.
+3. Restore connection and observe real ACK for both participants. Reload both, check on a second device and retry an interrupted reply: no duplicate and no lost destination words. Test a pending saved destination edit and unrelated later edits.
+4. In a controlled test account, verify malformed copy/missing mark/dropped existing topic is refused atomically. Refuse a valid carry, discard the whole action and verify only its mark/copy are reversed. Words typed later, including inside the copy, remain available.
+5. Inspect phone/tablet/Safari and obtain owner acceptance. Existing legacy single-source queued commands deliver compatibly; do not claim retroactive local participant ownership for them.
+
+
+| Item | Result | Regression | Browser or manual evidence |
+|---|---|---|---|
+| 1. Both participants visible offline | Fixed | app/data-engine/__tests__/councilCarryAtomic.test.ts; app/hooks/__tests__/useCouncilDataDocument.test.tsx | Actual one/multiple-target carry, offline open/reload, reconnect IDs |
+| 2. Existing and pending destination words | Preserved | councilCarryAtomic.test.ts: saved predecessor, unsent exclusion, sequential copies | Existing topic plus copied text visible at390/820 |
+| 3. Whole-action discard | Scoped to own effects; later text recoverable | councilCarryAtomic.test.ts: refusal/discard, edited-copy conflict; old-rollback differential RED | Browser happy path inspected; negative rollback verified in real IndexedDB/transport tests, not live production |
+| 4. Server matching copy and retained topics | Invalid commands refused atomically | __tests__/data-engine/serverRelations.test.ts:4RED to GREEN | Valid UI payload/path inspected; malformed-command refusal covered by server transaction tests |

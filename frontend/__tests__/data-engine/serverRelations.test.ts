@@ -311,6 +311,20 @@ describe('council carry', () => {
     expect(written.target).toEqual([{ ...moved, id: 'copy' }]);
   });
 
+  it.each(['missing-mark', 'wrong-words', 'deleted-existing-topic', 'copied-outcome'])
+    ('refuses inconsistent existing-council carry %s without partial writes', async variant => {
+      const moved = topic('t1', { summary: 'Keep these words' }), existing = topic('existing');
+      const source = council('source', [moved]), target = council('target', [existing]);
+      const copied = { ...moved, id: 'copy', ...(variant === 'wrong-words' ? { summary: 'Different words' } : {}),
+        ...(variant === 'copied-outcome' ? { discussed: true } : {}) };
+      const plan = await planDataCommand(carry(source, [
+        { resource: source, before: [moved], after: variant === 'missing-mark' ? [moved] : [{ ...moved, carriedToCouncilId: 'target' }] },
+        { resource: target, before: [existing], after: variant === 'deleted-existing-topic' ? [copied] : [existing, copied] },
+      ]), source, reader);
+      expect(plan.result.kind).toBe('refused');
+      expect(plan.writes).toEqual([]);
+    });
+
   it('creates a preparing destination and marks the source in the same carry', async () => {
     const moved = topic('t1', { summary: 'Keep these words' });
     const source = council('source', [moved], { status: 'held', heldAt: 'then' });

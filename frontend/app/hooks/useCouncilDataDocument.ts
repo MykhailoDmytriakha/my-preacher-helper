@@ -17,9 +17,9 @@ const missing = () => new Error('The council is not available for editing');
  * domain's own queue: the draft, its baseline and the delivery belong to the engine, and a
  * refused write keeps the typed text rather than replacing it with the server's copy.
  *
- * Carrying a section is one write, not two. The screen marks the section; the engine finds the
- * destination, reads its generation and lands the copy in the same commit. With no destination,
- * the public document action owns creation and the mark in one durable participant group.
+ * Carrying a section is one action over two owned participants. The public document facade
+ * captures the source mark and destination copy together, whether the destination already
+ * exists or is created by this invocation. Screens never write either participant separately.
  */
 export function useCouncilDataDocument(councilId: string) {
   // Both council screens render read-only when handed a copy (BUG-20260927-engine-open-hangs-on-silent-device-storage).
@@ -49,15 +49,6 @@ export function useCouncilDataDocument(councilId: string) {
     await document.update(apply(mutate));
   }, [document, apply]);
 
-  /**
-   * An act, not typing: saved at once as its own durable request. Two carries inside the
-   * autosave window would otherwise share one draft, and a save that moves two sections is one
-   * the policy refuses — each carry has to reach the engine alone, chained behind the last.
-   */
-  const act = useCallback(async (mutate: (current: Council) => Council) => {
-    await document.commit(apply(mutate));
-  }, [document, apply]);
-
   const updateCouncil = useCallback(async (_id: string, updater: (current: Council) => Council) => {
     if (!council) throw missing();
     await write(updater);
@@ -74,11 +65,8 @@ export function useCouncilDataDocument(councilId: string) {
       const created = await document.carryCouncilTopicToNew(topic.id, fallbackTitle ?? '');
       return hydrateCouncil(created.value as Record<string, unknown>, created.resource.id);
     }
-    await act(current => ({
-      ...current,
-      topics: current.topics.map(item => (item.id === topic.id ? { ...item, carriedToCouncilId: targetCouncilId } : item)),
-    }));
-  }, [council, act, document]);
+    await document.carryCouncilTopicToExisting(topic.id, targetCouncilId);
+  }, [council, document]);
 
   const deleteCouncil = useCallback(async (_id: string) => {
     // The editor owns deletion: emptying the document would look like an edit and leave no tombstone.

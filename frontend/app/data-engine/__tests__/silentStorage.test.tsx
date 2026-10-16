@@ -40,7 +40,7 @@ function makeEditor(title: string): ManagedEditor {
   } };
   const observation: Observation = { snapshot: snapshot(title), source: 'server', readiness: 'server', checking: false, error: false };
   return {
-    getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), discardAction: jest.fn(),
+    getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     form: jest.fn(), getState: jest.fn(() => state), getObservation: jest.fn(() => observation), getDelivery: jest.fn(() => []),
     subscribe: jest.fn(() => () => undefined), edit: jest.fn(async () => undefined), commit: jest.fn(async () => undefined),
     save: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined),

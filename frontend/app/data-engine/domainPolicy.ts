@@ -1,6 +1,6 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 
-import { carriedCopy, validNewCouncilCarry } from './councilCarryContent';
+import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { CommandBase, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
@@ -180,17 +180,22 @@ export function prepareAtomicDomainCommand(owner: string, operationId: string,
   const [source, target] = participants;
   if (!source.confirmed.value || source.confirmed.metadata?.deleted || !source.draft
     || source.confirmed.value.userId !== owner || source.draft.userId !== owner) return failure('A live owned source council is required');
-  if (target.confirmed.resource.collection !== 'councils' || target.confirmed.value || target.confirmed.metadata || !target.draft
-    || target.draft.userId !== owner || target.draft.status !== 'preparing') return failure('A new owned destination council is required');
-  if (diffFields(source.confirmed.value, source.draft).some(change => change.path[0] !== 'topics')) return failure('Save ordinary council fields separately', 'atomic-carry-only');
+  if (target.confirmed.resource.collection !== 'councils' || target.confirmed.metadata?.deleted || !target.draft
+    || (target.confirmed.value && target.confirmed.value.userId !== owner) || target.draft.userId !== owner
+    || target.draft.status !== 'preparing' || (!target.confirmed.value && target.confirmed.metadata)) return failure('An owned destination council is required');
+  if (diffFields(source.confirmed.value, source.draft).some(change => change.path[0] !== 'topics')
+    || (target.confirmed.value && diffFields(target.confirmed.value, target.draft).some(change => change.path[0] !== 'topics'))) return failure('Save ordinary council fields separately', 'atomic-carry-only');
   const destinations = newCarryDestinations(source.confirmed, source.draft);
+  const beforeTopics = topics(target.confirmed.value), afterTopics = topics(target.draft);
   if (destinations.length !== 1 || destinations[0] !== target.confirmed.resource.id
-    || source.confirmed.resource.id === target.confirmed.resource.id || topics(target.draft).length !== 1) return failure('Carry one section to one new council');
-  if (!validNewCouncilCarry(topics(source.confirmed.value), topics(source.draft), target.confirmed.resource.id, topics(target.draft))) return failure('Invalid new council carry content');
+    || source.confirmed.resource.id === target.confirmed.resource.id) return failure('Carry one section to another council');
+  if (!validCouncilCarry(topics(source.confirmed.value), topics(source.draft), target.confirmed.resource.id,
+    afterTopics, beforeTopics)) return failure('Invalid council carry content');
   return validateCommand({ protocol: 1, owner, operationId, resource: copy(source.confirmed.resource),
     generation: source.confirmed.metadata?.generation ?? null, dependsOn: [], kind: 'relation', relation: 'council-carry', edits: [
       { resource: copy(source.confirmed.resource), generation: source.confirmed.metadata?.generation ?? null,
         beforeTopics: copy(topics(source.confirmed.value)), afterTopics: copy(topics(source.draft)) },
-      { resource: copy(target.confirmed.resource), generation: null, beforeTopics: [], afterTopics: copy(topics(target.draft)), create: copy(target.draft) },
+      { resource: copy(target.confirmed.resource), generation: target.confirmed.metadata?.generation ?? null,
+        beforeTopics: copy(beforeTopics), afterTopics: copy(afterTopics), ...(!target.confirmed.value ? { create: copy(target.draft) } : {}) },
     ] });
 }

@@ -113,7 +113,7 @@ export class DataSession {
         rebased.conflicts = [...new Map(conflicts.map(conflict => [JSON.stringify(conflict.path), conflict])).values()];
       }
     }
-    if (request.atomic?.kind === 'council-carry' && request.baseline.value && this.state.draft && rebased.value.exists) {
+    if (request.atomic?.kind === 'council-carry' && request.atomic.id === request.id && request.baseline.value && this.state.draft && rebased.value.exists) {
       const ancestor = request.initialized ? request.working.value : predecessor?.value ?? request.baseline.value;
       const before = (ancestor?.topics ?? []) as DocumentData[];
       const carried = ((request.value?.topics ?? []) as DocumentData[]).filter(topic => typeof topic.id === 'string'

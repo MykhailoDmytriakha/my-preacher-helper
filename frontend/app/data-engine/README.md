@@ -552,3 +552,6 @@ DataMembershipStatus. Unknown delivery retains its identity; only proven failure
 The server validates both resources and writes neither on refusal. After actual ACK copies of both
 participants are durable, projection references are released; checkpoint references still protect
 recovery and later unsent typing. See .howto/save-several-documents-atomically.md.
+
+
+Council carry into an existing preparing destination uses the same `carryCouncilTopicToExisting` document facade and atomic `council-carry` participant group as creation. The destination pin includes its confirmed snapshot plus one proven submitted chain; ambiguous/failed chains refuse before capture. Two carries into the same destination use distinct stable copy IDs and chain both participants. The shared content validator admits one matching append without old outcomes or changes to existing target topics. Only source cancellation owns carry marks; the destination reverses its append with the regular merge. Regression: `__tests__/councilCarryAtomic.test.ts`.

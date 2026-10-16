@@ -1,7 +1,7 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { isStructureTag } from '@/utils/structureTags';
 
-import { validNewCouncilCarry } from './councilCarryContent';
+import { validCouncilCarry } from './councilCarryContent';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
@@ -241,9 +241,8 @@ class RelationPlanner {
    * either side is a conflict, never a silent overwrite.
    */
   private async councilCarry(command: Extract<DataCommand, { relation: 'council-carry' }>): Promise<CommandResult | undefined> {
-    const creation = command.edits[1]?.create;
-    if (creation && !validNewCouncilCarry(command.edits[0].beforeTopics, command.edits[0].afterTopics,
-      command.edits[1].resource.id, command.edits[1].afterTopics)) fail(INVALID_DOCUMENT);
+    if (!validCouncilCarry(command.edits[0].beforeTopics, command.edits[0].afterTopics,
+      command.edits[1].resource.id, command.edits[1].afterTopics, command.edits[1].beforeTopics)) fail(INVALID_DOCUMENT);
     for (const edit of command.edits) {
       const council = await this.get(edit.resource);
       if (edit.create !== undefined) {

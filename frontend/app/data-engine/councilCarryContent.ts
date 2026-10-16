@@ -22,12 +22,13 @@ export function carriedCopy(topic: DocumentData, operationId: string): DocumentD
   };
 }
 
-/** New destinations contain exactly the selected words, fresh child IDs and no past outcome. */
-export function validNewCouncilCarry(before: DocumentData[], after: DocumentData[], destinationId: string, copies: DocumentData[]): boolean {
+/** A carried copy contains exactly the selected words, fresh child IDs and no past outcome. */
+export function validCouncilCarry(before: DocumentData[], after: DocumentData[], destinationId: string, copies: DocumentData[], beforeCopies: DocumentData[] = []): boolean {
   const moved = after.filter(topic => topic.carriedToCouncilId === destinationId
     && before.find(old => old.id === topic.id)?.carriedToCouncilId !== destinationId);
-  if (moved.length !== 1 || copies.length !== 1 || before.find(topic => topic.id === moved[0].id)?.carriedToCouncilId) return false;
-  const copied = copies[0];
+  if (moved.length !== 1 || copies.length !== beforeCopies.length + 1 || !equalValues(beforeCopies, copies.slice(0, beforeCopies.length))
+    || before.find(topic => topic.id === moved[0].id)?.carriedToCouncilId) return false;
+  const copied = copies[beforeCopies.length];
   const normalize = (entries: unknown, kind: string) => Array.isArray(entries)
     ? entries.map((entry, index) => ({ ...(entry as DocumentData), id: `check-${kind}-${index}` })) : entries;
   return equalValues(carriedCopy(moved[0], 'check'), { ...copied, id: 'check-topic',
