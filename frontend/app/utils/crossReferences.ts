@@ -96,6 +96,18 @@ export function linksAt(book: CrossRefsBook, place: VersePlace): CrossReference[
 }
 
 /**
+ * Where a passage moved to `bible` ends. A passage stays within its chapter: an end the numbering
+ * moved into the next chapter (KJV Numbers 29:12–40 is Synodal 29:12–39 and 30:1) ends at the last
+ * verse of the start's chapter, never collapses to the first verse; an end with no place in `bible`
+ * leaves the first verse alone.
+ */
+function passageEnd(bible: BibleId, start: VersePlace, end: VersePlace | undefined): number {
+  if (!end || end.book !== start.book || end.chapter < start.chapter) return start.verse;
+  if (end.chapter > start.chapter) return verseCount(bible, start.book, start.chapter);
+  return Math.max(end.verse, start.verse);
+}
+
+/**
  * The links of a verse of `bible`, as places of `bible`, strongest first and then in the Bible's
  * order. A verse that holds two verses of the King James (a psalm's title and its first words) has
  * the links of both; a link found twice keeps its larger weight.
@@ -113,8 +125,7 @@ export function crossReferencesAt(book: CrossRefsBook, bible: BibleId, place: Ve
         book: start.book,
         chapter: start.chapter,
         fromVerse: start.verse,
-        // A passage stays within its chapter: an end the numbering moved to the next one ends at the start.
-        toVerse: end && end.book === start.book && end.chapter === start.chapter ? Math.max(end.verse, start.verse) : start.verse,
+        toVerse: passageEnd(bible, start, end),
         weight: link.weight,
       };
       // A verse pointing at itself is no link.

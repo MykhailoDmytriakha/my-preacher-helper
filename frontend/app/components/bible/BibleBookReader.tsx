@@ -181,6 +181,29 @@ function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (p
   }, [jumpTo, placeRef, scale]);
 }
 
+/**
+ * "Open" in the window of links: the window closes first and the reader moves a frame later. On iOS
+ * the window pins the page (`useScrollLock`) and, released, puts it back where it was — a jump made
+ * while it was pinned was undone, the passage lit out of sight. The pending link is kept until the
+ * frame runs, so an effect run again in between schedules it anew instead of losing it.
+ */
+function useFollowAfterClose(openAt: CrossReferencePlace | null, close: () => void, follow: (reference: CrossReference, origin: Place) => void) {
+  const pendingRef = useRef<{ reference: CrossReference; origin: Place } | null>(null);
+  useEffect(() => {
+    const pending = pendingRef.current;
+    if (openAt || !pending) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      pendingRef.current = null;
+      follow(pending.reference, pending.origin);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [follow, openAt]);
+  return useCallback((reference: CrossReference, origin: Place) => {
+    pendingRef.current = { reference, origin };
+    close();
+  }, [close]);
+}
+
 /** The rows of a passage in the ribbon, for the light of an arrival. */
 function passageRows(root: HTMLElement | null, chapter: number, fromVerse: number, toVerse: number): HTMLElement[] {
   const rows: HTMLElement[] = [];
@@ -551,11 +574,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     );
   }, [bible, bookId, onOpenBook]);
   const travel = useCrossReferenceTravel({ bookId, abbrev, jumpTo, light: lightReference, openElsewhere });
-  const followReference = travel.open;
-  const openReference = useCallback((reference: CrossReference, origin: CrossReferencePlace) => {
-    closeCrossRefs();
-    followReference(reference, origin);
-  }, [closeCrossRefs, followReference]);
+  const openReference = useFollowAfterClose(crossRefs.openAt, closeCrossRefs, travel.open);
 
   // The same place in another Bible: this one is written down first, and the page opens the book
   // in the other Bible, which finds it there.

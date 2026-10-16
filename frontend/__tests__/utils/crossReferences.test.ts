@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { isCrossRefsShaped } from '@/utils/bibleCrossRefsCache';
+import { bibleCrossRefsBase, isCrossRefsShaped } from '@/utils/bibleCrossRefsCache';
 import { getBookIds } from '@/utils/bibleBooks';
 import {
   countCrossReferences,
@@ -33,7 +33,7 @@ function setOf(bookId: string, links: Record<string, [string, number, number, nu
 }
 
 const realSet = (slug: string): CrossRefsBook =>
-  JSON.parse(readFileSync(join(__dirname, '../../public/bible-crossrefs/v1', `${slug}.json`), 'utf8'));
+  JSON.parse(readFileSync(join(__dirname, '../../public', bibleCrossRefsBase, `${slug}.json`), 'utf8'));
 
 describe('cross references', () => {
   it('reads a verse of the set in fives: book, chapter, first verse, last verse, weight', () => {
@@ -72,6 +72,16 @@ describe('cross references', () => {
     expect(crossReferencesAt(set, 'kjv', { book: 'Isaiah', chapter: 19, verse: 2 }).map((reference) => reference.fromVerse)).toEqual([5]);
   });
 
+  it('a passage the numbering carries into the next chapter ends at its own chapter\'s last verse, not at its first', () => {
+    // KJV Numbers 29:12-40 is Synodal 29:12-39 and 30:1 (review finding, 2026-10-16: it collapsed to "29:12").
+    const set = setOf('1 Kings', { '12:32': [['Numbers', 29, 12, 40, 7]] });
+    const anchor = crossReferencesAt(set, 'kjv', { book: '1 Kings', chapter: 12, verse: 32 });
+    expect(anchor[0]).toMatchObject({ book: 'Numbers', chapter: 29, fromVerse: 12, toVerse: 40 });
+    const synodal = crossReferencesAt(set, 'rst', { book: '1 Kings', chapter: 12, verse: 32 });
+    expect(synodal[0]).toMatchObject({ book: 'Numbers', chapter: 29, fromVerse: 12, toVerse: verseCount('rst', 'Numbers', 29) });
+    expect(verseCount('rst', 'Numbers', 29)).toBe(39);
+  });
+
   it('counts each verse\'s main links (three or more independent sources) and all of them', () => {
     const set = setOf('Isaiah', { '19:1': [['Exodus', 12, 12, 12, 5], ['Joshua', 2, 11, 11, 3], ['Genesis', 1, 1, 1, 1]], '19:10': [['Exodus', 7, 19, 19, 1]] });
     const chapters = Array.from({ length: chapterCount('rst', 'Isaiah') }, (_, chapter) => Array.from({ length: verseCount('rst', 'Isaiah', chapter + 1) }, () => ''));
@@ -103,12 +113,28 @@ describe('cross references', () => {
       expect(found.map((reference) => crossReferenceLabel(reference, 'rst', 'ru'))).toContain('Пс 17:11-13');
     });
 
-    it('every book has its file, shaped as the set and named by the book', () => {
+    it('every book has its file, shaped as the set and named by the book, and every passage lies inside its chapter', () => {
+      const outside: string[] = [];
       for (const bookId of getBookIds()) {
         const set = realSet(bookId.toLowerCase().replace(/\s+/g, '-'));
         expect(set.id).toBe(bookId);
         expect(set.chapters).toHaveLength(chapterCount('kjv', bookId));
+        set.chapters.forEach((verses, chapter) => verses.forEach((_, verse) => {
+          for (const link of linksAt(set, { book: bookId, chapter: chapter + 1, verse: verse + 1 })) {
+            // The modules write "Isaiah 52:13-53" for 52:13-53:12 (review finding, 2026-10-16).
+            if (link.fromVerse < 1 || link.toVerse < link.fromVerse || link.toVerse > verseCount('kjv', link.book, link.chapter)) {
+              outside.push(`${bookId} ${chapter + 1}:${verse + 1} → ${link.book} ${link.chapter}:${link.fromVerse}-${link.toVerse}`);
+            }
+          }
+        }));
       }
+      expect(outside).toEqual([]);
+    });
+
+    it('an anchor that is two King James verses gives its links to both — Synodal Song of Solomon 1:1 → 1 Kings 4:32', () => {
+      const set = realSet('song-of-solomon');
+      const kjv12 = linksAt(set, { book: 'Song of Solomon', chapter: 1, verse: 2 });
+      expect(kjv12).toEqual(expect.arrayContaining([expect.objectContaining({ book: '1 Kings', chapter: 4, fromVerse: 32 })]));
     });
   });
 
@@ -124,7 +150,7 @@ describe('cross references', () => {
       await loadCrossRefs('Jude', fetchFn as unknown as typeof fetch);
       expect(fetchFn).toHaveBeenCalledTimes(1);
       expect(fetchFn).toHaveBeenCalledWith(crossRefsUrl('Jude'));
-      expect(crossRefsUrl('1 John')).toBe('/bible-crossrefs/v1/1-john.json');
+      expect(crossRefsUrl('1 John')).toBe(`${bibleCrossRefsBase}/1-john.json`);
     });
 
     it('refuses an answer that is not the book\'s set, and asks again next time', async () => {

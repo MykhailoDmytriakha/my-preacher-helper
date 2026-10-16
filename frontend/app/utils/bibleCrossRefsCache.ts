@@ -9,8 +9,11 @@
 export const BIBLE_CROSSREFS_PATH_PREFIX = '/bible-crossrefs/';
 export const BIBLE_CROSSREFS_CACHE = 'bible-crossrefs';
 
-/** The set's folder: a new set is the next version. */
-const BIBLE_CROSSREFS_VERSION = 'v1';
+/**
+ * The set's folder: a new set is the next version. v2 (2026-10-16): every passage ends inside its
+ * chapter and an anchor that is two King James verses gives its links to both.
+ */
+const BIBLE_CROSSREFS_VERSION = 'v2';
 
 export const bibleCrossRefsBase = `${BIBLE_CROSSREFS_PATH_PREFIX}${BIBLE_CROSSREFS_VERSION}`;
 
