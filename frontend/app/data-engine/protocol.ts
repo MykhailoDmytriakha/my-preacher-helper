@@ -58,6 +58,22 @@ export function getResourcePolicy(collection: string) {
   };
 }
 
+/**
+ * THE FIELDS THE PERSON WRITES, where a document is not wholly theirs.
+ *
+ * The settings document has two authors: the person chooses language, week start, beta switches
+ * and models; the server keeps usage, tier, promotion and referral beside them, and stamps
+ * `lastSeenAt` with its own clock through a command. Whatever asks "did the person choose this?"
+ * — the settings write route, the comparison of a previous-version copy with the server — reads
+ * only these fields. Every other collection is the person's whole document: `null`.
+ * A field dropped from `fields.users` stops counting there too, which is right while the app no
+ * longer offers that choice; a field renamed instead must keep its old name in the list, or an
+ * archived choice stored under it is retired unseen.
+ */
+export function personFields(collection: string): readonly string[] | null {
+  return collection === 'users' ? fields.users.filter(field => field !== 'lastSeenAt') : null;
+}
+
 function validateJson(value: unknown, depth = 0): void {
   if (depth > 64) fail('Document nesting is too deep');
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return;

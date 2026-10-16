@@ -492,13 +492,13 @@ export type Tier = typeof TIER_VALUES[number];
 
 /**
  * Entitlement and admin-info fields stored at the top level of `users/{uid}`.
- * Monetization and referral fields are server-managed; `lastSeenAt` is not.
+ * All of them are server-managed: none is the person's choice (`personFields` in data-engine/protocol.ts).
  */
 export interface UserEntitlement {
   paidTier: Tier;
   /** Server-managed referral attribution. Clients must never write this field. */
   referredBy?: string;
-  /** Client-supplied ISO-8601 activity hint for low-stakes admin display only. */
+  /** ISO-8601 activity hint for low-stakes admin display only: the client asks once a day, the server stamps its own clock. */
   lastSeenAt?: string;
   promotion?: {
     tier: Tier;

@@ -348,7 +348,10 @@ stood in place of every page on every load, in English, since the language setup
 every cached row with the server copy the engine already holds on this device, both read
 through the previous version's transform (`hydrateSermon` aliases, rebuilt series `items`,
 `sermonIds`, `seriesKind`) and without bookkeeping (`updatedAt`, `createdAt`, `rev`,
-`_dataEngine`, `_dataEngineOwner` at every depth; `id` at the top). The server copy is read once
+`_dataEngine`, `_dataEngineOwner` at every depth; `id` at the top). Where the server writes beside
+the person — the settings document, with usage, tier, referral and `lastSeenAt` — both sides are
+compared and shown only on `personFields` (`protocol.ts`): a settings copy never stays for what the
+server counted or stamped since (BUG-20261015-settings-copy-never-matches-server). The server copy is read once
 per document. An exact match is retired in its own transaction, and only while the stored copy
 still has the id and content that were compared — an id freed by another tab can meanwhile
 belong to a new copy. A difference, a document the engine has not read here yet (five attempts
