@@ -8,7 +8,10 @@ import { isMarkColor, isPencilColor, type MarkColor, type PencilColor, type Stro
  * the tool in hand; taken again it is put away. The marker and the pencil open their colours when
  * taken; a colour picked, or a stroke begun, closes them; pressed while their colours are out, they
  * only close them. The device remembers each tool's colour and the last tool: an Apple Pencil paints
- * with them at once, with nothing taken (`beginStroke`).
+ * with them at once, with nothing taken (`beginStroke`) — and takes nothing either: a finger paints only
+ * with a tool it took itself, so a finger after the Pencil still scrolls and taps (the owner's iPad,
+ * 2026-10-16: the Pencil took the tool, the black ring came and went, and a finger then painted). The
+ * Pencil's tool wears a soft ring once a Pencil has drawn here (`penTool`).
  */
 export type MarkToolName = 'marker' | 'pencil' | 'eraser';
 type ColoredTool = 'marker' | 'pencil';
@@ -77,6 +80,8 @@ export type MarkToolState = {
   pencilColor: PencilColor;
   /** Whose colours are out, if any. */
   palette: ColoredTool | null;
+  /** Nothing in hand and a Pencil has drawn here: the tool it paints with, shown with a soft ring. */
+  penTool: MarkToolName | null;
   /** The marker's or the pencil's button: take it (its colours open), close its colours, or put it away. */
   pressColored: (tool: ColoredTool) => void;
   /** The eraser's button: take it or put it away. */
@@ -92,6 +97,7 @@ export function useMarkTool(): MarkToolState {
   const prefs = useSyncExternalStore(subscribe, readPrefs, () => DEFAULT_PREFS);
   const [inHand, setInHand] = useState<MarkToolName | null>(null);
   const [palette, setPalette] = useState<ColoredTool | null>(null);
+  const [penSeen, setPenSeen] = useState(false);
 
   const pressColored = useCallback((tool: ColoredTool) => {
     if (inHand !== tool) {
@@ -131,10 +137,9 @@ export function useMarkTool(): MarkToolState {
 
   const beginStroke = useCallback((pen: boolean): StrokeKind | null => {
     setPalette(null);
+    if (pen) setPenSeen(true);
     const tool = inHand ?? (pen ? prefs.last : null);
-    if (!tool) return null;
-    if (!inHand) setInHand(tool);
-    return strokeOf(tool, prefs);
+    return tool ? strokeOf(tool, prefs) : null;
   }, [inHand, prefs]);
 
   return {
@@ -142,6 +147,7 @@ export function useMarkTool(): MarkToolState {
     color: prefs.color,
     pencilColor: prefs.pencilColor,
     palette,
+    penTool: penSeen && !inHand ? prefs.last : null,
     pressColored,
     pressEraser,
     pickColor,

@@ -74,6 +74,21 @@ describe('Page touch gestures', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it('lets an Apple Pencil write on the Bible\'s text instead of going back; a finger there still goes back', () => {
+    const back = jest.fn();
+    function PenHarness() {
+      const view = usePageGestures({ routeKey: '/bible', enabled: true, onRefresh: jest.fn(), onBack: back });
+      return <div data-testid="page"><output>{view.kind}</output><p data-pen-surface="" data-testid="text">In the beginning</p></div>;
+    }
+    render(<PenHarness />);
+    const stylus = (x: number, y: number) => ({ ...touch(x, y), touchType: 'stylus' });
+    fireEvent.touchStart(screen.getByTestId('text'), { touches: [stylus(200, 105)], changedTouches: [stylus(200, 105)] });
+    move(320, 105); end(320, 105); wait(LEAVE_MS);
+    expect(back).not.toHaveBeenCalled();
+    start(200, 105, screen.getByTestId('text')); move(320, 105); end(320, 105); wait(LEAVE_MS);
+    expect(back).toHaveBeenCalledTimes(1);
+  });
+
   it('allows back navigation while a requested reload has not left the document', async () => {
     const refresh = jest.fn(), back = jest.fn();
     render(<Harness refresh={refresh} back={back} />);

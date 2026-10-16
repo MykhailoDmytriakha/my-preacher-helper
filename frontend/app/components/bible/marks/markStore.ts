@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -7,6 +7,8 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { decodeBookMarks, encodeBookMarks, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { isBibleId } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
+
+import { markWriterFor, type MarksChange } from './markWriter';
 
 import type { BibleId } from '@/utils/bibles';
 
@@ -31,10 +33,13 @@ export const marksDocumentId = (owner: string, bible: BibleId, bookId: string) =
 
 type StoredDocument = { verses?: unknown } & Record<string, unknown>;
 
+const subscribeNone = () => () => undefined;
+const noVersion = () => 0;
+
 export type BookMarksStore = {
   marks: BookMarks;
   /** A stroke: how it changes the book's marks; laid over the newest copy of the document. */
-  save: (change: (marks: BookMarks) => BookMarks) => void;
+  save: (change: MarksChange) => void;
   /** The engine is there and the person's marks are on the screen: strokes can be kept and judged. */
   ready: boolean;
   /** This book's marks in the person's other Bibles, from the same list: a sign at their verses here. */
@@ -58,29 +63,34 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     return [{ bible: value.bible, marks: decodeBookMarks(value.verses) }];
   })), [bible, bookId, documents]);
   const others = useMemo(() => JSON.parse(othersKey) as OtherBookMarks[], [othersKey]);
-  // A kept stroke shows at once and stays until the engine's own copy of the document moves on.
-  const [held, setHeld] = useState<{ marks: BookMarks; over: StoredDocument | null } | null>(null);
-  const shown = held && held.over === stored ? held.marks : marks;
-
-  const save = useCallback((change: (marks: BookMarks) => BookMarks) => {
-    if (!owner || !id) return;
-    const now = new Date().toISOString();
+  // ONE WRITER PER BOOK (`markWriter.ts`): strokes go to the engine one batch at a time, and until the
+  // stored marks show them the page lays them over the stored ones itself.
+  const writer = useMemo(() => (id ? markWriterFor(id) : null), [id]);
+  const version = useSyncExternalStore(writer?.subscribe ?? subscribeNone, writer?.getVersion ?? noVersion, noVersion);
+  const storedRef = useRef(stored);
+  storedRef.current = stored;
+  useEffect(() => {
+    if (!writer || !owner || !id) return;
     const resource = { collection: BIBLE_MARKS, id };
-    const fresh = () => ({ userId: owner, bible, book: bookId, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now });
-    setHeld({ marks: change(shown), over: stored });
-    actions.commit(resource, (current) => (current
-      ? { ...current, verses: encodeBookMarks(change(decodeBookMarks(current.verses))), updatedAt: now }
-      : fresh()))
-      .catch((error: unknown) => {
-        if (needsConnectionFailure(error) && !stored) return actions.create(resource, fresh());
-        throw error;
-      })
-      // A refused stroke: the page returns to the stored marks and says why.
-      .catch((error: unknown) => {
-        setHeld(null);
-        toast.error(refusalMessage(error, t, 'bible.marks.notKept'));
-      });
-  }, [actions, bible, bookId, id, owner, shown, stored, t]);
+    writer.connect((change) => {
+      const now = new Date().toISOString();
+      const fresh = () => ({ userId: owner, bible, book: bookId, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now });
+      return actions.commit(resource, (current) => (current
+        ? { ...current, verses: encodeBookMarks(change(decodeBookMarks(current.verses))), updatedAt: now }
+        : fresh()))
+        .catch((error: unknown) => {
+          if (needsConnectionFailure(error) && !storedRef.current) return actions.create(resource, fresh());
+          throw error;
+        });
+    // A refused stroke leaves the page, which says why.
+    }, (error) => { toast.error(refusalMessage(error, t, 'bible.marks.notKept')); });
+  }, [actions, bible, bookId, id, owner, t, writer]);
+  useEffect(() => { writer?.settle(marks); }, [writer, marks, version]);
+  const shown = useMemo(() => (writer && version >= 0 ? writer.overlay(marks) : marks), [writer, marks, version]);
+
+  const save = useCallback((change: MarksChange) => {
+    if (owner) writer?.push(change);
+  }, [owner, writer]);
 
   // Until the list is read, a stroke could not tell paint from erase on marks it cannot see.
   return { marks: shown, save, ready: actions.ready && collection.state !== null && !collection.loading, others };

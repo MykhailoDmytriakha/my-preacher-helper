@@ -347,7 +347,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
-  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), lineGone: !wide && rowGone, bible, bookId });
+  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId });
 
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
   // at the verse itself. A verse the chapter does not have opens the chapter.
@@ -651,6 +651,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
             <article
               ref={textRef}
               data-gesture-ignore={marks.gestureIgnore}
+              data-pen-surface={marks.penSurface}
               className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
               <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} />

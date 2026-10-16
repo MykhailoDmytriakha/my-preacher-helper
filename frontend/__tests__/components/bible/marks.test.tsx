@@ -1,12 +1,16 @@
 import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { useRef } from 'react';
 import { toast } from 'sonner';
 
 import { useBookMarks } from '@/components/bible/marks/markStore';
+import { useMarkStrokes } from '@/components/bible/marks/useMarkStrokes';
 import { useMarkTool } from '@/components/bible/marks/markTool';
+import { forgetMarkWriters } from '@/components/bible/marks/markWriter';
 import { MarkToolbar } from '@/components/bible/marks/MarkToolbar';
 import { mapVerseText, wordIndexAt, wordsRange } from '@/components/bible/marks/verseWordDom';
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
-import { countVerseWords, type BookMarks } from '@/utils/bibleMarks';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { countVerseWords, verseOrder, type BookMarks } from '@/utils/bibleMarks';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
@@ -15,6 +19,7 @@ jest.mock('@/data-engine/react.client', () => ({
 }));
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
+jest.mock('@/utils/appDiagnostics', () => ({ ...jest.requireActual('@/utils/appDiagnostics'), recordDiagnostic: jest.fn() }));
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { meaning?: string }) => (options?.meaning ? `${key}:${options.meaning}` : key) }),
@@ -58,6 +63,7 @@ describe('marks kept through the data engine', () => {
   let loading = false;
 
   beforeEach(() => {
+    forgetMarkWriters();
     create.mockReset().mockResolvedValue(undefined);
     commit.mockReset().mockResolvedValue(undefined);
     jest.mocked(toast.error).mockReset();
@@ -117,12 +123,34 @@ describe('marks kept through the data engine', () => {
   });
 
   it('a refused stroke returns the page to the stored marks and says so', async () => {
-    commit.mockRejectedValue(Object.assign(new Error('Device storage does not answer'), { code: 'storage-silent' }));
+    commit.mockRejectedValue(Object.assign(new Error('A decision waits'), { code: 'decision-required' }));
     documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: {} } }];
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
     await act(async () => result.current.save(paintFirstWord));
     expect(result.current.marks).toEqual({});
-    expect(toast.error).toHaveBeenCalledWith('dataSync.readOnly.storage');
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a stroke on the page while the device\'s storage does not answer', async () => {
+    commit.mockRejectedValue(Object.assign(new Error('Device storage does not answer'), { code: 'storage-silent' }));
+    documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: {} } }];
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    await act(async () => result.current.save(paintFirstWord));
+    expect(result.current.marks).toEqual({ '26:4': { m: [[0, 0, 'red']] } });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('sends strokes made quickly one batch at a time', async () => {
+    let answer!: () => void;
+    commit.mockImplementation(() => new Promise<void>((resolve) => { answer = resolve; }));
+    documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: {} } }];
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    act(() => result.current.save(paintFirstWord));
+    act(() => result.current.save((marks) => ({ ...marks, '26:5': { m: [[1, 1, 'blue']] } })));
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(result.current.marks).toEqual({ '26:4': { m: [[0, 0, 'red']] }, '26:5': { m: [[1, 1, 'blue']] } });
+    await act(async () => answer());
+    expect(commit).toHaveBeenCalledTimes(2);
   });
 
   it('takes no stroke while the person\'s marks are not read yet', () => {
@@ -237,19 +265,57 @@ describe('the three tools', () => {
     expect(screen.getByTestId('in-hand')).toHaveTextContent('pencil');
   });
 
-  it('a pen with nothing in hand paints with the last tool and the remembered colour', () => {
+  it('a pen with nothing in hand paints with the last tool and takes nothing, so a finger still only scrolls', () => {
     const { result } = renderHook(() => useMarkTool());
     act(() => result.current.pickColor('green'));
     act(() => result.current.pressColored('marker'));
     expect(result.current.inHand).toBeNull();
+    expect(result.current.penTool).toBeNull();
     let kind: ReturnType<typeof result.current.beginStroke> = null;
     act(() => {
       kind = result.current.beginStroke(true);
     });
     expect(kind).toEqual({ tool: 'marker', color: 'green' });
-    expect(result.current.inHand).toBe('marker');
-    act(() => result.current.pressColored('marker'));
+    // The owner's iPad: the Pencil used to take the tool, and the black ring came and went.
     expect(result.current.inHand).toBeNull();
+    expect(result.current.penTool).toBe('marker');
     expect(result.current.beginStroke(false)).toBeNull();
+    act(() => result.current.pressEraser());
+    expect(result.current.penTool).toBeNull();
+  });
+});
+
+describe('a stroke over the words', () => {
+  // jsdom lays out nothing: no element stands under any point.
+  beforeEach(() => { document.elementFromPoint = jest.fn(() => null); });
+
+  function Ribbon({ begin }: { begin: () => null }) {
+    const rootRef = useRef<HTMLElement | null>(null);
+    useMarkStrokes({ rootRef, ready: true, order: verseOrder([['In the beginning']], countVerseWords), marks: {}, save: jest.fn(), armed: false, begin, preview: jest.fn(), enabled: true });
+    return (
+      <article ref={rootRef}>
+        <div data-verse="1:1">
+          <span data-verse-text="" data-testid="words">In the beginning</span>
+          <button type="button">3 links</button>
+        </div>
+      </article>
+    );
+  }
+
+  it('starts only on a verse\'s words: a Pencil on the links\' chip presses the chip and paints nothing', () => {
+    const begin = jest.fn(() => null);
+    render(<Ribbon begin={begin} />);
+    // jsdom has no PointerEvent: a mouse event that says it is a pen.
+    const penDown = (target: Element) => {
+      const event = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { pointerType: { value: 'pen' }, pointerId: { value: 1 } });
+      target.dispatchEvent(event);
+    };
+    penDown(screen.getByRole('button', { name: '3 links' }));
+    expect(recordDiagnostic).not.toHaveBeenCalled();
+    penDown(screen.getByTestId('words'));
+    // jsdom draws no text, so no word is under the pen: the stroke went as far as looking for one.
+    expect(recordDiagnostic).toHaveBeenCalledWith('mark', { source: 'pen', result: 'missed' });
+    expect(begin).not.toHaveBeenCalled();
   });
 });
