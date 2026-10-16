@@ -1246,6 +1246,9 @@ export default function StepByStepWizard({
                     key={editingSession}
                     onClose={closeChunk}
                     chunk={editingChunk}
+                    conflict={speech.editingConflict}
+                    onResolve={speech.resolveChunk}
+                    onUseStored={speech.useStoredChunk}
                     onSave={handleSaveChunk}
                 />
             )}

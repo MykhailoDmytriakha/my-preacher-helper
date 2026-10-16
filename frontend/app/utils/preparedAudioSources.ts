@@ -90,3 +90,11 @@ export function replacePreparedAudioSections(
     .map((chunk, index) => ({ ...chunk, index }));
   return putPreparedAudio(doc, mode, chunks, { id: replacement.id, sections: [...(source?.sections ?? []), ...replacement.sections] });
 }
+
+/** A correction index is stable only within one prepared set with the complete same layout. */
+export function preparedAudioTargetUnchanged(opening: PreparedAudioSet, current: PreparedAudioSet | undefined, index: number): boolean {
+  const layout = (source: PreparedAudioSet) => heardChunks(source.chunks.map(chunk => ({ ...chunk, text: '' })));
+  return Boolean(current && current.revision > 0 && current.id === opening.id
+    && Number.isSafeInteger(index) && index >= 0 && index < current.chunks.length
+    && current.chunks[index].index === index && layout(opening) === layout(current));
+}

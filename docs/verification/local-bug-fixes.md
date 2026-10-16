@@ -857,3 +857,28 @@ After separate publication authorization: confirm deployed revision/worker and a
 | 2. Cancel/retry mixes bytes | Completed batches scoped to owner/sermon/body | wizard cancel/WAV/cross-context cases | offsets0,3,3; exact AAAACCCC; lateBBBB excluded |
 | 3. Late UI/finally or usage refresh hides success | Exact run predicates and isolated usage refresh | direct replacement and wizard usage failure tests | Immediate cancel returns to preview; successful download UI visible |
 | 4. Existing generation/source flow | Existing41 wizard cases retained |821-suite full gate, types/lint/build |390/820/1280 primary visual; provider/production pending |
+
+## BUG-20261016-audio-editor-conflict-has-no-resolution
+
+Stage: locally verified and independently source-reviewed; exact-version fresh acceptance is recorded separately in the case. Production pending.
+
+In Sermon → Audio → Source → Edit Fragment, a refused correction previously kept the draft but repeated the opening version forever. The editor now displays the exact saved snapshot returned with the refusal and offers Save My Text or Use Saved Text. A focused AudioCorrectionConflict component owns the readback/selection UI; usePreparedSpeech captures the displayed candidate, editor session, source token and complete expected chunks across authentication and transport awaits. Re-prepared or changed layouts require an explicit target; another refusal retains both the draft and a still-valid chosen target. Missing sources offer copying without a write. The canonical HTTP writer and transactional server checks remain unchanged.
+
+Every close route shares the existing discard question and blocks while saving. Taking stored text asks before replacing local words and updates the next save baseline only after acceptance. Ordinary network/auth errors remain visible. The live browser uncovered parent Escape ownership above the inline child; the editor now follows the existing body-portal recipe at z110 over its parent z100, with confirmation at z300. The shared modal registry remains unchanged.
+
+Original baseline af361714: eight behavioral RED assertions (six real modal close/dirty exits plus two real-wizard resolution/target cases), preserving49 old wizard cases. A further nested-parent behavioral RED was obtained before its portal fix. A selected-target WIP RED and excluded path/mock/fixture trials are labelled separately. Final focused gate:6 suites/95 tests. Full gate:823 suites/8733 tests pass;3 suites/17 tests skipped. TypeScript passes; ESLint0 errors/26 inherited warnings. Production build blDKrcGymSlsQh4bCVNvf passes.
+
+Actual localhost Chromium: held-save Escape/backdrop cannot close the editor; native Tab/Shift+Tab remain inside it. Displayed candidate/version/full text drive the next request. Same and moved target flows each pass23 checks, including controlled offline transport failure/reconnect, repeated refusal, exact intended-fragment correction, neighbor retention, exact clipboard sink contents, declined/accepted stored choice and the subsequent revision5 baseline. Clean repeats pass21 checks each; missing-source flow passes7 checks with no replacement action. Page errors/unexpected mutations0/0. Primary inspected final clean and network-failure comparison PNGs at390x844,820x1100,1280x1100, plus missing-source view, individually at original resolution; no horizontal overflow. Disposable contexts closed; original groups tab online, one context/one tab.
+
+These are real UI/transport flows with synthetic selected QA snapshots and intercepted write receipts. Clipboard checks use an injected sink. No database write or provider call was made; this does not prove real Firestore persistence, provider speech, Safari/PWA, physical devices or production. The modal draft remains memory-only; close/discard protection does not promise reload recovery. The retained initial AFTER failure proves why the nested fix was needed.
+
+Exact sources, class map, original record, RED/GREEN/build logs, scripts/results/PNGs, source review and excluded attempts are frozen in .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/audio-editor-manifest.json. The independently accepted prior audio-source/audio-lifetime evidence remains unchanged. No push, merge or deployment occurred.
+
+After separate publication authorization: confirm revision/worker; preserve an authorized QA sermon's source sets; repeat actual slow correction with Escape/X/backdrop, real changed-source refusal, explicit keep/take and cancel, newly prepared target selection, repeated refusal, offline/reconnect and sequential device use. Check actual readback after reload, unchanged neighboring fragments and Original/AI sources. Restore QA fields deliberately; no paid speech generation is required for this editor check.
+
+| Item | Result | Regression | Browser/manual |
+|---|---|---|---|
+| 1. Repeated opening-version refusal | Exact displayed candidate and explicit resolution | wizard, hook and target-layout tests | Same/moved targets, second refusal and exact expected payload |
+| 2. Draft discarded by close or pending parent Escape | Shared discard/save guard and canonical foreground portal | real modal and nested parent regression | Pending Escape/backdrop; native Tab containment |
+| 3. Taking stored text or missing target | Confirm replacement, update baseline, preserve missing-source draft | hook/modal integration cases | Cancel/take, exact copy sink, missing source with no write |
+| 4. Existing source/generation behavior | Preserved; no server writer changes |49 previous wizard cases and full823-suite gate | Original source/neighbor retained; production/device acceptance pending |

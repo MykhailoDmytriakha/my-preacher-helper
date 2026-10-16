@@ -6,14 +6,15 @@ import { saidError, type FailureWords } from '@/utils/actionFailureMessage';
 import { CHUNKS_CHANGED, storedSource } from '@/utils/audioChunkIdentity';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
-import { mergePreparedAudioSources, preparedAudioCovers, preparedAudioVersion, readPreparedAudioSources } from '@/utils/preparedAudioSources';
+import { mergePreparedAudioSources, preparedAudioCovers, preparedAudioVersion, preparedAudioTargetUnchanged, readPreparedAudioSources } from '@/utils/preparedAudioSources';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk, AudioSourceMode, PreparedAudioSet, PreparedAudioSources, SermonSection, TTSProvider } from '@/types/audioGeneration.types';
 
 export type SpeechPreview = AudioChunk & { preview: string };
 interface SourceState { identity: string; sources: PreparedAudioSources; choice: AudioSourceMode }
-interface Editor { identity: string; session: string; mode: AudioSourceMode; source: PreparedAudioSet; chunk: SpeechPreview }
+export interface SpeechCorrectionConflict { id: string; source: PreparedAudioSet | undefined; targetIndex: number | null }
+interface Editor { identity: string; session: string; mode: AudioSourceMode; source: PreparedAudioSet; chunk: SpeechPreview; conflict?: SpeechCorrectionConflict }
 interface Options {
   owner: string | null; sermonId: string; sermon: Sermon | null; provider: TTSProvider; sections: SermonSection[];
   setSections: (value: SermonSection[]) => void; setError: (value: FailureWords | null) => void;
@@ -128,36 +129,70 @@ export function usePreparedSpeech(options: Options) {
     if (!current(identity) || !source) return;
     setEditor({ identity, session: newClientId(), mode, source: JSON.parse(JSON.stringify(source)) as PreparedAudioSet, chunk });
   }, [identity, current, mode, source]);
-  const closeChunk = useCallback(() => setEditor(null), []);
+  const closeChunk = useCallback(() => { latest.current.editor = null; setEditor(null); }, []);
 
-  const saveChunk = useCallback(async (index: number, text: string) => {
+
+  const saveCorrection = useCallback(async (index: number, text: string, decision?: SpeechCorrectionConflict) => {
     const captured = latest.current.editor, key = identity;
-    if (!captured || captured.identity !== key || !current(key)) throw saidError(CHANGED);
-    const headers = await getAuthenticatedRequestHeaders(); if (!current(key)) throw saidError(CHANGED);
-    const response = await latest.current.options.requestCorrection(index, { text, mode: captured.mode, source: preparedAudioVersion(captured.source), expected: captured.source.chunks }, headers);
+    if (!captured || captured.identity !== key || !current(key)
+      || (decision && captured.conflict !== decision)) throw saidError(CHANGED);
+    const opening = decision ? decision.source : captured.source;
+    if (!opening || !Number.isSafeInteger(index) || index < 0 || index >= opening.chunks.length) throw saidError(CHANGED);
+    const headers = await getAuthenticatedRequestHeaders();
+    if (!current(key) || latest.current.editor?.session !== captured.session
+      || (decision && latest.current.editor.conflict !== decision)) throw saidError(CHANGED);
+    const response = await latest.current.options.requestCorrection(index, {
+      text, mode: captured.mode, source: preparedAudioVersion(opening), expected: opening.chunks,
+    }, headers);
     const data = await response.json(); if (!current(key)) throw saidError(CHANGED);
     if (!response.ok) {
-      if (isSourceConflict(response, data)) { reconcile(data); throw saidError(CHANGED); }
+      if (isSourceConflict(response, data)) {
+        reconcile(data);
+        // Explicit absence in a refusal is meaningful; monotonic cache merging cannot supply this candidate.
+        const incoming = readPreparedAudioSources({ audioSources: data.sources, audioChunks: data.chunks, audioMetadata: { mode: data.mode } });
+        const source = incoming[captured.mode];
+        const conflict: SpeechCorrectionConflict = {
+          id: newClientId(), source,
+          targetIndex: preparedAudioTargetUnchanged(opening, source, index) ? index : null,
+        };
+        setEditor(previous => previous?.identity === key && previous.session === captured.session ? { ...previous, conflict } : previous);
+        throw saidError(CHANGED);
+      }
       throw new Error(data.error || 'Save failed');
     }
     if (object(data.sources)) reconcile(data);
     else {
-      const corrected = { ...captured.source, chunks: captured.source.chunks.map(chunk => chunk.index === index ? { ...chunk, text } : chunk) };
+      const corrected = { ...opening, chunks: opening.chunks.map((chunk, position) => position === index ? { ...chunk, text } : chunk) };
       setState(previous => {
         const held = previous.sources[captured.mode];
-        if (previous.identity !== key || !held || held.id !== captured.source.id || held.revision !== captured.source.revision) return previous;
+        if (previous.identity !== key || !held || held.id !== opening.id || held.revision !== opening.revision) return previous;
         return { ...previous, sources: { ...previous.sources, [captured.mode]: corrected } };
       });
     }
     setEditor(previous => previous?.identity === key && previous.session === captured.session ? null : previous);
   }, [identity, current, reconcile]);
 
+  const saveChunk = useCallback((index: number, text: string) => saveCorrection(index, text), [saveCorrection]);
+  const resolveChunk = useCallback((decision: SpeechCorrectionConflict, index: number, text: string) =>
+    saveCorrection(index, text, decision), [saveCorrection]);
+  const useStoredChunk = useCallback((decision: SpeechCorrectionConflict, index: number): SpeechPreview | null => {
+    const captured = latest.current.editor;
+    const source = decision.source;
+    if (!captured || !current(identity) || captured.identity !== identity || captured.conflict !== decision
+      || !source || !Number.isSafeInteger(index) || index < 0 || index >= source.chunks.length) return null;
+    const chunk = { ...source.chunks[index], preview: source.chunks[index].text };
+    setEditor(previous => previous?.identity === identity && previous.session === captured.session && previous.conflict === decision
+      ? { ...previous, source, chunk, conflict: undefined } : previous);
+    return chunk;
+  }, [identity, current]);
+
   return { mode, chunks, source, sources, isLoading: wait?.identity === identity,
     hasCoverage: preparedAudioCovers(source, options.sections),
     ready: preparedAudioCovers(source, options.sections) && chunks.some(chunk => options.sections.includes(chunk.sectionId)),
-    selectSource, prepareSource, reconcile, openChunk, closeChunk, saveChunk,
+    selectSource, prepareSource, reconcile, openChunk, closeChunk, saveChunk, resolveChunk, useStoredChunk,
     editingChunk: editor?.identity === identity ? editor.chunk : null,
     editingSession: editor?.identity === identity ? editor.session : undefined,
+    editingConflict: editor?.identity === identity ? editor.conflict : undefined,
     generationSource: source ? preparedAudioVersion(source) : undefined,
   };
 }

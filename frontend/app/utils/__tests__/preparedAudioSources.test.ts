@@ -1,4 +1,4 @@
-import { activatePreparedAudio, mergePreparedAudioSources, PreparedAudioChanged, preparedAudioCovers, preparedAudioVersion, putPreparedAudio, readPreparedAudioSources, replacePreparedAudioSections, requirePreparedAudio } from '../preparedAudioSources';
+import { activatePreparedAudio, mergePreparedAudioSources, PreparedAudioChanged, preparedAudioCovers, preparedAudioTargetUnchanged, preparedAudioVersion, putPreparedAudio, readPreparedAudioSources, replacePreparedAudioSections, requirePreparedAudio } from '../preparedAudioSources';
 import type { AudioChunk, PreparedAudioSources } from '@/types/audioGeneration.types';
 
 const chunk = (text: string): AudioChunk => ({ index: 0, sectionId: 'introduction', text, createdAt: '2026-10-01T00:00:00.000Z' });
@@ -7,6 +7,20 @@ const raw = [chunk('Original words')];
 const legacy = { audioChunks: ai, audioMetadata: { mode: 'ai', voice: 'onyx', lastGenerated: 'earlier' } };
 
 describe('independently saved speech sources', () => {
+
+  it('keeps a correction target only within a known unchanged preparation layout', () => {
+    const opening = putPreparedAudio(legacy, 'ai', ai, { id: 'same-preparation', sections: ['introduction'] }).audioSources.ai!;
+    const corrected = { ...opening, revision: 2, chunks: [{ ...opening.chunks[0], text: 'New saved words', kind: 'body' as const }] };
+    expect(preparedAudioTargetUnchanged(opening, corrected, 0)).toBe(true);
+    expect(preparedAudioTargetUnchanged(opening, { ...corrected, id: 'new-preparation' }, 0)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, { ...corrected, revision: 0 }, 0)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, undefined, 0)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, corrected, -1)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, { ...corrected, chunks: [...corrected.chunks, { ...chunk('Added'), index: 1 }] }, 0)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, { ...corrected, chunks: [{ ...corrected.chunks[0], sectionId: 'mainPart' }] }, 0)).toBe(false);
+    expect(preparedAudioTargetUnchanged(opening, { ...corrected, chunks: [{ ...corrected.chunks[0], kind: 'transition' }] }, 0)).toBe(false);
+  });
+
   it('reads old words without mutating the original or inventing section coverage', () => {
     const before = JSON.stringify(legacy), sources = readPreparedAudioSources(legacy);
     expect(sources.ai?.chunks).toEqual(ai); expect(sources.raw).toBeUndefined();

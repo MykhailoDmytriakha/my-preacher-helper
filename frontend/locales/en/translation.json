@@ -1011,7 +1011,14 @@
     "sourceSwitchFailed": "Could not switch the source; the previous one is shown. Try again.",
     "chunksChangedBeforeAudio": "The stored text differs from what was shown, so no audio was made. The stored version is shown now — review it and generate again.",
     "chunkFailed": "Fragment {{chunks}} could not be voiced, so no file was made — it would be missing that text. Press “Generate Audio” again: the finished parts are kept, only the missing one is repeated.",
-    "streamInterrupted": "The connection broke before the audio was finished, so no file was made. Press “Generate Audio” again: the finished parts are kept, only the rest is repeated."
+    "streamInterrupted": "The connection broke before the audio was finished, so no file was made. Press “Generate Audio” again: the finished parts are kept, only the rest is repeated.",
+    "correctionConflictTitle": "The saved text changed. Your correction is still here.",
+    "correctionSourceMissing": "There is no saved fragment to change. Keep or copy your correction before closing.",
+    "correctionChooseTarget": "Choose the fragment to change",
+    "correctionTargetPlaceholder": "The fragments were prepared again. Select the intended fragment.",
+    "correctionStoredText": "Saved text",
+    "correctionSaveMine": "Save my text",
+    "correctionUseStored": "Use saved text"
   },
   "tags": {
     "introduction": "Introduction",

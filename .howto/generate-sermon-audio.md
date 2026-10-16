@@ -51,3 +51,11 @@ The previous single-set design and two failed review rounds remain historical ev
 Cancel invalidates immediately and returns to the working view. Retrying the exact body in the same live scope can reuse completed batches; changed source/settings/body or owner/sermon/window cannot. Retired callbacks cannot update progress/errors, append bytes, download a file or clear a replacement run. Keep exact run predicates inside queued React state updaters as well as synchronous current/live checks. Leaving generation must not discard separately persisted authored preparation.
 
 After an accepted download, usage refresh is a separate background refresh; failure must not remove the successful file. Client cancellation stops its request/publication; it does not prove refund or cancellation of provider work already admitted on the server. Local lifecycle proof and the future production plan are in the phase31 audio-lifetime artifacts.
+
+## A refused correction
+
+An audio correction retains its opening editor session and prepared source. A409 stores an exact separate comparison snapshot, including an explicitly absent selected source; monotonic source-cache merge cannot stand in for that response. Show both the typed and saved text. Explicit resolution submits the displayed source token and complete expected chunks through the existing correction route.
+
+preparedAudioTargetUnchanged reuses heardChunks normalization to compare the complete layout with words blanked. Only one known preparation with the same layout can retain its index. Re-preparation/reindex requires the person to select and read the current target; a second text-only revision compares against the last submitted candidate/index so that selection remains. Old session/candidate/auth callbacks cannot post or update a replacement editor.
+
+Use stored text updates the editor baseline only after its deliberate discard choice. Pending saves block X, backdrop, Cancel and Escape; dirty close uses useDiscardQuestion. Ordinary resolution failures stay visible beside the comparison. This is an in-memory editor, not a new durable outbox; do not promise recovery after reload.

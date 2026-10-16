@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
@@ -29,6 +29,7 @@ if (typeof TextEncoder === 'undefined') {
 // --- Mocks --- //
 let mockLanguage = 'en';
 let mockOwner = 'user-123';
+let mockRealChunkEditor = false;
 let mockConcatenateAudioBlobs: jest.Mock;
 let mockRefreshAiUsage: jest.Mock;
 
@@ -86,6 +87,7 @@ jest.mock('lucide-react', () => {
 jest.mock('@/components/audio/ChunkEditorModal', () => function MockChunkEditor(props: any) {
     const React = jest.requireActual('react');
     const [error, setError] = React.useState(null);
+    if (mockRealChunkEditor) return React.createElement(jest.requireActual('@/components/audio/ChunkEditorModal').default, props);
     return (
         <div data-testid="chunk-editor-modal">
             <div>{props.chunk?.text}</div>
@@ -175,6 +177,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         jest.clearAllMocks();
         mockLanguage = 'en';
         mockOwner = 'user-123';
+        mockRealChunkEditor = false;
         mockRefreshAiUsage = jest.fn().mockResolvedValue(undefined);
         mockConcatenateAudioBlobs = jest.fn((blobs: Blob[]) =>
             jest.requireActual('@/utils/audioConcat').concatenateAudioBlobs(blobs));
@@ -188,6 +191,48 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     // An API call in one test arms connectivity's 3 s recovery timer, which writes module-level
     // state after the test ends. Nothing here reads it yet; reset so no later test inherits it.
     afterEach(() => __resetConnectivityForTests());
+
+
+    describe('real correction decisions', () => {
+        beforeEach(() => { mockRealChunkEditor = true; });
+        it.each([false, true])('resolves a shown conflict with an explicit target when preparation changed: %s', async changed => {
+            const opening = [{ index: 0, text: 'Opening target', sectionId: 'introduction' }];
+            const latest = changed
+                ? [{ index: 0, text: 'New first fragment', sectionId: 'introduction' }, { index: 1, text: 'Current moved target', sectionId: 'introduction' }]
+                : [{ index: 0, text: 'Current stored target', sectionId: 'introduction' }];
+            const sourceId = changed ? 'new-preparation' : 'ai-source', targetIndex = changed ? 1 : 0;
+            mockUseSermon.mockReturnValue(sermonWithSources(opening, []));
+            (global.fetch as jest.Mock)
+                .mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({
+                    code: 'chunks-changed', mode: 'ai', sources: { ai: preparedSource(sourceId, 4, latest) },
+                }) })
+                .mockResolvedValueOnce({ ok: true, json: async () => ({
+                    sources: { ai: preparedSource(sourceId, 5, latest.map((chunk, index) => index === targetIndex ? { ...chunk, text: 'My retained correction' } : chunk)) },
+                }) });
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            fireEvent.click(await screen.findByText('Opening target'));
+            const editor = screen.getByRole('dialog');
+            fireEvent.change(within(editor).getByRole('textbox'), { target: { value: 'My retained correction' } });
+            fireEvent.click(within(editor).getByRole('button', { name: 'Save' }));
+            if (changed) {
+                const choice = await within(editor).findByRole('combobox', { name: 'Choose the fragment to change' });
+                expect(within(editor).getByRole('button', { name: 'Save my text' })).toBeDisabled();
+                fireEvent.change(choice, { target: { value: String(targetIndex) } });
+            }
+            expect(await within(editor).findByText(latest[targetIndex].text, { exact: true })).toBeInTheDocument();
+            expect(within(editor).getByRole('textbox')).toHaveValue('My retained correction');
+            fireEvent.click(within(editor).getByRole('button', { name: 'Save my text' }));
+            await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+            const calls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/chunks/'));
+            expect(calls).toHaveLength(2);
+            expect(String(calls[1][0])).toContain('/audio/chunks/' + targetIndex);
+            expect(JSON.parse(calls[1][1].body)).toMatchObject({
+                text: 'My retained correction', mode: 'ai', source: { id: sourceId, revision: 4 }, expected: latest,
+            });
+            if (changed) expect(screen.getByText('New first fragment')).toBeInTheDocument();
+        });
+    });
 
     describe('generation lifetime isolation', () => {
         const chunks = [0, 1, 2, 3].map(i => ({ index: i, text: `Saved narration ${i}`, sectionId: 'introduction' }));
