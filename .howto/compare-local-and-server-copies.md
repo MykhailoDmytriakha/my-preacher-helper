@@ -13,6 +13,10 @@ For a migrated collection, `useDataDocument` and `useDataCollection` own freshne
 - Current evidence is partial: `types.ts` carries operation identity and dependencies, `commits.ts` carries the baseline and predecessor, and `runtime.ts` assigns `JournalEntry.createdAt` when a prepared command enters the journal. That timestamp is not the original UI action time. `server.ts` stores committed version evidence in the receipt; an explicit action-time/database-commit-time pair is not implemented yet. Inspect these canonical modules before proposing a new history store or claiming chronological delete resolution already works.
 - Engine `updatedAt` now records one server acceptance time for each changed live transaction effect (`acceptedResource.server.ts` via `server.ts`); ACK and stored snapshots agree. Bookkeeping-only edits, no-ops and receipt replays do not advance it. This is not an action-time/database-commit-time pair, nor a content priority rule. Resource-document rebase excludes root timestamp metadata and update application leaves it for the accepted-write rule (`protocol.ts`). Generic value merge, including nested authored fields, remains ordinary content.
 
+## Previous-version archive review
+
+The archive notice is internal cache maintenance, not another freshness reader. `snapshots.client.ts` publishes owner/resource-only `subscribeSnapshotChanges` signals after an accepted, changed IndexedDB write completes; document and collection readers share that adapter. `LegacyQueryCopies` uses the signal to rerun the existing `retireLegacyEchoes` comparison and reread its local archive. It keeps differing, missing and unreadable copies; accepted comparison choices remain bound to the server fingerprint. The local signal does not cross tabs: visible/focus return rereads their shared IndexedDB. Do not turn this signal into a network query, restore writer, or proof that the server is current.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility paths are not templates for new features.

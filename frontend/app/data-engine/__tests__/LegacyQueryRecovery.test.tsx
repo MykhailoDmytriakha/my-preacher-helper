@@ -17,7 +17,16 @@ jest.mock('../legacyQueryRecovery.client', () => {
     preserveLegacyQueryCache: jest.fn(), listLegacyQueryCopies: jest.fn(), retireLegacyEchoes: jest.fn(), removeLegacyCopies: jest.fn() };
 });
 const mockServerCopies = new Map<string, Record<string, unknown> | null>();
+const mockSnapshotListeners = new Set<{ owner: string; listener: (resource: { collection: string; id: string }) => void }>();
+const publishSnapshot = (owner = 'owner', resource = { collection: 'councils', id: 'council' }) => {
+  for (const subscription of mockSnapshotListeners) if (subscription.owner === owner) subscription.listener(resource);
+};
 jest.mock('../snapshots.client', () => ({
+  subscribeSnapshotChanges: (owner: string, listener: (resource: { collection: string; id: string }) => void) => {
+    const subscription = { owner, listener };
+    mockSnapshotListeners.add(subscription);
+    return () => { mockSnapshotListeners.delete(subscription); };
+  },
   createIndexedDbSnapshots: () => ({
     read: async (_owner: string, resource: { collection: string; id: string }) => {
       const key = `${resource.collection}/${resource.id}`;
@@ -41,6 +50,7 @@ describe('legacy cache preservation UI', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     mockServerCopies.clear();
+    mockSnapshotListeners.clear();
     jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 0 });
     jest.mocked(removeLegacyCopies).mockResolvedValue(1);
     jest.mocked(compareLegacyCopy).mockImplementation(actualClient.compareLegacyCopy);
@@ -470,6 +480,98 @@ describe('legacy cache preservation UI', () => {
     await openReview();
     expect(await screen.findByRole('heading', { name: record.title })).toBeInTheDocument();
     expect(screen.queryByText(echo.title)).not.toBeInTheDocument();
+  });
+
+  it('retires an exact echo accepted after the bounded retries have ended', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+      jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 1 });
+      render(<LegacyQueryCopies owner="owner" />);
+      await act(async () => { await jest.advanceTimersByTimeAsync(130_000); });
+      expect(retireLegacyEchoes).toHaveBeenCalledTimes(5);
+      expect(screen.getByRole('button', { name: /legacyRecovery.review/ })).toBeInTheDocument();
+      mockServerCopies.set('councils/council', { title: record.title });
+      jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 1, undecided: 0 });
+      jest.mocked(listLegacyQueryCopies).mockResolvedValue([]);
+      await act(async () => { publishSnapshot(); await jest.advanceTimersByTimeAsync(0); });
+      expect(retireLegacyEchoes).toHaveBeenCalledTimes(6);
+      expect(screen.queryByRole('button', { name: /legacyRecovery.review/ })).not.toBeInTheDocument();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('shows a late differing server copy without removing the archived words', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+      jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 1 });
+      render(<LegacyQueryCopies owner="owner" />);
+      await act(async () => { await jest.advanceTimersByTimeAsync(130_000); });
+      fireEvent.click(screen.getByRole('button', { name: /legacyRecovery.review/ }));
+      expect(screen.getByText('legacyRecovery.serverMissing')).toBeInTheDocument();
+      mockServerCopies.set('councils/council', { title: 'Late server title' });
+      jest.mocked(retireLegacyEchoes).mockResolvedValue({ retired: 0, undecided: 0 });
+      await act(async () => { publishSnapshot(); await jest.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByText('legacyRecovery.serverMissing')).not.toBeInTheDocument();
+      expect(screen.getByText(/Late server title/)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: record.title })).toBeInTheDocument();
+      expect(removeLegacyCopies).not.toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('refreshes a present comparison again and ignores unrelated owners and resources', async () => {
+    mockServerCopies.set('councils/council', { title: 'Earlier server title' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+    const view = render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(await screen.findByText(/Earlier server title/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('legacyRecovery.accepted');
+    const reads = jest.mocked(listLegacyQueryCopies).mock.calls.length;
+    await act(async () => { publishSnapshot('other'); publishSnapshot('owner', { collection: 'groups', id: 'unrelated' }); });
+    expect(listLegacyQueryCopies).toHaveBeenCalledTimes(reads);
+    mockServerCopies.set('councils/council', { title: 'Latest server title' });
+    await act(async () => { publishSnapshot(); });
+    expect(await screen.findByText(/Latest server title/)).toBeInTheDocument();
+    expect(screen.queryByText(/Earlier server title/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /legacyRecovery\.accept$/ })).toBeInTheDocument();
+    view.unmount();
+    expect(mockSnapshotListeners.size).toBe(0);
+  });
+
+  it.each(['focus', 'visibilitychange'])('rechecks shared cache on %s after work in another tab', async event => {
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+    const view = render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(screen.getByText('legacyRecovery.serverMissing')).toBeInTheDocument();
+    mockServerCopies.set('councils/council', { title: 'Read by another tab' });
+    await act(async () => { fireEvent(event === 'focus' ? window : document, new Event(event)); });
+    expect(await screen.findByText(/Read by another tab/)).toBeInTheDocument();
+    expect(screen.queryByText('legacyRecovery.serverMissing')).not.toBeInTheDocument();
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+    view.unmount();
+    const calls = jest.mocked(retireLegacyEchoes).mock.calls.length;
+    await act(async () => { fireEvent(window, new Event('focus')); fireEvent(document, new Event('visibilitychange')); });
+    expect(retireLegacyEchoes).toHaveBeenCalledTimes(calls);
+  });
+
+  it('keeps a refresh requested while an earlier cache comparison is still pending', async () => {
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    await waitFor(() => expect(retireLegacyEchoes).toHaveBeenCalledTimes(1));
+    let finish!: (value: { retired: number; undecided: number }) => void;
+    jest.mocked(retireLegacyEchoes).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await act(async () => { publishSnapshot(); });
+    expect(retireLegacyEchoes).toHaveBeenCalledTimes(2);
+    mockServerCopies.set('councils/council', { title: 'Latest during comparison' });
+    await act(async () => { publishSnapshot(); publishSnapshot(); });
+    expect(retireLegacyEchoes).toHaveBeenCalledTimes(2);
+    await act(async () => { finish({ retired: 0, undecided: 0 }); });
+    expect(await screen.findByText(/Latest during comparison/)).toBeInTheDocument();
+    expect(retireLegacyEchoes).toHaveBeenCalledTimes(3);
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
   });
 
   it('shows the difference once a retry finds the server copy it was waiting for', async () => {

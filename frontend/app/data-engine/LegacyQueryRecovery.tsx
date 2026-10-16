@@ -20,7 +20,7 @@ import {
   ARCHIVED_COLLECTIONS, compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
   type LegacyCopyComparison, type LegacyQueryCopy, type ServerCopyReader,
 } from './legacyQueryRecovery.client';
-import { createIndexedDbSnapshots } from './snapshots.client';
+import { createIndexedDbSnapshots, subscribeSnapshotChanges } from './snapshots.client';
 
 
 /** Reads the server copy the engine already holds on this device — no request leaves the browser. */
@@ -31,7 +31,7 @@ function engineServerCopies(owner: string): ServerCopyReader {
     return snapshot === undefined ? undefined : snapshot.value;
   };
 }
-/** Documents the engine has not read yet are compared again later, a bounded number of times. */
+/** Bounded startup fallback; accepted snapshot changes also refresh the comparison at any time. */
 const ECHO_RETRY_MS = 30_000;
 const ECHO_RETRIES = 5;
 /** A wait shorter than this is part of an ordinary start and shows nothing; a longer one shows the start spinner. */
@@ -194,6 +194,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
     let latest = 0;
     // Whether the comparison on screen still waits for a server copy the engine had not read.
     let waiting = false;
+    let documents: Set<string> | null = null;
     const show = async () => {
       const refresh = ++latest;
       const isLatest = () => active && refresh === latest;
@@ -210,6 +211,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
           catch { comparisons[copy.id] = { kind: 'row', server: 'unknown', freshness: 'unknown', deviceVersionAt: null, serverVersionAt: null, differences: [], rows: null }; }
         }
         if (!isLatest()) return;
+        documents = new Set(copies.map(copy => `${copy.collection}/${copy.documentId}`));
         waiting = Object.values(comparisons).some(comparison => comparison.server === 'missing');
         setState({ owner, copies, comparisons, failed: false });
       } catch {
@@ -226,8 +228,42 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
         if (undecided && attempt < ECHO_RETRIES) timer = setTimeout(() => retire(attempt + 1), ECHO_RETRY_MS);
       }, error => { console.error('Previous-version copies could not be compared with the server', error); });
     };
+    // Coalesce notifications while storage is being read. Never start a second network reader:
+    // every pass uses the same accepted cache and the existing id+content retirement rule.
+    let refreshing = false;
+    let refreshRequested = false;
+    const refreshFromCache = () => {
+      if (!active) return;
+      refreshRequested = true;
+      if (refreshing) return;
+      refreshing = true;
+      void (async () => {
+        try {
+          while (active && refreshRequested) {
+            refreshRequested = false;
+            await retireLegacyEchoes(owner, reader);
+            if (active) await show();
+          }
+        } catch (error) { console.error('Previous-version copies could not be compared with the server', error); }
+        finally { refreshing = false; }
+      })();
+    };
+    const stopSnapshots = subscribeSnapshotChanges(owner, resource => {
+      if (documents && !documents.has(`${resource.collection}/${resource.id}`)) return;
+      refreshFromCache();
+    });
+    // Another tab shares IndexedDB, but not the local signal. Re-read it when the person returns.
+    const returned = () => { if (document.visibilityState === 'visible') refreshFromCache(); };
+    document.addEventListener('visibilitychange', returned);
+    window.addEventListener('focus', returned);
     void show().then(() => { if (active) retire(1); });
-    return () => { active = false; if (timer) clearTimeout(timer); };
+    return () => {
+      active = false;
+      stopSnapshots();
+      document.removeEventListener('visibilitychange', returned);
+      window.removeEventListener('focus', returned);
+      if (timer) clearTimeout(timer);
+    };
   }, [owner, version]);
 
   const current = state?.owner === owner ? state : null;

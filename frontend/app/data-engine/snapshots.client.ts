@@ -5,7 +5,7 @@ import { entries, get, update } from 'idb-keyval';
 import { watchedStore } from '@/utils/deviceStorage';
 
 import { canReplaceSnapshot } from './engine';
-import { getResourcePolicy } from './protocol';
+import { equalValues, getResourcePolicy } from './protocol';
 import { snapshotSchema } from './transport.client';
 
 import type { CollectionSnapshotStore } from './collections';
@@ -20,6 +20,20 @@ function validate(owner: string, resource: ResourceRef, value: unknown): Resourc
     throw new Error('Cached snapshot identity mismatch');
   }
   return snapshot;
+}
+
+type SnapshotListener = (resource: ResourceRef) => void;
+const listeners = new Map<string, Set<SnapshotListener>>();
+
+/** Local accepted-cache changes, shared by document and collection adapters; carries no draft data. */
+export function subscribeSnapshotChanges(owner: string, listener: SnapshotListener): () => void {
+  let subscriptions = listeners.get(owner);
+  if (!subscriptions) listeners.set(owner, subscriptions = new Set());
+  subscriptions.add(listener);
+  return () => {
+    subscriptions.delete(listener);
+    if (!subscriptions.size && listeners.get(owner) === subscriptions) listeners.delete(owner);
+  };
 }
 
 /** A shared confirmed cache; editor drafts always live in the separate checkpoint store. */
@@ -46,10 +60,17 @@ export function createIndexedDbSnapshots(): CollectionSnapshotStore {
     },
     async put(owner, snapshot) {
       const frozen = validate(owner, snapshot.resource, snapshot);
+      let changed = false;
       await update<ResourceSnapshot>(key(owner, frozen.resource), current => {
         const stored = current === undefined ? undefined : validate(owner, frozen.resource, current);
-        return canReplaceSnapshot(stored, frozen) ? frozen : stored!;
+        if (!canReplaceSnapshot(stored, frozen)) return stored!;
+        changed = !equalValues(stored, frozen);
+        return frozen;
       }, database());
+      // Only a completed transaction is evidence. A refused/unchanged candidate wakes nobody.
+      if (changed) for (const listener of [...(listeners.get(owner) ?? [])]) {
+        try { listener({ ...frozen.resource }); } catch { /* Rendering cannot fail an accepted cache write. */ }
+      }
     },
   };
 }
