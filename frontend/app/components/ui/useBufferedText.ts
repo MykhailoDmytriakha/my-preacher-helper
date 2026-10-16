@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Bridge a text control to a delayed render of its document draft. The document owns
@@ -16,7 +16,9 @@ export function useBufferedText(value: string, onChange: (next: string) => void 
   const latest = useRef(value);
   latest.current = value;
 
-  useEffect(() => {
+  // Reconcile document echoes before the next native input. A passive mirror can leave
+  // deferred state work between continuous keystrokes and controlled-input restoration.
+  useLayoutEffect(() => {
     if (pending.current === value) pending.current = null;
     if (pending.current === null) setDraft(value);
   }, [value]);

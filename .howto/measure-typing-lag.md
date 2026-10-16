@@ -36,3 +36,41 @@ A dev build is several times slower than production: compare before and after in
 ## Guard it in a test
 
 `fireEvent` runs inside `act()`, which flushes deferred renders too, so it cannot tell a responsive field from a frozen one. Dispatch the event without `act` (`IS_REACT_ACT_ENVIRONMENT = false`, native value setter, `dispatchEvent(new Event('input', { bubbles: true }))`), then assert that the field shows the letter while the list has not been drawn for it yet — see `app/(pages)/(private)/studies/__tests__/searchResponsiveness.test.tsx`.
+
+## Reproduce a native field that drops letters
+
+A controlled-field timing failure can disappear when Playwright waits for every
+key acknowledgement. For BUG-20261002-live-text-field-drops-letter-at-machine-speed,
+use an owned disposable group, open its first block and focus `#step-notes`.
+Send CDP `Input.dispatchKeyEvent` events with `type: 'char'`, `text` and
+`unmodifiedText`, pacing sends by4or6ms. Keep each returned promise in an array
+and await them together after the sequence; do not await each acknowledgement.
+Compare the complete expected string, not only its length, with the exported
+`frontend/test-utils/assertLiveTextRetained.ts` assertion in the page. Count
+native input events separately and capture fresh `pageerror` events per attempt.
+
+Use the same sequence/build mode and a plain temporary textarea as a control.
+Record actual input gaps, build ID and failed as well as successful attempts.
+The baseline failure is intermittent: several passing attempts do not establish
+a fix. A rollback A/B check is useful; keep original source and result artifacts
+before restoring the candidate. Run browser timing checks after CPU-heavy gates
+finish, and verify the served build after every rebuild.
+
+The shared buffer reconciles document echoes in a layout effect so the mirror
+does not leave passive state work between native input events. Preserve its
+pending-echo/refusal guards; focused fields must still adopt the next document
+value once their own words are acknowledged. Existing delayed-echo, refusal and
+other-device tests are required controls. The recorded React185 errors identify
+a depth guard, not the exact component that scheduled each update; do not infer
+an application loop or an engine publication interval from that number alone.
+Keep the separate rich-editor update-loop report open until its own route is
+reproduced and checked. After testing, verify saved content, reload/offline
+behavior and textarea resizing, then delete only the owned fixture through the
+normal UI and restore network/tabs.
+
+For an isolated localhost port, set `NEXT_PUBLIC_API_BASE=''` on the **build**
+command as well as on `next start`. Public variables are compiled into browser
+code; setting only the start environment does not change the health-probe URL.
+The default local env can point at3000 while the isolated engine requests use
+relative URLs on3047, making writes work but reconnection look broken. Confirm
+actual health request URLs before attributing that result to application code.

@@ -452,3 +452,36 @@ Evidence is retained in the ignored case: `study-search-verification.json`, orig
 3. Verify expand/collapse all after results settle, and search retention on note/back navigation.
 4. Repeat on the owner's existing volume at phone/tablet/desktop widths and on an already viewed list offline; restore connectivity and clear the query.
 5. Record revision, dataset size, input measurements/screenshots and results. Historical owner acceptance and local checks do not substitute for this production recheck.
+
+## BUG-20261002-live-text-field-drops-letter-at-machine-speed
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+The shared text buffer now reconciles document echoes in a layout effect rather than leaving that mirror in passive state work between native input events. Pending-echo and refusal guards remain: unacknowledged words stay visible, and a clean focused field still follows the document. The change is confined to this hook; there is no new persistence path or queue. The browser A/B supports the scheduling intervention for the reproduced workload. The exact React-internal sequence behind error185 remains unproved; its depth guard alone does not establish an application loop or an engine publication interval.
+
+The committed browser regression is `frontend/test-utils/assertLiveTextRetained.ts`: compare the complete expected string after real native input. Before the production edit,350input events retained349characters and the assertion failed at index339, with React185. A temporary plain textarea retained350/350 at the same cadence. The rollback A/B build `u-DdTlzqHiPOY2F3SSlJK` restored the passive mirror: six attempts passed before a4ms paced sequence retained347/350 and produced three fresh185errors. This is intermittent, so passing attempts are retained alongside failures. The first layout build passed eight350-character runs at4/6ms without page errors. React effect tags were checked to identify the served mirror phase; they are not performance counters.
+
+Final actual-browser acceptance used production build `KvDxMdgl5jd97bfEu-2QV` on localhost3047, the existing test account and one disposable group. Twelve350-character native sequences at alternating4/6ms all matched exactly; measured mean input gaps were4.31-6.52ms. The one-line step title retained200/200; ordinary rich block text also persisted. ACK13 plus a separate authenticated read and reload retained the exact native string and rich text. Offline typing remained after a cached-route reload through the service worker in1897ms; reconnect produced ACK14, a matching independent read and matching online reload. A sequential second tab produced ACK15; the first clean field adopted its text while focused. No fresh page exception was captured in this final run. Expected offline request errors occurred; this is not a clean-console claim.
+
+The primary personally inspected390x844,834x1112 and1280x1000 screenshots. The leader notes and controls remain readable, with no horizontal page overflow; the textarea retains all four lines after resizing. These are Chromium viewport checks, not physical-device/IME or PWA fresh-launch acceptance. The owner's earlier human-speed pass remains valid as an observation without a recorded device/revision. Only the own group was deleted through the normal confirmation with exact route/title/generation guards: ACK16 and an independent read show a tombstone/value null, with no card remaining. Network is restored, the second tab is closed and temporary authorization capture is removed. Historical own recovery copies were not purged through storage internals.
+
+One earlier local build omitted the build-time `NEXT_PUBLIC_API_BASE=''` override, so health probes targeted3000 while engine commands used relative3047 URLs. Its reconnect observation is excluded as a harness error; the final same-origin build and network checks supersede it. A cleanup guard also initially used a Testing Library method unavailable in Playwright; no deletion ran on that failed call, and the corrected guard passed. These attempts remain in the case evidence.
+
+Gates on the final source: six focused suites/42tests passed, covering delayed echoes, blur, refused words, older refusals, creation fields, rich-editor synchronization, tree titles and council integration. Full Jest passed807suites/8456tests (3suites/17tests skipped,398.243s); full lint passed0errors/29inherited warnings. Full TypeScript and the final production build passed. Bounded independent source review found no high-confidence defect; fresh acceptance verifies the evidence and repeats focused tests before local commit.
+
+| Mechanism consumer | Coverage and boundary |
+| --- | --- |
+| LiveTextInput / LiveTextArea in groups, group preflight and councils | All use the corrected mirror; original leader-note and one-line browser regression plus shared echo/refusal and council tests. Existing screens do not add a second buffer. |
+| CreateGroupView title/description and exegetical TreeNode title | Same hook; existing component tests passed. Their exact routes were not replayed live in this unit. |
+| RichMarkdownEditor | Same corrected buffer; existing external-sync/refusal tests and own group rich-text save/reload passed. The distinct new-note route transition reported in BUG-20261013-note-editor-update-loop remains open. |
+| Server, engine and offline storage | Existing public engine hooks remain. Exact native-string persistence, offline/reconnect and sequential-tab adoption were checked; no writer changed. |
+
+Evidence remains in the ignored case: `live-typing-verification.json`, original report, red/rollback/layout/final browser JSON, runner/assertion source, focused/full gate logs, source review and personally inspected screenshots. This committed assertion, implementation, recipe, manifest and bug-ID commit preserve the durable trace after local tracker removal.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision contains this hook change. Create only an authorized disposable group, open its first block and the Leader notes field.
+2. Repeat the exact native350-character sequences at4/6ms and normal human typing; compare complete strings and record fresh exceptions. Keep the plain-textarea control and failed attempts. Check the one-line title, rich content and ordinary paste/IME on available physical devices.
+3. Wait for accepted saves; verify exact content after reload. Repeat loaded offline editing, cached reload/reconnect and a sequential device/tab; a clean focused field must adopt the later acknowledged text.
+4. Check390/834/1280widths and textarea resizing. Record physical-device/PWA evidence separately from browser viewport checks. Do not infer closure of the separate new-note update-loop report.
+5. Delete only the owned fixture through confirmation, verify its tombstone, restore network/tabs and record deployed revision/results/screenshots. Production acceptance remains pending until executed.
