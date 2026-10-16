@@ -834,3 +834,26 @@ Frozen manifest .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/audi
 Two adjacent issues remain tracked separately: BUG-20261016-audio-result-after-leaving requires lifecycle reproduction; BUG-20261016-audio-editor-conflict-has-no-resolution needs an explicit comparison/apply path for a retained changed-version draft. This unit does not claim them fixed.
 
 After separately authorized publication: confirm deployed revision/worker; preserve an authorized QA sermon's fields; repeat actual legacy AI promotion, no-AI Original preparation, manual AI correction, real-server reload and a second device. Confirm both persisted source sets and collection-feed receipt, explicit regeneration, selected empty/unprepared sections, stale editor/generation refusal with draft retained, slow/failed preparation and provider availability changes. Restore QA fields deliberately. Merge, push, deploy, paid provider calls and production closure were not performed here.
+
+## BUG-20261016-audio-result-after-leaving
+
+Stage: locally verified and independently source-reviewed; fresh exact-version acceptance is recorded separately in the case. Production pending.
+
+Audio generation previously downloaded a late file after soft navigation back to the sermon list, and resume bytes were keyed without owner/sermon identity. A focused useAudioGenerationSession module now owns one mounted wizard's scope, distinct run identity, cancellation, completed-batch cache and visible generation state. Checkpoints fence authenticated headers, HTTP/stream awaits, batch accumulation, asynchronous WAV assembly and final URL/download. Queued state updates also require the exact run; an old error/finally cannot clear its replacement. Cancel returns immediately; unchanged-input retry in the same live context preserves completed batches. Usage-refresh failure no longer removes an already successful download.
+
+Eight behavioral regressions fail on exact baseline2fb13f4e while41 old tests pass; all49 wizard tests pass after the fix, plus4 direct session tests. The single-suite RED command also emitted irrelevant global coverage threshold failures, explicitly excluded. Full gate:821 suites/8712 tests passed;3 suites/17 tests skipped. Types pass, ESLint0 errors/26 inherited warnings, production build Cj4J3YyG0iGaslBtIHggV passes. No API contract, canonical writer or ledger exception changed.
+
+Actual localhost Chromium on the same controlled transport harness: soft Back remains in the same JS realm, returns to /sermons, aborts the request and changes unwanted downloads1 to0. A second flow cancels after batch0 while offset3 waits; retry offsets[0,3,3] preserve AAAA, reject lateBBBB and export AAAACCCC exactly once. Generate re-enables immediately and success retains Download Again. Final page errors/unexpected mutations0/0. Primary inspected final cancellation, list-after and390/820/1280 success PNGs individually at original resolution; no horizontal overflow. Disposable contexts closed, original groups tab online. A teardown/capture trial is retained separately.
+
+These browser bytes and selected QA snapshot/read payloads are synthetic; no provider or database write was made. This proves lifecycle, file content assembly and visible behavior, not actual speech quality, billing/refunds, real provider cancellation, production, Safari or physical-device acceptance. Prepared authored sources retain their separate durable contract. The remaining changed-version speech editor resolution issue stays in BUGS.md.
+
+Exact code and local evidence are frozen in .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/audio-lifetime-manifest.json. The source review, RED/GREEN/build logs, exact scripts/results/PNGs, class map and excluded trials are in audio-lifetime-* artifacts. No push, merge or deployment occurred.
+
+After separate publication authorization: confirm deployed revision/worker and an authorized QA sermon, preserve its fields; start real audio then cancel/soft Back before completion, check no stray file/result, then retry within the same sermon and reopen a different sermon with identical words. Verify real complete audio, provider failure/retry, paid requests/usage and sequential account/device transitions. Cancellation cannot undo provider work already admitted. Restore QA fields deliberately.
+
+| Item | Result | Regression | Browser/manual |
+|---|---|---|---|
+| 1. Old context publishes output | Run/scope retirement and abort | wizard lifetime cases; direct session ownership | Same-realm Back: unwanted downloads1→0, ERR_ABORTED |
+| 2. Cancel/retry mixes bytes | Completed batches scoped to owner/sermon/body | wizard cancel/WAV/cross-context cases | offsets0,3,3; exact AAAACCCC; lateBBBB excluded |
+| 3. Late UI/finally or usage refresh hides success | Exact run predicates and isolated usage refresh | direct replacement and wizard usage failure tests | Immediate cancel returns to preview; successful download UI visible |
+| 4. Existing generation/source flow | Existing41 wizard cases retained |821-suite full gate, types/lint/build |390/820/1280 primary visual; provider/production pending |

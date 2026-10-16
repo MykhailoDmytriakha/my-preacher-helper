@@ -32,6 +32,7 @@ import { toast } from 'sonner';
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { useAudioGenerationSession, type AudioGenerationRun } from '@/hooks/useAudioGenerationSession';
 import { useAuth } from '@/hooks/useAuth';
 import { usePreparedSpeech } from '@/hooks/usePreparedSpeech';
 import { useSermonRead } from '@/hooks/useSermonRead';
@@ -82,21 +83,6 @@ class ChunkFailedError extends Error {
     }
 }
 
-/**
- * The batches already made for one exact request (settings + shown text). A failed batch leaves them
- * here, and the next press of Generate continues from the failed one instead of starting over — the
- * finished parts are neither made nor paid for twice (BUG-20260927-audio-export-drops-failed-chunk).
- */
-interface GenerationProgress {
-    key: string;
-    parts: Uint8Array[];
-    nextOffset: number;
-    /** Google's own generation count (it re-splits long sections): kept so a resume runs to its end. */
-    total?: number;
-    filename?: string;
-    mimeType?: string;
-}
-
 interface StreamEvent {
     type: 'progress' | 'complete' | 'error' | 'audio_chunk' | 'download_complete';
     current?: number;
@@ -114,7 +100,6 @@ interface StreamEvent {
 }
 
 type WizardStep = 1 | 2 | 3;
-type StudioView = 'working' | 'generating' | 'success';
 
 export interface StepByStepWizardProps {
     sermonId: string;
@@ -132,7 +117,6 @@ export interface StepByStepWizardProps {
 const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts';
 const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-tts';
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
-/** Said by every path that met a 409 `chunks-changed` and now shows the stored set; words, said when shown. */
 /**
  * The OpenAI voice samples were recorded before gpt-4o-mini-tts (with tts-1, "standard"), and a
  * quality switch once chose between them. The model alone decides the sound now; the samples
@@ -185,6 +169,16 @@ function base64ToUint8Array(base64: string): Uint8Array {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
+}
+
+/** Assemble complete batches; WAV keeps its container headers while MP3 remains byte-concatenated. */
+async function assembleAudioExport(parts: Uint8Array[], google: boolean, filename?: string, mimeType?: string) {
+    const type = mimeType || (google ? 'audio/wav' : 'audio/mpeg');
+    const name = filename || (google ? 'sermon_audio.wav' : 'sermon_audio.mp3');
+    const blob = google && parts.length > 1
+        ? await concatenateAudioBlobs(parts.map(bytes => new Blob([bytes], { type })))
+        : new Blob(parts, { type });
+    return { blob, name };
 }
 
 /** Mutable accumulator for one batch's stream: base64 audio parts + final metadata. */
@@ -246,14 +240,12 @@ export default function StepByStepWizard({
 
     // Wizard + view state
     const [step, setStep] = useState<WizardStep>(1);
-    const [view, setView] = useState<StudioView>('working');
     const [error, setError] = useState<FailureWords | null>(null);
 
-    // Generation
-    const [genProgress, setGenProgress] = useState<{ current: number; total: number; percent?: number; status?: string }>({ current: 0, total: 0 });
-    const generationProgress = useRef<GenerationProgress | null>(null);
-    const [abortController, setAbortController] = useState<AbortController | null>(null);
-    const [generatedFile, setGeneratedFile] = useState<{ url: string; filename: string } | null>(null);
+    // The session owns run identity, completed batches and context-scoped visible results.
+    const generation = useAudioGenerationSession(user?.uid ?? null, sermonId);
+    const { view, genProgress, generatedFile, begin, report, complete, fail, finish, cancel, isCurrent } = generation;
+    useEffect(() => { setError(null); }, [user?.uid, sermonId]);
 
     // Voice preview
     const [playingPreview, setPlayingPreview] = useState<string | null>(null);
@@ -384,19 +376,22 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const fetchBatchBytes = useCallback(async (
         body: Record<string, unknown>,
-        signal: AbortSignal,
+        run: AudioGenerationRun,
         onChunkProgress: (current: number, total: number) => void,
     ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string; totalChunks?: number }> => {
         const authHeaders = await getAuthenticatedRequestHeaders();
+        run.checkpoint();
         const response = await apiClient(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify(body),
-            signal,
+            signal: run.controller.signal,
             category: 'audio',
         });
+        run.checkpoint();
         if (!response.ok || !response.body) {
             const data = await response.json().catch(() => ({}));
+            run.checkpoint();
             if (response.status === 409 && data.code === CHUNKS_CHANGED) throw new ChunksChangedError(data);
             throw new Error(data.error || 'Generation failed');
         }
@@ -424,15 +419,17 @@ export default function StepByStepWizard({
             // is the same broken connection as one that stops short: the batch is not counted and only
             // the rest is repeated. The person's own cancel stays a cancel.
             const { done, value } = await reader.read().catch((error: unknown) => {
-                if (signal.aborted) throw error;
+                if (run.controller.signal.aborted) throw error;
                 throw new StreamInterruptedError();
             });
+            run.checkpoint();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
             lines.forEach(applyLine);
         }
+        run.checkpoint();
         // The last event may arrive without a trailing newline.
         applyLine(buffer + decoder.decode());
         // A stream that stopped before "complete" carries partial audio: it must not count as a
@@ -452,12 +449,14 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const generateAudioBatches = useCallback(async (
         baseBody: Record<string, unknown>,
-        signal: AbortSignal,
+        run: AudioGenerationRun,
         isGoogle: boolean,
         totalChunks: number,
-        progress: GenerationProgress,
     ) => {
+        const progress = run.progress;
+        run.checkpoint();
         const keep = (res: { bytes: Uint8Array; filename?: string; mimeType?: string }, nextOffset: number) => {
+            run.checkpoint();
             progress.parts.push(res.bytes);
             progress.filename = res.filename ?? progress.filename;
             progress.mimeType = res.mimeType ?? progress.mimeType;
@@ -466,8 +465,8 @@ export default function StepByStepWizard({
 
         if (isGoogle && !GOOGLE_SMALL_CHUNKING) {
             // Reversible legacy path: one server request containing section pieces.
-            const res = await fetchBatchBytes(baseBody, signal, (current, total) =>
-                setGenProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) }),
+            const res = await fetchBatchBytes(baseBody, run, (current, total) =>
+                report(run, { current, total, percent: Math.round((current / (total || 1)) * 100) }),
             );
             keep(res, totalChunks);
         } else if (isGoogle) {
@@ -478,10 +477,10 @@ export default function StepByStepWizard({
             while (offset < serverTotal) {
                 const res = await fetchBatchBytes(
                     { ...baseBody, offset, limit: GOOGLE_GENERATION_BATCH_SIZE },
-                    signal,
+                    run,
                     (current) => {
                         const overall = Math.min(serverTotal, offset + current);
-                        setGenProgress({ current: overall, total: serverTotal, percent: Math.round((overall / serverTotal) * 100) });
+                        report(run, { current: overall, total: serverTotal, percent: Math.round((overall / serverTotal) * 100) });
                     },
                 );
                 if (typeof res.totalChunks === 'number' && res.totalChunks > 0) {
@@ -491,7 +490,7 @@ export default function StepByStepWizard({
                 offset += GOOGLE_GENERATION_BATCH_SIZE;
                 keep(res, offset);
                 const completed = Math.min(offset, serverTotal);
-                setGenProgress({ current: completed, total: serverTotal, percent: Math.round((completed / serverTotal) * 100) });
+                report(run, { current: completed, total: serverTotal, percent: Math.round((completed / serverTotal) * 100) });
             }
         } else {
             // OpenAI: drive batches of GENERATION_BATCH_SIZE chunks, each its own
@@ -503,20 +502,20 @@ export default function StepByStepWizard({
                 const sizeThisBatch = Math.min(GENERATION_BATCH_SIZE, totalChunks - offset);
                 const res = await fetchBatchBytes(
                     { ...baseBody, offset, limit: GENERATION_BATCH_SIZE },
-                    signal,
+                    run,
                     (current) => {
                         const overall = Math.min(totalChunks, completedBefore + current);
-                        setGenProgress({ current: overall, total: totalChunks, percent: Math.round((overall / totalChunks) * 100) });
+                        report(run, { current: overall, total: totalChunks, percent: Math.round((overall / totalChunks) * 100) });
                     },
                 );
                 keep(res, offset + GENERATION_BATCH_SIZE);
                 completedBefore += sizeThisBatch;
-                setGenProgress({ current: completedBefore, total: totalChunks, percent: Math.round((completedBefore / totalChunks) * 100) });
+                report(run, { current: completedBefore, total: totalChunks, percent: Math.round((completedBefore / totalChunks) * 100) });
             }
         }
 
         return { parts: progress.parts, filename: progress.filename, mimeType: progress.mimeType };
-    }, [fetchBatchBytes]);
+    }, [fetchBatchBytes, report]);
 
     const handleGenerate = useCallback(async () => {
         if (aiBlocked || !speech.ready) return;
@@ -524,11 +523,6 @@ export default function StepByStepWizard({
         const totalChunks = chunks.filter(c => sections.includes(c.sectionId)).length;
 
         setError(null);
-        setView('generating');
-        setGenProgress({ current: 0, total: totalChunks, percent: 0 });
-        const controller = new AbortController();
-        setAbortController(controller);
-
         const baseBody: Record<string, unknown> = {
             provider: ttsProvider,
             voice: isGoogle ? googleVoice : voice,
@@ -539,23 +533,19 @@ export default function StepByStepWizard({
             expected: chunks.filter(c => sections.includes(c.sectionId)),
         };
 
-        // Same settings and the same shown text as a batch run that stopped part-way: continue it.
-        const key = JSON.stringify(baseBody);
-        if (generationProgress.current?.key !== key) generationProgress.current = { key, parts: [], nextOffset: 0 };
-        const progress = generationProgress.current;
+        const run = begin(baseBody, totalChunks);
+        if (!run) return;
 
         try {
             const { parts, filename, mimeType } = await generateAudioBatches(
-                baseBody, controller.signal, isGoogle, totalChunks, progress,
+                baseBody, run, isGoogle, totalChunks,
             );
-            generationProgress.current = null;
+            run.checkpoint();
 
-            const finalMime = mimeType || (isGoogle ? 'audio/wav' : 'audio/mpeg');
-            const finalName = filename || (isGoogle ? 'sermon_audio.wav' : 'sermon_audio.mp3');
-            const finalBlob = isGoogle && parts.length > 1
-                ? await concatenateAudioBlobs(parts.map(bytes => new Blob([bytes], { type: finalMime })))
-                : new Blob(parts, { type: finalMime });
+            const { blob: finalBlob, name: finalName } = await assembleAudioExport(parts, isGoogle, filename, mimeType);
+            run.checkpoint();
             const url = URL.createObjectURL(finalBlob);
+            if (!complete(run, { url, filename: finalName })) { URL.revokeObjectURL(url); return; }
 
             const link = document.createElement('a');
             link.href = url;
@@ -564,11 +554,9 @@ export default function StepByStepWizard({
             link.click();
             document.body.removeChild(link);
 
-            setGeneratedFile({ url, filename: finalName });
-            setGenProgress(prev => ({ ...prev, percent: 100 }));
-            setView('success');
-            await refreshAiUsage();
+            void refreshAiUsage().catch(error => console.warn('Audio usage refresh failed', error));
         } catch (err) {
+            if (!isCurrent(run)) return;
             if (err instanceof ChunksChangedError) {
                 showStoredSet(err.data);
                 setError({ key: 'audioExport.chunksChangedBeforeAudio' });
@@ -581,13 +569,15 @@ export default function StepByStepWizard({
             } else {
                 setError({ said: err instanceof Error ? err.message : 'Unknown error' });
             }
-            setView('working');
+            fail(run);
         } finally {
-            setAbortController(null);
+            finish(run);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, mode, speech.ready, speech.generationSource]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, mode, speech.ready, speech.generationSource, begin, complete, fail, finish, isCurrent]);
 
-    const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
+    const handleCancelGeneration = useCallback(() => {
+        if (cancel()) setError({ key: 'audioExport.generationCancelled' });
+    }, [cancel]);
 
     // ------------------------------------------------------------------
     // Navigation

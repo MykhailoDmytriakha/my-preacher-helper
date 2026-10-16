@@ -43,3 +43,11 @@ Preparation checks the opening source and the selected sections' words inside th
 Existing saved Original text is never rebuilt just by entering step 2 or changing providers. Use the visible Refresh Original action to include later sermon changes. The UI explains that preparing again replaces the selected sections, including their manual edits. Generate remains unavailable until all selected sections are prepared and there is text to voice.
 
 The previous single-set design and two failed review rounds remain historical evidence in `.cases/2026-10-06-bugs-26/artifacts/audio-wizard-r2.patch` and `audio-wizard-review-r1.txt/r2.txt`. Phase30 local proof lives in `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/audio-source-*`; production verification still requires separately authorized publication.
+
+## Generation lifetime
+
+`useAudioGenerationSession` owns one active generation run, scope-tagged UI and completed-batch resume. Scope is owner+sermon within this mounted wizard; every begin has a distinct run object and AbortController. Capture that run across auth, HTTP body/stream, batch progress and asynchronous WAV assembly, and checkpoint before publishing or retaining bytes. Abort alone cannot fence already resolved work.
+
+Cancel invalidates immediately and returns to the working view. Retrying the exact body in the same live scope can reuse completed batches; changed source/settings/body or owner/sermon/window cannot. Retired callbacks cannot update progress/errors, append bytes, download a file or clear a replacement run. Keep exact run predicates inside queued React state updaters as well as synchronous current/live checks. Leaving generation must not discard separately persisted authored preparation.
+
+After an accepted download, usage refresh is a separate background refresh; failure must not remove the successful file. Client cancellation stops its request/publication; it does not prove refund or cancellation of provider work already admitted on the server. Local lifecycle proof and the future production plan are in the phase31 audio-lifetime artifacts.

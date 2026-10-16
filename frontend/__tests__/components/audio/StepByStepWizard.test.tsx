@@ -1,10 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import StepByStepWizard from '@/components/audio/StepByStepWizard';
 import { useSermonRead } from '@/hooks/useSermonRead';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { __resetConnectivityForTests } from '@/utils/connectivity';
 
 if (!Blob.prototype.arrayBuffer) {
@@ -28,6 +29,8 @@ if (typeof TextEncoder === 'undefined') {
 // --- Mocks --- //
 let mockLanguage = 'en';
 let mockOwner = 'user-123';
+let mockConcatenateAudioBlobs: jest.Mock;
+let mockRefreshAiUsage: jest.Mock;
 
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -49,8 +52,14 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: mockOwner } }) }));
 jest.mock('@/hooks/useSermonRead', () => ({ useSermonRead: jest.fn() }));
 jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }));
+jest.mock('@/hooks/useAiUsage', () => ({
+    useAiUsage: () => ({ aiBlocked: false, blocked: () => false, blockedLabelKey: () => '', refresh: mockRefreshAiUsage }),
+}));
 jest.mock('@/utils/authenticatedRequest', () => ({
     getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));
+jest.mock('@/utils/audioConcat', () => ({
+    concatenateAudioBlobs: (...args: any[]) => mockConcatenateAudioBlobs(...args),
 }));
 
 jest.mock('framer-motion', () => ({
@@ -166,6 +175,9 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         jest.clearAllMocks();
         mockLanguage = 'en';
         mockOwner = 'user-123';
+        mockRefreshAiUsage = jest.fn().mockResolvedValue(undefined);
+        mockConcatenateAudioBlobs = jest.fn((blobs: Blob[]) =>
+            jest.requireActual('@/utils/audioConcat').concatenateAudioBlobs(blobs));
         setTtsEntitlement();
         mockUseSermon.mockReturnValue({ sermon: { title: 'Test Sermon', thoughts: [] }, loading: false } as any);
         global.fetch = jest.fn();
@@ -176,6 +188,271 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     // An API call in one test arms connectivity's 3 s recovery timer, which writes module-level
     // state after the test ends. Nothing here reads it yet; reset so no later test inherits it.
     afterEach(() => __resetConnectivityForTests());
+
+    describe('generation lifetime isolation', () => {
+        const chunks = [0, 1, 2, 3].map(i => ({ index: i, text: `Saved narration ${i}`, sectionId: 'introduction' }));
+        const waitingStream = () => {
+            const encoder = new TextEncoder();
+            let resolveRead!: (result: { done: boolean; value?: Uint8Array }) => void;
+            const read = jest.fn()
+                .mockImplementationOnce(() => new Promise(resolve => { resolveRead = resolve; }))
+                .mockResolvedValueOnce({ done: true, value: undefined });
+            const reader = { read };
+            return {
+                response: { ok: true, status: 200, body: { getReader: () => reader } },
+                read,
+                resolve: (result: { done: boolean; value?: Uint8Array }) => resolveRead(result),
+                value: encoder.encode(JSON.stringify({ type: 'audio_chunk', data: 'AAAA' }) + '\n'
+                    + JSON.stringify({ type: 'download_complete', filename: 'sermon.mp3', mimeType: 'audio/mpeg' }) + '\n'),
+            };
+        };
+
+        it('aborts on unmount and ignores a stream that completes after the wizard leaves', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks.slice(0, 1)));
+            let requestSignal: AbortSignal | undefined;
+            const stream = waitingStream();
+            (global.fetch as jest.Mock).mockImplementationOnce((_url, init?: { signal?: AbortSignal }) => {
+                requestSignal = init?.signal;
+                return Promise.resolve(stream.response);
+            });
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+            expect(global.fetch).toHaveBeenCalledWith('/api/sermons/sermon-123/audio/generate', expect.anything());
+            await waitFor(() => expect(stream.read).toHaveBeenCalledTimes(1));
+
+            view.unmount();
+            await act(async () => {
+                stream.resolve({ done: false, value: stream.value });
+                await new Promise(resolve => setTimeout(resolve, 20));
+            });
+
+            expect({ aborted: requestSignal?.aborted, createdUrl: (global.URL.createObjectURL as jest.Mock).mock.calls.length,
+                clickedDownload: (window.HTMLAnchorElement.prototype.click as jest.Mock).mock.calls.length })
+                .toEqual({ aborted: true, createdUrl: 0, clickedDownload: 0 });
+        });
+
+        it('does not publish a pending result after the same wizard changes to another sermon', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks.slice(0, 1)));
+            const stream = waitingStream();
+            (global.fetch as jest.Mock).mockResolvedValueOnce(stream.response);
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+            expect(global.fetch).toHaveBeenCalledWith('/api/sermons/sermon-123/audio/generate', expect.anything());
+            await waitFor(() => expect(stream.read).toHaveBeenCalledTimes(1));
+
+            mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Another sermon', sectionId: 'introduction' }]));
+            view.rerender(<StepByStepWizard {...defaultProps} sermonId="sermon-456" />);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+            await act(async () => {
+                stream.resolve({ done: false, value: stream.value });
+                await new Promise(resolve => setTimeout(resolve, 20));
+            });
+
+            expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+            expect(window.HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+            expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+        });
+
+        it('does not publish a pending result after the signed-in owner changes', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks.slice(0, 1)));
+            const stream = waitingStream();
+            (global.fetch as jest.Mock).mockResolvedValueOnce(stream.response);
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+            expect(global.fetch).toHaveBeenCalledWith('/api/sermons/sermon-123/audio/generate', expect.anything());
+            await waitFor(() => expect(stream.read).toHaveBeenCalledTimes(1));
+
+            mockOwner = 'user-456';
+            view.rerender(<StepByStepWizard {...defaultProps} />);
+            expect(global.fetch).toHaveBeenCalledTimes(1);
+            await act(async () => {
+                stream.resolve({ done: false, value: stream.value });
+                await new Promise(resolve => setTimeout(resolve, 20));
+            });
+
+            expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+            expect(window.HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+            expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+        });
+
+        it('does not send a stale sermon request with headers resolved for a different owner', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks));
+            let resolveHeaders!: (value: Record<string, string>) => void;
+            jest.mocked(getAuthenticatedRequestHeaders).mockImplementationOnce(() => new Promise(resolve => { resolveHeaders = resolve; }));
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(getAuthenticatedRequestHeaders).toHaveBeenCalledTimes(1));
+
+            mockOwner = 'user-456';
+            view.rerender(<StepByStepWizard {...defaultProps} sermonId="sermon-456" />);
+            await act(async () => {
+                resolveHeaders({ Authorization: 'Bearer new-owner-token' });
+                await new Promise(resolve => setTimeout(resolve, 20));
+            });
+
+            const requests = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+            expect(requests).toHaveLength(0);
+        });
+
+        it('does not resume partial bytes for a different owner and sermon with identical legacy speech', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks));
+            const encoder = new TextEncoder();
+            const streamOf = (...events: object[]) => ({
+                ok: true,
+                body: { getReader: () => ({ read: jest.fn()
+                    .mockResolvedValueOnce({ done: false, value: encoder.encode(events.map(event => JSON.stringify(event)).join('\n') + '\n') })
+                    .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+            });
+            (global.fetch as jest.Mock)
+                .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'AAAA' }, { type: 'download_complete', filename: 'old.mp3', mimeType: 'audio/mpeg' }))
+                .mockResolvedValueOnce(streamOf({ type: 'error', code: 'tts-chunk-failed', chunks: [4], message: 'TTS chunk 4 failed' }));
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            expect(await screen.findByText('audioExport.chunkFailed(4)')).toBeInTheDocument();
+
+            mockOwner = 'user-456';
+            view.rerender(<StepByStepWizard {...defaultProps} sermonId="sermon-456" />);
+            await waitFor(() => expect(screen.getByRole('button', { name: /Generate Audio/ })).toBeEnabled());
+            (global.fetch as jest.Mock)
+                .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'BBBB' }, { type: 'download_complete', filename: 'new.mp3', mimeType: 'audio/mpeg' }))
+                .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'CCCC' }, { type: 'download_complete', filename: 'new.mp3', mimeType: 'audio/mpeg' }));
+            fireEvent.click(screen.getByRole('button', { name: /Generate Audio/ }));
+            await screen.findByRole('link', { name: /Download Again/ });
+
+            const bodies = (global.fetch as jest.Mock).mock.calls
+                .filter(([url]) => String(url).includes('/audio/generate'))
+                .map(([, init]) => JSON.parse(init.body));
+            expect(bodies.map(body => body.offset)).toEqual([0, 3, 0, 3]);
+            const finalBlob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+            expect(finalBlob.size).toBe(6);
+            expect(Array.from(new Uint8Array(await finalBlob.arrayBuffer())))
+                .toEqual([...Buffer.from('BBBB', 'base64'), ...Buffer.from('CCCC', 'base64')]);
+        });
+
+        it('does not publish a Google result canceled while browser audio assembly is pending', async () => {
+            setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+            const rawChunks = [0, 1].map(i => ({ index: i, text: `Raw narration ${i}`, sectionId: 'introduction' }));
+            mockUseSermon.mockReturnValue(sermonWithSources([], rawChunks, 'raw', { ai: [], raw: ['introduction'] }));
+
+            const encoder = new TextEncoder();
+            const streamOf = (data: number[]) => ({
+                ok: true,
+                body: { getReader: () => ({ read: jest.fn()
+                    .mockResolvedValueOnce({ done: false, value: encoder.encode(
+                        JSON.stringify({ type: 'audio_chunk', data: wavBase64(data) }) + '\n'
+                        + JSON.stringify({ type: 'download_complete', filename: 'sermon.wav', mimeType: 'audio/wav' }) + '\n',
+                    ) })
+                    .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+            });
+            (global.fetch as jest.Mock).mockResolvedValueOnce(streamOf([1, 2])).mockResolvedValueOnce(streamOf([3, 4]));
+
+            let resolveAssembly!: (blob: Blob) => void;
+            mockConcatenateAudioBlobs.mockImplementationOnce(() =>
+                new Promise(resolve => { resolveAssembly = resolve; }));
+            render(<StepByStepWizard {...defaultProps} />);
+            fireEvent.click(screen.getByText(/Gemini 2\.5 TTS/));
+            fireEvent.click(screen.getByText('Charon'));
+            await goToSource();
+            await waitFor(() => expect(screen.getByText('Raw narration 0')).toBeInTheDocument());
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(mockConcatenateAudioBlobs).toHaveBeenCalledTimes(1));
+
+            fireEvent.click(await screen.findByRole('button', { name: 'Cancel Generation' }));
+            await waitFor(() => expect(screen.getByText('audioExport.generationCancelled')).toBeInTheDocument());
+            await act(async () => {
+                resolveAssembly(new Blob([new Uint8Array([1, 2, 3])], { type: 'audio/wav' }));
+                await Promise.resolve();
+            });
+
+            expect(global.URL.createObjectURL).not.toHaveBeenCalled();
+            expect(window.HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+            expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+        });
+
+        it('retries the pending OpenAI batch without retaining a late response after cancellation', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks));
+            const encoder = new TextEncoder();
+            const streamOf = (data: string) => ({
+                ok: true,
+                body: { getReader: () => ({ read: jest.fn()
+                    .mockResolvedValueOnce({ done: false, value: encoder.encode(
+                        JSON.stringify({ type: 'audio_chunk', data }) + '\n'
+                        + JSON.stringify({ type: 'download_complete', filename: 'sermon.mp3', mimeType: 'audio/mpeg' }) + '\n',
+                    ) })
+                    .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+            });
+            const pending = waitingStream();
+            (global.fetch as jest.Mock)
+                .mockResolvedValueOnce(streamOf('AAAA'))
+                .mockResolvedValueOnce(pending.response);
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await waitFor(() => expect(pending.read).toHaveBeenCalledTimes(1));
+
+            fireEvent.click(await screen.findByRole('button', { name: 'Cancel Generation' }));
+            await act(async () => {
+                pending.resolve({ done: false, value: pending.value });
+                await new Promise(resolve => setTimeout(resolve, 20));
+            });
+            await waitFor(() => expect(screen.getByRole('button', { name: /Generate Audio/ })).toBeEnabled());
+            (global.fetch as jest.Mock).mockResolvedValueOnce(streamOf('CCCC'));
+            fireEvent.click(screen.getByRole('button', { name: /Generate Audio/ }));
+            await screen.findByRole('link', { name: /Download Again/ });
+
+            const calls = (global.fetch as jest.Mock).mock.calls
+                .filter(([url]) => String(url).includes('/audio/generate'));
+            const bodies = calls.map(([, init]) => JSON.parse(init.body));
+            expect(bodies.map(body => body.offset)).toEqual([0, 3, 3]);
+            expect(bodies[1]).toEqual(bodies[2]);
+            const finalBlob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+            expect(Array.from(new Uint8Array(await finalBlob.arrayBuffer())))
+                .toEqual([...Buffer.from('AAAA', 'base64'), ...Buffer.from('CCCC', 'base64')]);
+            expect(finalBlob.size).toBe(6);
+        });
+
+        it('keeps a completed download successful when refreshing usage fails', async () => {
+            mockUseSermon.mockReturnValue(sermonWithChunks(chunks.slice(0, 1)));
+            mockRefreshAiUsage.mockRejectedValueOnce(new Error('usage refresh failed'));
+            const encoder = new TextEncoder();
+            (global.fetch as jest.Mock).mockResolvedValueOnce({
+                ok: true,
+                body: { getReader: () => ({ read: jest.fn()
+                    .mockResolvedValueOnce({ done: false, value: encoder.encode(
+                        JSON.stringify({ type: 'audio_chunk', data: 'AAAA' }) + '\n'
+                        + JSON.stringify({ type: 'download_complete', filename: 'sermon.mp3', mimeType: 'audio/mpeg' }) + '\n',
+                    ) })
+                    .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+            });
+            const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            const link = await screen.findByRole('link', { name: /Download Again/ });
+            await waitFor(() => expect(warn).toHaveBeenCalledWith('Audio usage refresh failed', expect.any(Error)));
+
+            expect(link).toHaveAttribute('href', 'blob:url');
+            expect(global.URL.createObjectURL).toHaveBeenCalledTimes(1);
+            expect(window.HTMLAnchorElement.prototype.click).toHaveBeenCalledTimes(1);
+            warn.mockRestore();
+        });
+    });
 
     describe('saved speech source consistency', () => {
         const savedWords = 'Saved narration with manual corrections';

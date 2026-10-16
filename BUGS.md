@@ -313,15 +313,6 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261016-audio-result-after-leaving · Ответ генерации аудио может завершить работу уже после ухода из окна
-**Severity.** Предварительно P3 — возможны неожиданный файл и устаревший результат в другом контексте; пользовательский текст не удаляется.
-**Найден.** 2026-10-16 · чтение класса асинхронных ответов при исправлении источников озвучки; живое воспроизведение ещё не проведено.
-**Якоря.** `frontend/app/components/audio/StepByStepWizard.tsx:385-590`: генерация хранит части по настройкам и словам, без владельца/проповеди; после ожидания создаёт ссылку и скачивает файл без проверки текущего окна. При уходе очищается только образец голоса, а запрос генерации не прерывается.
-**Ожидалось.** Закрытое окно не скачивает новый файл и не публикует результат в другой проповеди или аккаунте.
-**Предполагаемый путь.** Проповедь → «Аудио» → начать создание → закрыть окно или перейти к другой проповеди до ответа → дождаться ответа. Отдельно проверить продолжение прерванных частей при одинаковом тексте двух проповедей.
-**Как должно работать для пользователя.** Человек видит результат в том окне и для той проповеди, для которых он начал действие; отмена или уход не превращается в незапрошенное скачивание. Проверить тестом и браузером перед код-фиксом.
-
-
 ### BUG-20261013-note-editor-update-loop · Набор текста в теле заметки вызывает «Maximum update depth exceeded»
 **Recheck 2026-10-16, local HEAD eaa1185b.** Production build bqrqFxkFGCLohb1uMWH1c: update recursion 0/5 variants (keyboard/native burst before and after creation, paste before creation). All typed words retained through permanent-ID adoption; no page errors. Three controlled-server variants retained text after reload, one create each. API mutations intercepted; synthetic ACKs, not actual server acceptance. Existing editor/buffer/autosave tests:3 suites/33 passed. Initial unready trial never adopted an ID and is excluded. Historical Oct13/14 evidence stays valid. Root cause and reason for current non-reproduction are unproved; no new fix claimed. Extension reconfiguration is a hypothesis only. Reproduce with exact input/load/ID timing, full stack/build, dev with/without SW, IME and owner device. Evidence: artifacts/note-typing-* in the local case; summary in docs/verification/local-bug-fixes.md.
 **Severity.** P2 — воспроизводится стабильно; в пробе текст не потерялся, но исключение обрывает обработку изменений ProseMirror посреди пачки, и что будет при быстром вводе или IME — не проверено.
