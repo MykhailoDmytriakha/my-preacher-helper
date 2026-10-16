@@ -161,7 +161,11 @@ export class EditorController {
     this.emit();
     return this.enqueue(async () => {
       if (this.options.commits) {
-        const predecessorId = Object.entries(captured.pending).sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
+        // Earlier saves may have registered after this intent was captured.
+        // Read their durable chain here; keep the captured draft and baseline unchanged.
+        const predecessorId = Object.entries(this.session.checkpoint().pending)
+          .filter(([, pending]) => pending.generation < captured.editGeneration)
+          .sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
         const request = await this.options.commits.save(this.options.editorId, captured, predecessorId ? { predecessorId } : undefined);
         if (request) await this.applyCommit(request);
         return;

@@ -81,6 +81,34 @@ describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+
+  it('chains rapid commits behind saves registered after capture', async () => {
+    const s = setup({ online: false });
+    const editor = await s.engine.openEditor(resource, 'continuous');
+    s.engine.setVisible(false);
+    const gate = deferred<void>();
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    jest.mocked(s.transport.send).mockImplementationOnce(command => gate.promise.then(() => send(command)));
+    const settle = async () => { for (let i = 0; i < 8; i += 1) await drainMicrotasks(); };
+    s.engine.setOnline(true);
+    const first = editor.commit(current => ({ ...current, content: 'A' }));
+    await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const second = editor.commit(current => ({ ...current, content: `${current!.content}B` }));
+    const third = editor.commit(current => ({ ...current, content: `${current!.content}C` }));
+    await settle();
+    gate.resolve();
+    await Promise.all([first, second, third]);
+    await s.engine.retry(); await settle();
+    const requests = await s.commits.list('owner');
+    const checkpoint = editor.getState().checkpoint;
+    s.engine.dispose();
+    expect(requests.map(request => request.state)).toEqual(['acknowledged', 'acknowledged', 'acknowledged']);
+    expect(requests.map(request => request.predecessor)).toEqual([null, requests[0].id, requests[1].id]);
+    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('ABC');
+    expect(checkpoint.conflicts).toEqual([]);
+  });
+
   it('pins pristine manual baseline and preserves the conflict when remote changes before typing', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     const form = editor.form('title', [['title']]); await form.begin();
