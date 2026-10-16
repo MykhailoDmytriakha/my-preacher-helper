@@ -14,6 +14,7 @@ import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
 import { debugLog } from "@/utils/debugMode";
+import { structureBodyPaddingClass } from "@/utils/structureBoardLayout";
 import { sortSubPointsByPosition } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
@@ -623,7 +624,7 @@ export default function Column({
     <SortableContext items={items} strategy={sortingStrategy}>
       <div
         ref={setNodeRef}
-        className={`flex-grow w-full min-w-0 md:min-w-[500px] lg:min-w-[700px] xl:min-w-[900px] min-h-[600px] overflow-y-auto px-6 pb-6 pt-20 md:p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""} relative`}
+        className={`flex-grow w-full min-w-0 md:min-w-[500px] lg:min-w-[700px] xl:min-w-[900px] min-h-[600px] overflow-y-auto px-2 sm:px-6 pb-6 pt-20 md:p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""} relative`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
         {/* Sidebar toggle button for small screens */}
@@ -917,7 +918,7 @@ export default function Column({
     <SortableContext items={items} strategy={sortingStrategy}>
       <div
         ref={setNodeRef}
-        className={`min-h-[300px] p-4 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
+        className={`min-h-[300px] ${structureBodyPaddingClass} ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
         {/* Show outline points with grouped thoughts */}

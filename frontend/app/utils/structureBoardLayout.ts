@@ -15,3 +15,8 @@ export const boardLayoutClass = (visibleCount: number, isVertical: boolean): str
 
 /** Both a pair and all three sections may be stacked; focus has no layout toggle. */
 export const showLayoutToggle = (visibleCount: number): boolean => visibleCount >= 2;
+
+/** Nested board surfaces leave readable text on phones and keep the established wide spacing. */
+export const structureBodyPaddingClass = 'p-2 sm:p-4';
+export const structureThoughtPaddingClass = 'p-2 sm:p-5';
+export const structureSubPointInsetClass = 'ml-0 px-0 sm:ml-3 sm:px-3';

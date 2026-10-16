@@ -7,8 +7,10 @@ import { CheckIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+
 import { Chip } from '@/components/ui/Chip';
 import { Item } from "@/models/models";
+import { structureThoughtPaddingClass } from "@/utils/structureBoardLayout";
 import { EditIcon, TrashIcon } from "@components/Icons";
 
 import CardContent from "./CardContent";
@@ -121,7 +123,7 @@ export const getCardClassName = ({
   const dragOpacityClass = isDragDisabled && !isLocked ? `opacity-75 ${cursorClass}` : cursorClass;
   const marginClass = isOverlay ? "" : "mb-6";
 
-  return `relative group/card min-h-[144px] rounded-lg p-5 ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
+  return `relative group/card min-h-[144px] rounded-lg ${structureThoughtPaddingClass} ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
 };
 
 export const HighlightBadge = ({
@@ -189,7 +191,7 @@ export const SortableItemActions = ({
 }) => {
   const hoverActionsClass = isHighlighted || isOverlay
     ? "opacity-100 pointer-events-auto"
-    : "opacity-0 pointer-events-none group-hover/card:opacity-100 group-hover/card:pointer-events-auto";
+    : "opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover/card:opacity-100 sm:group-hover/card:pointer-events-auto";
   const lockLabel = isLocked
     ? t("structure.unlockThought", { defaultValue: "Unlock thought" })
     : t("structure.lockThought", { defaultValue: "Lock thought" });
@@ -209,7 +211,7 @@ export const SortableItemActions = ({
   return (
     <div
       data-testid={`sortable-item-actions-${item.id}`}
-      className={`flex w-10 flex-col items-center gap-1.5 ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
+      className={`flex w-auto flex-row flex-wrap items-center gap-1.5 sm:w-10 sm:flex-col sm:flex-nowrap ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
     >
       {canToggleLock && (
         <LockToggleButton
@@ -226,7 +228,7 @@ export const SortableItemActions = ({
         />
       )}
 
-      <div className={`flex flex-col items-center gap-1.5 transition-opacity ${hoverActionsClass}`}>
+      <div className={`flex flex-row flex-wrap items-center gap-1.5 transition-opacity sm:flex-col sm:flex-nowrap ${hoverActionsClass}`}>
         {canEdit && (
           <button
             onPointerDown={stopEvent}
@@ -420,12 +422,12 @@ function SortableItemCard({
       aria-disabled={isSemanticallyDisabled || undefined}
       className={cardClassName}
     >
-      <div className={`grid items-start gap-x-4 ${hasVisibleRailActions({
+      <div className={`grid items-start gap-x-4 gap-y-3 sm:gap-y-0 ${hasVisibleRailActions({
         canToggleLock,
         canEdit,
         showMoveAction,
         showDeleteAction,
-      }) ? "grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
+      }) ? "grid-cols-1 sm:grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
         <div className="min-w-0">
           <CardContent item={item} locationContext={locationContext} />
           <SortableItemReviewFooter

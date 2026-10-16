@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import React from 'react';
 
 import PointNote from '@/components/PointNote';
+import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
 
 import { BG_GRAY_LIGHT_DARK } from './constants';
@@ -133,7 +134,7 @@ const SubPointDropTarget: React.FC<{
     <div
       ref={setNodeRef}
       data-testid={`sub-point-drop-${subPoint.id}`}
-      className={`relative ml-3 rounded-2xl border px-3 py-3 shadow-sm transition-all duration-200 ${
+      className={`relative ${structureSubPointInsetClass} rounded-2xl border py-3 shadow-sm transition-all duration-200 ${
         isHovered
           ? "border-blue-300 bg-blue-50/50 ring-1 ring-blue-200/50 dark:border-blue-600 dark:bg-blue-900/15 dark:ring-blue-700/30"
           : "border-slate-200/90 bg-slate-50/90 dark:border-slate-700/70 dark:bg-slate-900/30"
@@ -181,7 +182,7 @@ const SubPointDropTarget: React.FC<{
       )}
       <div
         data-testid={`sub-point-lane-${subPoint.id}`}
-        className="relative mt-3 space-y-4 pl-4 pr-1"
+        className="relative mt-3 space-y-4 pl-0 pr-0 sm:pl-4 sm:pr-1"
       >
         {items.length > 0 && items.map(renderItem)}
         {items.length === 0 && (
@@ -225,7 +226,7 @@ export const PointThoughtLane: React.FC<{
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[80px] p-4 transition-all ${isOver ? 'ring-1 ring-blue-300/40 dark:ring-blue-500/30' : ''}`}
+      className={`min-h-[80px] ${structureBodyPaddingClass} transition-all ${isOver ? 'ring-1 ring-blue-300/40 dark:ring-blue-500/30' : ''}`}
     >
       {!hasItems && !hasSubPoints ? (
         <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
@@ -308,7 +309,7 @@ export const UnassignedThoughtLane: React.FC<{
     return (
       <div
         ref={setNodeRef}
-        className={`min-h-[80px] p-4 transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : BG_GRAY_LIGHT_DARK
+        className={`min-h-[80px] ${structureBodyPaddingClass} transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : BG_GRAY_LIGHT_DARK
           }`}
       >
         {items.length === 0 ? (

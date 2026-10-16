@@ -9,6 +9,7 @@ import { TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS } from "@/components/column/c
 import { getPlaceholderColors, getSectionBorderColor, getSectionHeaderBgStyle } from "@/components/column/utils";
 import PointNote from "@/components/PointNote";
 import { getCardClassName } from "@/components/SortableItem";
+import { structureBodyPaddingClass, structureSubPointInsetClass } from "@/utils/structureBoardLayout";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
@@ -55,14 +56,14 @@ function PointCard({ point, items, sectionId, headerColor }: {
         <h4 className={`text-sm font-medium ${headerColor ? "text-gray-800 dark:text-gray-200" : colors.headerText}`}>{point.text}</h4>
         <PointNote note={point.note} onChange={noop} isReadOnly />
       </div>
-      <div className="space-y-4 p-4">
+      <div className={`space-y-4 ${structureBodyPaddingClass}`}>
         {entries.map((entry) => entry.type === "item" ? (
           <ThoughtCard key={entry.item.id} item={entry.item} />
         ) : (
-          <div key={entry.subPoint.id} className="ml-3 rounded-2xl border border-slate-200/90 bg-slate-50/90 px-3 py-3 dark:border-slate-700/70 dark:bg-slate-900/30">
+          <div key={entry.subPoint.id} className={`${structureSubPointInsetClass} rounded-2xl border border-slate-200/90 bg-slate-50/90 py-3 dark:border-slate-700/70 dark:bg-slate-900/30`}>
             <p className="pl-1 text-xs font-semibold text-slate-600 dark:text-slate-300">{entry.subPoint.text}</p>
             <div className="pl-1"><PointNote note={entry.subPoint.note} onChange={noop} isReadOnly /></div>
-            {entry.items.length > 0 && <div className="mt-3 space-y-4 pl-1">
+            {entry.items.length > 0 && <div className="mt-3 space-y-4 pl-0 sm:pl-1">
               {entry.items.map((item) => <ThoughtCard key={item.id} item={item} />)}
             </div>}
           </div>
@@ -89,7 +90,7 @@ function SectionColumn({ id, title, items, points, headerColor }: {
         <h2 className="text-lg font-bold text-white">{title}</h2>
       </div>
       <div
-        className={`min-h-[300px] space-y-6 rounded-b-md border-2 p-4 shadow-lg ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${getSectionBorderColor(id, headerColor)} dark:${UI_COLORS.neutral.darkBorder}`}
+        className={`min-h-[300px] space-y-6 rounded-b-md border-2 ${structureBodyPaddingClass} shadow-lg ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${getSectionBorderColor(id, headerColor)} dark:${UI_COLORS.neutral.darkBorder}`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
         {points.map((point) => (
@@ -137,7 +138,7 @@ export function StructureReadOnlyBoard({ containers, outlinePoints, sections, ti
           <h2 className="p-4 text-xl font-semibold dark:text-white">
             {titles.ambiguous} <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-sm text-gray-800 dark:bg-gray-700 dark:text-gray-200">{ambiguous.length}</span>
           </h2>
-          <div className={`${structureThoughtGridClass} gap-4 p-4`}>
+          <div className={`${structureThoughtGridClass} gap-4 ${structureBodyPaddingClass}`}>
             {ambiguous.map((item) => <ThoughtCard key={item.id} item={item} />)}
           </div>
         </section>
