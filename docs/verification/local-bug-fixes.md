@@ -777,3 +777,13 @@ Actual localhost Chromium reproduced the partial-reference return twice on uncha
 The ignored case retains exact RED/GREEN logs, scripts, PNGs, source hashes and manifest under artifacts/service-order-pending-copy-*. Existing page death before local capture remains the separate accepted risk. After authorized merge/push/deploy, verify the deployed revision and repeat the Bible/back scenario under a delayed real response, offline reload/reconnect, real receipt and stable operation IDs, online reload and second-device visibility using authorized QA data. Restore QA data and record browser/device/screenshots. Owner and production acceptance remain pending.
 
 Fresh acceptance verified v2 manifest SHA `06a677e88485e1108d7f3128e7f2a001744815c31cd4b255187e5d9bd057cfad`, all36 artifact/7 source hashes, repeated5 suites/139 tests and TypeScript, and individually inspected all three final PNGs. The earlier manifest and encoded script remain unchanged; the exact executed UTF8 input is retained separately and named by v2.
+
+## BUG-20261013-note-editor-update-loop - bounded recheck
+
+Stage: unresolved intermittent report; moved to Requires recheck, not fixed or removed. No application source changed.
+
+On unchanged HEAD eaa1185b/build bqrqFxkFGCLohb1uMWH1c, five creation/input variants produced0 update-depth exceptions and retained exact words through permanent-ID adoption: rapid keyboard and native insertText before/after creation, plus paste-before-create. In three controlled-server variants one create and needed updates retained text after reload. Mutations were intercepted and receipts synthetic; actual server acceptance is not claimed. The initial unready attempt never adopted an ID and is excluded. Five variants give bounded coverage, not proof of absence.
+
+Primary inspected390/820/1280px readback images with no overflow. Existing editor/buffer/autosave tests passed3 suites/33 tests. Phase27 full/type/lint/build logs describe unchanged app source and were not repeated. Historical Oct13/14 failures remain in BUGS.md. No cause or new RED-to-GREEN fix is claimed. Extension reconfiguration is a hypothesis only. Exact scripts/results/PNGs remain in ignored case artifacts/note-typing-*. Next reproduction should capture exact input, readiness/ID phase, full stack/build, dev with/without SW, IME and owner device. Production/physical acceptance remain unverified.
+
+Fresh acceptance verified manifest SHA `416508abaf1eb2fc16f9d277138df329143a0764cf4aab8bab7f851cb9652350`, all15 artifact/8 source hashes, original report preservation, all three PNGs and repeated3 suites/33 tests. This accepts the bounded investigation only; the bug remains unresolved.

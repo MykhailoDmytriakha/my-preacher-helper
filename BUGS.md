@@ -35,16 +35,6 @@
 **Как должно работать для пользователя.** Если на устройстве есть неподтверждённый текст подготовки, отличный от сервера, — показать его с «скопировать / выгрузить / убрать»; совпадающий с сервером — молча убрать.
 **Почему не в архив прошлой версии.** Архив сверяет копию с документом проповеди целиком; черновик — одно поле, он показал бы ложные расхождения по всем остальным полям и никогда не ушёл бы как повтор. Нужна сверка по полю `preparation`.
 
-### BUG-20261013-note-editor-update-loop · Набор текста в теле заметки вызывает «Maximum update depth exceeded»
-**Severity.** P2 — воспроизводится стабильно; в пробе текст не потерялся, но исключение обрывает обработку изменений ProseMirror посреди пачки, и что будет при быстром вводе или IME — не проверено.
-**Найден.** 2026-10-13 · живой проход по разделам на стенде; попутно, в коде этого дела не трогалось (последняя правка файлов — 2026-10-11).
-**Якоря.** `frontend/app/components/ui/useBufferedText.ts:26-31` (`change` → `setDraft`) ← `frontend/app/components/ui/RichMarkdownEditor.tsx:44-46` (`onUpdate`) и обратный эффект `:51-58` (`setContent` при расхождении `draft` и Markdown редактора).
-**Ожидалось.** Набор без ошибок в консоли.
-**Получилось.** На каждой пачке ввода — `Maximum update depth exceeded` из `DOMObserver.flush → readDOMChange → onUpdate → change → setDraft` (4 случая за 5 минут, 2026-10-13 01:48–01:52).
-**Шаги.** 1. Стенд, `/studies/new`. 2. Кликнуть в тело, набрать предложение. 3. Консоль: исключение. В окне мысли на странице проповеди — не появлялось.
-**Как должно работать для пользователя.** Редактор принимает каждую букву один раз; внешнее значение возвращается в редактор только когда оно правда другое, и это не порождает новое «изменение».
-**Уточнено 2026-10-14.** На `67e06daf` так же: пачка букв за миллисекунды сразу после заголовка новой заметки, в момент смены адреса `/studies/new` → `/studies/<id>`, — 2 из 2; по букве со скоростью человека — 0 из 1; вставка фразы — 0 из 1; текст сохраняется целиком. Подозрение на усилитель: `richMarkdownExtensions()` и `Placeholder.configure` создаются на каждой отрисовке `RichMarkdownEditor`, а tiptap (`@tiptap/react` 3.20, `compareOptions`) сравнивает расширения по ссылке и зовёт `editor.setOptions` на каждой отрисовке — не проверено.
-
 ### BUG-20261011-outline-point-skeleton-both-sides · Подпункты одного пункта, добавленные, удалённые или переставленные на двух устройствах: на доске структуры правка другого устройства теряется молча
 **P2** — нужна правка состава подпунктов одного и того же пункта на двух устройствах до того, как одно увидело другое; доска структуры, применение набросков и ручной конспект решают такой спор без вопроса в пользу этого экрана (`preferMine`) · `frontend/app/utils/mergeOutline.ts` (`sameSkeleton`: слияние по частям — только для слов при неизменном скелете), `frontend/app/(pages)/(private)/sermons/[id]/structure/page.tsx:821`, `…/sermons/[id]/page.tsx:1322`, `…/plan/manual/useManualConspectus.ts:509`.
 **Найден.** 2026-10-11 · ревью Codex (круги 1–3) фикса BUG-20261011-outline-point-merge-loses-subpoint-edit; в HEAD так же. Слияние скелета по частям давало каждый круг новый край (подпункт в двух пунктах, порядок массива против числовых позиций), поэтому фикс ограничен словами.
@@ -332,6 +322,18 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261013-note-editor-update-loop · Набор текста в теле заметки вызывает «Maximum update depth exceeded»
+**Recheck 2026-10-16, local HEAD eaa1185b.** Production build bqrqFxkFGCLohb1uMWH1c: update recursion 0/5 variants (keyboard/native burst before and after creation, paste before creation). All typed words retained through permanent-ID adoption; no page errors. Three controlled-server variants retained text after reload, one create each. API mutations intercepted; synthetic ACKs, not actual server acceptance. Existing editor/buffer/autosave tests:3 suites/33 passed. Initial unready trial never adopted an ID and is excluded. Historical Oct13/14 evidence stays valid. Root cause and reason for current non-reproduction are unproved; no new fix claimed. Extension reconfiguration is a hypothesis only. Reproduce with exact input/load/ID timing, full stack/build, dev with/without SW, IME and owner device. Evidence: artifacts/note-typing-* in the local case; summary in docs/verification/local-bug-fixes.md.
+**Severity.** P2 — воспроизводится стабильно; в пробе текст не потерялся, но исключение обрывает обработку изменений ProseMirror посреди пачки, и что будет при быстром вводе или IME — не проверено.
+**Найден.** 2026-10-13 · живой проход по разделам на стенде; попутно, в коде этого дела не трогалось (последняя правка файлов — 2026-10-11).
+**Якоря.** `frontend/app/components/ui/useBufferedText.ts:26-31` (`change` → `setDraft`) ← `frontend/app/components/ui/RichMarkdownEditor.tsx:44-46` (`onUpdate`) и обратный эффект `:51-58` (`setContent` при расхождении `draft` и Markdown редактора).
+**Ожидалось.** Набор без ошибок в консоли.
+**Получилось.** На каждой пачке ввода — `Maximum update depth exceeded` из `DOMObserver.flush → readDOMChange → onUpdate → change → setDraft` (4 случая за 5 минут, 2026-10-13 01:48–01:52).
+**Шаги.** 1. Стенд, `/studies/new`. 2. Кликнуть в тело, набрать предложение. 3. Консоль: исключение. В окне мысли на странице проповеди — не появлялось.
+**Как должно работать для пользователя.** Редактор принимает каждую букву один раз; внешнее значение возвращается в редактор только когда оно правда другое, и это не порождает новое «изменение».
+**Уточнено 2026-10-14.** На `67e06daf` так же: пачка букв за миллисекунды сразу после заголовка новой заметки, в момент смены адреса `/studies/new` → `/studies/<id>`, — 2 из 2; по букве со скоростью человека — 0 из 1; вставка фразы — 0 из 1; текст сохраняется целиком. Подозрение на усилитель: `richMarkdownExtensions()` и `Placeholder.configure` создаются на каждой отрисовке `RichMarkdownEditor`, а tiptap (`@tiptap/react` 3.20, `compareOptions`) сравнивает расширения по ссылке и зовёт `editor.setOptions` на каждой отрисовке — не проверено.
+
 
 ### BUG-20261016-structure-resize-update-loop · При серии изменений ширины страницы доска структуры падает с React185
 **Severity.** Предварительно P2 — экран перестаёт работать до повторного открытия; текст не вводился и записей не отправлялось. Повторяемость ещё не установлена.
