@@ -14,6 +14,7 @@ import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
+import { discoverLegacyRecovery as discoverLegacyOriginals } from './legacyRecovery.client';
 import { mergeFields } from './protocol';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -26,7 +27,7 @@ import type { ManualPath } from './manualScope';
 import type { MembershipDelivery } from './membershipDelivery';
 import type { MembershipAction } from './membershipIntent';
 import type { MembershipScope } from './membershipScope';
-import type { DocumentData, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
@@ -131,6 +132,11 @@ function useLookWhileSilent(active: boolean, databases: readonly string[], look:
  */
 export function mergeValues(base: FieldValue, mine: FieldValue, theirs: FieldValue) {
   return mergeFields(base, mine, theirs);
+}
+
+/** Read-only historical originals; feature callers retain ownership and exact-byte removal checks. */
+export function discoverLegacyRecovery(owner: string, options?: Parameters<typeof discoverLegacyOriginals>[1]) {
+  return discoverLegacyOriginals(owner, options);
 }
 
 export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
@@ -245,16 +251,14 @@ const remoteDeleted = (record: EditorRecord) => {
 };
 
 /**
- * The server's copy of one document, read now through the engine's transport — for a screen that
- * must see proof from the server before it gives something up. Null without an engine; the read
- * refuses offline or on a hidden page rather than answering from this device.
- * ⚠️ Not yet proof in the installed app: the service worker answers this GET from its `apis` cache
- * when the network fails (BUG-20260908-cached-response-counts-as-live-connection), so the copy can
- * be old. Retiring a person's text on it alone was refused in review (BUGS: confirmed draft).
+ * Ask through the canonical engine reader, refusing offline/hidden reads. Use fresh:true
+ * before retiring a local original: a unique request URL also prevents an older active
+ * service worker from answering with a cached API response. Default readers retain their URL.
  */
-export function useRemotePeek(): ((resource: ResourceRef) => Promise<ResourceSnapshot>) | null {
+export function useRemotePeek(options?: EngineReadOptions): ((resource: ResourceRef) => Promise<ResourceSnapshot>) | null {
   const { browser } = useContext(EngineContext) ?? idleEngine;
-  return useMemo(() => browser ? (resource: ResourceRef) => browser.engine.peekRemote(resource) : null, [browser]);
+  const fresh = options?.fresh === true;
+  return useMemo(() => browser ? (resource: ResourceRef) => (fresh ? browser.engine.peekRemote(resource, { fresh: true }) : browser.engine.peekRemote(resource)) : null, [browser, fresh]);
 }
 
 export function useDocumentActions() {

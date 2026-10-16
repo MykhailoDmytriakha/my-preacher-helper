@@ -55,6 +55,20 @@ describe('HTTP engine transport', () => {
   });
 
   beforeEach(() => { jest.mocked(resolveOwnerUid).mockReturnValue('owner'); });
+  it('never accepts an older worker cache entry as a fresh document answer', async () => {
+    let online = true;
+    const cached = new Set<string>();
+    jest.mocked(requestOwnerJson).mockImplementation(async url => {
+      if (online) cached.add(url);
+      else if (!cached.has(url)) throw Object.assign(new Error('Network unavailable'), { code: 'unavailable' });
+      return { status: 200, value: snapshot as never };
+    });
+    const transport = createHttpEngineTransport();
+    expect(await transport.read('owner', command.resource, { fresh: true })).toEqual(snapshot);
+    online = false;
+    await expect(transport.read('owner', command.resource, { fresh: true })).rejects.toMatchObject({ code: 'unavailable' });
+  });
+
   it('sends authenticated commands and validates successful snapshots', async () => {
     const result = { kind: 'acknowledged', operationId: 'op', snapshot };
     jest.mocked(requestOwnerJson).mockResolvedValue({ status: 200, value: result });

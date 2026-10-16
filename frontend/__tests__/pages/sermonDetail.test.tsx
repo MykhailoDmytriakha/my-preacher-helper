@@ -248,6 +248,8 @@ jest.mock('react-i18next', () => ({
 }));
 
 const mockLocalStorage = {
+  length: 0,
+  key: jest.fn(),
   getItem: jest.fn(),
   setItem: jest.fn(),
   removeItem: jest.fn(),
@@ -292,9 +294,63 @@ describe('Sermon Detail Page', () => {
     jest.clearAllMocks();
     routeId = 'sermon-123';
     mockLocalStorage.getItem.mockReturnValue(null);
+    mockLocalStorage.length = 0;
+    mockLocalStorage.key.mockReturnValue(null);
+    mockLocalStorage.removeItem.mockReset();
     mockEngineThoughtModalProps = null;
     mockUseSearchParams.mockReturnValue({ get: () => null });
     openSermon();
+  });
+
+  describe('legacy preparation drafts', () => {
+    const scopedKey = 'draft:v1:u1:sermon-123:preparation';
+    const oldKey = 'prep-draft-backup-sermon-123';
+    const records = (entries: [string, string][]) => {
+      const stored = new Map(entries);
+      mockLocalStorage.length = stored.size;
+      mockLocalStorage.key.mockImplementation((index: number) => [...stored.keys()][index] ?? null);
+      mockLocalStorage.getItem.mockImplementation((key: string) => stored.get(key) ?? null);
+      mockLocalStorage.removeItem.mockImplementation((key: string) => stored.delete(key));
+      return stored;
+    };
+
+    it('offers the retained owner draft without replacing current preparation', async () => {
+      const raw = JSON.stringify({ value: { authorIntent: 'Earlier unsaved preparation words' }, savedAt: 10 });
+      const stored = records([[scopedKey, raw]]);
+      openSermon({ preparation: { authorIntent: 'Current preparation stays untouched' } });
+      renderPage();
+      const notice = await screen.findByRole('region', { name: 'legacyPreparation.title' });
+      fireEvent.click(within(notice).getByText('legacyRecovery.preview'));
+      expect(within(notice).getByText('Earlier unsaved preparation words', { exact: false })).toBeVisible();
+      expect(stored.get(scopedKey)).toBe(raw);
+      expect(storedPreparation().authorIntent).toBe('Current preparation stays untouched');
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('offers the older backup only within its owned sermon', async () => {
+      const raw = JSON.stringify({ thesis: { homiletical: 'Older backup preparation words' } });
+      const stored = records([[oldKey, raw]]);
+      renderPage();
+      const notice = await screen.findByRole('region', { name: 'legacyPreparation.title' });
+      fireEvent.click(within(notice).getByText('legacyRecovery.preview'));
+      expect(within(notice).getByText('Older backup preparation words', { exact: false })).toBeVisible();
+      expect(stored.get(oldKey)).toBe(raw);
+      expect(storedPreparation()).toEqual({});
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    });
+
+    it('retires a proven preparation echo without comparing unrelated sermon fields', async () => {
+      const preparation = { authorIntent: 'Already accepted preparation words' };
+      const stored = records([[scopedKey, JSON.stringify({ value: preparation, savedAt: 10 })]]);
+      openSermon({ preparation, title: 'A different sermon title', thoughts: [{ id: 't1', text: 'Other words', tags: [] }] });
+      renderPage();
+      await screen.findByTestId('sermon-header');
+      await waitFor(() => expect(stored.has(scopedKey)).toBe(false));
+      expect(screen.queryByRole('region', { name: 'legacyPreparation.title' })).not.toBeInTheDocument();
+      expect(storedPreparation()).toEqual(preparation);
+      expect(harness.transport.read).toHaveBeenCalledWith('u1', resource, { fresh: true });
+      expect(harness.transport.send).not.toHaveBeenCalled();
+    });
   });
 
   describe('preaching date history on the sermon screen', () => {

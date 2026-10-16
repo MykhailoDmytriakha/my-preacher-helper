@@ -4,7 +4,15 @@
  * refused change. One list, so the two never name the same field differently. Any other field shows
  * as stored.
  */
-const NAMED_FIELDS = new Set(['title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
+const NAMED_FIELDS = new Set([
+  'spiritual', 'readAndPrayedConfirmed', 'textContext', 'passage', 'passageSummary',
+  'repeatedWords', 'contextNotes', 'readWholeBookOnceConfirmed', 'exegeticalPlan', 'authorIntent',
+  'mainIdea', 'contextIdea', 'textIdea', 'argumentation', 'thesis',
+  'exegetical', 'homiletical', 'oneSentence', 'questionWord', 'pluralKey',
+  'transitionSentence', 'sermonInOneSentence', 'homileticalAnswers', 'whyPreach', 'impactOnChurch',
+  'practicalQuestions', 'timelessTruth', 'christConnection', 'preachingGoal', 'statement',
+  'homileticPlan', 'modernTranslation', 'updatedPlan', 'sermonPlan', 'children',
+  'title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
   'type', 'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',

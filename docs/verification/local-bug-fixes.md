@@ -787,3 +787,28 @@ On unchanged HEAD eaa1185b/build bqrqFxkFGCLohb1uMWH1c, five creation/input vari
 Primary inspected390/820/1280px readback images with no overflow. Existing editor/buffer/autosave tests passed3 suites/33 tests. Phase27 full/type/lint/build logs describe unchanged app source and were not repeated. Historical Oct13/14 failures remain in BUGS.md. No cause or new RED-to-GREEN fix is claimed. Extension reconfiguration is a hypothesis only. Exact scripts/results/PNGs remain in ignored case artifacts/note-typing-*. Next reproduction should capture exact input, readiness/ID phase, full stack/build, dev with/without SW, IME and owner device. Production/physical acceptance remain unverified.
 
 Fresh acceptance verified manifest SHA `416508abaf1eb2fc16f9d277138df329143a0764cf4aab8bab7f851cb9652350`, all15 artifact/8 source hashes, original report preservation, all three PNGs and repeated3 suites/33 tests. This accepts the bounded investigation only; the bug remains unresolved.
+
+## BUG-20261013-legacy-preparation-drafts-unsurfaced
+
+Stage: locally verified, independently source-reviewed and accepted against the exact frozen manifest; production pending.
+
+On a sermon detail page, historical owner-scoped preparation drafts and older uid-less backups were retained in localStorage but invisible. LegacyPreparationRecovery now offers their full readable text, copy, exact original download and individually confirmed discard. One utility owns the exact keys, confirmed sermon ownership, preparation-only equality and raw-identity deletion guard. It reuses generic legacy discovery through the canonical public engine facade. No legacy draft automatically replaces preparation or enters the write queue.
+
+Only a fresh successful server preparation-field match retires an echo. The optional fresh read runs through the existing engine transport with a new request query, preventing an older worker's exact-URL cache from answering that request. Owner, visibility and returned-resource checks stay; default consumers keep their previous URL/call shape. Missing/deleted/foreign/failed/offline answers retain originals. A replacement written during a pending request/question remains. Confirmed-version comparison coalesces cloned checkpoints so typing does not read the server on every keystroke.
+
+RED:3 real sermon-page regressions,1 exact-URL cached-read regression,1 duplicate-read regression. GREEN:5 focused suites/80 tests, including the unchanged architecture boundary. Full818 suites/8662 tests,3 suites/17 tests skipped. TypeScript passes; ESLint0 errors/26 inherited warnings; production build nwIQeRdvzhU_Eizv0FOnI passes. The full gate caught an initial internal import and a direct re-export; the final public function passes without adding an exception.
+
+Actual localhost Chromium: both historical formats visible with translated field labels; full words copied into an injected clipboard sink; two real downloads byte-identical; cancel retains, individual discard survives reload, foreign record stays and current confirmed preparation remains unchanged. Current-worker offline reload keeps both originals; a separate echo fixture retires only after a fresh successful read on reconnect. Two real tabs preserve/display a replacement written while the old discard question is open. Unsupported-serviceWorker-API variant is clean; Playwright's blocked-registration stub trial errors are excluded and documented. Selected successful read payloads and snapshot fields were synthetic QA fixtures through actual transport. Mutation attempts/page errors in final variants:0/0. This is not real production acceptance or an OS-clipboard claim.
+
+Primary individually inspected final390/820/1280 PNGs at original resolution: both entries and controls fit, no page horizontal overflow. Disposable contexts closed and original groups tab online. Physical phone/tablet/Safari and owner acceptance remain pending.
+
+Frozen manifest .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/legacy-prep-manifest.json SHA256 fe1f8b27825fe80bfe44ec64ecfe4b6c8266f7a41d187a8dfedd5cd4a40463f3 covers45 artifacts/16 sources. The ignored case preserves raw scripts, results, RED/GREEN logs, downloads and PNGs. Fresh acceptance result is recorded separately in the case.
+
+After separately authorized publication: confirm deployed revision/worker; preserve preexisting local keys and use synthetic originals for an authorized QA sermon. Repeat preview/copy/exact download/cancel/individual discard/reload and fresh real-server equality retirement versus offline retention; verify no sermon write and unchanged current preparation, then restore QA keys. Check installed old-worker behavior and physical devices. No push, merge, deploy or production closure occurred here.
+
+| Item | Result | Regression | Browser/manual |
+|---|---|---|---|
+| 1. Both old formats accessible | Fixed locally | legacyPreparationRecovery.test.ts and sermonDetail.test.tsx | Both full previews, clipboard sink and exact raw downloads |
+| 2. Safe echo retirement | Fresh field comparison, retention on failed reads | transport.client.test.ts; LegacyPreparationRecovery.test.tsx | Failed read/offline retains; reconnect retires only matching copy |
+| 3. Scoped discard and replacement | Exact owner/key/raw checks | utility/component tests | Cancel, individual delete, reload and two-tab replacement |
+| 4. Existing preparation and responsive screen | Preserved | component/page regressions; confirmed-version repeat-read test | Persisted current field unchanged; primary390/820/1280 visual |

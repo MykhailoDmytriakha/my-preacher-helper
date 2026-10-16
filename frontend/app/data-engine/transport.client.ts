@@ -3,6 +3,7 @@
 import { z } from 'zod';
 
 import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
+import { newClientId } from '@/utils/clientId';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
 import { getResourcePolicy, isValidIdentifier } from './protocol';
@@ -103,9 +104,10 @@ export function createHttpEngineTransport(): EngineTransport & CollectionTranspo
       if (result.kind === 'acknowledged') validateRelatedSnapshots(command.owner, result);
       return result;
     },
-    async read(owner, resource) {
+    async read(owner, resource, options) {
       assertOwner(owner);
-      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/documents/${encodeURIComponent(resource.collection)}/${encodeURIComponent(resource.id)}`, { method: 'GET', answerStatuses: [], messages });
+      const query = options?.fresh ? new URLSearchParams({ read: newClientId() }).toString() : '';
+      const { value } = await requestOwnerJson<unknown>(`/api/data-engine/documents/${encodeURIComponent(resource.collection)}/${encodeURIComponent(resource.id)}` + (query ? '?' + query : ''), { method: 'GET', answerStatuses: [], messages });
       assertOwner(owner);
       const snapshot = parse(snapshotSchema, value);
       if (snapshot.resource.collection !== resource.collection || snapshot.resource.id !== resource.id) {

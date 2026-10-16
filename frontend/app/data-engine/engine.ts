@@ -20,7 +20,7 @@ import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
-import type { DocumentData, EngineMetadata, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+import type { DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { canReplaceSnapshot } from './snapshotFreshness';
 
@@ -293,11 +293,12 @@ export class DataEngine {
     return cached;
   }
 
-  async peekRemote(resource: ResourceRef): Promise<ResourceSnapshot> {
+  async peekRemote(resource: ResourceRef, options?: EngineReadOptions): Promise<ResourceSnapshot> {
     const owner = this.requireOwner(), generation = this.generation;
     this.validateResource(resource, owner);
     if (!this.online || !this.visible) throw new Error('The server cannot be asked right now');
-    const server = await this.options.transport.read(owner, copy(resource));
+    const server = await (options ? this.options.transport.read(owner, copy(resource), options)
+      : this.options.transport.read(owner, copy(resource)));
     this.assertCurrent(owner, generation);
     if (!sameResource(server.resource, resource)) throw new Error('Server snapshot identity mismatch');
     return server;

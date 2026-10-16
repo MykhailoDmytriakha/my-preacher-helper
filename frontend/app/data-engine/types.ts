@@ -113,9 +113,14 @@ export interface JournalStore {
   list(owner: string): Promise<JournalEntry[]>;
 }
 
+export interface EngineReadOptions {
+  /** Require a new URL so an older worker cannot answer from its API cache. */
+  fresh?: boolean;
+}
+
 export interface EngineTransport {
   send(command: DataCommand): Promise<CommandResult>;
-  read(owner: string, resource: ResourceRef): Promise<ResourceSnapshot>;
+  read(owner: string, resource: ResourceRef, options?: EngineReadOptions): Promise<ResourceSnapshot>;
 }
 
 export interface CollectionPage {

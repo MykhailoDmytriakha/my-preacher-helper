@@ -18,6 +18,7 @@ import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
+import { LegacyPreparationRecovery } from '@/components/sermon/LegacyPreparationRecovery';
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
 import HomileticPlanStepContent from '@/components/sermon/prep/HomileticPlanStepContent';
@@ -733,6 +734,7 @@ function SermonPageContent({ id }: { id: string }) {
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />
+      <LegacyPreparationRecovery owner={user?.uid ?? null} confirmed={core.confirmed} />
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
         <EnginePreachDateList sermonId={sermon.id} showDocumentStatus={false} />
       </div>
