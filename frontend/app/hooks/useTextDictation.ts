@@ -23,6 +23,7 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
   const { blocked, blockedLabelKey, refresh } = useAiUsage();
   // The same two-resource rule: a dictation request is admitted for transcription AND ai.
   const transcriptionBlocked = blocked('dictation');
+  const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<FailureWords | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -76,6 +77,8 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
   const stopProcessing = () => setIsProcessing(false);
   return {
     isProcessing,
+    isRecording,
+    setIsRecording,
     error,
     retryCount,
     maxRetries: 3,

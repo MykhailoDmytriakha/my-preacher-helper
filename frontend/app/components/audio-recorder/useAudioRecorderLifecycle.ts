@@ -13,6 +13,7 @@ import {
 import { getAudioGracePeriod } from "@/utils/audioRecorderConfig";
 
 import { AUDIO_RECORDER_CLEAR_EVENT, ERROR_KEYS } from "./constants";
+import { useRecordingSession } from "./useRecordingSession";
 
 import type {
   RecordingState,
@@ -35,6 +36,7 @@ export function useAudioRecorderLifecycle({
   enableAudioLevelMonitoring = true,
   t,
 }: UseAudioRecorderLifecycleArgs): UseAudioRecorderLifecycleResult {
+  const { isActive: isSessionActive, begin, owns, finish } = useRecordingSession(onRecordingStateChange);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -57,10 +59,6 @@ export function useAudioRecorderLifecycle({
   const hasAutoStartedRef = useRef(false);
   const isRecordingRef = useRef(false);
   const isPausedRef = useRef(false);
-
-  useEffect(() => {
-    onRecordingStateChange?.(isRecording || isInitializing);
-  }, [isRecording, isInitializing, onRecordingStateChange]);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -89,7 +87,8 @@ export function useAudioRecorderLifecycle({
     isRecordingRef.current = false;
     isPausedRef.current = false;
     setAudioLevel(0);
-  }, []);
+    finish();
+  }, [finish]);
 
   const handleError = useCallback(
     (error: Error, messageKey: string) => {
@@ -145,12 +144,9 @@ export function useAudioRecorderLifecycle({
   const initializeRecordingState = useCallback(() => {
     chunks.current = [];
     console.log("AudioRecorder: Cleared chunks array before starting");
-    setStoredAudioBlob(null);
     setIsInitializing(true);
     setAudioLevel(0);
-    setTranscriptionErrorState(null);
-    onClearError?.();
-  }, [onClearError]);
+  }, []);
 
   const acquireMediaStream = useCallback(async (): Promise<MediaStream> => {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -161,7 +157,6 @@ export function useAudioRecorderLifecycle({
       },
     });
 
-    streamRef.current = stream;
     return stream;
   }, []);
 
@@ -199,10 +194,17 @@ export function useAudioRecorderLifecycle({
       return;
     }
 
+    const session = begin();
+    if (session === null) return;
     initializeRecordingState();
 
     try {
       const stream = await acquireMediaStream();
+      if (!owns(session)) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
+      streamRef.current = stream;
       setupAudioMonitoring(stream);
 
       const bestFormat = getBestSupportedFormat();
@@ -219,42 +221,47 @@ export function useAudioRecorderLifecycle({
       }
 
       const handleDataAvailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
+        if (owns(session) && event.data.size > 0) {
           chunks.current.push(event.data);
         }
       };
 
       const handleStop = async () => {
-        if (chunks.current.length > 0) {
-          const mimeType = mediaRecorder.current?.mimeType || bestFormat;
-          const blob = new Blob(chunks.current, { type: mimeType });
+        if (!owns(session)) return;
+        try {
+          if (chunks.current.length > 0) {
+            const mimeType = mediaRecorder.current?.mimeType || bestFormat;
+            const blob = new Blob(chunks.current, { type: mimeType });
 
-          await logAudioInfo(blob, "AudioRecorder Output");
-          console.log(`AudioRecorder: Chunks count: ${chunks.current.length}`);
+            await logAudioInfo(blob, "AudioRecorder Output");
+            if (!owns(session)) return;
+            console.log(`AudioRecorder: Chunks count: ${chunks.current.length}`);
 
-          if (blob.size === 0) {
-            console.error("AudioRecorder: Empty blob created");
-            handleError(new Error("Recording failed - empty audio"), ERROR_KEYS.AUDIO_PROCESSING);
-            cleanup();
-            return;
+            if (blob.size === 0) {
+              console.error("AudioRecorder: Empty blob created");
+              handleError(new Error("Recording failed - empty audio"), ERROR_KEYS.AUDIO_PROCESSING);
+              cleanup();
+              return;
+            }
+
+            if (blob.size < 1000) {
+              console.warn(`AudioRecorder: Very small blob (${blob.size} bytes) - recording might be too short`);
+            }
+
+            setStoredAudioBlob(blob);
+            onRecordingComplete(blob);
+          } else {
+            console.error("AudioRecorder: No chunks recorded");
+            handleError(new Error("Recording failed - no data"), ERROR_KEYS.AUDIO_PROCESSING);
           }
 
-          if (blob.size < 1000) {
-            console.warn(`AudioRecorder: Very small blob (${blob.size} bytes) - recording might be too short`);
-          }
-
-          setStoredAudioBlob(blob);
-          onRecordingComplete(blob);
-        } else {
-          console.error("AudioRecorder: No chunks recorded");
-          handleError(new Error("Recording failed - no data"), ERROR_KEYS.AUDIO_PROCESSING);
+        } finally {
+          if (owns(session)) cleanup();
         }
-
-        cleanup();
       };
 
       const handleRecorderError = () => {
-        handleError(new Error("MediaRecorder error"), ERROR_KEYS.AUDIO_PROCESSING);
+        if (owns(session)) handleError(new Error("MediaRecorder error"), ERROR_KEYS.AUDIO_PROCESSING);
       };
 
       mediaRecorder.current = createConfiguredMediaRecorder(
@@ -266,11 +273,17 @@ export function useAudioRecorderLifecycle({
       );
 
       initiateRecording();
+      setStoredAudioBlob(null);
+      setTranscriptionErrorState(null);
+      onClearError?.();
     } catch (error) {
-      handleError(error as Error, ERROR_KEYS.MICROPHONE_UNAVAILABLE);
+      if (owns(session)) handleError(error as Error, ERROR_KEYS.MICROPHONE_UNAVAILABLE);
     }
   }, [
     acquireMediaStream,
+    begin,
+    owns,
+    onClearError,
     cleanup,
     handleError,
     initializeRecordingState,
@@ -295,6 +308,11 @@ export function useAudioRecorderLifecycle({
   }, [handleError, isRecording]);
 
   const cancelRecording = useCallback(() => {
+    if (isInitializing) {
+      cleanup();
+      setIsInitializing(false);
+      return;
+    }
     console.log("AudioRecorder: cancelRecording called", {
       isRecording,
       hasMediaRecorder: Boolean(mediaRecorder.current),
@@ -339,7 +357,7 @@ export function useAudioRecorderLifecycle({
       setTranscriptionErrorState(null);
       onClearError?.();
     }
-  }, [cleanup, isRecording, onClearError]);
+  }, [cleanup, isRecording, isInitializing, onClearError]);
 
   const pauseRecording = useCallback(() => {
     console.log("AudioRecorder: pauseRecording called", {
@@ -399,12 +417,11 @@ export function useAudioRecorderLifecycle({
   }, [handleError, isPaused, isRecording, monitorAudioLevel]);
 
   const retryTranscription = useCallback(() => {
-    if (!storedAudioBlob) {
+    if (isProcessing || isSessionActive || !storedAudioBlob) {
       return;
     }
 
     setTranscriptionErrorState(null);
-    onClearError?.();
 
     if (onRetry) {
       onRetry();
@@ -412,7 +429,7 @@ export function useAudioRecorderLifecycle({
     }
 
     onRecordingComplete(storedAudioBlob);
-  }, [onClearError, onRecordingComplete, onRetry, storedAudioBlob]);
+  }, [isProcessing, isSessionActive, onRecordingComplete, onRetry, storedAudioBlob]);
 
   const discardStoredAudio = useCallback(() => {
     setStoredAudioBlob(null);
@@ -429,9 +446,8 @@ export function useAudioRecorderLifecycle({
   }, [storedAudioBlob]);
 
   const recordAgain = useCallback(() => {
-    discardStoredAudio();
     void startRecording();
-  }, [discardStoredAudio, startRecording]);
+  }, [startRecording]);
 
   const closeError = useCallback(() => {
     discardStoredAudio();
@@ -585,12 +601,12 @@ export function useAudioRecorderLifecycle({
   }, [autoStart, startRecording]);
 
   const recordingState = useMemo<RecordingState>(() => {
-    if (isProcessing) return "processing";
+    if (isProcessing || (isSessionActive && !isRecording && !isInitializing)) return "processing";
     if (isInitializing) return "initializing";
     if (isRecording && isPaused) return "paused";
     if (isRecording) return "recording";
     return "idle";
-  }, [isInitializing, isPaused, isProcessing, isRecording]);
+  }, [isInitializing, isPaused, isProcessing, isRecording, isSessionActive]);
 
   const keptError = transcriptionErrorState ?? transcriptionError ?? null;
   return {

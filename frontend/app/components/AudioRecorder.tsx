@@ -98,7 +98,7 @@ export const AudioRecorder = ({
     [maxDuration, recordingTime]
   );
 
-  const isButtonDisabled = disabled || isProcessing || isInitializing;
+  const isButtonDisabled = disabled || isProcessing || isInitializing || recordingState === "processing";
   const shouldShowRecovery = Boolean(transcriptionErrorMessage && hasStoredAudio && storedAudioUrl);
   const isIdle = recordingState === "idle";
 
@@ -138,6 +138,7 @@ export const AudioRecorder = ({
 
           <RecordingActionButtons
             isRecording={isRecording}
+            isInitializing={isInitializing}
             isPaused={isPaused}
             appliedVariant={appliedVariant}
             onStop={stopRecording}
@@ -169,7 +170,7 @@ export const AudioRecorder = ({
         appliedVariant={appliedVariant}
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled}
+        isProcessing={isProcessing || disabled || recordingState !== "idle"}
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
         onDiscard={() => { discardStoredAudio(); onDiscardRecording?.(); }}

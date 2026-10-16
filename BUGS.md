@@ -14,23 +14,12 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261016-focus-recorder-lifetime-loses-source · Closing dictation or failing to start a replacement loses the only recording
-**Severity.** P2 — dictated words can lose their only retry/download source; microphone permission can outlive its visible owner.
-**Found.** 2026-10-16 · source review during BUG-20261003-one-click-delete-other-screens; browser reproduction pending.
-**Anchors.** FocusRecorderButton.tsx:351-372, 423-445, 477-488, 615-622, 680-682; useTextDictation.ts:26-34,53-60; EditThoughtModal.tsx:85-94; prayer/AddUpdateModal.tsx:27-42.
-**Expected / actual.** Recording and permission acquisition protect modal exits and Save. A failed replacement keeps the prior blob. A permission result after unmount stops its stream. Currently capture activity is private, close cleanup clears chunks, replacement clears the blob before acquisition succeeds, and a late stream has no lifetime check.
-**Reproduce.** Open a thought or prayer update, start dictation, close before Stop; alternatively fail transcription, choose record again, and deny microphone access. Resolve a deferred microphone permission after closing to check hidden capture.
-**Effect.** The retry/download copy disappears, or the microphone starts without its screen.
-**User contract.** Dictation remains available until deliberately discarded or accepted as text. Ordinary modal exits and Save wait while recording; permission failure preserves prior work. Successful processing and explicit discard keep their intended cleanup.
-**Class: recorder work outlives or is destroyed before its visible owner's decision.**
-| place | verdict | reason |
-|---|---|---|
-| FocusRecorderButton and useTextDictation | affected | private capture lifecycle and in-memory source; replacement clears before acquisition |
-| Thought / prayer update modals | affected | pending transcription is guarded, pending capture is not exposed |
-| OutlinePointCard | affected | the same recorder's failed source is only retained while mounted |
-| AudioRecorder shared lifecycle | separate mechanism | exposes recording/initializing state; audit its durable recovery during this fix |
-| server / command queue | not the source of this loss | local raw blob can disappear before a request exists |
-**Direction.** Reuse the existing activity callback shape; guard modal exits/submission, retire late streams, preserve the previous source until replacement is ready. Verify microphone lifecycle with deferred promises and a fake browser microphone. Durable mid-capture navigation recovery is a separate question to investigate, not an assumed guarantee.
+### BUG-20261016-unfinished-recording-navigation-recovery · Failed dictation disappears after leaving its page
+**P2.** Only copy of dictated work is lost. Anchors: FocusRecorderButton.tsx storedAudioBlob/on-unmount cleanup; useTextDictation.ts storedBlob; OutlinePointCard.tsx inline recorder; recordingDraftStore.ts and RecordingDraftBanner.tsx (existing persistence wired only in studies).
+**Reproduced 2026-10-16.** On local build l9tdD-R0khxfRzh7g6MLR, thought and prayer-update paths each record with a controlled fake microphone, receive one synthetic transcription refusal, show a playable recording, navigate to Settings, return and reopen: player 1→0, recovery offer 0. Zero page errors or real API mutations. Evidence: recorder-navigation-browser-before.js/json in the active local case.
+**Expected / actual.** Unaccepted audio stays discoverable for its owner and original destination until accepted or explicitly discarded; page navigation currently destroys the in-memory source. In-window permission/capture/finalization guards cannot provide cross-page persistence.
+**Class.** Thought/create/edit, prayer update, outline point and column/portal recorders need scoped durable recovery and successful-acceptance cleanup; studies already has an existing draft mechanism but its owner/placeholder and pending-provider boundaries need auditing.
+**Direction.** Extend the canonical recordingDraftStore/useRecordingDrafts/banner flow with owner and destination scope; no duplicate store. Audit in-session quota/empty outcomes and durable text acceptance too, since an error flag alone is not a complete source-lifetime contract. Preserve raw source before provider work, avoid duplicate retries and wrong-target recovery, retain on failed storage/acceptance, and verify reload, offline and sequential owner changes.
 
 ### BUG-20261013-relation-scan-blocks-delete · Проповедь, группу или заметку нельзя удалить, когда у владельца около сотни серий или материалов, даже не связанных с ней
 **Severity.** P2 — операция пропадает целиком у активного пользователя (в отказе), но только начиная с ~100 серий или материалов; сейчас у тестового владельца их единицы.

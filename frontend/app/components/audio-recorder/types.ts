@@ -51,6 +51,7 @@ export interface MainRecordButtonProps {
 
 export interface RecordingActionButtonsProps {
   isRecording: boolean;
+  isInitializing?: boolean;
   isPaused: boolean;
   appliedVariant: RecorderVariant;
   onStop: () => void;

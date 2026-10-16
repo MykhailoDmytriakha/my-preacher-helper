@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { sayFailure } from '@/utils/actionFailureMessage';
@@ -46,6 +47,7 @@ function recoveryPreview(value: Json | undefined, initialThoughts: Json | undefi
 /** Typing changes only a durable manual stage; Save captures its opening ancestor. */
 export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }: Props) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [newThought] = useState<Thought>(() => ({ id: newClientId(), text: '', tags: [], date: new Date().toISOString() }));
   // Each creation opening is independent, including while earlier creations are offline.
   // Creation selects the array and explicitly shares recovery across unique creation slots,
@@ -86,28 +88,39 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     },
     onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
+  const isBusy = form.busy || dictation.isProcessing || dictation.isRecording;
+  const close = () => {
+    if (isBusy) return;
+    void askBeforeDiscard(Boolean(dictation.error), onClose);
+  };
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({ id: scopeId,
       title: String(record.baseline.value?.title ?? sermonId), preview: recoveryPreview(record.stage[0].value, record.openingSelection?.[0]?.value ?? record.baseline.value?.thoughts) })),
     recover: form.recover });
   const save = async () => {
-    if (readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()) return;
+    if (isBusy || dictation.error || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()) return;
     try { await form.save(current => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }))); onClose(); }
     catch { /* The shared form retains the draft and exposes the failure. */ }
   };
-  const cancel = async () => { await form.cancel(); onClose(); };
+  const cancel = async () => {
+    if (isBusy) return;
+    const discard = async () => { await form.cancel(); onClose(); };
+    // The form already asks for dirty text; a failed raw take can exist without any typed edit.
+    await askBeforeDiscard(Boolean(dictation.error) && !form.dirty, discard);
+  };
   const resolve = async (choice: 'local' | 'remote') => {
+    if (isBusy) return;
     if (choice === 'local') await form.keepLocal(); else await form.acceptRemote();
     if (!thoughtId) onClose();
   };
   const availableTags = allowedTags.filter(allowed => !shown.tags.some(tag => tag === allowed.name
     || (normalizeStructureTag(tag) !== null && normalizeStructureTag(tag) === normalizeStructureTag(allowed.name))));
-  return <FormDialog size="standard" title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
-    eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
+  return <><FormDialog size="standard" title={t(thoughtId ? 'editThought.editTitle' : 'createThought.title')}
+    eyebrow={t('thought.editorLabel')} onClose={close} closeDisabled={isBusy} dismissOnBackdrop showCloseButton
     onSubmit={event => { event.preventDefault(); void save(); }}
     footer={<FormActions onCancel={() => { void cancel().catch(() => undefined); }} cancelLabel={t('buttons.cancel')}
-        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={form.busy} unsaved={form.dirty}
-        submitDisabled={readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
+        submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={isBusy} unsaved={form.dirty}
+        submitDisabled={isBusy || Boolean(dictation.error) || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
     <div className="space-y-5">
       <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
@@ -123,5 +136,5 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
           : <RichMarkdownEditor value={shown.text} onChange={text => change({ text })} placeholder={t('manualThought.placeholder')} />}
       </div>
     </div>
-  </FormDialog>;
+  </FormDialog>{discardDialog}</>;
 }

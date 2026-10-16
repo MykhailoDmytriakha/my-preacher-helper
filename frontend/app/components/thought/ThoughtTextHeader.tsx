@@ -27,7 +27,7 @@ export function ThoughtTextHeader({ dictation, saving, readOnly = false, showDic
       aria-disabled={disabled} title={quotaLabel}>
       <span className="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{t('editThought.appendDictation')}</span>
       <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-        <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing}
+        <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
           disabled={saving || disabled} title={quotaLabel} transcriptionError={dictation.error} onRetry={dictation.retry}
           retryCount={dictation.retryCount} maxRetries={dictation.maxRetries} onClearError={dictation.clear}
           onError={words => { toast.error(sayFailure(words, t)); dictation.stopProcessing(); }} />

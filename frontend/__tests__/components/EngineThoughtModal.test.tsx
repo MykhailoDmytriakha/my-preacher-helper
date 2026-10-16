@@ -232,3 +232,22 @@ it('asks before Cancel throws typed text away, and keeping on editing keeps it',
   await save(); await deliver(harness);
   expect(JSON.stringify(harness.read(resource).value?.thoughts)).toContain('Dictated words'); view.unmount();
 });
+
+
+it.each(['capture', 'transcription'])('protects every exit and Save while %s is active', async state => {
+  jest.mocked(useTextDictation).mockReturnValue({ isRecording: state === 'capture', isProcessing: state === 'transcription' } as unknown as ReturnType<typeof useTextDictation>);
+  const { harness, view } = setup('a'); await ready(a.text);
+  fireEvent.change(screen.getByLabelText('Thought'), { target: { value: 'Keep all dictated words' } }); await settle();
+  expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
+  fireEvent.submit(screen.getByRole('button', { name: 'buttons.save' }).closest('form')!);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  if (screen.getAllByRole('dialog').length === 1) fireEvent.click(screen.getByRole('dialog').parentElement!);
+  await settle();
+  expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  expect(screen.getByLabelText('Thought')).toHaveValue('Keep all dictated words');
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+  jest.mocked(useTextDictation).mockReturnValue({} as ReturnType<typeof useTextDictation>);
+});

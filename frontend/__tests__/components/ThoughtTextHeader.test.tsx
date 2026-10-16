@@ -9,7 +9,7 @@ jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: ({ d
   <button type="button" disabled={disabled} title={title} onClick={() => onError({ key: 'errors.microphoneUnavailable' })}>Record</button>
   <button type="button" onClick={onRetry}>Retry</button><button type="button" onClick={onClearError}>Clear</button>
 </div> }));
-const dictation = () => ({ isProcessing: false, transcriptionBlocked: false,
+const dictation = () => ({ isProcessing: false, isRecording: false, setIsRecording: jest.fn(), transcriptionBlocked: false,
   blockedLabelKey: null, error: null, retryCount: 0, maxRetries: 3, complete: jest.fn(), retry: jest.fn(), clear: jest.fn(), stopProcessing: jest.fn() });
 
 it('forwards retry/discard and reports recorder errors while ending its processing state', () => {

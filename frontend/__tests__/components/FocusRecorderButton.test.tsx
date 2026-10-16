@@ -417,9 +417,10 @@ describe('FocusRecorderButton', () => {
       expect(await screen.findByText('audio.savedRecording')).toBeInTheDocument();
       expect(screen.getByLabelText('audio.playRecording')).toHaveAttribute('src', 'blob:focus-recording');
 
+      onClearError.mockClear();
       fireEvent.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
 
-      expect(onClearError).toHaveBeenCalled();
+      expect(onClearError).not.toHaveBeenCalled();
       expect(onRecordingComplete).toHaveBeenCalledTimes(2);
       expect(onRecordingComplete).toHaveBeenLastCalledWith(expect.any(Blob));
     });
@@ -547,6 +548,240 @@ describe('FocusRecorderButton', () => {
       const progressCircles = container.querySelectorAll('circle');
       expect(progressCircles.length).toBeGreaterThan(0);
     });
+  });
+
+
+  describe('Recorder lifetime and replacement failures', () => {
+    it('offers Cancel during pending permission and retires the late microphone grant', async () => {
+      let resolveStream: ((stream: MediaStream) => void) | undefined;
+      mockGetUserMedia.mockReturnValueOnce(new Promise<MediaStream>(resolve => { resolveStream = resolve; }));
+      const lateTrackStop = jest.fn();
+      const onRecordingComplete = jest.fn();
+      const onError = jest.fn();
+      const onClearError = jest.fn();
+      render(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onError={onError}
+          onClearError={onClearError}
+        />
+      );
+
+      const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(recordButton);
+      await waitFor(() => expect(recordButton).toBeDisabled());
+      const cancelButton = screen.queryByRole('button', { name: 'audio.cancelRecording' });
+      if (cancelButton) fireEvent.click(cancelButton);
+      const resetAfterCancel = !recordButton.hasAttribute('disabled') &&
+        !recordButton.classList.contains('bg-yellow-500') &&
+        !recordButton.classList.contains('bg-red-500');
+
+      await act(async () => {
+        resolveStream?.({ getTracks: () => [{ stop: lateTrackStop }] } as unknown as MediaStream);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect({
+        cancelVisible: cancelButton !== null,
+        resetAfterCancel,
+        releasedRetiredStream: lateTrackStop.mock.calls.length,
+        recorderStarts: mockMediaRecorderStart.mock.calls.length,
+        completedRecordings: onRecordingComplete.mock.calls.length,
+        lateErrors: onError.mock.calls.length,
+        clearedRetrySource: onClearError.mock.calls.length,
+      }).toEqual({
+        cancelVisible: true,
+        resetAfterCancel: true,
+        releasedRetiredStream: 1,
+        recorderStarts: 0,
+        completedRecordings: 0,
+        lateErrors: 0,
+        clearedRetrySource: 0,
+      });
+    });
+
+    it('keeps the previous playable source while Record Again permission is pending and canceled', async () => {
+      const onRecordingComplete = jest.fn();
+      const onError = jest.fn();
+      const onClearError = jest.fn();
+      const { rerender } = render(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onError={onError}
+          onClearError={onClearError}
+        />
+      );
+      const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(recordButton);
+      await waitFor(() => expect(recordButton).toHaveClass('bg-red-500'));
+      fireEvent.click(recordButton);
+      await waitFor(() => expect(onRecordingComplete).toHaveBeenCalledTimes(1));
+      const originalBlob = onRecordingComplete.mock.calls[0][0] as Blob;
+
+      rerender(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onError={onError}
+          onClearError={onClearError}
+          transcriptionError={{ said: 'transcription failed' }}
+        />
+      );
+      await screen.findByText('audio.savedRecording');
+      onClearError.mockClear();
+      mockMediaRecorderStart.mockClear();
+
+      let resolveStream: ((stream: MediaStream) => void) | undefined;
+      mockGetUserMedia.mockReturnValueOnce(new Promise<MediaStream>(resolve => { resolveStream = resolve; }));
+      const lateTrackStop = jest.fn();
+      fireEvent.click(screen.getByRole('button', { name: 'audio.recordAgain' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled());
+      const cancelButton = screen.queryByRole('button', { name: 'audio.cancelRecording' });
+      const sourceWhilePending = screen.queryByLabelText('audio.playRecording')?.getAttribute('src') ?? null;
+      if (cancelButton) fireEvent.click(cancelButton);
+      const resetAfterCancel = !screen.getByRole('button', { name: 'audio.newRecording' }).hasAttribute('disabled') &&
+        !screen.getByRole('button', { name: 'audio.newRecording' }).classList.contains('bg-yellow-500') &&
+        !screen.getByRole('button', { name: 'audio.newRecording' }).classList.contains('bg-red-500');
+
+      await act(async () => {
+        resolveStream?.({ getTracks: () => [{ stop: lateTrackStop }] } as unknown as MediaStream);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect({
+        cancelVisible: cancelButton !== null,
+        resetAfterCancel,
+        sourceWhilePending,
+        sourceAfterCancelAndLateGrant: screen.queryByLabelText('audio.playRecording')?.getAttribute('src') ?? null,
+        originalBlobRetained: onRecordingComplete.mock.calls[0]?.[0] === originalBlob,
+        releasedRetiredStream: lateTrackStop.mock.calls.length,
+        replacementRecorderStarts: mockMediaRecorderStart.mock.calls.length,
+        completedRecordings: onRecordingComplete.mock.calls.length,
+        clearedRetrySource: onClearError.mock.calls.length,
+        lateErrors: onError.mock.calls.length,
+      }).toEqual({
+        cancelVisible: true,
+        resetAfterCancel: true,
+        sourceWhilePending: 'blob:focus-recording',
+        sourceAfterCancelAndLateGrant: 'blob:focus-recording',
+        originalBlobRetained: true,
+        releasedRetiredStream: 1,
+        replacementRecorderStarts: 0,
+        completedRecordings: 1,
+        clearedRetrySource: 0,
+        lateErrors: 0,
+      });
+    });
+
+    it('releases a microphone stream that resolves after unmount without starting it', async () => {
+      let resolveStream: ((stream: MediaStream) => void) | undefined;
+      mockGetUserMedia.mockReturnValueOnce(new Promise<MediaStream>(resolve => { resolveStream = resolve; }));
+      const trackStop = jest.fn();
+      const onError = jest.fn();
+      const { unmount } = render(
+        <FocusRecorderButton onRecordingComplete={jest.fn()} onError={onError} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled());
+
+      await act(async () => {
+        unmount();
+        resolveStream?.({ getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect({
+        releasedLateStream: trackStop.mock.calls.length,
+        recorderStarts: mockMediaRecorderStart.mock.calls.length,
+        lateErrors: onError.mock.calls.length,
+      }).toEqual({ releasedLateStream: 1, recorderStarts: 0, lateErrors: 0 });
+    });
+
+    it('does not report a microphone rejection that arrives after unmount', async () => {
+      let rejectPermission: ((error: Error) => void) | undefined;
+      mockGetUserMedia.mockReturnValueOnce(new Promise<MediaStream>((_resolve, reject) => { rejectPermission = reject; }));
+      const onError = jest.fn();
+      const { unmount } = render(
+        <FocusRecorderButton onRecordingComplete={jest.fn()} onError={onError} />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled());
+
+      await act(async () => {
+        unmount();
+        rejectPermission?.(new Error('permission rejected after unmount'));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it.each(['permission', 'construction', 'start'] as const)(
+      'keeps the previous playable recording and retry source after a failed Record Again (%s)',
+      async failure => {
+        const onRecordingComplete = jest.fn();
+        const onError = jest.fn();
+        const onClearError = jest.fn();
+        const { rerender } = render(
+          <FocusRecorderButton
+            onRecordingComplete={onRecordingComplete}
+            onError={onError}
+            onClearError={onClearError}
+          />
+        );
+        const recordButton = screen.getByRole('button', { name: 'audio.newRecording' });
+        fireEvent.click(recordButton);
+        await waitFor(() => expect(recordButton).toHaveClass('bg-red-500'));
+        fireEvent.click(recordButton);
+        await waitFor(() => expect(onRecordingComplete).toHaveBeenCalledTimes(1));
+        const originalBlob = onRecordingComplete.mock.calls[0][0] as Blob;
+
+        rerender(
+          <FocusRecorderButton
+            onRecordingComplete={onRecordingComplete}
+            onError={onError}
+            onClearError={onClearError}
+            transcriptionError={{ said: 'transcription failed' }}
+          />
+        );
+        await screen.findByText('audio.savedRecording');
+        onClearError.mockClear();
+
+        if (failure === 'permission') {
+          mockGetUserMedia.mockRejectedValueOnce(new Error('permission denied'));
+        } else if (failure === 'construction') {
+          (global as typeof globalThis & { MediaRecorder: unknown }).MediaRecorder = class {
+            constructor() { throw new Error('MediaRecorder construction failed'); }
+          } as unknown as typeof MediaRecorder;
+        } else {
+          mockMediaRecorderStart.mockImplementationOnce(() => { throw new Error('MediaRecorder start failed'); });
+        }
+
+        fireEvent.click(screen.getByRole('button', { name: 'audio.recordAgain' }));
+        await waitFor(() => expect(onError).toHaveBeenCalled());
+        const playable = screen.queryByLabelText('audio.playRecording');
+        const afterFailedReplacement = {
+          playableSource: playable?.getAttribute('src') ?? null,
+          clearedParentRetrySource: onClearError.mock.calls.length,
+        };
+
+        expect({
+          ...afterFailedReplacement,
+          originalRecordingCallbackCount: onRecordingComplete.mock.calls.length,
+          originalBlobWasRecorded: originalBlob instanceof Blob,
+        }).toEqual({
+          playableSource: 'blob:focus-recording',
+          clearedParentRetrySource: 0,
+          originalRecordingCallbackCount: 1,
+          originalBlobWasRecorded: true,
+        });
+      }
+    );
   });
 
   describe('Error Handling', () => {

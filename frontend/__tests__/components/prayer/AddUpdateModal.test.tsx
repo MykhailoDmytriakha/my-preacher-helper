@@ -7,7 +7,9 @@ import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
 
 jest.mock('@components/FocusRecorderButton', () => ({
-  FocusRecorderButton: ({ disabled, isProcessing, onRecordingComplete }: any) => (
+  FocusRecorderButton: ({ disabled, isProcessing, onRecordingComplete, onRecordingStateChange }: any) => (
+    <><button type="button" onClick={() => onRecordingStateChange?.(true)}>Begin capture</button>
+    <button type="button" onClick={() => onRecordingStateChange?.(false)}>Finish capture</button>
     <button
       type="button"
       aria-label="Record voice"
@@ -15,7 +17,7 @@ jest.mock('@components/FocusRecorderButton', () => ({
       onClick={() => onRecordingComplete(new Blob(['audio'], { type: 'audio/webm' }))}
     >
       Record voice
-    </button>
+    </button></>
   ),
 }));
 
@@ -233,4 +235,37 @@ describe('AddUpdateModal', () => {
       resolveTranscription({ polishedText: 'Dictated words', originalText: 'dictated words' });
     });
   });
+  it.each(['cancel', 'close', 'escape', 'backdrop', 'submit'])('keeps prayer update open during microphone acquisition/capture through %s', async exit => {
+    const onClose = jest.fn(), onSubmit = jest.fn();
+    render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByPlaceholderText('Share an update'), { target: { value: 'Manual words stay' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Begin capture' }));
+    if (exit === 'cancel') fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    if (exit === 'close') fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    if (exit === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+    if (exit === 'backdrop') fireEvent.click(screen.getByRole('dialog').parentElement!);
+    if (exit === 'submit') fireEvent.submit(screen.getByRole('button', { name: 'Save Update' }).closest('form')!);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save Update' })).toBeDisabled();
+    expect(screen.getByPlaceholderText('Share an update')).toHaveValue('Manual words stay');
+    fireEvent.click(screen.getByRole('button', { name: 'Finish capture' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save Update' })).toBeEnabled());
+  });
+
+  it('asks before closing a blank update with failed dictation still held', async () => {
+    mockTranscribeAudioWithRetry.mockRejectedValueOnce(new Error('No connection'));
+    const onClose = jest.fn();
+    render(<AddUpdateModal onClose={onClose} onSubmit={jest.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Record voice' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Record voice' })).toBeEnabled());
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onClose).not.toHaveBeenCalled();
+    const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+    fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
 });

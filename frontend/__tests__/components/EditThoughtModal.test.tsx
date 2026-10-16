@@ -41,8 +41,10 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
-  FocusRecorderButton: ({ onError, onRecordingComplete, disabled, isProcessing }: any) => (
+  FocusRecorderButton: ({ onError, onRecordingComplete, disabled, isProcessing, onRecordingStateChange }: any) => (
     <div>
+      <button type="button" onClick={() => onRecordingStateChange?.(true)}>Begin capture</button>
+      <button type="button" onClick={() => onRecordingStateChange?.(false)}>Finish capture</button>
       <button type="button" data-testid="focus-recorder-record" disabled={disabled}
         onClick={() => onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}>
         Record voice
@@ -564,6 +566,41 @@ describe('EditThoughtModal Component', () => {
       expect(editor).toHaveValue('Words before transcription');
       resolveTranscription({ polishedText: 'Complete dictated text', originalText: 'complete dictated text' });
     });
+  });
+
+  describe('recorder owner lifetime', () => {
+    test.each(['cancel', 'close', 'escape', 'backdrop', 'submit'])('keeps the thought open during microphone acquisition/capture through %s', async exit => {
+      const props = { ...mockProps, onClose: jest.fn(), onSave: jest.fn() };
+      render(<EditThoughtModal {...props} />);
+      fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Manual words stay' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Begin capture' }));
+      if (exit === 'cancel') fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      if (exit === 'close') fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+      if (exit === 'escape') fireEvent.keyDown(document, { key: 'Escape' });
+      if (exit === 'backdrop') fireEvent.click(screen.getByRole('dialog').parentElement!);
+      if (exit === 'submit') fireEvent.submit(screen.getByRole('button', { name: 'Save' }).closest('form')!);
+      expect(props.onClose).not.toHaveBeenCalled();
+      expect(props.onSave).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+      expect(screen.getByTestId('mock-rich-editor')).toHaveValue('Manual words stay');
+      fireEvent.click(screen.getByRole('button', { name: 'Finish capture' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled());
+    });
+  });
+
+  test('asks before closing unchanged text when failed dictation holds the only raw recording', async () => {
+    mockTranscribeAudioWithRetry.mockRejectedValueOnce(new Error('No connection'));
+    const onClose = jest.fn();
+    render(<EditThoughtModal {...mockProps} onClose={onClose} />);
+    fireEvent.click(screen.getByTestId('focus-recorder-record'));
+    await waitFor(() => expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false'));
+    await waitFor(() => expect(mockTranscribeAudioWithRetry).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onClose).not.toHaveBeenCalled();
+    const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+    fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+    expect(onClose).not.toHaveBeenCalled();
   });
 
 });

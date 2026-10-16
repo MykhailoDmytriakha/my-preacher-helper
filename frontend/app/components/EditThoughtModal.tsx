@@ -87,10 +87,10 @@ export default function EditThoughtModal({
     !areStringArraysEqual(tags, initialTags) ||
     selectedSermonPointId !== initialSermonPointId ||
     (selectedSubPointId ?? null) !== (initialSubPointId ?? null);
-  const isBusy = isSubmitting || dictation.isProcessing;
+  const isBusy = isSubmitting || dictation.isProcessing || dictation.isRecording;
   const guardedClose = () => {
     if (isBusy) return;
-    void askBeforeDiscard(isChanged, onClose);
+    void askBeforeDiscard(isChanged || Boolean(dictation.error), onClose);
   };
   const saveFailureWords = (error: unknown): FailureWords =>
     ({ key: writeFailureTranslationKey(error, 'writeRecovery.thoughtEditFailed') });
@@ -108,7 +108,7 @@ export default function EditThoughtModal({
   };
 
   const handleSave = async () => {
-    if (isBusy || !isChanged) return;
+    if (isBusy || dictation.error || !isChanged) return;
     const submittedDraft: EditThoughtDraft = {
       text,
       tags: [...tags],
@@ -160,7 +160,7 @@ export default function EditThoughtModal({
     <FormDialog size="standard" title={t('editThought.editTitle')} eyebrow={t('thought.editorLabel')} onClose={guardedClose} closeDisabled={isBusy} dismissOnBackdrop showCloseButton
       onSubmit={event => { event.preventDefault(); void handleSave(); }}
       footer={<FormActions onCancel={guardedClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
-          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isBusy} submitDisabled={!isChanged || dictation.isProcessing} />}>
+          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isBusy} submitDisabled={!isChanged || dictation.isProcessing || dictation.isRecording || Boolean(dictation.error)} />}>
       <div className="space-y-5">
         {sermonOutline && <ThoughtOutlineField sermonOutline={sermonOutline} section={containerSection}
           outlinePointId={selectedSermonPointId} subPointId={selectedSubPointId}

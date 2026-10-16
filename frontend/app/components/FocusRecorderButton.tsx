@@ -11,6 +11,7 @@ import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRec
 
 import { AudioRecoveryPanel } from "./audio-recorder/AudioRecorderControls";
 import { AUDIO_RECORDER_CLEAR_EVENT } from "./audio-recorder/constants";
+import { useRecordingSession } from "./audio-recorder/useRecordingSession";
 
 // Error translation key constant to avoid duplicate strings
 const ERROR_AUDIO_PROCESSING = 'errors.audioProcessing';
@@ -33,6 +34,7 @@ interface FocusRecorderButtonProps {
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
+  onRecordingStateChange?: (active: boolean) => void;
 }
 
 type ButtonState = 'processing' | 'initializing' | 'paused' | 'recording' | 'idle';
@@ -276,7 +278,7 @@ const CancelButton = ({
   sizeConfig: SizeConfig;
   t: TranslateFn;
 }) => {
-  if (buttonState !== 'recording' && buttonState !== 'paused') {
+  if (buttonState !== 'recording' && buttonState !== 'paused' && buttonState !== 'initializing') {
     return null;
   }
 
@@ -321,7 +323,9 @@ export const FocusRecorderButton = ({
   transcriptionError,
   transcriptionLimitReached = false,
   onClearError,
+  onRecordingStateChange,
 }: FocusRecorderButtonProps) => {
+  const { isActive: isSessionActive, begin, owns, finish } = useRecordingSession(onRecordingStateChange);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -369,7 +373,8 @@ export const FocusRecorderButton = ({
     analyserRef.current = null;
     mediaRecorder.current = null;
     chunks.current = [];
-  }, []);
+    finish();
+  }, [finish]);
 
   useEffect(() => {
     if (!storedAudioBlob || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
@@ -429,8 +434,8 @@ export const FocusRecorderButton = ({
     }
 
     console.log('FocusRecorderButton: Starting recording...');
-    setStoredAudioBlob(null);
-    onClearError?.();
+    const session = begin();
+    if (session === null) return;
     setIsInitializing(true);
 
     try {
@@ -442,6 +447,10 @@ export const FocusRecorderButton = ({
         }
       });
 
+      if (!owns(session)) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       streamRef.current = stream;
 
       // Setup audio context for level monitoring
@@ -468,38 +477,43 @@ export const FocusRecorderButton = ({
         mimeType: bestFormat
       });
 
-      mediaRecorder.current.ondataavailable = (e) => {
-        if (e.data.size > 0) {
+      const recorder = mediaRecorder.current;
+      recorder.ondataavailable = (e) => {
+        if (owns(session) && e.data.size > 0) {
           chunks.current.push(e.data);
         }
       };
 
-      mediaRecorder.current.onstop = () => {
-        if (chunks.current.length > 0) {
-          const mimeType = mediaRecorder.current?.mimeType || bestFormat;
-          const blob = new Blob(chunks.current, { type: mimeType });
-
-          // Log audio information for debugging
-          logAudioInfo(blob, 'FocusRecorderButton Output');
-
-          setStoredAudioBlob(blob);
-          onRecordingComplete(blob);
+      recorder.onstop = async () => {
+        if (!owns(session)) return;
+        try {
+          if (chunks.current.length > 0) {
+            const blob = new Blob(chunks.current, { type: recorder.mimeType || bestFormat });
+            await logAudioInfo(blob, 'FocusRecorderButton Output');
+            if (!owns(session)) return;
+            setStoredAudioBlob(blob);
+            onRecordingComplete(blob);
+          }
+        } finally {
+          if (owns(session)) cleanup();
         }
-        cleanup();
       };
 
-      mediaRecorder.current.onerror = () => {
-        handleError(new Error('MediaRecorder error'), ERROR_AUDIO_PROCESSING);
+      recorder.onerror = () => {
+        if (owns(session)) handleError(new Error('MediaRecorder error'), ERROR_AUDIO_PROCESSING);
       };
 
-      mediaRecorder.current.start();
+      recorder.start();
+      // Acquiring or constructing a replacement can fail: retain the old source until start succeeds.
+      setStoredAudioBlob(null);
+      onClearError?.();
       setIsRecording(true);
       setIsInitializing(false);
 
     } catch (error) {
-      handleError(error as Error, 'errors.microphoneUnavailable');
+      if (owns(session)) handleError(error as Error, 'errors.microphoneUnavailable');
     }
-  }, [disabled, isProcessing, isInitializing, isRecording, onClearError, onRecordingComplete, handleError, cleanup]);
+  }, [disabled, isProcessing, isInitializing, isRecording, onClearError, onRecordingComplete, handleError, cleanup, begin, owns]);
 
   // Stop recording function
   const stopRecording = useCallback(() => {
@@ -516,6 +530,11 @@ export const FocusRecorderButton = ({
 
   // Cancel recording function
   const cancelRecording = useCallback(() => {
+    if (isInitializing) {
+      cleanup();
+      setIsInitializing(false);
+      return;
+    }
     console.log('FocusRecorderButton: cancelRecording called', { isRecording, hasMediaRecorder: !!mediaRecorder.current });
 
     if (!isRecording || !mediaRecorder.current) {
@@ -551,7 +570,7 @@ export const FocusRecorderButton = ({
       setStoredAudioBlob(null);
       onClearError?.();
     }
-  }, [isRecording, cleanup, onClearError]);
+  }, [isRecording, isInitializing, cleanup, onClearError]);
 
   // Pause recording function
   const pauseRecording = useCallback(() => {
@@ -596,7 +615,7 @@ export const FocusRecorderButton = ({
   }, [isRecording, isPaused, handleError]);
 
   const retrySavedRecording = useCallback(() => {
-    if (!storedAudioBlob || isProcessing) {
+    if (!storedAudioBlob || isProcessing || isSessionActive) {
       return;
     }
 
@@ -610,16 +629,15 @@ export const FocusRecorderButton = ({
     }
 
     onRecordingComplete(storedAudioBlob);
-  }, [isProcessing, onRecordingComplete, onRetry, storedAudioBlob]);
+  }, [isProcessing, isSessionActive, onRecordingComplete, onRetry, storedAudioBlob]);
 
   const recordAgain = useCallback(() => {
     if (disabled || isProcessing || isInitializing || isRecording) {
       return;
     }
 
-    clearStoredAudio();
     void startRecording();
-  }, [clearStoredAudio, disabled, isInitializing, isProcessing, isRecording, startRecording]);
+  }, [disabled, isInitializing, isProcessing, isRecording, startRecording]);
 
   // Timer effect - pause timer when recording is paused, includes grace period logic
   useEffect(() => {
@@ -688,8 +706,9 @@ export const FocusRecorderButton = ({
   // Calculate progress percentage (fills up as time progresses)
   const progressPercentage = (recordingTime / maxDuration) * 100;
 
-  const buttonState = getButtonState({ isProcessing, isInitializing, isRecording, isPaused });
-  const isButtonDisabled = disabled || isProcessing || isInitializing;
+  const isFinalizing = isSessionActive && !isInitializing && !isRecording;
+  const buttonState = getButtonState({ isProcessing: isProcessing || isFinalizing, isInitializing, isRecording, isPaused });
+  const isButtonDisabled = disabled || isProcessing || isInitializing || isFinalizing;
 
   const sizeConfig = SIZE_CONFIG[size];
   const mainButtonLabel = t(MAIN_BUTTON_LABEL_KEYS[buttonState]);
@@ -707,14 +726,14 @@ export const FocusRecorderButton = ({
       return;
     }
 
-    if (!isProcessing && !isInitializing) {
+    if (!isProcessing && !isInitializing && !isFinalizing) {
       console.log('FocusRecorderButton: Calling startRecording');
       startRecording();
       return;
     }
 
     console.log('FocusRecorderButton: Button disabled - not calling any function');
-  }, [isRecording, isPaused, isProcessing, isInitializing, stopRecording, startRecording]);
+  }, [isRecording, isPaused, isProcessing, isInitializing, isFinalizing, stopRecording, startRecording]);
 
   return (
     <div className="relative inline-flex items-center justify-center">
@@ -769,7 +788,7 @@ export const FocusRecorderButton = ({
         appliedVariant="mini"
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled}
+        isProcessing={isProcessing || disabled || isSessionActive}
         onRetry={retrySavedRecording}
         onRecordAgain={recordAgain}
         onDiscard={clearStoredAudio}

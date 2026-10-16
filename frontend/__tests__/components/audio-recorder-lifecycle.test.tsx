@@ -278,7 +278,7 @@ describe("useAudioRecorderLifecycle", () => {
       result.current.retryTranscription();
     });
 
-    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry + 1);
+    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry);
     expect(args.onRecordingComplete).toHaveBeenCalledTimes(2);
     expect(args.onRecordingComplete).toHaveBeenLastCalledWith(expect.any(Blob));
   });

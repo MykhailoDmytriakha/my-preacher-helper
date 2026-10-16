@@ -344,7 +344,7 @@ describe('AudioRecorder interactions and errors', () => {
     const clearCallsBeforeRetry = onClearError.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
 
-    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry + 1);
+    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry);
     expect(onComplete).toHaveBeenCalledTimes(2);
   });
 });

@@ -34,14 +34,14 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     fallbackErrorKey: 'prayer.update.dictationError',
   });
   const transcriptionUnavailableLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
-  const isBusy = saving || dictation.isProcessing;
+  const isBusy = saving || dictation.isProcessing || dictation.isRecording;
   const guardedClose = () => {
     if (isBusy) return;
-    void askBeforeDiscard(text.length > 0, onClose);
+    void askBeforeDiscard(text.length > 0 || Boolean(dictation.error), onClose);
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (isBusy || dictation.error || !text.trim()) return;
     setError(null);
     setSaving(true);
     try {
@@ -68,14 +68,14 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     <FormDialog title={t('prayer.update.title')} eyebrow={t('navigation.prayer')} tone="rose" size="compact" onClose={guardedClose} closeDisabled={isBusy} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
       footer={
         <FormActions onCancel={guardedClose} cancelLabel={t('prayer.update.cancel')} submitLabel={t('prayer.update.submit')}
-          saving={saving} savingLabel={t('prayer.update.saving')} submitDisabled={dictation.isProcessing || !text.trim()}
+          saving={saving} savingLabel={t('prayer.update.saving')} submitDisabled={dictation.isProcessing || dictation.isRecording || Boolean(dictation.error) || !text.trim()}
           cancelDisabled={isBusy} tone="rose" />
       }>
       <div className="space-y-4">
         <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">{t('prayer.update.dictate')}</span>
           <div className="relative flex h-12 w-12 shrink-0 items-center justify-center" title={transcriptionUnavailableLabel}>
-            <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing}
+            <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
               disabled={saving || dictation.transcriptionBlocked} title={transcriptionUnavailableLabel}
               transcriptionError={dictation.error} onRetry={dictation.retry} retryCount={dictation.retryCount}
               maxRetries={dictation.maxRetries} onClearError={dictation.clear}

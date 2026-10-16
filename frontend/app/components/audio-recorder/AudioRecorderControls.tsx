@@ -231,6 +231,7 @@ const StandardRecordingControls = ({
 
 export const RecordingActionButtons = ({
   isRecording,
+  isInitializing = false,
   isPaused,
   appliedVariant,
   onStop,
@@ -239,6 +240,13 @@ export const RecordingActionButtons = ({
   onCancel,
   t,
 }: RecordingActionButtonsProps) => {
+  if (isInitializing) {
+    return <button type="button" onClick={onCancel}
+      className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300"
+      aria-label={t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}>
+      {t(AUDIO_TRANSLATION_KEYS.CANCEL_RECORDING)}
+    </button>;
+  }
   if (!isRecording) return null;
 
   if (appliedVariant === "mini") {

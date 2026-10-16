@@ -33,6 +33,7 @@ interface FlatRecorderButtonProps {
 }
 
 const AUDIO_NEW_RECORDING_KEY = "audio.newRecording";
+const AUDIO_CANCEL_RECORDING_KEY = "audio.cancelRecording";
 const AUDIO_STOP_RECORDING_KEY = "audio.stopRecording";
 const AUDIO_INITIALIZING_KEY = "audio.initializing";
 const AUDIO_PROCESSING_RECORDING_KEY = "audio.processingRecording";
@@ -119,8 +120,8 @@ const ActiveRecorderControls = ({
         type="button"
         onClick={cancelRecording}
         className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
-        aria-label={t("audio.cancelRecording")}
-        title={t("audio.cancelRecording")}
+        aria-label={t(AUDIO_CANCEL_RECORDING_KEY)}
+        title={t(AUDIO_CANCEL_RECORDING_KEY)}
       >
         <XMarkIcon className="h-3.5 w-3.5" />
       </button>
@@ -166,7 +167,7 @@ const IdleRecorderControl = ({
       type="button"
       onClick={onMainClick}
       disabled={isButtonDisabled}
-      className="col-span-4 flex h-full min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-green-300 disabled:cursor-not-allowed"
+      className={(isInitializing ? "col-span-3 " : "col-span-4 ") + "flex h-full min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-green-300 disabled:cursor-not-allowed"}
       aria-label={mainLabel}
       title={title ?? mainLabel}
     >
@@ -238,7 +239,7 @@ export function FlatRecorderButton({
   const timerLabel = isInGracePeriod && gracePeriodRemaining > 0
     ? String(gracePeriodRemaining)
     : formatTime(remainingTime);
-  const isButtonDisabled = disabled || isInitializing || isProcessing;
+  const isButtonDisabled = disabled || isInitializing || isProcessing || recordingState === "processing";
 
   const rootClasses = getRootClasses(disabled, recordingState);
 
@@ -279,6 +280,7 @@ export function FlatRecorderButton({
             t={t}
           />
         ) : (
+          <>
           <IdleRecorderControl
             recordingState={recordingState}
             isInitializing={isInitializing}
@@ -289,6 +291,12 @@ export function FlatRecorderButton({
             onMainClick={handleMainClick}
             t={t}
           />
+          {isInitializing && <button type="button" onClick={cancelRecording}
+            aria-label={t(AUDIO_CANCEL_RECORDING_KEY)} title={t(AUDIO_CANCEL_RECORDING_KEY)}
+            className="flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l border-yellow-300 text-slate-600 hover:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+            <XMarkIcon className="h-3.5 w-3.5" />
+          </button>}
+          </>
         )}
       </div>
 
@@ -300,7 +308,7 @@ export function FlatRecorderButton({
         appliedVariant="mini"
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled}
+        isProcessing={isProcessing || disabled || recordingState !== "idle"}
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
         onDiscard={discardStoredAudio}
