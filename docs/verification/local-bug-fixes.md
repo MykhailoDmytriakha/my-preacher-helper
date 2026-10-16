@@ -40,3 +40,28 @@ Local evidence is retained under `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-ba
 4. Verify close button, Escape, backdrop, Tab containment, focus restoration and background wheel lock. Escape must keep the route.
 5. Check phone, tablet and desktop widths; repeat on an already loaded plan without network and restore the connection.
 6. Record deployed revision, browser, screenshots and outcomes. Production acceptance stays pending until these checks actually run.
+
+## BUG-20261013-care-headers-cut-on-phone
+
+Stage: locally verified and independently reviewed; production verification pending.
+
+Both populated care lists squeezed their title into one row with the header actions. At 390px the council title had 163px for 177px of text; the service-order title had 0px for 257px. `truncate` hid the words. `CareSectionHeader` now owns this shared presentation rule: a readable title, actions below it on narrow screens, wrapping when needed, and the existing row on wider screens. Icons, typography, colors, buttons and handlers remain.
+
+The real-browser regression is `frontend/test-utils/assertCareHeaderLayout.ts`. Load a populated list after its interface language resolves, then evaluate its exported function in the page. It throws if the title is clipped or outside the viewport, or an action is clipped, outside the viewport or overlaps the heading. This DOM geometry check is executed in Chromium, not jsdom. The same function failed on both original headers before the implementation change and passed afterward on both routes at 320, 390, 640, 834 and 1280px.
+
+The new header's semantic/action tests and existing council/service-order page suites passed 34 tests. Browser checks also covered entering and leaving reorder mode, plus opening and cancelling the new-council form. No council was created and no list order was changed. The primary agent visually inspected before/after 390px screenshots and the service-order view at 320, 640 and 1280px, including reorder mode. There were no browser console errors during these checks. These are Chromium viewport checks, not physical-device acceptance.
+
+Mechanism coverage: the two affected list headers use the shared component. Care home/detail headings do not use the failing fixed-title/action row. The conduct screen's compact user-authored title is a different interaction. Server, offline and data writers are unaffected by this presentation-only change. No labels or translation keys changed.
+
+Gates: targeted Jest passed 3 suites / 34 tests. Full ESLint passed with 0 errors and 29 inherited warnings. Full Jest passed 797 suites / 8225 tests; 3 suites / 17 tests skipped. `npm run compile` and the production build passed, including route type generation and the build TypeScript check. Independent review found no material issues and repeated the 34 targeted tests.
+
+Local evidence is retained in the same ignored case artifact directory: `care-headers-red.json`, `care-headers-browser-green.json`, screenshots and `care-headers-verification.json`. The committed browser assertion, tests, manifest and bug-ID commit retain the durable trace.
+
+### Production acceptance after authorized merge
+
+1. Confirm that the deployed revision contains this fix.
+2. Open populated `/care/council` and `/care/orders` using an authorized test account in Russian.
+3. Check 320, 390, 640, 834 and 1280px: full readable title and buttons, no overlap or horizontal page overflow. At 320px wrapping is expected.
+4. Enter and leave reorder mode without moving an item. Open and cancel the new-council form without submitting it.
+5. Check English/Ukrainian labels, empty-list states, and light/dark styles; use a phone/tablet where available.
+6. Record deployed revision, browser, screenshots and outcomes. Keep production acceptance pending until these checks run.

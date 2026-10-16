@@ -43,6 +43,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { CareSectionHeader } from '@/components/care/CareSectionHeader';
 import { Chip } from '@/components/ui/Chip';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
@@ -259,78 +260,51 @@ export default function ServiceOrdersPage() {
         {t('serviceOrders.backToPlane')}
       </Link>
 
-      {/*
-        The title and the actions share ONE line, always: the description below them is the
-        widest thing on the page, and while it sat beside the buttons it pushed them onto a
-        line of their own, left-aligned under the text, where nothing expects to find them.
-      */}
-      <header className="mt-4">
-        <div className="flex items-center justify-between gap-4">
-          {/*
-            The section's own icon and colour beside the name, the way the prayer journal
-            wears its flame: a person landing here should know which room he is in before he
-            reads a word.
-          */}
-          <h1 className="flex min-w-0 items-center gap-3 text-2xl font-extrabold tracking-tight text-emerald-700 sm:text-3xl dark:text-emerald-300">
-            <ScrollText className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="min-w-0 truncate">{t('serviceOrders.title')}</span>
-          </h1>
-
-        {/*
-          THE TOP ACTION STANDS DOWN WHILE THE PAGE IS EMPTY.
-          An empty page has one job — start — and two buttons of equal weight are none. Here
-          the standard set is the answer, and "your own order" waits below it as a quiet line;
-          once there is a list to add to, this button comes back where a list expects it.
-        */}
-        {!isEmpty && (
-          <div className="flex shrink-0 items-center gap-2">
-            {reordering ? (
+      <CareSectionHeader
+        title={t('serviceOrders.title')}
+        titleClassName="text-emerald-700 dark:text-emerald-300"
+        icon={<ScrollText className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
+        description={reordering ? t('serviceOrders.reorderHint') : t('serviceOrders.subtitle')}
+        actions={!isEmpty && (
+          reordering ? (
+            <button
+              type="button"
+              onClick={() => setReordering(false)}
+              className="inline-flex items-center rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+            >
+              {t('serviceOrders.reorderDone')}
+            </button>
+          ) : (
+            <>
               <button
                 type="button"
-                onClick={() => setReordering(false)}
-                className="inline-flex items-center rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                onClick={() => setReordering(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
-                {t('serviceOrders.reorderDone')}
+                <ArrowUpDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                {t('serviceOrders.reorder')}
               </button>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setReordering(true)}
-                  className="inline-flex items-center gap-2 rounded-full border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                >
-                  <ArrowUpDown className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                  {t('serviceOrders.reorder')}
-                </button>
-                {/* The one action of this page, and it looks like it — filled, like the
-                    journal's "add a prayer". */}
-                <button
-                  type="button"
-                  onClick={addCustom}
-                  /*
-                   * Creating needs a connection: Firestore only names a new document once the
-                   * server has it, so offline this press would hang instead of opening the
-                   * service it promised. Everything already created stays editable offline.
-                   */
-                  disabled={creating || !isOnline}
-                  title={!isOnline ? (t('serviceOrders.createOffline') as string) : undefined}
-                  className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-                >
-                  <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                  {t('serviceOrders.custom')}
-                </button>
-              </>
-            )}
-          </div>
+              {/* The one action of this page, and it looks like it — filled, like the
+                  journal's "add a prayer". */}
+              <button
+                type="button"
+                onClick={addCustom}
+                /*
+                 * Creating needs a connection: Firestore only names a new document once the
+                 * server has it, so offline this press would hang instead of opening the
+                 * service it promised. Everything already created stays editable offline.
+                 */
+                disabled={creating || !isOnline}
+                title={!isOnline ? (t('serviceOrders.createOffline') as string) : undefined}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              >
+                <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                {t('serviceOrders.custom')}
+              </button>
+            </>
+          )
         )}
-        </div>
-
-        {/* While arranging, the line under the title says what the mode is FOR — read before
-            the list, not after it. */}
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-          {reordering ? t('serviceOrders.reorderHint') : t('serviceOrders.subtitle')}
-        </p>
-      </header>
+      />
 
       {isEmpty && loading ? (
         <BeingRead slow={slowRead} onRetry={askAgain} />

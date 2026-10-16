@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { CareSectionHeader } from '@/components/care/CareSectionHeader';
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
 import DatePickerField from '@/components/ui/DatePickerField';
@@ -141,23 +142,18 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
         {t('council.backToPlane')}
       </Link>
 
-      <header className="mt-4">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className={`flex min-w-0 items-center gap-3 text-2xl font-extrabold tracking-tight sm:text-3xl ${tone.title}`}>
-            <ChatBubbleLeftRightIcon className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-            <span className="min-w-0 truncate">{t('council.title')}</span>
-          </h1>
-          {!isEmpty && !creating && (
-            <button type="button" onClick={openCreate} className={buttonPrimary} data-testid="council-new">
-              <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-              {t('council.newCouncil')}
-            </button>
-          )}
-        </div>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-400">
-          {t('council.subtitle')}
-        </p>
-      </header>
+      <CareSectionHeader
+        title={t('council.title')}
+        titleClassName={tone.title}
+        icon={<ChatBubbleLeftRightIcon className="h-7 w-7 shrink-0" strokeWidth={1.75} aria-hidden="true" />}
+        description={t('council.subtitle')}
+        actions={!isEmpty && !creating && (
+          <button type="button" onClick={openCreate} className={buttonPrimary} data-testid="council-new">
+            <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            {t('council.newCouncil')}
+          </button>
+        )}
+      />
 
       {creating && (
         <form
