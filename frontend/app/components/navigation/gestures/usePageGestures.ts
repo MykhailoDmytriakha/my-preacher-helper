@@ -169,6 +169,9 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       if (event.defaultPrevented || event.touches.length !== 1) return;
       const touch = event.touches[0];
       if (touch.clientX <= EDGE_WIDTH) return;
+      // An Apple Pencil on a text it writes on (the Bible's marks, `data-pen-surface`) draws, never goes back.
+      const stylus = (touch as Touch & { touchType?: string }).touchType === 'stylus';
+      if (stylus && event.target instanceof Element && event.target.closest('[data-pen-surface]')) return;
       const canGoBack = window.history.length > 1 && deadEnd !== window.history.length;
       const top = pageAtTop() && !reloading;
       if (!top && !canGoBack) return;

@@ -18,6 +18,8 @@ import type { MarkToolState } from './markTool';
  * colour's own tip on hover.
  */
 const TAKEN = 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-gray-900';
+/** The tool an Apple Pencil paints with while nothing is in hand: shown, not taken. */
+const PEN_TOOL = 'ring-2 ring-gray-300 ring-offset-2 ring-offset-white dark:ring-gray-600 dark:ring-offset-gray-900';
 /** Beside the tools in a line the colours open to the left; over a column (a phone) they open upwards. */
 const PALETTE_LEFT = 'right-[calc(100%+0.375rem)] top-1/2 -translate-y-1/2 px-2 py-1.5';
 const PALETTE_UP = 'bottom-[calc(100%+0.375rem)] left-1/2 -translate-x-1/2 flex-col px-1.5 py-2';
@@ -50,7 +52,8 @@ function Palette({ swatches, label, vertical }: { swatches: Swatch[]; label: str
 
 export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: MarkToolState; vertical?: boolean; className?: string }) {
   const { t } = useTranslation();
-  const { inHand, color, pencilColor, palette, pressColored, pressEraser, pickColor, pickPencilColor, closePalette } = tool;
+  const { inHand, color, pencilColor, palette, penTool, pressColored, pressEraser, pickColor, pickPencilColor, closePalette } = tool;
+  const ring = (name: 'marker' | 'pencil' | 'eraser') => (inHand === name ? TAKEN : penTool === name ? PEN_TOOL : '');
 
   useEffect(() => {
     if (!palette) return undefined;
@@ -88,7 +91,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
           aria-expanded={palette === 'marker'}
           aria-label={markerLabel}
           title={markerLabel}
-          className={`${TOOL} ${inHand === 'marker' ? TAKEN : ''}`}
+          className={`${TOOL} ${ring('marker')}`}
         >
           <MarkerIcon nib={color} />
         </button>
@@ -102,7 +105,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
           aria-expanded={palette === 'pencil'}
           aria-label={pencilLabel}
           title={pencilLabel}
-          className={`${TOOL} ${inHand === 'pencil' ? TAKEN : ''}`}
+          className={`${TOOL} ${ring('pencil')}`}
         >
           <PencilIcon line={pencilColor} />
         </button>
@@ -113,7 +116,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
         aria-pressed={inHand === 'eraser'}
         aria-label={t('bible.marks.eraser')}
         title={t('bible.marks.eraser')}
-        className={`${TOOL} ${inHand === 'eraser' ? TAKEN : ''}`}
+        className={`${TOOL} ${ring('eraser')}`}
       >
         <EraserIcon />
       </button>

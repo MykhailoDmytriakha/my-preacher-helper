@@ -80,6 +80,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || current.retentionScope !== incoming.retentionScope) throw new Error('Saved generation cannot change its captured intent');
 }
 const AUTHENTICATION_REQUIRED = 'Authentication required';
+const INVALID_PREDECESSOR_REQUEST = 'Invalid predecessor request';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
 const resourceMatches = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
@@ -95,6 +96,41 @@ const orderRequests = (records: CommitRequest[]): CommitRequest[] => {
   if (ordered.length !== records.length) throw new Error('Invalid commit dependency cycle');
   return ordered;
 };
+
+type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string };
+
+/** Equal parent generations still have an exact order in the durable dependency chain. */
+function selectCandidatePredecessor(records: readonly CommitRequest[], ids: readonly string[], owner: string, resource: ResourceRef): CommitRequest {
+  const remaining = new Set(ids);
+  const candidates = records.filter(record => remaining.has(record.id));
+  if (!remaining.size || candidates.length !== remaining.size || candidates.some(record => record.owner !== owner
+    || record.state === 'cancelled' || !resourceMatches(record.baseline.resource, resource))) throw new Error(INVALID_PREDECESSOR_REQUEST);
+  const latest = orderRequests([...records]).filter(record => remaining.has(record.id)).at(-1)!;
+  const byId = new Map(records.map(record => [record.id, record]));
+  let cursor: CommitRequest | undefined = latest;
+  while (cursor) {
+    remaining.delete(cursor.id);
+    cursor = cursor.predecessor ? byId.get(cursor.predecessor) : undefined;
+  }
+  if (remaining.size) throw new Error(INVALID_PREDECESSOR_REQUEST);
+  return latest;
+}
+
+function selectSavePredecessor(records: readonly CommitRequest[], owner: string, editorId: string, resource: ResourceRef, options?: CommitSaveOptions): CommitRequest | undefined {
+  if (options?.predecessorIds) {
+    if (options.predecessorId !== undefined) throw new Error(INVALID_PREDECESSOR_REQUEST);
+    return selectCandidatePredecessor(records, options.predecessorIds, owner, resource);
+  }
+  if (options?.predecessorId === null) return undefined;
+  if (options?.predecessorId) {
+    const predecessor = records.find(record => record.id === options.predecessorId);
+    if (!predecessor || predecessor.owner !== owner || predecessor.state === 'cancelled'
+      || !resourceMatches(predecessor.baseline.resource, resource)) throw new Error(INVALID_PREDECESSOR_REQUEST);
+    return predecessor;
+  }
+  return records.filter(record => record.editorId === editorId && record.state !== 'cancelled')
+    .sort((a, b) => b.editGeneration - a.editGeneration)[0];
+}
 
 /** Saved intent lives independently of editors. Only this queue prepares its commands. */
 export class CommitQueue {
@@ -130,21 +166,17 @@ export class CommitQueue {
     return this.current(owner, generation) ? orderRequests(records) : [];
   }
 
-  async save(editorId: string, captured: SessionCheckpoint, options?: { predecessorId?: string | null; retentionScope?: string }): Promise<CommitRequest | null> {
+  async save(editorId: string, captured: SessionCheckpoint, options?: CommitSaveOptions): Promise<CommitRequest | null> {
     const owner = this.owner, generation = this.generation;
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     const intent = clone(captured);
+    const frozenOptions = options && { ...options, predecessorIds: options.predecessorIds && [...options.predecessorIds] };
     const records = await this.options.store.list(owner);
     this.assertCurrent(owner, generation);
     const existing = records.find(record => record.editorId === editorId && record.editGeneration === intent.editGeneration);
-    const predecessors = records.filter(record => record.editorId === editorId && record.state !== 'cancelled');
-    const predecessor = options?.predecessorId === null ? undefined : options?.predecessorId
-      ? records.find(record => record.id === options.predecessorId)
-      : predecessors.sort((a, b) => b.editGeneration - a.editGeneration)[0];
-    if (options?.predecessorId && (!predecessor || predecessor.owner !== owner || predecessor.state === 'cancelled'
-      || !resourceMatches(predecessor.baseline.resource, intent.confirmed.resource))) throw new Error('Invalid predecessor request');
+    const predecessor = selectSavePredecessor(records, owner, editorId, intent.confirmed.resource, frozenOptions);
     if (existing) {
-      if (existing.retentionScope !== options?.retentionScope) throw new Error('Saved capture retention cannot change');
+      if (existing.retentionScope !== frozenOptions?.retentionScope) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
       return clone(existing);
     }
@@ -153,7 +185,7 @@ export class CommitQueue {
     const baseline = clone(intent.confirmed);
     const record: CommitRequest = {
       id: this.options.operationId(), owner, editorId, editGeneration: intent.editGeneration,
-      ...(options?.retentionScope ? { retentionScope: options.retentionScope } : {}),
+      ...(frozenOptions?.retentionScope ? { retentionScope: frozenOptions.retentionScope } : {}),
       baseline, value: clone(intent.draft), predecessor: predecessor?.id ?? null,
       revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
@@ -203,7 +235,7 @@ export class CommitQueue {
       const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)
         : predecessors.sort((a, b) => b.editGeneration - a.editGeneration)[0];
       if ((item.predecessorId && !predecessor) || (predecessor && (predecessor.owner !== owner || predecessor.state === 'cancelled'
-        || !resourceMatches(predecessor.baseline.resource, item.captured.confirmed.resource)))) throw new Error('Invalid predecessor request');
+        || !resourceMatches(predecessor.baseline.resource, item.captured.confirmed.resource)))) throw new Error(INVALID_PREDECESSOR_REQUEST);
       const baseline = item.captured.confirmed;
       return { id: atomic.participants[index], atomic, owner, editorId: item.editorId, editGeneration: item.captured.editGeneration,
         ...(item.retentionScope ? { retentionScope: item.retentionScope } : {}),

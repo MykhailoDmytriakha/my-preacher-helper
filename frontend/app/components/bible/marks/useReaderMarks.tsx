@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { countVerseWords, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
 
@@ -26,11 +28,11 @@ import type { BookText } from '@/utils/bibleText';
  * paint them gets any of it.
  */
 type ReaderMarks = {
-  /** The three tools for the reader's line, or nothing. */
+  /** The three tools for the reader's line on a wider screen, or nothing. */
   tools: ReactNode;
   /**
-   * A phone, reading: the line has scrolled away (the pill at the bottom holds the book), so the tools
-   * stand at the bottom right in a column over the "T", under the thumb (the owner, 2026-10-16).
+   * A phone: the tools always stand at the bottom right in a column over the "T", under the thumb, and
+   * never in the line, which has no room for them (the owner, 2026-10-16, from his Android phone).
    */
   floatingTools: ReactNode;
   /** What the colours mean, for the "T" menu, or nothing. */
@@ -39,23 +41,25 @@ type ReaderMarks = {
   translationClass: string;
   /** While a tool is in hand: the text keeps the page's swipe back off (`navigation/gestures`). */
   gestureIgnore: '' | undefined;
+  /** A text the Apple Pencil writes on: a Pencil there never starts the page's swipe back. */
+  penSurface: '' | undefined;
   /** While a tool is in hand: the text answers a pull along the line and still scrolls up and down. */
   textClass: string;
   /** Verses marked in the person's other Bibles: a sign beside each, for the ribbon (2.9.3). */
   signs: RibbonSigns | undefined;
+  /** What the book's marks need from the person, if anything (a verse changed on two devices at once). */
+  syncStatus: ReactNode;
   /** The window of the verse whose sign was tapped (`MarkedElsewhereSheet`). */
   elsewhere: { at: { chapter: number; verse: number } | null; entries: { bible: BibleId; verses: MarkedElsewhere[] }[]; close: () => void };
 };
 
 const subscribeNever = () => () => undefined;
 
-export function useReaderMarks({ textRef, text, ready, lineGone, bible, bookId }: {
+export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
   /** The ribbon is on the page. */
   ready: boolean;
-  /** A phone, and the reader's line has scrolled away. */
-  lineGone: boolean;
   bible: BibleId;
   bookId: string;
 }): ReaderMarks {
@@ -65,20 +69,48 @@ export function useReaderMarks({ textRef, text, ready, lineGone, bible, bookId }
   // Whether the browser can paint marks does not change while the page is open.
   const canMark = useSyncExternalStore(subscribeNever, marksSupported, () => false);
   const tool = useMarkTool();
-  const { marks: stored, save, ready: storeReady, others } = useBookMarks(owner, bible, bookId);
+  const { marks: stored, save, ready: storeReady, writable, others, sync } = useBookMarks(owner, bible, bookId);
+  // A stroke starts only when it can be kept: while the book's form cannot write (the device's storage
+  // silent for seconds after an iPad wakes) the reader says to wait instead of showing a stroke it would lose.
+  // A choice the person made in the form's status runs for a moment: no stroke until it has, or the
+  // choice would sweep the stroke away with the draft it replaces.
+  const [deciding, setDeciding] = useState(false);
+  const writableRef = useRef(writable && !deciding);
+  writableRef.current = writable && !deciding;
+  // Why a stroke cannot start: a choice that waits for the person, or the device's storage.
+  const decisionRef = useRef(false);
+  decisionRef.current = deciding || ['conflict', 'refused', 'deleted', 'localFailure', 'blocked'].includes(sync?.status?.phase ?? '');
+  const waitSaid = useRef(0);
+  const beginStroke = tool.beginStroke;
+  const sayWhy = useCallback(() => {
+    if (Date.now() - waitSaid.current <= 4_000) return;
+    waitSaid.current = Date.now();
+    toast(t(decisionRef.current ? 'bible.marks.decideFirst' : 'bible.marks.wait'));
+  }, [t]);
+  const begin = useCallback((pen: boolean) => {
+    if (writableRef.current) return beginStroke(pen);
+    sayWhy();
+    return null;
+  }, [beginStroke, sayWhy]);
+  // A stroke begun before a choice and let go while it runs is checked again when it would be kept.
+  const keep = useCallback((change: Parameters<typeof save>[0]) => {
+    if (writableRef.current) { save(change); return; }
+    sayWhy();
+  }, [save, sayWhy]);
   const marking = canMark && Boolean(owner) && storeReady;
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
-  const shown = useMarkStrokes({
+  const preview = useMarkHighlights(textRef, ready && marking, stored, text);
+  useMarkStrokes({
     rootRef: textRef,
     ready,
     order,
     marks: stored,
-    save,
+    save: keep,
     armed: tool.inHand !== null,
-    begin: tool.beginStroke,
+    begin,
+    preview,
     enabled: marking,
   });
-  useMarkHighlights(textRef, ready && marking, shown, text);
 
   // MARKS MADE IN ANOTHER BIBLE: a sign at the same place here, its verse there whole on a tap. Signs
   // need no painting by the browser: the window draws its words itself.
@@ -97,9 +129,8 @@ export function useReaderMarks({ textRef, text, ready, lineGone, bible, bookId }
   const showTools = marking && Boolean(text);
   const armed = marking && tool.inHand !== null;
   return {
-    // On a phone the line has no room for the tools: they take a line of their own under it, at its right edge.
-    tools: showTools ? <MarkToolbar tool={tool} className="order-last w-full justify-end pt-1 md:order-none md:ml-auto md:w-auto md:pt-0" /> : null,
-    floatingTools: showTools && lineGone ? (
+    tools: showTools ? <MarkToolbar tool={tool} className="max-md:hidden md:ml-auto" /> : null,
+    floatingTools: showTools ? (
       <div className="fixed bottom-[calc(10rem+env(safe-area-inset-bottom))] right-[1.125rem] z-30 rounded-full bg-white/95 p-1 shadow-lg ring-1 ring-gray-900/10 backdrop-blur-md md:hidden dark:bg-gray-900/95 dark:ring-white/10">
         <MarkToolbar tool={tool} vertical />
       </div>
@@ -111,8 +142,16 @@ export function useReaderMarks({ textRef, text, ready, lineGone, bible, bookId }
     ) : null,
     translationClass: showTools ? 'ml-auto md:ml-3' : 'ml-auto',
     gestureIgnore: armed ? '' : undefined,
+    penSurface: marking ? '' : undefined,
     textClass: armed ? 'cursor-crosshair touch-pan-y [-webkit-touch-callout:none]' : '',
     signs,
+    // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
+    syncStatus: sync ? (
+      <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-3"
+        onRetry={() => sync.retry()}
+        onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
+        onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
+    ) : null,
     elsewhere: { at: entries.length ? openAt : null, entries, close: closeElsewhere },
   };
 }

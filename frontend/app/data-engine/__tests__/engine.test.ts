@@ -107,6 +107,81 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+
+  it('chains rapid commits behind saves registered after capture', async () => {
+    const s = setup({ online: false });
+    const editor = await s.engine.openEditor(resource, 'continuous');
+    s.engine.setVisible(false);
+    const gate = deferred<void>();
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    jest.mocked(s.transport.send).mockImplementationOnce(command => gate.promise.then(() => send(command)));
+    const settle = async () => { for (let i = 0; i < 8; i += 1) await drainMicrotasks(); };
+    s.engine.setOnline(true);
+    const first = editor.commit(current => ({ ...current, content: 'A' }));
+    await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(1);
+    const second = editor.commit(current => ({ ...current, content: `${current!.content}B` }));
+    const third = editor.commit(current => ({ ...current, content: `${current!.content}C` }));
+    await settle();
+    gate.resolve();
+    await Promise.all([first, second, third]);
+    await s.engine.retry(); await settle();
+    const requests = await s.commits.list('owner');
+    const checkpoint = editor.getState().checkpoint;
+    s.engine.dispose();
+    expect(requests.map(request => request.state)).toEqual(['acknowledged', 'acknowledged', 'acknowledged']);
+    expect(requests.map(request => request.predecessor)).toEqual([null, requests[0].id, requests[1].id]);
+    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('ABC');
+    expect(checkpoint.conflicts).toEqual([]);
+  });
+
+  it('keeps a direct save behind an adopted manual request at the same generation', async () => {
+    const s = setup({ online: false });
+    try {
+      const editor = await s.engine.openEditor(resource, 'manual-page-hide');
+      const form = editor.form('content', [['content']]);
+      await form.begin();
+      await form.update(value => ({ ...value, content: 'Saved before hiding' }));
+      await form.save();
+      const manual = (await s.commits.list('owner'))[0];
+      const checkpoint = editor.getState().checkpoint;
+      expect(checkpoint.pending[manual.id].generation).toBe(checkpoint.editGeneration);
+      // The public direct save is also used by the page-hide flush.
+      await editor.save();
+      const requests = await s.commits.list('owner');
+      expect(requests.filter(request => request.predecessor === null)).toHaveLength(1);
+      await editor.save();
+      expect(await s.commits.list('owner')).toEqual(requests);
+      s.engine.setOnline(true);
+      await s.engine.retry(); await drainMicrotasks();
+      expect((await s.commits.list('owner')).every(request => request.state === 'acknowledged')).toBe(true);
+      expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('Saved before hiding');
+      expect(editor.getState().checkpoint.conflicts).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
+
+  it('keeps later parent edits behind its richer same-generation capture after a manual save', async () => {
+    const s = setup({ online: false });
+    try {
+      const editor = await s.engine.openEditor(resource, 'manual-parent-title');
+      await editor.edit({ ...editor.getState().checkpoint.draft, title: 'First parent title' });
+      const form = editor.form('content', [['content']]);
+      await form.begin();
+      await form.update(value => ({ ...value, content: 'Saved form words' }));
+      await form.save();
+      expect((await s.commits.list('owner'))[0].value?.title).toBe('Title');
+      expect(editor.getState().checkpoint.draft?.title).toBe('First parent title');
+      await editor.save();
+      await editor.edit({ ...editor.getState().checkpoint.draft, title: 'Latest parent title' });
+      await editor.save();
+      s.engine.setOnline(true);
+      await s.engine.retry(); await drainMicrotasks();
+      expect((await s.commits.list('owner')).map(request => request.state)).toEqual(['acknowledged', 'acknowledged', 'acknowledged']);
+      expect(s.server.get(keyOf('owner', resource))?.value).toMatchObject({ title: 'Latest parent title', content: 'Saved form words' });
+      expect(editor.getState().checkpoint.conflicts).toEqual([]);
+    } finally { s.engine.dispose(); }
+  });
+
   it('pins pristine manual baseline and preserves the conflict when remote changes before typing', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     const form = editor.form('title', [['title']]); await form.begin();

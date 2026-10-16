@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, type RefObject } from 'react';
 
 import { MARK_COLORS, PENCIL_COLORS, type BookMarks, type MarkColor, type PencilColor } from '@/utils/bibleMarks';
 
@@ -28,30 +28,46 @@ export const marksSupported = (): boolean => registry() !== null;
 
 const LAYERS: Layer[] = [...MARK_COLORS, ...PENCIL_COLORS.map((color) => `pencil-${color}` as const)];
 
+function paintMarks(root: HTMLElement, marks: BookMarks): void {
+  const api = registry();
+  if (!api) return;
+  const ranges = new Map<Layer, Range[]>(LAYERS.map((layer) => [layer, []]));
+  for (const [verse, verseMarks] of Object.entries(marks)) {
+    const container = root.querySelector(`[data-verse="${verse}"] [${VERSE_TEXT_ATTRIBUTE}]`);
+    if (!container) continue;
+    const map = mapVerseText(container);
+    verseMarks.m?.forEach(([first, last, color]) => {
+      const range = wordsRange(map, first, last);
+      if (range) ranges.get(color)?.push(range);
+    });
+    verseMarks.p?.forEach(([first, last, color]) => {
+      const range = wordsRange(map, first, last);
+      if (range) ranges.get(`pencil-${color}`)?.push(range);
+    });
+  }
+  LAYERS.forEach((layer) => api.highlights.set(highlightName(layer), new api.Highlight(...(ranges.get(layer) ?? []))));
+}
+
 /**
  * Paints `marks` over the verses drawn inside the ribbon (`rootRef`, on the page once `ready`); again
- * whenever the marks or the drawn text change.
+ * whenever the marks or the drawn text change. Returns how a stroke being drawn shows itself: painted
+ * at once, outside React — a stroke redrawing the whole reader on every word made an iPad lag (the
+ * owner, 2026-10-16); `null` returns to the marks.
  */
-export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready: boolean, marks: BookMarks, textKey: unknown): void {
+export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready: boolean, marks: BookMarks, textKey: unknown): (preview: BookMarks | null) => void {
+  const latest = useRef({ marks, ready });
+  latest.current = { marks, ready };
+  // A stroke still being drawn stays painted when the marks under it move on (a batch kept meanwhile).
+  const drawing = useRef<BookMarks | null>(null);
   useLayoutEffect(() => {
-    const api = registry();
     const root = rootRef.current;
-    if (!api || !root || !ready) return undefined;
-    const ranges = new Map<Layer, Range[]>(LAYERS.map((layer) => [layer, []]));
-    for (const [verse, verseMarks] of Object.entries(marks)) {
-      const container = root.querySelector(`[data-verse="${verse}"] [${VERSE_TEXT_ATTRIBUTE}]`);
-      if (!container) continue;
-      const map = mapVerseText(container);
-      verseMarks.m?.forEach(([first, last, color]) => {
-        const range = wordsRange(map, first, last);
-        if (range) ranges.get(color)?.push(range);
-      });
-      verseMarks.p?.forEach(([first, last, color]) => {
-        const range = wordsRange(map, first, last);
-        if (range) ranges.get(`pencil-${color}`)?.push(range);
-      });
-    }
-    LAYERS.forEach((layer) => api.highlights.set(highlightName(layer), new api.Highlight(...(ranges.get(layer) ?? []))));
-    return () => LAYERS.forEach((layer) => api.highlights.delete(highlightName(layer)));
+    if (!registry() || !root || !ready) return undefined;
+    paintMarks(root, drawing.current ?? marks);
+    return () => LAYERS.forEach((layer) => registry()?.highlights.delete(highlightName(layer)));
   }, [marks, ready, rootRef, textKey]);
+  return useCallback((preview: BookMarks | null) => {
+    drawing.current = preview;
+    const root = rootRef.current;
+    if (root && latest.current.ready) paintMarks(root, preview ?? latest.current.marks);
+  }, [rootRef]);
 }

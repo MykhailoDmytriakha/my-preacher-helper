@@ -1,55 +1,95 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { needsConnectionFailure, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
+import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { isBibleId } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
 
+import type { DocumentData } from '@/data-engine/types';
 import type { BibleId } from '@/utils/bibles';
 
 /*
  * THE MARKS ON EVERY DEVICE OF THE PERSON — kept through the app's data engine (`data-engine/README.md`):
  * one document per person, Bible and book in `bibleMarks`, under one fixed id, so two devices never make
  * two documents of one book. Its verses are a map: marks in different verses from two devices merge by
- * themselves; the same verse changed on two devices at once is a decision the engine asks the person
- * for. A stroke reaches the engine as a change of the document's newest copy, never as a value computed
- * from an older one. Offline, the engine keeps the stroke on the device and sends it later.
+ * themselves.
  *
- * Whether a stroke is the book's first is the engine's to know: `commit` reads the document itself (this
- * device's copy, else the server) and the stroke becomes a creation only where the document is absent
- * there. The list on the screen may not be read yet; a "create" decided from it would be refused once
- * another device has made the book's document, and the stroke lost. Only offline, in a book this device
- * has no copy of, the engine cannot ask: the read list says the book has no marks, so the stroke makes
- * the document. Should another device have made it meanwhile, the engine keeps both and asks the person.
+ * ONE FORM OF THE ENGINE PER BOOK (`useDataDocument`), the engine's own way of editing one document
+ * continuously: every stroke is a `commit` of that form, laid over its newest draft at once — strokes
+ * made quickly build on each other and never on an older copy, and each is kept on the device before
+ * the network is asked (the owner's iPad, 2026-10-16: strokes sent as separate one-shot changes were
+ * built on the same copy and the server answered "conflict" to the person's own strokes; a writer that
+ * waited for each delivery left the next strokes only in the page's memory). The form's draft is what
+ * the page shows. A book its list, read whole, shows no document of is opened for creation: the first
+ * stroke makes the document, offline too. A stroke is taken only while the form is open and can write
+ * (`writable`): the page never shows a stroke it cannot keep (2026-10-16: strokes made before the form
+ * opened were shown, held in the page's memory, and gone after a reload). While the form is a copy for
+ * reading — the device's storage silent for seconds after an iPad wakes — the marks still show and the
+ * reader says to wait. What still needs the person — a verse changed on two devices at once — is said
+ * by the form's status (`sync`), never as code.
  */
 export const BIBLE_MARKS = 'bibleMarks';
+/** The marks' own form: its drafts are not a screen's typing. */
+const MARKS_SLOT = 'bible-marks';
 
 export const marksDocumentId = (owner: string, bible: BibleId, bookId: string) => `${owner}_${bible}_${bookSlug(bookId)}`;
 
 type StoredDocument = { verses?: unknown } & Record<string, unknown>;
+export type MarksChange = (marks: BookMarks) => BookMarks;
+
+/**
+ * The form's states a stroke may be laid on. Any other — a choice waiting for the person, a failed save, a
+ * deleted document — could sweep a new stroke away with the draft it replaces, or never keep it.
+ */
+const STROKE_READY = new Set(['saved', 'draft', 'savingLocally', 'queued', 'sending', 'unknown', 'remoteChanged']);
+/** A stroke's form closed under it (the reader was left): the stroke itself goes on to the server. */
+const formLeft = (error: unknown) => error instanceof Error
+  && (error.name === 'InactiveEditorError' || error.message === 'Editor is no longer active' || error.message === 'The active editor changed');
 
 export type BookMarksStore = {
   marks: BookMarks;
-  /** A stroke: how it changes the book's marks; laid over the newest copy of the document. */
-  save: (change: (marks: BookMarks) => BookMarks) => void;
-  /** The engine is there and the person's marks are on the screen: strokes can be kept and judged. */
+  /** A stroke: how it changes the book's marks; laid over the form's newest draft. */
+  save: (change: MarksChange) => void;
+  /** The person's marks are read and the book's form is open: the marks can be shown and judged. */
   ready: boolean;
+  /** The form can write: a stroke is kept on the device the moment it is made. */
+  writable: boolean;
   /** This book's marks in the person's other Bibles, from the same list: a sign at their verses here. */
   others: OtherBookMarks[];
+  /** The book's form, for its status: shown only when something needs the person. */
+  sync: ReturnType<typeof useDataDocument> | null;
 };
 
 export function useBookMarks(owner: string | null, bible: BibleId, bookId: string): BookMarksStore {
   const { t } = useTranslation();
   const collection = useDataCollection(owner ? BIBLE_MARKS : null);
-  const actions = useDocumentActions();
   const id = owner ? marksDocumentId(owner, bible, bookId) : null;
-  const row = collection.state?.documents?.find((document) => document.resource.id === id) ?? null;
-  const stored = (row?.value ?? null) as StoredDocument | null;
-  const marks = useMemo(() => decodeBookMarks(stored?.verses), [stored]);
   const documents = collection.state?.documents;
+  const listRead = Boolean(owner) && collection.state !== null && !collection.loading;
+  // Whether the book's first stroke makes its document is settled once, when the book opens with its
+  // list read: changing it later would reopen the form under the person's hand. Online the form reads the
+  // document itself (absent or not), so a list a moment behind another device can never open it for a
+  // creation the server would refuse; only offline, where nothing can be read, does a whole list's
+  // "no document" open the book for creation.
+  const opening = useRef<{ id: string; create: boolean } | null>(null);
+  if (id && listRead && opening.current?.id !== id) {
+    const listed = documents?.some((document) => document.resource.id === id && document.value !== null) ?? false;
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    opening.current = { id, create: offline && collection.state?.complete === true && !listed };
+  }
+  const create = opening.current?.id === id ? opening.current.create : false;
+  const resource = useMemo(() => (id && listRead ? { collection: BIBLE_MARKS, id } : null), [id, listRead]);
+  // Every stroke is committed at once; autosave stays on only as the engine's own guard for a draft
+  // left unsent (it saves when the page is hidden or left).
+  // While the device's storage is silent the form shows a copy for reading: the marks stay on the page.
+  const form = useDataDocument(resource, { slot: MARKS_SLOT, create, readOnlyCopy: true });
+  const stored = (form.data ?? null) as StoredDocument | null;
+  const formMarks = useMemo(() => decodeBookMarks(stored?.verses), [stored]);
+
   // Keyed by value, not by the list's array: the list comes anew with every stroke here, and what reads
   // these (the ribbon's signs) is redrawn only when the other Bibles' marks change.
   const othersKey = useMemo(() => JSON.stringify((documents ?? []).flatMap((document) => {
@@ -58,30 +98,30 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     return [{ bible: value.bible, marks: decodeBookMarks(value.verses) }];
   })), [bible, bookId, documents]);
   const others = useMemo(() => JSON.parse(othersKey) as OtherBookMarks[], [othersKey]);
-  // A kept stroke shows at once and stays until the engine's own copy of the document moves on.
-  const [held, setHeld] = useState<{ marks: BookMarks; over: StoredDocument | null } | null>(null);
-  const shown = held && held.over === stored ? held.marks : marks;
 
-  const save = useCallback((change: (marks: BookMarks) => BookMarks) => {
-    if (!owner || !id) return;
+  const latest = useRef({ form, owner, bible, bookId, t });
+  latest.current = { form, owner, bible, bookId, t };
+  const save = useCallback((change: MarksChange) => {
+    const { form: current, owner: person, bible: bibleId, bookId: book, t: say } = latest.current;
+    if (!person || !id) return;
     const now = new Date().toISOString();
-    const resource = { collection: BIBLE_MARKS, id };
-    const fresh = () => ({ userId: owner, bible, book: bookId, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now });
-    setHeld({ marks: change(shown), over: stored });
-    actions.commit(resource, (current) => (current
-      ? { ...current, verses: encodeBookMarks(change(decodeBookMarks(current.verses))), updatedAt: now }
-      : fresh()))
+    current.commit((value): DocumentData => (value
+      ? { ...value, verses: encodeBookMarks(change(decodeBookMarks(value.verses))), updatedAt: now }
+      : { userId: person, bible: bibleId, book, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now }))
       .catch((error: unknown) => {
-        if (needsConnectionFailure(error) && !stored) return actions.create(resource, fresh());
-        throw error;
-      })
-      // A refused stroke: the page returns to the stored marks and says why.
-      .catch((error: unknown) => {
-        setHeld(null);
-        toast.error(refusalMessage(error, t, 'bible.marks.notKept'));
+        if (formLeft(error)) return;
+        recordDiagnostic('mark', { result: 'refused', code: diagnosticErrorCode(error) });
+        toast.error(refusalMessage(error, say, 'bible.marks.notKept'));
       });
-  }, [actions, bible, bookId, id, owner, shown, stored, t]);
+  }, [id]);
 
-  // Until the list is read, a stroke could not tell paint from erase on marks it cannot see.
-  return { marks: shown, save, ready: actions.ready && collection.state !== null && !collection.loading, others };
+  const open = listRead && form.state !== null;
+  return {
+    marks: formMarks,
+    save,
+    ready: open || (listRead && form.readOnly),
+    writable: open && !form.readOnly && STROKE_READY.has(form.status?.phase ?? ''),
+    others,
+    sync: resource ? form : null,
+  };
 }

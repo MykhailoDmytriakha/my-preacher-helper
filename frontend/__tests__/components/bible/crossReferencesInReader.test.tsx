@@ -14,6 +14,12 @@ import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainRe
 
 import type { BookText } from '@/utils/bibleText';
 
+// The reader's marks keep one form of the data engine per book; these tests mount no engine.
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useDataDocument: () => ({ data: null, loading: true, commit: jest.fn(), status: null, recoveryIdentity: {} }),
+}));
+
 /*
  * Cross references in the Bible reader, on the real files: the Synodal text of Ruth (four chapters,
  * small enough to draw whole) and its set built from the fourteen MyBible modules.

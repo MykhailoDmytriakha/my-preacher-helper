@@ -1,20 +1,24 @@
 import { act, fireEvent, render, renderHook, screen, within } from '@testing-library/react';
+import { useRef } from 'react';
 import { toast } from 'sonner';
 
 import { useBookMarks } from '@/components/bible/marks/markStore';
+import { useMarkStrokes } from '@/components/bible/marks/useMarkStrokes';
 import { useMarkTool } from '@/components/bible/marks/markTool';
 import { MarkToolbar } from '@/components/bible/marks/MarkToolbar';
 import { mapVerseText, wordIndexAt, wordsRange } from '@/components/bible/marks/verseWordDom';
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
-import { countVerseWords, type BookMarks } from '@/utils/bibleMarks';
+import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { countVerseWords, verseOrder, type BookMarks } from '@/utils/bibleMarks';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
   useDataCollection: jest.fn(),
-  useDocumentActions: jest.fn(),
+  useDataDocument: jest.fn(),
 }));
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
+jest.mock('@/utils/appDiagnostics', () => ({ ...jest.requireActual('@/utils/appDiagnostics'), recordDiagnostic: jest.fn() }));
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, options?: { meaning?: string }) => (options?.meaning ? `${key}:${options.meaning}` : key) }),
@@ -52,83 +56,124 @@ describe('the words of a drawn verse', () => {
 });
 
 describe('marks kept through the data engine', () => {
-  const create = jest.fn();
   const commit = jest.fn();
   let documents: Array<{ resource: { collection: string; id: string }; value: Record<string, unknown> | null }> = [];
   let loading = false;
+  let complete = true;
+  let draft: Record<string, unknown> | null = null;
+  let readOnly = false;
+  let phase = 'saved';
 
   beforeEach(() => {
-    create.mockReset().mockResolvedValue(undefined);
     commit.mockReset().mockResolvedValue(undefined);
     jest.mocked(toast.error).mockReset();
     documents = [];
     loading = false;
-    jest.mocked(useDataCollection).mockImplementation((collection) => ({ state: collection ? { documents } : null, loading }) as unknown as ReturnType<typeof useDataCollection>);
-    jest.mocked(useDocumentActions).mockReturnValue({ ready: true, create, commit } as unknown as ReturnType<typeof useDocumentActions>);
+    complete = true;
+    draft = null;
+    readOnly = false;
+    phase = 'saved';
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    jest.mocked(useDataCollection).mockImplementation((collection) => ({ state: collection ? { documents, complete } : null, loading }) as unknown as ReturnType<typeof useDataCollection>);
+    jest.mocked(useDataDocument).mockImplementation((resource) => ({
+      data: resource ? draft : null, loading: false, readOnly, state: resource && !readOnly ? {} : null, commit, status: { phase }, recoveryIdentity: {},
+    }) as unknown as ReturnType<typeof useDataDocument>);
   });
-
   const paintFirstWord = (marks: BookMarks): BookMarks => ({ ...marks, '26:4': { m: [[0, 0, 'red']] } });
-  const keptChange = () => commit.mock.calls[0][1] as (current: Record<string, unknown> | null) => Record<string, unknown>;
+  const updaterOf = (call = 0) => commit.mock.calls[call][0] as (current: Record<string, unknown> | null) => Record<string, unknown>;
+  const formOptions = () => jest.mocked(useDataDocument).mock.calls.at(-1)?.[1];
 
-  it('reads the marks from the book\'s own document', () => {
-    documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: { v26_3: { p: ['1-2-blue'] } } } }];
+  it('shows the book\'s marks from its form\'s draft, the strokes not yet sent included', () => {
+    draft = { userId: 'alice', verses: { v26_3: { p: '1-2-blue' } } };
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(jest.mocked(useDataDocument).mock.calls.at(-1)?.[0]).toEqual({ collection: 'bibleMarks', id: 'alice_rst_isaiah' });
     expect(result.current.marks).toEqual({ '26:3': { p: [[1, 2, 'blue']] } });
     expect(result.current.ready).toBe(true);
+    expect(result.current.writable).toBe(true);
   });
 
-  it('the first stroke in a book makes its document under one fixed id where the engine finds none', () => {
-    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
-    act(() => result.current.save(paintFirstWord));
-    expect(commit).toHaveBeenCalledWith({ collection: 'bibleMarks', id: 'alice_rst_isaiah' }, expect.any(Function));
-    expect(keptChange()(null)).toEqual(
-      expect.objectContaining({ userId: 'alice', bible: 'rst', book: 'Isaiah', verses: { v26_4: { m: '0-0-red' } } }),
-    );
-    expect(result.current.marks).toEqual({ '26:4': { m: [[0, 0, 'red']] } });
-  });
-
-  it('a book made on another device, not yet in this list, is changed, never created over', () => {
-    // The list here shows no document, but the engine\'s own read of it finds the other device\'s.
-    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
-    act(() => result.current.save(paintFirstWord));
-    expect(create).not.toHaveBeenCalled();
-    const newest = keptChange()({ userId: 'alice', bible: 'rst', book: 'Isaiah', verses: { v26_9: { m: '0-3-orange' } }, createdAt: 'then' });
-    expect(newest).toEqual(expect.objectContaining({ createdAt: 'then', verses: { v26_9: { m: '0-3-orange' }, v26_4: { m: '0-0-red' } } }));
-  });
-
-  it('a later stroke is laid over the newest copy, keeping what another device added', () => {
+  it('opens a book its whole list shows no document of for creation, and keeps that while the book is open', () => {
+    const { rerender } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(formOptions()).toEqual(expect.objectContaining({ create: true, slot: 'bible-marks' }));
+    // The first stroke made the document: the list now shows it, and the form is not reopened.
     documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: {} } }];
-    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
-    act(() => result.current.save(paintFirstWord));
-    const newest = keptChange()({ userId: 'alice', verses: { v26_9: { m: '0-3-orange' } } });
-    expect(newest.verses).toEqual({ v26_9: { m: '0-3-orange' }, v26_4: { m: '0-0-red' } });
+    rerender();
+    expect(formOptions()).toEqual(expect.objectContaining({ create: true }));
   });
 
-  it('offline, in a book this device has no copy of, the stroke makes the document', async () => {
-    commit.mockRejectedValue(Object.assign(new Error('The document is not available in the local cache'), { code: 'needs-connection' }));
+  it('online, opens even a book its list shows no document of as an existing one: the form reads it itself', () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
+    renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(formOptions()).toEqual(expect.objectContaining({ create: false, readOnlyCopy: true }));
+  });
+
+  it.each(['conflict', 'refused', 'deleted', 'localFailure', 'blocked'])('takes no stroke while the form is %s', (state) => {
+    phase = state;
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(result.current.ready).toBe(true);
+    expect(result.current.writable).toBe(false);
+  });
+
+  it.each(['saved', 'draft', 'queued', 'sending', 'unknown'])('takes strokes while the form is %s', (state) => {
+    phase = state;
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(result.current.writable).toBe(true);
+  });
+
+  it('says nothing when the reader was left while a stroke was on its way', async () => {
+    commit.mockRejectedValue(new Error('Editor is no longer active'));
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
     await act(async () => result.current.save(paintFirstWord));
-    expect(create).toHaveBeenCalledWith(
-      { collection: 'bibleMarks', id: 'alice_rst_isaiah' },
-      expect.objectContaining({ userId: 'alice', verses: { v26_4: { m: '0-0-red' } } }),
-    );
-    expect(result.current.marks).toEqual({ '26:4': { m: [[0, 0, 'red']] } });
     expect(toast.error).not.toHaveBeenCalled();
   });
 
-  it('a refused stroke returns the page to the stored marks and says so', async () => {
-    commit.mockRejectedValue(Object.assign(new Error('Device storage does not answer'), { code: 'storage-silent' }));
+  it('opens a book the list shows, or a list not read whole, as an existing document', () => {
     documents = [{ resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', verses: {} } }];
+    renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(formOptions()).toEqual(expect.objectContaining({ create: false }));
+    documents = [];
+    complete = false;
+    renderHook(() => useBookMarks('alice', 'rst', 'Genesis'));
+    expect(formOptions()).toEqual(expect.objectContaining({ create: false }));
+  });
+
+  it('the first stroke makes the document under one fixed id; a later one is laid over the form\'s newest draft', () => {
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    act(() => result.current.save(paintFirstWord));
+    expect(updaterOf()(null)).toEqual(expect.objectContaining({ userId: 'alice', bible: 'rst', book: 'Isaiah', verses: { v26_4: { m: '0-0-red' } } }));
+    const newest = updaterOf()({ userId: 'alice', verses: { v26_9: { m: '0-3-orange' } }, createdAt: 'then' });
+    expect(newest).toEqual(expect.objectContaining({ createdAt: 'then', verses: { v26_9: { m: '0-3-orange' }, v26_4: { m: '0-0-red' } } }));
+  });
+
+  it('sends strokes made quickly at once, each to the same form, never waiting for the one before', () => {
+    commit.mockReturnValue(new Promise(() => undefined));
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    act(() => result.current.save(paintFirstWord));
+    act(() => result.current.save((marks) => ({ ...marks, '26:5': { m: [[1, 1, 'blue']] } })));
+    expect(commit).toHaveBeenCalledTimes(2);
+  });
+
+  it('a refused stroke says so', async () => {
+    commit.mockRejectedValue(Object.assign(new Error('A decision waits'), { code: 'decision-required' }));
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
     await act(async () => result.current.save(paintFirstWord));
-    expect(result.current.marks).toEqual({});
-    expect(toast.error).toHaveBeenCalledWith('dataSync.readOnly.storage');
+    expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('while the form is a copy for reading (storage silent), shows the marks and takes no stroke', () => {
+    readOnly = true;
+    draft = { userId: 'alice', verses: { v26_3: { m: '0-0-red' } } };
+    const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(result.current.marks).toEqual({ '26:3': { m: [[0, 0, 'red']] } });
+    expect(result.current.ready).toBe(true);
+    expect(result.current.writable).toBe(false);
   });
 
   it('takes no stroke while the person\'s marks are not read yet', () => {
     loading = true;
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
     expect(result.current.ready).toBe(false);
+    expect(jest.mocked(useDataDocument).mock.calls.at(-1)?.[0]).toBeNull();
   });
 
   it('gives this book\'s marks in the person\'s other Bibles, the same list while they do not change', () => {
@@ -140,7 +185,6 @@ describe('marks kept through the data engine', () => {
     const { result, rerender } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
     expect(result.current.others).toEqual([{ bible: 'kjv', marks: { '26:4': { m: [[0, 1, 'red']] } } }]);
     const first = result.current.others;
-    // The list comes anew with every stroke; the other Bibles' marks are the same.
     documents = documents.map((document) => ({ ...document, value: document.value && { ...document.value } }));
     rerender();
     expect(result.current.others).toBe(first);
@@ -237,19 +281,57 @@ describe('the three tools', () => {
     expect(screen.getByTestId('in-hand')).toHaveTextContent('pencil');
   });
 
-  it('a pen with nothing in hand paints with the last tool and the remembered colour', () => {
+  it('a pen with nothing in hand paints with the last tool and takes nothing, so a finger still only scrolls', () => {
     const { result } = renderHook(() => useMarkTool());
     act(() => result.current.pickColor('green'));
     act(() => result.current.pressColored('marker'));
     expect(result.current.inHand).toBeNull();
+    expect(result.current.penTool).toBeNull();
     let kind: ReturnType<typeof result.current.beginStroke> = null;
     act(() => {
       kind = result.current.beginStroke(true);
     });
     expect(kind).toEqual({ tool: 'marker', color: 'green' });
-    expect(result.current.inHand).toBe('marker');
-    act(() => result.current.pressColored('marker'));
+    // The owner's iPad: the Pencil used to take the tool, and the black ring came and went.
     expect(result.current.inHand).toBeNull();
+    expect(result.current.penTool).toBe('marker');
     expect(result.current.beginStroke(false)).toBeNull();
+    act(() => result.current.pressEraser());
+    expect(result.current.penTool).toBeNull();
+  });
+});
+
+describe('a stroke over the words', () => {
+  // jsdom lays out nothing: no element stands under any point.
+  beforeEach(() => { document.elementFromPoint = jest.fn(() => null); });
+
+  function Ribbon({ begin }: { begin: () => null }) {
+    const rootRef = useRef<HTMLElement | null>(null);
+    useMarkStrokes({ rootRef, ready: true, order: verseOrder([['In the beginning']], countVerseWords), marks: {}, save: jest.fn(), armed: false, begin, preview: jest.fn(), enabled: true });
+    return (
+      <article ref={rootRef}>
+        <div data-verse="1:1">
+          <span data-verse-text="" data-testid="words">In the beginning</span>
+          <button type="button">3 links</button>
+        </div>
+      </article>
+    );
+  }
+
+  it('starts only on a verse\'s words: a Pencil on the links\' chip presses the chip and paints nothing', () => {
+    const begin = jest.fn(() => null);
+    render(<Ribbon begin={begin} />);
+    // jsdom has no PointerEvent: a mouse event that says it is a pen.
+    const penDown = (target: Element) => {
+      const event = new MouseEvent('pointerdown', { bubbles: true, cancelable: true });
+      Object.defineProperties(event, { pointerType: { value: 'pen' }, pointerId: { value: 1 } });
+      target.dispatchEvent(event);
+    };
+    penDown(screen.getByRole('button', { name: '3 links' }));
+    expect(recordDiagnostic).not.toHaveBeenCalled();
+    penDown(screen.getByTestId('words'));
+    // jsdom draws no text, so no word is under the pen: the stroke went as far as looking for one.
+    expect(recordDiagnostic).toHaveBeenCalledWith('mark', { source: 'pen', result: 'missed' });
+    expect(begin).not.toHaveBeenCalled();
   });
 });

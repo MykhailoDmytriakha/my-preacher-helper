@@ -16,7 +16,7 @@ const MAX_AGE_MS = 24 * 60 * 60 * 1000;
  */
 const PER_KIND: Partial<Record<EventName, number>> = {
   gesture: 12, focus: 12, visibility: 20, pageshow: 10, pagehide: 10, 'route-check': 10,
-  'snapshot-cache': 10, 'snapshot-pending': 10, 'snapshot-server': 20, 'freshness-check': 10, edit: 30,
+  'snapshot-cache': 10, 'snapshot-pending': 10, 'snapshot-server': 20, 'freshness-check': 10, edit: 30, mark: 20,
 };
 const SESSION = Date.now();
 const EVENTS = [
@@ -27,6 +27,8 @@ const EVENTS = [
   'freshness-check', 'freshness-error', 'freshness-timeout', 'freshness-late-response', 'freshness-late-error',
   'freshness-deferred', 'storage-silent', 'storage-answered', 'storage-release',
   'edit', 'dictation', 'sync-trouble',
+  // A stroke of the Bible marks: what drew it, and how it ended (`components/bible/marks`).
+  'mark',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData {

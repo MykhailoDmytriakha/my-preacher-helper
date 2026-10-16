@@ -409,6 +409,34 @@ describe('Durable commit requests', () => {
     await queue.drain(true); expect(s.server().value?.title).toBe('B');
   });
 
+  it('selects the latest candidate by dependency even when durable rows arrive in reverse order', async () => {
+    const s = setup(); const { queue } = s.makeQueue();
+    const capture = (title: string) => { const session = new DataSession(initial()); session.edit({ ...initial().value, title }); return session.checkpoint(); };
+    const manual = await queue.save('manual', capture('Manual words'));
+    const parent = await queue.save('parent', capture('Parent title'), { predecessorId: manual!.id });
+    const list = s.requests.list.bind(s.requests);
+    jest.spyOn(s.requests, 'list').mockImplementation(async owner => (await list(owner)).reverse());
+    const latest = await queue.save('later', capture('Latest title'), { predecessorIds: [parent!.id, manual!.id] });
+    expect(latest?.predecessor).toBe(parent?.id);
+    await queue.drain(true);
+    expect((await queue.list()).map(request => request.state)).toEqual(['acknowledged', 'acknowledged', 'acknowledged']);
+    expect(s.server().value?.title).toBe('Latest title');
+  });
+
+  it('refuses missing, unrelated or independent predecessor candidates without capturing a request', async () => {
+    const s = setup(); const { queue } = s.makeQueue();
+    const capture = (title: string) => { const session = new DataSession(initial()); session.edit({ ...initial().value, title }); return session.checkpoint(); };
+    const first = await queue.save('first', capture('First'));
+    const independent = await queue.save('independent', capture('Independent'), { predecessorId: null });
+    const before = await queue.list();
+    await expect(queue.save('missing', capture('Missing'), { predecessorIds: ['absent'] })).rejects.toThrow('Invalid predecessor');
+    await expect(queue.save('ambiguous', capture('Ambiguous'), { predecessorIds: [first!.id, independent!.id] })).rejects.toThrow('Invalid predecessor');
+    const other = new DataSession({ ...initial(), resource: { ...initial().resource, id: 'another-sermon' } });
+    other.edit({ ...initial().value, title: 'Another document' });
+    await expect(queue.save('unrelated', other.checkpoint(), { predecessorIds: [first!.id] })).rejects.toThrow('Invalid predecessor');
+    expect(await queue.list()).toEqual(before);
+  });
+
   it('starts the new owner after an old owner read finishes late without leaking its request', async () => {
     const s = setup(); const { queue, runtime } = s.makeQueue(); const session = new DataSession(initial());
     session.edit({ ...initial().value, title: 'owner intent' }); await queue.save('tab', session.checkpoint());
