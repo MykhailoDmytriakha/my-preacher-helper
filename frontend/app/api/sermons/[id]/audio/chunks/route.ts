@@ -3,28 +3,25 @@
  *
  * PUT /api/sermons/[id]/audio/chunks
  *
- * Replaces the entire audioChunks array for a sermon — when the wizard switches source, it
- * writes the chunk set it kept for that source.
- *
- * A WHOLE ARRAY FROM A CLIENT'S CACHE MUST NOT LAND ON TOP OF A NEWER ONE
- * (BUG-20260810-audio-chunks-whole-array). The cache can be older than the database: a chunk
- * corrected on another device after this one built it would be written over. The client sends
- * `expected` — the chunk set it last saw stored — and the write happens only while the database
- * still holds exactly that; otherwise it answers 409 `chunks-changed` with what is stored now.
- * The engine road re-checks inside its read-apply-retry loop, so a change between the check
- * and the write is caught as well. A client that sends no `expected` keeps the old behaviour.
+ * Compatibility endpoint for older source-switch clients. New clients select their
+ * independently saved AI/Original sources without writing cached arrays.
+ * The active projection baseline and the target source are both checked against
+ * the latest transactional document. A differing saved target cannot be replaced
+ * by an older cache; the inactive source and its corrections remain persisted.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
-import { applyLegacyPatch, assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
-import { heardChunks, storedChunk } from '@/utils/audioChunkIdentity';
+import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { storedChunk, storedSource } from '@/utils/audioChunkIdentity';
+import { activatePreparedAudio, PreparedAudioChanged, preparedAudioVersion, readPreparedAudioSources } from '@/utils/preparedAudioSources';
 import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 
-import type { AudioChunk } from '@/types/audioGeneration.types';
+import type { DocumentData } from '@/data-engine/types';
+import type { AudioChunk, AudioSourceMode } from '@/types/audioGeneration.types';
 
 export async function PUT(
     request: NextRequest,
@@ -32,6 +29,7 @@ export async function PUT(
 ): Promise<NextResponse> {
     // What the engine road read when it found the set changed — answered without another read.
     let changedTo: Record<string, unknown> | undefined;
+    let changedMode: AudioSourceMode | undefined;
     try {
         const uid = await getRequiredAuthenticatedUid(request);
         if (!uid) {
@@ -63,39 +61,34 @@ export async function PUT(
         // Stored shape only: a cached chunk may lack createdAt (the engine refuses the whole set) or carry a preview.
         const now = new Date().toISOString();
         const chunks: AudioChunk[] = (body.chunks as Partial<AudioChunk>[]).map(chunk => storedChunk(chunk, now));
-        const expected: unknown[] | null = Array.isArray(body.expected) ? body.expected : null;
-        if (expected && heardChunks(sermonData?.audioChunks) !== heardChunks(expected)) return chunksChangedResponse(sermonData);
-        // Optional source mode ('ai' | 'raw') so the modal can persist which source
-        // produced these chunks when switching between modes from cache (no re-optimize).
-        const mode: string | undefined = body.mode === 'ai' || body.mode === 'raw' ? body.mode : undefined;
-
-        // Update firestore
-        const updates: Record<string, unknown> = {
-            audioChunks: chunks,
-            'audioMetadata.chunksCount': chunks.length,
-            'audioMetadata.lastOptimized': new Date().toISOString(),
+        const expected = Array.isArray(body.expected) ? body.expected : undefined;
+        const mode: AudioSourceMode = body.mode === 'ai' || body.mode === 'raw' ? body.mode : storedSource(sermonData);
+        changedTo = sermonData; changedMode = mode;
+        activatePreparedAudio(sermonData ?? {}, mode, chunks, expected);
+        let result = sermonData ?? {};
+        const mutate = (current: DocumentData): DocumentData => {
+            if (current.userId !== uid) throw new ServerEditError('permission-denied', 403);
+            changedTo = current;
+            const fields = activatePreparedAudio(current, mode, chunks, expected);
+            result = { ...current, ...fields };
+            return result as DocumentData;
         };
-        if (mode) {
-            updates['audioMetadata.mode'] = mode;
-        }
-        await writeOwnedDocument({
+        const accepted = await writeOwnedDocument({
             owner: uid,
             resource: { collection: 'sermons', id: sermonId },
-            legacy: () => updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), updates),
-            engine: current => {
-                if (expected && heardChunks(current.audioChunks) !== heardChunks(expected)) {
-                    changedTo = current;
-                    throw new ServerEditError(CHUNKS_CHANGED, 409);
-                }
-                return applyLegacyPatch(current, updates);
-            },
+            legacy: () => mutateLegacyResource({ collection: 'sermons', id: sermonId }, current => {
+                if (!current) throw new ServerEditError('not-found', 404);
+                const next = mutate(current);
+                return { audioChunks: next.audioChunks, audioMetadata: next.audioMetadata, audioSources: next.audioSources };
+            }),
+            engine: mutate,
         });
-
-        return NextResponse.json({ success: true, count: chunks.length });
+        const sources = readPreparedAudioSources(accepted ?? result), source = sources[mode];
+        return NextResponse.json({ success: true, count: chunks.length, mode, sources, ...(source ? { source: preparedAudioVersion(source) } : {}) });
     } catch (error) {
-    if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
-    const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
-    if (boundary) return boundary;
+        if (error instanceof PreparedAudioChanged || (error instanceof ServerEditError && error.code === CHUNKS_CHANGED)) return chunksChangedResponse(changedTo, error instanceof PreparedAudioChanged ? error.mode : changedMode);
+        const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
+        if (boundary) return boundary;
         console.error('Bulk chunk update error:', error);
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Failed to update chunks' },

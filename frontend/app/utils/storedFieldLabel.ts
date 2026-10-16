@@ -18,7 +18,7 @@ const NAMED_FIELDS = new Set([
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
   // Every other field the person writes in councils, groups, series, sermons, prayers and study notes (models.ts).
   'scratch', 'insights', 'planText', 'planMode', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church',
-  'audioChunks', 'audioMetadata', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt',
+  'audioChunks', 'audioMetadata', 'audioSources', 'theme', 'bookOrTopic', 'startDate', 'duration', 'color', 'templates', 'flow', 'heldAt',
   'answerText', 'text', 'updates', 'content', 'scriptureRefs',
   // Inside a list item or a sermon's sections: a council matter's parts, the sections of a plan.
   'summary', 'decision', 'options', 'questions', 'introduction', 'main', 'conclusion', 'ambiguous',

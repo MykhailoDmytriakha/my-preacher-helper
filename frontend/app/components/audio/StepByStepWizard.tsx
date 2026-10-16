@@ -33,12 +33,12 @@ import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/hooks/useAuth';
+import { usePreparedSpeech } from '@/hooks/usePreparedSpeech';
 import { useSermonRead } from '@/hooks/useSermonRead';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import {
     AVAILABLE_VOICES,
     SERMON_SECTIONS,
-    AudioChunk,
     AudioSourceMode,
     GoogleTTSModel,
     GoogleTTSVoice,
@@ -46,9 +46,10 @@ import {
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
-import { sayFailure, saidError, type FailureWords } from '@/utils/actionFailureMessage';
+import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
-import { CHUNKS_CHANGED, TTS_CHUNK_FAILED, heardChunks } from '@/utils/audioChunkIdentity';
+import { resolveAppLocale } from '@/utils/appLocale';
+import { CHUNKS_CHANGED, TTS_CHUNK_FAILED } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
@@ -96,10 +97,6 @@ interface GenerationProgress {
     mimeType?: string;
 }
 
-interface ChunkPreview extends AudioChunk {
-    preview?: string;
-}
-
 interface StreamEvent {
     type: 'progress' | 'complete' | 'error' | 'audio_chunk' | 'download_complete';
     current?: number;
@@ -136,8 +133,6 @@ const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts';
 const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-tts';
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
 /** Said by every path that met a 409 `chunks-changed` and now shows the stored set; words, said when shown. */
-const CHANGED_ELSEWHERE_KEY = 'audioExport.chunksChangedElsewhere';
-const CHANGED_ELSEWHERE: FailureWords = { key: CHANGED_ELSEWHERE_KEY };
 /**
  * The OpenAI voice samples were recorded before gpt-4o-mini-tts (with tts-1, "standard"), and a
  * quality switch once chose between them. The model alone decides the sound now; the samples
@@ -249,28 +244,10 @@ export default function StepByStepWizard({
     const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
     const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
 
-    // Source mode + per-mode cache so flipping back and forth is instant
-    const [mode, setMode] = useState<AudioSourceMode>('ai');
-    const chunksByMode = useRef<Partial<Record<AudioSourceMode, ChunkPreview[]>>>({});
-    /**
-     * The chunk set this wizard last saw STORED — loaded, prepared, switched to or corrected. A
-     * source switch writes a whole cached array, and the server takes it only while the database
-     * still holds this set (BUG-20260810-audio-chunks-whole-array).
-     */
-    const storedChunks = useRef<ChunkPreview[]>([]);
-    /** The set and source on screen when the chunk editor opened: a save lands only while both are stored. */
-    const editingSet = useRef<{ chunks: ChunkPreview[]; mode: AudioSourceMode }>({ chunks: [], mode: 'ai' });
-
-
-    // Content
-    const [chunks, setChunks] = useState<ChunkPreview[]>([]);
-
     // Wizard + view state
     const [step, setStep] = useState<WizardStep>(1);
     const [view, setView] = useState<StudioView>('working');
-    const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<FailureWords | null>(null);
-    const [editingChunk, setEditingChunk] = useState<ChunkPreview | null>(null);
 
     // Generation
     const [genProgress, setGenProgress] = useState<{ current: number; total: number; percent?: number; status?: string }>({ current: 0, total: 0 });
@@ -294,25 +271,39 @@ export default function StepByStepWizard({
         isError: entitlementError,
     } = useUserEntitlement(user);
 
+    const requestPreparation = useCallback((body: Record<string, unknown>, headers: Record<string, string>) =>
+        apiClient('/api/sermons/' + sermonId + '/audio/optimize', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, category: body.useRawText === true ? 'crud' : 'ai',
+            body: JSON.stringify(body),
+        }), [sermonId]);
+    const requestCorrection = useCallback((index: number, body: Record<string, unknown>, headers: Record<string, string>) =>
+        apiClient('/api/sermons/' + sermonId + '/audio/chunks/' + index, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json', ...headers }, category: 'crud', body: JSON.stringify(body),
+        }), [sermonId]);
+
+    const speech = usePreparedSpeech({ owner: user?.uid ?? null, sermonId, sermon: sermon ?? null, provider: ttsProvider,
+        sections, setSections, setError, aiBlocked, refreshUsage: refreshAiUsage, requestPreparation, requestCorrection });
+    const { mode, chunks, isLoading, editingChunk, editingSession, selectSource, prepareSource,
+        openChunk, closeChunk, saveChunk: handleSaveChunk, reconcile: showStoredSet } = speech;
+
     const availableTtsTargets = useMemo(
         () => userEntitlement?.functions?.tts.available ?? [],
         [userEntitlement?.functions?.tts.available],
     );
     const entitlementSeeded = useRef(false);
     useEffect(() => {
-        if (entitlementSeeded.current || !userEntitlement?.functions?.tts) return;
-        const current = userEntitlement.functions.tts.current;
-        if (current.providerId === 'gemini') {
-            setTtsProvider('google');
-            setGoogleModel(current.modelId === GOOGLE_MODEL_GEMINI_25
-                ? GOOGLE_MODEL_GEMINI_25
-                : GOOGLE_MODEL_GEMINI_31);
-            setMode('raw');
-        } else {
-            setTtsProvider('openai');
-        }
+        if (!userEntitlement?.functions?.tts) return;
+        const providerId = ttsProvider === 'google' ? 'gemini' : 'openai';
+        const modelId = ttsProvider === 'google' ? googleModel : OPENAI_TTS_MODEL;
+        const allowed = availableTtsTargets.some(target => target.providerId === providerId && target.modelId === modelId);
+        if (entitlementSeeded.current && allowed) return;
+        const preferred = userEntitlement.functions.tts.current;
+        const target = availableTtsTargets.find(item => item.providerId === preferred.providerId && item.modelId === preferred.modelId) ?? availableTtsTargets[0];
+        if (!target) return;
+        setTtsProvider(target.providerId === 'gemini' ? 'google' : 'openai');
+        if (target.providerId === 'gemini') setGoogleModel(target.modelId === GOOGLE_MODEL_GEMINI_25 ? GOOGLE_MODEL_GEMINI_25 : GOOGLE_MODEL_GEMINI_31);
         entitlementSeeded.current = true;
-    }, [userEntitlement]);
+    }, [userEntitlement, availableTtsTargets, ttsProvider, googleModel]);
 
     // Report "busy" so the modal can guard its close button
     useEffect(() => {
@@ -338,43 +329,15 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     // Load existing chunks (from a previous session) once the sermon loads
     // ------------------------------------------------------------------
-    const seeded = useRef(false);
+    const voiceSeeded = useRef<string | null>(null);
     useEffect(() => {
-        if (seeded.current || !sermon) return;
-        const savedProvider: TTSProvider = sermon.audioMetadata?.provider === 'google' ? 'google' : 'openai';
-        if (savedProvider === 'google') {
-            if (GOOGLE_VOICE_OPTIONS.some(option => option.id === sermon.audioMetadata?.voice)) {
-                setGoogleVoice(sermon.audioMetadata?.voice as GoogleTTSVoice);
-            }
-        } else if (AVAILABLE_VOICES.some(option => option.id === sermon.audioMetadata?.voice)) {
-            setVoice(sermon.audioMetadata?.voice as TTSVoice);
-        }
-
-        const existing = (sermon.audioChunks || []) as AudioChunk[];
-        if (existing.length > 0) {
-            const loaded: ChunkPreview[] = existing.map(c => ({ ...c, sectionId: c.sectionId as SermonSection, preview: c.text }));
-            // Restore the section selection from the sections that actually have chunks,
-            // so the checkboxes match what /generate will read from the DB.
-            const present = SERMON_SECTIONS.filter(k => loaded.some(c => c.sectionId === k));
-            if (present.length > 0) setSections(present);
-            // The true source label of the persisted chunks.
-            const trueMode: AudioSourceMode = sermon.audioMetadata?.mode === 'raw' ? 'raw' : 'ai';
-            chunksByMode.current[trueMode] = loaded;
-            storedChunks.current = loaded;
-            if (ttsProvider === 'google') {
-                // Google only supports raw. If the persisted chunks are AI-optimized,
-                // do NOT present them as raw — leave raw empty so the user re-prepares.
-                setMode('raw');
-                if (trueMode === 'raw') setChunks(loaded);
-            } else {
-                setMode(trueMode);
-                setChunks(loaded);
-            }
-        } else if (ttsProvider === 'google') {
-            setMode('raw');
-        }
-        seeded.current = true;
-    }, [sermon, ttsProvider]);
+        const key = JSON.stringify([user?.uid, sermonId]);
+        if (!sermon || voiceSeeded.current === key) return;
+        voiceSeeded.current = key;
+        if (sermon.audioMetadata?.provider === 'google') {
+            if (GOOGLE_VOICE_OPTIONS.some(option => option.id === sermon.audioMetadata?.voice)) setGoogleVoice(sermon.audioMetadata?.voice as GoogleTTSVoice);
+        } else if (AVAILABLE_VOICES.some(option => option.id === sermon.audioMetadata?.voice)) setVoice(sermon.audioMetadata?.voice as TTSVoice);
+    }, [sermon, sermonId, user?.uid]);
 
     // ------------------------------------------------------------------
     // Voice preview (samples in /public/samples)
@@ -390,7 +353,7 @@ export default function StepByStepWizard({
         }
         if (audioRef.current) audioRef.current.pause();
 
-        const lang = i18n.language.split('-')[0] || 'en';
+        const lang = resolveAppLocale(i18n.language);
         const fileLang = ['en', 'ru', 'uk'].includes(lang) ? lang : 'en';
         const url = ttsProvider === 'google'
             ? `/samples/${voiceId}-${googleModelShort(googleModel)}-${fileLang}.wav`
@@ -485,190 +448,6 @@ export default function StepByStepWizard({
     }, [sermonId]);
 
     // ------------------------------------------------------------------
-    // Persist a cached chunk set so /generate (which reads the DB) stays in sync
-    // ------------------------------------------------------------------
-    /**
-     * SHOW WHAT IS STORED — the answer every chunk route gives when the database does not hold
-     * what this wizard showed (409 `chunks-changed`). Only the stored source's cache is replaced:
-     * the other one may hold corrections that exist nowhere else.
-     */
-    const showStoredSet = useCallback((data: { chunks?: unknown; mode?: unknown }) => {
-        const current: ChunkPreview[] = (Array.isArray(data.chunks) ? data.chunks as AudioChunk[] : [])
-            .map(c => ({ ...c, sectionId: c.sectionId as SermonSection, preview: c.text }));
-        const storedMode: AudioSourceMode = data.mode === 'raw' ? 'raw' : 'ai';
-        storedChunks.current = current;
-        chunksByMode.current[storedMode] = current;
-        const present = SERMON_SECTIONS.filter(k => current.some(c => c.sectionId === k));
-        if (present.length > 0) setSections(present);
-        setMode(storedMode);
-        setChunks(current);
-        return current;
-    }, []);
-
-    /**
-     * Whether the database now holds `cached` ('stored'), holds another set this wizard now shows
-     * ('replaced'), or the switch failed ('failed'). The old code ignored the answer, and the
-     * screen showed one source while the audio was made from the other. A failed switch shows the
-     * previous source again; should the write have landed after all, generation — which checks the
-     * shown set against the database — finds out before any audio is made.
-     */
-    const syncChunksToDb = useCallback(async (cached: ChunkPreview[], targetMode: AudioSourceMode): Promise<'stored' | 'replaced' | 'failed'> => {
-        setIsLoading(true);
-        try {
-            const authHeaders = await getAuthenticatedRequestHeaders();
-            const response = await apiClient(`/api/sermons/${sermonId}/audio/chunks`, { category: 'crud',
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', ...authHeaders },
-                body: JSON.stringify({ chunks: cached, mode: targetMode, expected: storedChunks.current }),
-            });
-            if (response.ok) {
-                storedChunks.current = cached;
-                return 'stored';
-            }
-            const data = await response.json().catch(() => ({}));
-            if (response.status === 409 && data.code === CHUNKS_CHANGED) {
-                // Our own earlier switch, whose answer was lost: the database already holds it — this
-                // source, these words. The same words stored as the other source are not our switch.
-                if (data.mode === targetMode && heardChunks(data.chunks) === heardChunks(cached)) {
-                    storedChunks.current = cached;
-                    return 'stored';
-                }
-                showStoredSet(data);
-                setError(CHANGED_ELSEWHERE);
-                return 'replaced';
-            }
-            throw new Error(data.error || `HTTP ${response.status}`);
-        } catch (err) {
-            console.error('Mode sync failed:', err);
-            setError({ key: 'audioExport.sourceSwitchFailed' });
-            return 'failed';
-        } finally {
-            setIsLoading(false);
-        }
-    }, [sermonId, showStoredSet]);
-
-    // ------------------------------------------------------------------
-    // Prepare text for a given source (AI optimize OR raw split)
-    // ------------------------------------------------------------------
-    const prepareSource = useCallback(async (targetMode: AudioSourceMode) => {
-        if (aiBlocked) return;
-        const previousMode = mode;
-        const previousChunks = chunks;
-        setIsLoading(true);
-        setError(null);
-        setMode(targetMode); // switch the layout to the target source now so loading shows in place
-        try {
-            const authHeaders = await getAuthenticatedRequestHeaders();
-            const response = await apiClient(`/api/sermons/${sermonId}/audio/optimize`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...authHeaders },
-                body: JSON.stringify({
-                    sections,
-                    provider: ttsProvider,
-                    saveToDb: true,
-                    useRawText: targetMode === 'raw',
-                }),
-                category: 'ai',
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                if (response.status === 409 && data.code === CHUNKS_CHANGED) {
-                    // A section being prepared was corrected elsewhere meanwhile: show what is stored.
-                    showStoredSet(data);
-                    setError(CHANGED_ELSEWHERE);
-                    return;
-                }
-                throw new Error(data.error || 'Optimization failed');
-            }
-            const data = await response.json();
-            const newChunks: ChunkPreview[] = data.chunks;
-
-            chunksByMode.current[targetMode] = newChunks;
-            // Prepared with saveToDb: this is now what the database holds.
-            storedChunks.current = newChunks;
-            setMode(targetMode);
-            setChunks(newChunks);
-            if (targetMode === 'ai') {
-                await refreshAiUsage();
-            }
-        } catch (err: unknown) {
-            console.error('Prepare error:', err);
-            setError({ said: err instanceof Error ? err.message : 'Optimization failed' });
-            // Show the previous source again. Should the preparation have been saved without an
-            // answer, generation's check against the database finds out before any audio is made.
-            setMode(previousMode);
-            setChunks(previousChunks);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [aiBlocked, chunks, mode, refreshAiUsage, sermonId, sections, showStoredSet, ttsProvider]);
-
-    // ------------------------------------------------------------------
-    // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
-    // (a button triggers prepareSource('ai')).
-    // ------------------------------------------------------------------
-    const selectSource = useCallback(async (targetMode: AudioSourceMode) => {
-        if (targetMode === mode) return;
-        setError(null);
-        const cached = chunksByMode.current[targetMode];
-
-        if (targetMode === 'ai') {
-            if (cached && cached.length > 0) {
-                const previousMode = mode;
-                const previousChunks = chunksByMode.current[previousMode] ?? [];
-                setMode('ai');
-                setChunks(cached);
-                // Not switched: show the previous source again.
-                if (await syncChunksToDb(cached, 'ai') === 'failed') {
-                    setMode(previousMode);
-                    setChunks(previousChunks);
-                }
-            } else {
-                setMode('ai');
-                setChunks([]);
-            }
-            return;
-        }
-
-        // raw preview is view-only and must mirror the current Structure order,
-        // so rebuild it instead of trusting possibly stale persisted chunks.
-        await prepareSource('raw');
-    }, [mode, prepareSource, syncChunksToDb]);
-
-    // ------------------------------------------------------------------
-    // Edit a single chunk
-    // ------------------------------------------------------------------
-    const handleSaveChunk = useCallback(async (index: number, newText: string) => {
-        const authHeaders = await getAuthenticatedRequestHeaders();
-        const response = await apiClient(`/api/sermons/${sermonId}/audio/chunks/${index}`, { category: 'crud',
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', ...authHeaders },
-            // The index names a position; the set the editor opened on names the chunk.
-            body: JSON.stringify({ text: newText, expected: editingSet.current.chunks, mode: editingSet.current.mode }),
-        });
-        if (!response.ok) {
-            const data = await response.json().catch(() => ({}));
-            if (response.status === 409 && data.code === CHUNKS_CHANGED) {
-                // The stored set is shown behind the editor, which keeps the person's text to copy;
-                // saving again is refused again, never aimed at whatever chunk now sits there.
-                showStoredSet(data);
-                throw saidError(CHANGED_ELSEWHERE_KEY);
-            }
-            throw new Error(data.error || 'Save failed');
-        }
-        await response.json();
-        const updater = (c: ChunkPreview) => (c.index === index ? { ...c, text: newText, preview: newText } : c);
-        // The server corrected this chunk in the stored set too.
-        storedChunks.current = storedChunks.current.map(updater);
-        setChunks(prev => {
-            const next = prev.map(updater);
-            chunksByMode.current[mode] = next;
-            return next;
-        });
-        setEditingChunk(null);
-    }, [sermonId, mode, showStoredSet]);
-
-    // ------------------------------------------------------------------
     // Generate audio (TTS)
     // ------------------------------------------------------------------
     const generateAudioBatches = useCallback(async (
@@ -740,7 +519,7 @@ export default function StepByStepWizard({
     }, [fetchBatchBytes]);
 
     const handleGenerate = useCallback(async () => {
-        if (aiBlocked) return;
+        if (aiBlocked || !speech.ready) return;
         const isGoogle = ttsProvider === 'google';
         const totalChunks = chunks.filter(c => sections.includes(c.sectionId)).length;
 
@@ -754,7 +533,7 @@ export default function StepByStepWizard({
             provider: ttsProvider,
             voice: isGoogle ? googleVoice : voice,
             model: isGoogle ? googleModel : OPENAI_TTS_MODEL,
-            sections,
+            sections, mode, source: speech.generationSource,
             // The text on screen for these sections: generation reads the database and makes audio
             // only while it holds exactly this (BUG-20260810-audio-chunks-whole-array).
             expected: chunks.filter(c => sections.includes(c.sectionId)),
@@ -806,7 +585,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, mode, speech.ready, speech.generationSource]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
@@ -815,11 +594,8 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const goToStep2 = useCallback(async () => {
         setStep(2);
-        // Ensure raw preview/generation mirrors the current Structure order.
-        if (mode === 'raw') {
-            await prepareSource('raw');
-        }
-    }, [mode, prepareSource]);
+        await selectSource(mode);
+    }, [mode, selectSource]);
 
     const setProvider = useCallback((p: TTSProvider) => {
         const providerId = p === 'google' ? 'gemini' : 'openai';
@@ -828,7 +604,6 @@ export default function StepByStepWizard({
         setTtsProvider(p);
         if (p === 'google') {
             // Google has no AI optimization — force the raw source.
-            setMode('raw');
             setGoogleModel(firstAllowed.modelId === GOOGLE_MODEL_GEMINI_25
                 ? GOOGLE_MODEL_GEMINI_25
                 : GOOGLE_MODEL_GEMINI_31);
@@ -859,10 +634,7 @@ export default function StepByStepWizard({
             ? sections.filter(x => x !== id)
             : SERMON_SECTIONS.filter(k => k === id || sections.includes(k)); // canonical order
         setSections(next);
-        // Prepared chunks no longer match the selection — invalidate so the user
-        // re-prepares for the new set (keeps DB / preview / generate consistent).
-        chunksByMode.current = {};
-        setChunks([]);
+
     };
 
     const labelRow = (text: string) => (
@@ -1107,7 +879,7 @@ export default function StepByStepWizard({
                     <div
                         key={chunk.index}
                         className={`group relative flex gap-3 rounded-xl border p-4 shadow-sm transition ${isTransition ? 'border-orange-200 bg-orange-50 dark:border-orange-900/50 dark:bg-orange-900/20' : 'border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900'} ${editable ? 'cursor-pointer hover:border-orange-300 hover:shadow-md dark:hover:border-orange-700' : ''}`}
-                        onClick={editable ? () => { editingSet.current = { chunks, mode }; setEditingChunk(chunk); } : undefined}
+                        onClick={editable ? () => openChunk(chunk) : undefined}
                     >
                         <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl" style={{ background: isTransition ? '#ea580c' : theme.base }} />
                         <div className="min-w-0 flex-1">
@@ -1185,10 +957,33 @@ export default function StepByStepWizard({
                 <div className="flex items-start gap-2 rounded-lg bg-orange-50/60 px-3 py-2 text-xs text-orange-700/90 dark:bg-orange-900/15 dark:text-orange-200/80">
                     <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                     <span>{mode === 'ai'
-                        ? t('audioExport.sourceAiHint2', { defaultValue: 'Слева — оригинал как есть, справа — AI-оптимизация. Правую колонку можно править по мыслям. Сравнивай рядом.' })
+                        ? t('audioExport.sourceAiHint2', { defaultValue: 'Compare the sermon text with the saved AI text. Select an AI fragment to edit it.' })
                         : t('audioExport.sourceRawHint2', { defaultValue: 'Точный текст проповеди по мыслям, без изменений. Править нечего — только просмотр.' })}
                     </span>
                 </div>
+
+                {(mode === 'raw' || speech.source) && (
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            onClick={() => prepareSource(mode)}
+                            disabled={isLoading || (mode === 'ai' && aiBlocked)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                        >
+                            {mode === 'ai' ? <Sparkles className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                            {mode === 'raw'
+                                ? speech.source ? t('audioExport.refreshOriginal', { defaultValue: 'Refresh Original' }) : t('audioExport.prepareOriginal', { defaultValue: 'Prepare Original' })
+                                : t('audioExport.regenerateText', { defaultValue: 'Regenerate text' })}
+                        </button>
+                        <p className="max-w-xl text-xs text-gray-500 dark:text-gray-400">
+                            {t('audioExport.replaceSelectedTextHint', { defaultValue: 'Preparing again replaces the text and edits in selected sections. Other sections stay saved.' })}
+                        </p>
+                    </div>
+                )}
+                {!speech.hasCoverage && !isLoading && (
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                        {t('audioExport.missingPreparedSections', { defaultValue: 'Some selected sections have no prepared text yet. Prepare them here before generating audio.' })}
+                    </p>
+                )}
 
                 {mode === 'raw' ? (
                     <div className="max-h-[calc(95vh-360px)] min-h-[16rem] overflow-y-auto pr-1">
@@ -1232,7 +1027,7 @@ export default function StepByStepWizard({
     // Render: STEP 3 — preview (3 section blocks, read-only)
     // ============================================================================
     const renderStep3 = () => {
-        const notReady = mode === 'ai' && chunks.length === 0;
+        const notReady = !speech.ready;
         const voiceLabel = ttsProvider === 'google' ? googleVoice : voice.charAt(0).toUpperCase() + voice.slice(1);
         const modelLabel = ttsProvider === 'google'
             ? (googleModel === GOOGLE_MODEL_GEMINI_31 ? 'Gemini 3.1 TTS' : 'Gemini 2.5 TTS')
@@ -1260,7 +1055,7 @@ export default function StepByStepWizard({
                 {notReady ? (
                     <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 text-center dark:border-gray-700">
                         <Sparkles className="mb-3 h-8 w-8 text-gray-300" />
-                        <p className="max-w-sm text-sm text-gray-500 dark:text-gray-400">{t('audioExport.previewNotReady', { defaultValue: 'Сначала сгенерируйте оптимизированный текст на шаге «Источник».' })}</p>
+                        <p className="max-w-sm text-sm text-gray-500 dark:text-gray-400">{t('audioExport.previewNotReady', { defaultValue: 'No text is ready to voice for this selection. Go back to Source to check and prepare the selected sections.' })}</p>
                     </div>
                 ) : (
                     <>
@@ -1390,7 +1185,7 @@ export default function StepByStepWizard({
         if (step === 2) {
             return (
                 <div className="flex items-center justify-between">
-                    <button onClick={() => setStep(1)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                    <button onClick={() => setStep(1)} disabled={isLoading} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
                         <ArrowLeft className="h-4 w-4" />{t('buttons.back', { defaultValue: 'Назад' })}
                     </button>
                     <button
@@ -1412,7 +1207,7 @@ export default function StepByStepWizard({
                 </button>
                 <button
                     onClick={handleGenerate}
-                    disabled={isLoading || chunks.length === 0 || audioGenerationBlocked}
+                    disabled={isLoading || !speech.ready || audioGenerationBlocked}
                     title={audioGenerationBlockedKey ? t(audioGenerationBlockedKey) : undefined}
                     className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                 >
@@ -1458,7 +1253,8 @@ export default function StepByStepWizard({
 
             {!!editingChunk && (
                 <ChunkEditorModal
-                    onClose={() => setEditingChunk(null)}
+                    key={editingSession}
+                    onClose={closeChunk}
                     chunk={editingChunk}
                     onSave={handleSaveChunk}
                 />

@@ -23,8 +23,9 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
-import { TTS_CHUNK_FAILED, heardChunks } from '@/utils/audioChunkIdentity';
+import { TTS_CHUNK_FAILED, heardChunks, storedSource } from '@/utils/audioChunkIdentity';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
+import { matchesPreparedAudioVersion, preparedAudioCovers, readPreparedAudioSources } from '@/utils/preparedAudioSources';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 import { getMeteredAudioDurationSeconds } from '@/utils/server/audioDurationMetering.server';
@@ -33,6 +34,8 @@ import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils
 import type { Sermon } from '@/models/models';
 import type {
     AudioChunk,
+    AudioSourceMode,
+    SermonSection,
     TTSVoice,
     TTSProvider,
     GoogleTTSVoice,
@@ -242,7 +245,7 @@ function resolveBatchWindow(body: { offset?: unknown; limit?: unknown }): { offs
  * in words, and Google groups the chunks of a section. A client that sends no `expected` keeps
  * the old behaviour.
  */
-function chunksToVoice(sermon: Sermon, saved: AudioChunk[], sectionList: string[], expected: unknown):
+function chunksToVoice(sermon: Sermon, saved: AudioChunk[], sectionList: string[], expected: unknown, mode: AudioSourceMode):
     { chunks: AudioChunk[] } | { response: NextResponse } {
     const selected = new Set<string>(sectionList);
     const chunks = saved.filter(chunk => selected.has(chunk.sectionId));
@@ -251,8 +254,31 @@ function chunksToVoice(sermon: Sermon, saved: AudioChunk[], sectionList: string[
         return { response: NextResponse.json({ error: `No chunks found for sections: ${sectionList.join(', ')}` }, { status: 400 }) };
     }
     if (Array.isArray(expected) && heardChunks(chunks) !== heardChunks(expected)) {
-        return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>) };
+        return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>, mode) };
     }
+    return { chunks };
+}
+
+/** Validate the persisted source before quota admission or any provider call. */
+function selectPreparedGeneration(
+    sermon: Sermon,
+    provider: TTSProvider,
+    body: { mode?: unknown; source?: unknown; expected?: unknown },
+    sectionList: string[],
+): { chunks: AudioChunk[] } | { response: NextResponse } {
+    const mode: AudioSourceMode = body.mode === 'ai' || body.mode === 'raw' ? body.mode : provider === 'google' ? 'raw' : storedSource(sermon);
+    const sources = readPreparedAudioSources(sermon), source = sources[mode];
+    if (provider === 'google' && mode !== 'raw') return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>, 'raw') };
+    if (body.source !== undefined && !matchesPreparedAudioVersion(source, body.source)) return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>, mode) };
+    if (!source) {
+        if (provider === 'google' && (sermon.audioChunks?.length || sources.ai)) return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>, 'raw') };
+        return { response: NextResponse.json({ error: 'No saved chunks. Run optimize step first.' }, { status: 400 }) };
+    }
+    const picked = chunksToVoice(sermon, source.chunks, sectionList, body.expected, mode);
+    if ('response' in picked) return picked;
+    if (!preparedAudioCovers(source, sectionList as SermonSection[])) return { response: chunksChangedResponse(sermon as unknown as Record<string, unknown>, mode) };
+    const chunks = picked.chunks;
+
     return { chunks };
 }
 
@@ -314,24 +340,11 @@ export async function POST(
         console.log(`[TTS] Starting audio generation for sermon ${sermonId}`);
         console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, catalogModel=${requestedTarget.modelId}, runtimeModel=${selectedModel}, sections=${sections}`);
 
-        // 2. Check for saved chunks
-        let chunks = (sermon.audioChunks || []) as AudioChunk[];
-        if (chunks.length === 0) {
-            return NextResponse.json(
-                { error: 'No saved chunks. Run optimize step first.' },
-                { status: 400 }
-            );
-        }
-
-        // 3. Filter chunks by selected sections. Always filter (even 'all') so the
-        //    "no chunks found" guard runs; an empty/invalid selection is a 400.
         const sectionList = resolveSections(sections);
-        if (sectionList.length === 0) {
-            return NextResponse.json({ error: 'No valid sections selected' }, { status: 400 });
-        }
-        const picked = chunksToVoice(sermon, chunks, sectionList, body.expected);
-        if ('response' in picked) return picked.response;
-        chunks = picked.chunks;
+        if (sectionList.length === 0) return NextResponse.json({ error: 'No valid sections selected' }, { status: 400 });
+        const prepared = selectPreparedGeneration(sermon, provider, body, sectionList);
+        if ('response' in prepared) return prepared.response;
+        let chunks = prepared.chunks;
 
         chunks = chunks.map(chunk => ({
             ...chunk,

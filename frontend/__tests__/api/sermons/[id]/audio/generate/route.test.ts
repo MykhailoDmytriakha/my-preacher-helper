@@ -160,6 +160,25 @@ const createFinalAudioBlob = (size: number) =>
     arrayBuffer: jest.fn().mockResolvedValue(new Uint8Array(size).buffer),
   }) as unknown as Blob;
 
+// Test facts declare which persisted source and sections have actually been prepared.
+// This fixture helper is independent of production source-discovery code.
+function withPreparedSource<T extends { audioChunks: unknown[]; audioMetadata?: Record<string, unknown>; audioSources?: Record<string, unknown> }>(
+  document: T,
+  mode: 'ai' | 'raw',
+  preparedSections: ('introduction' | 'mainPart' | 'conclusion')[],
+  id = `test-${mode}-source`,
+) {
+  const chunks = document.audioChunks as Record<string, unknown>[];
+  return {
+    ...document,
+    audioMetadata: { ...document.audioMetadata, mode, chunksCount: chunks.length },
+    audioSources: {
+      ...document.audioSources,
+      [mode]: { id, revision: 1, sections: [...preparedSections], chunks: structuredClone(chunks) },
+    },
+  };
+}
+
 async function readStreamEvents(stream: ReadableStream<Uint8Array>): Promise<Record<string, unknown>[]> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -215,7 +234,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     mockGet.mockResolvedValue({
       exists: true,
       id: 'sermon-1',
-      data: () => ({
+      data: () => withPreparedSource({
         id: 'sermon-1',
         title: 'Grace & Peace',
         userId: 'user-1',
@@ -233,7 +252,50 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
             index: 1,
           },
         ],
-      }),
+      }, 'ai', ['introduction', 'mainPart', 'conclusion']),
+    });
+  });
+
+  describe('stored source identity before any TTS work', () => {
+    const ai = [{ index: 0, sectionId: 'introduction', text: 'Saved AI correction', createdAt: '2026-10-01T00:00:00.000Z' }];
+    const raw = [{ ...ai[0], text: 'Original source words' }];
+    const setStored = (active = ai, activeMode = 'ai') => mockGet.mockResolvedValue({
+      exists: true, id: 'sermon-1', data: () => ({ userId: 'user-1', audioChunks: active, audioMetadata: { mode: activeMode },
+        audioSources: { ai: { id: 'ai-set', revision: 7, sections: ['introduction'], chunks: ai }, raw: { id: 'raw-set', revision: 3, sections: ['introduction'], chunks: raw } } }),
+    });
+    const call = async (body: Record<string, unknown>) => {
+      (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(8)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
+      const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', sections: 'introduction', mode: 'ai', source: { id: 'ai-set', revision: 7 }, expected: ai, ...body }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
+      if (response.status === 200) await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+      return response;
+    };
+
+    it('refuses a stale source revision even if every word still matches', async () => {
+      setStored();
+      const response = await call({ source: { id: 'ai-set', revision: 6 } });
+      expect(response.status).toBe(409); expect(generateChunkAudio).not.toHaveBeenCalled();
+      expect(createUsageAdmission).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unprepared selected section instead of generating incomplete audio', async () => {
+      setStored();
+      const response = await call({ sections: ['introduction', 'mainPart'] });
+      expect(response.status).toBe(409); expect(generateChunkAudio).not.toHaveBeenCalled();
+      expect(createUsageAdmission).not.toHaveBeenCalled();
+    });
+
+    it('reads the selected stored AI source while Original is the legacy active projection', async () => {
+      setStored(raw, 'raw');
+      const response = await call({});
+      expect(response.status).toBe(200);
+      expect(generateChunkAudio).toHaveBeenCalledWith('Saved AI correction', expect.any(Object));
+    });
+
+    it('never lets Google voice AI text, including a client without a source token', async () => {
+      setStored();
+      const response = await call({ provider: 'google', voice: 'Puck', model: 'gemini-3.1-flash-tts', mode: undefined, source: undefined });
+      expect(response.status).toBe(409); expect(generateChunkAudio).not.toHaveBeenCalled();
+      expect(createUsageAdmission).not.toHaveBeenCalled();
     });
   });
 
@@ -378,8 +440,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   it('generates audio for a document the engine owns instead of refusing it', async () => {
     mockGet.mockResolvedValueOnce({
       exists: true, id: 'sermon-1',
-      data: () => ({ userId: 'user-1', title: 'Grace', _dataEngine: { protocol: 1 },
-        audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }] }),
+      data: () => withPreparedSource({ userId: 'user-1', title: 'Grace', _dataEngine: { protocol: 1 },
+        audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }] }, 'ai', ['introduction', 'mainPart', 'conclusion']),
     });
     (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
     const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
@@ -553,7 +615,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     mockGet.mockResolvedValueOnce({
       exists: true,
       id: 'sermon-1',
-      data: () => ({
+      data: () => withPreparedSource({
         id: 'sermon-1',
         title: 'Grace & Peace',
         userId: 'user-1',
@@ -565,7 +627,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
             index: 0,
           },
         ],
-      }),
+      }, 'ai', ['introduction']),
     });
     (generateChunkAudio as jest.Mock).mockResolvedValueOnce({
       audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/mpeg' }),
@@ -602,7 +664,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     mockGet.mockResolvedValueOnce({
       exists: true,
       id: 'sermon-1',
-      data: () => ({
+      data: () => withPreparedSource({
         id: 'sermon-1',
         title: 'Grace & Peace',
         userId: 'user-1',
@@ -632,7 +694,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
             index: 3,
           },
         ],
-      }),
+      }, 'raw', ['introduction', 'mainPart', 'conclusion']),
     });
     (generateChunkAudio as jest.Mock)
       .mockResolvedValueOnce({
@@ -660,6 +722,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         provider: 'google',
         voice: 'Sulafat',
         model: 'gemini-2.5-flash-tts',
+        mode: 'raw',
         quality: 'standard',
         sections: 'all',
       }) as never,
@@ -731,7 +794,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     mockGet.mockResolvedValueOnce({
       exists: true,
       id: 'sermon-1',
-      data: () => ({
+      data: () => withPreparedSource({
         id: 'sermon-1',
         title: 'Grace & Peace',
         userId: 'user-1',
@@ -749,7 +812,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
             index: 1,
           },
         ],
-      }),
+      }, 'raw', ['introduction', 'mainPart', 'conclusion']),
     });
     (generateChunkAudio as jest.Mock)
       .mockResolvedValueOnce({
@@ -777,6 +840,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         provider: 'google',
         voice: 'Sulafat',
         model: 'gemini-2.5-flash-tts',
+        mode: 'raw',
         quality: 'standard',
         sections: 'all',
       }) as never,
@@ -811,7 +875,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     mockGet.mockResolvedValue({
       exists: true,
       id: 'sermon-1',
-      data: () => ({
+      data: () => withPreparedSource({
         id: 'sermon-1',
         title: 'Grace & Peace',
         userId: 'user-1',
@@ -819,7 +883,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           { text: 'Intro first. Intro second.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 },
           { text: 'Main only.', sectionId: 'mainPart', createdAt: '2026-02-27T00:00:00.000Z', index: 1 },
         ],
-      }),
+      }, 'raw', ['introduction', 'mainPart', 'conclusion']),
     });
     (splitTextEvenly as jest.Mock).mockImplementation((text: string) =>
       text.startsWith('Intro') ? ['Intro first.', 'Intro second.'] : [text]
@@ -839,6 +903,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           provider: 'google',
           voice: 'Puck',
           model: 'gemini-2.5-flash-tts',
+          mode: 'raw',
           quality: 'standard',
           sections: 'all',
           offset,
@@ -858,9 +923,12 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   });
 
   it.each([
-    ['OpenAI', { provider: 'openai', voice: 'onyx', model: 'gpt-4o-mini-tts' }],
-    ['Google', { provider: 'google', voice: 'Puck', model: 'gemini-2.5-flash-tts' }],
-  ])('retries one transient %s chunk failure and then succeeds', async (_label, providerBody) => {
+    ['OpenAI', { provider: 'openai', voice: 'onyx', model: 'gpt-4o-mini-tts', mode: 'ai' },
+      withPreparedSource({ userId: 'user-1', title: 'Grace & Peace', audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }] }, 'ai', ['introduction'])],
+    ['Google', { provider: 'google', voice: 'Puck', model: 'gemini-2.5-flash-tts', mode: 'raw' },
+      withPreparedSource({ userId: 'user-1', title: 'Grace & Peace', audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }] }, 'raw', ['introduction'])],
+  ])('retries one transient %s chunk failure and then succeeds', async (_label, providerBody, fixture) => {
+    mockGet.mockResolvedValueOnce({ exists: true, id: 'sermon-1', data: () => fixture });
     (generateChunkAudio as jest.Mock)
       .mockRejectedValueOnce(new Error('transient provider failure'))
       .mockResolvedValueOnce({
@@ -889,6 +957,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     const previousModel25 = process.env.GEMINI_AUDIO_2_5_TTS;
     process.env.GEMINI_AUDIO_2_5_TTS = 'configured-gemini-2.5-tts';
     try {
+      mockGet.mockResolvedValueOnce({ exists: true, id: 'sermon-1', data: () => withPreparedSource({
+        userId: 'user-1', audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }],
+      }, 'raw', ['introduction']) });
       (generateChunkAudio as jest.Mock).mockResolvedValue({
         audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
         index: 0,
@@ -902,6 +973,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           provider: 'google',
           voice: 'Charon',
           model: 'gemini-2.5-flash-tts',
+          mode: 'raw',
           quality: 'standard',
           sections: 'introduction',
         }) as never,
@@ -932,6 +1004,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     const previousModel31 = process.env.GEMINI_AUDIO_3_1_TTS;
     process.env.GEMINI_AUDIO_3_1_TTS = 'configured-gemini-3.1-tts';
     try {
+      mockGet.mockResolvedValueOnce({ exists: true, id: 'sermon-1', data: () => withPreparedSource({
+        userId: 'user-1', audioChunks: [{ text: 'Introduction chunk text.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 }],
+      }, 'raw', ['introduction']) });
       (generateChunkAudio as jest.Mock).mockResolvedValue({
         audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
         index: 0,
@@ -945,6 +1020,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           provider: 'google',
           voice: 'Charon',
           model: 'gemini-3.1-flash-tts',
+          mode: 'raw',
           quality: 'standard',
           sections: 'introduction',
         }) as never,

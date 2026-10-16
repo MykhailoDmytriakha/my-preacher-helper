@@ -28,25 +28,28 @@ import {
 } from '@/api/services/sermonTextService';
 import {
     weaveTransitionChunks,
+    EMPTY_TRANSITIONS,
     type SegmentBody,
     type TransitionSegment,
 } from '@/api/services/sermonTransitions';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { legacyBoundaryResponse, updateLegacyResource } from '@/data-engine/legacyBoundary.server';
-import { applyLegacyPatch, assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
+import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
-import { heardChunks } from '@/utils/audioChunkIdentity';
+import { newClientId } from '@/utils/clientId';
+import { matchesPreparedAudioVersion, PreparedAudioChanged, preparedAudioVersion, replacePreparedAudioSections, readPreparedAudioSources, type PreparedAudioFields } from '@/utils/preparedAudioSources';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
-import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
+import { chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
+import type { DocumentData } from '@/data-engine/types';
 import type { Sermon } from '@/models/models';
 import type { UsageAdmission } from '@/services/usageLimits.server';
-import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
+import type { AudioChunk, AudioSourceMode, PreparedAudioSet, SectionSelection } from '@/types/audioGeneration.types';
 
 // ============================================================================
 // Types
@@ -67,7 +70,7 @@ export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-    let changedTo: Record<string, unknown> | undefined;
+    let targetMode: AudioSourceMode = 'ai';
     try {
         const uid = await getRequiredAuthenticatedUid(request);
         if (!uid) {
@@ -93,6 +96,11 @@ export async function POST(
         // "Use as-is" mode: skip GPT rewrite, voice the exact sermon text and only
         // split it mechanically into TTS-sized chunks.
         const useRawText = body.useRawText === true;
+        targetMode = useRawText ? 'raw' : 'ai';
+        const started = readPreparedAudioSources(sermon)[targetMode];
+        if (body.source !== undefined && !matchesPreparedAudioVersion(started, body.source)) return chunksChangedResponse(sermon as unknown as Record<string, unknown>, targetMode);
+        const preparationId = newClientId();
+
 
         // Default to true for backward compatibility
         const saveToDb = body.saveToDb !== false;
@@ -102,101 +110,23 @@ export async function POST(
         // `sections` may be 'all', a single section key, or an array of keys (checkboxes).
         const resolved = resolveSections(requestedSections);
         const sectionsToProcess: SectionKey[] = resolved.length > 0 ? resolved : (SERMON_SECTIONS as SectionKey[]);
-        const isAllSections = sectionsToProcess.length === SERMON_SECTIONS.length;
 
-        const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
-        const usageNow = new Date();
-        const entitlement = await getUserEntitlementServerSide(uid);
-        const usageAdmission = createUsageAdmission(uid, entitlement, ['ai'], usageNow);
-
-        // 3. Sequential Generation Loop with Context
-        const processing = new Set<string>(sectionsToProcess);
-
-        console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
-
-        // Build the sermon body chunks grouped per segment, so spoken transitions can
-        // be woven BETWEEN the parts (intro → part → bridge → part → … → outro).
-        const built = (useRawText && provider === 'google')
-            ? buildGoogleRawSegmentBodies(sermon, sectionsToProcess)
-            : await buildSegmentBodies(segments, sermon, provider, useRawText, uid, usageAdmission);
-
-        // Generate spoken connective tissue so the narration's structure is audible.
-        // Additive layer: ordinary provider failures return empty transitions, while a
-        // usage-cap error must propagate so quota enforcement cannot disappear.
-        const now = new Date().toISOString();
-        // Continuation runs (a point resuming after a sub-point) carry body but get NO
-        // spoken lead-in, so they're excluded from the parts we ask the model to bridge.
-        const transitionSegments: TransitionSegment[] = built.segmentBodies
-            .filter(s => s.bodyChunks.length > 0 && s.level !== 'continuation')
-            .map(({ id, section, title, level }) => ({ id, section, title, level: level as 'point' | 'subpoint' }));
-        const transitions = await generateSermonTransitions(
-            sermon,
-            transitionSegments,
-            uid,
-            usageAdmission
-        );
-        console.log(`[OptimizeAPI] Transitions: intro=${transitions.intro ? 'yes' : 'no'}, bridges=${Object.keys(transitions.bridges).length}, outro=${transitions.outro ? 'yes' : 'no'}`);
-
-        // Only emit the global opening/closing when their home sections are in scope
-        // (a partial re-optimize of just the main part shouldn't inject a fresh intro).
-        const woven = weaveTransitionChunks(built.segmentBodies, transitions, now, {
-            includeIntro: sectionsToProcess.includes('introduction'),
-            includeOutro: sectionsToProcess.includes('conclusion'),
-        });
-
+        const built = await prepareSpeechChunks(sermon, sectionsToProcess, provider, useRawText, uid);
         const totalOriginalLength = built.originalLength;
         const totalOptimizedLength = built.optimizedLength;
 
-        // 4. The stored set: the sections prepared now plus, on a partial run, every other section
-        //    AS STORED WHEN WRITTEN. Those used to come from the read made before the AI calls —
-        //    tens of seconds earlier — so a chunk corrected meanwhile in another section was written
-        //    over (BUG-20260810-audio-chunks-whole-array). Sorted by section, then re-indexed 0..n.
-        const sectionOrder: Record<string, number> = { introduction: 0, mainPart: 1, conclusion: 2 };
-        const assemble = (stored: unknown): AudioChunk[] => {
-            const kept = isAllSections ? [] : ((Array.isArray(stored) ? stored : []) as AudioChunk[]).filter(c => !processing.has(c.sectionId));
-            return [...kept, ...woven]
-                .sort((a, b) => (sectionOrder[a.sectionId] || 0) - (sectionOrder[b.sectionId] || 0))
-                .map((chunk, idx) => ({ ...chunk, index: idx }));
-        };
-        let allChunks = assemble(sermon.audioChunks);
-        // The sections prepared now are replaced; their stored words must still be the ones this run
-        // started from, or a correction made meanwhile would vanish. Position is not compared: another
-        // section growing shifts every index after it without touching these words.
-        const preparedWords = (stored: unknown): string => heardChunks(
-            ((Array.isArray(stored) ? stored : []) as AudioChunk[])
-                .filter(chunk => isAllSections || processing.has(chunk.sectionId))
-                .map((chunk, position) => ({ ...chunk, index: position }))
-        );
-        const startedFrom = preparedWords(sermon.audioChunks);
-
-        // 5. Save to DB
-        // Use dot-path updates so we record the source mode and refresh chunk/optimize
-        // metadata WITHOUT clobbering voice/model/lastGenerated from a previous render.
-        if (saveToDb) {
-            const patchFor = (chunks: AudioChunk[]) => ({
-                audioChunks: chunks,
-                'audioMetadata.mode': useRawText ? 'raw' : 'ai',
-                'audioMetadata.chunksCount': chunks.length,
-                'audioMetadata.lastOptimized': new Date().toISOString(),
-            });
-            await writeOwnedDocument({
-                owner: uid,
-                resource: { collection: 'sermons', id: sermonId },
-                legacy: () => updateLegacyResource({ collection: 'sermons', id: sermonId }, patchFor(allChunks)),
-                // Inside the engine's read-apply-retry loop: the other sections as stored right now.
-                engine: current => {
-                    if (preparedWords(current.audioChunks) !== startedFrom) {
-                        changedTo = current;
-                        throw new ServerEditError(CHUNKS_CHANGED, 409);
-                    }
-                    allChunks = assemble(current.audioChunks);
-                    return applyLegacyPatch(current, patchFor(allChunks));
-                },
-            });
-        }
+        // The initial projection is also used for an unsaved preview; saved writes use the latest document.
+        const replacement = { id: preparationId, sections: sectionsToProcess, chunks: built.chunks };
+        const prepared = saveToDb
+            ? await savePreparedReplacement(uid, sermonId, targetMode, started, replacement)
+            : replacePreparedAudioSections(sermon, targetMode, started, replacement);
+        const allChunks = prepared.audioChunks;
+        const acceptedSources = saveToDb ? prepared.audioSources : readPreparedAudioSources(sermon);
 
         return NextResponse.json({
             success: true,
+            mode: targetMode, sources: acceptedSources,
+            ...(saveToDb && acceptedSources[targetMode] ? { source: preparedAudioVersion(acceptedSources[targetMode]!) } : {}),
             chunks: allChunks.map((c, i) => ({
                 index: i,
                 sectionId: c.sectionId,
@@ -213,7 +143,7 @@ export async function POST(
         });
 
     } catch (error) {
-        if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
+        if (error instanceof PreparedAudioChanged) return chunksChangedResponse({ audioSources: error.sources }, error.mode);
         console.error('Optimize error:', error);
         if (isUsageCapReachedError(error)) return usageCapResponse(error);
         return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
@@ -226,6 +156,77 @@ export async function POST(
 // ============================================================================
 // Helpers
 // ============================================================================
+
+async function prepareSpeechChunks(
+    sermon: Sermon, sectionsToProcess: SectionKey[], provider: 'google' | 'openai', useRawText: boolean, uid: string,
+): Promise<{ chunks: AudioChunk[]; originalLength: number; optimizedLength: number }> {
+    const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
+    const usageAdmission = useRawText ? undefined : createUsageAdmission(uid, await getUserEntitlementServerSide(uid), ['ai'], new Date());
+
+    // 3. Sequential Generation Loop with Context
+
+    console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
+
+    // Build the sermon body chunks grouped per segment, so spoken transitions can
+    // be woven BETWEEN the parts (intro → part → bridge → part → … → outro).
+    const built = (useRawText && provider === 'google')
+        ? buildGoogleRawSegmentBodies(sermon, sectionsToProcess)
+        : await buildSegmentBodies(segments, sermon, provider, useRawText, uid, usageAdmission);
+
+    // Generate spoken connective tissue so the narration's structure is audible.
+    // Additive layer: ordinary provider failures return empty transitions, while a
+    // usage-cap error must propagate so quota enforcement cannot disappear.
+    const now = new Date().toISOString();
+    // Continuation runs (a point resuming after a sub-point) carry body but get NO
+    // spoken lead-in, so they're excluded from the parts we ask the model to bridge.
+    const transitionSegments: TransitionSegment[] = built.segmentBodies
+        .filter(s => s.bodyChunks.length > 0 && s.level !== 'continuation')
+        .map(({ id, section, title, level }) => ({ id, section, title, level: level as 'point' | 'subpoint' }));
+    const transitions = useRawText ? EMPTY_TRANSITIONS : await generateSermonTransitions(
+        sermon,
+        transitionSegments,
+        uid,
+        usageAdmission
+    );
+    console.log(`[OptimizeAPI] Transitions: intro=${transitions.intro ? 'yes' : 'no'}, bridges=${Object.keys(transitions.bridges).length}, outro=${transitions.outro ? 'yes' : 'no'}`);
+
+    // Only emit the global opening/closing when their home sections are in scope
+    // (a partial re-optimize of just the main part shouldn't inject a fresh intro).
+    const woven = weaveTransitionChunks(built.segmentBodies, transitions, now, {
+        includeIntro: sectionsToProcess.includes('introduction'),
+        includeOutro: sectionsToProcess.includes('conclusion'),
+    });
+
+    return { chunks: woven, originalLength: built.originalLength, optimizedLength: built.optimizedLength };
+}
+
+async function savePreparedReplacement(
+    uid: string, sermonId: string, mode: AudioSourceMode, opening: PreparedAudioSet | undefined,
+    replacement: { id: string; sections: SectionKey[]; chunks: AudioChunk[] },
+): Promise<PreparedAudioFields> {
+    let written: PreparedAudioFields | undefined;
+    const mutate = (current: DocumentData): DocumentData => {
+        if (current.userId !== uid) throw new ServerEditError('permission-denied', 403);
+        written = replacePreparedAudioSections(current, mode, opening, replacement);
+        written.audioMetadata.lastOptimized = new Date().toISOString();
+        return { ...current, ...written } as unknown as DocumentData;
+    };
+    const accepted = await writeOwnedDocument({
+        owner: uid, resource: { collection: 'sermons', id: sermonId },
+        legacy: () => mutateLegacyResource({ collection: 'sermons', id: sermonId }, current => {
+            if (!current) throw new ServerEditError('not-found', 404);
+            const next = mutate(current);
+            return { audioChunks: next.audioChunks, audioMetadata: next.audioMetadata, audioSources: next.audioSources };
+        }),
+        engine: mutate,
+    });
+    if (accepted) {
+        const sources = readPreparedAudioSources(accepted), source = sources[mode];
+        if (source && written) return { ...written, audioSources: sources, audioChunks: source.chunks };
+    }
+    if (!written) throw new ServerEditError('not-found', 404);
+    return written;
+}
 
 /**
  * Google "use as-is" path: voice the exact section text, using the reversible
@@ -276,7 +277,7 @@ async function buildSegmentBodies(
     provider: 'google' | 'openai',
     useRawText: boolean,
     userId: string,
-    usageAdmission: UsageAdmission
+    usageAdmission: UsageAdmission | undefined
 ): Promise<SegmentBuildResult> {
     const segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[] = [];
     let originalLength = 0;

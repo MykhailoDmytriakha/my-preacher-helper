@@ -32,17 +32,31 @@ jest.mock('next/server', () => {
 
 // Mock dependencies (keeping existing mocks)
 const { NextRequest } = require('next/server'); // Re-import to use the mock class in tests
+let mockLegacyCurrent: Record<string, unknown> | null = null;
+let mockLegacyWrites: Array<{ patch: Record<string, unknown> }> = [];
 
 // Mock dependencies
 jest.mock('@/config/firebaseAdminConfig', () => ({
     adminDb: {
         collection: jest.fn(),
-    runTransaction: jest.fn(async callback => {
-      const writes: Promise<unknown>[] = [];
-      const result = await callback({ get: (ref: any) => ref.get(), update: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.update(data))); } });
-      await Promise.all(writes);
-      return result;
-    }),
+        runTransaction: jest.fn(async callback => {
+            const writes: Array<{ ref: any; patch: Record<string, unknown> }> = [];
+            const transaction = {
+                get: async (ref: any) => ({
+                    exists: mockLegacyCurrent !== null,
+                    id: ref.id,
+                    ref,
+                    data: () => mockLegacyCurrent === null ? undefined : JSON.parse(JSON.stringify(mockLegacyCurrent)),
+                }),
+                update: (ref: any, patch: Record<string, unknown>) => writes.push({ ref, patch }),
+            };
+            const result = await callback(transaction);
+            for (const write of writes) {
+                mockLegacyWrites.push({ patch: write.patch });
+                mockLegacyCurrent = { ...(mockLegacyCurrent ?? {}), ...write.patch };
+            }
+            return result;
+        }),
     },
 }));
 
@@ -100,8 +114,12 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        jest.requireMock('@/services/usageLimits.server').createUsageAdmission.mockReset().mockReturnValue({ userId: mockUserId, resources: ['ai'] });
+        (generateSermonTransitions as jest.Mock).mockReset().mockResolvedValue({ intro: '', outro: '', bridges: {} });
         mockEngineCurrent = null;
         mockEngineWritten = null;
+        mockLegacyCurrent = null;
+        mockLegacyWrites = [];
         mockWriteOwnedDocument.mockReset();
         mockWriteOwnedDocument.mockImplementation(async (options: { owner: string; resource: { id: string }; engine: (current: Record<string, unknown>) => Record<string, unknown> }) => {
             const stored = mockEngineCurrent ?? (await mockGet()).data();
@@ -306,6 +324,106 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(mockWriteOwnedDocument).not.toHaveBeenCalled();
     });
 
+    it('preserves the latest inactive AI source when raw preparation uses the legacy transaction', async () => {
+        const initialAi = { id: 'ai-source', revision: 3, sections: ['introduction'], chunks: [{ index: 0, sectionId: 'introduction', text: 'AI before phone edit' }] };
+        const latestAi = { ...initialAi, revision: 4, chunks: [{ index: 0, sectionId: 'introduction', text: 'AI corrected on the phone' }] };
+        const raw = { id: 'raw-source', revision: 2, sections: ['introduction'], chunks: [{ index: 0, sectionId: 'introduction', text: 'Original opening' }] };
+        const initial = {
+            userId: mockUserId,
+            thoughts: [{ id: 't1', text: 'Thought 1', tags: ['introduction'] }],
+            audioChunks: initialAi.chunks,
+            audioMetadata: { mode: 'ai', voice: 'onyx' },
+            audioSources: { ai: initialAi, raw },
+        };
+        mockGet.mockResolvedValue({ exists: true, id: mockSermonId, data: () => initial });
+        mockLegacyCurrent = { ...initial, audioSources: { ai: latestAi, raw } };
+        mockWriteOwnedDocument.mockImplementationOnce(async (options: { legacy: () => Promise<void> }) => {
+            await options.legacy();
+            return null;
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({ useRawText: true, provider: 'openai', sections: ['introduction'], source: { id: raw.id, revision: raw.revision } }),
+        });
+        const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+        const json = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(json.sources.ai).toEqual(latestAi);
+        expect(json.sources.raw).toMatchObject({ revision: 3, chunks: [{ text: 'Optimized Chunk' }] });
+        expect(mockLegacyCurrent?.audioSources).toMatchObject({
+            ai: latestAi,
+            raw: { revision: 3, chunks: [{ text: 'Optimized Chunk' }] },
+        });
+        expect(mockLegacyWrites).toHaveLength(1);
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(adminDb.runTransaction).toHaveBeenCalledTimes(1);
+        expect(mockEngineWritten).toBeNull();
+    });
+
+    it('refuses a legacy transaction when a selected raw section changed during preparation', async () => {
+        const opening = { id: 'raw-source', revision: 2, sections: ['introduction'], chunks: [{ index: 0, sectionId: 'introduction', text: 'Original opening' }] };
+        const initial = {
+            userId: mockUserId,
+            thoughts: [{ id: 't1', text: 'Thought 1', tags: ['introduction'] }],
+            audioChunks: opening.chunks,
+            audioMetadata: { mode: 'raw' },
+            audioSources: { raw: opening },
+        };
+        const corrected = { ...opening, revision: 3, chunks: [{ index: 0, sectionId: 'introduction', text: 'Original corrected on the phone' }] };
+        mockGet.mockResolvedValue({ exists: true, id: mockSermonId, data: () => initial });
+        mockLegacyCurrent = { ...initial, audioChunks: corrected.chunks, audioSources: { raw: corrected } };
+        mockWriteOwnedDocument.mockImplementationOnce(async (options: { legacy: () => Promise<void> }) => {
+            await options.legacy();
+            return null;
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({ useRawText: true, provider: 'openai', sections: ['introduction'], source: { id: opening.id, revision: opening.revision } }),
+        });
+        const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+        const json = await response.json();
+
+        expect(response.status).toBe(409);
+        expect(json).toMatchObject({ code: 'chunks-changed', mode: 'raw' });
+        expect(json.sources.raw.chunks).toEqual(corrected.chunks);
+        expect(mockLegacyWrites).toHaveLength(0);
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(adminDb.runTransaction).toHaveBeenCalledTimes(1);
+        expect(mockEngineWritten).toBeNull();
+    });
+
+    it('refuses the legacy write when the latest transaction owner changed', async () => {
+        const raw = { id: 'raw-source', revision: 2, sections: ['introduction'], chunks: [{ index: 0, sectionId: 'introduction', text: 'Original opening' }] };
+        const initial = {
+            userId: mockUserId,
+            thoughts: [{ id: 't1', text: 'Thought 1', tags: ['introduction'] }],
+            audioChunks: raw.chunks,
+            audioMetadata: { mode: 'raw' },
+            audioSources: { raw },
+        };
+        mockGet.mockResolvedValue({ exists: true, id: mockSermonId, data: () => initial });
+        mockLegacyCurrent = { ...initial, userId: 'different-owner' };
+        mockWriteOwnedDocument.mockImplementationOnce(async (options: { legacy: () => Promise<void> }) => {
+            await options.legacy();
+            return null;
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({ useRawText: true, provider: 'openai', sections: ['introduction'], source: { id: raw.id, revision: raw.revision } }),
+        });
+        const response = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+
+        expect(response.status).toBe(403);
+        expect(mockLegacyWrites).toHaveLength(0);
+        expect(mockUpdate).not.toHaveBeenCalled();
+        expect(adminDb.runTransaction).toHaveBeenCalledTimes(1);
+        expect(mockEngineWritten).toBeNull();
+    });
+
     it('should preserve existing chunks when processing a single section', async () => {
         const existingChunks = [{ index: 0, sectionId: 'conclusion', text: 'Old Conclusion' }];
         mockGet.mockResolvedValue({
@@ -473,6 +591,35 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         await POST(req, { params });
 
         expect(optimizeTextForSpeech).toHaveBeenCalledTimes(2);
+    });
+
+    it.each(['openai', 'google'])('prepares Original for %s without AI quota admission', async (provider) => {
+        const { createUsageAdmission } = jest.requireMock('@/services/usageLimits.server');
+        createUsageAdmission.mockImplementationOnce(() => {
+            throw new UsageCapReachedError('ai', 110, 100, 110, '2026-08-01T00:00:00.000Z');
+        });
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST', body: JSON.stringify({ sections: 'introduction', provider, useRawText: true, saveToDb: false }),
+        });
+        const res = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+        expect(res.status).toBe(200);
+        expect((await res.json()).chunks.length).toBeGreaterThan(0);
+        expect(createUsageAdmission).not.toHaveBeenCalled();
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(generateSermonTransitions).not.toHaveBeenCalled();
+        createUsageAdmission.mockReset().mockReturnValue({ userId: mockUserId, resources: ['ai'] });
+    });
+
+    it('keeps Original free of AI-generated opening and closing words', async () => {
+        (generateSermonTransitions as jest.Mock).mockResolvedValueOnce({ intro: 'AI invented opening', bridges: {}, outro: 'AI invented closing' });
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST', body: JSON.stringify({ sections: 'introduction', useRawText: true, saveToDb: false }),
+        });
+        const res = await POST(req, { params: Promise.resolve({ id: mockSermonId }) });
+        const json = await res.json();
+        expect(res.status).toBe(200);
+        expect(json.chunks.map((chunk: { text: string }) => chunk.text).join('\n')).not.toContain('AI invented');
+        expect(generateSermonTransitions).not.toHaveBeenCalled();
     });
 
     it('should voice text as-is (no GPT) when useRawText is true', async () => {

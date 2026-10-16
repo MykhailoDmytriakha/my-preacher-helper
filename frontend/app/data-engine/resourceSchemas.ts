@@ -51,6 +51,11 @@ const planSection = object({ outline: text, outlinePoints: z.record(text).option
 const plan = object({ introduction: planSection, main: planSection, conclusion: planSection });
 const church = object({ id: text, name: text, city: text.optional() });
 const preachDate = object({ id, date: id, status: z.enum(['planned', 'preached']).optional(), church, audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text });
+const audioChunk = object({ text, sectionId: z.enum(['introduction', 'mainPart', 'conclusion']), createdAt: text, index: number.int().nonnegative(), kind: z.enum(['body', 'transition']).optional(), role: z.enum(['intro', 'bridge', 'outro']).optional() });
+const preparedAudioSet = object({
+  id, revision: number.int().nonnegative(), sections: z.array(z.enum(['introduction', 'mainPart', 'conclusion'])), chunks: z.array(audioChunk),
+});
+const preparedAudioSources = object({ ai: preparedAudioSet.optional(), raw: preparedAudioSet.optional() });
 const planNode: z.ZodType<{ id: string; title: string; children?: unknown[] }> = z.lazy(() => object({ id, title: text, children: children(planNode).optional() }));
 const preparation = object({
   spiritual: object({ readAndPrayedConfirmed: boolean.optional() }).optional(),
@@ -89,9 +94,10 @@ const shapes: Record<string, z.ZodRawShape> = {
     draft: plan.optional(), plan: plan.optional(), planText: z.record(text).optional(), planMode: z.enum(['manual', 'ai', 'note']).optional(),
     isPreached: boolean.optional(), preparation: preparation.optional(), seriesId: id.nullable().optional(), seriesPosition: number.nullable().optional(),
     sourceNoteIds: z.array(id).optional(), church: church.optional(), preachDates: children(preachDate).optional(),
-    audioChunks: z.array(object({ text, sectionId: z.enum(['introduction', 'mainPart', 'conclusion']), createdAt: text, index: number.int().nonnegative(), kind: z.enum(['body', 'transition']).optional(), role: z.enum(['intro', 'bridge', 'outro']).optional() })).optional(),
+    audioChunks: z.array(audioChunk).optional(),
     // Optimizing text creates partial metadata before the first audio generation.
     audioMetadata: object({ ...optionalStrings(['provider', 'voice', 'model', 'lastGenerated', 'lastOptimized']), chunksCount: number.int().nonnegative().optional(), mode: z.enum(['ai', 'raw']).optional() }).optional(),
+    audioSources: preparedAudioSources.optional(),
     createdAt: text.optional(), updatedAt: text.optional(),
   },
   studyNotes: { ...owner, ...timestamps, content: text, title: text.optional(), scriptureRefs: children(scripture), tags: strings, isDraft: boolean, materialIds: z.array(id).optional(), type: z.enum(['note', 'question']).optional() },

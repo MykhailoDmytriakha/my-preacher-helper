@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/api/clients/ai/providerId';
+import type { PreparedAudioSources } from '@/types/audioGeneration.types';
 import type { BibleId } from '@/utils/bibles';
 
 export interface Thought {
@@ -269,6 +270,8 @@ export interface Sermon {
     /** ISO timestamp of last text preparation */
     lastOptimized?: string;
   };
+  /** Independently retained AI and original speech text; legacy audioChunks remains the active projection. */
+  audioSources?: PreparedAudioSources;
   updatedAt?: string;
   /** Revision per editable aggregate; absent reads as 0. See conflictSafeUpdate.client.ts */
   rev?: Record<string, number>;

@@ -446,7 +446,7 @@ describe('legacy cache preservation UI', () => {
   it('names every field a person writes in the four archived collections', async () => {
     const locales = ['en', 'ru', 'uk'].map(lang => jest.requireActual(`../../../locales/${lang}/translation.json`) as { legacyRecovery: { field: Record<string, string> } });
     const written = ['title', 'verse', 'description', 'date', 'thoughts', 'scratch', 'outline', 'structure', 'insights', 'plan', 'planText', 'planMode',
-      'isPreached', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church', 'preachDates', 'audioChunks', 'audioMetadata',
+      'isPreached', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church', 'preachDates', 'audioChunks', 'audioMetadata', 'audioSources',
       'theme', 'bookOrTopic', 'sermonIds', 'items', 'seriesKind', 'startDate', 'duration', 'color', 'status', 'templates', 'flow', 'meetingDates',
       'heldAt', 'topics', 'summary', 'decision', 'options', 'questions', 'introduction', 'main', 'conclusion', 'ambiguous'];
     for (const locale of locales) expect(written.filter(field => !locale.legacyRecovery.field[field])).toEqual([]);

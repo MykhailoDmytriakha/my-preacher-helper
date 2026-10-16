@@ -27,6 +27,7 @@ if (typeof TextEncoder === 'undefined') {
 
 // --- Mocks --- //
 let mockLanguage = 'en';
+let mockOwner = 'user-123';
 
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
@@ -45,7 +46,7 @@ jest.mock('react-i18next', () => ({
 }));
 
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
-jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-123' } }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: mockOwner } }) }));
 jest.mock('@/hooks/useSermonRead', () => ({ useSermonRead: jest.fn() }));
 jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }));
 jest.mock('@/utils/authenticatedRequest', () => ({
@@ -119,6 +120,21 @@ const sermonWithChunks = (chunks: any[], extra: Record<string, any> = {}) => ({
     sermon: { title: 'Test Sermon', thoughts: [], audioChunks: chunks, ...extra },
     loading: false,
 } as any);
+const preparedSource = (id: string, revision: number, chunks: any[], sections: string[] = ['introduction']) => ({
+    id, revision, chunks: JSON.parse(JSON.stringify(chunks)), sections: [...sections],
+});
+const sermonWithSources = (
+    aiChunks: any[],
+    rawChunks: any[],
+    active: 'ai' | 'raw' = 'ai',
+    sections: { ai?: string[]; raw?: string[] } = {},
+) => sermonWithChunks(active === 'ai' ? aiChunks : rawChunks, {
+    audioMetadata: { mode: active },
+    audioSources: {
+        ai: preparedSource('ai-source', 3, aiChunks, sections.ai ?? ['introduction']),
+        raw: preparedSource('raw-source', 5, rawChunks, sections.raw ?? ['introduction']),
+    },
+});
 
 const wavBase64 = (data: number[]): string => {
     const buffer = Buffer.alloc(44 + data.length);
@@ -149,6 +165,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockLanguage = 'en';
+        mockOwner = 'user-123';
         setTtsEntitlement();
         mockUseSermon.mockReturnValue({ sermon: { title: 'Test Sermon', thoughts: [] }, loading: false } as any);
         global.fetch = jest.fn();
@@ -159,6 +176,44 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     // An API call in one test arms connectivity's 3 s recovery timer, which writes module-level
     // state after the test ends. Nothing here reads it yet; reset so no later test inherits it.
     afterEach(() => __resetConnectivityForTests());
+
+    describe('saved speech source consistency', () => {
+        const savedWords = 'Saved narration with manual corrections';
+        const saved = () => sermonWithChunks([{ index: 0, sectionId: 'introduction', text: savedWords }], { audioMetadata: { mode: 'ai', provider: 'openai' } });
+
+        it('does not enable Google generation with saved AI text after original preparation fails', async () => {
+            mockUseSermon.mockReturnValue(saved());
+            (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'Original preparation unavailable' }) });
+            render(<StepByStepWizard {...defaultProps} />);
+            fireEvent.click(screen.getByText('Google'));
+            await goToSource();
+            await screen.findByText('Original preparation unavailable');
+            await goToPreview();
+            expect(screen.getByRole('button', { name: 'Generate Audio' })).toBeDisabled();
+            expect(screen.queryByText(savedWords)).not.toBeInTheDocument();
+        });
+
+        it('never loads saved AI words into Original when free entitlement and saved text arrive together', async () => {
+            mockUseSermon.mockReturnValue(saved());
+            setTtsEntitlement('free', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+            (global.fetch as jest.Mock).mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'Original preparation unavailable' }) });
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            await screen.findByText('Original preparation unavailable');
+            expect(screen.queryByText(savedWords)).not.toBeInTheDocument();
+        });
+
+        it('moves to an allowed voice when entitlement closes the selected provider while open', async () => {
+            mockUseSermon.mockReturnValue(saved());
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            expect(screen.getByText('Onyx')).toBeInTheDocument();
+            setTtsEntitlement('free', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+            view.rerender(<StepByStepWizard {...defaultProps} />);
+            await waitFor(() => expect(screen.getByText('Puck')).toBeInTheDocument());
+            expect(screen.queryByText('Onyx')).not.toBeInTheDocument();
+            expect(screen.getByText('OpenAI').closest('button')).toBeDisabled();
+        });
+    });
 
     it('renders step 1 with provider, voice and the next button', () => {
         render(<StepByStepWizard {...defaultProps} />);
@@ -256,7 +311,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({ useRawText: true });
     });
 
-    it('re-prepares Google raw chunks on step 2 instead of reusing old persisted chunk splits', async () => {
+    it('keeps saved Google raw chunks when entering step 2 without requesting a re-prepare', async () => {
         setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         mockUseSermon.mockReturnValue(sermonWithChunks(
             [
@@ -265,30 +320,15 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             ],
             { audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-2.5-flash-preview-tts' } }
         ));
-        (global.fetch as jest.Mock).mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                chunks: [{ index: 0, text: 'Regrouped intro section', sectionId: 'introduction' }],
-                originalLength: 24,
-                optimizedLength: 24,
-            }),
-        });
-
         render(<StepByStepWizard {...defaultProps} />);
         await goToSource();
 
-        await waitFor(() => expect(screen.getByText('Regrouped intro section')).toBeInTheDocument());
-        expect(screen.queryByText('Old raw intro part one')).not.toBeInTheDocument();
-
-        const optimizeCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/optimize'));
-        expect(optimizeCalls).toHaveLength(1);
-        expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({
-            provider: 'google',
-            useRawText: true,
-        });
+        expect(await screen.findByText('Old raw intro part one')).toBeInTheDocument();
+        expect(screen.getByText('Old raw intro part two')).toBeInTheDocument();
+        expect(global.fetch).not.toHaveBeenCalled();
     });
 
-    it('re-prepares OpenAI raw chunks on step 2 so stale saved order is not reused', async () => {
+    it('keeps saved OpenAI raw chunks and their order when entering step 2', async () => {
         mockUseSermon.mockReturnValue(sermonWithChunks(
             [
                 { index: 0, text: 'Old second thought', sectionId: 'introduction' },
@@ -296,30 +336,12 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             ],
             { audioMetadata: { provider: 'openai', mode: 'raw', voice: 'onyx', model: 'gpt-4o-mini-tts' } }
         ));
-        (global.fetch as jest.Mock).mockResolvedValueOnce({
-            ok: true,
-            json: async () => ({
-                chunks: [
-                    { index: 0, text: 'Fresh first thought', sectionId: 'introduction' },
-                    { index: 1, text: 'Fresh second thought', sectionId: 'introduction' },
-                ],
-                originalLength: 38,
-                optimizedLength: 38,
-            }),
-        });
-
         render(<StepByStepWizard {...defaultProps} />);
         await goToSource();
 
-        await waitFor(() => expect(screen.getByText('Fresh first thought')).toBeInTheDocument());
-        expect(screen.queryByText('Old second thought')).not.toBeInTheDocument();
-
-        const optimizeCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/optimize'));
-        expect(optimizeCalls).toHaveLength(1);
-        expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({
-            provider: 'openai',
-            useRawText: true,
-        });
+        expect(await screen.findByText('Old second thought')).toBeInTheDocument();
+        expect(screen.getByText('Old first thought')).toBeInTheDocument();
+        expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('plays and stops a voice preview, and surfaces sample errors', async () => {
@@ -392,89 +414,150 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         });
     });
 
-    /**
-     * A source switch writes the chunk set cached for that source. The cache can be older than
-     * the database (BUG-20260810-audio-chunks-whole-array): the write names the set it last saw
-     * stored, and a set changed elsewhere comes back instead of being written over.
-     */
-    describe('switching back to a cached source', () => {
+    it('does not let a late save from a closed editor close its newer editor session', async () => {
+        const original = [{ index: 0, text: 'Editable source text', sectionId: 'introduction' }];
+        mockUseSermon.mockReturnValue(sermonWithSources(original, [], 'ai', { ai: ['introduction'], raw: [] }));
+        let resolveSave!: (value: unknown) => void;
+        (global.fetch as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { resolveSave = resolve; }));
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        fireEvent.click(await screen.findByText('Editable source text'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save chunk' }));
+        await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+        const sent = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+        expect(sent).toMatchObject({ mode: 'ai', source: { id: 'ai-source', revision: 3 } });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Close editor' }));
+        fireEvent.click(screen.getByText('Editable source text'));
+        expect(screen.getByTestId('chunk-editor-modal')).toBeInTheDocument();
+        resolveSave({ ok: true, json: async () => ({ sources: {
+            ai: preparedSource('ai-source', 4, [{ ...original[0], text: 'Edited after response' }]),
+        } }) });
+        await waitFor(() => expect(screen.getByTestId('chunk-editor-modal')).toBeInTheDocument());
+        expect(screen.getByRole('button', { name: 'Save chunk' })).toBeInTheDocument();
+    });
+
+    it('does not carry cached words into another sermon or owner identity', async () => {
+        mockUseSermon.mockReturnValue(sermonWithSources(
+            [{ index: 0, text: 'First owner sermon', sectionId: 'introduction' }],
+            [{ index: 0, text: 'First owner Original', sectionId: 'introduction' }],
+        ));
+        const view = render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        expect(await screen.findByText('First owner sermon')).toBeInTheDocument();
+
+        mockOwner = 'user-456';
+        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Second owner sermon', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai' } }));
+        view.rerender(<StepByStepWizard {...defaultProps} sermonId="sermon-456" />);
+        await waitFor(() => expect(screen.getByText('Second owner sermon')).toBeInTheDocument());
+        expect(screen.queryByText('First owner sermon')).not.toBeInTheDocument();
+        expect(screen.queryByText('First owner Original')).not.toBeInTheDocument();
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    describe('selecting saved speech sources', () => {
         const aiChunks = [{ index: 0, text: 'Polished opening', sectionId: 'introduction' }];
         const rawChunks = [{ index: 0, text: 'Raw opening', sectionId: 'introduction' }];
-        const switchToRawThenBack = async (...putAnswers: unknown[]) => {
-            mockUseSermon.mockReturnValue(sermonWithChunks(aiChunks, { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
-            const fetchMock = (global.fetch as jest.Mock)
-                .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: rawChunks, originalLength: 11, optimizedLength: 11 }) });
-            putAnswers.forEach(answer => answer instanceof Error ? fetchMock.mockRejectedValueOnce(answer) : fetchMock.mockResolvedValueOnce(answer));
+
+        it('switches between two saved sets locally without publishing either cached array', async () => {
+            const sermon = sermonWithSources(aiChunks, rawChunks);
+            mockUseSermon.mockReturnValue(sermon);
             render(<StepByStepWizard {...defaultProps} />);
             await goToSource();
             expect(await screen.findByText('Polished opening')).toBeInTheDocument();
             fireEvent.click(screen.getByText('Original as-is'));
-            await waitFor(() => expect(screen.getByText('Raw opening')).toBeInTheDocument());
+            expect(await screen.findByText('Raw opening')).toBeInTheDocument();
             fireEvent.click(screen.getByText('AI-optimized'));
-        };
-        const putCalls = () => (global.fetch as jest.Mock).mock.calls.filter(([url, init]) => url === '/api/sermons/sermon-123/audio/chunks' && init?.method === 'PUT');
-        const putCall = () => putCalls()[0];
-        const changedTo = (mode: string, chunks: unknown[]) => ({ ok: false, status: 409, json: async () => ({ code: 'chunks-changed', mode, chunks }) });
+            expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+            expect(global.fetch).not.toHaveBeenCalled();
+            expect(sermon.sermon.audioSources.ai.chunks[0].text).toBe('Polished opening');
+            expect(sermon.sermon.audioSources.raw.chunks[0].text).toBe('Raw opening');
+            expect(sermon.sermon.audioChunks).toBe(aiChunks);
+        });
 
-        it('names the set it last saw stored and shows the newer one when that changed', async () => {
-            await switchToRawThenBack({ ok: false, status: 409, json: async () => ({
-                code: 'chunks-changed', mode: 'ai', chunks: [{ index: 0, text: 'Corrected on the phone', sectionId: 'introduction' }],
+        it('keeps separate saved corrections when both sources have changed words', async () => {
+            const aiCorrected = [{ index: 0, text: 'AI corrected elsewhere', sectionId: 'introduction' }];
+            const rawCorrected = [{ index: 0, text: 'Original corrected elsewhere', sectionId: 'introduction' }];
+            mockUseSermon.mockReturnValue(sermonWithSources(aiCorrected, rawCorrected));
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            expect(await screen.findByText('AI corrected elsewhere')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('Original as-is'));
+            expect(await screen.findByText('Original corrected elsewhere')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('AI-optimized'));
+            expect(await screen.findByText('AI corrected elsewhere')).toBeInTheDocument();
+            expect(global.fetch).not.toHaveBeenCalled();
+        });
+
+        it('uses the selected source identity at generation even when both sets contain the same words', async () => {
+            const sameWords = [{ index: 0, text: 'Amen', sectionId: 'introduction' }];
+            mockUseSermon.mockReturnValue(sermonWithSources(sameWords, sameWords));
+            const encoder = new TextEncoder();
+            (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, body: { getReader: () => ({ read: jest.fn()
+                .mockResolvedValueOnce({ done: false, value: encoder.encode(JSON.stringify({ type: 'download_complete', filename: 'sermon.mp3', mimeType: 'audio/mpeg' }) + '\n') })
+                .mockResolvedValueOnce({ done: true, value: undefined }) }) } });
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            fireEvent.click(screen.getByText('Original as-is'));
+            await goToPreview();
+            fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+            await screen.findByRole('link', { name: /Download Again/ });
+            const call = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+            expect(JSON.parse(call[1].body)).toMatchObject({ mode: 'raw', source: { id: 'raw-source', revision: 5 }, expected: sameWords });
+        });
+
+        it('merges a newer version of the other source without changing the current choice', async () => {
+            const initial = sermonWithSources(aiChunks, rawChunks);
+            mockUseSermon.mockReturnValue(initial);
+            const updatedAi = [{ index: 0, text: 'New AI text from phone', sectionId: 'introduction' }];
+            (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({
+                code: 'chunks-changed', mode: 'raw', chunks: rawChunks,
+                sources: { ai: preparedSource('ai-source-new', 4, updatedAi), raw: initial.sermon.audioSources.raw },
             }) });
-
-            await waitFor(() => expect(screen.getByText('Corrected on the phone')).toBeInTheDocument());
-            expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument();
-            expect(JSON.parse(putCall()![1].body).expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Raw opening']);
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            expect(await screen.findByText('Polished opening')).toBeInTheDocument();
+            // Explicitly refresh AI to receive a conflict containing the newer saved versions.
+            fireEvent.click(screen.getByRole('button', { name: 'Regenerate text' }));
+            await screen.findByText('audioExport.chunksChangedElsewhere');
+            expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true');
+            expect(await screen.findByText('New AI text from phone')).toBeInTheDocument();
         });
 
-        it('keeps the other source\'s corrections when the stored one changed elsewhere', async () => {
-            await switchToRawThenBack(
-                changedTo('raw', [{ index: 0, text: 'Original changed on the phone', sectionId: 'introduction' }]),
-                { ok: true, json: async () => ({ success: true }) },
+        it('retains both corrected sources when the wizard is reopened', async () => {
+            const sermon = sermonWithSources(
+                [{ index: 0, text: 'Manually corrected AI text', sectionId: 'introduction' }],
+                [{ index: 0, text: 'Corrected original text', sectionId: 'introduction' }],
             );
-            await waitFor(() => expect(screen.getByText('Original changed on the phone')).toBeInTheDocument());
-
-            // The AI set cached here is still offered, and now names the newer stored set.
-            fireEvent.click(screen.getByText('AI-optimized'));
-            await waitFor(() => expect(screen.getByText('Polished opening')).toBeInTheDocument());
-            const second = JSON.parse(putCalls()[1][1].body);
-            expect(second.chunks.map((chunk: { text: string }) => chunk.text)).toEqual(['Polished opening']);
-            expect(second.expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Original changed on the phone']);
+            mockUseSermon.mockReturnValue(sermon);
+            const view = render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            expect(await screen.findByText('Manually corrected AI text')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('Original as-is'));
+            expect(await screen.findByText('Corrected original text')).toBeInTheDocument();
+            view.unmount();
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            expect(await screen.findByText('Manually corrected AI text')).toBeInTheDocument();
+            fireEvent.click(screen.getByText('Original as-is'));
+            expect(await screen.findByText('Corrected original text')).toBeInTheDocument();
+            expect(global.fetch).not.toHaveBeenCalled();
         });
 
-        it('takes a switch whose earlier answer was lost as done when the server shows it landed', async () => {
-            await switchToRawThenBack(new TypeError('Failed to fetch'), changedTo('ai', aiChunks));
-            // The lost answer shows the previous source again...
-            await waitFor(() => expect(screen.getByText('audioExport.sourceSwitchFailed')).toBeInTheDocument());
-            expect(screen.getByText('Raw opening')).toBeInTheDocument();
-            // ...and picking AI again finds its own earlier write stored: no "changed elsewhere".
-            fireEvent.click(screen.getByRole('button', { name: /AI-optimized/ }));
-            await waitFor(() => expect(putCalls()).toHaveLength(2));
-            await waitFor(() => expect(screen.getByText('Polished opening')).toBeInTheDocument());
-            expect(screen.queryByText('audioExport.chunksChangedElsewhere')).not.toBeInTheDocument();
+        it('does not change the active legacy projection when selecting a different saved source', async () => {
+            const sermon = sermonWithSources(aiChunks, rawChunks, 'ai');
+            mockUseSermon.mockReturnValue(sermon);
+            render(<StepByStepWizard {...defaultProps} />);
+            await goToSource();
+            fireEvent.click(screen.getByText('Original as-is'));
+            expect(await screen.findByText('Raw opening')).toBeInTheDocument();
+            expect(sermon.sermon.audioMetadata.mode).toBe('ai');
+            expect(sermon.sermon.audioChunks).toEqual(aiChunks);
+            expect(global.fetch).not.toHaveBeenCalled();
         });
-
-        it('does not take the same words stored as the other source for its own switch', async () => {
-            await switchToRawThenBack(changedTo('raw', aiChunks));
-            await waitFor(() => expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument());
-            expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'true');
-        });
-
-        it('shows the sections of a stored set that changed elsewhere', async () => {
-            await switchToRawThenBack(changedTo('ai', [{ index: 0, text: 'Rewritten main part', sectionId: 'mainPart' }]));
-            await waitFor(() => expect(screen.getByText('Rewritten main part')).toBeInTheDocument());
-        });
-
-        it('stays on the source the database holds when the switch was not stored', async () => {
-            await switchToRawThenBack({ ok: false, status: 500, json: async () => ({ error: 'boom' }) });
-
-            await waitFor(() => expect(screen.getByText('audioExport.sourceSwitchFailed')).toBeInTheDocument());
-            expect(screen.getByText('Raw opening')).toBeInTheDocument();
-            expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
-        });
-
     });
 
-    it('returns to the stored source when a preparation is turned away', async () => {
+    it('keeps the requested source selected after preparation fails without relabeling saved AI text', async () => {
         mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
         (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, json: async () => ({ error: 'Optimize failed' }) });
         render(<StepByStepWizard {...defaultProps} />);
@@ -482,37 +565,51 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(await screen.findByText('Polished opening')).toBeInTheDocument();
         fireEvent.click(screen.getByText('Original as-is'));
         await waitFor(() => expect(screen.getByText('Optimize failed')).toBeInTheDocument());
-        // Nothing was saved, so the AI text is still what the database holds — and the source shown.
-        expect(screen.getByText('Polished opening')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true');
-        expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /AI-optimized/ }));
+        await waitFor(() => expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true'));
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
     });
 
-    it('shows the stored set when the section it prepared was corrected elsewhere meanwhile', async () => {
-        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+    it('merges a versioned conflict without forcing the choice or assigning AI text to Original', async () => {
+        const aiChunks = [{ index: 0, text: 'Polished opening', sectionId: 'introduction' }];
+        const updatedAi = [{ index: 0, text: 'Opening corrected on the phone', sectionId: 'introduction' }];
+        mockUseSermon.mockReturnValue(sermonWithChunks(aiChunks, { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
         (global.fetch as jest.Mock).mockResolvedValueOnce({
             ok: false, status: 409,
-            json: async () => ({ code: 'chunks-changed', mode: 'ai', chunks: [{ index: 0, text: 'Opening corrected on the phone', sectionId: 'introduction' }] }),
+            json: async () => ({ code: 'chunks-changed', mode: 'raw', chunks: [], sources: {
+                ai: preparedSource('ai-source-new', 4, updatedAi),
+            } }),
         });
         render(<StepByStepWizard {...defaultProps} />);
         await goToSource();
         expect(await screen.findByText('Polished opening')).toBeInTheDocument();
         fireEvent.click(screen.getByText('Original as-is'));
         await waitFor(() => expect(screen.getByText('audioExport.chunksChangedElsewhere')).toBeInTheDocument());
-        expect(screen.getByText('Opening corrected on the phone')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByText('Opening corrected on the phone')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /AI-optimized/ }));
+        expect(await screen.findByText('Opening corrected on the phone')).toBeInTheDocument();
         expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true');
     });
 
-    it('shows the previous source again when a preparation goes unanswered', async () => {
+    it('keeps Original selected after an unanswered prepare and lets the user return to saved AI text', async () => {
         mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
         (global.fetch as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
         render(<StepByStepWizard {...defaultProps} />);
         await goToSource();
         expect(await screen.findByText('Polished opening')).toBeInTheDocument();
         fireEvent.click(screen.getByText('Original as-is'));
+        await waitFor(() => expect(screen.getByRole('button', { name: /Original as-is/ })).toHaveAttribute('aria-pressed', 'true'));
+        expect(screen.queryByText('Polished opening')).not.toBeInTheDocument();
+        expect(await screen.findByText('Failed to fetch')).toBeInTheDocument();
+        const aiSourceButton = screen.getByRole('button', { name: /AI-optimized/ });
+        await waitFor(() => expect(aiSourceButton).toBeEnabled());
+        fireEvent.click(aiSourceButton);
         await waitFor(() => expect(screen.getByRole('button', { name: /AI-optimized/ })).toHaveAttribute('aria-pressed', 'true'));
-        expect(screen.getByText('Polished opening')).toBeInTheDocument();
+        expect(await screen.findByText('Polished opening')).toBeInTheDocument();
     });
 
     /**
@@ -520,9 +617,13 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
      * wizard's view stale, the stored set comes back instead of audio made from other text.
      */
     it('shows the stored set instead of making audio from text other than the one shown', async () => {
-        mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Polished opening', sectionId: 'introduction' }], { audioMetadata: { mode: 'ai', voice: 'onyx' } }));
+        const aiChunks = [{ index: 0, text: 'Polished opening', sectionId: 'introduction' }];
+        const rawChunks = [{ index: 0, text: 'Raw opening actually stored', sectionId: 'introduction' }];
+        const sermon = sermonWithSources(aiChunks, [{ index: 0, text: 'Raw opening', sectionId: 'introduction' }]);
+        mockUseSermon.mockReturnValue(sermon);
         (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({
-            code: 'chunks-changed', mode: 'raw', chunks: [{ index: 0, text: 'Raw opening actually stored', sectionId: 'introduction' }],
+            code: 'chunks-changed', mode: 'raw', chunks: rawChunks,
+            sources: { ai: sermon.sermon.audioSources.ai, raw: preparedSource('raw-source-new', 6, rawChunks) },
         }) });
         render(<StepByStepWizard {...defaultProps} />);
         await goToSource();
@@ -532,7 +633,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         await waitFor(() => expect(screen.getByText('audioExport.chunksChangedBeforeAudio')).toBeInTheDocument());
         const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
-        expect(JSON.parse(generateCall[1].body).expected.map((chunk: { text: string }) => chunk.text)).toEqual(['Polished opening']);
+        expect(JSON.parse(generateCall[1].body)).toMatchObject({ mode: 'ai', source: { id: 'ai-source', revision: 3 }, expected: aiChunks });
         expect(global.URL.createObjectURL).not.toHaveBeenCalled();
     });
 
@@ -606,10 +707,8 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
     it('sends Google provider, Gemini model, and Google voice when generating', async () => {
         setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
-        mockUseSermon.mockReturnValue(sermonWithChunks(
-            [{ index: 0, text: 'Saved intro', sectionId: 'introduction' }],
-            { audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts-preview' } },
-        ));
+        const rawChunks = [{ index: 0, text: 'Saved intro', sectionId: 'introduction' }];
+        mockUseSermon.mockReturnValue(sermonWithSources([], rawChunks, 'raw', { ai: [], raw: ['introduction'] }));
 
         const encoder = new TextEncoder();
         const mockReader = {
@@ -617,22 +716,13 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
                 .mockResolvedValueOnce({ done: false, value: encoder.encode(JSON.stringify({ type: 'download_complete', filename: 'sermon.wav', mimeType: 'audio/wav' }) + '\n') })
                 .mockResolvedValueOnce({ done: true, value: undefined }),
         };
-        (global.fetch as jest.Mock)
-            .mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({
-                    chunks: [{ index: 0, text: 'Fresh Google intro', sectionId: 'introduction' }],
-                    originalLength: 18,
-                    optimizedLength: 18,
-                }),
-            })
-            .mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
 
         render(<StepByStepWizard {...defaultProps} />);
         fireEvent.click(screen.getByText(/Gemini 2\.5 TTS/));
         fireEvent.click(screen.getByText('Charon'));
         await goToSource();
-        await waitFor(() => expect(screen.getByText('Fresh Google intro')).toBeInTheDocument());
+        expect(await screen.findByText('Saved intro')).toBeInTheDocument();
         await goToPreview();
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
 
@@ -649,6 +739,8 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             provider: 'google',
             voice: 'Charon',
             model: 'gemini-2.5-flash-tts',
+            mode: 'raw',
+            source: { id: 'raw-source', revision: 5 },
             sections: ['introduction'], // seed restores selection from the only chunk's section
         });
         expect(generateCall[1].headers).toMatchObject({ Authorization: 'Bearer test-token' });
@@ -775,9 +867,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         // One preview fragment that Google re-splits into two generation chunks; the second fails once.
         setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         const googleChunks = [{ index: 0, text: 'Google long', sectionId: 'introduction' }];
-        mockUseSermon.mockReturnValue(sermonWithChunks(googleChunks, {
-            audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts' },
-        }));
+        mockUseSermon.mockReturnValue(sermonWithSources([], googleChunks, 'raw', { ai: [], raw: ['introduction'] }));
         const encoder = new TextEncoder();
         const streamOf = (...events: object[]) => ({
             ok: true,
@@ -788,7 +878,6 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         const wav = (data: number[]) => streamOf({ type: 'audio_chunk', data: wavBase64(data) },
             { type: 'download_complete', filename: 'sermon-audio.wav', mimeType: 'audio/wav', totalChunks: 2 });
         (global.fetch as jest.Mock)
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: googleChunks, originalLength: 11, optimizedLength: 11 }) })
             .mockResolvedValueOnce(wav([1, 2]))
             .mockResolvedValueOnce(streamOf({ type: 'error', code: 'tts-chunk-failed', chunks: [2], message: 'TTS chunk 2 failed' }))
             .mockResolvedValueOnce(wav([3, 4]));
@@ -875,9 +964,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     it('drives one quality chunk per Google batch and merges the WAV batches in-browser', async () => {
         setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         const googleChunks = [0, 1, 2, 3].map(i => ({ index: i, text: `Google ${i}`, sectionId: i < 2 ? 'introduction' : 'mainPart' }));
-        mockUseSermon.mockReturnValue(sermonWithChunks(googleChunks, {
-            audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts' },
-        }));
+        mockUseSermon.mockReturnValue(sermonWithSources([], googleChunks, 'raw', { ai: [], raw: ['introduction', 'mainPart'] }));
 
         const encoder = new TextEncoder();
         const streamFor = (data: number[]) => ({
@@ -895,7 +982,6 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             },
         });
         (global.fetch as jest.Mock)
-            .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: googleChunks, originalLength: 32, optimizedLength: 32 }) })
             .mockResolvedValueOnce(streamFor([1, 2]))
             .mockResolvedValueOnce(streamFor([3, 4]))
             .mockResolvedValueOnce(streamFor([5, 6]))

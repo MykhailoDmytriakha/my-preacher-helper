@@ -187,7 +187,6 @@
     "(pages)/(private)/sermons/[id]/plan/planApi.ts#POST /api/sermons/*/plan": 1,
     "components/audio/StepByStepWizard.tsx#POST /api/sermons/*/audio/generate": 1,
     "components/audio/StepByStepWizard.tsx#POST /api/sermons/*/audio/optimize": 1,
-    "components/audio/StepByStepWizard.tsx#PUT /api/sermons/*/audio/chunks": 1,
     "components/audio/StepByStepWizard.tsx#PUT /api/sermons/*/audio/chunks/*": 1,
     "services/insights.service.ts#POST /api/insights": 1,
     "services/insights.service.ts#POST /api/insights/directions": 1,

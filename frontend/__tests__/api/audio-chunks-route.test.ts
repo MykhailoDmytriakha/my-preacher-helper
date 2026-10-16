@@ -98,3 +98,12 @@ it('stores the chunk shape the engine accepts, whatever the client cached', asyn
   expect(typeof storedChunk.createdAt).toBe('string');
   expect(storedChunk).not.toHaveProperty('preview');
 });
+
+it('retains the only saved AI text when a source switch stores Original', async () => {
+  stored = { userId: 'owner-1', audioChunks: ai, audioMetadata: { mode: 'ai' } };
+  engineCurrent = stored;
+  const response = await put({ chunks: raw, mode: 'raw', expected: ai });
+  expect(response.status).toBe(200);
+  expect(written?.audioChunks).toEqual(raw);
+  expect(JSON.stringify(written)).toContain('Polished opening');
+});

@@ -351,3 +351,15 @@ export const GOOGLE_TTS_VOICES: GoogleVoiceOption[] = [
 
 /** Steps in the audio generation wizard */
 export type WizardStep = 'settings' | 'optimize' | 'review' | 'preview' | 'generate' | 'success';
+
+/** A persisted authored source, independent of the voice and the other source. */
+export interface PreparedAudioSet {
+    id: string;
+    /** Increased by the server inside each accepted preparation/edit transaction. */
+    revision: number;
+    /** Sections actually prepared, including prepared sections with no spoken words. */
+    sections: SermonSection[];
+    chunks: AudioChunk[];
+}
+export type PreparedAudioSources = Partial<Record<AudioSourceMode, PreparedAudioSet>>;
+export type PreparedAudioVersion = Pick<PreparedAudioSet, 'id' | 'revision'>;
