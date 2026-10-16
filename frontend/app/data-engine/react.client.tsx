@@ -198,6 +198,17 @@ export function useDataEngine(): EngineContextValue {
   return context;
 }
 
+const NO_OPEN_ANSWERS: readonly ResourceRef[] = Object.freeze([]);
+const noOpenAnswers = () => NO_OPEN_ANSWERS;
+
+/** The engine owns this fact; opening/closing a screen must not wait for a recovery-list poll. */
+export function useOpenDocumentAnswers(): readonly ResourceRef[] {
+  const { browser } = useDataEngine();
+  const subscribe = useCallback((listener: () => void) => browser?.engine.subscribeOpenAnswers(listener) ?? (() => undefined), [browser]);
+  const snapshot = useCallback(() => browser?.engine.getOpenAnswers() ?? NO_OPEN_ANSWERS, [browser]);
+  return useSyncExternalStore(subscribe, snapshot, noOpenAnswers);
+}
+
 /**
  * ONE ACTION ON A DOCUMENT THAT NO SCREEN HAS OPEN — a menu entry on a list row, a link made
  * from the other side of a relation. The editor opens on the document's own baseline, captures

@@ -160,8 +160,8 @@ describe('a late answer to a one-shot change of a sermon', () => {
   const setupSermon = (value: DocumentData = storedSermon) => {
     const harness = documentEngineHarness({ resource: sermon, value, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
-    return harness;
+    const view = render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    return Object.assign(harness, { view });
   };
 
   it('is shown app-wide, like the other collections', async () => {
@@ -286,6 +286,37 @@ describe('a late answer to a one-shot change of a sermon', () => {
     const shown = screen.getByText(/The paragraph I wrote/).textContent ?? '';
     expect(shown).not.toMatch(/node-1f3a/);
     expect(shown).not.toMatch(/planMode/);
+  });
+
+  it('hands the notice to a screen opened after navigation without waiting for its poll', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await screenDraftLeftBehind(harness);
+    await screen.findByText('dataSync.screenDraftBody');
+    mockPathname = '/sermons/sermon-1';
+    harness.view.rerender(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={60_000} /></DataEngineProvider>);
+    await act(async () => { await settleEngine(); });
+    // The route alone cannot hide a draft: the screen has not opened its editor yet.
+    expect(screen.getByText('dataSync.screenDraftBody')).toBeInTheDocument();
+    const editor = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'late-screen'));
+    await act(async () => { await settleEngine(); });
+    await waitFor(() => expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument(), { timeout: 250 });
+    expect(editor.getState().checkpoint.draft?.verse).toBe('Typed on the sermon page');
+    editor.close({ flush: false });
+  });
+
+  it('restores a waiting notice as soon as the answering editor closes, without a journal change', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await screenDraftLeftBehind(harness);
+    await screen.findByText('dataSync.screenDraftBody');
+    mockPathname = '/sermons/sermon-1';
+    const editor = await harness.engine.openEditor(sermon, editorIdentity('test-tab', sermon, 'default', 'closing-screen'));
+    harness.view.rerender(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={60_000} /></DataEngineProvider>);
+    await waitFor(() => expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument());
+    await act(async () => { editor.close({ flush: false }); await settleEngine(); });
+    await waitFor(() => expect(screen.getByText('dataSync.screenDraftBody')).toBeInTheDocument(), { timeout: 250 });
+    expect(screen.getByRole('link', { name: 'dataSync.openToDecide' })).toHaveAttribute('href', '/sermons/sermon-1');
   });
 
   it('is silent about a screen\'s draft on that screen once it holds the answer, which it then says itself', async () => {

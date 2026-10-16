@@ -116,6 +116,7 @@ const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
 const NEEDS_CONNECTION = 'needs-connection';
 export const needsConnection = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
+const ENGINE_DISPOSED = 'DataEngine has been disposed';
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 
 /** Public lifecycle boundary: callers never manage replay, baselines, or transport choice. */
@@ -132,6 +133,8 @@ export class DataEngine {
   private pending: JournalEntry[] = [];
   private pendingVersion = 0;
   private readonly pendingListeners = new Set<() => void>();
+  private openAnswers: readonly ResourceRef[] = Object.freeze([]);
+  private readonly openAnswerListeners = new Set<() => void>();
   private readonly reachableListeners = new Set<() => void>();
   private readonly refreshedOperations = new Set<string>();
   private readonly refreshedCollectionOperations = new Set<string>();
@@ -176,10 +179,11 @@ export class DataEngine {
       const record = entry.controller && !entry.closed ? this.unwrittenRecord(entry.controller) : null;
       return record ? [record] : [];
     });
+    const retiringEditors = [...this.editors.values()];
+    this.editors.clear();
     this.owner = owner;
     this.generation += 1;
-    for (const entry of this.editors.values()) this.close(entry);
-    this.editors.clear();
+    for (const entry of retiringEditors) this.close(entry);
     if (previous) for (const record of unwritten) this.keepUnwritten(record, previous, previousGeneration);
     for (const manual of this.manualForms.values()) manual.scope?.dispose();
     this.manualForms.clear();
@@ -556,13 +560,38 @@ export class DataEngine {
    * holds nothing, and the answer must be said elsewhere.
    */
   async answerHeldOpen(resource: ResourceRef): Promise<boolean> {
-    const journal = await this.listPending();
+    return this.answeredEditorResources(await this.listPending()).some(candidate => sameResource(candidate, resource));
+  }
+
+  /** Stable local snapshot: exactly the open editors whose screen already holds an answered request. */
+  getOpenAnswers(): readonly ResourceRef[] { return this.openAnswers; }
+
+  subscribeOpenAnswers(listener: () => void): () => void {
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
+    this.openAnswerListeners.add(listener);
+    return () => { this.openAnswerListeners.delete(listener); };
+  }
+
+  private answeredEditorResources(journal: readonly JournalEntry[]): ResourceRef[] {
     const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
-    return [...this.editors.values()].some(entry => {
+    const resources = new Map<string, ResourceRef>();
+    for (const entry of this.editors.values()) {
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
-      return Boolean(checkpoint && sameResource(checkpoint.confirmed.resource, resource)
-        && Object.keys(checkpoint.pending).some(id => answered.has(id)));
-    });
+      if (checkpoint && Object.keys(checkpoint.pending).some(id => answered.has(id))) {
+        const resource = checkpoint.confirmed.resource;
+        resources.set(cacheKey(this.owner ?? '', resource), resource);
+      }
+    }
+    return [...resources.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, resource]) => resource);
+  }
+
+  private publishOpenAnswers(): void {
+    const next = this.answeredEditorResources(this.pending);
+    if (equalValues(next, this.openAnswers)) return;
+    this.openAnswers = Object.freeze(next.map(resource => Object.freeze(copy(resource))));
+    for (const listener of this.openAnswerListeners) {
+      try { listener(); } catch { /* Rendering never changes editor ownership. */ }
+    }
   }
 
   /**
@@ -676,7 +705,7 @@ export class DataEngine {
   getPending(): JournalEntry[] { return copy(this.pending); }
 
   subscribePending(listener: () => void): () => void {
-    if (this.disposed) throw new Error('DataEngine has been disposed');
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
     const subscription = () => listener();
     this.pendingListeners.add(subscription);
     return () => { this.pendingListeners.delete(subscription); };
@@ -690,6 +719,7 @@ export class DataEngine {
     this.stopCommits();
     this.commits.setOwner(null);
     this.pendingListeners.clear();
+    this.openAnswerListeners.clear();
     this.membershipListeners.clear();
     this.reachableListeners.clear();
     this.options.collections?.dispose();
@@ -1104,6 +1134,7 @@ export class DataEngine {
       try { listener(); } catch { /* Rendering never changes delivery state. */ }
     }
     changed.forEach(entry => this.emit(entry));
+    this.publishOpenAnswers();
   }
 
   private editorDelivery(entry: EditorEntry, entries: JournalEntry[]): JournalEntry[] {
@@ -1183,6 +1214,7 @@ export class DataEngine {
     entry.controller?.dispose();
     entry.controller = null;
     entry.listeners.clear();
+    this.publishOpenAnswers();
   }
 
   private emitMembership(): void {
@@ -1193,6 +1225,7 @@ export class DataEngine {
     for (const listener of entry.listeners) {
       try { listener(); } catch { /* UI rendering never changes data delivery. */ }
     }
+    this.publishOpenAnswers();
   }
 
   private backgroundDrain(): void {
@@ -1235,7 +1268,7 @@ export class DataEngine {
   }
 
   private requireOwner(): string {
-    if (this.disposed) throw new Error('DataEngine has been disposed');
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
     if (!this.owner) throw new Error('Authentication required');
     return this.owner;
   }

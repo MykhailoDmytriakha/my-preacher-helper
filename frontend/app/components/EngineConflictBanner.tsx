@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, waitsForDecision } from '@/data-engine/react.client';
+import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswers, waitsForDecision } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
@@ -34,7 +34,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; heldOpen?: boolean; formWork?: boolean }
+interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; formWork?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -184,6 +184,7 @@ export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
 function EngineConflicts({ pollMs }: { pollMs: number }) {
   const { t, i18n } = useTranslation();
   const { browser, owner } = useDataEngine();
+  const openAnswers = useOpenDocumentAnswers();
   const actions = useDocumentActions();
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
@@ -209,7 +210,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       const [records, journal] = await Promise.all([browser.engine.listRecoverable(), browser.engine.listPending()]);
       const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async entry => (
         entry.screen ? { ...entry, formWork: await browser.engine.formWorkPending(entry.resource),
-          decidable: await browser.engine.screenDecides(entry.resource), heldOpen: await browser.engine.answerHeldOpen(entry.resource) } : entry)));
+          decidable: await browser.engine.screenDecides(entry.resource) } : entry)));
       // A form's answer is resolved by its form, as it always was; it is not said here.
       const documents = listed.filter(entry => !('formWork' in entry && entry.formWork));
       // A slower, older pass must not bring back an entry a newer pass already settled.
@@ -233,7 +234,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
 
   // A screen's draft is not shown on its screen when the editor open there holds the answer: that
   // screen's status already says it, once. One opened before the request existed holds nothing.
-  const entry = waiting.find(candidate => !candidate.screen || !candidate.heldOpen || !isOnDocumentScreen(pathname, candidate.resource));
+  const entry = waiting.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
   if (!entry) return null;
 
   const settle = async (choice: 'mine' | 'theirs') => {

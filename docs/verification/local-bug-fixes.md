@@ -144,3 +144,42 @@ Evidence is retained under the ignored case artifact directory as refused-values
 4. Check a changed group block and a safe pre-existing legacy copy with status/plan-mode differences; check readable labels and original raw details separately.
 5. Check 390/834/1280px. Take the stored version of the synthetic draft, reload and verify that only that draft was cleared and test content stayed intact.
 6. Record deployed revision, screenshots and outcomes. Production verification remains pending until these steps run.
+
+## BUG-20261013-screen-draft-notice-doubles-on-its-screen
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+A screen that already holds an answered request now takes over its refusal/conflict message without waiting for the five-second recovery poll. The engine publishes a stable immutable snapshot of those resources. Its existing async answerHeldOpen check and the reactive snapshot share one answeredEditorResources rule. Editor updates/initialization, close, journal transitions and owner retirement publish changes; an unchanged resource set keeps the same snapshot and does not notify React during typing.
+
+The shared React facade exposes useOpenDocumentAnswers through useSyncExternalStore. EngineConflictBanner uses it together with the existing document-route check. A matching URL alone does not hide the only message while the editor is absent or still opening. Leaving the document or closing its answering editor returns the global notice. One-shot/form rules, resolution actions, data writers, stored work and the offline route resolver remain.
+
+Before production edits, two component regressions failed on base d99a4af3: opening the answering editor after navigation and closing it without a journal update. Both use a sixty-second poll and require the handoff before that poll; the route-before-editor condition also asserts that the waiting notice stays visible. The tests pass after the fix. Engine tests additionally check immutable snapshots, no redundant notifications while typing or while another holder opens/closes, and clearing multiple holders across an owner switch.
+
+The first implementation failed two existing engine tests during owner retirement: publishing after one close inspected a different old-owner controller after its generation became inactive. The final implementation detaches the complete registry before changing owner/generation and closes the detached entries, retaining their cleanup and unwritten-work handling. Existing and new owner/dispose tests pass. Independent review checked this correction.
+
+| Mechanism | Coverage |
+|---|---|
+| Shared global notice for every engine collection | Component regressions on sermons; actual localhost group handoff and return |
+| Engine open/state/close/journal/owner lifecycle | Existing engine/React suites and new engineOpenAnswers suite |
+| Document DataSyncStatus and offline route | Existing presentation retained; loaded offline screen keeps its answer |
+| One-shot/form notices and other documents | Existing banner regression suite; route plus resource guard retained |
+| Server, persisted journal, data writers and cross-device ordering | Unchanged; snapshot publication reads local in-memory facts only |
+
+Localhost before: one QA group status command was intercepted and refused without forwarding it to the API. After leaving the group and following Open and decide, the global banner and document status overlapped for 1603.8 ms. The primary agent inspected the original screenshot.
+
+After: repeated list/document navigation at 390/834/1280px kept exactly one message on every sampled animation frame, including the loading interval when the global notice still owned the answer. A first phrase-only counter was insufficient because the global heading can change; the final observation counts the actual global notice and document status independently. The primary agent visually inspected final 390/1280px screenshots. The loaded document also kept its answer offline, with connectivity restored in a finally block. These are Chromium viewport checks, not physical-device acceptance.
+
+Cleanup took the server version of the synthetic refusal and reloaded: group status was draft, with no refusal or global notice. The recovery list still offered a copy; its content was not judged for deletion in this bug. Recovery filtering remains separately tracked in BUG-20261006-recovery-list-offers-resolved-and-live-drafts. No application console errors were observed.
+
+Gates: full npm run test with coverage passed 803 suites / 8322 tests (3 suites / 17 tests skipped), exiting 0 in 314.13 seconds. Global statements/lines coverage was 93.92%, branches 83.81%, functions 87.68%. TypeScript and ESLint passed (0 errors, 29 inherited warnings); targeted 4 suites / 145 tests passed, including the final test-harness getter-preservation adjustment. The whole-branch production build remains required at final acceptance.
+
+Local evidence lives in the ignored case artifact directory: one-notice red/green logs, screenshots, frame timeline, source hashes and verification JSON. This manifest, regression tests and bug-ID commit retain the durable Git trace.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision contains the fix and use an authorized QA account with a disposable test document.
+2. Intercept/refuse a test status/text change before it reaches the database; leave the document and verify the global notice and way back.
+3. Follow Open and decide. Record animation frames through editor loading: the global message stays until the screen owns the answer, then the document shows it once. Repeat returning to the list.
+4. Check 390/834/1280px and the sermon route as well as a group. A matching route without an opened answering editor must keep the notice; an unrelated document must not suppress it.
+5. Repeat on a warmed offline route where available and on an already loaded screen; restore the connection. Verify actions still resolve the same draft and preserve later typing.
+6. Clear only the synthetic refusal using the server version, reload, verify original test content, and record deployed revision/screenshots/outcomes. Keep production acceptance pending until these checks run.
