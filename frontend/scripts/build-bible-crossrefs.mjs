@@ -68,6 +68,18 @@ const toKjv = (bible, place) => (bible === 'kjv' ? [place] : placesIn('kjv', bib
 const inKjv = (place) => place.chapter >= 1 && place.chapter <= chapterCount('kjv', place.book)
   && place.verse >= 1 && place.verse <= verseCount('kjv', place.book, place.chapter);
 
+/**
+ * Where a passage ends. It runs within one chapter and inside it: an end in a later chapter, or past
+ * the chapter's last verse (the modules write "Isaiah 52:13–53" for 52:13–53:12), ends at that last
+ * verse; an end that is no place at all ends at the start.
+ */
+function lastVerse(start, end) {
+  const chapterLast = verseCount('kjv', start.book, start.chapter);
+  if (!end || end.book !== start.book || end.chapter < start.chapter) return start.verse;
+  if (end.chapter > start.chapter) return chapterLast;
+  return Math.min(Math.max(end.verse, start.verse), chapterLast);
+}
+
 // anchor "book|chapter|verse" → target "book|chapter" → [{ from, to, sources }]
 const links = new Map();
 const add = (anchor, target, from, to, source) => {
@@ -102,17 +114,16 @@ for (const file of files) {
     const pairs = [[anchor, target, targetEnd]];
     if (reverse) pairs.push([target, anchor, anchorEnd]);
     for (const [place, start, endVerse] of pairs) {
-      const anchorKjv = toKjv(bible, place)[0];
       const startKjv = toKjv(bible, start)[0];
-      const endKjv = toKjv(bible, { ...start, verse: endVerse }).at(-1);
-      if (!anchorKjv || !startKjv || !endKjv || !inKjv(anchorKjv) || !inKjv(startKjv)) { skipped += 1; continue; }
-      // A passage runs within one chapter; one that crosses into the next ends with its first chapter.
-      const last = endKjv.book === startKjv.book && endKjv.chapter === startKjv.chapter
-        ? Math.max(endKjv.verse, startKjv.verse)
-        : verseCount('kjv', startKjv.book, startKjv.chapter);
-      // A verse pointing at itself is no link.
-      if (anchorKjv.book === startKjv.book && anchorKjv.chapter === startKjv.chapter && startKjv.verse <= anchorKjv.verse && anchorKjv.verse <= last) continue;
-      add(anchorKjv, startKjv, startKjv.verse, last, source);
+      // Every King James verse the anchor is gets the link: Synodal Song of Solomon 1:1 is KJV 1:1 and 1:2.
+      const anchors = toKjv(bible, place).filter(inKjv);
+      if (!startKjv || !inKjv(startKjv) || anchors.length === 0) { skipped += 1; continue; }
+      const last = lastVerse(startKjv, toKjv(bible, { ...start, verse: endVerse }).at(-1));
+      for (const anchorKjv of anchors) {
+        // A verse pointing at itself is no link.
+        if (anchorKjv.book === startKjv.book && anchorKjv.chapter === startKjv.chapter && startKjv.verse <= anchorKjv.verse && anchorKjv.verse <= last) continue;
+        add(anchorKjv, startKjv, startKjv.verse, last, source);
+      }
     }
   }
   db.close();

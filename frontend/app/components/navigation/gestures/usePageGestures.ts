@@ -6,7 +6,7 @@ import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { isIPadStandalonePwa } from '@/utils/pwaEnv';
 
-import { gestureBlockReason, pageAtTop } from './touchTargets';
+import { NESTED_UP_AND_DOWN, gestureBlockReason, pageAtTop } from './touchTargets';
 
 export const PULL_THRESHOLD = 72;
 export const BACK_THRESHOLD = 90;
@@ -174,10 +174,15 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       if (!top && !canGoBack) return;
       const blocked = gestureBlockReason(event.target)
         ?? (window.visualViewport && window.visualViewport.scale !== 1 ? 'zoomed' : null);
-      if (blocked) { recordDiagnostic('gesture', { source: 'start', result: 'blocked', code: blocked }); return; }
+      // In a pane that scrolls only up and down, a swipe across is still the way back; the pull is the pane's.
+      const backOnly = blocked === NESTED_UP_AND_DOWN && canGoBack;
+      if (blocked && !backOnly) {
+        recordDiagnostic('gesture', { source: 'start', result: 'blocked', code: blocked === NESTED_UP_AND_DOWN ? 'nested-gesture' : blocked });
+        return;
+      }
       const target = event.target as Element;
       gesture = {
-        identifier: touch.identifier, x: touch.clientX, y: touch.clientY, target, top, canGoBack,
+        identifier: touch.identifier, x: touch.clientX, y: touch.clientY, target, top: top && !backOnly, canGoBack,
         direction: 'pending', distance: 0, baseline: 0, samples: [{ x: touch.clientX, at: Date.now() }],
       };
     };

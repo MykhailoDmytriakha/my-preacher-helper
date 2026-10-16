@@ -9,6 +9,7 @@ import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossRef
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { TextScaleProvider } from '@/providers/TextScaleProvider';
+import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import type { BookText } from '@/utils/bibleText';
@@ -18,7 +19,7 @@ import type { BookText } from '@/utils/bibleText';
  * small enough to draw whole) and its set built from the fourteen MyBible modules.
  */
 const publicFile = (path: string) => JSON.parse(readFileSync(join(__dirname, '../../../public', path), 'utf8'));
-const ruthSet: CrossRefsBook = publicFile('bible-crossrefs/v1/ruth.json');
+const ruthSet: CrossRefsBook = publicFile(`${bibleCrossRefsBase.slice(1)}/ruth.json`);
 const ruthText: BookText = publicFile('bible-text/rst/v1/ruth.json');
 
 /** The first verse of Ruth with main links both within the book and into another one. */
@@ -74,7 +75,7 @@ describe('cross references in the Bible reader', () => {
   it('puts beside a verse the number of its main links, and the chip opens them', async () => {
     renderRuth();
     expect(await screen.findByTestId(`cross-refs-${key}`)).toHaveTextContent(String(subject.main.length));
-    expect(setRequests).toEqual(['/bible-crossrefs/v1/ruth.json']);
+    expect(setRequests).toEqual([`${bibleCrossRefsBase}/ruth.json`]);
     const dialog = await openLinksOfSubject();
     expect(within(dialog).getAllByRole('listitem')).toHaveLength(subject.main.length);
     expect(within(dialog).getByText(label(subject.main[0]))).toBeInTheDocument();
@@ -86,6 +87,7 @@ describe('cross references in the Bible reader', () => {
     await userEvent.click(within(dialog).getByText(label(subject.outside)));
     expect(screen.getByRole('heading', { name: label(subject.outside) })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
+    await waitFor(() => expect(onOpenBook).toHaveBeenCalled());
     expect(onOpenBook).toHaveBeenCalledWith(
       subject.outside.book.toLowerCase().replace(/\s+/g, '-'),
       { chapter: subject.outside.chapter, verse: subject.outside.fromVerse, toVerse: subject.outside.toVerse },
@@ -99,7 +101,13 @@ describe('cross references in the Bible reader', () => {
     await userEvent.click(within(dialog).getByText(label(subject.inside)));
     const scroll = jest.mocked(Element.prototype.scrollIntoView);
     scroll.mockClear();
+    // The jump comes only after the window is gone: on iOS the window pins the page and, released,
+    // puts the scroll back — a jump made under it was undone (review finding, 2026-10-16).
+    let windowOpenAtJump: boolean | null = null;
+    scroll.mockImplementationOnce(() => { windowOpenAtJump = document.querySelector('[role="dialog"]') !== null; });
     await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
+    await waitFor(() => expect(scroll).toHaveBeenCalled());
+    expect(windowOpenAtJump).toBe(false);
 
     expect(onOpenBook).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
