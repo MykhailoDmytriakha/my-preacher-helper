@@ -430,3 +430,25 @@ Only the own note was removed through its normal confirmation with exact title/U
 4. Paste Markdown source carrying an HTML flavour, then native rich HTML with bold/italic/strike. Save/reload and confirm content and formatting.
 5. Check390/834widths, loaded offline editing/reconnect, cached reload and a sequential device/tab. Record immediate-departure draft recovery separately from accepted-write replay.
 6. Delete only the disposable fixture, verify its tombstone, restore network/tabs and record deployed revision/results/screenshots. Production acceptance remains pending until executed.
+
+## BUG-20260809-studies-search-lag
+
+Stage: administrative local closure of an existing fix; production recheck pending.
+
+The existing fix `ecb597904009565ded9b634728ac85ceac70fe69` is an ancestor of this branch. The field updates immediately; `useDeferredValue` and memoized cards defer filtering/snippets/highlighting. Results advertise catching up and bulk expansion waits. Queries already require every word across the shared search text in any order. Stable empty share-link data preserves the card memo. No production code was changed in this verification.
+
+The owner accepted typing responsiveness on2026-10-15, describing about100ms as acceptable; that is a subjective observation with no recorded device/revision. Current existing regressions passed4suites/59tests: input scheduling, multiword order, clear/reset, bulk expansion, card highlighting and stable share-link lists. No new red test is claimed for this administrative closure; historical red/green and the original400-note dev benchmark are in the original report. Their exact old benchmark was not replayed.
+
+On built localhost3047 revision`9852b00e`, build`a--3uNrrFP_WmbX2-tYQg`,23existing test-account notes were read without content writes. `SYNC QA` and extra-space variants found the same two notes with separate highlights. No-match, Escape, clear button, expand/collapse all and note/back navigation passed. Seven typed characters produced MessageChannel main-thread gaps2.4-21ms; this is the present23-note sample, not the owner's volume or a before/after comparison. A cached offline reload opened in900ms and retained the query/results; subsequent offline no-match/reordered queries passed. One initial wait used h3 while cards use h4; its timeout was a harness error, corrected with heading-role checks.
+
+The primary inspected390/834/1280px screenshots: readable search/results and controls, no horizontal page overflow. Search was cleared;23cards and0highlights remain, one tab is online and0data-engine commands were observed. No fixtures or preferences were created/changed. Expected offline network errors occurred; no clean-console or physical-device acceptance is claimed.
+
+Evidence is retained in the ignored case: `study-search-verification.json`, original record, focused log, browser JSON and screenshots. The source is unchanged from the immediately preceding fully verified commit (807suites/8456tests, types/lint/build passed); those global gates were not needlessly rerun for documentation-only changes. Fresh acceptance verifies the existing source, evidence and focused tests.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision; preserve existing notes and language/settings.
+2. Search nonadjacent/reversed words, mixed case and extra spaces; verify complete matches, separate highlights, no-match and clear/Escape.
+3. Verify expand/collapse all after results settle, and search retention on note/back navigation.
+4. Repeat on the owner's existing volume at phone/tablet/desktop widths and on an already viewed list offline; restore connectivity and clear the query.
+5. Record revision, dataset size, input measurements/screenshots and results. Historical owner acceptance and local checks do not substitute for this production recheck.
