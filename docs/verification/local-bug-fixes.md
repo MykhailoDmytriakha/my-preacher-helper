@@ -342,7 +342,7 @@ errors and dev/HMR warnings occurred; no clean-console claim is made.
 
 ## BUG-20261003-group-meeting-date-saved-while-typing / BUG-20261003-group-meeting-clear-drops-place
 
-Stage: locally verified, independently reviewed and accepted; local commit follows this record. QA fixture deleted. Production acceptance pending.
+Stage: locally verified, independently reviewed and accepted; local commit `f7a3427b`. QA fixture deleted. Production acceptance pending.
 
 The meeting header now uses one durable `useDataForm` stage through `useGroupMeetingEditor`. Date, place and audience share one 750ms autosave. A partial or impossible new date stays on the device and can be explicitly recovered after leaving; completing or clearing it submits the combined fields. Navigation and pagehide flush the last ready edit. An already-invoked manual Save may finish after its parent closes, within the same owner/generation; new post-close actions remain refused.
 
@@ -369,3 +369,11 @@ Evidence: ignored case artifacts `group-dates-verification.json`, original repor
 5. Clear the day, immediately open the calendar or leave. Verify the same meeting id, notes, place, audience and sibling; the group says no date and has no dated calendar entry.
 6. Repeat loaded editing offline/reconnect, a cached-route reload and sequential devices. Check320/390/834 widths and existing legacy values without rewriting them.
 7. Delete only the disposable QA group, confirm its tombstone, restore network/tabs/settings and record deployed revision, results and screenshots. Production acceptance remains pending until this runs.
+
+## Main intake2a4d3a9b
+
+Committed main changes for settings archive comparison and recovery refresh/confirmation were integrated after the clean GroupDates commit. Code merged without conflicts; the tracker retained the new late-server-copy report and all local closures. The shared accepted-recency and date-stage rules remain intact. Independent compatibility review found no issue.
+
+The merged state passed805 Jest suites /8390tests (3suites /17tests skipped), full ESLint (0errors /29inherited warnings), TypeScript and production build `OjdRj2-43Cv-xyTEr_3tN`. Browser smoke confirmed that exact build, editable group header fields and Settings; the primary inspected the390px Settings capture with no page overflow. No content/preferences were edited. One existing tab navigation stalled; a fresh same-context tab loaded Settings, without clearing data/cache. The server answered the same request in2ms. No live archived-copy fixture was forced; its detailed behavior is covered by component/storage tests. Production/physical-device acceptance is pending.
+
+BUG-20261015-settings-copy-never-matches-server was already handled by main commitd4d0a0c2. BUG-20261015-late-server-copy-keeps-echo-banner remains active: the bounded refresh still lacks a subscription. The local merge commit follows independent case acceptance.

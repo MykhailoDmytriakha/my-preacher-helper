@@ -7,7 +7,7 @@ import { queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
-import { equalValues } from './protocol';
+import { equalValues, personFields } from './protocol';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 import type { Sermon, SeriesItem } from '@/models/models';
@@ -285,6 +285,16 @@ function asPreviouslyRead(collection: string, value: Record<string, unknown>): R
   return value;
 }
 
+/**
+ * Both sides as the person wrote them: through the previous version's lens, and — where the server
+ * writes beside the person, as in settings — only the person's fields. A copy is never kept for
+ * what the server counted or stamped since the device cached it.
+ */
+function asThePersonWrote(collection: string, value: Record<string, unknown>): Record<string, unknown> {
+  const read = asPreviouslyRead(collection, value), chosen = personFields(collection);
+  return chosen ? Object.fromEntries(Object.entries(read).filter(([key]) => chosen.includes(key))) : read;
+}
+
 /** A cached row, or null for an operation or a copy that cannot be read — those are never retired. */
 function cachedRow(copy: LegacyQueryCopy): Record<string, unknown> | null {
   try {
@@ -298,8 +308,8 @@ function cachedRow(copy: LegacyQueryCopy): Record<string, unknown> | null {
  *
  * A cached row can hold text the server never received: a council's refused or unsent edit lived
  * only there, and the previous version showed it again and sent it with the next edit. So a row
- * leaves the archive only when it says exactly what the server copy says, read through the same
- * transform; a missing, deleted or unreadable server copy, an operation and an unreadable copy all
+ * leaves the archive only when it says exactly what the server copy says, both read as the person
+ * wrote them (`asThePersonWrote`); a missing, deleted or unreadable server copy, an operation and an unreadable copy all
  * stay. It runs in its own transaction after listing, so a failure here never hides the archive.
  * Equality with the engine's copy proves the server held this content, not that it still does.
  */
@@ -320,8 +330,8 @@ export async function retireLegacyEchoes(owner: string, readServer: ServerCopyRe
     if (server === null) continue;
     let same = false;
     try {
-      same = JSON.stringify(canonical(asPreviouslyRead(copy.collection, row)))
-        === JSON.stringify(canonical(asPreviouslyRead(copy.collection, server)));
+      same = JSON.stringify(canonical(asThePersonWrote(copy.collection, row)))
+        === JSON.stringify(canonical(asThePersonWrote(copy.collection, server)));
     } catch { undecided += 1; continue; }
     if (same) echoes.set(copy.id, copy.raw);
   }
@@ -366,7 +376,7 @@ export interface LegacyCopyComparison {
   /** The version the copy holds (its `updatedAt`), else when this device saved it. */
   deviceVersionAt: string | null;
   serverVersionAt: string | null;
-  /** Only the fields that differ, read through the previous version's transform, bookkeeping aside. */
+  /** Only the fields that differ, read as the person wrote them, bookkeeping aside. */
   differences: { field: string; device: unknown; server: unknown }[];
 }
 
@@ -394,9 +404,9 @@ function freshnessOf(deviceVersionAt: string | null, serverVersionAt: string | n
 
 const SERMON_ALIASES = { thoughtsBySection: 'structure', draft: 'plan' } as const;
 
-/** Only the fields that differ, read through the previous version's transform, bookkeeping aside. */
+/** Only the fields that differ, read as the person wrote them, bookkeeping aside. */
 function differencesOf(collection: string, row: Record<string, unknown>, server: Record<string, unknown>): LegacyCopyComparison['differences'] {
-  const mine = asPreviouslyRead(collection, row), theirs = asPreviouslyRead(collection, server);
+  const mine = asThePersonWrote(collection, row), theirs = asThePersonWrote(collection, server);
   const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left, false)) === JSON.stringify(canonical(right, false));
   // An alias that repeats its field on both sides is one line, not two. One that drifted apart
   // stays: the previous version read it first on some screens, and any difference the echo check

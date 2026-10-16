@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { isClosedToLegacyWriters, isCollectionServed } from './activation';
 import { assertLegacyWritable, DATA_ENGINE_REQUIRED, isDataEngineRequired, LEGACY_REFUSAL_STATUS, listOwnedDocuments, mutateLegacyResource, updateLegacyResource, upsertLegacySettings } from './legacyBoundary.server';
-import { diffFields, getResourcePolicy } from './protocol';
+import { diffFields, personFields } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { DocumentData, ResourceRef } from './types';
@@ -56,7 +56,7 @@ export async function writeOwnSettings(owner: string, operation: 'bootstrap' | '
   }
   const allowed = operation === 'heartbeat' ? ['lastSeenAt'] : operation === 'bootstrap' ? ['email', 'displayName', 'language']
     : operation === 'language' ? ['language']
-      : getResourcePolicy('users').writableFields.filter(field => !['createdAt', 'updatedAt', 'lastSeenAt'].includes(field));
+      : personFields('users') ?? [];
   if (Object.keys(patch).some(field => !allowed.includes(field))) throw new ServerEditError(INVALID_SETTINGS, 400);
   try { validateResourceDocument('users', patch, { kind: 'update', changedFields: Object.keys(patch) }); }
   catch { throw new ServerEditError(INVALID_SETTINGS, 400); }

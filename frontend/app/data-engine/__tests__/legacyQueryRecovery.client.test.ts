@@ -503,6 +503,32 @@ describe('retiring copies proven to be echoes of the server', () => {
     expect(reader).toHaveBeenCalledTimes(1);
   });
 
+  describe('the settings document, written by the person and by the server', () => {
+    // The shape of the copy the owner reported on 2026-10-15: September's counters on the device, October's on the server.
+    const choices = { id: 'owner', language: 'ru', firstDayOfWeek: 'monday', enablePrepMode: true, preferredText: { providerId: 'openai', modelId: 'm' } };
+    const device = { ...choices, lastSeenAt: '2026-09-28T05:35:58.746Z', paidTier: 'free',
+      usage: { aiUsed: 119, audioSecondsUsed: 2090.88, periodStart: '2026-09-01T00:00:00.000Z', transcriptionSecondsUsed: 3916 } };
+    const stored = { ...choices, lastSeenAt: '2026-10-15T22:07:46.801Z', paidTier: 'tier1', referredBy: 'inviter',
+      promotion: { tier: 'tier2', expiresAt: '2026-12-01T00:00:00.000Z' },
+      usage: { aiUsed: 23, audioSecondsUsed: 1332.84, periodStart: '2026-10-01T00:00:00.000Z', transcriptionSecondsUsed: 0 } };
+
+    it('retires a copy whose choices match the server, whatever the server counted and stamped since', async () => {
+      const disk = installStorageHarness();
+      disk.rows.set(key('users', 'owner'), [copy('users', 'owner', 0, device)]);
+      expect(await retireLegacyEchoes('owner', server({ 'users/owner': stored }))).toEqual({ retired: 1, undecided: 0 });
+      expect(disk.rows.has(key('users', 'owner'))).toBe(false);
+    });
+
+    it('keeps a copy holding a choice the server never received and shows only that choice', async () => {
+      const disk = installStorageHarness();
+      const unsent = copy('users', 'owner', 0, { ...device, firstDayOfWeek: 'sunday' });
+      disk.rows.set(key('users', 'owner'), [unsent]);
+      expect(await retireLegacyEchoes('owner', server({ 'users/owner': stored }))).toEqual({ retired: 0, undecided: 0 });
+      expect(await listLegacyQueryCopies('owner')).toEqual([unsent]);
+      expect(compareLegacyCopy(unsent, stored).differences).toEqual([{ field: 'firstDayOfWeek', device: 'sunday', server: 'monday' }]);
+    });
+  });
+
   it('lists around a damaged group instead of failing the whole archive', async () => {
     const disk = installStorageHarness();
     disk.rows.set(key('councils', 'c1'), { not: 'an array' });
