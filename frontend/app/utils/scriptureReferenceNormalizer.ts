@@ -33,7 +33,7 @@ const aliasesPattern = getReferenceBookAliases()
   .join('|');
 
 const COLON_REFERENCE_PATTERN = new RegExp(
-  `${REFERENCE_PREFIX}(${aliasesPattern})\\s+${NUMBER}\\s*:\\s*${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER})?`,
+  `${REFERENCE_PREFIX}(${aliasesPattern})\\s+${NUMBER}\\s*:\\s*${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER}(?:\\s*:\\s*${NUMBER})?)?`,
   'giu'
 );
 
@@ -48,7 +48,7 @@ const SPOKEN_CHAPTER_REFERENCE_PATTERN = new RegExp(
 );
 
 const TTS_COLON_REFERENCE_PATTERN = new RegExp(
-  `${REFERENCE_PREFIX}(${aliasesPattern})\\.?\\s+${NUMBER}\\s*:\\s*${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER})?`,
+  `${REFERENCE_PREFIX}(${aliasesPattern})\\.?\\s+${NUMBER}\\s*:\\s*${NUMBER}(?:\\s*${RANGE_SEPARATOR}\\s*${NUMBER}(?:\\s*:\\s*${NUMBER})?)?`,
   'giu'
 );
 
@@ -153,12 +153,12 @@ export function normalizeSpokenScriptureReferences(text: string): string {
     value: string,
     matchPattern: RegExp
   ): string =>
-    value.replace(matchPattern, (match: string, prefix: string, bookAlias: string, chapter: string, verse: string, toVerse?: string) => {
+    value.replace(matchPattern, (match: string, prefix: string, bookAlias: string, chapter: string, verse: string, toVerse?: string, endVerse?: string) => {
       if (!hasExplicitReferenceSignal(match, verse)) {
         return match;
       }
 
-      const parseableReference = [bookAlias, chapter, verse, toVerse].filter(Boolean).join(' ');
+      const parseableReference = typeof endVerse === 'string' ? `${bookAlias} ${chapter}:${verse}-${toVerse}:${endVerse}` : [bookAlias, chapter, verse, toVerse].filter(Boolean).join(' ');
       const parsed = parseReferenceText(parseableReference);
 
       if (!parsed) {
@@ -203,7 +203,14 @@ export function normalizeScriptureReferencesForTts(text: string): string {
 
   return text.replace(
     TTS_COLON_REFERENCE_PATTERN,
-    (match: string, prefix: string, bookAlias: string, chapter: string, verse: string, toVerse?: string) => {
+    (match: string, prefix: string, bookAlias: string, chapter: string, verse: string, toVerse?: string, endVerse?: string) => {
+      if (endVerse) {
+        const parsed = parseReferenceText(`${bookAlias} ${chapter}:${verse}-${toVerse}:${endVerse}`, { locale });
+        if (!parsed) return match;
+        const start = formatRussianReferenceForTts(parsed, Number(chapter), Number(verse));
+        const end = formatRussianReferenceForTts(parsed, Number(toVerse), Number(endVerse));
+        return start && end ? `${prefix}${start} — ${end}` : match;
+      }
       const parsed = parseReferenceForTts(bookAlias, chapter, verse, toVerse, locale);
       if (!parsed) {
         return match;

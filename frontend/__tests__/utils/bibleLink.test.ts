@@ -117,8 +117,8 @@ describe('referencesInText — every reference a text names', () => {
   const found = (text: string, locale: 'ru' | 'uk' | 'en' = 'ru') =>
     referencesInText(text, locale).map(({ start, end, raw, reference }) => {
       expect(text.slice(start, end)).toBe(raw);
-      const { book, chapter, fromVerse, toVerse } = reference;
-      return [raw, `${book} ${chapter}${fromVerse ? `:${fromVerse}` : ''}${toVerse ? `-${toVerse}` : ''}`];
+      const { book, chapter, fromVerse, endChapter, toVerse } = reference;
+      return [raw, `${book} ${chapter}${fromVerse ? `:${fromVerse}` : ''}${endChapter ? `-${endChapter}:${toVerse}` : toVerse ? `-${toVerse}` : ''}`];
     });
 
   it('finds a reference inside a sentence, without the words or marks around it', () => {
@@ -156,9 +156,9 @@ describe('referencesInText — every reference a text names', () => {
     expect(found('Рим 8:28;Еф 4:1')).toEqual([['Рим 8:28', 'Romans 8:28'], ['Еф 4:1', 'Ephesians 4:1']]);
   });
 
-  it('gives a passage across a chapter end by its first verse, never as another passage', () => {
+  it('keeps a passage across a chapter end whole', () => {
     // BUG-20261015-cross-chapter-passage-misread: the parser would read it as Isaiah 52:13–53.
-    expect(found('Ис 52:13–53:12')).toEqual([['Ис 52:13', 'Isaiah 52:13']]);
+    expect(found('Ис 52:13–53:12')).toEqual([['Ис 52:13–53:12', 'Isaiah 52:13-53:12']]);
   });
 
   it.each([

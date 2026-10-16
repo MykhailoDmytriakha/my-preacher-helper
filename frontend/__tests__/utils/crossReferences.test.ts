@@ -72,13 +72,14 @@ describe('cross references', () => {
     expect(crossReferencesAt(set, 'kjv', { book: 'Isaiah', chapter: 19, verse: 2 }).map((reference) => reference.fromVerse)).toEqual([5]);
   });
 
-  it('a passage the numbering carries into the next chapter ends at its own chapter\'s last verse, not at its first', () => {
+  it('keeps the exact endpoint when numbering carries a passage into the next chapter', () => {
     // KJV Numbers 29:12-40 is Synodal 29:12-39 and 30:1 (review finding, 2026-10-16: it collapsed to "29:12").
     const set = setOf('1 Kings', { '12:32': [['Numbers', 29, 12, 40, 7]] });
     const anchor = crossReferencesAt(set, 'kjv', { book: '1 Kings', chapter: 12, verse: 32 });
     expect(anchor[0]).toMatchObject({ book: 'Numbers', chapter: 29, fromVerse: 12, toVerse: 40 });
     const synodal = crossReferencesAt(set, 'rst', { book: '1 Kings', chapter: 12, verse: 32 });
-    expect(synodal[0]).toMatchObject({ book: 'Numbers', chapter: 29, fromVerse: 12, toVerse: verseCount('rst', 'Numbers', 29) });
+    expect(synodal[0]).toMatchObject({ book: 'Numbers', chapter: 29, fromVerse: 12, endChapter: 30, toVerse: 1 });
+    expect(crossReferenceLabel(synodal[0], 'rst', 'en')).toBe('Num 29:12-30:1');
     expect(verseCount('rst', 'Numbers', 29)).toBe(39);
   });
 

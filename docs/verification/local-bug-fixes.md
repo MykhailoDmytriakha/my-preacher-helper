@@ -617,3 +617,34 @@ The primary personally inspected before/after320px thought text, after390/1440px
 2. Check one focused section, vertical/horizontal views and a sermon with naturally existing ambiguous and nested thoughts. Check the copy-for-reading view when naturally available; preserve its lack of edit actions. Restore prior layout preferences.
 3. Resize through639/640 and tablet/desktop widths, compare the previous wide appearance, and check drag preview/touch actions only with explicitly disposable data. Actual drag mutation and physical touch acceptance were not executed in this local unit.
 4. Cache the deployed route online, reload it offline, restore network and record build/cache preconditions. Owner visual and physical-device acceptance remain separate; retain the intermittent React185 and first-update offline records until their own proof.
+
+
+## BUG-20261015-cross-chapter-passage-misread
+
+Stage: locally verified and source reviewed; fresh independent acceptance is recorded in the local case before commit. Owner, production and physical-device acceptance pending.
+
+Exact verse spans now carry a distinct `endChapter` with `toVerse`. Old `toChapter` keeps its whole-chapter meaning; a leftover `toChapter` still does not turn an old verse into a new cross-chapter span. Old truncated records without their raw input are not guessed or rewritten. The existing sermon-from-note selection compatibility for old chapter ranges remains.
+
+Complete punctuated range grammar prevents unfinished input from becoming a different passage. Shared numbering enumerates all chapters and preserves exact partial endpoints when moving between Bibles. Formatting, comparison/search, Bible URLs/arrivals, the verse window/picker, mapped cross references, engine validation, public DTO and strict AI processing retain the endpoint. Existing same-chapter numeric URLs remain valid; a cross-chapter end uses `to=53:12`. TTS speaks both chapter endpoints. The AI prompt family moves to v4; paired deterministic fixtures check preservation/cleaning, not live model quality.
+
+| Boundary | Evidence and limit |
+|---|---|
+| Parser/display/prose/URL and numbering | Original three browser labels RED; six original behavioral test failures become green. Added incomplete/reversed/missing endpoint and legacy controls. Exact mappings do not widen into full chapters. |
+| Server/offline/public/AI projections | Engine document validation retains coordinates, public DTO includes endChapter and excludes private snippets, mocked AI processing preserves/deduplicates exact spans. Local back/reload retains all three references. No real server-write ACK was attempted. |
+| Bible and verse window | Actual localhost note quick input retains Isaiah52:13-53:12, Genesis1:1-2:3 and John3:16-4:2. Isaiah opens the exact URL and lights15verses online/offline, including reload without network. Actual plan overlay window lights the same15verses using a clearly isolated owned snapshot fixture. Desktop and fresh390px window/picker were personally viewed. |
+| Legacy and adjacent behavior | Existing chapter/book/verse forms, old mixed shapes, numbered books, locale parsing, same-chapter links, normalizers, public privacy, reader navigation and window dismissal pass. No locale keys or unrelated data writers added. |
+
+Final frozen frontend:28 changed files. Full Jest814passed suites/8581tests,3suites/17tests skipped,131.457s. ESLint0errors/27 inherited warnings. Standalone TypeScript and production build/type check passed. Browser build `NEuq5KmBrqE-Uka95vWvL`, build17.44s; no frontend byte changes between gates and browser proof. Primary note fixture blocked25write attempts and had0page exceptions, then was destroyed. Plan fixture had0write attempts and0page exceptions; original Groups page remains online with no dialogs.
+
+A separate resize defect discovered during visual review remains open as `BUG-20261016-verse-window-resize-loses-passage-position`: an already-open window can lose its scroll position when width changes. Fresh390px opening is verified; this fix does not claim rotation acceptance.
+
+Evidence: local CrossChapter case artifacts, source snapshot, original/final tracker records, unit/browser RED/GREEN, accepted gate logs and verification manifest. Browser profiles and controlled data are explicitly identified; no production deployment occurred.
+
+### Production acceptance after authorized merge
+
+1. Confirm deployed revision and use an authorized disposable test note. Enter the three original cross-chapter ranges, edit one in the picker, save/reload and continue on another device. Verify actual server persistence of endChapter and no unintended metadata/text change.
+2. Open Isaiah52:13-53:12 from the note: correct URL,15highlighted verses ending53:12; verify Genesis1:1-2:3 and John3:16-4:2 similarly. In a test plan and meeting block, open the complete range and verse window.
+3. Check same-chapter verse/range, whole chapter/range and existing old references; switch Bible and check a mapped partial span across chapters. Ensure no old stored reference silently changes meaning.
+4. Publish/read only an owner-approved test share link: exact span visible, private reference snippet absent. If testing AI, compare raw note with v4 output for lost endpoints, widened spans or invented references; record provider/model/version and cost. Do not equate schema success with extraction quality.
+5. Warm the deployed note/Bible, test stable offline opening and reload, restore connection, verify queued edits receive real ACKs. Check phone/tablet/desktop and physical-device input. Keep the separate resize defect visible until its own fix.
+6. Record deployed revision, screenshots, outcomes and cleanup of disposable test records. Production remains pending until this is actually done.

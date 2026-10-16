@@ -9,7 +9,7 @@ import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { newEntryState, parsePlaceParam, readLastPlace, type LastPlace } from '@/components/bible/lastPlace';
 import { readTranslation, saveTranslation } from '@/components/bible/translation';
 import { resolveAppLocale } from '@/utils/appLocale';
-import { parsePassageEnd, wayBackPath } from '@/utils/bibleLink';
+import { parsePassageEndpoint, wayBackPath } from '@/utils/bibleLink';
 import { isBibleId, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
 import { isBrowserOffline } from '@/utils/connectivity';
@@ -32,7 +32,7 @@ export default function BiblePage() {
   const slug = searchParams?.get('book') ?? null;
   const place = parsePlaceParam(searchParams?.get('at'));
   const placeBible = searchParams?.get('tr');
-  const passageEnd = parsePassageEnd(searchParams?.get('to'));
+  const passageEnd = parsePassageEndpoint(searchParams?.get('to'));
   const cameFrom = wayBackPath(searchParams?.get('from'));
   const bookId = slug ? bookIdFromSlug(slug) : undefined;
   const [lastPlace, setLastPlace] = useState<LastPlace | null>(null);
@@ -90,12 +90,12 @@ export default function BiblePage() {
     };
   }, [bible]);
 
-  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number; toVerse?: number }, from?: LastPlace) => {
+  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number; toVerse?: number; endChapter?: number }, from?: LastPlace) => {
     const query = new URLSearchParams({ book: nextSlug });
     if (at) query.set('at', `${at.chapter}:${at.verse}`);
     if (at && bible) query.set('tr', bible);
     // A passage (a cross reference followed) is lit on arrival, as a link's is.
-    if (at?.toVerse) query.set('to', String(Math.max(at.toVerse, at.verse)));
+    if (at?.toVerse) query.set('to', at.endChapter && at.endChapter > at.chapter ? `${at.endChapter}:${at.toVerse}` : String(Math.max(at.toVerse, at.verse)));
     window.history.pushState(newEntryState(from), '', `/bible?${query.toString()}`);
   }, [bible]);
 
@@ -142,7 +142,8 @@ export default function BiblePage() {
       bible={bible}
       initialPlace={place}
       initialBible={isBibleId(placeBible) ? placeBible : bible}
-      passageEnd={passageEnd}
+      passageEnd={passageEnd?.verse}
+      passageEndChapter={passageEnd?.chapter}
       cameFrom={cameFrom}
       onOpenBook={openBook}
       onChangeBible={changeBible}

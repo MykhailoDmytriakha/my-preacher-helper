@@ -124,10 +124,22 @@ describe('analyzeStudyNote', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: "studies.note.analyze_all",
-          promptVersion: 'v3',
+          promptVersion: 'v4',
         }),
       })
     );
+  });
+
+  it('preserves exact cross-chapter endpoints through filtering, normalization and deduplication', async () => {
+    const first = { book: 'John', chapter: 3, fromVerse: 16, endChapter: 4, toVerse: 2 };
+    const second = { ...first, endChapter: 5 };
+    const equalVerses = { book: 'Genesis', chapter: 1, fromVerse: 1, endChapter: 2, toVerse: 1 };
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({ success: true, data: {
+      scriptureRefs: [first, second, first, equalVerses, { ...first, endChapter: 2 }], tags: [],
+    } });
+    const result = await analyzeStudyNote('Read John 3:16-4:2, John 3:16-5:2 and Genesis 1:1-2:1.');
+    expect(result.data?.scriptureRefs).toEqual([first, second, equalVerses].map((ref) => ({ ...ref, bible: 'kjv' })));
+    expect((structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0][0]).toContain('endChapter:53');
   });
 
   it('should handle AI refusal', async () => {

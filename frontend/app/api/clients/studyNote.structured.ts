@@ -191,6 +191,7 @@ Epistles (remove prefixes):
 - Use the appropriate level of specificity for EACH reference:
   * For entire book references (e.g., "the book of Ezekiel"): only include "book" field
   * For entire chapter (e.g., "Psalm 23", "Romans 8"): include "book" and "chapter", omit verse fields
+  * For exact cross-chapter verse ranges (e.g., "Isaiah 52:13-53:12"): include book, chapter:52, fromVerse:13, endChapter:53, toVerse:12. Keep one exact passage; never replace its endpoint with a same-chapter verse or whole chapters.
   * For chapter ranges (e.g., "Matthew 5-7", "chapters 40-48"): include "book", "chapter", and "toChapter"
   * For specific verse: include "book", "chapter", and "fromVerse"
   * For verse range: include "book", "chapter", "fromVerse", and "toVerse"
@@ -414,7 +415,7 @@ export async function analyzeStudyNote(
       // Четыре разных разбора — четыре имени. Раньше все писались под одним, и
       // «плохо разобрал заметку целиком» было неотличимо от «плохо расставил теги».
       promptName: STUDY_NOTE_PROMPT_KEYS[analysisType],
-      promptVersion: "v3",
+      promptVersion: "v4",
       expectedLanguage: telemetryExpectedLanguage === "unknown" ? null : telemetryExpectedLanguage,
       systemPrompt,
       userMessage,
@@ -485,9 +486,12 @@ export async function analyzeStudyNote(
           if (ref.chapter === undefined || ref.fromVerse <= 0) return false;
         }
 
-        // If toVerse is present, fromVerse must also be present and toVerse >= fromVerse
+        // Only an explicit endChapter may put the ending verse in another chapter.
+        if (ref.endChapter !== undefined && (ref.chapter === undefined || ref.endChapter < ref.chapter
+          || ref.fromVerse === undefined || ref.toVerse === undefined)) return false;
         if (ref.toVerse !== undefined) {
-          if (ref.fromVerse === undefined || ref.toVerse < ref.fromVerse) return false;
+          if (ref.fromVerse === undefined || ref.toVerse <= 0
+            || ((ref.endChapter ?? ref.chapter) === ref.chapter && ref.toVerse < ref.fromVerse)) return false;
         }
 
         return true;
@@ -495,12 +499,14 @@ export async function analyzeStudyNote(
       .map(ref => {
         // Normalize redundant fields without early returns to avoid skipping later cleanup
         const normalizedRef = { ...ref };
+        if (normalizedRef.endChapter === normalizedRef.chapter) delete normalizedRef.endChapter;
 
         // Remove toVerse if it equals fromVerse (single verse, not a range)
         if (
           normalizedRef.toVerse !== undefined &&
           normalizedRef.fromVerse !== undefined &&
-          normalizedRef.toVerse === normalizedRef.fromVerse
+          normalizedRef.toVerse === normalizedRef.fromVerse &&
+          (normalizedRef.endChapter === undefined || normalizedRef.endChapter === normalizedRef.chapter)
         ) {
           delete normalizedRef.toVerse;
         }
@@ -524,7 +530,7 @@ export async function analyzeStudyNote(
       // Create a unique key for the reference
       // Use a consistent format: Book:Chapter:FromVerse:ToVerse
       // Note: optional fields might be undefined
-      const key = `${ref.book}|${ref.chapter ?? ''}|${ref.toChapter ?? ''}|${ref.fromVerse ?? ''}|${ref.toVerse ?? ''}`;
+      const key = `${ref.book}|${ref.chapter ?? ''}|${ref.toChapter ?? ''}|${ref.fromVerse ?? ''}|${ref.endChapter ?? ''}|${ref.toVerse ?? ''}`;
 
       if (!uniqueRefsMap.has(key)) {
         uniqueRefsMap.set(key, ref);

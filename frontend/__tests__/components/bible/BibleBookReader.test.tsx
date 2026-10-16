@@ -130,6 +130,14 @@ describe('BibleBookReader', () => {
     expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
   });
 
+  it('lights a URL passage across chapters without lighting either neighbour', async () => {
+    const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} passageEndChapter={2} passageEnd={1} onOpenBook={jest.fn()} />);
+    await screen.findByText(book.chapters[1][0].replace(/^¶/, ''));
+    expect(Array.from(container.querySelectorAll('[data-arrival="on"]'), (row) => row.getAttribute('data-verse'))).toEqual(['1:2', '2:1']);
+    expect(container.querySelector('[data-verse="1:1"]')).not.toHaveAttribute('data-arrival');
+    expect(container.querySelector('[data-verse="3:1"]')).not.toHaveAttribute('data-arrival');
+  });
+
   it('lights the passage a link named, then lets it fade on its own', async () => {
     jest.useFakeTimers({ advanceTimers: true });
     try {

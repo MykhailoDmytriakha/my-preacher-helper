@@ -566,6 +566,8 @@ export interface ScriptureReference {
   toChapter?: number;
   /** Starting verse number. Omit if reference is to entire chapter. */
   fromVerse?: number;
+  /** Exact verse-range endpoint; distinct from the legacy whole-chapter range toChapter. */
+  endChapter?: number;
   toVerse?: number;
   /** Optional user-supplied text snippet (RST or other translation). */
   text?: string;

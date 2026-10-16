@@ -34,6 +34,12 @@ describe('VerseSheet — the passage over the screen', () => {
     expect(fetchBookText).toHaveBeenCalledWith('Ruth', 'rst');
   });
 
+  it('keeps both endpoint chapters in the verse window', async () => {
+    render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 2, endChapter: 2, toVerse: 1, label: 'Ruth 1:2-2:1' }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ruth 1:2-2:1' });
+    await waitFor(() => expect(lit(dialog)).toEqual(['1:2', '1:3', '2:1']));
+  });
+
   it('lights every verse of a chapter named whole', async () => {
     render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, label: 'Руфь 1' }} onClose={jest.fn()} />);
     const dialog = await screen.findByRole('dialog', { name: 'Руфь 1' });

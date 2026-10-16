@@ -8,7 +8,8 @@ import { useTranslation } from 'react-i18next';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
-import { coversChapter, crossReferenceLabel, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
+import { crossReferenceLabel, crossReferenceNumbers, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
+import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -54,12 +55,13 @@ function useBookTexts(books: readonly string[], bible: BibleId): ReadonlyMap<str
   return texts;
 }
 
-function passageText(text: BookText | undefined, reference: CrossReference): string | null {
-  const verses = text?.chapters[reference.chapter - 1];
-  if (!verses) return null;
-  const last = Math.min(reference.toVerse, reference.fromVerse + PASSAGE_VERSES_SHOWN - 1);
-  const words = verses.slice(reference.fromVerse - 1, last).map(verseWords).join(' ');
-  return reference.toVerse > last ? `${words} …` : words;
+function passageText(text: BookText | undefined, reference: CrossReference, bible: BibleId): string | null {
+  if (!text?.chapters[reference.chapter - 1]) return null;
+  const held = versesHeldIn({ ...reference, bible }, bible);
+  const words = held.slice(0, PASSAGE_VERSES_SHOWN)
+    .map((place) => text.chapters[place.chapter - 1]?.[place.verse - 1]).filter((word): word is string => word !== undefined)
+    .map(verseWords).join(' ');
+  return held.length > PASSAGE_VERSES_SHOWN ? `${words} …` : words;
 }
 
 function CloseButton({ onClose }: { onClose: () => void }) {
@@ -112,9 +114,7 @@ function OtherReferences({ references, bible, locale, onPick }: {
     else groups.push({ book: reference.book, items: [reference] });
   }
   /** Within its book's row a link is named by its numbers alone: "12:12", or "46" for a whole chapter. */
-  const numbers = (reference: CrossReference) => coversChapter(reference, bible)
-    ? String(reference.chapter)
-    : `${reference.chapter}:${reference.fromVerse}${reference.toVerse > reference.fromVerse ? `-${reference.toVerse}` : ''}`;
+  const numbers = (reference: CrossReference) => crossReferenceNumbers(reference, bible);
   return (
     <ul>
       {groups.map((group) => (
@@ -171,7 +171,7 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
                     <span className="shrink-0 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</span>
                   </span>
                   <span className="mt-0.5 line-clamp-2 font-serif text-[15px] leading-snug text-gray-700 dark:text-gray-300">
-                    {passageText(texts.get(reference.book), reference) ?? '…'}
+                    {passageText(texts.get(reference.book), reference, bible) ?? '…'}
                   </span>
                 </button>
               </li>
@@ -239,7 +239,7 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
           <ReferenceDetail
             reference={picked}
             label={crossReferenceLabel(picked, bible, locale)}
-            text={passageText(texts.get(picked.book), picked)}
+            text={passageText(texts.get(picked.book), picked, bible)}
             place={place}
             titleId={titleId}
             onBack={() => setPicked(null)}

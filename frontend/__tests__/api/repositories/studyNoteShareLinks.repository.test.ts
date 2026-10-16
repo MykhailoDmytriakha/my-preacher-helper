@@ -302,6 +302,15 @@ describe('StudyNoteShareLinksRepository', () => {
     expect(JSON.stringify(shared)).not.toContain('private annotation');
   });
 
+  it('publishes exact cross-chapter coordinates while withholding the private snippet', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
+    const ref = { id: 'span', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16, endChapter: 4, toVerse: 2 };
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', content: 'Text', scriptureRefs: [{ ...ref, text: 'private span annotation' }] }) });
+    const shared = await repository.readSharedNote('token');
+    expect(shared?.scriptureRefs).toEqual([ref]);
+    expect(JSON.stringify(shared)).not.toContain('private span annotation');
+  });
+
   it('publishes the Bible a reference is numbered by, reading an old one in the language of the note', async () => {
     mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
     // "Пс 50:12" typed in Russian before references kept their Bible was stored as Psalms 51:12.

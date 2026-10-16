@@ -33,6 +33,8 @@ export interface ScriptureRefShape {
   chapter?: number;
   toChapter?: number;
   fromVerse?: number;
+  /** Exact verse-range endpoint; distinct from the legacy whole-chapter range toChapter. */
+  endChapter?: number;
   toVerse?: number;
 }
 
@@ -73,6 +75,9 @@ export function formatScriptureReference(stored: ScriptureRefShape, format: Scri
 
   // A verse wins even when a chapter range is also present — old data carries both.
   if (ref.fromVerse !== undefined) {
+    if (ref.endChapter !== undefined && ref.endChapter !== chapter && ref.toVerse !== undefined) {
+      return `${book}${joint}${chapter}:${ref.fromVerse}-${ref.endChapter}:${ref.toVerse}`;
+    }
     const verses =
       ref.toVerse !== undefined && ref.toVerse !== ref.fromVerse
         ? `${ref.fromVerse}-${ref.toVerse}`
@@ -135,5 +140,5 @@ export function studyNoteSearchText(
  * reference was written in, and may differ from the ones shown; the number a person knows must still find it.
  */
 function storedNumberingSearchText(ref: ScriptureRefShape, locale: AppLocale): string {
-  return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`;
+  return `${getLocalizedBookName(ref.book, locale)} ${ref.chapter}:${ref.fromVerse}${ref.endChapter ? `-${ref.endChapter}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`;
 }

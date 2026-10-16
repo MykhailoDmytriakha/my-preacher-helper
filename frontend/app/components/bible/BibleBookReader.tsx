@@ -13,7 +13,8 @@ import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, bookSlug, fetchBookText, type BookText } from '@/utils/bibleText';
-import { placeIn, placesIn } from '@/utils/versification';
+import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
+import { placeIn } from '@/utils/versification';
 
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
@@ -40,13 +41,14 @@ type BibleBookReaderProps = {
   initialBible: BibleId;
   /** The last verse of the passage a link named (its `to`), numbered as `initialPlace`: lit on arrival. */
   passageEnd?: number | null;
+  passageEndChapter?: number | null;
   /** The screen the link was tapped on (its `from`): the way back when no other book is. */
   cameFrom?: string | null;
   /**
    * Another book, at a place of `bible`: a new history entry that remembers the place it was opened
    * from. A passage's last verse (`toVerse`) is lit on arrival, as a link's is.
    */
-  onOpenBook: (slug: string, place: Place & { toVerse?: number }, from: LastPlace) => void;
+  onOpenBook: (slug: string, place: Place & { toVerse?: number; endChapter?: number }, from: LastPlace) => void;
   /** Another Bible: the page reads the same place in it. */
   onChangeBible: (bible: BibleId) => void;
 };
@@ -205,13 +207,10 @@ function useFollowAfterClose(openAt: CrossReferencePlace | null, close: () => vo
 }
 
 /** The rows of a passage in the ribbon, for the light of an arrival. */
-function passageRows(root: HTMLElement | null, chapter: number, fromVerse: number, toVerse: number): HTMLElement[] {
-  const rows: HTMLElement[] = [];
-  for (let verse = fromVerse; verse <= toVerse; verse += 1) {
-    const row = root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`);
-    if (row) rows.push(row);
-  }
-  return rows;
+function passageRows(root: HTMLElement | null, reference: CrossReference, bible: BibleId): HTMLElement[] {
+  return versesHeldIn({ ...reference, bible }, bible).slice(0, 600)
+    .map((place) => root?.querySelector<HTMLElement>(`[data-verse="${place.chapter}:${place.verse}"]`))
+    .filter((row): row is HTMLElement => Boolean(row));
 }
 
 /**
@@ -275,7 +274,7 @@ function readerFrame(wide: boolean) {
     : { root: 'pb-24', line: 'py-1', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined };
 }
 
-export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
+export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, passageEndChapter = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const locale = resolveAppLocale(i18n.language);
@@ -431,20 +430,18 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     if (target) jumpTo(target);
     else surfaceRef.current.scrollTo(0);
     // The passage the link named, each verse found in this Bible: "Rom 12:1-2" lights both.
-    const link = `${bookId} ${initialBible} ${startChapter}:${startVerse}-${passageEnd}`;
+    const link = `${bookId} ${initialBible} ${startChapter}:${startVerse}-${passageEndChapter ? `${passageEndChapter}:` : ''}${passageEnd}`;
     if (linked && passageEnd) saveEntryArrival({ link, litUntil: Date.now() + ARRIVAL_LIT_MS });
     const arrival = passageEnd ? readEntryArrival() : null;
     const litMs = arrival?.link === link ? arrival.litUntil - Date.now() : 0;
     if (litMs > 0 && passageEnd && startChapter && startVerse) {
-      const last = Math.min(Math.max(passageEnd, startVerse), startVerse + 200);
-      const keys = new Set<string>();
-      for (let verse = startVerse; verse <= last; verse += 1) {
-        placesIn(bible, initialBible, { book: bookId, chapter: startChapter, verse }).forEach((found) => keys.add(`${found.chapter}:${found.verse}`));
-      }
+      const held = versesHeldIn({ bible: initialBible, book: bookId, chapter: startChapter, fromVerse: startVerse,
+        ...(passageEndChapter ? { endChapter: passageEndChapter } : {}), toVerse: passageEnd }, bible);
+      const keys = new Set(held.slice(0, 600).map((found) => `${found.chapter}:${found.verse}`));
       const rows = Array.from(keys, (key) => textRef.current?.querySelector<HTMLElement>(`[data-verse="${key}"]`)).filter((row): row is HTMLElement => Boolean(row));
       lightArrival(rows, litMs);
     }
-  }, [bible, bookId, fitRoom, initialBible, jumpTo, lightArrival, passageEnd, startChapter, startVerse, text]);
+  }, [bible, bookId, fitRoom, initialBible, jumpTo, lightArrival, passageEnd, passageEndChapter, startChapter, startVerse, text]);
 
   // The room follows the page: a resized window, a font that came late, the line growing on a phone.
   useEffect(() => {
@@ -562,14 +559,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   useKeepPlaceOnTextScale(placeRef, jumpTo);
 
   const lightReference = useCallback((reference: CrossReference) => {
-    lightArrival(passageRows(textRef.current, reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
-  }, [lightArrival]);
+    lightArrival(passageRows(textRef.current, reference, bible), ARRIVAL_LIT_MS);
+  }, [bible, lightArrival]);
   const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
     flushPlaceRef.current();
     leavingRef.current = true;
     onOpenBook(
       bookSlug(reference.book),
-      { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse },
+      { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse, ...(reference.endChapter ? { endChapter: reference.endChapter } : {}) },
       { slug: bookSlug(bookId), chapter: origin.chapter, verse: origin.verse, bible }
     );
   }, [bible, bookId, onOpenBook]);

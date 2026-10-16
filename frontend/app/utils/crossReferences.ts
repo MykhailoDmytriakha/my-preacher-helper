@@ -26,6 +26,7 @@ export type CrossReference = {
   chapter: number;
   fromVerse: number;
   toVerse: number;
+  endChapter?: number;
   /** How many independent sources give this link. */
   weight: number;
 };
@@ -95,16 +96,20 @@ export function linksAt(book: CrossRefsBook, place: VersePlace): CrossReference[
   return found;
 }
 
-/**
- * Where a passage moved to `bible` ends. A passage stays within its chapter: an end the numbering
- * moved into the next chapter (KJV Numbers 29:12–40 is Synodal 29:12–39 and 30:1) ends at the last
- * verse of the start's chapter, never collapses to the first verse; an end with no place in `bible`
- * leaves the first verse alone.
- */
-function passageEnd(bible: BibleId, start: VersePlace, end: VersePlace | undefined): number {
-  if (!end || end.book !== start.book || end.chapter < start.chapter) return start.verse;
-  if (end.chapter > start.chapter) return verseCount(bible, start.book, start.chapter);
-  return Math.max(end.verse, start.verse);
+/** Keep the mapped endpoint exact without repeating numbering or clipping at a chapter edge. */
+function mappedEndpoint(start: VersePlace, end: VersePlace | undefined): Pick<CrossReference, 'toVerse' | 'endChapter'> {
+  if (!end || end.book !== start.book || end.chapter < start.chapter) return { toVerse: start.verse };
+  return end.chapter === start.chapter
+    ? { toVerse: Math.max(start.verse, end.verse) }
+    : { endChapter: end.chapter, toVerse: end.verse };
+}
+
+function containsPlace(reference: CrossReference, place: VersePlace): boolean {
+  if (reference.book !== place.book) return false;
+  const start = reference.chapter * 1000 + reference.fromVerse;
+  const end = (reference.endChapter ?? reference.chapter) * 1000 + reference.toVerse;
+  const at = place.chapter * 1000 + place.verse;
+  return start <= at && at <= end;
 }
 
 /**
@@ -125,12 +130,12 @@ export function crossReferencesAt(book: CrossRefsBook, bible: BibleId, place: Ve
         book: start.book,
         chapter: start.chapter,
         fromVerse: start.verse,
-        toVerse: passageEnd(bible, start, end),
+        ...mappedEndpoint(start, end),
         weight: link.weight,
       };
       // A verse pointing at itself is no link.
-      if (reference.book === place.book && reference.chapter === place.chapter && reference.fromVerse <= place.verse && place.verse <= reference.toVerse) continue;
-      const key = `${reference.book}|${reference.chapter}|${reference.fromVerse}|${reference.toVerse}`;
+      if (containsPlace(reference, place)) continue;
+      const key = `${reference.book}|${reference.chapter}|${reference.fromVerse}|${reference.endChapter ?? reference.chapter}|${reference.toVerse}`;
       const known = byPlace.get(key);
       if (!known || known.weight < reference.weight) byPlace.set(key, reference);
     }
@@ -158,13 +163,19 @@ export function countCrossReferences(book: CrossRefsBook, bible: BibleId, chapte
 
 /** A link that covers its whole chapter is named by the chapter alone: "Иер 46". */
 export function coversChapter(reference: CrossReference, bible: BibleId): boolean {
-  return reference.fromVerse === 1 && reference.toVerse >= verseCount(bible, reference.book, reference.chapter);
+  return reference.endChapter === undefined && reference.fromVerse === 1 && reference.toVerse >= verseCount(bible, reference.book, reference.chapter);
 }
 
-/** The link as the reader names places: the book's short name in the interface's language, the numbers of the Bible read. */
+/** The shared numeric face for both a link chip and its full accessible name. */
+export function crossReferenceNumbers(reference: CrossReference, bible: BibleId): string {
+  if (coversChapter(reference, bible)) return String(reference.chapter);
+  const verses = reference.endChapter !== undefined
+    ? `${reference.fromVerse}-${reference.endChapter}:${reference.toVerse}`
+    : reference.toVerse > reference.fromVerse ? `${reference.fromVerse}-${reference.toVerse}` : String(reference.fromVerse);
+  return `${reference.chapter}:${verses}`;
+}
+
+/** The link as the reader names places: localized book, numbers of the Bible read. */
 export function crossReferenceLabel(reference: CrossReference, bible: BibleId, locale: AppLocale): string {
-  const book = getLocalizedAbbrev(reference.book, locale);
-  if (coversChapter(reference, bible)) return `${book} ${reference.chapter}`;
-  const verses = reference.toVerse > reference.fromVerse ? `${reference.fromVerse}-${reference.toVerse}` : String(reference.fromVerse);
-  return `${book} ${reference.chapter}:${verses}`;
+  return `${getLocalizedAbbrev(reference.book, locale)} ${crossReferenceNumbers(reference, bible)}`;
 }

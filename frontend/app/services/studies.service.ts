@@ -70,7 +70,7 @@ function filterNotesClient(notes: StudyNote[], filters: NoteFilters): StudyNote[
   if (search) {
     result = result.filter((note) => {
       const text = `${note.title || ''} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
-        ?.map((ref) => `${ref.book} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
+        ?.map((ref) => `${ref.book} ${ref.chapter}:${ref.fromVerse}${ref.endChapter ? `-${ref.endChapter}:${ref.toVerse}` : ref.toVerse ? '-' + ref.toVerse : ''}`)
         .join(' ')}`.toLowerCase();
       return text.includes(search);
     });

@@ -46,7 +46,7 @@ export function VerseSheet({ reference, onClose, keepVisible }: VerseSheetProps)
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!reference || !mounted) return null;
-  const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}`;
+  const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${reference.endChapter ?? ''}`;
   // Over everything the page draws, a meeting's own full-screen layer included.
   return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} />, document.body);
 }
@@ -203,7 +203,7 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
                 set={crossRefs.set}
                 verseText={crossRefs.verseText}
                 onClose={crossRefs.close}
-                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse })}
+                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
                 layerClassName="z-[260]"
               />
             </>

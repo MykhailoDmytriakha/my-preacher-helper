@@ -43,6 +43,7 @@ export function withStoredBible<T extends ScriptureRefShape>(ref: T, typedIn: Ap
     bible,
     ...(ref.chapter !== undefined ? { chapter: typedPsalmChapter(ref.chapter) } : {}),
     ...(ref.toChapter !== undefined ? { toChapter: typedPsalmChapter(ref.toChapter) } : {}),
+    ...(ref.endChapter !== undefined ? { endChapter: typedPsalmChapter(ref.endChapter) } : {}),
   };
 }
 
@@ -73,6 +74,7 @@ const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
   const rest = { ...ref };
   delete rest.chapter;
   delete rest.toChapter;
+  delete rest.endChapter;
   delete rest.fromVerse;
   delete rest.toVerse;
   return rest;
@@ -82,8 +84,21 @@ const withoutPlace = <T extends ScriptureRefShape>(ref: T): T => {
 function versesOf(bible: BibleId, ref: ScriptureRefShape & { chapter: number }): VersePlace[] {
   const { book, chapter } = ref;
   if (ref.fromVerse !== undefined) {
-    const last = Math.min(ref.toVerse ?? ref.fromVerse, verseCount(bible, book, chapter));
-    return Array.from({ length: Math.max(0, last - ref.fromVerse + 1) }, (_, i) => ({ book, chapter, verse: ref.fromVerse! + i }));
+    const endChapter = ref.endChapter ?? chapter;
+    if (!Number.isSafeInteger(chapter) || !Number.isSafeInteger(endChapter) || chapter < 1
+      || endChapter < chapter || endChapter > chapterCount(bible, book)
+      || !Number.isSafeInteger(ref.fromVerse) || ref.fromVerse < 1
+      || ref.fromVerse > verseCount(bible, book, chapter)) return [];
+    if (ref.endChapter !== undefined && (ref.toVerse === undefined || !Number.isSafeInteger(ref.toVerse)
+      || ref.toVerse < 1 || ref.toVerse > verseCount(bible, book, endChapter)
+      || (endChapter === chapter && ref.toVerse < ref.fromVerse))) return [];
+    const held: VersePlace[] = [];
+    for (let c = chapter; c <= endChapter; c += 1) {
+      const first = c === chapter ? ref.fromVerse : 1;
+      const last = c === endChapter ? Math.min(ref.toVerse ?? ref.fromVerse, verseCount(bible, book, c)) : verseCount(bible, book, c);
+      for (let verse = first; verse <= last; verse += 1) held.push({ book, chapter: c, verse });
+    }
+    return held;
   }
   // A range is read up to the book's last chapter: "Откр 22-999999999999" is not a billion chapters to walk.
   const last = Math.min(ref.toChapter ?? chapter, chapterCount(bible, book));
@@ -124,8 +139,8 @@ export function versesHeldIn(ref: ScriptureRefShape, to: BibleId): VersePlace[] 
 /**
  * The same reference in another Bible. A verse or a range of verses becomes the verses that hold
  * it there (Пс 50:12 → Ps 51:10); a whole chapter stays a whole chapter where it is one there
- * (Пс 22 → Ps 23) and becomes its verses where it is a part (Пс 114 → Ps 116:1-9). A range that
- * falls across two chapters there is given as those chapters (Пс 9:20-25 → Ps 9-10). A place the
+ * (Пс 22 → Ps 23) and becomes its verses where it is a part (Пс 114 → Ps 116:1-9). A partial range that
+ * crosses chapters keeps its exact endpoints; only whole chapters are represented as a chapter range. A place the
  * reference's own Bible does not have is left as it was written, and so is a reference with no Bible.
  */
 export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T {
@@ -139,7 +154,12 @@ export function referenceIn<T extends ScriptureRefShape>(ref: T, to: BibleId): T
   if (!start || !end) return ref;
 
   const there = { ...withoutPlace(ref), bible: to };
-  if (start.chapter !== end.chapter) return { ...there, chapter: start.chapter, toChapter: end.chapter };
+  if (start.chapter !== end.chapter) {
+    const wholeChapters = ref.fromVerse === undefined && start.verse === 1 && end.verse === verseCount(to, book, end.chapter);
+    return wholeChapters
+      ? { ...there, chapter: start.chapter, toChapter: end.chapter }
+      : { ...there, chapter: start.chapter, fromVerse: start.verse, endChapter: end.chapter, toVerse: end.verse };
+  }
   const wholeChapter = ref.fromVerse === undefined && start.verse === 1 && end.verse === verseCount(to, book, end.chapter);
   if (wholeChapter) return { ...there, chapter: start.chapter };
   return { ...there, chapter: start.chapter, fromVerse: start.verse, ...(end.verse !== start.verse ? { toVerse: end.verse } : {}) };
@@ -151,7 +171,8 @@ export function sameScriptureReference(a: ScriptureRefShape, b: ScriptureRefShap
   const right = referenceIn(b, CANONICAL_BIBLE);
   return left.book === right.book
     && left.chapter === right.chapter
-    && (left.toChapter ?? left.chapter) === (right.toChapter ?? right.chapter)
+    && (left.fromVerse !== undefined ? left.chapter : left.toChapter ?? left.chapter) === (right.fromVerse !== undefined ? right.chapter : right.toChapter ?? right.chapter)
+    && (left.endChapter ?? left.chapter) === (right.endChapter ?? right.chapter)
     && left.fromVerse === right.fromVerse
     && (left.toVerse ?? left.fromVerse) === (right.toVerse ?? right.fromVerse);
 }

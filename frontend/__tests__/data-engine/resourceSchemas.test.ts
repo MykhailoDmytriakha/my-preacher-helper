@@ -138,3 +138,13 @@ describe('pure resource document validation', () => {
     expect(() => validateResourceDocument('users', null as unknown as DocumentData, { kind: 'create' })).toThrow('document object');
   });
 });
+
+
+it('retains exact verse endpoints through engine document validation and rejects a malformed endpoint type', () => {
+  const ref = { id: 'span', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16, endChapter: 4, toVerse: 2 };
+  const value = { ...fixtures.studyNotes, scriptureRefs: [ref] };
+  const before = JSON.stringify(value);
+  expect(() => validateResourceDocument('studyNotes', value, { kind: 'create' })).not.toThrow();
+  expect(JSON.stringify(value)).toBe(before);
+  expect(() => validateResourceDocument('studyNotes', { ...value, scriptureRefs: [{ ...ref, endChapter: '4' }] }, { kind: 'update', changedFields: ['scriptureRefs'] })).toThrow();
+});

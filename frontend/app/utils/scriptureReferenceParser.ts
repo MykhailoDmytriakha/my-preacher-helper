@@ -321,7 +321,7 @@ const buildReferenceFromNumbers = (book: string, numbers: number[]): ParsedRefer
     return { book };
   }
 
-  if (numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
+  if (numbers.length > 3 || numbers.some((n) => Number.isNaN(n) || n <= 0)) return null;
 
   const [chapter, fromVerse, maybeTo] = numbers;
 
@@ -332,7 +332,7 @@ const buildReferenceFromNumbers = (book: string, numbers: number[]): ParsedRefer
     };
   }
 
-  if (!chapter || !fromVerse) return null;
+  if (!chapter || !fromVerse || (maybeTo !== undefined && maybeTo < fromVerse)) return null;
 
   const parsed: ParsedReference = {
     book,
@@ -367,6 +367,24 @@ const buildReferenceFromNumbers = (book: string, numbers: number[]): ParsedRefer
  */
 export function parseReferenceText(raw: string, options: { locale?: AppLocale } = {}): ParsedReference | null {
   const { dashNormalized, normalized } = normalizeInput(raw);
+  // A punctuated verse range is one complete expression, never a bag of numbers.
+  // Find its book first: numbered books ("1 John") also contain a digit.
+  for (const number of dashNormalized.matchAll(/\d+/g)) {
+    const name = dashNormalized.slice(0, number.index).trim();
+    const book = name && (exactBook(name, options.locale) ?? resolveBook(name, options.locale)?.book);
+    if (!book) continue;
+    const place = dashNormalized.slice(number.index).trim().replace(/[.,;]$/, '').trim();
+    if (!place.includes('-') || !/[:.]/.test(place)) break;
+    const range = /^(\d+)\s*[:.]\s*(\d+)\s*-\s*(?:(\d+)\s*[:.]\s*)?(\d+)$/.exec(place);
+    if (!range) return null;
+    const chapter = Number(range[1]);
+    const fromVerse = Number(range[2]);
+    const endChapter = range[3] === undefined ? chapter : Number(range[3]);
+    const toVerse = Number(range[4]);
+    if ([chapter, fromVerse, endChapter, toVerse].some((n) => !Number.isSafeInteger(n) || n <= 0)
+      || endChapter < chapter || (endChapter === chapter && toVerse < fromVerse)) return null;
+    return { book, chapter, fromVerse, ...(endChapter !== chapter ? { endChapter } : {}), toVerse };
+  }
   const allTokensNaive = splitTokensNaive(normalized);
 
   // Need at least 1 token for book-only references

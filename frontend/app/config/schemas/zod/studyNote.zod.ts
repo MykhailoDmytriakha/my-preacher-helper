@@ -31,6 +31,7 @@ export const ScriptureRefSchema = z.object({
     .positive()
     .optional()
     .describe("Ending chapter number for chapter ranges (e.g., Matthew 5-7). Must be >= chapter."),
+  endChapter: z.number().int().positive().optional().describe("Ending chapter of an exact verse range crossing a chapter boundary; requires chapter, fromVerse and toVerse. Distinct from whole-chapter toChapter."),
   fromVerse: z
     .number()
     .int()
@@ -42,7 +43,7 @@ export const ScriptureRefSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("Ending verse number if it's a range (must be >= fromVerse)"),
+    .describe("Ending verse of a range. Must be >= fromVerse only when the endpoint is in the same chapter."),
 });
 
 /**

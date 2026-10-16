@@ -29,6 +29,7 @@ function publicReference(value: unknown): ScriptureReference | null {
   const toChapter = finiteNumber(raw.toChapter);
   const fromVerse = finiteNumber(raw.fromVerse);
   const toVerse = finiteNumber(raw.toVerse);
+  const endChapter = finiteNumber(raw.endChapter);
   return {
     id: typeof raw.id === 'string' ? raw.id : '',
     ...(isBibleId(raw.bible) ? { bible: raw.bible } : {}),
@@ -37,6 +38,7 @@ function publicReference(value: unknown): ScriptureReference | null {
     ...(toChapter !== undefined ? { toChapter } : {}),
     ...(fromVerse !== undefined ? { fromVerse } : {}),
     ...(toVerse !== undefined ? { toVerse } : {}),
+    ...(endChapter !== undefined ? { endChapter } : {}),
   };
 }
 

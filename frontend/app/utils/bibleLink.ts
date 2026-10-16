@@ -54,11 +54,16 @@ export function wayBackKind(path: string): WayBackKind {
   return 'page';
 }
 
-/** `to` of the address: the last verse of the passage, or null. */
+/** A URL endpoint: old same-chapter `21`, or an explicit `53:12`. */
+export function parsePassageEndpoint(value: string | null | undefined): { chapter?: number; verse: number } | null {
+  const match = /^(?:(\d{1,3}):)?(\d{1,3})$/.exec(value ?? '');
+  if (!match || Number(match[2]) <= 0 || (match[1] !== undefined && Number(match[1]) <= 0)) return null;
+  return { ...(match[1] !== undefined ? { chapter: Number(match[1]) } : {}), verse: Number(match[2]) };
+}
+
+/** The last verse, retaining the original numeric caller contract. */
 export function parsePassageEnd(value: string | null | undefined): number | null {
-  const match = /^(\d{1,3})$/.exec(value ?? '');
-  const verse = match ? Number(match[1]) : 0;
-  return verse > 0 ? verse : null;
+  return parsePassageEndpoint(value)?.verse ?? null;
 }
 
 /**
@@ -76,7 +81,7 @@ export function referenceFromText(raw: string, bible: BibleId): (ScriptureRefSha
   if (parsed.chapter && !parsed.fromVerse && chapterCount(bible, book.id) === 1) {
     return { bible, book: book.id, chapter: 1, fromVerse: parsed.chapter, toVerse: parsed.toChapter };
   }
-  return { bible, book: book.id, chapter: parsed.chapter, toChapter: parsed.toChapter, fromVerse: parsed.fromVerse, toVerse: parsed.toVerse };
+  return { bible, book: book.id, chapter: parsed.chapter, toChapter: parsed.toChapter, fromVerse: parsed.fromVerse, toVerse: parsed.toVerse, ...(parsed.endChapter !== undefined ? { endChapter: parsed.endChapter } : {}) };
 }
 
 export type BibleLinkOptions = {
@@ -96,8 +101,9 @@ export function bibleHref(ref: ScriptureRefShape, { locale, from }: BibleLinkOpt
     query.set('at', `${stored.chapter}:${stored.fromVerse ?? 1}`);
     // A verse wins over a leftover chapter range, as when the reference is printed.
     if (stored.fromVerse) {
-      const last = stored.toVerse !== undefined && stored.toVerse >= stored.fromVerse ? stored.toVerse : stored.fromVerse;
-      query.set('to', String(last));
+      const crossChapter = stored.endChapter !== undefined && stored.endChapter > stored.chapter;
+      const last = stored.toVerse !== undefined && (crossChapter || stored.toVerse >= stored.fromVerse) ? stored.toVerse : stored.fromVerse;
+      query.set('to', crossChapter ? `${stored.endChapter}:${last}` : String(last));
     }
     query.set('tr', stored.bible ?? referenceBibleFor(locale));
   }
@@ -131,9 +137,13 @@ export function leadingReference(text: string, options: BibleLinkOptions): Leadi
     // The punctuation that ends the reference ("Агг 1:5-14:", "Еф 1:15,") is not part of it.
     const end = (word.index ?? 0) + word[0].replace(/[.,:;]+$/, '').length;
     const candidate = text.slice(0, end);
+    const numericRange = /(\d[\d\s:.\-]*)$/.exec(candidate.replace(/[–—]/g, '-'));
+    if (numericRange?.[0].includes('-') && exactBook(candidate.slice(0, numericRange.index).trim(), options.locale)
+      && !typedReference(candidate, options.locale)) return null;
     if (!isReferenceShaped(candidate, options.locale)) continue;
     // A chapter at least: a book named alone in prose is an ordinary word as often as a reference.
     const ref = typedReference(candidate, options.locale);
+    if ((!ref || !namesAPlace(ref)) && /[-–—]/.test(candidate)) return null;
     const href = ref?.chapter ? bibleHref(ref, options) : null;
     if (ref && href) found = { end, href, reference: ref };
   }
@@ -151,16 +161,23 @@ export function namesAPlace(ref: ScriptureRefShape & { bible: BibleId }): boolea
   const chapters = chapterCount(ref.bible, ref.book);
   if (!ref.chapter || ref.chapter > chapters) return false;
   // A verse wins over a chapter range left beside it; a range of whole chapters ends in the book.
-  if (ref.fromVerse) return ref.fromVerse <= verseCount(ref.bible, ref.book, ref.chapter);
+  if (ref.fromVerse) {
+    if (ref.fromVerse > verseCount(ref.bible, ref.book, ref.chapter)) return false;
+    if (ref.endChapter !== undefined) {
+      return ref.endChapter >= ref.chapter && ref.endChapter <= chapters && ref.toVerse !== undefined
+        && ref.toVerse > 0 && ref.toVerse <= verseCount(ref.bible, ref.book, ref.endChapter)
+        && (ref.endChapter > ref.chapter || ref.toVerse >= ref.fromVerse);
+    }
+    return ref.toVerse === undefined || (ref.toVerse >= ref.fromVerse && ref.toVerse <= verseCount(ref.bible, ref.book, ref.chapter));
+  }
   return ref.toChapter === undefined || ref.toChapter <= chapters;
 }
 
 /**
  * The numbers right after a book's name in prose — "13", "12:1", "12:1–2", "5-7" — and not a digit,
- * a letter or a verse more. A passage across a chapter end ("Ис 52:13–53:12") gives its first verse:
- * the reference model has no such passage yet (BUG-20261015-cross-chapter-passage-misread).
+ * a letter or a verse more. An explicit ending chapter stays with its ending verse.
  */
-const NUMBERS_IN_PROSE = /^\s*(\d+(?:[:.]\d+)?(?:\s*[-–—]\s*\d+)?)(?![\d\p{L}_@/\\]|[:.]\d|\.\p{L})/u;
+const NUMBERS_IN_PROSE = /^\s*(\d+(?:[:.]\d+)?(?:\s*[-–—]\s*\d+(?:[:.]\d+)?)?)(?![\d\p{L}_@/\\]|[:.]\d|:\S|\.\p{L})(?!\s*[-–—]\s*[-–—\d:.])/u;
 /**
  * The words a whole chapter may be followed by and stay a chapter: the word "chapter" itself, or the
  * word that joins the next reference of a list. Any other word makes it prose — "Даниил 3 года",
