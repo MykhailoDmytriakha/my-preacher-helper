@@ -90,10 +90,12 @@ export default function BiblePage() {
     };
   }, [bible]);
 
-  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number }, from?: LastPlace) => {
+  const openBook = useCallback((nextSlug: string, at?: { chapter: number; verse: number; toVerse?: number }, from?: LastPlace) => {
     const query = new URLSearchParams({ book: nextSlug });
     if (at) query.set('at', `${at.chapter}:${at.verse}`);
     if (at && bible) query.set('tr', bible);
+    // A passage (a cross reference followed) is lit on arrival, as a link's is.
+    if (at?.toVerse) query.set('to', String(Math.max(at.toVerse, at.verse)));
     window.history.pushState(newEntryState(from), '', `/bible?${query.toString()}`);
   }, [bible]);
 

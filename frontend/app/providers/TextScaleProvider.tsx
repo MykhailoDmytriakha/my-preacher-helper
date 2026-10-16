@@ -96,6 +96,12 @@ export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children 
   );
 };
 
+/**
+ * The text size, or null outside a provider — for a screen that only follows a change of it (the
+ * Bible reader keeps the verse being read in place), so it renders in tests and previews without one.
+ */
+export const useTextScaleValue = (): number | null => useContext(TextScaleContext)?.scale ?? null;
+
 export const useTextScale = (): TextScaleContextType => {
   const context = useContext(TextScaleContext);
   if (!context) {

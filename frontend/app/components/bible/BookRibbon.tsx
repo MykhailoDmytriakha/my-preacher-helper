@@ -1,8 +1,12 @@
 'use client';
 
+import { ArrowsRightLeftIcon } from '@heroicons/react/20/solid';
 import { Fragment, memo } from 'react';
 
+import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
+
+import type { CrossReferenceCount } from '@/utils/crossReferences';
 
 /*
  * A BOOK OF THE BIBLE AS ONE RIBBON — chapters one after another, each verse a row with its number —
@@ -39,26 +43,72 @@ const ARRIVAL_CLASSES = [
   'before:transition-[background-color] before:duration-[3600ms] before:ease-out data-[arrival=on]:before:duration-0',
   'data-[arrival=on]:before:bg-[#e8e8fd] dark:data-[arrival=on]:before:bg-[#272f51]',
 ].join(' ');
-function VerseRow({ chapter, verse, raw, lang }: { chapter: number; verse: number; raw: string; lang: string }) {
+/**
+ * Cross references drawn with the verses (`utils/crossReferences.ts` counts them): a verse that has
+ * links carries a chip with the count of its main ones — or of all, as the person chose — and its
+ * number opens them too, so a verse with no main link still leads to the rest.
+ */
+export type RibbonCrossRefs = {
+  counts: ReadonlyMap<string, CrossReferenceCount>;
+  mode: 'main' | 'all';
+  onOpen: (chapter: number, verse: number) => void;
+  verseLabel: (verse: number) => string;
+  chipLabel: (verse: number, count: number) => string;
+};
+
+const VERSE_NUMBER_CLASSES = 'w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500';
+
+/** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
+const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
+
+function VerseRow({ chapter, verse, raw, lang, crossRefs }: { chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs }) {
   const { opensParagraph, segments } = parseVerse(raw);
+  const count = crossRefs?.counts.get(`${chapter}:${verse}`);
+  const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
     <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: 'var(--reading-top)' }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
-      <span className="w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500">
-        {verse}
-      </span>
+      {crossRefs && count ? (
+        <button
+          type="button"
+          onClick={() => crossRefs.onOpen(chapter, verse)}
+          aria-label={crossRefs.verseLabel(verse)}
+          className={`${VERSE_NUMBER_CLASSES} self-start hover:text-indigo-600 dark:hover:text-indigo-300`}
+        >
+          {verse}
+        </button>
+      ) : (
+        <span className={VERSE_NUMBER_CLASSES}>{verse}</span>
+      )}
       {/* The text is in its Bible's language whatever the interface speaks: a screen reader reads it so. */}
-      <p lang={lang} className="min-w-0 flex-1 font-serif text-[1.1875rem] leading-[1.65] text-gray-800 dark:text-gray-100">
+      <p lang={lang} style={VERSE_TEXT_STYLE} className="min-w-0 flex-1 font-serif leading-[1.65] text-gray-800 dark:text-gray-100">
         {segments.map((segment, index) =>
           segment.kind === 'break' ? <br key={index} /> : <Fragment key={index}><Segment segment={segment} /></Fragment>
         )}
+        {crossRefs && shown > 0 ? (
+          <>
+            {' '}
+            <Chip
+              size="sm"
+              tone="indigo"
+              weight="bold"
+              icon={<ArrowsRightLeftIcon className="h-3 w-3" aria-hidden="true" />}
+              ariaLabel={crossRefs.chipLabel(verse, shown)}
+              onClick={() => crossRefs.onOpen(chapter, verse)}
+              className="align-[0.15em] font-sans"
+              data-testid={`cross-refs-${chapter}:${verse}`}
+            >
+              {shown}
+            </Chip>
+          </>
+        ) : null}
       </p>
     </div>
   );
 }
 
 /** The whole book as one ribbon: chapters follow each other with only a thin line between them. */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord }: { text: BookText; lang: string; chapterWord: (chapter: number) => string }) {
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs }: { text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs }) {
   return (
     <>
       {text.chapters.map((verses, chapterIndex) => {
@@ -72,7 +122,7 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord }: 
               <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
             </div>
             {verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} />
+              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} />
             ))}
           </section>
         );

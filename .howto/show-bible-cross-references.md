@@ -1,0 +1,25 @@
+when: cross references · cross-references · parallel passages · TSK · OpenBible · MyBible crossreferences module · .crossreferences.SQLite3 · chip beside a verse · bible-crossrefs · build-bible-crossrefs · crossReferencesAt · перекрёстные ссылки · параллельные места · метка у стиха · ссылки к стиху · набор ссылок · сокровищница TSK
+
+# Show and rebuild the Bible's cross references
+
+A verse of the reader carries a chip with the number of its main links; the chip or the verse number opens the window of its links, and "Open" goes to the passage with the way back to the verse. The data is ONE set made from fourteen MyBible modules (the owner, 2026-10-15: "a set, not a list"), one file per book in `frontend/public/bible-crossrefs/v1/`, kept in the King James numbering.
+
+## How
+
+- A screen never reads the set itself. `frontend/app/utils/crossReferences.ts` answers "this verse, in this Bible → its links, as places of the same Bible": `crossReferencesAt(set, bible, place)`, `countCrossReferences` for the chips, `crossReferenceLabel` for names, `loadCrossRefs(bookId)` to fetch a book's file. Numbering moves only through `utils/versification` (a link to KJV Ps 18:10–12 is Synodal Ps 17:11–13).
+- A screen that draws a book with `BookRibbon` gets everything from `useBookCrossRefs(bookId, bible, text, 'reader' | 'window')` (`frontend/app/components/bible/useBookCrossRefs.ts`): pass `ribbon` to `<BookRibbon crossRefs>` and render `<CrossReferenceSheet>` with `openAt`, `set`, `close`. The reader (`BibleBookReader`) and the passage window (`VerseSheet`) are the two users.
+- What shows is the person's choice on the device, `crossReferencePrefs.ts` (`show`, `inWindow`, `mode` main/all), set in the cross-reference section of the reader's "T" menu (`CrossReferenceSettings` passed as children to `FloatingTextScaleControls`). A passage window shows chips only with `inWindow`.
+- Main = at least three INDEPENDENT sources (`MAIN_REFERENCE_WEIGHT`). The weight is counted by families: TSK, TSK2 and OpenBible are one voice (OpenBible is 97% TSK), Pa and PP one, the Slovak Jerusalem Bible and the Studium Biblicum one.
+- Rebuild the set from the modules (kept outside the repo, `~/MyProjects/bible-modules/crossreferences`): from `frontend/`, `node scripts/build-bible-crossrefs.mjs <modules folder> public/bible-crossrefs/v2`, then change `BIBLE_CROSSREFS_VERSION` in `app/utils/bibleCrossRefsCache.ts` to `v2`. The script refuses a folder that is not empty: a published set is never rewritten, the service worker keeps it forever (`app/sw.ts`, its own CacheFirst rule and cache `bible-crossrefs`).
+- The merge rule lives in the script only: inside one target chapter a range within another melts into it (1–4 takes 2–3), overlapping ranges join, touching ranges stay apart; modules marked `requires_reverse_processing` get the other direction added; `russian_numbering` modules are moved to KJV first.
+
+## Traps
+
+- The set loads AFTER the book's text (`useBookCrossRefs`): fetched first, it took the reader's failed-network answer in `BibleBookReader.test` and the text loaded instead of the error — and on a weak network the text must not wait behind the links.
+- Counting the chips moves ~150 000 places for the Psalter; `crossReferences.ts` remembers moved places (130 → 71 ms on a computer). Do not call `placesIn` per link elsewhere.
+- The reader's text follows `--text-scale` now; a size change keeps the verse being read at the top (`useKeepPlaceOnTextScale` — the provider writes the size in its own effect, after the reader's, so the jump waits a frame).
+- `CrossReferenceSheet` over the passage window (`z-[260]` over `z-[250]`) has its own focus trap; the window's trap yields to the topmost layer.
+
+## Why
+
+- 2026-10-15/16: the owner chose a count chip on every width, the settings under the text size in the "T" menu, and all fourteen modules as one set (case `.cases/2026-10-15-perekrestnye-ssylki-v-chitalke`, canvas https://claude.ai/artifact/36kE3nv1JyY1tw4ZibMA2s).

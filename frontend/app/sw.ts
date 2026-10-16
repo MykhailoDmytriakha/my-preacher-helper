@@ -1,6 +1,7 @@
 import { defaultCache } from "@serwist/next/worker";
 import { CacheFirst, NetworkOnly, Serwist } from "serwist";
 
+import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
 import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
 import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
 
@@ -70,6 +71,25 @@ const runtimeCaching: RuntimeCaching[] = [
           if (!isBibleTextAnswer(response)) return null;
           const data: unknown = await response.clone().json().catch(() => null);
           return isBookShaped(data) ? response : null;
+        },
+        handlerDidError: async ({ request }) => fetch(request).catch(() => new Response(null, { status: 503 })),
+      }],
+    }),
+  },
+  /*
+   * THE CROSS-REFERENCE SET STAYS ON THE DEVICE, on the same terms as the text: one file per book,
+   * never changed under its address (`utils/bibleCrossRefsCache.ts`), kept without expiry in its own
+   * cache, and only a file shaped like the set is ever kept.
+   */
+  {
+    matcher: ({ url }) => url.origin === self.origin && isBibleCrossRefsPath(url.pathname),
+    handler: new CacheFirst({
+      cacheName: BIBLE_CROSSREFS_CACHE,
+      plugins: [{
+        cacheWillUpdate: async ({ response }) => {
+          if (!isBibleTextAnswer(response)) return null;
+          const data: unknown = await response.clone().json().catch(() => null);
+          return isCrossRefsShaped(data) ? response : null;
         },
         handlerDidError: async ({ request }) => fetch(request).catch(() => new Response(null, { status: 503 })),
       }],

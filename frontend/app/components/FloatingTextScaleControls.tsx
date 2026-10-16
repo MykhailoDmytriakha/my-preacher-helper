@@ -1,17 +1,23 @@
 'use client';
 
 import { Type } from 'lucide-react';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TextScaleControls } from './TextScaleControls';
 
 interface FloatingTextScaleControlsProps {
   className?: string;
+  /**
+   * The screen's own text settings, shown under the size: the Bible reader puts its cross-reference
+   * section here. Without them the island stays the bare size capsule every other screen has.
+   */
+  children?: ReactNode;
 }
 
 const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
-  className = ''
+  className = '',
+  children,
 }) => {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -116,7 +122,30 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
           <Type className="w-6 h-6 transition-transform duration-200 group-hover:scale-110" />
         </button>
 
-        {isOpen && (
+        {/*
+          A screen with settings of its own gets a card instead of the capsule: the size on top,
+          exactly as everywhere, the screen's settings under a line. Same corner, same unfolding.
+        */}
+        {isOpen && children ? (
+          <div
+            ref={modalRef}
+            className="
+              absolute bottom-0 right-0 origin-bottom-right
+              w-[min(21rem,calc(100vw-2rem))] rounded-3xl border border-gray-200/80 dark:border-white/10
+              bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl
+              shadow-xl shadow-black/10 dark:shadow-black/50
+              p-2 animate-in zoom-in-90 fade-in duration-200 ease-out
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('textScale.title')}
+          >
+            <TextScaleControls showPercentage={true} className="justify-center" />
+            <div className="mx-2 mt-1 border-t border-gray-200 pt-1 pb-1 dark:border-gray-700">
+              {children}
+            </div>
+          </div>
+        ) : isOpen && (
           <div
             ref={modalRef}
             className="

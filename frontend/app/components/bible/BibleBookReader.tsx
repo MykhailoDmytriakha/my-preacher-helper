@@ -4,8 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
+import { useTextScaleValue } from '@/providers/TextScaleProvider';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
@@ -17,10 +19,14 @@ import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
 import { bookSequence, booksOf } from './bookOrder';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
+import { CrossReferenceSettings } from './CrossReferenceSettings';
+import { CrossReferenceSheet, type CrossReferencePlace } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
 import { buildMinimapLayout } from './minimapLayout';
+import { useBookCrossRefs } from './useBookCrossRefs';
 
 import type { AppLocale } from '@/utils/appLocale';
+import type { CrossReference } from '@/utils/crossReferences';
 
 type Place = { chapter: number; verse: number };
 
@@ -35,8 +41,11 @@ type BibleBookReaderProps = {
   passageEnd?: number | null;
   /** The screen the link was tapped on (its `from`): the way back when no other book is. */
   cameFrom?: string | null;
-  /** Another book, at a place of `bible`: a new history entry that remembers the place it was opened from. */
-  onOpenBook: (slug: string, place: Place, from: LastPlace) => void;
+  /**
+   * Another book, at a place of `bible`: a new history entry that remembers the place it was opened
+   * from. A passage's last verse (`toVerse`) is lit on arrival, as a link's is.
+   */
+  onOpenBook: (slug: string, place: Place & { toVerse?: number }, from: LastPlace) => void;
   /** Another Bible: the page reads the same place in it. */
   onChangeBible: (bible: BibleId) => void;
 };
@@ -153,6 +162,68 @@ function PhoneBar({ wayBack, onWayBack, showPill, bookId, bible, currentChapter,
   );
 }
 
+/**
+ * A new text size (the "T" button) reflows the whole book: the verse being read is taken before the
+ * page moves and put back at the reading top once the size is on the page — the provider writes it
+ * in its own effect, after this one, so the jump waits a frame.
+ */
+function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (place: Place) => void) {
+  const scale = useTextScaleValue();
+  const seenRef = useRef(scale);
+  useEffect(() => {
+    if (seenRef.current === scale) return undefined;
+    seenRef.current = scale;
+    const place = placeRef.current;
+    if (!place) return undefined;
+    const frame = window.requestAnimationFrame(() => jumpTo(place));
+    return () => window.cancelAnimationFrame(frame);
+  }, [jumpTo, placeRef, scale]);
+}
+
+/** The rows of a passage in the ribbon, for the light of an arrival. */
+function passageRows(root: HTMLElement | null, chapter: number, fromVerse: number, toVerse: number): HTMLElement[] {
+  const rows: HTMLElement[] = [];
+  for (let verse = fromVerse; verse <= toVerse; verse += 1) {
+    const row = root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`);
+    if (row) rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * FOLLOWING A CROSS REFERENCE. Within the book: a jump to the passage, lit, and the verse it was opened
+ * from becomes the way back ("← Ис 19:1") until it is taken. Into another book: `openElsewhere`, a new
+ * history entry like any other book. `back` takes the way back within the book when there is one,
+ * else does what the reader's way back always did.
+ */
+function useCrossReferenceTravel({ bookId, abbrev, jumpTo, light, openElsewhere }: {
+  bookId: string;
+  abbrev: string;
+  jumpTo: (place: Place) => void;
+  light: (reference: CrossReference) => void;
+  openElsewhere: (reference: CrossReference, origin: Place) => void;
+}) {
+  const [returnTo, setReturnTo] = useState<Place | null>(null);
+  const open = useCallback((reference: CrossReference, origin: Place) => {
+    if (reference.book !== bookId) {
+      openElsewhere(reference, origin);
+      return;
+    }
+    setReturnTo(origin);
+    jumpTo({ chapter: reference.chapter, verse: reference.fromVerse });
+    light(reference);
+  }, [bookId, jumpTo, light, openElsewhere]);
+  const back = (otherwise: () => void) => {
+    if (!returnTo) {
+      otherwise();
+      return;
+    }
+    jumpTo(returnTo);
+    setReturnTo(null);
+  };
+  return { open, back, label: returnTo ? `${abbrev} ${returnTo.chapter}:${returnTo.verse}` : null };
+}
+
 /** The way back, in the Bible being read even when the place was left in another one. */
 function wayBackPlace(from: LastPlace | null, bookId: string | undefined, bible: BibleId): Place | null {
   if (!from || !bookId) return null;
@@ -223,6 +294,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   }, [bible, bookId, attempt]);
 
   const text = state.status === 'ready' ? state.text : null;
+  // Cross references: the chips with the verses and the window of one verse's links.
+  const crossRefs = useBookCrossRefs(bookId, bible, text, 'reader');
+  const closeCrossRefs = crossRefs.close;
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
@@ -427,6 +501,30 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     onOpenBook(bookSlug(chosenBook), place, { slug: bookSlug(bookId), chapter: here.chapter, verse: here.verse, bible });
   }, [bible, bookId, currentChapter, jumpTo, onOpenBook]);
 
+  // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
+  // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
+  // verse. Either way the passage is lit on arrival.
+  useKeepPlaceOnTextScale(placeRef, jumpTo);
+
+  const lightReference = useCallback((reference: CrossReference) => {
+    lightArrival(passageRows(textRef.current, reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
+  }, [lightArrival]);
+  const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
+    flushPlaceRef.current();
+    leavingRef.current = true;
+    onOpenBook(
+      bookSlug(reference.book),
+      { chapter: reference.chapter, verse: reference.fromVerse, toVerse: reference.toVerse },
+      { slug: bookSlug(bookId), chapter: origin.chapter, verse: origin.verse, bible }
+    );
+  }, [bible, bookId, onOpenBook]);
+  const travel = useCrossReferenceTravel({ bookId, abbrev, jumpTo, light: lightReference, openElsewhere });
+  const followReference = travel.open;
+  const openReference = useCallback((reference: CrossReference, origin: CrossReferencePlace) => {
+    closeCrossRefs();
+    followReference(reference, origin);
+  }, [closeCrossRefs, followReference]);
+
   // The same place in another Bible: this one is written down first, and the page opens the book
   // in the other Bible, which finds it there.
   const changeBible = useCallback((next: BibleId) => {
@@ -441,8 +539,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // Back is a swap: from Genesis 3 back to Romans 5, and that entry offers Genesis 3 again.
   // Opened from a screen of the app (a note's reference) and no other book read since: back to it.
   const cameFromLabel = !fromLabel && cameFrom ? t(`bible.wayBack.${wayBackKind(cameFrom)}`) : null;
-  const wayBackLabel = fromLabel ?? cameFromLabel;
-  const goBack = () => {
+  // A cross reference followed within the book comes first: its way back is to the very verse.
+  const wayBackLabel = travel.label ?? fromLabel ?? cameFromLabel;
+  const goBack = () => travel.back(() => {
     if (fromPlace && fromBookId) {
       openPlace(fromBookId, { chapter: fromPlace.chapter, verse: fromPlace.verse });
     } else if (cameFrom) {
@@ -450,7 +549,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       leavingRef.current = true;
       router.push(cameFrom);
     }
-  };
+  });
 
   return (
     <div className={`mx-auto w-full max-w-7xl ${wide ? '' : 'pb-24'}`} style={{ '--reading-top': `${readingTop}px` } as CSSProperties}>
@@ -484,7 +583,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
             ref={textRef}
             className="isolate min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900"
           >
-            <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} />
+            <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
             <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
           </article>
           {wide ? (
@@ -507,6 +606,22 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       {!wide && text ? (
         <PhoneBar wayBack={wayBackLabel} onWayBack={goBack} showPill={rowGone} bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={openPlace} />
       ) : null}
+
+      <CrossReferenceSheet
+        at={crossRefs.openAt}
+        bookId={bookId}
+        bible={bible}
+        locale={locale}
+        set={crossRefs.set}
+        verseText={crossRefs.verseText}
+        onClose={crossRefs.close}
+        onOpenReference={openReference}
+      />
+      {/* The "T" of every reading screen — the text size — and here the cross references under it.
+          On a phone it stands above the bar with the way back and the book's pill. */}
+      <FloatingTextScaleControls className="max-md:!bottom-24">
+        <CrossReferenceSettings />
+      </FloatingTextScaleControls>
     </div>
   );
 }
