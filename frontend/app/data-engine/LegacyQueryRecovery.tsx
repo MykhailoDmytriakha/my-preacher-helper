@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { Chip } from '@/components/ui/Chip';
+import FormDialog from '@/components/ui/FormDialog';
 import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
 import { getCookieLanguage } from '@/services/userSettings.service';
@@ -13,13 +13,13 @@ import { fieldLabel } from '@/utils/storedFieldLabel';
 import { DEFAULT_LANGUAGE } from '@locales/constants';
 import { i18n } from '@locales/i18n';
 
+import { BOOKKEEPING, fingerprint, reviewOf, type Change, type ChangeKind, type ChangeReader, type Review } from './legacyCopyChanges';
 import {
   ARCHIVED_COLLECTIONS, compareLegacyCopy, listLegacyQueryCopies, preserveLegacyQueryCache, removeLegacyCopies, retireLegacyEchoes,
-  type CopyFreshness, type LegacyCopyComparison, type LegacyQueryCopy, type ServerCopyReader,
+  type LegacyCopyComparison, type LegacyQueryCopy, type ServerCopyReader,
 } from './legacyQueryRecovery.client';
 import { createIndexedDbSnapshots } from './snapshots.client';
 
-import type { ChipTone } from '@/utils/themeColors';
 
 /** Reads the server copy the engine already holds on this device — no request leaves the browser. */
 function engineServerCopies(owner: string): ServerCopyReader {
@@ -98,43 +98,88 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
 // Every archived collection is shown by name, so each one has a label in legacyRecovery.collection.
 const NAMED_COLLECTIONS = new Set(ARCHIVED_COLLECTIONS);
 
-/** Bookkeeping never differs in words the person wrote; sorted keys keep both sides line-aligned. */
-const HIDDEN_KEYS = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);
+/** Bookkeeping never differs in words the person wrote; sorted keys keep a copy readable. */
 const forDisplay = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(forDisplay);
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().filter(key => !HIDDEN_KEYS.has(key))
+  return Object.fromEntries(Object.keys(value).sort().filter(key => !BOOKKEEPING.has(key))
     .map(key => [key, forDisplay((value as Record<string, unknown>)[key])]));
 };
 
+/** Choices named like references: which AI provider and model the person picked is theirs to see. */
+const CHOICES = new Set(['providerId', 'modelId', 'preferredProviderId', 'preferredModelId']);
+/**
+ * Who a record belongs to and what it points at are never the person's words (every such field in
+ * models.ts holds a generated id): a nested value reads without them. Inside a list item that leaves
+ * or arrives they go with the item, unreported; anywhere else a difference in them is named.
+ */
+const isReference = (key: string) => !CHOICES.has(key)
+  && (key === 'id' || key === 'userId' || key === 'uid' || key === 'ownerId' || /[a-z]Ids?$/.test(key));
+/** Parts of a list item that say where or when it sits, not what it says. */
+const ITEM_PLACEMENT = new Set(['position', 'isLocked']);
+/** A value with no words in it: a mark, a number, a flag — or a list of those. */
+const isToken = (value: unknown): boolean => value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean'
+  || (typeof value === 'string' && !/\s/.test(value)) || (Array.isArray(value) && value.every(isToken));
+/**
+ * The one rule for what a copy's lines leave out: a reference, or a list item's placement, that holds
+ * no words. Words are shown under any key; whatever this leaves out is what `unseen` reports.
+ */
+const leftOut = (key: string, value: unknown, inItem: boolean) => (isReference(key) || (inItem && ITEM_PLACEMENT.has(key))) && isToken(value);
+/** The parts a list item is named by, in the order they are tried. */
+const ITEM_NAMES = ['text', 'title', 'name', 'question', 'decision', 'answerText'];
+
 const ACTION_FAILED = 'legacyRecovery.actionFailed';
-const BUTTON = 'rounded-lg px-3 py-1.5 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:opacity-60';
-const PRIMARY = `${BUTTON} bg-amber-600 text-white hover:bg-amber-700`;
-const SECONDARY = `${BUTTON} border border-amber-300 text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20`;
-const QUIET = `${BUTTON} px-2 text-amber-900/80 underline-offset-2 hover:underline dark:text-amber-200/80`;
-const DANGER = `${BUTTON} bg-rose-600 text-white hover:bg-rose-700`;
-const CONTENT = 'max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 px-2 py-1 font-mono text-xs text-gray-900 dark:bg-black/20 dark:text-gray-100';
+const BUTTON = 'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-60 dark:focus-visible:ring-offset-gray-900';
+const ACCEPT = `${BUTTON} bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-500`;
+const OUTLINE = `${BUTTON} border border-gray-300 bg-white text-gray-800 hover:bg-gray-50 focus-visible:ring-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700`;
+const DANGER = `${BUTTON} bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-rose-500`;
+const DARK = `${BUTTON} bg-gray-900 text-white hover:bg-gray-800 focus-visible:ring-gray-500 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white`;
+const QUIET = 'min-h-[40px] rounded-lg px-3 text-sm text-gray-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-300';
+const RAW = 'mt-1 whitespace-pre-wrap break-words rounded-lg bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+const WRAP = 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]';
+
+/** How each kind of change looks: the device's side struck in red, the app's side in green. */
+const KIND: Record<ChangeKind, { sign: string; label: string; frame: string; head: string }> = {
+  added: { sign: '+', label: 'legacyRecovery.kindAdded', frame: 'border-green-200 dark:border-green-500/30', head: 'bg-green-50 text-green-800 dark:bg-green-500/10 dark:text-green-200' },
+  removed: { sign: '−', label: 'legacyRecovery.kindRemoved', frame: 'border-rose-200 dark:border-rose-500/30', head: 'bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-200' },
+  replaced: { sign: '±', label: 'legacyRecovery.kindReplaced', frame: 'border-gray-200 dark:border-gray-600', head: 'bg-gray-100 text-gray-700 dark:bg-gray-700/60 dark:text-gray-100' },
+};
 
 interface ArchiveView { owner: string; copies: LegacyQueryCopy[]; comparisons: Record<string, LegacyCopyComparison>; failed: boolean }
 
 /**
- * COPIES FROM THE PREVIOUS VERSION, LAID OUT FOR A DECISION.
+ * A decision belongs to the comparison it was made on: a copy replaced under its id, or a server
+ * copy that changed meanwhile, starts undecided — no acceptance moves to a change it was not made on.
+ */
+const decisionKey = (copy: LegacyQueryCopy, comparison: LegacyCopyComparison | undefined) =>
+  `${copy.id}\n${copy.raw}\n${comparison?.kind === 'row' && comparison.rows ? fingerprint(comparison.rows.server) : ''}`;
+const changeKeys = (review: Review | undefined) => (review?.fields ?? []).flatMap(field => field.rows.flatMap(row => ('change' in row ? [row.change.key] : [])));
+
+/**
+ * COPIES FROM THE PREVIOUS VERSION, REVIEWED AS CHANGES.
  *
- * Each remaining copy is shown against the server copy the engine holds on this device: which
- * side changed last, and only the fields that differ — the device's line to go, the server's to
- * stay, as in a diff. No copy leaves without a decision made while its difference or a question
- * is on screen: a copy with a visible difference can keep the server version in one press; any
- * other copy, and "Accept everything from the server", ask first — no date proves whose words are newer.
+ * A thin strip says how many records on this device differ from the app; it opens the review.
+ * Each copy is read against the server copy the engine holds on this device and laid out as
+ * changes — added, removed, replaced — the device's side to go, the app's to stay. Every change
+ * is accepted on its own; accepting decides nothing by itself and closing the review removes
+ * nothing. A copy leaves the device only when the person removes it: one copy whose changes are all
+ * decided, with its raw data a press away, or — once everything is decided — every copy holding
+ * nothing the review could not show, at once. "Copy" takes the device's words for the person to
+ * paste; nothing is written back. A copy whose difference cannot all be shown as changes, and any
+ * copy with nothing to compare — an unsent action, a document not read here yet or deleted on the
+ * server, an unreadable copy — shows what it holds and asks before it goes. "Accept all" asks
+ * first: no date proves whose words are newer.
  */
 export function LegacyQueryCopies({ owner }: { owner: string }) {
   const { t } = useTranslation();
   const [state, setState] = useState<ArchiveView | null>(null);
   const [version, setVersion] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  // Accepted changes by the comparison they were made on; each key is the change's own content.
+  const [accepted, setAccepted] = useState<Record<string, readonly string[]>>({});
   // The copies the question was asked about: a copy archived meanwhile is not removed with them.
   const [confirmAll, setConfirmAll] = useState<readonly LegacyQueryCopy[] | null>(null);
-  // Rows and line diffs render only once opened: a closed <details> still renders its children.
-  const [listOpen, setListOpen] = useState(false);
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
     onError: () => { toast.error(t('common.saveError')); },
@@ -160,7 +205,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
           if (!servers.has(document)) servers.set(document, reader(copy.collection, copy.documentId).catch(() => undefined));
           // One malformed copy is shown as "nothing to compare with"; it never hides the others.
           try { comparisons[copy.id] = compareLegacyCopy(copy, await servers.get(document)); }
-          catch { comparisons[copy.id] = { kind: 'row', server: 'unknown', freshness: 'unknown', deviceVersionAt: null, serverVersionAt: null, differences: [] }; }
+          catch { comparisons[copy.id] = { kind: 'row', server: 'unknown', freshness: 'unknown', deviceVersionAt: null, serverVersionAt: null, differences: [], rows: null }; }
         }
         if (!isLatest()) return;
         waiting = Object.values(comparisons).some(comparison => comparison.server === 'missing');
@@ -184,11 +229,24 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
   }, [owner, version]);
 
   const current = state?.owner === owner ? state : null;
-  const { fieldName, shown } = useCopyFormatting();
+  const formatting = useCopyFormatting();
+  const { reader, read } = formatting;
+  // Read as changes only while the review is open: the strip needs a count, not the diffs.
+  const reviews = useMemo(() => {
+    const result: Record<string, Review> = {};
+    if (!open) return result;
+    for (const copy of current?.copies ?? []) {
+      const comparison = current?.comparisons[copy.id];
+      if (comparison?.kind !== 'row' || comparison.server !== 'present' || !comparison.rows) continue;
+      const review = reviewOf(copy.collection, comparison.rows.device, comparison.rows.server, comparison.differences, reader);
+      if (review.fields.length) result[copy.id] = review;
+    }
+    return result;
+  }, [open, current, reader]);
   const markFailed = (failed: boolean) => setState(previous => previous?.owner === owner && previous.failed !== failed ? { ...previous, failed } : previous);
 
   const settle = async (copies: readonly LegacyQueryCopy[]) => {
-    if (busy) return;
+    if (busy || !copies.length) return;
     setBusy(true);
     try { await removeLegacyCopies(owner, copies.map(copy => ({ id: copy.id, raw: copy.raw }))); }
     catch (error) {
@@ -200,15 +258,20 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
       setVersion(value => value + 1);
     }
   };
-  // Every remaining copy differs from the server, and no date proves whose words are newer:
-  // accepting the server version for all of them is always the person's explicit second step.
-  const acceptAll = () => { if (current) setConfirmAll(current.copies); };
-  const copyFromDevice = (copy: LegacyQueryCopy) => {
-    const differences = current?.comparisons[copy.id]?.differences ?? [];
-    void copyToClipboard(differences.length
-      ? differences.map(entry => `${fieldName(entry.field)}: ${shown(entry.device)}`).join('\n\n')
-      : copy.raw);
+  const keyOf = (copy: LegacyQueryCopy) => decisionKey(copy, current?.comparisons[copy.id]);
+  const acceptedOf = (copy: LegacyQueryCopy) => accepted[keyOf(copy)] ?? [];
+  const pendingOf = (copy: LegacyQueryCopy) => changeKeys(reviews[copy.id]).filter(key => !acceptedOf(copy).includes(key));
+  const decide = (copy: LegacyQueryCopy, key: string, accept: boolean) => setAccepted(previous => {
+    const kept = (previous[keyOf(copy)] ?? []).filter(entry => entry !== key);
+    return { ...previous, [keyOf(copy)]: accept ? [...kept, key] : kept };
+  });
+  // Closing removes nothing: decisions wait on screen until the person removes the copies.
+  const close = () => {
+    if (busy) return;
+    setOpen(false);
+    setConfirmAll(null);
   };
+  const copyText = (lines: readonly string[]) => { void copyToClipboard(lines.join('\n')); };
   const saveFile = (text: string, name: string) => {
     let url: string | undefined;
     try {
@@ -232,268 +295,337 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
   if (!current) return null;
   if (!current.copies.length) return current.failed ? <p role="alert" className="mb-3 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p> : null;
   const count = current.copies.length;
+  // What still waits: every change not accepted, and a copy that only an explicit removal settles.
+  const left = current.copies.reduce((sum, copy) => {
+    const review = reviews[copy.id];
+    if (!review) return sum + 1;
+    const pending = pendingOf(copy).length;
+    return sum + pending + (pending === 0 && review.hidden.length ? 1 : 0);
+  }, 0);
+  const footer = confirmAll ? (
+    <div role="alert" className="space-y-3">
+      <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-200">{t('legacyRecovery.acceptAllChangesConfirm')}</p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" disabled={busy} onClick={downloadAll} className={OUTLINE}>{t('legacyRecovery.downloadAll')}</button>
+        <button type="button" disabled={busy} onClick={() => setConfirmAll(null)} className={OUTLINE}>{t('common.cancel')}</button>
+        <button type="button" disabled={busy} onClick={() => { void settle(confirmAll); }} className={ACCEPT}>{t('legacyRecovery.acceptAllChangesYes')}</button>
+      </div>
+    </div>
+  ) : left ? (
+    <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+      <button type="button" disabled={busy} onClick={downloadAll} className={OUTLINE}>{t('legacyRecovery.downloadAll')}</button>
+      <button type="button" disabled={busy} onClick={() => setConfirmAll(current.copies)} className={OUTLINE}>{t('legacyRecovery.acceptAllChanges')}</button>
+    </div>
+  ) : (
+    <div className="space-y-3">
+      <p className="text-sm font-semibold text-green-700 dark:text-green-300">{t('legacyRecovery.done')}</p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" disabled={busy} onClick={close} className={OUTLINE}>{t('common.close')}</button>
+        {/* Nothing is left to decide here: every copy is a review with all its changes accepted and nothing unshown. */}
+        <button type="button" disabled={busy} onClick={() => { void settle(current.copies); }} className={DARK}>{t('legacyRecovery.removeDecided')}</button>
+      </div>
+    </div>
+  );
   return (
     <>
-    {current.failed && <p role="alert" className="mb-2 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p>}
-    <section aria-labelledby="legacy-copies-title" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
-      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h2 id="legacy-copies-title" className="font-medium text-amber-950 dark:text-amber-100">{t('legacyRecovery.cacheTitle', { count })}</h2>
-          <p className="mt-0.5 text-amber-900/80 dark:text-amber-100/70">{t('legacyRecovery.cacheBody')}</p>
-        </div>
-        <button type="button" disabled={busy || confirmAll !== null} onClick={acceptAll} className={`${PRIMARY} w-full shrink-0 sm:w-auto`}>{t('legacyRecovery.acceptAllServer')}</button>
-      </div>
-      {confirmAll && (
-        <div role="alert" className="mx-4 mb-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-2 dark:border-rose-500/40 dark:bg-black/20">
-          <p className="text-rose-900 dark:text-rose-100">{t('legacyRecovery.acceptAllConfirm')}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={downloadAll} className={SECONDARY}>{t('legacyRecovery.downloadAll')}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle(confirmAll); }} className={DANGER}>{t('legacyRecovery.acceptAllYes')}</button>
-            <button type="button" disabled={busy} onClick={() => setConfirmAll(null)} className={QUIET}>{t('common.cancel')}</button>
+      {current.failed && <p role="alert" className="mb-2 text-sm text-rose-700 dark:text-rose-300">{t(ACTION_FAILED)}</p>}
+      <button type="button" onClick={() => setOpen(true)}
+        className="mb-3 flex min-h-[44px] w-full items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 text-left text-sm text-orange-900 transition-colors hover:bg-orange-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-100 dark:hover:bg-orange-500/20">
+        <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-600 text-xs font-extrabold text-white">!</span>
+        <span className="min-w-0 flex-1 py-2 leading-snug sm:truncate sm:py-0">{t('legacyRecovery.strip', { count })}</span>
+        <span className="shrink-0 font-semibold text-orange-800 dark:text-orange-200">{t('legacyRecovery.review')} ›</span>
+      </button>
+      {open && (
+        <FormDialog title={t('legacyRecovery.sheetTitle')} description={left ? t('legacyRecovery.leftToDecide', { count: left }) : t('legacyRecovery.allDecided')}
+          size="standard" showCloseButton closeDisabled={busy} onClose={close} footer={footer}>
+          <div className="space-y-2">
+            <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">{t('legacyRecovery.intro')}</p>
+            <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+              {(['added', 'removed', 'replaced'] as const).map(kind => (
+                <span key={kind} className={`rounded-full px-2.5 py-0.5 ${KIND[kind].head}`}>{KIND[kind].sign} {t(KIND[kind].label)}</span>
+              ))}
+            </div>
+            <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">{t('legacyRecovery.acceptHint')} {t('legacyRecovery.copyHint')}</p>
           </div>
-        </div>
-      )}
-      <details open={listOpen} className="border-t border-amber-200 dark:border-amber-500/30">
-        <summary onClick={event => { event.preventDefault(); setListOpen(value => !value); }} className="cursor-pointer px-4 py-2 font-medium text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500 dark:text-amber-100">
-          {t('legacyRecovery.showDifferences', { count })}
-        </summary>
-        {listOpen && <ul className="divide-y divide-amber-200 dark:divide-amber-500/20">
-          {current.copies.map(copy => (
-            <CopyRow key={copy.id} copy={copy} comparison={current.comparisons[copy.id]} busy={busy}
-              onRemove={() => { void settle([copy]); }} onCopy={() => copyFromDevice(copy)} onDownload={() => download(copy)} />
+          {current.copies.map(copy => reviews[copy.id] ? (
+            <ReviewCard key={copy.id} copy={copy} comparison={current.comparisons[copy.id]} review={reviews[copy.id]} accepted={acceptedOf(copy)}
+              busy={busy} formatting={formatting} onDecide={(key, accept) => decide(copy, key, accept)} onCopy={copyText}
+              onRemove={() => { void settle([copy]); }} onDownload={() => download(copy)} />
+          ) : (
+            <CopyCard key={copy.id} copy={copy} comparison={current.comparisons[copy.id]} busy={busy} formatting={formatting}
+              onRemove={() => { void settle([copy]); }} onCopy={() => copyText(read(copy))} onDownload={() => download(copy)} />
           ))}
-        </ul>}
-      </details>
-    </section>
+        </FormDialog>
+      )}
     </>
   );
 }
 
-/** How a copy's dates, field names and values read to the person — one lens for the row and the clipboard. */
+type Formatting = ReturnType<typeof useCopyFormatting>;
+
+/**
+ * How a copy's dates, field names and values read to the person — one lens for the review, the
+ * cards and the clipboard. It shows every part that holds words, under any key; only references
+ * (ids) and a list item's placement (where it sits, whether it is locked) holding no words stay
+ * out (`leftOut`), and `unseen` returns exactly those parts so a difference in them is named.
+ */
 function useCopyFormatting() {
   const { t, i18n } = useTranslation();
-  const dateFormat = useMemo(() => new Intl.DateTimeFormat(i18n.language || undefined, {
-    day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  }), [i18n.language]);
-  const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');
-  const fieldName = (field: string) => fieldLabel(t, field);
-  const shown = (value: unknown): string => {
-    if (value === undefined || value === null) return t('legacyRecovery.absent');
-    if (typeof value === 'string') return value.trim() ? value : t('legacyRecovery.empty');
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    if (Array.isArray(value) && value.every(item => typeof item === 'string' || typeof item === 'number')) {
-      return value.length ? value.join(', ') : t('legacyRecovery.empty');
-    }
-    return JSON.stringify(forDisplay(value), null, 2);
-  };
-  /** For two values that read alike (`null` and absent, `1` and `"1"`): exactly as stored. */
-  const exact = (value: unknown): string => value === undefined ? t('legacyRecovery.absent') : JSON.stringify(forDisplay(value), null, 2);
-  return { when, fieldName, shown, exact };
+  return useMemo(() => {
+    const dateFormat = new Intl.DateTimeFormat(i18n.language || undefined, {
+      day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+    const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');
+    // A calendar day is the same day wherever it is read; a moment reads in local time.
+    const dayFormat = new Intl.DateTimeFormat(i18n.language || undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const asDate = (value: string): string => {
+      const at = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value) : null;
+      if (!at || Number.isNaN(at.getTime())) return value;
+      return /T/.test(value) ? dateFormat.format(at) : dayFormat.format(at);
+    };
+    const fieldName = (field: string) => fieldLabel(t, field);
+    const nameOf = (entry: Record<string, unknown>): string | null => {
+      for (const key of ITEM_NAMES) {
+        const value = entry[key];
+        if (typeof value === 'string' && value.trim()) return key;
+      }
+      return null;
+    };
+    /** Fields under their names, each value in full; `name` is shown elsewhere, `inItem` says a list item is read. */
+    const labelled = (value: Record<string, unknown>, inItem: boolean, name: string | null = null): string[] => {
+      const shown = forDisplay(value) as Record<string, unknown>;
+      return Object.keys(shown).filter(key => key !== name && !leftOut(key, shown[key], inItem)).flatMap(key => {
+        const inner = lines(key, shown[key]);
+        if (!inner.length) return [];
+        return inner.length === 1 ? [`${fieldName(key)}: ${inner[0]}`] : [`${fieldName(key)}:`, ...inner.map(line => `  ${line}`)];
+      });
+    };
+    /** A list item in full: the words it is named by, then every other part that holds words. */
+    const entry = (value: Record<string, unknown>): string[] => {
+      const name = nameOf(value);
+      const rest = labelled(value, true, name);
+      return name ? [value[name] as string, ...rest] : rest;
+    };
+    /** A value as the lines it reads in: words as written, a choice by its name, nested values in full. */
+    const lines = (field: string, value: unknown): string[] => {
+      if (value === undefined || value === null) return [];
+      if (typeof value === 'boolean') return [t(value ? 'legacyRecovery.valueOn' : 'legacyRecovery.valueOff')];
+      if (typeof value === 'number') return [String(value)];
+      if (typeof value === 'string') {
+        if (field === 'firstDayOfWeek' && (value === 'sunday' || value === 'monday')) return [t(`settings.firstDayOfWeek.${value}`)];
+        if (field === 'date') return [asDate(value)];
+        return value.trim() ? value.split('\n') : [];
+      }
+      if (Array.isArray(value)) return value.flatMap(item => {
+        const inner = item && typeof item === 'object' && !Array.isArray(item) ? entry(item as Record<string, unknown>) : lines(field, item);
+        return inner.length ? [`• ${inner[0]}`, ...inner.slice(1).map(line => `  ${line}`)] : [];
+      });
+      return labelled(value as Record<string, unknown>, false);
+    };
+    /** A list item by the words the person knows it by. */
+    const item = (value: Record<string, unknown>): string => {
+      const name = nameOf(value);
+      return name ? value[name] as string : entry(value).join(' · ');
+    };
+    /**
+     * What `lines` and `entry` leave out of a value, by the same rule. Only a list item's own id is
+     * not reported: it is what the item is matched by, never a difference of its own.
+     */
+    const unseen = (value: unknown, inList = false): unknown => {
+      if (Array.isArray(value)) {
+        const inner = value.map(part => unseen(part, true));
+        return inner.some(part => part !== undefined) ? inner : undefined;
+      }
+      if (!value || typeof value !== 'object') return undefined;
+      const parts = Object.entries(forDisplay(value) as Record<string, unknown>).flatMap(([key, part]): [string, unknown][] => {
+        if (leftOut(key, part, true)) return (inList && key === 'id') || part === undefined || part === null ? [] : [[key, part]];
+        const inner = unseen(part);
+        return inner === undefined ? [] : [[key, inner]];
+      });
+      return parts.length ? Object.fromEntries(parts) : undefined;
+    };
+    const reader: ChangeReader = { item, entry, value: lines, label: fieldName, unseen: value => unseen(value) };
+    /** What a copy holds, readable: what an operation would have written, else the whole copy. */
+    const read = (copy: LegacyQueryCopy): string[] => {
+      try {
+        const parsed = JSON.parse(copy.raw) as { mutationKey?: unknown; state?: { variables?: unknown } };
+        if (!('mutationKey' in parsed)) return lines('', parsed);
+        const variables = parsed.state?.variables;
+        const fields = variables && typeof variables === 'object' ? variables as Record<string, unknown> : {};
+        const payload = fields.input ?? fields.updates ?? variables;
+        return lines('', payload ?? parsed);
+      } catch { return [copy.raw]; }
+    };
+    return { when, fieldName, reader, read };
+  }, [t, i18n.language]);
 }
 
-/** What a copy holds, readable, bookkeeping hidden: an operation's variables, else the whole copy. */
-function copyContent(raw: string, operation: boolean): string {
-  try {
-    const parsed = JSON.parse(raw) as { state?: { variables?: unknown } };
-    return JSON.stringify(forDisplay(operation ? parsed.state?.variables ?? parsed : parsed), null, 2);
-  } catch { return raw; }
+/** A copy's name and where its two versions come from, the same for every kind of card. */
+function CardHead({ copy, comparison, eyebrow, formatting }: { copy: LegacyQueryCopy; comparison: LegacyCopyComparison | undefined; eyebrow?: string; formatting: Formatting }) {
+  const { t } = useTranslation();
+  const kind = NAMED_COLLECTIONS.has(copy.collection) ? t(`legacyRecovery.collection.${copy.collection}`) : copy.collection;
+  const title = copy.collection === 'users' ? kind : copy.title && copy.title !== copy.documentId ? copy.title : t('legacyRecovery.untitled');
+  const top = [copy.collection === 'users' ? null : kind, eyebrow].filter(Boolean).join(' · ');
+  return (
+    <header className="px-1">
+      {top && <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{top}</p>}
+      <h3 className="break-words text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+      <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+        {t('legacyRecovery.onDevice')}: {t('legacyRecovery.versionFrom', { date: formatting.when(comparison?.deviceVersionAt ?? null) })}
+        {comparison?.server === 'present' && comparison.serverVersionAt && <> · {t('legacyRecovery.inApp')}: {t('legacyRecovery.changedAt', { date: formatting.when(comparison.serverVersionAt) })}</>}
+      </p>
+    </header>
+  );
 }
 
-/** Which colour and word say what was measured about this copy — never that it is safe to drop. */
-function freshnessBadge(comparison: LegacyCopyComparison | undefined): [ChipTone, string] {
-  if (!comparison || comparison.server === 'missing' && comparison.kind === 'row') return ['neutral', 'missing'];
-  if (comparison.kind !== 'row') return comparison.kind === 'operation' ? ['rose', 'operation'] : ['neutral', 'unreadable'];
-  if (comparison.server === 'deleted') return ['neutral', 'deleted'];
-  if (comparison.server === 'unknown') return ['neutral', 'unknown'];
-  const byFreshness: Record<CopyFreshness, [ChipTone, string]> = {
-    'server-newer': ['neutral', 'serverNewer'], 'device-newer': ['rose', 'deviceNewer'],
-    'same-version': ['amber', 'sameVersion'], unknown: ['neutral', 'unknown'],
-  };
-  return byFreshness[comparison.freshness];
+/** Unchanged lines between changes, folded when there are many. */
+function Context({ lines }: { lines: readonly string[] }) {
+  const { t } = useTranslation();
+  const shown = lines.length > 3 ? [lines[0], null, lines[lines.length - 1]] : lines;
+  return (
+    <div className="space-y-1 px-1 text-[15px] leading-relaxed text-gray-500 dark:text-gray-400">
+      {shown.map((line, index) => line === null
+        ? <p key={index} className="text-xs">{t('legacyRecovery.unchangedLines', { count: lines.length - 2 })}</p>
+        : <p key={index} className={WRAP}>{line}</p>)}
+    </div>
+  );
+}
+
+/** One change: what only this device held struck in red, what the app holds in green; its own decision below. */
+function ChangeBlock({ change, accepted, onDecide, onCopy }: { change: Change; accepted: boolean; onDecide: (accept: boolean) => void; onCopy: () => void }) {
+  const { t } = useTranslation();
+  const kind = KIND[change.kind];
+  const inline = change.kind === 'replaced' && change.device.length === 1 && change.server.length === 1
+    && change.device[0].length + change.server[0].length < 48;
+  // Colour and strike-through are not the only signs: a screen reader hears which side is which.
+  const deviceText = <span className={`${WRAP} text-rose-700 line-through decoration-rose-500 dark:text-rose-300`}><span className="sr-only">{t('legacyRecovery.onDevice')}: </span>{change.device.join('\n')}</span>;
+  const serverText = <span className={`${WRAP} text-green-800 dark:text-green-300`}><span className="sr-only">{t('legacyRecovery.inApp')}: </span>{change.server.join('\n')}</span>;
+  if (accepted) {
+    return (
+      <div className="space-y-1">
+        {change.kind !== 'removed' && <p className={`${WRAP} px-1 text-[15px] leading-relaxed text-gray-800 dark:text-gray-100`}>{change.server.join('\n')}</p>}
+        <div role="status" className="flex items-center justify-between gap-2 rounded-xl bg-gray-100 py-1 pl-3 pr-1 text-sm text-gray-600 dark:bg-gray-900/50 dark:text-gray-300">
+          <span>✓ {t('legacyRecovery.accepted')}</span>
+          <button type="button" onClick={() => onDecide(false)} className={QUIET}>{t('legacyRecovery.undo')}</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div role="group" aria-label={t(kind.label)} className={`overflow-hidden rounded-xl border bg-white dark:bg-gray-800 ${kind.frame}`}>
+      <p className={`px-3 py-1.5 text-xs font-semibold ${kind.head}`}>{kind.sign} {t(kind.label)}</p>
+      {change.subject && <p className={`${WRAP} px-3 pt-2 text-xs font-medium text-gray-500 dark:text-gray-400`}>{change.subject}</p>}
+      <div className="space-y-1 px-3 pt-2 text-[15px] leading-relaxed">
+        {inline ? (
+          <p className="flex min-w-0 flex-wrap items-center gap-x-2">{deviceText}<span aria-hidden="true" className="text-gray-400">→</span><span className="min-w-0 font-semibold">{serverText}</span></p>
+        ) : (
+          <>
+            {change.device.length > 0 && <p className="min-w-0">{deviceText}</p>}
+            {change.server.length > 0 && <p className="min-w-0">{serverText}</p>}
+          </>
+        )}
+      </div>
+      <div className={`gap-2 p-3 ${change.device.length ? 'grid grid-cols-2 sm:flex sm:justify-end' : 'flex justify-end'}`}>
+        {change.device.length > 0 && <button type="button" onClick={onCopy} className={OUTLINE}>{t('legacyRecovery.copyChange')}</button>}
+        <button type="button" onClick={() => onDecide(true)} className={`${ACCEPT} ${change.device.length ? '' : 'w-full sm:w-auto'}`}>✓ {t('legacyRecovery.accept')}</button>
+      </div>
+    </div>
+  );
 }
 
 /**
- * One copy. It can keep the server version in one press only while its differences are on screen;
- * any other copy shows what it holds and asks before it goes.
+ * Removing a copy by hand: what it holds stays a press away in its raw form, and the question is
+ * bound to the content it was asked about — a copy filed under the same id meanwhile closes the
+ * question instead of leaving with words the person never saw.
  */
-function CopyRow({ copy, comparison, busy, onRemove, onCopy, onDownload }: {
-  copy: LegacyQueryCopy; comparison: LegacyCopyComparison | undefined; busy: boolean;
-  onRemove: () => void; onCopy: () => void; onDownload: () => void;
+function RemoveCopy({ copy, busy, onRemove, onDownload, onCopy, removable = true }: {
+  copy: LegacyQueryCopy; busy: boolean; onRemove: () => void; onDownload: () => void; onCopy?: () => void; removable?: boolean;
 }) {
   const { t } = useTranslation();
-  const { when } = useCopyFormatting();
-  // The content the question was asked about: replaced meanwhile (another tab files a new copy
-  // under a freed id), the question closes instead of removing words the person never saw.
   const [asking, setAsking] = useState<string | null>(null);
-  const onDevice = t('legacyRecovery.onDevice'), onServer = t('legacyRecovery.onServer');
-  const [tone, word] = freshnessBadge(comparison);
-  const diffShown = comparison?.kind === 'row' && comparison.server === 'present' && comparison.differences.length > 0;
-  let serverLine = t('legacyRecovery.serverMissing');
-  if (comparison?.server === 'deleted') serverLine = t('legacyRecovery.serverDeleted');
-  else if (comparison?.server === 'unknown') serverLine = t('legacyRecovery.serverUnknown');
-  else if (comparison?.server === 'present') serverLine = t('legacyRecovery.changedAt', { date: when(comparison.serverVersionAt) });
   return (
-    <li className="px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <p className="min-w-0 break-words font-medium text-gray-900 dark:text-gray-100">
-          {copy.title && copy.title !== copy.documentId ? copy.title : t('legacyRecovery.untitled')}
-        </p>
-        {NAMED_COLLECTIONS.has(copy.collection) && <span className="text-xs text-gray-600 dark:text-gray-400">{t(`legacyRecovery.collection.${copy.collection}`)}</span>}
-        <Chip tone={tone} size="sm">{t(`legacyRecovery.freshness.${word}`)}</Chip>
-      </div>
-      <dl className="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-        <dt>{onDevice}</dt>
-        <dd>{t('legacyRecovery.versionFrom', { date: when(comparison?.deviceVersionAt ?? null) })}</dd>
-        <dt>{onServer}</dt>
-        <dd>{serverLine}</dd>
-      </dl>
-      {diffShown ? <CopyDifferences differences={comparison.differences} /> : <CopyContent copy={copy} comparison={comparison} />}
-      <details className="mt-2">
-        <summary className="cursor-pointer text-xs text-gray-600 underline-offset-2 hover:underline dark:text-gray-400">{t('legacyRecovery.rawData')}</summary>
-        <pre className={`mt-1 ${CONTENT}`}>{copy.raw}</pre>
+    <>
+      <details className="px-1">
+        <summary className="cursor-pointer text-xs text-gray-500 underline-offset-2 hover:underline dark:text-gray-400">{t('legacyRecovery.rawData')}</summary>
+        <pre className={RAW}>{copy.raw}</pre>
       </details>
       {asking === copy.raw ? (
-        <div role="alert" className="mt-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-2 dark:border-rose-500/40 dark:bg-black/20">
-          <p className="text-rose-900 dark:text-rose-100">{t('legacyRecovery.removeCopyConfirm')}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" disabled={busy} onClick={onDownload} className={SECONDARY}>{t('legacyRecovery.export')}</button>
+        <div role="alert" className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-500/30 dark:bg-rose-500/10">
+          <p className="text-sm text-rose-900 dark:text-rose-100">{t('legacyRecovery.removeCopyConfirm')}</p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" disabled={busy} onClick={onDownload} className={OUTLINE}>{t('legacyRecovery.export')}</button>
+            <button type="button" disabled={busy} onClick={() => setAsking(null)} className={OUTLINE}>{t('common.cancel')}</button>
             <button type="button" disabled={busy} onClick={onRemove} className={DANGER}>{t('legacyRecovery.removeCopyYes')}</button>
-            <button type="button" disabled={busy} onClick={() => setAsking(null)} className={QUIET}>{t('common.cancel')}</button>
           </div>
         </div>
       ) : (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" disabled={busy} onClick={diffShown ? onRemove : () => setAsking(copy.raw)} className={SECONDARY}>
-            {diffShown ? t('legacyRecovery.keepServer') : t('legacyRecovery.removeCopy')}
-          </button>
-          <button type="button" disabled={busy} onClick={onCopy} className={QUIET}>{t('legacyRecovery.copyDevice')}</button>
-          <button type="button" disabled={busy} onClick={onDownload} className={QUIET}>{t('legacyRecovery.export')}</button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {onCopy && <button type="button" disabled={busy} onClick={onCopy} className={OUTLINE}>{t('legacyRecovery.copyChange')}</button>}
+          <button type="button" disabled={busy} onClick={onDownload} className={OUTLINE}>{t('legacyRecovery.export')}</button>
+          {removable && <button type="button" disabled={busy} onClick={() => setAsking(copy.raw)} className={OUTLINE}>{t('legacyRecovery.removeCopy')}</button>}
         </div>
       )}
-    </li>
+    </>
   );
 }
-
-/** A copy with nothing to show as a difference: what it holds, readable, on screen. */
-function CopyContent({ copy, comparison }: { copy: LegacyQueryCopy; comparison: LegacyCopyComparison | undefined }) {
-  const { t } = useTranslation();
-  const operation = comparison?.kind === 'operation';
-  return (
-    <div className="mt-2 space-y-1">
-      {operation && <p className="text-gray-700 dark:text-gray-300">{t('legacyRecovery.operationNote')}</p>}
-      {comparison?.kind === 'unreadable' && <p className="text-gray-700 dark:text-gray-300">{t('legacyRecovery.unreadableNote')}</p>}
-      <p className="text-xs text-gray-600 dark:text-gray-400">{t(operation ? 'legacyRecovery.operationContent' : 'legacyRecovery.copyContent')}</p>
-      <pre className={CONTENT}>{copyContent(copy.raw, operation)}</pre>
-    </div>
-  );
-}
-
-/** The differing fields, as a diff: the device's side goes when the server is kept, the server's stays. */
-function CopyDifferences({ differences }: { differences: LegacyCopyComparison['differences'] }) {
-  const { t } = useTranslation();
-  const { fieldName, shown, exact } = useCopyFormatting();
-  const onDevice = t('legacyRecovery.onDevice'), onServer = t('legacyRecovery.onServer');
-  return (
-    <div className="mt-2 space-y-2">
-      <p className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('legacyRecovery.differencesTitle')}</p>
-      {differences.map(entry => {
-        let device = shown(entry.device), server = shown(entry.server);
-        if (device === server) { device = exact(entry.device); server = exact(entry.server); }
-        return (
-          <div key={entry.field} className="space-y-1">
-            <p className="text-xs text-gray-600 dark:text-gray-400">{fieldName(entry.field)}</p>
-            {device.includes('\n') || server.includes('\n') ? (
-              <>
-                <p className="flex flex-wrap gap-x-3 text-xs">
-                  <span className="text-rose-800 dark:text-rose-200">− {onDevice}</span>
-                  <span className="text-emerald-800 dark:text-emerald-200">+ {onServer}</span>
-                </p>
-                <DiffBlock device={device} server={server} gapLabel={count => t('legacyRecovery.unchangedLines', { count })} />
-              </>
-            ) : (
-              <>
-                <DiffLine sign="−" label={onDevice} text={device} tone="device" />
-                <DiffLine sign="+" label={onServer} text={server} tone="server" />
-              </>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-type DiffRow = { op: ' ' | '-' | '+'; text: string } | { gap: number };
 
 /**
- * A unified line diff, as `git diff` shows it: longest common subsequence of lines, changed
- * lines with two lines of context, the unchanged rest folded. Very large texts skip the table and
- * show both sides whole, which is still correct, only less compact.
+ * A copy laid out as changes, field by field, each accepted on its own. Once every change is
+ * accepted the copy can be removed by hand; its raw data and its file are a press away from the
+ * start. When part of its difference shows as no change (a list only reordered, values that read
+ * alike, a reference left out), the card says so.
  */
-export function lineDiff(device: string, server: string, context = 2): DiffRow[] {
-  const a = device.split('\n'), b = server.split('\n');
-  const ops: { op: ' ' | '-' | '+'; text: string }[] = [];
-  if (a.length * b.length > 250_000) {
-    ops.push(...a.map(text => ({ op: '-' as const, text })), ...b.map(text => ({ op: '+' as const, text })));
-  } else {
-    const width = b.length + 1;
-    const common = new Uint32Array((a.length + 1) * width);
-    for (let i = a.length - 1; i >= 0; i -= 1) {
-      for (let j = b.length - 1; j >= 0; j -= 1) {
-        common[i * width + j] = a[i] === b[j] ? common[(i + 1) * width + j + 1] + 1
-          : Math.max(common[(i + 1) * width + j], common[i * width + j + 1]);
-      }
-    }
-    let i = 0, j = 0;
-    while (i < a.length || j < b.length) {
-      if (i < a.length && j < b.length && a[i] === b[j]) { ops.push({ op: ' ', text: a[i] }); i += 1; j += 1; }
-      // As git shows a replacement: the old line first, then the new one.
-      else if (i < a.length && (j === b.length || common[(i + 1) * width + j] >= common[i * width + j + 1])) { ops.push({ op: '-', text: a[i] }); i += 1; }
-      else { ops.push({ op: '+', text: b[j] }); j += 1; }
-    }
-  }
-  const near = ops.map((_, index) => ops.slice(Math.max(0, index - context), index + context + 1).some(entry => entry.op !== ' '));
-  const rows: DiffRow[] = [];
-  ops.forEach((entry, index) => {
-    if (entry.op !== ' ' || near[index]) { rows.push(entry); return; }
-    const last = rows[rows.length - 1];
-    if (last && 'gap' in last) last.gap += 1; else rows.push({ gap: 1 });
-  });
-  return rows;
-}
-
-/** A structured or multi-line difference, folded to the changed lines. */
-function DiffBlock({ device, server, gapLabel }: { device: string; server: string; gapLabel: (count: number) => string }) {
+function ReviewCard({ copy, comparison, review, accepted, busy, formatting, onDecide, onCopy, onRemove, onDownload }: {
+  copy: LegacyQueryCopy; comparison: LegacyCopyComparison | undefined; review: Review; accepted: readonly string[]; busy: boolean;
+  formatting: Formatting; onDecide: (key: string, accept: boolean) => void; onCopy: (lines: readonly string[]) => void;
+  onRemove: () => void; onDownload: () => void;
+}) {
   const { t } = useTranslation();
-  const rows = useMemo(() => lineDiff(device, server), [device, server]);
+  const keys = changeKeys(review);
+  const allAccepted = keys.every(key => accepted.includes(key));
   return (
-    <div className="max-h-72 overflow-auto rounded-md border border-amber-200 bg-white/70 py-1 font-mono text-xs dark:border-amber-500/20 dark:bg-black/20">
-      {rows.map((row, index) => 'gap' in row
-        ? <p key={index} className="px-2 py-0.5 text-gray-500 dark:text-gray-400">{gapLabel(row.gap)}</p>
-        : <p key={index} className={`flex gap-2 whitespace-pre-wrap break-words px-2 ${row.op === '-'
-          ? 'bg-rose-50 text-rose-950 dark:bg-rose-500/10 dark:text-rose-100'
-          : row.op === '+' ? 'bg-emerald-50 text-emerald-950 dark:bg-emerald-500/10 dark:text-emerald-100'
-          : 'text-gray-600 dark:text-gray-400'}`}>
-          <span aria-hidden="true" className="select-none">{row.op}</span>
-          {row.op !== ' ' && <span className="sr-only">{t(row.op === '-' ? 'legacyRecovery.onDevice' : 'legacyRecovery.onServer')}: </span>}
-          <span className="min-w-0 flex-1">{row.text || ' '}</span>
-        </p>)}
-    </div>
+    <article className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <CardHead copy={copy} comparison={comparison} eyebrow={t('legacyRecovery.changes', { count: keys.length })} formatting={formatting} />
+      {review.fields.map(field => (
+        <section key={field.field} className="space-y-2">
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-gray-400">{formatting.fieldName(field.field)}</p>
+          {field.rows.map((row, index) => 'context' in row
+            ? <Context key={`context-${index}`} lines={row.context} />
+            : <ChangeBlock key={row.change.key} change={row.change} accepted={accepted.includes(row.change.key)}
+              onDecide={accept => onDecide(row.change.key, accept)}
+              onCopy={() => onCopy(row.change.subject ? [row.change.subject, ...row.change.device] : row.change.device)} />)}
+        </section>
+      ))}
+      {review.hidden.length > 0 && (
+        <p className="px-1 text-sm text-gray-700 dark:text-gray-300">
+          {t('legacyRecovery.partlyHidden', { fields: review.hidden.map(formatting.fieldName).join(', ') })}
+        </p>
+      )}
+      {/* What the copy holds is a press away from the start; removing it waits until every change is accepted. */}
+      <RemoveCopy copy={copy} busy={busy} onRemove={onRemove} onDownload={onDownload} removable={allAccepted} />
+    </article>
   );
 }
 
-/** One side of a difference: the device's line goes when the server is accepted, the server's stays. */
-function DiffLine({ sign, label, text, tone }: { sign: string; label: string; text: string; tone: 'device' | 'server' }) {
-  const palette = tone === 'device'
-    ? 'bg-rose-50 text-rose-950 dark:bg-rose-500/10 dark:text-rose-100'
-    : 'bg-emerald-50 text-emerald-950 dark:bg-emerald-500/10 dark:text-emerald-100';
+/** A copy with nothing to review as changes: what it holds, readable, on screen, and a question before it goes. */
+function CopyCard({ copy, comparison, busy, formatting, onRemove, onCopy, onDownload }: {
+  copy: LegacyQueryCopy; comparison: LegacyCopyComparison | undefined; busy: boolean; formatting: Formatting;
+  onRemove: () => void; onCopy: () => void; onDownload: () => void;
+}) {
+  const { t } = useTranslation();
+  const note = comparison?.kind === 'operation' ? 'legacyRecovery.operationNote'
+    : comparison?.kind === 'unreadable' ? 'legacyRecovery.unreadableNote'
+      : comparison?.server === 'deleted' ? 'legacyRecovery.serverDeleted'
+        : comparison?.server === 'unknown' ? 'legacyRecovery.serverUnknown'
+          // Read side by side, nothing differs as a change the review can show.
+          : comparison?.server === 'present' ? 'legacyRecovery.noVisibleDifference' : 'legacyRecovery.serverMissing';
+  const content = formatting.read(copy);
   return (
-    <div className={`flex gap-2 rounded-md px-2 py-1 ${palette}`}>
-      <span aria-hidden="true" className="select-none font-mono">{sign}</span>
-      <div className="min-w-0 flex-1">
-        <span className="text-xs opacity-70">{label}: </span>
-        <span className="block max-h-40 overflow-auto whitespace-pre-wrap break-words">{text}</span>
-      </div>
-    </div>
+    <article className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <CardHead copy={copy} comparison={comparison} formatting={formatting} />
+      <p className="px-1 text-sm text-gray-700 dark:text-gray-300">{t(note)}</p>
+      {content.length > 0 && <div className={`${WRAP} rounded-xl bg-gray-50 px-3 py-2 text-[15px] leading-relaxed text-gray-800 dark:bg-gray-900/50 dark:text-gray-100`}>{content.join('\n')}</div>}
+      <RemoveCopy copy={copy} busy={busy} onRemove={onRemove} onDownload={onDownload} onCopy={onCopy} />
+    </article>
   );
 }

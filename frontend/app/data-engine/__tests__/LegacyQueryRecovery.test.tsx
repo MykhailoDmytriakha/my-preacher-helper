@@ -34,7 +34,8 @@ const record = { id: 'copy', owner: 'owner', collection: 'councils', documentId:
 const rowCopy = (id: string, value: Record<string, unknown>) => ({
   id, owner: 'owner', collection: 'series', documentId: String(value.id), title: String(value.title), raw: JSON.stringify(value), savedAt: 1,
 });
-const openDifferences = () => fireEvent.click(screen.getByText('legacyRecovery.showDifferences'));
+/** Waits for the strip and opens the review from it. */
+const openReview = async () => fireEvent.click(await screen.findByRole('button', { name: /legacyRecovery.review/ }));
 
 describe('legacy cache preservation UI', () => {
   beforeEach(() => {
@@ -140,29 +141,103 @@ describe('legacy cache preservation UI', () => {
     const view = render(<LegacyQueryCopies owner="owner" />);
     view.rerender(<LegacyQueryCopies owner="other" />);
     await act(async () => previous([record]));
-    expect(screen.queryByText(record.title)).not.toBeInTheDocument();
+    expect(screen.queryByText('legacyRecovery.strip')).not.toBeInTheDocument();
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
     view.rerender(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
+    await openReview();
     expect(await screen.findByText(record.title)).toBeInTheDocument();
     expect(screen.getByText(record.raw)).toBeInTheDocument();
   });
 
-  it('shows which side is newer, both dates and only the fields that differ', async () => {
+  it('says how many records differ in one thin strip and opens the review from it', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Server text', updatedAt: '2026-09-16T23:17:36.000Z' });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([
       rowCopy('c1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Old text', updatedAt: '2026-09-03T10:00:00.000Z' }),
     ]);
     render(<LegacyQueryCopies owner="owner" />);
-    expect(await screen.findByText('legacyRecovery.cacheTitle')).toBeInTheDocument();
-    openDifferences();
-    const row = screen.getByText('Funerals').closest('li')!;
-    expect(within(row).getByText('legacyRecovery.freshness.serverNewer')).toBeInTheDocument();
-    expect(within(row).getByText('legacyRecovery.field.description')).toBeInTheDocument();
-    expect(within(row).getByText('Old text')).toBeInTheDocument();
-    expect(within(row).getByText('Server text')).toBeInTheDocument();
-    expect(within(row).queryByText('legacyRecovery.field.title')).not.toBeInTheDocument();
+    expect(await screen.findByText('legacyRecovery.strip')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await openReview();
+    const card = screen.getByText('Funerals').closest('article')!;
+    expect(within(card).getByText('legacyRecovery.field.description')).toBeInTheDocument();
+    expect(within(card).getByText('Old text')).toBeInTheDocument();
+    expect(within(card).getByText('Server text')).toBeInTheDocument();
+    expect(within(card).queryByText('legacyRecovery.field.title')).not.toBeInTheDocument();
+  });
+
+  it('lays a sermon out as git does: a removed thought and an added one, each accepted on its own', async () => {
+    const stone = { id: 't1', text: 'The stone was rolled away' }, women = { id: 't2', text: 'The women came asking' }, tomb = { id: 't3', text: 'The empty tomb' };
+    mockServerCopies.set('sermons/s1', { id: 's1', userId: 'owner', title: 'Easter', thoughts: [women, tomb] });
+    const copy = { ...rowCopy('c1', { id: 's1', userId: 'owner', title: 'Easter', thoughts: [stone, women] }), collection: 'sermons' };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const removed = screen.getByRole('group', { name: 'legacyRecovery.kindRemoved' });
+    const added = screen.getByRole('group', { name: 'legacyRecovery.kindAdded' });
+    expect(within(removed).getByText(stone.text)).toBeInTheDocument();
+    expect(within(added).getByText(tomb.text)).toBeInTheDocument();
+    // Unchanged lines stand between the changes, outside of them.
+    expect(screen.getByText(women.text).closest('[role="group"]')).toBeNull();
+    fireEvent.click(within(removed).getByRole('button', { name: /legacyRecovery.accept/ }));
+    expect(screen.queryByRole('group', { name: 'legacyRecovery.kindRemoved' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'legacyRecovery.kindAdded' })).toBeInTheDocument();
+    // One change left undecided keeps the copy when the review closes.
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
+  it('removes a copy only when the person asks: closing with every change accepted keeps it, the remove button takes it', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Server', updatedAt: '2026-09-16T00:00:00.000Z' });
+    const copy = rowCopy('c1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Old', updatedAt: '2026-09-03T00:00:00.000Z' });
+    let removed = false;
+    jest.mocked(listLegacyQueryCopies).mockImplementation(async () => (removed ? [] : [copy]));
+    jest.mocked(removeLegacyCopies).mockImplementation(async () => { removed = true; return 1; });
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('legacyRecovery.accepted');
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.undo' }));
+    expect(screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    expect(screen.getByText('legacyRecovery.done')).toBeInTheDocument();
+    // Closing decides nothing: the copy stays, and so do the decisions made on it.
+    fireEvent.click(screen.getAllByRole('button', { name: 'common.close' }).at(-1)!);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+    await openReview();
+    expect(screen.getByRole('status')).toHaveTextContent('legacyRecovery.accepted');
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.removeDecided' }));
+    await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', [{ id: 'c1', raw: copy.raw }]));
+    await waitFor(() => expect(screen.queryByText('legacyRecovery.strip')).not.toBeInTheDocument());
+  });
+
+  it('shows the day a removed preaching date was on, as a calendar day', async () => {
+    mockServerCopies.set('sermons/s1', { id: 's1', userId: 'owner', title: 'Easter', preachDates: [] });
+    const copy = { ...rowCopy('c1', { id: 's1', userId: 'owner', title: 'Easter', preachDates: [{ id: 'p1', date: '2026-04-05', church: { name: 'Grace Church' } }] }), collection: 'sermons' };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const removed = screen.getByRole('group', { name: 'legacyRecovery.kindRemoved' });
+    expect(removed).toHaveTextContent('April 5, 2026');
+    expect(removed).toHaveTextContent('Grace Church');
+    expect(screen.queryByText('legacyRecovery.partlyHidden')).not.toBeInTheDocument();
+  });
+
+  it('reads a week-start choice by its name, one change from the old day to the new', async () => {
+    mockServerCopies.set('users/owner', { id: 'owner', firstDayOfWeek: 'monday', usage: { aiUsed: 23 } });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([{
+      ...record, collection: 'users', documentId: 'owner', title: 'owner',
+      raw: JSON.stringify({ id: 'owner', firstDayOfWeek: 'sunday', usage: { aiUsed: 119 } }),
+    }]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const change = screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(within(change).getByText('settings.firstDayOfWeek.sunday')).toBeInTheDocument();
+    expect(within(change).getByText('settings.firstDayOfWeek.monday')).toBeInTheDocument();
+    // What the server counts is not the person's: it never shows as a change (the raw data keeps it, as stored).
+    expect(screen.getAllByRole('group', { name: /legacyRecovery\.kind/ }).filter(group => /119/.test(group.textContent ?? ''))).toEqual([]);
+    expect(screen.queryByText('legacyRecovery.field.usage')).not.toBeInTheDocument();
   });
 
   it('names settings and every changed user preference with localized recovery labels', async () => {
@@ -175,57 +250,30 @@ describe('legacy cache preservation UI', () => {
       raw: JSON.stringify({ id: 'owner', ...Object.fromEntries(fields.map(field => [field, 'device'])) }),
     }]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
+    await openReview();
     expect(screen.getByText('legacyRecovery.collection.users')).toBeInTheDocument();
     for (const field of fields) {
       expect(screen.getByText(`legacyRecovery.field.${field}`)).toBeInTheDocument();
     }
   });
 
-  it('keeps the server version of one copy and reads the archive again', async () => {
-    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Funerals', updatedAt: '2026-09-16T00:00:00.000Z' });
-    const copy = rowCopy('c1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Old', updatedAt: '2026-09-03T00:00:00.000Z' });
-    jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([copy]).mockResolvedValue([]);
-    render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.keepServer' }));
-    await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', [{ id: 'c1', raw: copy.raw }]));
-    await waitFor(() => expect(screen.queryByText('legacyRecovery.cacheTitle')).not.toBeInTheDocument());
-  });
-
-  it('accepts everything from the server after one explicit confirmation, whatever the dates say', async () => {
-    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', updatedAt: '2026-09-16T00:00:00.000Z' });
+  it('accepts everything after one explicit confirmation, whatever the dates say', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', updatedAt: '2026-09-01T00:00:00.000Z' });
     mockServerCopies.set('series/s2', { id: 's2', userId: 'owner', title: 'B', updatedAt: '2026-09-16T00:00:00.000Z' });
     const copies = [
-      rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', note: 'old', updatedAt: '2026-09-01T00:00:00.000Z' }),
+      rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', note: 'typed on the phone', updatedAt: '2026-09-20T00:00:00.000Z' }),
       rowCopy('c2', { id: 's2', userId: 'owner', title: 'B', note: 'old', updatedAt: '2026-09-02T00:00:00.000Z' }),
     ];
     jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce(copies).mockResolvedValue([]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllServer' }));
-    expect(await screen.findByText('legacyRecovery.acceptAllConfirm')).toBeInTheDocument();
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChanges' }));
+    expect(await screen.findByText('legacyRecovery.acceptAllChangesConfirm')).toBeInTheDocument();
+    // The question stands in place of the button: it cannot be skipped by pressing again.
+    expect(screen.queryByRole('button', { name: 'legacyRecovery.acceptAllChanges' })).not.toBeInTheDocument();
     expect(removeLegacyCopies).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllYes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChangesYes' }));
     await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', copies.map(entry => ({ id: entry.id, raw: entry.raw }))));
-  });
-
-  it('asks first when a copy is newer on this device, and removes nothing until confirmed', async () => {
-    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', updatedAt: '2026-09-01T00:00:00.000Z' });
-    const copies = [rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', note: 'typed on the phone', updatedAt: '2026-09-20T00:00:00.000Z' })];
-    jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce(copies).mockResolvedValue([]);
-    render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllServer' }));
-    expect(await screen.findByText('legacyRecovery.acceptAllConfirm')).toBeInTheDocument();
-    expect(removeLegacyCopies).not.toHaveBeenCalled();
-    // Pressing the header again cannot skip the question: it waits until the person answers.
-    expect(screen.getByRole('button', { name: 'legacyRecovery.acceptAllServer' })).toBeDisabled();
-    const confirm = screen.getByRole('alert');
-    fireEvent.click(within(confirm).getByRole('button', { name: 'legacyRecovery.acceptAllYes' }));
-    await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', [{ id: 'c1', raw: copies[0].raw }]));
   });
 
   it('keeps every other copy visible when one cannot be compared', async () => {
@@ -235,43 +283,43 @@ describe('legacy cache preservation UI', () => {
     ]);
     jest.mocked(compareLegacyCopy).mockImplementationOnce(() => { throw new TypeError('bad shape'); });
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    expect(screen.getByText('Broken')).toBeInTheDocument();
-    expect(screen.getByText('Readable')).toBeInTheDocument();
+    await openReview();
+    expect(screen.getAllByText('Broken').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Readable').length).toBeGreaterThan(0);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     // A failed comparison claims nothing about the server copy.
-    expect(within(screen.getByText('Broken').closest('li')!).getByText('legacyRecovery.serverUnknown')).toBeInTheDocument();
+    expect(within(screen.getByRole('heading', { name: 'Broken' }).closest('article')!).getByText('legacyRecovery.serverUnknown')).toBeInTheDocument();
   });
 
-  it('names each changed multiline row for readers who cannot use diff colors or signs', async () => {
+  it('cuts a changed text into separate changes around the lines both sides share', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Reading copy', note: 'Common line\nServer words' });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([
       rowCopy('c1', { id: 's1', userId: 'owner', title: 'Reading copy', note: 'Common line\nDevice words' }),
     ]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    expect(screen.getByText('Device words').closest('p')).toHaveTextContent('legacyRecovery.onDevice:');
-    expect(screen.getByText('Server words').closest('p')).toHaveTextContent('legacyRecovery.onServer:');
+    await openReview();
+    const change = screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(within(change).getByText('Device words')).toBeInTheDocument();
+    expect(within(change).getByText('Server words')).toBeInTheDocument();
+    expect(within(change).queryByText('Common line')).not.toBeInTheDocument();
+    expect(screen.getByText('Common line')).toBeInTheDocument();
   });
 
-  it('shows what a copy without a visible difference holds and asks before removing it', async () => {
+  it('shows what a copy without a server copy holds and asks before removing it', async () => {
     // The archive holds the copy until it is removed, however often the screen reads it.
     let removed = false;
     jest.mocked(listLegacyQueryCopies).mockImplementation(async () => (removed ? [] : [record]));
     jest.mocked(removeLegacyCopies).mockImplementation(async () => { removed = true; return 1; });
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    const row = screen.getByText(record.title).closest('li')!;
-    expect(within(row).getByText('legacyRecovery.copyContent')).toBeInTheDocument();
-    expect(within(row).getAllByText(/Private saved text/).length).toBeGreaterThan(1);
-    expect(within(row).queryByRole('button', { name: 'legacyRecovery.keepServer' })).not.toBeInTheDocument();
-    fireEvent.click(within(row).getByRole('button', { name: 'legacyRecovery.removeCopy' }));
-    expect(within(row).getByRole('alert')).toHaveTextContent('legacyRecovery.removeCopyConfirm');
+    await openReview();
+    const card = screen.getByRole('heading', { name: record.title }).closest('article')!;
+    expect(within(card).getByText('legacyRecovery.serverMissing')).toBeInTheDocument();
+    expect(within(card).getAllByText(/Private saved text/).length).toBeGreaterThan(1);
+    expect(within(card).queryByRole('button', { name: /legacyRecovery.accept/ })).not.toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'legacyRecovery.removeCopy' }));
+    expect(within(card).getByRole('alert')).toHaveTextContent('legacyRecovery.removeCopyConfirm');
     expect(removeLegacyCopies).not.toHaveBeenCalled();
-    fireEvent.click(within(row).getByRole('button', { name: 'legacyRecovery.removeCopyYes' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'legacyRecovery.removeCopyYes' }));
     await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', [{ id: record.id, raw: record.raw }]));
   });
 
@@ -283,11 +331,11 @@ describe('legacy cache preservation UI', () => {
     jest.mocked(retireLegacyEchoes).mockImplementationOnce(() => new Promise(resolve => { decide = resolve; }));
     jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([asked]).mockResolvedValueOnce([asked, arrived]).mockResolvedValue([]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllServer' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChanges' }));
     await act(async () => decide({ retired: 1, undecided: 0 }));
     await waitFor(() => expect(listLegacyQueryCopies).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllYes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChangesYes' }));
     await waitFor(() => expect(removeLegacyCopies).toHaveBeenCalledWith('owner', [{ id: asked.id, raw: asked.raw }]));
   });
 
@@ -296,22 +344,21 @@ describe('legacy cache preservation UI', () => {
     jest.mocked(removeLegacyCopies).mockRejectedValueOnce(new Error('quota'));
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllServer' }));
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllYes' }));
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChanges' }));
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.acceptAllChangesYes' }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('legacyRecovery.removeFailed'));
     jest.mocked(console.error).mockRestore();
   });
 
-  it('tells apart values that read alike: an empty field and a missing one', async () => {
+  it('says plainly when nothing the person could see differs: an empty field against a missing one', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', note: null });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A' })]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    const row = screen.getByText('A').closest('li')!;
-    expect(within(row).getByText('legacyRecovery.absent')).toBeInTheDocument();
-    expect(within(row).getByText('null')).toBeInTheDocument();
+    await openReview();
+    const card = screen.getByRole('heading', { name: 'A' }).closest('article')!;
+    expect(within(card).getByText('legacyRecovery.noVisibleDifference')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'legacyRecovery.removeCopy' })).toBeInTheDocument();
   });
 
   it('says so when a download fails while the copies stay on screen', async () => {
@@ -319,11 +366,10 @@ describe('legacy cache preservation UI', () => {
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
+    await openReview();
     fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.export' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('legacyRecovery.actionFailed');
-    expect(screen.getByText(record.title)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: record.title })).toBeInTheDocument();
     // The next download that works clears the failure instead of leaving it on screen for good.
     createObjectURL.mockImplementation(() => 'blob:copy');
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: jest.fn() });
@@ -334,18 +380,17 @@ describe('legacy cache preservation UI', () => {
     click.mockRestore();
   });
 
-  it('shows what an unsent operation carried and offers to remove it, not to keep the server version', async () => {
+  it('shows what an unsent operation carried and offers to remove it, never to accept it', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A' });
     const operation = { id: 'op', owner: 'owner', collection: 'series', documentId: 's1', title: 'update: s1', savedAt: 1,
       raw: JSON.stringify({ mutationKey: ['series', 'update'], state: { isPaused: true, variables: { updates: { title: 'Typed offline' } } } }) };
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([operation]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    expect(screen.getByText('legacyRecovery.operationContent')).toBeInTheDocument();
+    await openReview();
+    expect(screen.getByText('legacyRecovery.operationNote')).toBeInTheDocument();
     expect(screen.getAllByText(/Typed offline/).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'legacyRecovery.removeCopy' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'legacyRecovery.keepServer' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /legacyRecovery.accept$/ })).not.toBeInTheDocument();
   });
 
   it('names every field a person writes in the four archived collections', async () => {
@@ -353,7 +398,7 @@ describe('legacy cache preservation UI', () => {
     const written = ['title', 'verse', 'description', 'date', 'thoughts', 'scratch', 'outline', 'structure', 'insights', 'plan', 'planText', 'planMode',
       'isPreached', 'preparation', 'seriesId', 'seriesPosition', 'sourceNoteIds', 'church', 'preachDates', 'audioChunks', 'audioMetadata',
       'theme', 'bookOrTopic', 'sermonIds', 'items', 'seriesKind', 'startDate', 'duration', 'color', 'status', 'templates', 'flow', 'meetingDates',
-      'heldAt', 'topics'];
+      'heldAt', 'topics', 'summary', 'decision', 'options', 'questions', 'introduction', 'main', 'conclusion', 'ambiguous'];
     for (const locale of locales) expect(written.filter(field => !locale.legacyRecovery.field[field])).toEqual([]);
   });
 
@@ -361,20 +406,18 @@ describe('legacy cache preservation UI', () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', bookOrTopic: 'Romans', updatedAt: '2026-09-16T00:00:00.000Z' });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', bookOrTopic: 'Galatians', updatedAt: '2026-09-01T00:00:00.000Z' })]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
+    await openReview();
     expect(screen.getByText('legacyRecovery.field.bookOrTopic')).toBeInTheDocument();
     expect(screen.queryByText('bookOrTopic')).not.toBeInTheDocument();
   });
 
-  it('copies the device side of each difference, named by field', async () => {
+  it('copies the device side of a change', async () => {
     mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', description: 'Server', updatedAt: '2026-09-16T00:00:00.000Z' });
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', description: 'Phone', updatedAt: '2026-09-01T00:00:00.000Z' })]);
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.copyDevice' }));
-    expect(mockCopy).toHaveBeenCalledWith('legacyRecovery.field.description: Phone');
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith('Phone');
   });
 
   it('retires echoes of the server for the signed-in owner and shows only what still differs', async () => {
@@ -384,8 +427,8 @@ describe('legacy cache preservation UI', () => {
     render(<LegacyQueryCopies owner="owner" />);
     await waitFor(() => expect(listLegacyQueryCopies).toHaveBeenCalledTimes(2));
     expect(retireLegacyEchoes).toHaveBeenCalledWith('owner', expect.any(Function));
-    openDifferences();
-    expect(await screen.findByText(record.title)).toBeInTheDocument();
+    await openReview();
+    expect(await screen.findByRole('heading', { name: record.title })).toBeInTheDocument();
     expect(screen.queryByText(echo.title)).not.toBeInTheDocument();
   });
 
@@ -396,7 +439,7 @@ describe('legacy cache preservation UI', () => {
       jest.mocked(retireLegacyEchoes).mockResolvedValueOnce({ retired: 0, undecided: 1 }).mockResolvedValueOnce({ retired: 0, undecided: 0 });
       render(<LegacyQueryCopies owner="owner" />);
       await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-      openDifferences();
+      fireEvent.click(screen.getByRole('button', { name: /legacyRecovery.review/ }));
       expect(screen.getByText('legacyRecovery.serverMissing')).toBeInTheDocument();
       // The engine reads the council meanwhile; the retry finds it different and keeps the copy.
       mockServerCopies.set('councils/council', { title: 'Server title' });
@@ -414,8 +457,7 @@ describe('legacy cache preservation UI', () => {
       return { retired: 0, undecided: 0 };
     });
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
+    await openReview();
     expect(await screen.findByText(/Server title/)).toBeInTheDocument();
     expect(screen.queryByText('legacyRecovery.serverMissing')).not.toBeInTheDocument();
   });
@@ -429,7 +471,7 @@ describe('legacy cache preservation UI', () => {
       jest.mocked(retireLegacyEchoes).mockResolvedValueOnce({ retired: 0, undecided: 1 }).mockResolvedValueOnce({ retired: 0, undecided: 0 });
       render(<LegacyQueryCopies owner="owner" />);
       await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-      openDifferences();
+      fireEvent.click(screen.getByRole('button', { name: /legacyRecovery.review/ }));
       fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.removeCopy' }));
       expect(screen.getByText('legacyRecovery.removeCopyConfirm')).toBeInTheDocument();
       await act(async () => { await jest.advanceTimersByTimeAsync(30_000); });
@@ -444,28 +486,120 @@ describe('legacy cache preservation UI', () => {
     jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
     jest.mocked(retireLegacyEchoes).mockRejectedValueOnce(new Error('snapshot unreadable'));
     render(<LegacyQueryCopies owner="owner" />);
-    await screen.findByText('legacyRecovery.cacheTitle');
-    openDifferences();
-    expect(await screen.findByText(record.title)).toBeInTheDocument();
+    await openReview();
+    expect(await screen.findByRole('heading', { name: record.title })).toBeInTheDocument();
     await waitFor(() => expect(error).toHaveBeenCalled());
-    expect(screen.getByText(record.title)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: record.title })).toBeInTheDocument();
     error.mockRestore();
   });
-});
-
-describe('line diff of a structured difference', () => {
-  const { lineDiff } = jest.requireActual('../LegacyQueryRecovery') as typeof import('../LegacyQueryRecovery');
-
-  it('keeps changed lines with two lines of context and folds the unchanged rest', () => {
-    const lines = (changed: string) => ['a', 'b', 'c', 'd', 'e', changed, 'f', 'g', 'h', 'i'].join('\n');
-    expect(lineDiff(lines('old'), lines('new'))).toEqual([
-      { gap: 3 }, { op: ' ', text: 'd' }, { op: ' ', text: 'e' }, { op: '-', text: 'old' }, { op: '+', text: 'new' },
-      { op: ' ', text: 'f' }, { op: ' ', text: 'g' }, { gap: 2 },
-    ]);
+  it('shows a nested part that differs in full: a prepared answer under an unchanged question', async () => {
+    const topic = (answer: string) => ({ id: 'm1', title: 'Camp', questions: [{ id: 'q1', question: 'Who leads?', answer }] });
+    mockServerCopies.set('councils/council', { id: 'council', userId: 'owner', title: 'Council', topics: [topic('Server answer')] });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([{ ...record, raw: JSON.stringify({ id: 'council', userId: 'owner', title: 'Council', topics: [topic('Device answer')] }) }]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const change = screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(within(change).getByText(/Device answer/)).toBeInTheDocument();
+    expect(within(change).getByText(/Server answer/)).toBeInTheDocument();
   });
 
-  it('shows added and removed lines where they belong', () => {
-    expect(lineDiff('x\ny', 'x\nz\ny')).toEqual([{ op: ' ', text: 'x' }, { op: '+', text: 'z' }, { op: ' ', text: 'y' }]);
-    expect(lineDiff('x\nz\ny', 'x\ny')).toEqual([{ op: ' ', text: 'x' }, { op: '-', text: 'z' }, { op: ' ', text: 'y' }]);
+  it('keeps a copy whose difference is partly invisible when the review closes, and asks before removing it', async () => {
+    const a = { id: 'm1', title: 'A' }, b = { id: 'm2', title: 'B' };
+    mockServerCopies.set('councils/council', { id: 'council', userId: 'owner', title: 'Server title', topics: [b, a] });
+    const copy = { ...record, raw: JSON.stringify({ id: 'council', userId: 'owner', title: 'Device title', topics: [a, b] }) };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(screen.getByText('legacyRecovery.partlyHidden')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'legacyRecovery.removeCopy' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    // Every shown change accepted: the card now asks, and closing alone removes nothing.
+    expect(screen.getByRole('button', { name: 'legacyRecovery.removeCopy' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'common.close' })[0]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
+  it('never lets a decision carry over to a change the person did not see: a refreshed comparison asks again', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', note: 'A\nmid\nb' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', note: 'a\nmid\nb' })]);
+    let refresh!: (value: { retired: number; undecided: number }) => void;
+    jest.mocked(retireLegacyEchoes).mockImplementationOnce(() => new Promise(resolve => { refresh = resolve; }));
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('legacyRecovery.accepted');
+    // The app's copy moves on meanwhile: the difference is now about another line.
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', note: 'a\nmid\nB' });
+    await act(async () => refresh({ retired: 1, undecided: 0 }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' })).toHaveTextContent('B'));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('names a left-out part that differs beside a visible change, and shows words under any key', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', planText: { id: 'remote', p2: 'new' } });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', planText: { id: 'UNSENT', p2: 'old' } })]);
+    const { unmount } = render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(screen.getByText('legacyRecovery.partlyHidden')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    // Something is still not shown, so nothing offers to take every copy at once.
+    expect(screen.queryByRole('button', { name: 'legacyRecovery.removeDecided' })).not.toBeInTheDocument();
+    unmount();
+
+    const church = (id: string, city: string) => ({ id: 'p1', date: '2026-04-05', church: { id, name: 'Grace', city } });
+    mockServerCopies.set('sermons/s2', { id: 's2', userId: 'owner', title: 'Easter', preachDates: [church('c2', 'Davis')] });
+    const sermon = { ...rowCopy('c2', { id: 's2', userId: 'owner', title: 'Easter', preachDates: [church('c1', 'Sacramento')] }), collection: 'sermons' };
+    const words = { id: 'm1', title: 'Camp', textId: 'Words typed under a reference key' };
+    mockServerCopies.set('councils/council', { id: 'council', userId: 'owner', title: 'T', topics: [] });
+    const council = { ...record, raw: JSON.stringify({ id: 'council', userId: 'owner', title: 'T', topics: [words] }) };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([sermon, council]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(within(screen.getByRole('heading', { name: 'Easter' }).closest('article')!).getByText('legacyRecovery.partlyHidden')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'legacyRecovery.kindRemoved' })).toHaveTextContent(words.textId);
+  });
+
+  it('shows the AI model the person picked as a change, not as something hidden', async () => {
+    mockServerCopies.set('users/owner', { id: 'owner', language: 'en', preferredText: { providerId: 'openai', modelId: 'model-b' } });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([{ ...record, collection: 'users', documentId: 'owner', title: 'owner',
+      raw: JSON.stringify({ id: 'owner', language: 'ru', preferredText: { providerId: 'openai', modelId: 'model-a' } }) }]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    expect(screen.queryByText('legacyRecovery.partlyHidden')).not.toBeInTheDocument();
+    const changes = screen.getAllByRole('group', { name: /legacyRecovery\.kind/ }).map(group => group.textContent).join('\n');
+    expect(changes).toContain('model-a');
+    expect(changes).toContain('model-b');
+  });
+
+  it('keeps what a copy holds a press away before any decision: its raw data, its file, every file', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Server' });
+    const copy = rowCopy('c1', { id: 's1', userId: 'owner', title: 'Funerals', description: 'Old' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const card = screen.getByRole('heading', { name: 'Funerals' }).closest('article')!;
+    expect(within(card).getByText('legacyRecovery.rawData')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'legacyRecovery.export' })).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'legacyRecovery.removeCopy' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'legacyRecovery.downloadAll' })).toBeInTheDocument();
+    expect(screen.queryByText('legacyRecovery.acceptAllChangesConfirm')).not.toBeInTheDocument();
+  });
+
+  it('asks again when the same words change at another place after the app copy moved on', async () => {
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', note: 'Q1\nYes\nQ2\nNo' });
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([rowCopy('c1', { id: 's1', userId: 'owner', title: 'A', note: 'Q1\nNo\nQ2\nNo' })]);
+    let refresh!: (value: { retired: number; undecided: number }) => void;
+    jest.mocked(retireLegacyEchoes).mockImplementationOnce(() => new Promise(resolve => { refresh = resolve; }));
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: /legacyRecovery\.accept$/ }));
+    expect(screen.getByRole('status')).toHaveTextContent('legacyRecovery.accepted');
+    // Now the second question changed in the app, with the very same words: "No" became "Yes".
+    mockServerCopies.set('series/s1', { id: 's1', userId: 'owner', title: 'A', note: 'Q1\nNo\nQ2\nYes' });
+    await act(async () => refresh({ retired: 1, undecided: 0 }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' })).toBeInTheDocument());
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'legacyRecovery.removeDecided' })).not.toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import { queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
+import { BOOKKEEPING } from './legacyCopyChanges';
 import { equalValues, personFields } from './protocol';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
@@ -257,9 +258,6 @@ export function listLegacyQueryCopies(owner: string): Promise<LegacyQueryCopy[]>
  */
 export type ServerCopyReader = (collection: string, documentId: string) => Promise<Record<string, unknown> | null | undefined>;
 
-/** Fields that record when and how a copy was written, never what the person wrote. */
-const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);
-
 const canonical = (value: unknown, top = true): unknown => {
   if (Array.isArray(value)) return value.map(item => canonical(item, false));
   if (!object(value)) return value;
@@ -378,6 +376,8 @@ export interface LegacyCopyComparison {
   serverVersionAt: string | null;
   /** Only the fields that differ, read as the person wrote them, bookkeeping aside. */
   differences: { field: string; device: unknown; server: unknown }[];
+  /** Both whole documents read as the person wrote them, when both exist: a list of thoughts reads its sections by them. */
+  rows: { device: Record<string, unknown>; server: Record<string, unknown> } | null;
 }
 
 const isoOrNull = (value: unknown): string | null => {
@@ -432,6 +432,7 @@ export function compareLegacyCopy(copy: LegacyQueryCopy, server: Record<string, 
   return {
     kind: copyKind(copy, row), server: serverState, freshness: freshnessOf(deviceVersionAt, serverVersionAt, !ownVersionAt), deviceVersionAt, serverVersionAt,
     differences: row && server ? differencesOf(copy.collection, row, server) : [],
+    rows: row && server ? { device: asThePersonWrote(copy.collection, row), server: asThePersonWrote(copy.collection, server) } : null,
   };
 }
 

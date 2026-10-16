@@ -359,21 +359,34 @@ belong to a new copy. A difference, a document the engine has not read here yet 
 in all, 30 s apart), an unreadable server copy, a document deleted on the server, an operation
 and an unreadable copy all stay. Equality proves that the server held this content, not that it
 still does. What remains is laid out for a decision, never submitted and never given an invented
-confirmed ancestor: each copy against the engine's server copy — which side changed last (each
-document's own `updatedAt`; a device date that is only when the previous version saved its cache
-can say the server changed later, never that the device did), both dates, and a line diff of
-only the differing fields with bookkeeping hidden. A sermon alias that repeats its field on both
-sides is listed once; one that drifted apart is listed too, because the previous version read it
-first on some screens and every difference the echo check keeps a copy for must be visible. No
-copy leaves without a decision made while its difference or a question is on screen: a copy
-whose diff is shown can keep the server version in one press; any other copy (an operation, an
-unreadable copy, a server copy not loaded, deleted or not comparable) shows what it holds and
-asks first; accepting everything from the server always asks once inside the banner, offers to
-download all copies first, and removes only the copies listed when it asked — because a date
+confirmed ancestor. A thin strip above the page says how many records on this device differ and
+opens the review (`FormDialog`: a bottom sheet on a phone, a centred window wider up). Each copy
+is read against the engine's server copy as a review of changes, the way `git diff` shows hunks
+(`legacyCopyChanges.ts`): added (only in the app, green), removed (only on this device, struck in
+red) or replaced, with the unchanged lines between them. Lists of items with an id (thoughts,
+council matters) compare item by item, plain lists value by value, text and nested values line by
+line; a sermon's sections, which list thought ids, show only when shared thoughts moved, read as
+thought texts. Every change is accepted on its own ("Accept" — keep it as the app has it; "Copy"
+— take the device's words to paste by hand; nothing is written back). Accepting decides nothing by
+itself and closing the review removes nothing: a copy leaves the device only when the person removes
+it — one copy once its changes are all accepted, or, once nothing is left to decide, every copy at
+once; each card's raw data and file, and a file of all copies, are there from the start. The
+reader leaves out only references and a list item's placement that hold no words (words show under
+any key), and reports exactly those parts, so a difference in them is named — except inside a list
+item that leaves or arrives, whose references go with it (every reference field in `models.ts`
+holds a generated id, never words). The AI provider and model the person picked are choices, not
+references, and always show. Decisions are bound to the comparison they were made on (the
+copy and the server copy), so a refreshed comparison asks again. A difference no line shows — a
+reorder, thoughts that read alike changing places, an item or a nested reference with no line to
+read it by — is named on the card instead of being dropped. Any other copy (an operation, an unreadable
+copy, a server copy not loaded, deleted, not comparable, or differing only in what cannot be seen)
+shows what it holds and asks first; accepting everything always asks once, offers to download all
+copies first, and removes only the copies listed when it asked — because a date
 never proves whose words are newer (legacy optimistic edits left `updatedAt` alone, structure
 writes never moved it, and the engine does not set it). One copy whose comparison fails is shown
-as "could not be compared" and never hides the others. Field differences are computed when the
-banner loads; rows and line diffs render only when the list is opened.
+as "could not be compared" and never hides the others. Restoring a change from the device into the
+document ("Reject" in the review design) is not built: it needs each collection's links kept
+(a thought and the sermon sections that list it).
 Measured on the owner's desktop archive before this shipped: 115 of 115 copies were echoes.
 Open: a paused operation that later fails on replay is archived again as a second copy of the
 same intent (its raw state changed), and legacy operations are still offered for export rather
