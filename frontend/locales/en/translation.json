@@ -1492,11 +1492,15 @@
     },
     "draft": {
       "title": "Unfinished recording",
-      "hint": "Transcription didn't finish. Your recording is saved here — resend it, download it, or discard it.",
+      "hint": "Your recording is saved on this device. Restore its text, download it, or discard it.",
       "resend": "Send again",
       "download": "Download",
       "discard": "Discard",
-      "listen": "Listen"
+      "listen": "Listen",
+      "saveFailed": "The recording could not be saved on this device. Keep this window open and download it before leaving.",
+      "discardFailed": "The recording could not be deleted. It is still available here.",
+      "resendFailed": "The recording could not be restored. It is still saved here.",
+      "loadFailed": "Saved recordings could not be loaded. Try again."
     },
     "closeError": "Close",
     "thoughtGenerationFailed": "Failed to generate a valid thought from the audio. Meaning might have been altered.",

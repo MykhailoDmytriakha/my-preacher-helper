@@ -11,6 +11,8 @@ import type { ScriptureReference } from '@/models/models';
 export interface NoteDraftPayload {
     title: string;
     content: string;
+    dictationSourceIds?: string[];
+    recordingSourceIds?: string[];
     tags: string[];
     scriptureRefs: ScriptureReference[];
     type: 'note' | 'question';

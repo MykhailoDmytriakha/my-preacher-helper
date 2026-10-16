@@ -34,7 +34,7 @@ it('publishes original text when polish is absent, refreshes usage after publish
   act(() => result.current.stopProcessing());
   expect(result.current.isProcessing).toBe(false);
   await act(async () => { complete({ polishedText: '', originalText: '  Original speech  ' }); });
-  expect(callbacks.onText).toHaveBeenCalledWith('Original speech');
+  expect(callbacks.onText).toHaveBeenCalledWith('Original speech', expect.any(String));
   expect(callbacks.onText.mock.invocationCallOrder[0]).toBeLessThan(mockRefresh.mock.invocationCallOrder[0]);
   expect(callbacks.onError).not.toHaveBeenCalled();
   mockBlocked = true;

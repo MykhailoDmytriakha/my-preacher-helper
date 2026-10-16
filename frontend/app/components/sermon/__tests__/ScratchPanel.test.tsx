@@ -1,6 +1,19 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 
 import ScratchPanel from "../ScratchPanel";
+const mockRecordingRows = new Map<string, unknown>();
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('idb-keyval', () => ({
+  createStore: jest.fn(() => ({})),
+  get: jest.fn(async (id: string) => mockRecordingRows.get(id)),
+  entries: jest.fn(async () => Array.from(mockRecordingRows.entries())),
+  update: jest.fn(async (id: string, change: (old: unknown) => unknown) => { mockRecordingRows.set(id, change(mockRecordingRows.get(id))); }),
+}));
+beforeEach(() => {
+  mockRecordingRows.clear();
+  Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: {} });
+});
+
 
 import type { ScratchNote } from "@/models/models";
 import type { ComponentProps } from "react";
@@ -135,6 +148,7 @@ function renderScratchPanel(overrides: Partial<ComponentProps<typeof ScratchPane
       text: "Manual note",
       createdAt: "2026-07-05T00:00:00.000Z",
     })),
+    addRecordedScratchNote: async (text: string, _recordingId: string) => props.addScratchNote(text),
     restoreScratchNote: jest.fn((note: ScratchNote) => note),
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),

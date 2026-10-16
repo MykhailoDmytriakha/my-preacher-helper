@@ -34,6 +34,19 @@ export function useScratchDataDocument(sermonId: string | null) {
     if (!text.trim()) return null;
     return restoreScratchNote({ id: newClientId(), text, createdAt: new Date().toISOString(), ...(section ? { section } : {}) });
   };
+  const addRecordedScratchNote = async (text: string, recordingId: string): Promise<ScratchNote | null> => {
+    if (!text.trim() || !recordingId) return null;
+    const candidate: ScratchNote = { id: `audio:${recordingId}`, text: text.trim(), createdAt: new Date().toISOString() };
+    let accepted: ScratchNote | null = null;
+    await document.update(current => {
+      const sermon = existing(current);
+      const notes = notesOf(sermon);
+      const prior = notes.find(note => note.id === candidate.id);
+      accepted = prior ?? candidate;
+      return prior ? sermon : { ...sermon, scratch: [candidate, ...notes] as unknown as Json };
+    });
+    return accepted;
+  };
   const updateScratchNote = (noteId: string, patch: ScratchPatch) => mutateNotes(notes => notes.map(note => {
     if (note.id !== noteId) return note;
     const next = { ...note };
@@ -54,6 +67,7 @@ export function useScratchDataDocument(sermonId: string | null) {
     notes: document.data ? notesOf(document.data) : [],
     outline: document.data?.outline as unknown as SermonOutline | undefined,
     addScratchNote,
+    addRecordedScratchNote,
     restoreScratchNote,
     updateScratchNote,
     deleteScratchNote: (noteId: string) => mutateNotes(notes => notes.filter(note => note.id !== noteId)),

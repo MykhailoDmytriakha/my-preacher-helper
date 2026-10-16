@@ -16,6 +16,16 @@ import type { Item } from '@/models/models';
 
 jest.unmock('i18next');
 
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
+  saveRecordingDraft: jest.fn(async (input: { id: string }) => input.id),
+  deleteRecordingDraft: jest.fn(async () => undefined),
+  listRecordingDrafts: jest.fn(async () => []),
+  subscribeRecordingDrafts: () => () => undefined,
+}));
+
+
 const mockDropNodes = new Map<string, HTMLElement | null>();
 jest.mock('@dnd-kit/core', () => ({ useDroppable: ({ id }: { id: string }) => ({ setNodeRef: (node: HTMLElement | null) => { mockDropNodes.set(id, node); }, isOver: false }) }));
 jest.mock('@dnd-kit/sortable', () => ({ SortableContext: ({ children }: React.PropsWithChildren) => <>{children}</>, verticalListSortingStrategy: jest.fn() }));
@@ -95,7 +105,7 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   jest.mocked(createAudioThought).mockImplementationOnce(() => new Promise(resolve => { resolveAudio = resolve; }) as ReturnType<typeof createAudioThought>);
   render(<OutlinePointCard {...base} sermonId="sermon" onAudioThoughtCreated={onAudioThoughtCreated} audioError={{ said: 'Point failure' }} />);
   fireEvent.click(screen.getByRole('button', { name: 'Point record' }));
-  await waitFor(() => expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point'));
+  await waitFor(() => expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', undefined, { id: expect.any(String), sectionId: 'main' }));
   expect(screen.getByRole('button', { name: 'Point record' })).toHaveAttribute('aria-busy', 'true');
   await act(async () => resolveAudio({ id: 'created' } as Awaited<ReturnType<typeof createAudioThought>>));
   expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: 'created' }, 'main');
@@ -106,7 +116,7 @@ it('keeps point and subpoint recording targets, processing and error feedback se
   expect(base.setAudioError).toHaveBeenLastCalledWith({ said: 'Device error' });
   jest.mocked(createAudioThought).mockResolvedValueOnce({ id: 'sub-created' } as Awaited<ReturnType<typeof createAudioThought>>);
   fireEvent.click(screen.getByRole('button', { name: 'Sub record' }));
-  await waitFor(() => expect(createAudioThought).toHaveBeenLastCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', 'sub'));
+  await waitFor(() => expect(createAudioThought).toHaveBeenLastCalledWith(expect.any(Blob), 'sermon', 0, 3, 'point', 'sub', { id: expect.any(String), sectionId: 'main' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Sub record' })).toHaveAttribute('aria-busy', 'false'));
   fireEvent.click(screen.getByRole('button', { name: 'Sub error' }));
   expect(screen.getByRole('button', { name: 'Sub clear: Device error' })).toBeVisible();

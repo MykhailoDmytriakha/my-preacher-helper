@@ -769,6 +769,7 @@ export default function PrayerPage() {
       )}
       {addingUpdateForId && (
         <AddUpdateModal
+          prayerId={addingUpdateForId}
           onClose={() => setAddingUpdateForId(null)}
           onSubmit={handleAddUpdate}
         />

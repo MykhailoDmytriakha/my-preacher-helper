@@ -22,7 +22,7 @@ export interface AudioRecorderProps {
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
   /** The person deleted the failed recording on purpose — unlike a clear, which also precedes every retry. */
-  onDiscardRecording?: () => void;
+  onDiscardRecording?: () => void | Promise<void>;
   variant?: RecorderVariant;
   autoStart?: boolean;
   hideKeyboardShortcuts?: boolean;

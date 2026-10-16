@@ -19,7 +19,7 @@ const resource = (id: string) => ({ collection: 'studyNotes', id });
 const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
-const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type'];
+const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds'];
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
 /**
  * What the editor may say about a write the engine holds on this device. Acceptance waits for
@@ -102,6 +102,8 @@ export function useStudyNotesEngine(enabled: boolean) {
       const value = deepCleanUndefined({
         userId: note.userId, content: note.content ?? '', title: note.title || '', scriptureRefs: note.scriptureRefs || [],
         tags: note.tags || [], type: note.type || 'note', isDraft: isDraft(note), createdAt: at, updatedAt: at,
+        ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
+        ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
       }) as unknown as DocumentData;
       const request = actions.create(resource(id), value);
       void request.catch(() => undefined);
@@ -129,13 +131,17 @@ export function useStudyNotesEngine(enabled: boolean) {
             // same way: an old reference given its Bible on reading is not a change made elsewhere.
             const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
             const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field =>
-              field in expectedBaseline && !same(read[field], expectedBaseline[field]) && !same(read[field], patch[field])) : [];
+              field !== 'dictationSourceIds' && field !== 'recordingSourceIds' && field in expectedBaseline && !same(read[field], expectedBaseline[field]) && !same(read[field], patch[field])) : [];
             if (changedElsewhere.length) {
               stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));
               return current;
             }
-            const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), updatedAt: now() };
+            const receipts: DocumentData = {};
+            for (const field of ['dictationSourceIds', 'recordingSourceIds'] as const) {
+              if (updates[field]) receipts[field] = [...new Set([...((current[field] ?? []) as string[]), ...updates[field]])];
+            }
+            const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), ...receipts, updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             // The engine moves the stored counter itself; this is the value it will reach.
             saved = { ...engineNote(next, id, locale), revision: stored + 1 };

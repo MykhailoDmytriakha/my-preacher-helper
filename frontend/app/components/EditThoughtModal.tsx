@@ -32,6 +32,7 @@ export interface EditThoughtDraft {
 }
 
 interface EditThoughtModalProps {
+  recordingContextId?: string;
   initialText: string;
   initialTags: string[];
   initialSermonPointId?: string;
@@ -53,6 +54,7 @@ const areStringArraysEqual = (a: string[], b: string[]) =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
 export default function EditThoughtModal({
+  recordingContextId,
   initialText,
   initialTags,
   initialSermonPointId,
@@ -75,6 +77,7 @@ export default function EditThoughtModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<FailureWords | null>(null);
   const dictation = useTextDictation({
+    recordingContext: recordingContextId ? { context: 'thought', contextId: recordingContextId } : undefined,
     onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
     onEmpty: () => toast.error(t('errors.audioProcessing')),
     onError: words => toast.error(sayFailure(words, t)),
@@ -137,6 +140,8 @@ export default function EditThoughtModal({
         onSubmissionRejected?.(submittedDraft);
       });
 
+      // A durable writer owns the text before its raw safety copy is released.
+      void submission.persistence.then(() => dictation.accept()).catch(() => undefined);
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);

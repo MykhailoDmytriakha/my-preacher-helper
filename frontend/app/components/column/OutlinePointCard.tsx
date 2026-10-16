@@ -9,6 +9,7 @@ import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { LockToggleButton } from '@/components/LockToggleButton';
 import PointNote from '@/components/PointNote';
 import { OutlinePointGuidanceTooltip } from '@/components/SermonGuidanceTooltips';
+import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getOutlinePointAiSortState } from '@/utils/aiSorting';
 import { debugLog } from '@/utils/debugMode';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -104,6 +105,7 @@ export const OutlinePointCard: React.FC<{
     data: { container: containerId, outlinePointId: point.id }
   });
 
+  const recordingOwner = useRecordingOwner(JSON.stringify([sermonId, containerId, point.id]));
   const hasItems = pointItems.length > 0;
   const isPointLocked = hasItems && pointItems.every((item) => item.isLocked);
   const aiSortState = getOutlinePointAiSortState({
@@ -183,6 +185,8 @@ export const OutlinePointCard: React.FC<{
   const renderSubPointRecorder = canUseInlineRecorder
     ? (subPoint: SubPoint) => (
       <FlatRecorderButton
+        key={JSON.stringify([recordingOwner.key, subPoint.id])}
+        onDiscardRecording={() => recordingOwner.discard(`sub:${subPoint.id}`)}
         disabled={isPointLocked || transcriptionBlocked}
         title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
         transcriptionError={subPointAudioErrors[subPoint.id] ?? null}
@@ -194,6 +198,9 @@ export const OutlinePointCard: React.FC<{
             audioBlob,
             sectionId: containerId,
             sermonId,
+                ownerId: recordingOwner.ownerId,
+                isCurrent: recordingOwner.isCurrent,
+                onDraftCaptured: draftId => recordingOwner.remember('sub:' + subPoint.id, draftId),
             pointId: point.id,
             subPointId: subPoint.id,
             setIsRecordingAudio: createSubPointProcessingSetter(subPoint.id),
@@ -411,6 +418,8 @@ export const OutlinePointCard: React.FC<{
               {canUseInlineRecorder && (
                 <>
                   <FocusRecorderButton
+                    key={recordingOwner.key}
+                    onDiscardRecording={() => recordingOwner.discard('point')}
                     size="small"
                     disabled={isPointLocked || transcriptionBlocked}
                     title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
@@ -423,6 +432,9 @@ export const OutlinePointCard: React.FC<{
                         audioBlob,
                         sectionId: containerId,
                         sermonId,
+                ownerId: recordingOwner.ownerId,
+                isCurrent: recordingOwner.isCurrent,
+                onDraftCaptured: draftId => recordingOwner.remember('point', draftId),
                         pointId: point.id,
                         setIsRecordingAudio,
                         setAudioError,

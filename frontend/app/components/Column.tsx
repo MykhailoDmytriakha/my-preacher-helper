@@ -8,9 +8,11 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
+import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
 import { debugLog } from "@/utils/debugMode";
@@ -19,7 +21,7 @@ import { sortSubPointsByPosition } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
-import { recordAudioThought } from "./column/audio";
+import { recordAudioThought, outlineRecordingContextId } from "./column/audio";
 import { buildColumnItemIndex } from "./column/columnItemModel";
 import {
   DEFAULT_ALL_POINTS_BLOCKED_TEXT,
@@ -96,6 +98,7 @@ export default function Column({
 }: ColumnComponentProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
+  const recordingOwner = useRecordingOwner(JSON.stringify([sermonId, id]));
   const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
   // Dictation spends transcription AND ai (`/api/thoughts` admits both), so asking only about
   // transcription left the microphone bright on an account whose AI allowance was spent.
@@ -359,6 +362,8 @@ export default function Column({
       {isFocusMode && sermonId && (
         <div className="mt-3">
           <AudioRecorder
+            key={recordingOwner.key}
+            onDiscardRecording={() => recordingOwner.discard('section')}
             variant="mini"
             hideKeyboardShortcuts={true}
             disabled={allPointsBlocked || transcriptionBlocked}
@@ -373,6 +378,9 @@ export default function Column({
                 audioBlob,
                 sectionId: id,
                 sermonId,
+                ownerId: recordingOwner.ownerId,
+                isCurrent: recordingOwner.isCurrent,
+                onDraftCaptured: draftId => recordingOwner.remember('section', draftId),
                 setIsRecordingAudio,
                 setAudioError: setSectionAudioError,
                 setLimitReached: setAudioLimitReached,
@@ -620,6 +628,26 @@ export default function Column({
     </div>
   );
 
+  const renderRecordingRecovery = () => sermonId ? (
+    <RecordingDraftBanner context="outline" contextId={outlineRecordingContextId(sermonId, id)}
+      isProcessing={isRecordingAudio} resendDisabled={transcriptionBlocked || allPointsBlocked}
+      onResend={async (blob, source) => {
+        const destination = source.destination;
+        if (!destination || destination.sectionId !== id) throw new Error('The original recording section is not available');
+        if (destination.pointId) {
+          const point = localSermonPoints.find(item => item.id === destination.pointId);
+          if (!point || isPointLocked(point.id) || (destination.subPointId && !point.subPoints?.some(item => item.id === destination.subPointId))) {
+            throw new Error('The original recording point is not available');
+          }
+        }
+        return Boolean(await recordAudioThought({ audioBlob: blob, source, sermonId, sectionId: id,
+          ownerId: recordingOwner.ownerId, isCurrent: recordingOwner.isCurrent,
+          pointId: destination.pointId, subPointId: destination.subPointId,
+          setIsRecordingAudio, setAudioError: setSectionAudioError, setLimitReached: setAudioLimitReached,
+          onAudioThoughtCreated, t, errorContext: 'Restoring structure recording:' }));
+      }} />
+  ) : null;
+
   const renderFocusContent = () => (
     <SortableContext items={items} strategy={sortingStrategy}>
       <div
@@ -627,6 +655,7 @@ export default function Column({
         className={`flex-grow w-full min-w-0 md:min-w-[500px] lg:min-w-[700px] xl:min-w-[900px] min-h-[600px] overflow-y-auto px-2 sm:px-6 pb-6 pt-20 md:p-6 ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-lg border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""} relative`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
+        {renderRecordingRecovery()}
         {/* Sidebar toggle button for small screens */}
         <button
           onClick={() => setIsSidebarVisible(!isSidebarVisible)}
@@ -734,6 +763,8 @@ export default function Column({
                 <div className="absolute right-0 mt-2 z-50">
                   <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 w-[320px]">
 	                    <AudioRecorder
+	                      key={recordingOwner.key}
+	                      onDiscardRecording={() => recordingOwner.discard('section')}
 	                      variant="mini"
 	                      hideKeyboardShortcuts={true}
 	                      autoStart={true}
@@ -748,6 +779,9 @@ export default function Column({
 	                          audioBlob,
 	                          sectionId: id,
 	                          sermonId,
+                ownerId: recordingOwner.ownerId,
+                isCurrent: recordingOwner.isCurrent,
+                onDraftCaptured: draftId => recordingOwner.remember('section', draftId),
 	                          setIsRecordingAudio,
 	                          setAudioError: setNormalAudioErrorSafely,
 	                          setLimitReached: setAudioLimitReached,
@@ -921,6 +955,7 @@ export default function Column({
         className={`min-h-[300px] ${structureBodyPaddingClass} ${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} rounded-b-md border-2 shadow-lg transition-all ${borderColor} dark:${UI_COLORS.neutral.darkBorder} ${isOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
+        {renderRecordingRecovery()}
         {/* Show outline points with grouped thoughts */}
         {localSermonPoints && localSermonPoints.length > 0 ? (
           <div className="space-y-6">

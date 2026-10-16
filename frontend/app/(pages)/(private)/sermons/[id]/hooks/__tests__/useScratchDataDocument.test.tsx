@@ -142,3 +142,21 @@ describe('useScratchDataDocument', () => {
     expect(s.notes()).toEqual([expect.objectContaining({ text: 'first' })]);
   });
 });
+
+it('waits for the durable voice note and reuses its recording identity after retry', async () => {
+  const s = setup();
+  let accept!: () => void;
+  s.defer(new Promise<void>(resolve => { accept = resolve; }));
+  const view = renderHook(() => useScratchDataDocument('sermon'));
+  const controller = view.result.current as typeof view.result.current & { addRecordedScratchNote?: (text: string, recordingId: string) => Promise<ScratchNote> };
+  expect(typeof controller.addRecordedScratchNote).toBe('function');
+  let finished = false;
+  const pending = controller.addRecordedScratchNote!('Original voice text', 'source-1').then(() => { finished = true; });
+  await act(async () => { await Promise.resolve(); });
+  expect(finished).toBe(false);
+  await act(async () => { accept(); await pending; });
+  expect(s.notes().filter(note => note.id === 'audio:source-1')).toHaveLength(1);
+  await act(async () => { await controller.addRecordedScratchNote!('Original voice text', 'source-1'); });
+  expect(s.notes().filter(note => note.id === 'audio:source-1')).toHaveLength(1);
+  view.unmount();
+});

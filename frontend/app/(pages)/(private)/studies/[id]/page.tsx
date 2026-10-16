@@ -28,6 +28,7 @@ import { useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
+import { useTextDictation } from '@/hooks/useTextDictation';
 import { useRoomyHeader, useWideViewport } from '@/hooks/useWideViewport';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
@@ -36,18 +37,17 @@ import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
-import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { findSectionById } from '@/utils/markdownSections';
-import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
+import { deleteRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
+import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
-import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
@@ -133,7 +133,7 @@ function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
 
 function useNoteInitialization({
     notesLoading, uid, isNew, isInitialized, existingNote, t,
-    setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
+    setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setDictationSourceIds, setRecordingSourceIds, setLastSaved
 }: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
     useEffect(() => {
         if (notesLoading || !uid) return;
@@ -144,6 +144,8 @@ function useNoteInitialization({
             setTags([]);
             setScriptureRefs([]);
             setType('note');
+            setDictationSourceIds([]);
+            setRecordingSourceIds([]);
             setIsInitialized(true);
             return;
         }
@@ -154,10 +156,12 @@ function useNoteInitialization({
             setTags(existingNote.tags || []);
             setScriptureRefs(existingNote.scriptureRefs || []);
             setType(existingNote.type || 'note');
+            setDictationSourceIds(existingNote.dictationSourceIds ?? []);
+            setRecordingSourceIds(existingNote.recordingSourceIds ?? existingNote.dictationSourceIds ?? []);
             setIsInitialized(true);
             setLastSaved(new Date(existingNote.updatedAt));
         }
-    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved]);
+    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setDictationSourceIds, setRecordingSourceIds, setLastSaved]);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -201,9 +205,14 @@ function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLink
 
 
 function useNoteAIAssistant({
-    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef
+    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds
 }: {
     noteId: string;
+    uid?: string;
+    dictationSourceIds: string[];
+    linkedRecordingSourceIds: readonly string[];
+    setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
+    setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
     setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
@@ -223,15 +232,6 @@ function useNoteAIAssistant({
     // page-wide gate that keeps a second request from starting.
     const [analyzingSource, setAnalyzingSource] = useState<NoteAiSource | null>(null);
     const isAnalyzing = analyzingSource !== null;
-    const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
-    // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
-    // Kept as words: the recorder says them in the language on screen.
-    const [voiceError, setVoiceError] = useState<FailureWords | null>(null);
-    const [voiceRetryCount, setVoiceRetryCount] = useState(0);
-    const storedVoiceBlobRef = useRef<Blob | null>(null);
-    const voiceDraftIdRef = useRef<string | null>(null);
-    const VOICE_MAX_RETRIES = 3;
-
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
     const handleAIAnalyze = async (
@@ -310,103 +310,36 @@ function useNoteAIAssistant({
         }
     };
 
-    const runVoiceTranscription = useCallback(async (
-        audioBlob: Blob,
-        opts?: { persistOnFailure?: boolean }
-    ): Promise<boolean> => {
-        setIsVoiceProcessing(true);
-        setVoiceError(null);
-        const startedAt = Date.now();
-        try {
-            const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/studies/transcribe' });
-            const newText = result.polishedText || result.originalText;
-            recordDiagnostic('dictation', { source: 'note', result: newText ? 'text' : 'empty', elapsedMs: Date.now() - startedAt });
-            if (newText) {
-                // Seen on screen means on its way: the preacher may lock the phone right now
-                // (BUG-20261006-hidden-tab-holds-last-edit).
-                saveAtOnceRef.current = true;
-                setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+    const voice = useTextDictation({
+        recordingContext: { context: 'study', contextId: noteId },
+        linkedSourceIds: linkedRecordingSourceIds,
+        onSourcePersisted: sourceId => setRecordingSourceIds(previous => previous.includes(sourceId) ? previous : [...previous, sourceId]),
+        endpoint: '/api/studies/transcribe',
+        onText: async (text, sourceId) => {
+            if (!sourceId || !uid) throw new Error('The note recording owner is not available');
+            if (dictationSourceIds.includes(sourceId)) {
+                await deleteRecordingDraft(sourceId, uid);
+                return;
             }
-            await refreshAiUsage();
-            // Success — the thought is now saved as text; drop the safety copy + persisted draft.
-            storedVoiceBlobRef.current = null;
-            setVoiceError(null);
-            setVoiceRetryCount(0);
-            if (voiceDraftIdRef.current) {
-                void deleteRecordingDraft(voiceDraftIdRef.current);
-                voiceDraftIdRef.current = null;
-            }
-            return true;
-        } catch (err) {
-            recordDiagnostic('dictation', { source: 'note', result: 'failed', code: diagnosticErrorCode(err), elapsedMs: Date.now() - startedAt });
-            if (isUsageCapReachedError(err)) {
-                setIsVoiceProcessing(false);
-                return false;
-            }
-
-            // Never lose the thought: keep the recording (in-session recovery panel)
-            // AND persist it to IndexedDB so it survives a reload / tab close.
-            storedVoiceBlobRef.current = audioBlob;
-            setVoiceError(transcriptionFailureWords(err, 'errors.audioProcessing'));
-            // A resend of an already-persisted draft passes persistOnFailure:false to avoid duplicates.
-            // Skip persistence for a brand-new note ('new'): its contextId would collide across every
-            // unsaved note, and the draft becomes unreachable once the real id is assigned.
-            if (opts?.persistOnFailure !== false && noteId !== 'new') {
-                try {
-                    voiceDraftIdRef.current = await saveRecordingDraft({
-                        blob: audioBlob,
-                        mimeType: audioBlob.type || 'audio/webm',
-                        context: 'study',
-                        contextId: noteId,
-                        ...(voiceDraftIdRef.current ? { id: voiceDraftIdRef.current } : {}),
-                    });
-                } catch {
-                    // IndexedDB unavailable — the in-session recovery panel still protects the thought.
-                }
-            }
-            return false;
-        } finally {
-            setIsVoiceProcessing(false);
-        }
-    }, [refreshAiUsage, setContent, t, noteId, saveAtOnceRef]);
-
-    const handleVoiceRecordingComplete = useCallback((audioBlob: Blob) => {
-        setVoiceRetryCount(0);
-        void runVoiceTranscription(audioBlob);
-    }, [runVoiceTranscription]);
-
-    // Resend a persisted draft (from a previous session). Returns success so the
-    // banner can drop the draft once the thought is finally transcribed. On failure the
-    // FocusRecorderButton panel isn't mounted (no in-session blob), so surface a toast —
-    // never let a failed resend look silent while the draft quietly stays put. (Popper Minor 8.)
-    const resendVoiceBlob = useCallback(async (blob: Blob) => {
-        const ok = await runVoiceTranscription(blob, { persistOnFailure: false });
-        if (!ok) {
-            toast.error(t('audio.transcribeError.unknown', { defaultValue: 'Transcription failed. Please try again.' }));
-        }
-        return ok;
-    }, [runVoiceTranscription, t]);
-
-    const handleRetryVoice = useCallback(() => {
-        const blob = storedVoiceBlobRef.current;
-        if (!blob) return;
-        setVoiceRetryCount((count) => count + 1);
-        void runVoiceTranscription(blob);
-    }, [runVoiceTranscription]);
-
-    const handleClearVoiceError = useCallback(() => {
-        storedVoiceBlobRef.current = null;
-        setVoiceError(null);
-        setVoiceRetryCount(0);
-        if (voiceDraftIdRef.current) {
-            void deleteRecordingDraft(voiceDraftIdRef.current);
-            voiceDraftIdRef.current = null;
-        }
-    }, []);
+            setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
+            saveAtOnceRef.current = true;
+            setContent(previous => previous ? `${previous}\n\n${text}` : text);
+        },
+        onEmpty: () => toast.error(t('errors.audioProcessing')),
+        onError: words => toast.error(sayFailure(words, t)),
+    });
+    const isVoiceProcessing = voice.isProcessing;
+    const voiceError = voice.error;
+    const voiceRetryCount = voice.retryCount;
+    const handleVoiceRecordingComplete = voice.complete;
+    const handleRetryVoice = voice.retry;
+    const handleClearVoiceError = voice.clear;
+    const resendVoiceBlob = (_blob: Blob, draft: import('@/utils/recordingDraftStore').RecordingDraft) => voice.recover(draft);
 
     return {
         isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
-        voiceError, voiceRetryCount, voiceMaxRetries: VOICE_MAX_RETRIES, handleRetryVoice, handleClearVoiceError,
+        voiceError, voiceRetryCount, voiceMaxRetries: voice.maxRetries, handleRetryVoice, handleClearVoiceError,
+        voiceController: voice,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     };
@@ -692,6 +625,9 @@ export default function StudyNoteEditorPage() {
     // Local state for the editor
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
+    const [dictationSourceIds, setDictationSourceIds] = useState<string[]>([]);
+    const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
+    const linkedRecordingSourceIds = useMemo(() => [...new Set([...recordingSourceIds, ...dictationSourceIds])], [recordingSourceIds, dictationSourceIds]);
     const [tags, setTags] = useState<string[]>([]);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<'note' | 'question'>('note');
@@ -775,7 +711,7 @@ export default function StudyNoteEditorPage() {
         // Assigning an optimistic id does not confirm text typed during create.
         const adoptingCreatedId = baselineNoteIdRef.current === 'new' && createdNoteId === noteId;
         baselineNoteIdRef.current = noteId;
-        if (!adoptingCreatedId) baselineRef.current = { title, content, tags, scriptureRefs, type };
+        if (!adoptingCreatedId) baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
     }
     useEffect(() => {
         if (isInitialized && !createdNoteId) setConfirmedDraft(baselineRef.current);
@@ -784,8 +720,8 @@ export default function StudyNoteEditorPage() {
     // Everything the editor owns, in one value — this is what the durable draft
     // stores and what a successful save confirms.
     const draftPayload: NoteDraftPayload = useMemo(
-        () => ({ title, content, tags, scriptureRefs, type }),
-        [title, content, tags, scriptureRefs, type]
+        () => ({ title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) }),
+        [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
     const { recovered, acceptRecovered, discardRecovered, markSaved } = useDurableDraft<NoteDraftPayload>({
@@ -797,8 +733,10 @@ export default function StudyNoteEditorPage() {
         confirmedValue: confirmedDraft,
     });
 
+    const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
-        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type,
+        captureRecordingHandoff: () => voiceHandoffRef.current?.(),
+        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,
         deliberateOverwriteRef,
@@ -839,6 +777,7 @@ export default function StudyNoteEditorPage() {
         tags: existingNote.tags || [],
         scriptureRefs: existingNote.scriptureRefs || [],
         type: existingNote.type || 'note',
+        ...noteRecordingMetadata(existingNote.dictationSourceIds, existingNote.recordingSourceIds),
     } : null, [existingNote]);
     const adoptRow = useCallback(() => {
         if (!rowPayload) return;
@@ -847,6 +786,8 @@ export default function StudyNoteEditorPage() {
         setTags(rowPayload.tags);
         setScriptureRefs(rowPayload.scriptureRefs);
         setType(rowPayload.type);
+        setDictationSourceIds(rowPayload.dictationSourceIds ?? []);
+        setRecordingSourceIds(rowPayload.recordingSourceIds ?? rowPayload.dictationSourceIds ?? []);
         baselineRef.current = rowPayload;
         setConfirmedDraft(rowPayload);
         markSaved(rowPayload);
@@ -865,6 +806,8 @@ export default function StudyNoteEditorPage() {
         setTags(unsavedRecovery.tags);
         setScriptureRefs(unsavedRecovery.scriptureRefs);
         setType(unsavedRecovery.type);
+        setDictationSourceIds(unsavedRecovery.dictationSourceIds ?? []);
+        setRecordingSourceIds(unsavedRecovery.recordingSourceIds ?? unsavedRecovery.dictationSourceIds ?? []);
         // Hide the offer but KEEP the stored copy: this text is still unconfirmed
         // until a save lands. Deleting it here would leave a window with no durable
         // copy at all.
@@ -946,15 +889,18 @@ export default function StudyNoteEditorPage() {
     const {
         isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
-        resendVoiceBlob,
+        resendVoiceBlob, voiceController,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef
+        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds
     });
+
+    voiceHandoffRef.current = () => ({ accepted: voiceController.captureAcceptance(), carryTo: voiceController.carryTo,
+        canChangeDestination: voiceController.canChangeDestination });
 
     useNoteInitialization({
         notesLoading, uid, isNew, isInitialized, existingNote, t,
-        setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
+        setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setDictationSourceIds, setRecordingSourceIds, setLastSaved
     });
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
@@ -1222,7 +1168,11 @@ export default function StudyNoteEditorPage() {
                     <RecordingDraftBanner
                         context="study"
                         contextId={noteId}
+                        sourceOwnerId={existingNote?.userId}
+                        linkedSourceIds={linkedRecordingSourceIds}
                         onResend={resendVoiceBlob}
+                        excludeDraftIds={voiceController.appliedDraftIds}
+                        resendDisabled={dictationBlocked}
                         isProcessing={isVoiceProcessing}
                         className="mb-2"
                     />
@@ -1370,7 +1320,10 @@ export default function StudyNoteEditorPage() {
                         <div className="absolute bottom-3 right-3 z-20">
                             <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                                 <FocusRecorderButton
+                                    key={voiceController.recordingKey}
                                     onRecordingComplete={handleVoiceRecordingComplete}
+                                    onRecordingStateChange={voiceController.setIsRecording}
+                                    onDiscardRecording={voiceController.discard}
                                     isProcessing={isVoiceProcessing}
                                     disabled={dictationBlocked}
                                     title={dictationBlockedKey ? t(dictationBlockedKey) : undefined}

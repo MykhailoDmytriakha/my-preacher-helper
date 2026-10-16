@@ -467,6 +467,7 @@ export default function PrayerDetailPage() {
       )}
       {showAddUpdate && (
         <AddUpdateModal
+          prayerId={prayer.id}
           onClose={() => setShowAddUpdate(false)}
           onSubmit={handleAddUpdate}
         />

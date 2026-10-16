@@ -3,6 +3,19 @@ import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import ScratchPanel from '@/components/sermon/ScratchPanel';
+const mockRecordingRows = new Map<string, unknown>();
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('idb-keyval', () => ({
+  createStore: jest.fn(() => ({})),
+  get: jest.fn(async (id: string) => mockRecordingRows.get(id)),
+  entries: jest.fn(async () => Array.from(mockRecordingRows.entries())),
+  update: jest.fn(async (id: string, change: (old: unknown) => unknown) => { mockRecordingRows.set(id, change(mockRecordingRows.get(id))); }),
+}));
+beforeEach(() => {
+  mockRecordingRows.clear();
+  Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: {} });
+});
+
 
 import type { ComposedPlanOutline } from '@/config/schemas/zod';
 import type { ScratchNote, SermonOutline } from '@/models/models';
@@ -275,6 +288,7 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
     notes: baseNotes,
     outline: emptyOutline,
     addScratchNote: jest.fn(),
+    addRecordedScratchNote: async (text: string, _recordingId: string) => props.addScratchNote(text),
     restoreScratchNote: jest.fn(),
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
@@ -327,6 +341,8 @@ function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
 describe('ScratchPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    composePlanFromScratchMock().mockReset();
+    transcribeThoughtAudioMock().mockReset();
     mockUseAiUsage.mockReturnValue(aiUsageStub());
     jest.useRealTimers();
     Object.defineProperty(navigator, 'onLine', {
@@ -1258,8 +1274,8 @@ describe('ScratchPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
     expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
 
-    act(() => {
-      jest.advanceTimersByTime(55_000);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(55_000);
     });
 
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
@@ -1316,8 +1332,8 @@ describe('ScratchPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
-    act(() => {
-      jest.advanceTimersByTime(55_000);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(55_000);
     });
     expect(screen.getByText('scratch.board.composeTimeout')).toBeInTheDocument();
 

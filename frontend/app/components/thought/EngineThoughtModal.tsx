@@ -77,14 +77,16 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     }).catch(() => undefined);
   };
   const dictation = useTextDictation({
-    onText: text => {
-      if (readOnly) return;
-      void form.update(current => {
+    acceptAfterText: true,
+    recordingContext: { context: 'thought', contextId: JSON.stringify([sermonId, thoughtId ?? 'new']) },
+    onText: async text => {
+      if (readOnly) throw new Error('The thought is not available for dictation');
+      await form.update(current => {
         const value = current as unknown as Sermon;
         const existing = value.thoughts.find(item => item.id === shown.id);
         const patch = { text: `${existing?.text ?? ''}${existing?.text ? '\n\n' : ''}${text}` };
         return json(existing ? patchSermonThought(value, existing.id, patch) : addSermonThought(value, { ...newThought, ...patch }));
-      }).catch(() => undefined);
+      });
     },
     onEmpty: () => toast.error(t('errors.audioProcessing')), onError: words => toast.error(sayFailure(words, t)),
   });
@@ -99,7 +101,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
     recover: form.recover });
   const save = async () => {
     if (isBusy || dictation.error || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()) return;
-    try { await form.save(current => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }))); onClose(); }
+    try { await form.save(current => json(patchSermonThought(current as unknown as Sermon, shown.id, { text: shown.text.trim() }))); await dictation.accept().catch(() => undefined); onClose(); }
     catch { /* The shared form retains the draft and exposes the failure. */ }
   };
   const cancel = async () => {

@@ -14,7 +14,7 @@ jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'o
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/providers/ConnectionProvider', () => ({ useConnection: () => ({ isMagicAvailable: false }) }));
-jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({})) }));
+jest.mock('@/hooks/useTextDictation', () => ({ useTextDictation: jest.fn(() => ({ accept: jest.fn(async () => undefined) })) }));
 jest.mock('@/components/thought/ThoughtTextHeader', () => ({ ThoughtTextHeader: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Thought" value={value} onChange={event => onChange(event.target.value)} /> }));
@@ -49,7 +49,11 @@ async function save() {
 async function deliver(harness: ReturnType<typeof membershipEngineHarness>) {
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
 }
-beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons'; });
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.mocked(useTextDictation).mockReturnValue({ accept: jest.fn(async () => undefined) } as unknown as ReturnType<typeof useTextDictation>);
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+});
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 
 it('keeps typing outside the page document and captures text plus placement in one command', async () => {
@@ -169,7 +173,7 @@ it('refuses a placement when its outline destination was deleted after the form 
 it('stages consecutive dictated fragments and tag changes without sending before Save', async () => {
   const { harness, view } = setup(); await ready('');
   const callbacks = jest.mocked(useTextDictation).mock.calls.at(-1)![0];
-  await act(async () => { callbacks.onText('First'); callbacks.onText('Second'); await settleEngine(); });
+  await act(async () => { await callbacks.onText('First'); await callbacks.onText('Second'); await settleEngine(); });
   await ready('First\n\nSecond');
   fireEvent.click(screen.getByRole('button', { name: 'thought.addTagAria' })); await settle();
   expect(screen.getByRole('button', { name: 'thought.removeTagAria' })).toBeInTheDocument();

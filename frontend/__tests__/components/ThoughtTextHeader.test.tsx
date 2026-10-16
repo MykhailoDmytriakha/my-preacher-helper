@@ -9,8 +9,8 @@ jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: ({ d
   <button type="button" disabled={disabled} title={title} onClick={() => onError({ key: 'errors.microphoneUnavailable' })}>Record</button>
   <button type="button" onClick={onRetry}>Retry</button><button type="button" onClick={onClearError}>Clear</button>
 </div> }));
-const dictation = () => ({ isProcessing: false, isRecording: false, setIsRecording: jest.fn(), transcriptionBlocked: false,
-  blockedLabelKey: null, error: null, retryCount: 0, maxRetries: 3, complete: jest.fn(), retry: jest.fn(), clear: jest.fn(), stopProcessing: jest.fn() });
+const dictation = () => ({ isProcessing: false, isRecording: false, setIsRecording: jest.fn(), canChangeDestination: jest.fn(() => true), transcriptionBlocked: false,
+  blockedLabelKey: null, error: null, retryCount: 0, maxRetries: 3, complete: jest.fn(), retry: jest.fn(), clear: jest.fn(), discard: jest.fn(async () => undefined), accept: jest.fn(async () => undefined), recover: jest.fn(async () => false), appliedDraftIds: [], recordingContext: undefined, recordingKey: "owner-field", captureAcceptance: jest.fn(() => async () => undefined), carryTo: jest.fn(async () => undefined), stopProcessing: jest.fn() });
 
 it('forwards retry/discard and reports recorder errors while ending its processing state', () => {
   const controller = dictation();

@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
-import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { Sermon, Thought } from '@/models/models';
@@ -25,6 +25,7 @@ import {
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 import type { DocumentData } from '@/data-engine/types';
+import type { StructureSectionId } from '@/utils/structureTags';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
 
@@ -60,20 +61,30 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
   return thoughtWithId;
 }
 
-async function appendThoughtToSermon(uid: string, sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
-  await writeOwnedDocument({
+async function appendThoughtToSermon(uid: string, sermonId: string, thought: Thought, union: (value: Thought) => unknown,
+  section?: StructureSectionId, recordingReplay = false) {
+  const transform = (current: DocumentData): DocumentData => {
+    const sermon = { ...current, thoughts: current.thoughts ?? [] } as unknown as Sermon;
+    if (recordingReplay && sermon.thoughts.some(item => item.id === thought.id)) return current;
+    return { ...addSermonThought(sermon, thought, section) as unknown as DocumentData, updatedAt: new Date().toISOString() };
+  };
+  return writeOwnedDocument({
     owner: uid,
     resource: { collection: 'sermons', id: sermonId },
     // Server-side thought writes advance the `thoughts` counter too, so a client
     // editing thoughts cannot later be granted false permission.
-    legacy: () => sermonsRepository.updateSermonData(sermonId, {
-      thoughts: union(thought)
-    }, 'thoughts'),
+    legacy: () => section || recordingReplay
+      ? mutateLegacyResource({ collection: 'sermons', id: sermonId }, raw => {
+        if (!raw || raw.userId !== uid) throw new Error('The sermon is not available for recording');
+        if (recordingReplay && (raw.thoughts as unknown as Thought[] | undefined)?.some(item => item.id === thought.id)) return null;
+        const next = transform(raw);
+        return { thoughts: next.thoughts, structure: next.structure, thoughtsBySection: next.thoughtsBySection, updatedAt: next.updatedAt };
+      }, 'thoughts')
+      : sermonsRepository.updateSermonData(sermonId, { thoughts: union(thought) }, 'thoughts'),
     // On an engine document the thought and its place in the structure land as one edit,
     // through the same transform the editor uses (idempotent by thought ID).
     // `updatedAt` moves as the legacy updateSermonData moved it, so the sermon rises in "recent".
-    engine: current => ({ ...addSermonThought({ ...current, thoughts: current.thoughts ?? [] } as unknown as Sermon, thought) as unknown as DocumentData,
-      updatedAt: new Date().toISOString() }),
+    engine: transform,
   });
 }
 
@@ -128,6 +139,28 @@ async function handleManualPost(request: Request, uid: string) {
   }
 }
 
+function findRecordedThought(sermon: Sermon, recordingThoughtId?: string): Thought | undefined {
+  return recordingThoughtId ? sermon.thoughts?.find(item => item.id === recordingThoughtId) : undefined;
+}
+
+function buildRecordedThought(id: string | undefined, text: string, tags: string[], pointId: string | null, subPointId: string | null): Thought {
+  return { id: id ?? uuidv4(), text, tags, date: new Date().toISOString(),
+    ...(pointId ? { outlinePointId: pointId } : {}), ...(subPointId ? { subPointId } : {}) };
+}
+
+function parseRecordingDestination(formData: FormData):
+  | { error: string }
+  | { error?: never; section: StructureSectionId | null; recordingThoughtId: string | undefined } {
+  const recordingId = formData.get('recordingId');
+  if (recordingId !== null && (typeof recordingId !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(recordingId))) return { error: 'Invalid recording identity' };
+  const sectionValue = formData.get('sectionId');
+  if (sectionValue !== null && !['introduction', 'main', 'conclusion', 'ambiguous'].includes(String(sectionValue))) return { error: 'Invalid recording section' };
+  return {
+    section: sectionValue as StructureSectionId | null,
+    recordingThoughtId: recordingId ? `audio:${recordingId}` : undefined,
+  };
+}
+
 async function handleAutoPost(request: Request, uid: string) {
   const tracker = createApiPerformanceTracker({
     route: "/api/thoughts",
@@ -156,6 +189,9 @@ async function handleAutoPost(request: Request, uid: string) {
     const sermonId = formData.get('sermonId') as string;
     const outlinePointId = formData.get('outlinePointId') as string | null;
     const subPointId = formData.get('subPointId') as string | null;
+    const destination = parseRecordingDestination(formData);
+    if (destination.error !== undefined) return errorResponse(destination.error, 400);
+    const { section, recordingThoughtId } = destination;
     tracker.addContext({
       sermonId: sermonId || null,
       hasOutlinePointId: Boolean(outlinePointId),
@@ -187,6 +223,11 @@ async function handleAutoPost(request: Request, uid: string) {
     }
     assertServerWritable(sermon as unknown as Record<string, unknown>, 'sermons');
 
+    const acceptedRecording = findRecordedThought(sermon, recordingThoughtId);
+    if (acceptedRecording) {
+      tracker.emit({ status: 'success', httpStatus: 200, context: { thoughtId: acceptedRecording.id, recordingReplay: true } });
+      return NextResponse.json(acceptedRecording);
+    }
     tracker.addContext({
       audioSizeBytes: audioFile.size,
       audioType: audioFile.type || null,
@@ -302,19 +343,7 @@ async function handleAutoPost(request: Request, uid: string) {
 
     console.log("Thoughts route: Thought generation successful. Original Text:", generationResult.originalText);
 
-    const thought: Thought = {
-      id: uuidv4(),
-      text: normalized.formattedText,
-      tags: normalized.tags,
-      date: new Date().toISOString()
-    };
-
-    if (outlinePointId) {
-      thought.outlinePointId = outlinePointId;
-    }
-    if (subPointId) {
-      thought.subPointId = subPointId;
-    }
+    const thought = buildRecordedThought(recordingThoughtId, normalized.formattedText, normalized.tags, outlinePointId, subPointId);
 
     if (!isCompleteThought(thought)) {
       console.error("Thoughts route: Generated thought is missing required fields after processing", thought);
@@ -322,9 +351,9 @@ async function handleAutoPost(request: Request, uid: string) {
     }
     console.log("Generated thought:", thought);
 
-    await tracker.timePhase(
+    const acceptedDocument = await tracker.timePhase(
       "persist_thought",
-      () => appendThoughtToSermon(uid, sermonId, thought, FieldValue.arrayUnion),
+      () => appendThoughtToSermon(uid, sermonId, thought, FieldValue.arrayUnion, section ?? undefined, Boolean(recordingThoughtId)),
       {
         sermonId,
         thoughtId: thought.id,
@@ -338,7 +367,8 @@ async function handleAutoPost(request: Request, uid: string) {
         thoughtId: thought.id,
       },
     });
-    return NextResponse.json(thought);
+    const acceptedThought = (acceptedDocument?.thoughts as unknown as Thought[] | undefined)?.find(item => item.id === thought.id) ?? thought;
+    return NextResponse.json(acceptedThought);
   } catch (error) {
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;

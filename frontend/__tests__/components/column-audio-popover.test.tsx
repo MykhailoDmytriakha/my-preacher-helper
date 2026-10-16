@@ -1,6 +1,16 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
+  saveRecordingDraft: jest.fn(async (input: { id: string }) => input.id),
+  deleteRecordingDraft: jest.fn(async () => undefined),
+  listRecordingDrafts: jest.fn(async () => []),
+  subscribeRecordingDrafts: () => () => undefined,
+}));
+
+
 // Stub dnd-kit hooks/components used by Column
 jest.mock('@dnd-kit/core', () => ({
   useDroppable: () => ({ setNodeRef: jest.fn(), isOver: false })
@@ -126,7 +136,7 @@ describe('Column mic popover and focus button', () => {
     expect(await screen.findByTitle('structure.recordAudio')).toBeInTheDocument();
     expect(mockCreateAudioThought).toHaveBeenCalledWith(
       expect.any(Blob),
-      'sermon-1'
+      'sermon-1', 0, 3, undefined, undefined, expect.objectContaining({ id: expect.any(String), sectionId: 'main' })
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'thought-1' }),

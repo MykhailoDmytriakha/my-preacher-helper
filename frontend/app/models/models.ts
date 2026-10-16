@@ -578,6 +578,10 @@ export interface ScriptureReference {
 
 export interface StudyNote {
   id: string;
+  /** Source receipts travel atomically with dictated text, including offline drafts. */
+  dictationSourceIds?: string[];
+  /** Raw sources belong to this note even when recognition or their local move fails. */
+  recordingSourceIds?: string[];
   userId: string;
   content: string;
   title?: string;

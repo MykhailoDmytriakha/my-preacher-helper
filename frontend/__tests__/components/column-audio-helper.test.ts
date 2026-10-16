@@ -1,4 +1,4 @@
-import { recordAudioThought } from "@/components/column/audio";
+import { recordAudioThought as rawRecordAudioThought } from "@/components/column/audio";
 import { createAudioThought } from "@/services/thought.service";
 import { withStatus } from "@/utils/aiTimeFailure";
 import { UsageCapReachedError } from "@/services/usageLimits";
@@ -15,6 +15,14 @@ jest.mock("@/services/thought.service", () => ({
   createAudioThought: jest.fn(),
 }));
 
+const mockParkRecording = jest.fn(async (_input: unknown) => 'source-1');
+const mockReleaseRecording = jest.fn(async (_id: string, _ownerId: string) => undefined);
+jest.mock('@/utils/recordingDraftStore', () => ({
+  saveRecordingDraft: (...args: unknown[]) => mockParkRecording(...args as [unknown]),
+  deleteRecordingDraft: (...args: unknown[]) => mockReleaseRecording(...args as [string, string]),
+}));
+const recordAudioThought = (args: Omit<Parameters<typeof rawRecordAudioThought>[0], 'ownerId'>) => rawRecordAudioThought(Object.assign({ ownerId: 'owner' }, args));
+
 describe("column audio helper", () => {
   const t = (key: string, options?: Record<string, unknown>) =>
     key === "errors.audioProcessing"
@@ -23,6 +31,9 @@ describe("column audio helper", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockParkRecording.mockReset().mockResolvedValue('source-1');
+    mockReleaseRecording.mockClear();
+    jest.mocked(createAudioThought).mockReset();
   });
 
   it("records an outline-point thought with pointId", async () => {
@@ -51,7 +62,7 @@ describe("column audio helper", () => {
       "sermon-1",
       0,
       3,
-      "point-1"
+      "point-1", undefined, expect.objectContaining({ id: expect.any(String), sectionId: 'main' })
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: "thought-1" }, "main");
     expect(onSuccess).toHaveBeenCalled();
@@ -83,7 +94,7 @@ describe("column audio helper", () => {
 
     expect(createAudioThought).toHaveBeenCalledWith(
       expect.any(Blob),
-      "sermon-2"
+      "sermon-2", 0, 3, undefined, undefined, expect.objectContaining({ id: expect.any(String), sectionId: 'conclusion' })
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: "thought-2" }, "conclusion");
     expect(toast.success).toHaveBeenCalledWith("Saved to conclusion");
@@ -188,4 +199,28 @@ describe("column audio helper", () => {
     expect(setLimitReached).toHaveBeenCalledWith(false);
     expect(setLimitReached).not.toHaveBeenCalledWith(true);
   });
+  it('parks the exact point destination before starting provider work', async () => {
+    let accept!: () => void;
+    mockParkRecording.mockImplementationOnce(() => new Promise<string>(resolve => { accept = () => resolve('source-1'); }));
+    jest.mocked(createAudioThought).mockImplementationOnce(() => new Promise(() => undefined));
+    const pending = recordAudioThought({ audioBlob: new Blob(['voice']), sermonId: 'sermon-1', sectionId: 'main', pointId: 'point-1', subPointId: 'sub-1',
+      setIsRecordingAudio: jest.fn(), setAudioError: jest.fn(), t, errorContext: 'Recovery' });
+    await Promise.resolve();
+    expect(mockParkRecording).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 'owner', context: 'outline',
+      contextId: JSON.stringify(['sermon-1', 'main']), destination: { sectionId: 'main', pointId: 'point-1', subPointId: 'sub-1' } }));
+    expect(createAudioThought).not.toHaveBeenCalled();
+    accept(); await Promise.resolve();
+    void pending;
+  });
+
+  it('keeps the provider stopped and the source recoverable when local parking fails', async () => {
+    mockParkRecording.mockRejectedValueOnce(new Error('Storage full'));
+    const error = jest.fn();
+    await recordAudioThought({ audioBlob: new Blob(['voice']), sermonId: 'sermon-1', sectionId: 'main',
+      setIsRecordingAudio: jest.fn(), setAudioError: error, t, errorContext: 'Recovery' });
+    expect(error).toHaveBeenCalledWith({ key: 'audio.draft.saveFailed' });
+    expect(createAudioThought).not.toHaveBeenCalled();
+    expect(mockReleaseRecording).not.toHaveBeenCalled();
+  });
+
 });

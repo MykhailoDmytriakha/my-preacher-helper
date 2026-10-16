@@ -145,13 +145,26 @@ describe('study notes on the engine', () => {
     const { result } = render();
     let id = '';
     await act(async () => {
-      const submission = result.current.createNote({ userId: 'u', title: 'Hope', content: 'Text', tags: [], scriptureRefs: [], type: 'note', materialIds: ['m1'], relatedSermonIds: [] });
+      const submission = result.current.createNote({ userId: 'u', title: 'Hope', content: 'Text', tags: [], scriptureRefs: [], type: 'note', materialIds: ['m1'], relatedSermonIds: [], recordingSourceIds: ['unrecognized-source'] });
       id = submission.note.id;
       expect(await awaitAcceptance(submission, () => undefined)).toEqual({ kind: 'persisted' });
     });
-    expect(store.get(id)).toEqual(expect.objectContaining({ userId: 'u', title: 'Hope', isDraft: true }));
+    expect(store.get(id)).toEqual(expect.objectContaining({ userId: 'u', title: 'Hope', isDraft: true, recordingSourceIds: ['unrecognized-source'] }));
     expect(store.get(id)).not.toHaveProperty('materialIds');
     await act(async () => { await awaitAcceptance(result.current.deleteNote('n1'), () => undefined); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'studyNotes', id: 'n1' });
   });
+  it('keeps source receipts from earlier accepted dictation when another device adds a take', async () => {
+    store.set('n1', note({ dictationSourceIds: ['earlier-source'], recordingSourceIds: ['earlier-raw'] }));
+    const { result } = render();
+    await act(async () => {
+      const submission = result.current.updateNote({ id: 'n1', updates: { content: 'Both voice fragments', dictationSourceIds: ['later-source'], recordingSourceIds: ['later-raw'] }, expectedBaseline: { ...opened, dictationSourceIds: [], recordingSourceIds: [] } });
+      await awaitAcceptance(submission, () => undefined);
+      await submission.persistence;
+    });
+    expect(store.get('n1')?.dictationSourceIds).toEqual(['earlier-source', 'later-source']);
+    expect(store.get('n1')?.recordingSourceIds).toEqual(['earlier-raw', 'later-raw']);
+    expect(store.get('n1')?.content).toBe('Both voice fragments');
+  });
+
 });

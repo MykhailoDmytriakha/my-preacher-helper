@@ -30,7 +30,7 @@ const payload: NoteDraftPayload = {
   type: 'note',
 };
 
-function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void) {
+function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }) {
   const baselineRef = useRef<NoteDraftPayload | null>(null);
   const revisionRef = useRef<number | null>(null);
   const deliberateOverwriteRef = useRef(false);
@@ -55,6 +55,7 @@ function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) =>
     saveBlocked: false,
     onConflict: jest.fn(),
     onSaved,
+    captureRecordingHandoff,
   });
 }
 
@@ -403,4 +404,22 @@ describe('the note hands its text over at once when the page hides or dictation 
     expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({ updates: { content: 'dictated' } }));
     expect(saveAtOnceRef.current).toBe(false);
   });
+});
+
+it('binds raw-source release to the exact note write and carries new-note recordings to its ID', async () => {
+  jest.useFakeTimers();
+  let persist!: () => void;
+  const persistence = new Promise<void>(resolve => { persist = resolve; });
+  const accepted = jest.fn(async () => undefined);
+  const carryTo = jest.fn(async (_id: string) => undefined);
+  const capture = jest.fn(() => ({ accepted, carryTo }));
+  const createNote = jest.fn(() => ({ ...queuedMutation('study-note:create:voice-note', persistence), note: { id: 'voice-note' } as StudyNote }));
+  const view = renderHook(() => useHarness(createNote, jest.fn(), capture));
+  await act(async () => { jest.advanceTimersByTime(1600); });
+  expect(capture).toHaveBeenCalledTimes(1);
+  expect(carryTo).toHaveBeenCalledWith('voice-note');
+  expect(accepted).not.toHaveBeenCalled();
+  await act(async () => { persist(); await persistence; });
+  expect(accepted).toHaveBeenCalledTimes(1);
+  view.unmount(); jest.useRealTimers();
 });

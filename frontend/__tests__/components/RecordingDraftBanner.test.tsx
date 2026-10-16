@@ -83,7 +83,7 @@ describe("RecordingDraftBanner", () => {
 
     fireEvent.click(screen.getByText("audio.draft.resend"));
 
-    await waitFor(() => expect(onResend).toHaveBeenCalledWith(draft.blob));
+    await waitFor(() => expect(onResend).toHaveBeenCalledWith(draft.blob, draft));
     await waitFor(() => expect(mockRemoveDraft).toHaveBeenCalledWith(draft.id));
   });
 
@@ -93,7 +93,7 @@ describe("RecordingDraftBanner", () => {
 
     fireEvent.click(screen.getByText("audio.draft.resend"));
 
-    await waitFor(() => expect(onResend).toHaveBeenCalledWith(draft.blob));
+    await waitFor(() => expect(onResend).toHaveBeenCalledWith(draft.blob, draft));
     expect(mockRemoveDraft).not.toHaveBeenCalled();
   });
 
@@ -140,4 +140,19 @@ describe("RecordingDraftBanner", () => {
     expect(mockRemoveDraft).not.toHaveBeenCalled();
     expect(screen.getByText("audio.draft.title")).toBeInTheDocument();
   });
+});
+
+
+it('keeps local recovery actions available when provider retry is unavailable', () => {
+  const props = { context: 'thought' as const, onResend: jest.fn(), resendDisabled: true };
+  render(<RecordingDraftBanner {...props} />);
+  expect(screen.getByText('audio.draft.resend')).toBeDisabled();
+  expect(screen.getByText('audio.draft.download')).toBeEnabled();
+  expect(screen.getByText('audio.draft.discard')).toBeEnabled();
+});
+
+it('does not offer already-applied field text for a duplicate insertion', () => {
+  const props = { context: 'thought' as const, onResend: jest.fn(), excludeDraftIds: ['draft-1'] };
+  render(<RecordingDraftBanner {...props} />);
+  expect(screen.queryByText('audio.draft.title')).not.toBeInTheDocument();
 });

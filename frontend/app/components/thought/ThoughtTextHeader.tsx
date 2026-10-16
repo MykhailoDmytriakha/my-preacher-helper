@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { sayFailure } from '@/utils/actionFailureMessage';
 
@@ -21,17 +22,24 @@ export function ThoughtTextHeader({ dictation, saving, readOnly = false, showDic
   const disabled = readOnly || dictation.transcriptionBlocked;
   // Named by whichever allowance actually ran out — dictation spends two.
   const quotaLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
-  return <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-3">
+  return <><div className="flex min-h-[48px] flex-wrap items-center justify-between gap-3">
     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t(labelKey)}</label>
     {showDictation && <div className={`flex items-center gap-2 transition-opacity duration-300 ${disabled ? 'opacity-40 grayscale' : ''}`}
       aria-disabled={disabled} title={quotaLabel}>
       <span className="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">{t('editThought.appendDictation')}</span>
       <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-        <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
+        <FocusRecorderButton key={dictation.recordingKey} size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
           disabled={saving || disabled} title={quotaLabel} transcriptionError={dictation.error} onRetry={dictation.retry}
-          retryCount={dictation.retryCount} maxRetries={dictation.maxRetries} onClearError={dictation.clear}
+          retryCount={dictation.retryCount} maxRetries={dictation.maxRetries} onClearError={dictation.clear} onDiscardRecording={dictation.discard}
           onError={words => { toast.error(sayFailure(words, t)); dictation.stopProcessing(); }} />
       </div>
     </div>}
-  </div>;
+  </div>
+  {dictation.recordingContext && <RecordingDraftBanner
+    context={dictation.recordingContext.context} contextId={dictation.recordingContext.contextId}
+    onResend={(_blob, draft) => dictation.recover(draft)}
+    excludeDraftIds={dictation.appliedDraftIds}
+    isProcessing={saving || dictation.isProcessing || dictation.isRecording}
+    resendDisabled={dictation.transcriptionBlocked} />}
+  </>;
 }

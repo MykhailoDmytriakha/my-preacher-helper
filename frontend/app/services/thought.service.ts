@@ -37,13 +37,33 @@ function buildTranscriptionFailureMessage(params: {
     : baseMessage;
 }
 
+function audioThoughtForm(audioBlob: Blob, sermonId: string, outlinePointId?: string, subPointId?: string,
+  recording?: { id: string; sectionId?: string }): FormData {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "recording.webm");
+  formData.append("sermonId", sermonId);
+  if (recording) {
+    formData.append('recordingId', recording.id);
+    if (recording.sectionId) formData.append('sectionId', recording.sectionId);
+  }
+  if (outlinePointId) {
+    formData.append("outlinePointId", outlinePointId);
+  }
+  if (subPointId) {
+    formData.append("subPointId", subPointId);
+  }
+
+  return formData;
+}
+
 export const createAudioThought = async (
   audioBlob: Blob,
   sermonId: string,
   retryCount: number = 0,
   maxRetries: number = 3,
   outlinePointId?: string,
-  subPointId?: string
+  subPointId?: string,
+  recording?: { id: string; sectionId?: string }
 ): Promise<Thought> => {
   // maxRetries means retries after the first attempt, so attempt indexes are 0..maxRetries.
   if (retryCount > maxRetries) {
@@ -53,15 +73,7 @@ export const createAudioThought = async (
   try {
     console.log(`transcribeAudio: Starting transcription process. Attempt ${retryCount + 1}/${maxRetries + 1}`);
 
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "recording.webm");
-    formData.append("sermonId", sermonId);
-    if (outlinePointId) {
-      formData.append("outlinePointId", outlinePointId);
-    }
-    if (subPointId) {
-      formData.append("subPointId", subPointId);
-    }
+    const formData = audioThoughtForm(audioBlob, sermonId, outlinePointId, subPointId, recording);
 
     console.log(
       `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
@@ -113,7 +125,8 @@ export const createAudioThought = async (
           retryCount + 1,
           maxRetries,
           outlinePointId,
-          subPointId
+          subPointId,
+          recording
         );
       }
       
@@ -131,7 +144,7 @@ export const createAudioThought = async (
       maybeWindow.clearAudioRecorderStorage?.();
     }
 
-    // Возвращаем полный объект с текстом, тегами и т.д.
+    // Return the accepted thought, including a prior result for the same recording.
     const thought = await response.json();
     console.log("transcribeAudio: Transcription succeeded. Thought:", thought);
     // Success is announced by the screen, in its language: this one was a second toast, always in Russian.

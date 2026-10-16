@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -13,11 +14,12 @@ import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite'
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 interface Props {
+  prayerId?: string;
   onClose: () => void;
   onSubmit: (text: string) => WriteSubmission;
 }
 
-export default function AddUpdateModal({ onClose, onSubmit }: Props) {
+export default function AddUpdateModal({ prayerId, onClose, onSubmit }: Props) {
   const { t } = useTranslation();
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [text, setText] = useState('');
@@ -25,6 +27,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const [error, setError] = useState<FailureWords | null>(null);
 
   const dictation = useTextDictation({
+    recordingContext: prayerId ? { context: 'prayer', contextId: prayerId } : undefined,
     onStart: () => setError(null),
     onText: dictatedText => setText(previous => {
       const prefix = previous.replace(/\s+$/, '');
@@ -46,7 +49,9 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     setSaving(true);
     try {
       // usePrayerRequests' add-update recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(onSubmit(text.trim()), () => undefined);
+      const submission = onSubmit(text.trim());
+      await awaitAcceptance(submission, () => undefined);
+      void submission.persistence.then(() => dictation.accept()).catch(() => undefined);
       onClose();
     } catch {
       /**
@@ -75,13 +80,16 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
         <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-gray-500 dark:text-gray-400">{t('prayer.update.dictate')}</span>
           <div className="relative flex h-12 w-12 shrink-0 items-center justify-center" title={transcriptionUnavailableLabel}>
-            <FocusRecorderButton size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
+            <FocusRecorderButton key={dictation.recordingKey} size="small" onRecordingComplete={dictation.complete} isProcessing={dictation.isProcessing} onRecordingStateChange={dictation.setIsRecording}
               disabled={saving || dictation.transcriptionBlocked} title={transcriptionUnavailableLabel}
               transcriptionError={dictation.error} onRetry={dictation.retry} retryCount={dictation.retryCount}
-              maxRetries={dictation.maxRetries} onClearError={dictation.clear}
+              maxRetries={dictation.maxRetries} onClearError={dictation.clear} onDiscardRecording={dictation.discard}
               onError={words => { setError(words); dictation.stopProcessing(); }} />
           </div>
         </div>
+        {dictation.recordingContext && <RecordingDraftBanner context="prayer" contextId={dictation.recordingContext.contextId}
+          onResend={(_blob, draft) => dictation.recover(draft)} excludeDraftIds={dictation.appliedDraftIds}
+          isProcessing={isBusy} resendDisabled={dictation.transcriptionBlocked} />}
         <TextareaAutosize value={text} onChange={event => setText(event.target.value)}
           placeholder={t('prayer.update.placeholder')} aria-label={t('prayer.update.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />

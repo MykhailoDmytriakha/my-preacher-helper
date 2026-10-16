@@ -365,106 +365,64 @@ function SermonPageContent({ id }: { id: string }) {
     await core.retry().catch(() => undefined);
   };
 
-  /**
-   * A DICTATED THOUGHT OUTLIVES THE PAGE (BUG-20260813-late-refusal-silent-after-navigation).
-   *
-   * The recording lived only in this page's state, so an answer that came back as a failure
-   * after the person had moved on — the request keeps running, the page does not — took the
-   * spoken words with it. A failed recording is parked in the same durable store the study
-   * notes use; the code after `await` still runs once the page is gone, so it is parked even
-   * then, and the banner below offers it the next time this sermon is opened.
-   *
-   * The parked copy goes when the recording has become a thought, when the person deletes it
-   * ("Delete recording" here, "Delete" in the banner), or when the store's seven-day limit
-   * expires it (`recordingDraftStore`, shared with study notes). Not on "clear the error": the
-   * recorder calls that itself before every retry and every new recording, and letting the copy
-   * go there threw it away before the retry's answer was known. The recording carries the sermon it was spoken for and its
-   * draft id from the moment it exists — this page can be reused for another sermon, and the
-   * id fixed up front keeps IndexedDB's own ordering between parking and letting go.
-   */
-  const heldRecordingRef = useRef<{ blob: Blob; sermonId: string; draftId: string } | null>(null);
-  const parkRecording = async (held: { blob: Blob; sermonId: string; draftId: string }) => {
-    try {
-      await saveRecordingDraft({ id: held.draftId, blob: held.blob, mimeType: held.blob.type || 'audio/webm', context: 'sermon', contextId: held.sermonId });
-    } catch {
-      // IndexedDB unavailable — the in-session retry panel still holds the recording.
-    }
+  /** A completed take is parked before provider work and stays tied to its original account and sermon. */
+  type HeldSermonRecording = { blob: Blob; sermonId: string; ownerId: string; draftId: string };
+  const recordingOwner = useMemo(() => ({ ownerId: user?.uid, sermonId: sermon?.id, held: null as HeldSermonRecording | null }), [user?.uid, sermon?.id]);
+  const currentRecordingOwner = useRef(recordingOwner); currentRecordingOwner.current = recordingOwner;
+  const recordingPageMounted = useRef(false);
+  useEffect(() => { recordingPageMounted.current = true; return () => { recordingPageMounted.current = false; }; }, []);
+  useEffect(() => { setIsProcessing(false); setTranscriptionError(null); setRetryCount(0); }, [recordingOwner]);
+  const recordingIsCurrent = () => recordingPageMounted.current && currentRecordingOwner.current === recordingOwner;
+  const releaseRecording = async (held: HeldSermonRecording) => {
+    await deleteRecordingDraft(held.draftId, held.ownerId);
+    if (recordingOwner.held === held) recordingOwner.held = null;
   };
-  const releaseRecording = (held: { draftId: string }) => {
-    void deleteRecordingDraft(held.draftId);
-    if (heldRecordingRef.current === held) heldRecordingRef.current = null;
-  };
-  /** Transcribe a held recording into the sermon it was spoken for; true once it is a thought. */
-  const transcribeHeld = async (held: { blob: Blob; sermonId: string; draftId: string }, attempt: number): Promise<boolean> => {
+  const transcribeHeld = async (held: HeldSermonRecording, attempt: number): Promise<boolean> => {
+    let preserving = true;
     try {
-      await createAudioThought(held.blob, held.sermonId, attempt, 3);
-      // Placing re-reads THIS page's sermon; a recording for another one was stored by the server.
-      if (sermonRef.current?.id === held.sermonId) await placeAudioThought();
-      releaseRecording(held);
-      toast.success(t('manualThought.addedSuccess'));
+      await saveRecordingDraft({ id: held.draftId, ownerId: held.ownerId, blob: held.blob,
+        mimeType: held.blob.type || 'audio/webm', context: 'sermon', contextId: held.sermonId });
+      preserving = false;
+      if (!recordingIsCurrent()) return false;
+      await createAudioThought(held.blob, held.sermonId, attempt, 3, undefined, undefined, { id: held.draftId });
+      await releaseRecording(held).catch(() => undefined);
+      if (recordingIsCurrent()) {
+        await placeAudioThought();
+        toast.success(t('manualThought.addedSuccess'));
+      }
       return true;
     } catch (error) {
-      logFailureOnce(error, "transcribeHeld: Recording error:");
-      setTranscriptionError(ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : transcriptionFailureWords(error, 'errors.audioProcessing'));
-      await parkRecording(held);
+      logFailureOnce(error, 'transcribeHeld: Recording error:');
+      if (recordingIsCurrent()) setTranscriptionError(preserving ? { key: 'audio.draft.saveFailed' }
+        : ranOutOfTime(error) ? { key: 'errors.aiOutOfTimeAudio' } : transcriptionFailureWords(error, 'errors.audioProcessing'));
       return false;
     }
   };
-
   const handleNewRecording = async (audioBlob: Blob) => {
-    if (!sermon) return;
-    const held = { blob: audioBlob, sermonId: sermon.id, draftId: newClientId() };
-    heldRecordingRef.current = held;
-    setIsProcessing(true);
-    setTranscriptionError(null);
-    setRetryCount(0);
-    try {
-      await transcribeHeld(held, 0);
-    } finally {
-      setIsProcessing(false);
-    }
+    if (!sermon || !user?.uid) return;
+    const held = { blob: audioBlob, sermonId: sermon.id, ownerId: user.uid, draftId: newClientId() };
+    recordingOwner.held = held;
+    setIsProcessing(true); setTranscriptionError(null); setRetryCount(0);
+    try { await transcribeHeld(held, 0); }
+    finally { if (recordingIsCurrent()) setIsProcessing(false); }
   };
-
   const handleRetryTranscription = async () => {
-    const held = heldRecordingRef.current;
-    if (!held) return;
+    const held = recordingOwner.held;
+    if (!held || isProcessing) return;
     setIsProcessing(true);
-    const newRetryCount = retryCount + 1;
-    setRetryCount(newRetryCount);
-    setTranscriptionError(null);
-    try {
-      if (await transcribeHeld(held, newRetryCount)) setRetryCount(0);
-    } finally {
-      setIsProcessing(false);
-    }
+    const attempt = retryCount + 1; setRetryCount(attempt); setTranscriptionError(null);
+    try { if (await transcribeHeld(held, attempt)) { if (recordingIsCurrent()) setRetryCount(0); } }
+    finally { if (recordingIsCurrent()) setIsProcessing(false); }
   };
-
-  const handleClearError = () => {
-    setTranscriptionError(null);
-    setRetryCount(0);
-  };
-
-  /** "Delete recording" in the recorder: the one in-session act that lets the parked copy go too. */
-  const handleDiscardRecording = () => {
-    if (heldRecordingRef.current) releaseRecording(heldRecordingRef.current);
-  };
-
-  /** A recording parked by an earlier visit, sent again from the banner; true once it is a thought. */
-  const resendParkedRecording = async (audioBlob: Blob): Promise<boolean> => {
-    if (!sermon) return false;
-    setIsProcessing(true);
-    try {
-      await createAudioThought(audioBlob, sermon.id, 0, 3);
-      await placeAudioThought();
-      toast.success(t('manualThought.addedSuccess'));
-      return true;
-    } catch (error) {
-      console.error("resendParkedRecording: Recording error:", error);
-      toast.error(t('audio.transcribeError.unknown', { defaultValue: 'Transcription failed. Please try again.' }));
-      return false;
-    } finally {
-      setIsProcessing(false);
-    }
+  const handleClearError = () => { setTranscriptionError(null); setRetryCount(0); };
+  const handleDiscardRecording = async () => { if (recordingOwner.held) await releaseRecording(recordingOwner.held); };
+  const resendParkedRecording = async (_audioBlob: Blob, draft: import('@/utils/recordingDraftStore').RecordingDraft): Promise<boolean> => {
+    if (!sermon || draft.ownerId !== user?.uid || draft.context !== 'sermon' || draft.contextId !== sermon.id) return false;
+    const held = { blob: draft.blob, sermonId: sermon.id, ownerId: draft.ownerId!, draftId: draft.id };
+    recordingOwner.held = held;
+    setIsProcessing(true); setTranscriptionError(null);
+    try { return await transcribeHeld(held, 0); }
+    finally { if (recordingIsCurrent()) setIsProcessing(false); }
   };
 
   // Reusable renderers moved after all hooks
@@ -754,6 +712,7 @@ function SermonPageContent({ id }: { id: string }) {
         <RecordingDraftBanner
           context="sermon"
           contextId={sermon.id}
+          sourceOwnerId={sermon.userId}
           onResend={resendParkedRecording}
           isProcessing={isProcessing}
           className="mb-2"
@@ -761,6 +720,7 @@ function SermonPageContent({ id }: { id: string }) {
       )}
       {uiMode !== 'raw' && (
         <AudioRecorderPortalBridge
+          key={JSON.stringify([user?.uid, sermon?.id])}
           RecorderComponent={AudioRecorder}
           portalTarget={uiMode === 'prep' ? prepPortal : classicPortal}
           onRecordingComplete={handleNewRecording}

@@ -292,6 +292,9 @@ const storedPreparation = () => (harness.server.value?.preparation ?? {}) as Rec
 describe('Sermon Detail Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(createAudioThought).mockReset();
+    mockSaveRecordingDraft.mockReset().mockResolvedValue(undefined);
+    mockDeleteRecordingDraft.mockReset().mockResolvedValue(undefined);
     routeId = 'sermon-123';
     mockLocalStorage.getItem.mockReturnValue(null);
     mockLocalStorage.length = 0;
@@ -609,6 +612,32 @@ describe('Sermon Detail Page', () => {
      * The answer to a dictation can come back after the person has moved on. The request keeps
      * running, the page does not — and the recording used to live only in the page.
      */
+    it('parks the completed source before the provider request begins', async () => {
+      let parked!: () => void;
+      mockSaveRecordingDraft.mockReset().mockImplementationOnce(() => new Promise<void>(resolve => { parked = resolve; }));
+      (createAudioThought as jest.Mock).mockImplementationOnce(() => new Promise(() => undefined));
+      const view = renderPage();
+      const recorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(recorder).getByText('Mock Record'));
+      await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 'u1', context: 'sermon', contextId: 'sermon-123' })));
+      expect(createAudioThought).not.toHaveBeenCalled();
+      await act(async () => { parked(); });
+      await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(1));
+      view.unmount();
+    });
+
+    it('keeps provider work stopped if the completed source cannot be parked', async () => {
+      mockSaveRecordingDraft.mockReset().mockRejectedValueOnce(new Error('Storage full'));
+      (createAudioThought as jest.Mock).mockImplementationOnce(() => new Promise(() => undefined));
+      const view = renderPage();
+      const recorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(recorder).getByText('Mock Record'));
+      expect(await within(recorder).findByTestId('transcription-error')).toHaveTextContent('audio.draft.saveFailed');
+      expect(createAudioThought).not.toHaveBeenCalled();
+      expect(mockDeleteRecordingDraft).not.toHaveBeenCalled();
+      view.unmount();
+    });
+
     it('parks a failed recording even when the answer arrives after the page is gone', async () => {
       mockSaveRecordingDraft.mockReset().mockResolvedValue('draft-1');
       let fail!: (error: Error) => void;
@@ -636,6 +665,7 @@ describe('Sermon Detail Page', () => {
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
       const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+      await within(classicRecorder).findByTestId('transcription-error');
 
       // The recorder clears the error first; the parked copy must outlive that until the answer.
       fireEvent.click(within(classicRecorder).getByText('Mock Clear Then Retry'));
@@ -643,7 +673,7 @@ describe('Sermon Detail Page', () => {
       expect(mockDeleteRecordingDraft).not.toHaveBeenCalled();
 
       await act(async () => { succeed({ id: 'thought-1', text: 'Hello', tags: [] }); });
-      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId));
+      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId, 'u1'));
     });
 
     it('lets the parked copy go when the person deletes the recording', async () => {
@@ -657,7 +687,7 @@ describe('Sermon Detail Page', () => {
       const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
 
       fireEvent.click(within(classicRecorder).getByText('Mock Delete Recording'));
-      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId));
+      await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalledWith(parkedId, 'u1'));
     });
 
     it('keeps a failed recording parked when a new one is started', async () => {
@@ -671,13 +701,14 @@ describe('Sermon Detail Page', () => {
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(mockSaveRecordingDraft).toHaveBeenCalledTimes(1));
       const parkedId = mockSaveRecordingDraft.mock.calls[0][0].id;
+      await within(classicRecorder).findByTestId('transcription-error');
 
       // Starting a new recording clears the error, then records again.
       fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
       fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => expect(createAudioThought).toHaveBeenCalledTimes(2));
       await waitFor(() => expect(mockDeleteRecordingDraft).toHaveBeenCalled());
-      expect(mockDeleteRecordingDraft).not.toHaveBeenCalledWith(parkedId);
+      expect(mockDeleteRecordingDraft).not.toHaveBeenCalledWith(parkedId, 'u1');
     });
   });
 

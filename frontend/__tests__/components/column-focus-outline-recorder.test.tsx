@@ -1,5 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
+
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));
+jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
+  saveRecordingDraft: jest.fn(async (input: { id: string }) => input.id),
+  deleteRecordingDraft: jest.fn(async () => undefined),
+  listRecordingDrafts: jest.fn(async () => []),
+  subscribeRecordingDrafts: () => () => undefined,
+}));
+
 import '@testing-library/jest-dom';
 
 // Mocks for dnd libs used by Column/SermonPointPlaceholder
@@ -122,7 +132,7 @@ describe('Focus mode: mic icon per outline point', () => {
         0,
         3,
         'op-1',
-        'sp-1'
+        'sp-1', expect.objectContaining({ id: expect.any(String), sectionId: 'main' })
       );
     });
 

@@ -13,11 +13,13 @@ import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { useTextDictation } from '@/hooks/useTextDictation';
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { refusalMessage, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -25,7 +27,6 @@ import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
-import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { getSectionLabel } from "@lib/sections";
 
 import {
@@ -40,6 +41,7 @@ import type { ScratchNote, SermonOutline } from "@/models/models";
 import type { ScratchPlacement } from '@/utils/scratchPlacementRemap';
 
 const VOICE_ERROR_KEY = "scratch.voice.error";
+const VOICE_APPLY_IN_PROGRESS_KEY = "scratch.voice.applyInProgress";
 const BOARD_APPLY_ERROR_KEY = "scratch.board.applyError";
 const MANUAL_ADD_LABEL_KEY = "scratch.capture.manualAdd";
 const MANUAL_INPUT_LABEL_KEY = "scratch.capture.manualLabel";
@@ -53,6 +55,7 @@ interface ScratchPanelProps {
   notes: ScratchNote[];
   outline?: SermonOutline;
   addScratchNote: (text: string, section?: SectionKey) => ScratchNote | null;
+  addRecordedScratchNote: (text: string, recordingId: string) => Promise<ScratchNote | null>;
   restoreScratchNote: (note: ScratchNote) => ScratchNote | null;
   updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
   deleteScratchNote: (noteId: string) => void;
@@ -112,6 +115,7 @@ export default function ScratchPanel({
   notes,
   outline,
   addScratchNote,
+  addRecordedScratchNote,
   restoreScratchNote,
   updateScratchNote,
   deleteScratchNote,
@@ -140,10 +144,6 @@ export default function ScratchPanel({
   const [composeError, setComposeError] = useState<FailureWords | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [placements, setPlacements] = useState<Record<string, ScratchPlacement>>({});
-  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
-  // Kept as words: the recovery panel says them in the language on screen.
-  const [voiceError, setVoiceError] = useState<FailureWords | null>(null);
-  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
   const [voiceRecoveryUrl, setVoiceRecoveryUrl] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
   /** Note queued for deletion — the trash click only ARMS it, the modal confirms. */
@@ -308,88 +308,55 @@ export default function ScratchPanel({
     }
   }, [handleAddManualNote, manualDraft, t]);
 
-  const surfaceVoiceApplyRecovery = useCallback(() => {
-    setVoiceError({ key: "scratch.voice.applyInProgress" });
-    toast.error(t("scratch.voice.applyInProgress"));
-  }, [t]);
-
-  const runVoiceTranscription = useCallback(
-    async (audioBlob: Blob) => {
-      if (transcriptionBlocked) return;
+  const [voiceGuardError, setVoiceGuardError] = useState<FailureWords | null>(null);
+  const voice = useTextDictation({
+    recordingContext: { context: 'scratch', contextId: sermonId },
+    transcribe: transcribeThoughtAudio,
+    fallbackErrorKey: VOICE_ERROR_KEY,
+    acceptAfterText: true,
+    canTranscribe: () => {
+      if (!isApplyingRef.current) return true;
+      setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
+      toast.error(t(VOICE_APPLY_IN_PROGRESS_KEY));
+      return false;
+    },
+    onStart: () => setVoiceGuardError(null),
+    onText: async (text, sourceId) => {
       if (isApplyingRef.current) {
-        surfaceVoiceApplyRecovery();
-        return;
+        setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
+        throw new Error('The scratch plan is being applied');
       }
-
-      replaceStoredVoiceBlob(audioBlob);
-      setIsVoiceProcessing(true);
-      setVoiceError(null);
-
-      try {
-        const result = await transcribeThoughtAudio(audioBlob);
-        const polishedText = (result.polishedText || result.originalText || "").trim();
-        if (!polishedText) {
-          throw new Error("Empty transcription");
-        }
-
-        if (isApplyingRef.current) {
-          surfaceVoiceApplyRecovery();
-          return;
-        }
-
-        const note = addScratchNote(polishedText);
-        if (!note) {
-          setVoiceError({ key: VOICE_ERROR_KEY });
-          toast.error(t(VOICE_ERROR_KEY));
-          return;
-        }
-
-        markScratchChanged();
-        replaceStoredVoiceBlob(null);
-        setVoiceRetryCount(0);
-        clearComposition();
-        toast.success(t("scratch.voice.success"), SCRATCH_TOAST_OPTIONS);
-      } catch (error) {
-        const words = transcriptionFailureWords(error, VOICE_ERROR_KEY);
-        setVoiceError(words);
-        toast.error(sayFailure(words, t));
-      } finally {
-        setIsVoiceProcessing(false);
-      }
+      if (!sourceId) throw new Error('The scratch recording identity is required');
+      const note = await addRecordedScratchNote(text, sourceId);
+      if (!note) throw new Error('The voice note was not accepted');
+      markScratchChanged();
+      replaceStoredVoiceBlob(null);
+      clearComposition();
+      toast.success(t('scratch.voice.success'), SCRATCH_TOAST_OPTIONS);
     },
-    [addScratchNote, clearComposition, markScratchChanged, replaceStoredVoiceBlob, surfaceVoiceApplyRecovery, t, transcriptionBlocked]
-  );
-
-  const handleVoiceComplete = useCallback(
-    async (audioBlob: Blob) => {
-      replaceStoredVoiceBlob(audioBlob);
-      setVoiceRetryCount(0);
-      await runVoiceTranscription(audioBlob);
-    },
-    [replaceStoredVoiceBlob, runVoiceTranscription]
-  );
-
-  const handleRetryVoice = useCallback(() => {
-    const blob = storedVoiceBlobRef.current;
-    if (!blob || isVoiceProcessing) return;
-    replaceStoredVoiceBlob(blob);
-    if (isApplyingRef.current) {
-      surfaceVoiceApplyRecovery();
-      return;
-    }
-    setVoiceRetryCount((count) => count + 1);
-    void runVoiceTranscription(blob);
-  }, [isVoiceProcessing, replaceStoredVoiceBlob, runVoiceTranscription, surfaceVoiceApplyRecovery]);
-
-  const handleClearVoiceError = useCallback(() => {
-    replaceStoredVoiceBlob(null);
-    setVoiceError(null);
-    setVoiceRetryCount(0);
-  }, [replaceStoredVoiceBlob]);
-
-  const handleRecordVoiceAgain = useCallback(() => {
-    handleClearVoiceError();
-  }, [handleClearVoiceError]);
+    onEmpty: () => toast.error(t(VOICE_ERROR_KEY)),
+    onError: words => { if (!isApplyingRef.current) toast.error(sayFailure(words, t)); },
+  });
+  const isVoiceProcessing = voice.isProcessing;
+  const voiceError = voiceGuardError ?? voice.error;
+  const voiceRetryCount = voice.retryCount;
+  const surfaceVoiceApplyRecovery = () => {
+    setVoiceGuardError({ key: VOICE_APPLY_IN_PROGRESS_KEY });
+    toast.error(t(VOICE_APPLY_IN_PROGRESS_KEY));
+  };
+  const handleVoiceComplete = (audioBlob: Blob) => {
+    replaceStoredVoiceBlob(audioBlob);
+    voice.complete(audioBlob);
+  };
+  const handleRetryVoice = () => {
+    if (isApplyingRef.current) { surfaceVoiceApplyRecovery(); return; }
+    voice.retry();
+  };
+  const handleClearVoiceError = () => {
+    replaceStoredVoiceBlob(null); setVoiceGuardError(null); voice.clear();
+  };
+  const handleRecordVoiceAgain = handleClearVoiceError;
+  const handleDiscardVoice = async () => { await voice.discard(); handleClearVoiceError(); };
 
   const handleDownloadVoiceRecovery = useCallback(() => {
     const blob = storedVoiceBlobRef.current;
@@ -833,7 +800,7 @@ export default function ScratchPanel({
       isProcessing={isVoiceProcessing || isApplying}
       onRetry={handleRetryVoice}
       onRecordAgain={handleRecordVoiceAgain}
-      onDiscard={handleClearVoiceError}
+      onDiscard={() => { void handleDiscardVoice().catch(() => toast.error(t('audio.draft.discardFailed'))); }}
       onDownload={handleDownloadVoiceRecovery}
       t={t}
       className="mb-4"
@@ -855,6 +822,8 @@ export default function ScratchPanel({
           the panel below it have to read as one block, not two stacked cards. */}
       <div className={isManualCaptureOpen ? "" : "mb-4"} ref={setCapturePortal} />
       <AudioRecorderPortalBridge
+        key={voice.recordingKey}
+        onDiscardRecording={handleDiscardVoice}
         RecorderComponent={AudioRecorder}
         portalTarget={capturePortal}
         onRecordingComplete={handleVoiceComplete}
@@ -880,6 +849,9 @@ export default function ScratchPanel({
       />
       {renderManualCaptureForm()}
       {renderVoiceRecoveryPanel()}
+      <RecordingDraftBanner context="scratch" contextId={sermonId} isProcessing={isVoiceProcessing || isApplying}
+        resendDisabled={transcriptionBlocked || isCaptureLocked} excludeDraftIds={voice.appliedDraftIds}
+        onResend={(_blob, source) => voice.recover(source)} />
     </>
   );
 

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
 import { MicrophoneIcon } from "@/components/Icons";
+import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 import { FLAT_RECORDER_COLORS } from "@/utils/themeColors";
 
@@ -30,6 +31,7 @@ interface FlatRecorderButtonProps {
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
+  onDiscardRecording?: () => void | Promise<void>;
 }
 
 const AUDIO_NEW_RECORDING_KEY = "audio.newRecording";
@@ -197,6 +199,7 @@ export function FlatRecorderButton({
   transcriptionError,
   transcriptionLimitReached = false,
   onClearError,
+  onDiscardRecording,
 }: FlatRecorderButtonProps) {
   const { t } = useTranslation();
   const {
@@ -260,6 +263,11 @@ export function FlatRecorderButton({
     void startRecording();
   }, [isRecording, startRecording, stopRecording]);
 
+  const { discardSource, isDiscarding } = useRecordingDiscard({
+    source: storedAudioUrl, discard: onDiscardRecording, clear: discardStoredAudio, onError,
+    blocked: isProcessing || disabled || recordingState !== 'idle',
+  });
+
   const shouldShowRecovery = Boolean(transcriptionErrorMessage && hasStoredAudio && storedAudioUrl);
 
   return (
@@ -287,7 +295,7 @@ export function FlatRecorderButton({
             isProcessing={isProcessing}
             mainLabel={mainLabel}
             title={title}
-            isButtonDisabled={isButtonDisabled}
+            isButtonDisabled={isButtonDisabled || isDiscarding}
             onMainClick={handleMainClick}
             t={t}
           />
@@ -308,10 +316,10 @@ export function FlatRecorderButton({
         appliedVariant="mini"
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled || recordingState !== "idle"}
+        isProcessing={isProcessing || isDiscarding || disabled || recordingState !== "idle"}
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
-        onDiscard={discardStoredAudio}
+        onDiscard={() => { void discardSource(); }}
         onDownload={downloadStoredAudio}
         t={t}
         className="absolute right-0 top-full z-50 mt-2 w-[320px] max-w-[calc(100vw-2rem)]"

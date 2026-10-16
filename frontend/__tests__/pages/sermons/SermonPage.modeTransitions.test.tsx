@@ -3,6 +3,10 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 jest.mock('@locales/i18n', () => ({}));
+jest.mock('@/providers/AuthProvider', () => ({
+  ...jest.requireActual('@/providers/AuthProvider'),
+  useAuth: () => ({ user: { uid: 'test-user-id' }, loading: false }),
+}));
 import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
 import StructureStats from '@/components/sermon/StructureStats';
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
@@ -22,6 +26,14 @@ import { DataDocumentProvider } from '@/data-engine/react.client';
 import { TestProviders } from '../../../test-utils/test-providers';
 
 import type { Preparation } from '@/models/models';
+
+jest.mock('@/utils/recordingDraftStore', () => ({
+  ...jest.requireActual('@/utils/recordingDraftStore'),
+  saveRecordingDraft: jest.fn(async (input: { id: string }) => input.id),
+  deleteRecordingDraft: jest.fn(async () => undefined),
+  listRecordingDrafts: jest.fn(async () => []),
+  subscribeRecordingDrafts: () => () => undefined,
+}));
 
 jest.mock('@/services/thought.service', () => ({
   ...jest.requireActual('@/services/thought.service'),
@@ -523,7 +535,7 @@ mockCore.data = null; mockCore.loading = false;
     const view = render(<TestProviders><SermonPage /></TestProviders>);
     await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'finish-recording', hidden: true })[0]); });
     await waitFor(() => expect(mockCore.retry).toHaveBeenCalled());
-    expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'abc', 0, 3);
+    expect(createAudioThought).toHaveBeenCalledWith(expect.any(Blob), 'abc', 0, 3, undefined, undefined, { id: expect.any(String) });
     expect(mockEngineWriter.updateStructure).not.toHaveBeenCalled();
     view.unmount();
   });

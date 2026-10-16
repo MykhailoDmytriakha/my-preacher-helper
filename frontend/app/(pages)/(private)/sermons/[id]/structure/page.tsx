@@ -1081,6 +1081,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
         </DndContext>}
         {editingItem && !readOnly && (
           <EditThoughtModal
+            recordingContextId={sermonId ? JSON.stringify([sermonId, editingItem.id]) : undefined}
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
             initialSermonPointId={editingItem.outlinePointId || undefined}

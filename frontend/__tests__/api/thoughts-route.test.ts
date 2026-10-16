@@ -291,4 +291,29 @@ describe('Thoughts API POST', () => {
       delete process.env.DATA_ENGINE_COLLECTIONS;
     }
   });
+  it('returns the thought already accepted for this recording without another provider call', async () => {
+    const accepted = { id: 'audio:take-1', text: 'Previously accepted words', tags: [], date: '2026-10-16' };
+    (sermonsRepoMock.sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'user-1', thoughts: [accepted] });
+    const data = new FormData(); data.append('audio', mockAudioBlob); data.append('sermonId', mockSermonId); data.append('recordingId', 'take-1');
+    const response = await POST(createMockRequest(data));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(accepted);
+    const client = await import('@clients/openAI.client');
+    expect(client.createTranscription).not.toHaveBeenCalled();
+    expect(mockWriteOwnedDocument).not.toHaveBeenCalled();
+  });
+
+  it('stores an explicitly recorded section with the thought before the page can disappear', async () => {
+    generateThoughtStructuredMock.mockResolvedValue({ meaningSuccessfullyPreserved: true, originalText: mockTranscription, formattedText: 'Section words', tags: [] });
+    const data = new FormData(); data.append('audio', mockAudioBlob); data.append('sermonId', mockSermonId);
+    data.append('recordingId', 'take-section'); data.append('sectionId', 'conclusion');
+    const response = await POST(createMockRequest(data));
+    expect(response.status).toBe(200);
+    const thought = await response.json();
+    expect(thought.id).toBe('audio:take-section');
+    const saved = await mockEditOwnedDocument.mock.results[0].value;
+    expect(saved.structure.conclusion).toEqual(['audio:take-section']);
+    expect(saved.structure.ambiguous).toEqual([]);
+  });
+
 });

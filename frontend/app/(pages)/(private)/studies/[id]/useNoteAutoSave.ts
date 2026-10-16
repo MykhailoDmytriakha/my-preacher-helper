@@ -16,13 +16,18 @@ import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
 import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 
+const EMPTY_SOURCE_IDS: string[] = [];
+
 export function useNoteAutoSave({
-    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef
+    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
+    dictationSourceIds?: string[];
+    recordingSourceIds?: string[];
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
     updateNote: (args: {
@@ -58,6 +63,8 @@ export function useNoteAutoSave({
      * surviving draft is precisely the signal that text is unconfirmed.
      */
     onSaved?: (saved: NoteDraftPayload) => void;
+    /** Capture source IDs at submission time; later dictation belongs to a later save. */
+    captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
     /**
      * Set by the page right before a change that must not wait for the pause — dictated text
      * landing in the note. The next save goes at once; the flag clears when a save starts.
@@ -77,6 +84,9 @@ export function useNoteAutoSave({
 
     const saveNewNote = useCallback(async () => {
         if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
+        const recording = captureRecordingHandoff?.();
+        // Creation adopts a new destination and remounts the recorder; keep its sole source safe first.
+        if (recording?.canChangeDestination?.() === false) return;
 
         setIsSaving(true);
         setSaveError(null);
@@ -84,9 +94,12 @@ export function useNoteAutoSave({
         try {
             const submission = createNote({
                 title, content, tags, scriptureRefs, type,
+                ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
                 userId: uid ?? '', materialIds: [], relatedSermonIds: []
             });
             const newNote = submission.note;
+            void recording?.carryTo(newNote.id).catch(() => undefined);
+            void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // CARRY THE DRAFT FIRST, THEN report the save.
             //
             // The note was drafted under the placeholder id "new" and now has a
@@ -107,7 +120,7 @@ export function useNoteAutoSave({
             // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
 
-            const confirmedPayload = { title, content, tags, scriptureRefs, type };
+            const confirmedPayload = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
             const retirePersistedCreateDraft = () => {
                 // The draft was moved to the real id before the route changed. Never
                 // retire it from the old hook's moving key; remove only this exact,
@@ -140,7 +153,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, createNote, uid, setCreatedNoteId, baselineRef, onSaved]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -166,6 +179,7 @@ export function useNoteAutoSave({
         // only after acceptance, so a failed write remains changed on the next pass.
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, {
             title, content, tags, scriptureRefs, type,
+            ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
         });
 
         if (Object.keys(updates).length === 0) return;
@@ -179,6 +193,7 @@ export function useNoteAutoSave({
         setLastSaved(null);
         const wasDeliberate = deliberateOverwriteRef.current;
         try {
+            const recording = captureRecordingHandoff?.();
             const submission = updateNote({
                 id: noteId,
                 updates,
@@ -197,6 +212,7 @@ export function useNoteAutoSave({
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
             });
+            void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
             if (acceptance.kind !== 'persisted') {
@@ -209,7 +225,7 @@ export function useNoteAutoSave({
                  * note and can exhaust storage the later typing depends on.
                  */
                 if (acceptance.kind === 'queued') {
-                    baselineRef.current = { title, content, tags, scriptureRefs, type };
+                    baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
                     // A deliberate overwrite is one send; left armed, every later save
                     // would go out unguarded until the next persisted one.
                     if (wasDeliberate) deliberateOverwriteRef.current = false;
@@ -222,7 +238,7 @@ export function useNoteAutoSave({
                             if (saved.revision < (revisionRef.current ?? 0)) return;
                             revisionRef.current = saved.revision;
                         }
-                        onSaved?.({ title, content, tags, scriptureRefs, type });
+                        onSaved?.({ title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) });
                     }).catch(() => undefined);
                 }
                 return;
@@ -236,9 +252,9 @@ export function useNoteAutoSave({
             }
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.
-            baselineRef.current = { title, content, tags, scriptureRefs, type };
+            baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
             if (wasDeliberate) deliberateOverwriteRef.current = false;
-            onSaved?.({ title, content, tags, scriptureRefs, type });
+            onSaved?.({ title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) });
             announceIfPersisted(acceptance, () => setLastSaved(new Date()));
         } catch (e) {
             if (isStaleWriteError(e)) {
@@ -263,7 +279,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, atOnceRef]);
+    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;
@@ -273,7 +289,7 @@ export function useNoteAutoSave({
             saveChanges();
         }, atOnceRef.current ? 0 : 1500);
         return () => clearTimeout(timeoutId);
-    }, [title, content, tags, scriptureRefs, type, isInitialized, resaveNonce, saveChanges, atOnceRef]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, isInitialized, resaveNonce, saveChanges, atOnceRef]);
 
     /**
      * THE PAGE GOING AWAY IS THE LAST MOMENT TO HAND THE TEXT OVER (BUG-20261006-hidden-tab-holds-last-edit).

@@ -19,7 +19,7 @@ interface RecorderLikeProps {
   maxRetries?: number;
   transcriptionError?: FailureWords | null;
   onClearError?: () => void;
-  onDiscardRecording?: () => void;
+  onDiscardRecording?: () => void | Promise<void>;
   hideKeyboardShortcuts?: boolean;
   splitLeft?: ReactNode;
   splitRight?: ReactNode;
@@ -38,7 +38,7 @@ interface AudioRecorderPortalBridgeProps {
   maxRetries?: number;
   transcriptionError: FailureWords | null;
   onClearError: () => void;
-  onDiscardRecording?: () => void;
+  onDiscardRecording?: () => void | Promise<void>;
   hideKeyboardShortcuts: boolean;
   isReadOnly: boolean;
   isRecorderDisabled?: boolean;

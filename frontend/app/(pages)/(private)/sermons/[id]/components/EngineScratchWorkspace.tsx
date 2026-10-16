@@ -65,6 +65,7 @@ export function EngineScratchWorkspace({ sermonId, isReadOnly = false, onConfirm
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     {scratch.loading ? <p role="status">{t('common.loading')}</p> : !scratch.data ? <p>{t('common.noData')}</p> : <ScratchPanel
       sermonId={sermonId} notes={scratch.notes} outline={scratch.outline}
+      addRecordedScratchNote={scratch.addRecordedScratchNote}
       addScratchNote={scratch.addScratchNote} restoreScratchNote={scratch.restoreScratchNote}
       updateScratchNote={scratch.updateScratchNote} deleteScratchNote={scratch.deleteScratchNote} moveScratchNote={scratch.moveScratchNote}
       isScratchWritePending={scratch.isWritePending} scratchRevision={scratch.scratchRevision}

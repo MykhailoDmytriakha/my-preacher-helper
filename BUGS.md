@@ -14,12 +14,9 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261016-unfinished-recording-navigation-recovery · Failed dictation disappears after leaving its page
-**P2.** Only copy of dictated work is lost. Anchors: FocusRecorderButton.tsx storedAudioBlob/on-unmount cleanup; useTextDictation.ts storedBlob; OutlinePointCard.tsx inline recorder; recordingDraftStore.ts and RecordingDraftBanner.tsx (existing persistence wired only in studies).
-**Reproduced 2026-10-16.** On local build l9tdD-R0khxfRzh7g6MLR, thought and prayer-update paths each record with a controlled fake microphone, receive one synthetic transcription refusal, show a playable recording, navigate to Settings, return and reopen: player 1→0, recovery offer 0. Zero page errors or real API mutations. Evidence: recorder-navigation-browser-before.js/json in the active local case.
-**Expected / actual.** Unaccepted audio stays discoverable for its owner and original destination until accepted or explicitly discarded; page navigation currently destroys the in-memory source. In-window permission/capture/finalization guards cannot provide cross-page persistence.
-**Class.** Thought/create/edit, prayer update, outline point and column/portal recorders need scoped durable recovery and successful-acceptance cleanup; studies already has an existing draft mechanism but its owner/placeholder and pending-provider boundaries need auditing.
-**Direction.** Extend the canonical recordingDraftStore/useRecordingDrafts/banner flow with owner and destination scope; no duplicate store. Audit in-session quota/empty outcomes and durable text acceptance too, since an error flag alone is not a complete source-lifetime contract. Preserve raw source before provider work, avoid duplicate retries and wrong-target recovery, retain on failed storage/acceptance, and verify reload, offline and sequential owner changes.
+### BUG-20261016-structure-recorder-popover-offscreen-on-phone · Окно записи раздела выходит за левый край телефона
+**P2** · `frontend/app/components/Column.tsx:763-764`.
+Проповедь → Структура → обычный вид → микрофон раздела. На телефоне окно привязано правым краем к кнопке слева: остановка записи вне экрана. Все кнопки должны помещаться в экран. Подтверждено на 390 px; отдельный фикс расположения.
 
 ### BUG-20261013-relation-scan-blocks-delete · Проповедь, группу или заметку нельзя удалить, когда у владельца около сотни серий или материалов, даже не связанных с ней
 **Severity.** P2 — операция пропадает целиком у активного пользователя (в отказе), но только начиная с ~100 серий или материалов; сейчас у тестового владельца их единицы.

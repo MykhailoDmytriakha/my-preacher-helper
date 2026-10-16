@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
+import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildRecordingFilename, downloadBlobToDevice, getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
@@ -34,6 +35,7 @@ interface FocusRecorderButtonProps {
   /** The month's allowance is spent: the same step cannot succeed on a second press. */
   transcriptionLimitReached?: boolean;
   onClearError?: () => void;
+  onDiscardRecording?: () => void | Promise<void>;
   onRecordingStateChange?: (active: boolean) => void;
 }
 
@@ -323,6 +325,7 @@ export const FocusRecorderButton = ({
   transcriptionError,
   transcriptionLimitReached = false,
   onClearError,
+  onDiscardRecording,
   onRecordingStateChange,
 }: FocusRecorderButtonProps) => {
   const { isActive: isSessionActive, begin, owns, finish } = useRecordingSession(onRecordingStateChange);
@@ -351,6 +354,11 @@ export const FocusRecorderButton = ({
     setStoredAudioBlob(null);
     onClearError?.();
   }, [onClearError]);
+
+  const { discardSource: discardStoredAudio, isDiscarding } = useRecordingDiscard({
+    source: storedAudioBlob, discard: onDiscardRecording, clear: clearStoredAudio, onError,
+    blocked: isProcessing || isSessionActive,
+  });
 
   // Cleanup function to properly dispose of resources
   const cleanup = useCallback(() => {
@@ -788,10 +796,10 @@ export const FocusRecorderButton = ({
         appliedVariant="mini"
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled || isSessionActive}
+        isProcessing={isProcessing || isDiscarding || disabled || isSessionActive}
         onRetry={retrySavedRecording}
         onRecordAgain={recordAgain}
-        onDiscard={clearStoredAudio}
+        onDiscard={() => { void discardStoredAudio(); }}
         onDownload={storedAudioBlob ? () => downloadBlobToDevice(storedAudioBlob, buildRecordingFilename(storedAudioBlob.type)) : undefined}
         t={t}
         className={recoveryPanelClassName}

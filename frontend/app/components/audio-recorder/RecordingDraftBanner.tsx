@@ -11,10 +11,17 @@ export interface RecordingDraftBannerProps {
   context: RecordingDraftContext;
   contextId?: string;
   /** Resend the saved blob for transcription. Resolve `true` to have the draft removed. */
-  onResend: (blob: Blob) => Promise<boolean>;
+  onResend: (blob: Blob, draft: RecordingDraft) => Promise<boolean>;
+  /** Owner from the actual loaded source document, used only for pre-upgrade recordings. */
+  sourceOwnerId?: string;
+  linkedSourceIds?: readonly string[];
+  resendDisabled?: boolean;
+  excludeDraftIds?: readonly string[];
   isProcessing?: boolean;
   className?: string;
 }
+
+const EMPTY_DRAFT_IDS: readonly string[] = [];
 
 const canUseObjectUrl = () =>
   typeof URL !== "undefined" && typeof URL.createObjectURL === "function";
@@ -28,19 +35,30 @@ const canUseObjectUrl = () =>
 export default function RecordingDraftBanner({
   context,
   contextId,
+  sourceOwnerId,
+  linkedSourceIds = EMPTY_DRAFT_IDS,
   onResend,
   isProcessing = false,
+  resendDisabled = false,
+  excludeDraftIds = EMPTY_DRAFT_IDS,
   className = "",
 }: RecordingDraftBannerProps) {
   const { t } = useTranslation();
-  const { drafts, loading, removeDraft } = useRecordingDrafts(context, contextId);
+  const { drafts: loadedDrafts, loading, error, ownerId, removeDraft, refresh } = useRecordingDrafts(context, contextId, sourceOwnerId, linkedSourceIds);
+  const excludedKey = JSON.stringify(excludeDraftIds);
+  const drafts = useMemo(() => {
+    const excluded = new Set<string>(JSON.parse(excludedKey));
+    return excluded.size ? loadedDrafts.filter(draft => !excluded.has(draft.id)) : loadedDrafts;
+  }, [loadedDrafts, excludedKey]);
   const { confirm, confirmDialog, withdraw } = useConfirm();
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
-  const currentScope = `${context}:${contextId ?? ''}`;
+  const currentScope = JSON.stringify([ownerId, context, contextId]);
   const currentScopeRef = useRef(currentScope);
   const currentDraftsRef = useRef(drafts);
   const pendingDiscard = useRef<{ id: string; blob: Blob; scope: string } | null>(null);
   const deletingIds = useRef(new Set<string>());
+  const resendingIds = useRef(new Set<string>());
+  const [actionError, setActionError] = useState<{ scope: string; key: string } | null>(null);
   currentScopeRef.current = currentScope;
   currentDraftsRef.current = drafts;
 
@@ -79,12 +97,18 @@ export default function RecordingDraftBanner({
 
   const handleResend = useCallback(
     async (draft: RecordingDraft) => {
-      if (isProcessing || busyIds[draft.id]) return;
+      if (isProcessing || resendDisabled || busyIds[draft.id] || resendingIds.current.has(draft.id)) return;
+      const scope = currentScope;
+      resendingIds.current.add(draft.id);
+      setActionError(null);
       setBusyIds((prev) => ({ ...prev, [draft.id]: true }));
       try {
-        const ok = await onResend(draft.blob);
+        const ok = await onResend(draft.blob, draft);
         if (ok) await removeDraft(draft.id);
+      } catch {
+        if (currentScopeRef.current === scope) setActionError({ scope, key: 'audio.draft.resendFailed' });
       } finally {
+        resendingIds.current.delete(draft.id);
         setBusyIds((prev) => {
           const next = { ...prev };
           delete next[draft.id];
@@ -92,13 +116,14 @@ export default function RecordingDraftBanner({
         });
       }
     },
-    [busyIds, isProcessing, onResend, removeDraft]
+    [busyIds, currentScope, isProcessing, onResend, removeDraft, resendDisabled]
   );
 
   const handleDiscard = useCallback(async (draft: RecordingDraft) => {
     if (isProcessing || busyIds[draft.id] || deletingIds.current.has(draft.id)) return;
     const scope = currentScope;
     const request = { id: draft.id, blob: draft.blob, scope };
+    setActionError(null);
     pendingDiscard.current = request;
     deletingIds.current.add(draft.id);
     setBusyIds(previous => ({ ...previous, [draft.id]: true }));
@@ -110,6 +135,8 @@ export default function RecordingDraftBanner({
         cancelText: { key: 'common.cancel' },
       });
       if (accepted && isCurrentDraft(request.id, request.blob, request.scope)) await removeDraft(request.id);
+    } catch {
+      if (currentScopeRef.current === scope) setActionError({ scope, key: 'audio.draft.discardFailed' });
     } finally {
       if (pendingDiscard.current === request) pendingDiscard.current = null;
       deletingIds.current.delete(draft.id);
@@ -117,13 +144,18 @@ export default function RecordingDraftBanner({
     }
   }, [busyIds, confirm, currentScope, isCurrentDraft, isProcessing, removeDraft]);
 
-  if (loading || drafts.length === 0) return <>{confirmDialog}</>;
+  const notice = actionError?.scope === currentScope ? actionError.key : error ? 'audio.draft.loadFailed' : null;
+  const failure = notice ? <div role="alert" className="mb-2 text-sm text-red-600 dark:text-red-400">
+    <p>{t(notice)}</p>{error ? <button type="button" onClick={() => { void refresh(); }}>{t('buttons.retry')}</button> : null}
+  </div> : null;
+  if (loading || drafts.length === 0) return <>{failure}{confirmDialog}</>;
 
   const buttonBase =
     "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
     <>
+    {failure}
     <div className={`flex flex-col gap-3 ${className}`}>
       {drafts.map((draft) => {
         const busy = isProcessing || Boolean(busyIds[draft.id]);
@@ -166,7 +198,7 @@ export default function RecordingDraftBanner({
               <button
                 type="button"
                 onClick={() => handleResend(draft)}
-                disabled={busy}
+                disabled={busy || resendDisabled}
                 className={`${buttonBase} border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 focus:ring-amber-500 dark:border-amber-600 dark:bg-gray-900/40 dark:text-amber-200 dark:hover:bg-amber-900/50`}
               >
                 {t("audio.draft.resend")}

@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
+import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
 import {
@@ -47,8 +48,7 @@ export const AudioRecorder = ({
 }: AudioRecorderProps) => {
   const { t } = useTranslation();
   const appliedVariant = useResponsiveRecorderVariant(variant);
-  const shouldEnableAudioLevelMonitoring = enableAudioLevelMonitoring && appliedVariant === "standard";
-
+  const shouldEnableAudioLevelMonitoring = enableAudioLevelMonitoring && appliedVariant === 'standard';
   const {
     recordingTime,
     isRecording,
@@ -99,6 +99,11 @@ export const AudioRecorder = ({
   );
 
   const isButtonDisabled = disabled || isProcessing || isInitializing || recordingState === "processing";
+  const { discardSource, isDiscarding } = useRecordingDiscard({
+    source: storedAudioUrl, discard: onDiscardRecording, clear: discardStoredAudio, onError,
+    blocked: isProcessing || disabled || recordingState !== 'idle',
+  });
+
   const shouldShowRecovery = Boolean(transcriptionErrorMessage && hasStoredAudio && storedAudioUrl);
   const isIdle = recordingState === "idle";
 
@@ -108,7 +113,7 @@ export const AudioRecorder = ({
         <SplitRecordButton
           splitLeft={splitLeft}
           splitRight={splitRight}
-          isButtonDisabled={isButtonDisabled}
+          isButtonDisabled={isButtonDisabled || isDiscarding}
           onStart={startRecording}
           t={t}
           title={title}
@@ -128,7 +133,7 @@ export const AudioRecorder = ({
             appliedVariant={appliedVariant}
             isRecording={isRecording}
             isPaused={isPaused}
-            isButtonDisabled={isButtonDisabled}
+            isButtonDisabled={isButtonDisabled || isDiscarding}
             recordingState={recordingState}
             onStart={startRecording}
             onStop={stopRecording}
@@ -170,10 +175,10 @@ export const AudioRecorder = ({
         appliedVariant={appliedVariant}
         retryCount={retryCount}
         maxRetries={maxRetries}
-        isProcessing={isProcessing || disabled || recordingState !== "idle"}
+        isProcessing={isProcessing || isDiscarding || disabled || recordingState !== "idle"}
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
-        onDiscard={() => { discardStoredAudio(); onDiscardRecording?.(); }}
+        onDiscard={() => { void discardSource(); }}
         onDownload={downloadStoredAudio}
         t={t}
       />
