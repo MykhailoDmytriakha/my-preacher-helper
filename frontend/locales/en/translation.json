@@ -2099,6 +2099,7 @@
     "monthView": "Month",
     "weekView": "Week",
     "agendaView": "Agenda",
+    "historyTitle": "Preaching dates",
     "addPreachDate": "Add Preach Date",
     "editPreachDate": "Edit Preach Date",
     "deletePreachDate": "Delete Preach Date",

@@ -126,6 +126,17 @@ it('does not mistake normalized legacy sibling statuses for the marked target', 
   expect(preachDateTarget(initial as never, value as never, { kind: 'mark' }, 'new')).toBe('first');
 });
 
+it('keeps the sermon when its last preached date is deleted and clears the preached flag', async () => {
+  const snapshot = { ...original, value: { ...original.value!, isPreached: true, preachDates: [{ ...first, status: 'preached' }] } };
+  const { harness, view } = setup({ kind: 'delete', dateId: 'first' }, snapshot);
+  await screen.findByText(first.date);
+  await save('common.delete');
+  await deliver(harness);
+  expect(harness.read(resource).metadata?.deleted).toBe(false);
+  expect(harness.read(resource).value).toMatchObject({ title: 'Opening', verse: 'Romans 1', isPreached: false, preachDates: [] });
+  view.unmount();
+});
+
 it('opens history deletion as an explicit engine form and retains the sibling date', async () => {
   const harness = membershipEngineHarness([original]); jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const view = render(<DataEngineProvider><EnginePreachDateList sermonId="sermon" /></DataEngineProvider>);

@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
@@ -732,6 +733,9 @@ function SermonPageContent({ id }: { id: string }) {
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <EnginePreachDateList sermonId={sermon.id} showDocumentStatus={false} />
+      </div>
       <div className="lg:hidden">
         <StructureStats
           sermon={sermon!}

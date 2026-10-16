@@ -35,8 +35,8 @@ export function PreachDateRows({ preachDates, isPreached: sermonIsPreached = fal
                             className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50"
                         >
                             <div className="flex flex-col min-w-0 pr-4">
-                                <div className="flex items-center gap-2 mb-0.5">
-                                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                                <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                                    <span className="shrink-0 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-gray-100">
                                         {(() => {
                                             const parsedDate = parseDateOnlyAsLocalDate(pd.date);
                                             if (!parsedDate) {
@@ -45,25 +45,25 @@ export function PreachDateRows({ preachDates, isPreached: sermonIsPreached = fal
                                             return format(parsedDate, 'PP', { locale: dateLocale });
                                         })()}
                                     </span>
-                                    <Chip weight="bold" tone={statusTone} size="xs" className="uppercase tracking-wider">
+                                    <Chip weight="bold" tone={statusTone} size="xs" className="shrink-0 uppercase tracking-wider">
                                         {isPreached
                                             ? t('calendar.status.preached', { defaultValue: 'Preached' })
                                             : t('calendar.status.planned', { defaultValue: 'Planned' })}
                                     </Chip>
                                     {pd.outcome && (
-                                        <Chip weight="bold" tone={OUTCOME_TONES[pd.outcome] ?? 'rose'} size="xs" className="uppercase">
+                                        <Chip weight="bold" tone={OUTCOME_TONES[pd.outcome] ?? 'rose'} size="xs" className="shrink-0 uppercase">
                                             {t(`calendar.outcomes.${pd.outcome}`)}
                                         </Chip>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                                    <div className="flex items-center gap-1 group">
-                                        <MapPinIcon className="w-3.5 h-3.5 text-blue-500" />
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                    <div className="group flex min-w-0 max-w-full items-center gap-1">
+                                        <MapPinIcon className="w-3.5 h-3.5 shrink-0 text-blue-500" />
                                         <span className="truncate max-w-[150px]">{pd.church.name}</span>
                                     </div>
                                     {pd.audience && (
-                                        <div className="flex items-center gap-1">
-                                            <FaceSmileIcon className="w-3.5 h-3.5" />
+                                        <div className="flex min-w-0 max-w-full items-center gap-1">
+                                            <FaceSmileIcon className="w-3.5 h-3.5 shrink-0" />
                                             <span className="truncate max-w-[100px]">{pd.audience}</span>
                                         </div>
                                     )}

@@ -183,3 +183,42 @@ Local evidence lives in the ignored case artifact directory: one-notice red/gree
 4. Check 390/834/1280px and the sermon route as well as a group. A matching route without an opened answering editor must keep the notice; an unrelated document must not suppress it.
 5. Repeat on a warmed offline route where available and on an already loaded screen; restore the connection. Verify actions still resolve the same draft and preserve later typing.
 6. Clear only the synthetic refusal using the server version, reload, verify original test content, and record deployed revision/screenshots/outcomes. Keep production acceptance pending until these checks run.
+
+
+## BUG-20261013-preach-date-delete-no-screen
+
+Stage: locally verified and independently reviewed; production verification pending.
+
+The existing date-history component was never mounted on a screen. The sermon page now shows **Preaching dates** below its header in all three modes. Both month and agenda calendar cards already open that page. Each date retains its existing edit/delete controls and the delete confirmation form. No new writer, endpoint, queue or date-removal rule was introduced.
+
+`EnginePreachDateList` reuses the page's document editor through `useDataDocument`. The sermon header remains the single document-level sync status; the pinned date form still owns its separate action status. Standalone history keeps its read-only fallback. Dates and the preached flag continue to save together through the existing form, targeted by stable row ID.
+
+Two new real-page behavior tests were red on base `c788d933`: neither could find a date-delete control. They now verify confirmed deletion of one date with its sibling and sermon preserved, and cancellation with no transport write. Additional tests verify one page editor and retention of the sermon with `isPreached=false` when its last preached date is removed. The isolated mode-transition suite stubs the history like its other child modules because it stubs the document provider; real-engine page integration remains covered separately.
+
+During browser integration at 320px, the previously unreachable row's planned-label text overlapped the actions by 14.18px. Date/status and metadata rows now wrap, keeping dates and badges intact. The same browser measurement reports zero overlap at 320, 390, 834 and 1280px. Screenshots were personally inspected at phone, tablet and desktop widths, including the delete confirmation.
+
+| Scenario | Automated evidence | Localhost evidence |
+|---|---|---|
+| Reach history from the sermon page | `pages/sermonDetail.test.tsx`, real engine | All three modes show one history; both calendar month/agenda links reach it. |
+| Cancel deletion | Real-page test and existing list tests | Both dates retained; zero command responses before and after Cancel. |
+| Confirm one date | Real-page test and existing pinned-form tests | Server ACK revision 4 retained the sibling's notes/title/verse; reload retained the result. |
+| Delete the last date | `components/EnginePreachDateModal.test.tsx` | Server ACK retained the sermon with empty dates and a false preached flag. |
+| Offline deletion | Existing engine form durability/replay tests | Loaded screen accepted deletion offline; reconnect/reopen delivered it at revision 6 exactly once. |
+| Hard reload offline | Not accepted here | Dev route reload failed with `net::ERR_FAILED`. Recheck the production SW as part of the existing offline-navigation/cache bugs. |
+
+The temporary test sermon `2e1110ca-1b46-4d91-a64c-a2c44e233ca2` was deleted after acceptance; the server acknowledged its tombstone and the list contained no matching link. Existing owner content was not removed. A diagnostic unauthenticated fetch returned 401; this was a probe without the app auth header, not an app failure. Offline network errors belong to the explicit network test. No physical-device or production acceptance is claimed.
+
+Gates: final targeted 5 suites / 87 tests passed; translations 8 tests passed; full TypeScript passed; ESLint passed with 0 errors and 29 inherited warnings. Full tests passed 803 suites / 8326 tests (3 suites / 17 tests skipped), followed by a successful production build including route type generation and build TypeScript validation. No worker teardown warning occurred in this final run. Independent review found no high-confidence issues and repeated the four real-engine suites (63 tests) after the layout and last-date checks.
+
+Mechanism audit: the sermon page was the missing owner; the month/agenda cards share its link. The unused history was integrated without a nested provider. `EnginePreachDateModal` / `preachDateForm` and the shared facade/server protocol remain the canonical action; existing tests cover remote edits, missing row IDs, sibling preservation, read-only storage fallback and durable replay. No separate server/offline implementation was added.
+
+Local evidence: the ignored case artifact directory holds `date-removal-record.md`, `date-removal-red.log`, `date-removal-targeted.log`, browser responses/geometry/screenshots, gate logs and the final verification record. The new tests, this manifest and the bug-ID local commit retain the durable trace.
+
+### Production acceptance after authorized merge
+
+1. Confirm that the deployed revision contains this fix. Use an authorized test account and a disposable sermon with at least two dates, distinct church/audience details and notes.
+2. Open that sermon from both calendar views. Verify the same date history in prep, classic and scratch modes, with only one document sync notice.
+3. Cancel one date deletion; all data must stay. Then confirm it; only the chosen date must disappear. Reload and verify the sibling's notes and sermon content.
+4. Delete the last preached date; the sermon must remain, with no remaining preached status. Check month/agenda entries and analytics.
+5. On an already loaded screen, delete a disposable date offline and reconnect. Verify one delivery, no resurrection and sibling preservation. Verify full offline reload separately on the deployed service worker; do not inherit the dev acceptance limitation as success.
+6. Inspect phone/tablet/desktop sizes, all three languages and a physical device where available. Remove the disposable fixture and record deployed revision, server outcomes and screenshots.

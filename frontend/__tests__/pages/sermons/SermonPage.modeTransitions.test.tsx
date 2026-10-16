@@ -102,6 +102,11 @@ jest.mock('@/hooks/useTags', () => ({
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => ({ series: [] }),
 }));
+// This suite isolates page modes with a stubbed document provider. The real history and
+// its page integration run on the actual engine in pages/sermonDetail.test.tsx.
+jest.mock('@/components/calendar/EnginePreachDateList', () => ({
+  EnginePreachDateList: () => <div data-testid="preach-date-history" />,
+}));
 jest.mock('@/components/sermon/SermonHeader', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="sermon-header" />) }));
 jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="text-context" />) }));
 jest.mock('@/components/sermon/prep/SpiritualStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="spiritual" />) }));

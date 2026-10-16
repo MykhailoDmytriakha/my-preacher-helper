@@ -297,6 +297,67 @@ describe('Sermon Detail Page', () => {
     openSermon();
   });
 
+  describe('preaching date history on the sermon screen', () => {
+    const dates: DocumentData[] = [
+      { id: 'planned', date: '2026-11-02', status: 'planned', church: { id: 'c1', name: 'Future Church', city: '' }, createdAt: '2026-10-01' },
+      { id: 'preached', date: '2026-10-01', status: 'preached', church: { id: 'c2', name: 'Past Church', city: '' }, notes: 'Keep these notes', createdAt: '2026-10-01' },
+    ];
+    const openHistory = async () => {
+      openSermon({ preachDates: dates, isPreached: true });
+      renderPage();
+      await screen.findByTestId('sermon-header');
+      const remove = await screen.findAllByTitle('common.delete');
+      await waitFor(() => expect(remove[0]).toBeEnabled());
+      return remove;
+    };
+
+    it('makes individual dates reachable and removes only the confirmed date', async () => {
+      const remove = await openHistory();
+      expect(screen.getByText('Future Church')).toBeInTheDocument();
+      expect(screen.getByText('Past Church')).toBeInTheDocument();
+      fireEvent.click(remove[0]);
+      const dialog = await screen.findByRole('dialog');
+      const confirm = await within(dialog).findByRole('button', { name: 'common.delete' });
+      await waitFor(() => expect(confirm).toBeEnabled());
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      fireEvent.click(confirm);
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      expect(harness.server.metadata?.deleted).toBe(false);
+      expect(harness.server.value).toMatchObject({ title: 'Test Sermon', verse: 'John 3:16', isPreached: true, preachDates: [dates[1]] });
+      expect(screen.queryByText('Future Church')).not.toBeInTheDocument();
+      expect(screen.getByText('Past Church')).toBeInTheDocument();
+    });
+
+    it('shares the page editor instead of opening another sermon editor', async () => {
+      let openEditor: jest.SpyInstance | undefined;
+      const createBrowser = harness.createBrowser;
+      jest.mocked(createBrowserDataEngine).mockImplementation(options => {
+        const browser = createBrowser(options);
+        openEditor = jest.spyOn(browser.engine, 'openEditor');
+        return browser;
+      });
+      renderPage();
+      await screen.findByRole('button', { name: 'calendar.addPreachDate' });
+      await act(async () => { await settleEngine(); });
+      expect(openEditor?.mock.calls.filter(([ref]) => ref.collection === 'sermons' && ref.id === resource.id)).toHaveLength(1);
+    });
+
+    it('keeps both dates when the deletion is cancelled', async () => {
+      const remove = await openHistory();
+      fireEvent.click(remove[1]);
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(within(dialog).getByRole('button', { name: 'common.delete' })).toBeEnabled());
+      fireEvent.click(within(dialog).getByRole('button', { name: 'buttons.cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      await act(async () => { await harness.engine.retry(); await settleEngine(); });
+      expect(harness.transport.send).not.toHaveBeenCalled();
+      expect(harness.server.value?.preachDates).toEqual(dates);
+      expect(screen.getByText('Future Church')).toBeInTheDocument();
+      expect(screen.getByText('Past Church')).toBeInTheDocument();
+    });
+  });
+
   describe('Basic Rendering', () => {
     beforeEach(() => { renderPage(); });
 
