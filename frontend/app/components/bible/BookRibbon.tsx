@@ -56,18 +56,44 @@ export type RibbonCrossRefs = {
   chipLabel: (verse: number, count: number) => string;
 };
 
+/**
+ * Verses marked in another Bible of the person (`marks/`, `utils/bibleMarks.ts`): beside the number, in
+ * the text's margin, a thin stripe of the marks' colours; it opens the verse as it is marked there. The
+ * stripe stands outside the row's flow, so no line moves.
+ */
+export type RibbonSigns = {
+  /** The colours of each signed verse ("chapter:verse"), in order. */
+  at: ReadonlyMap<string, readonly string[]>;
+  label: (verse: number) => string;
+  onOpen: (chapter: number, verse: number) => void;
+};
+
 const VERSE_NUMBER_CLASSES = 'w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500';
 
 /** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
 const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
 
-function VerseRow({ chapter, verse, raw, lang, crossRefs }: { chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs }) {
+function VerseRow({ chapter, verse, raw, lang, crossRefs, signs }: { chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns }) {
   const { opensParagraph, segments } = parseVerse(raw);
+  const sign = signs?.at.get(`${chapter}:${verse}`);
   const count = crossRefs?.counts.get(`${chapter}:${verse}`);
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
     <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: 'var(--reading-top)' }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
+      {signs && sign ? (
+        <button
+          type="button"
+          onClick={() => signs.onOpen(chapter, verse)}
+          aria-label={signs.label(verse)}
+          data-testid={`marked-elsewhere-${chapter}:${verse}`}
+          className="absolute -left-3 bottom-1 top-1.5 flex w-3 justify-center"
+        >
+          <span aria-hidden="true" className="flex w-1 flex-col overflow-hidden rounded-full">
+            {sign.map((color, index) => <span key={index} className="flex-1" style={{ backgroundColor: color }} />)}
+          </span>
+        </button>
+      ) : null}
       {crossRefs && count ? (
         <button
           type="button"
@@ -111,7 +137,9 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs }: { chapter: number; v
 }
 
 /** The whole book as one ribbon: chapters follow each other with only a thin line between them. */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs }: { text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs }) {
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs }: {
+  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns;
+}) {
   return (
     <>
       {text.chapters.map((verses, chapterIndex) => {
@@ -125,7 +153,7 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
               <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
             </div>
             {verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} />
+              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} />
             ))}
           </section>
         );

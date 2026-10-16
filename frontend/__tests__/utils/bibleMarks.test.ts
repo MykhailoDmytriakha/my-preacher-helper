@@ -1,5 +1,5 @@
 import { mergeFields } from '@/data-engine/protocol';
-import { applyStroke, decodeBookMarks, encodeBookMarks, marksOnWord, readBookMarks, strokeErases, verseOrder, type BookMarks } from '@/utils/bibleMarks';
+import { applyStroke, decodeBookMarks, encodeBookMarks, markedElsewhere, marksOnWord, readBookMarks, signsHere, strokeErases, verseOrder, versesElsewhere, type BookMarks } from '@/utils/bibleMarks';
 
 const words = (raw: string) => raw.split(/\s+/).filter(Boolean).length;
 // Two chapters: 1:1 has four words, 1:2 three, 2:1 two.
@@ -94,3 +94,25 @@ describe('bibleMarks', () => {
     expect(decodeBookMarks(undefined)).toEqual({});
   });
 });
+
+describe('marks made in another Bible', () => {
+  it('signs the verse of this Bible that is the same place, and a tap there finds them', () => {
+    // Psalm 22 of the Synodal is Psalm 23 of the King James.
+    const elsewhere = markedElsewhere('kjv', 'Psalms', [{ bible: 'rst', marks: { '22:1': { m: [[0, 1, 'red'], [3, 4, 'blue']], p: [[2, 3, 'gray']] } } }]);
+    expect(signsHere(elsewhere)).toEqual(new Map([['23:1', [
+      { tool: 'marker', color: 'red' }, { tool: 'marker', color: 'blue' }, { tool: 'pencil', color: 'gray' },
+    ]]]));
+    expect(versesElsewhere(elsewhere, '23:1')).toEqual([{ bible: 'rst', verses: [expect.objectContaining({ chapter: 22, verse: 1 })] }]);
+    expect(versesElsewhere(elsewhere, '22:1')).toEqual([]);
+  });
+
+  it('leaves out the Bible being read and verses with nothing on them', () => {
+    const elsewhere = markedElsewhere('rst', 'Isaiah', [
+      { bible: 'rst', marks: { '26:4': { m: [[0, 0, 'red']] } } },
+      { bible: 'ubio', marks: { '26:3': {}, '26:4': { p: [[1, 1, 'green']] } } },
+    ]);
+    expect([...signsHere(elsewhere)]).toEqual([['26:4', [{ tool: 'pencil', color: 'green' }]]]);
+    expect(versesElsewhere(elsewhere, '26:4').map((entry) => entry.bible)).toEqual(['ubio']);
+  });
+});
+

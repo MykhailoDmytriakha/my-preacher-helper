@@ -10,6 +10,9 @@
  */
 
 import { verseWords } from './bibleText';
+import { placesIn } from './versification';
+
+import type { BibleId } from './bibles';
 
 /** The five meanings of the owner's reading plan, in its order. */
 export const MARK_COLORS = ['red', 'green', 'yellow', 'orange', 'blue'] as const;
@@ -222,4 +225,62 @@ export function decodeBookMarks(stored: unknown): BookMarks {
     raw[verse] = { m: layerRuns(m), p: layerRuns(p) };
   }
   return readBookMarks(raw);
+}
+
+/*
+ * MARKS MADE IN ANOTHER BIBLE (2.9.3, the owner, 2026-10-16): they lie on that translation's words, so in
+ * this Bible a verse only carries a sign, and a tap shows the verse there whole, painted as it is there.
+ * The sign stands at the verse of THIS Bible that is the same place (`utils/versification`): Psalm 22 of
+ * the Synodal is Psalm 23 of the King James. Signs and what a tap shows come from one list, so a sign
+ * never opens onto nothing.
+ */
+export type OtherBookMarks = { bible: BibleId; marks: BookMarks };
+/** One stroke of a sign: a marker's colour, or a pencil line's. */
+export type SignStroke = { tool: 'marker'; color: MarkColor } | { tool: 'pencil'; color: PencilColor };
+/** A marked verse of another Bible, and the verse of this one it is. */
+export type MarkedElsewhere = { here: string; bible: BibleId; chapter: number; verse: number; marks: VerseMarks };
+
+const VERSE_KEY = /^(\d+):(\d+)$/;
+
+export function markedElsewhere(bible: BibleId, bookId: string, others: readonly OtherBookMarks[]): MarkedElsewhere[] {
+  const found: MarkedElsewhere[] = [];
+  for (const other of others) {
+    if (other.bible === bible) continue;
+    for (const [key, marks] of Object.entries(other.marks)) {
+      const match = VERSE_KEY.exec(key);
+      if (!match || !(marks.m?.length || marks.p?.length)) continue;
+      const chapter = Number(match[1]), verse = Number(match[2]);
+      for (const place of placesIn(bible, other.bible, { book: bookId, chapter, verse })) {
+        found.push({ here: `${place.chapter}:${place.verse}`, bible: other.bible, chapter, verse, marks });
+      }
+    }
+  }
+  return found;
+}
+
+/** The sign of each verse of this Bible marked elsewhere: its colours, the marker's first, each once. */
+export function signsHere(elsewhere: readonly MarkedElsewhere[]): Map<string, SignStroke[]> {
+  const signs = new Map<string, SignStroke[]>();
+  for (const { here, marks } of elsewhere) {
+    const strokes = signs.get(here) ?? [];
+    const add = (stroke: SignStroke) => {
+      if (!strokes.some((known) => known.tool === stroke.tool && known.color === stroke.color)) strokes.push(stroke);
+    };
+    marks.m?.forEach(([, , color]) => add({ tool: 'marker', color }));
+    marks.p?.forEach(([, , color]) => add({ tool: 'pencil', color }));
+    signs.set(here, [...strokes.filter((s) => s.tool === 'marker'), ...strokes.filter((s) => s.tool === 'pencil')]);
+  }
+  return signs;
+}
+
+/** What a tap on a verse's sign shows: each other Bible with its marked verses that are this verse, in order. */
+export function versesElsewhere(elsewhere: readonly MarkedElsewhere[], here: string): { bible: BibleId; verses: MarkedElsewhere[] }[] {
+  const byBible = new Map<BibleId, MarkedElsewhere[]>();
+  for (const entry of elsewhere) {
+    if (entry.here !== here) continue;
+    const verses = byBible.get(entry.bible) ?? [];
+    if (!verses.some((known) => known.chapter === entry.chapter && known.verse === entry.verse)) verses.push(entry);
+    byBible.set(entry.bible, verses);
+  }
+  return [...byBible].map(([bible, verses]) => ({ bible, verses: verses.sort((a, b) => a.chapter - b.chapter || a.verse - b.verse) }));
 }

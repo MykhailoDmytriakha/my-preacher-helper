@@ -20,8 +20,9 @@ import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './Bib
 import { bookSequence, booksOf } from './bookOrder';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { CrossReferenceSettings } from './CrossReferenceSettings';
-import { CrossReferenceSheet, type CrossReferencePlace } from './CrossReferenceSheet';
+import { CrossReferenceSheet } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
+import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
 import { useReaderMarks } from './marks/useReaderMarks';
 import { buildMinimapLayout } from './minimapLayout';
 import { readingSurface } from './readingSurface';
@@ -183,24 +184,26 @@ function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (p
 }
 
 /**
- * "Open" in the window of links: the window closes first and the reader moves a frame later. On iOS
- * the window pins the page (`useScrollLock`) and, released, puts it back where it was — a jump made
- * while it was pinned was undone, the passage lit out of sight. The pending link is kept until the
- * frame runs, so an effect run again in between schedules it anew instead of losing it.
+ * An action from a window over the reader — "Open" in the window of links, "Open in this translation"
+ * in the window of a verse marked in another Bible: the window closes first and the reader acts a frame
+ * later. On iOS the window pins the page (`useScrollLock`) and, released, puts it back where it was — a
+ * jump made while it was pinned was undone, the passage lit out of sight, and a place written down then
+ * is not the one read. The pending action is kept until the frame runs, so an effect run again in
+ * between schedules it anew instead of losing it.
  */
-function useFollowAfterClose(openAt: CrossReferencePlace | null, close: () => void, follow: (reference: CrossReference, origin: Place) => void) {
-  const pendingRef = useRef<{ reference: CrossReference; origin: Place } | null>(null);
+function useFollowAfterClose<Args extends unknown[]>(open: boolean, close: () => void, follow: (...args: Args) => void) {
+  const pendingRef = useRef<Args | null>(null);
   useEffect(() => {
     const pending = pendingRef.current;
-    if (openAt || !pending) return undefined;
+    if (open || !pending) return undefined;
     const frame = window.requestAnimationFrame(() => {
       pendingRef.current = null;
-      follow(pending.reference, pending.origin);
+      follow(...pending);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [follow, openAt]);
-  return useCallback((reference: CrossReference, origin: Place) => {
-    pendingRef.current = { reference, origin };
+  }, [follow, open]);
+  return useCallback((...args: Args) => {
+    pendingRef.current = args;
     close();
   }, [close]);
 }
@@ -578,7 +581,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     );
   }, [bible, bookId, onOpenBook]);
   const travel = useCrossReferenceTravel({ bookId, abbrev, jumpTo, light: lightReference, openElsewhere });
-  const openReference = useFollowAfterClose(crossRefs.openAt, closeCrossRefs, travel.open);
+  const openReference = useFollowAfterClose(Boolean(crossRefs.openAt), closeCrossRefs, travel.open);
 
   // The same place in another Bible: this one is written down first, and the page opens the book
   // in the other Bible, which finds it there.
@@ -587,6 +590,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     leavingRef.current = true;
     onChangeBible(next);
   }, [onChangeBible]);
+
+  const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
 
   const fromBookId = from ? bookIdFromSlug(from.slug) : undefined;
   const fromPlace = wayBackPlace(from, fromBookId, bible);
@@ -648,7 +653,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               data-gesture-ignore={marks.gestureIgnore}
               className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
             </article>
           ) : null}
@@ -684,6 +689,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         verseText={crossRefs.verseText}
         onClose={crossRefs.close}
         onOpenReference={openReference}
+      />
+      <MarkedElsewhereSheet
+        at={marks.elsewhere.at}
+        bookId={bookId}
+        locale={locale}
+        entries={marks.elsewhere.entries}
+        onClose={marks.elsewhere.close}
+        onOpenBible={openInBible}
       />
       {/* The "T" of every reading screen — the text size — and here the cross references under it.
           On a phone it stands above the bar with the way back and the book's pill. */}

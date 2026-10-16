@@ -4,7 +4,8 @@ import { toast } from 'sonner';
 
 import { needsConnectionFailure, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
-import { decodeBookMarks, encodeBookMarks, type BookMarks } from '@/utils/bibleMarks';
+import { decodeBookMarks, encodeBookMarks, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
+import { isBibleId } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
 
 import type { BibleId } from '@/utils/bibles';
@@ -36,6 +37,8 @@ export type BookMarksStore = {
   save: (change: (marks: BookMarks) => BookMarks) => void;
   /** The engine is there and the person's marks are on the screen: strokes can be kept and judged. */
   ready: boolean;
+  /** This book's marks in the person's other Bibles, from the same list: a sign at their verses here. */
+  others: OtherBookMarks[];
 };
 
 export function useBookMarks(owner: string | null, bible: BibleId, bookId: string): BookMarksStore {
@@ -46,6 +49,15 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
   const row = collection.state?.documents?.find((document) => document.resource.id === id) ?? null;
   const stored = (row?.value ?? null) as StoredDocument | null;
   const marks = useMemo(() => decodeBookMarks(stored?.verses), [stored]);
+  const documents = collection.state?.documents;
+  // Keyed by value, not by the list's array: the list comes anew with every stroke here, and what reads
+  // these (the ribbon's signs) is redrawn only when the other Bibles' marks change.
+  const othersKey = useMemo(() => JSON.stringify((documents ?? []).flatMap((document) => {
+    const value = document.value as StoredDocument | null;
+    if (!value || value.book !== bookId || value.bible === bible || !isBibleId(value.bible)) return [];
+    return [{ bible: value.bible, marks: decodeBookMarks(value.verses) }];
+  })), [bible, bookId, documents]);
+  const others = useMemo(() => JSON.parse(othersKey) as OtherBookMarks[], [othersKey]);
   // A kept stroke shows at once and stays until the engine's own copy of the document moves on.
   const [held, setHeld] = useState<{ marks: BookMarks; over: StoredDocument | null } | null>(null);
   const shown = held && held.over === stored ? held.marks : marks;
@@ -71,5 +83,5 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
   }, [actions, bible, bookId, id, owner, shown, stored, t]);
 
   // Until the list is read, a stroke could not tell paint from erase on marks it cannot see.
-  return { marks: shown, save, ready: actions.ready && collection.state !== null && !collection.loading };
+  return { marks: shown, save, ready: actions.ready && collection.state !== null && !collection.loading, others };
 }

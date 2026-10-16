@@ -131,6 +131,21 @@ describe('marks kept through the data engine', () => {
     expect(result.current.ready).toBe(false);
   });
 
+  it('gives this book\'s marks in the person\'s other Bibles, the same list while they do not change', () => {
+    documents = [
+      { resource: { collection: 'bibleMarks', id: 'alice_rst_isaiah' }, value: { userId: 'alice', bible: 'rst', book: 'Isaiah', verses: {} } },
+      { resource: { collection: 'bibleMarks', id: 'alice_kjv_isaiah' }, value: { userId: 'alice', bible: 'kjv', book: 'Isaiah', verses: { v26_4: { m: '0-1-red' } } } },
+      { resource: { collection: 'bibleMarks', id: 'alice_kjv_genesis' }, value: { userId: 'alice', bible: 'kjv', book: 'Genesis', verses: { v1_1: { m: '0-0-blue' } } } },
+    ];
+    const { result, rerender } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    expect(result.current.others).toEqual([{ bible: 'kjv', marks: { '26:4': { m: [[0, 1, 'red']] } } }]);
+    const first = result.current.others;
+    // The list comes anew with every stroke; the other Bibles' marks are the same.
+    documents = documents.map((document) => ({ ...document, value: document.value && { ...document.value } }));
+    rerender();
+    expect(result.current.others).toBe(first);
+  });
+
   it('keeps nothing without a signed-in owner', () => {
     const { result } = renderHook(() => useBookMarks(null, 'rst', 'Isaiah'));
     act(() => result.current.save(paintFirstWord));
