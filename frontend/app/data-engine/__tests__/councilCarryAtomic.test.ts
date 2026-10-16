@@ -370,6 +370,7 @@ describe('durable atomic carry into an existing council', () => {
     const left = await engine.openEditor(target.resource, 'left'), right = await engine.openEditor(target.resource, 'right');
     await left.commit(value => ({ ...value, title: 'Left saved words' }));
     await right.commit(value => ({ ...value, title: 'Right saved words' }));
+    await engine.retry();
     const before = await s.store.list('owner');
     const source = await engine.openEditor(s.source.resource, 'source-parent');
     await expect(source.carryCouncilTopicToExisting('topic', 'next')).rejects.toMatchObject({ code: 'resolve-version-first' });

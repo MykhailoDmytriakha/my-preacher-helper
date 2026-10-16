@@ -284,7 +284,7 @@ describe('DataEngine composition', () => {
     const s = setup({ online: false });
     const editor = await s.engine.openEditor(resource, 'tab');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'offline work' });
-    await editor.save();
+    await editor.save(); await drainMicrotasks();
     expect((await s.engine.listPending())[0]).toMatchObject({ state: 'queued', command: { kind: 'update' } });
     expect(s.transport.send).not.toHaveBeenCalled();
     editor.dispose();
@@ -336,7 +336,7 @@ describe('DataEngine composition', () => {
       const editor = await s.engine.openEditor(resource, 'tab');
       await editor.edit({ ...editor.getState().checkpoint.draft, content: 'retained command' });
       jest.mocked(s.journal.put).mockRejectedValueOnce(new Error('temporary journal failure'));
-      await editor.save();
+      await editor.save(); await drainMicrotasks();
       const prepared = (await s.commits.list('owner'))[0].command;
       expect(prepared?.operationId).toBe('operation-1');
       // Preparing this document's delivery failed: said about this document on every road that
@@ -367,7 +367,7 @@ describe('DataEngine composition', () => {
     first.subscribe(firstListener); second.subscribe(secondListener);
     await first.edit({ ...first.getState().checkpoint.draft, content: 'queued' });
     firstListener.mockClear(); secondListener.mockClear();
-    await first.save();
+    await first.save(); await drainMicrotasks();
     expect(s.engine.getPending()).toEqual(await s.engine.listPending());
     expect(first.getDelivery()).toMatchObject([{ state: 'queued', command: { operationId: 'operation-1' } }]);
     expect(second.getDelivery()).toEqual([]);
@@ -685,7 +685,7 @@ describe('DataEngine composition', () => {
     const s = setup({ online: false }); const ref = { ...resource, id: 'domain-prefix-new' };
     const editor = await s.engine.createEditor(ref, 'new');
     expect(s.transport.read).not.toHaveBeenCalled(); expect(s.source.listen).not.toHaveBeenCalled();
-    await editor.edit({ ...initial().value, content: 'created' }); await editor.save();
+    await editor.edit({ ...initial().value, content: 'created' }); await editor.save(); await drainMicrotasks();
     expect((await s.engine.listPending())[0].command.kind).toBe('create');
     expect(s.cache.has(keyOf('owner', ref))).toBe(false);
     s.engine.setOnline(true); await s.engine.retry();

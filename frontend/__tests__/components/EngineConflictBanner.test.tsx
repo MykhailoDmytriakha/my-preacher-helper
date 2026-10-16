@@ -87,7 +87,7 @@ describe('a late conflict on a document no screen has open', () => {
     harness.silentRemote({ content: 'Three new paragraphs from the phone' });
     await act(async () => { await actions!.remove(resource); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.getByText('dataSync.deleteConflictTitle')).toBeInTheDocument());
-    expect(screen.getByText(/Three new paragraphs from the phone/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Three new paragraphs from the phone/)).toBeInTheDocument());
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByText('dataSync.keepRecord')); await settleEngine(); await settleEngine(); });
     await waitFor(() => expect(screen.queryByText('dataSync.deleteConflictTitle')).not.toBeInTheDocument());

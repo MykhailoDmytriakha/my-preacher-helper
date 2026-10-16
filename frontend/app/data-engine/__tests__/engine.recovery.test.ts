@@ -42,7 +42,7 @@ function setup(creating = false) {
 describe('DataEngine explicit recovery', () => {
   it('exposes explicit removal on the managed editor and refuses a second unresolved deletion', async () => {
     const s = setup(); const editor = await s.engine.openEditor(resource, 'ordinary');
-    await editor.remove();
+    await editor.remove(); await tick();
     const record = (await s.commits.list('owner'))[0];
     expect(record?.command).toMatchObject({ kind: 'delete', baseline: snapshot.value });
     expect(editor.getState().checkpoint.draft).toBeNull();

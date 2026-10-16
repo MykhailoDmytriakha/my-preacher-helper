@@ -62,6 +62,59 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('completes durable local capture while its server acknowledgement is still waiting', async () => {
+    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    jest.mocked(s.transport.send).mockImplementation(async command => { await held; return send(command); });
+    engine.setOnline(true);
+    let completed = false;
+    const saving = editor.commit(value => ({ ...value, title: 'Durable words' })).then(() => { completed = true; });
+    try {
+      await settle();
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      expect((await s.requests.list('owner'))[0].value?.title).toBe('Durable words');
+      expect(completed).toBe(true);
+      let retryCompleted = false;
+      const retry = engine.retry().then(() => { retryCompleted = true; });
+      await settle();
+      expect(retryCompleted).toBe(false);
+      release(); await retry;
+    } finally {
+      release(); await saving; await engine.retry(); engine.dispose();
+    }
+  });
+
+  it('durably captures consecutive one-shot edits before an earlier acknowledgement is released', async () => {
+    const s = setup(), engine = s.makeEngine();
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    jest.mocked(s.transport.send).mockImplementation(async command => { await held; return send(command); });
+    engine.setOnline(true);
+    const writing = (async () => {
+      for (const title of ['Partial', 'More words', 'All final words']) {
+        const editor = await engine.openEditor(initial().resource, `one-shot-${title}`);
+        try { await editor.commit(value => ({ ...value, title })); } finally { editor.close(); }
+      }
+    })();
+    try {
+      for (let i = 0; i < 5; i += 1) await settle();
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      const requests = await s.requests.list('owner');
+      expect(requests.map(request => request.value?.title)).toEqual(['Partial', 'More words', 'All final words']);
+      expect(requests[1].predecessor).toBe(requests[0].id);
+      expect(requests[2].predecessor).toBe(requests[1].id);
+      const reopened = await engine.openEditor(initial().resource, 'returned-page');
+      expect(reopened.getState().checkpoint.draft?.title).toBe('All final words');
+      reopened.close();
+    } finally {
+      release(); await writing; await engine.retry(); engine.dispose();
+    }
+    expect(s.server().value?.title).toBe('All final words');
+  });
+
   it('does not offer a closed editor whose save was delivered in the background', async () => {
     const s = setup(); const engine = s.makeEngine();
     const editor = await engine.openEditor(initial().resource, 'old-page');

@@ -530,7 +530,7 @@ export class DataEngine {
         const saved = captures.length > 1 ? await this.commits.saveAtomic(captures)
           : [await this.commits.save(first.editorId, first.captured, { predecessorId: first.predecessorId, retentionScope: first.retentionScope })].filter((request): request is CommitRequest => Boolean(request));
         this.assertCurrent(owner, generation);
-        await this.prepareCommits(); this.backgroundDrain(); return saved;
+        this.prepareCommitsInBackground(); this.backgroundDrain(); return saved;
       },
     };
   }
@@ -909,7 +909,7 @@ export class DataEngine {
             catch (error) { this.reportFailure(error, frozen); }
           }
           this.assertCurrent(owner, generation);
-          await this.prepareCommits(); this.backgroundDrain();
+          this.prepareCommitsInBackground(); this.backgroundDrain();
           return captured.destination;
         };
         const pending = run(); this.councilCarries.set(key, pending);
@@ -953,10 +953,10 @@ export class DataEngine {
           active();
           const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
           const saving = controller.save();
-          return Promise.all([persistence, saving]).then(async () => { active(); this.backgroundDrain(); await this.prepareCommits(); active(); });
+          return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
         },
-        save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); await this.prepareCommits(); active(); },
-        remove: async () => { active(); await controller.remove(); active(); this.backgroundDrain(); await this.prepareCommits(); active(); },
+        save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
+        remove: async () => { active(); await controller.remove(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         acceptRemote: async () => { active(); await controller.acceptRemote(); },
         keepLocal: async () => { active(); await controller.keepLocal(); },
         dispose: () => {
@@ -1102,7 +1102,7 @@ export class DataEngine {
             if (!request || !request.value) throw new Error('Manual Save did not create an intent');
             if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection);
             this.assertCurrent(owner, generation);
-            await this.prepareCommits(); this.backgroundDrain();
+            this.prepareCommitsInBackground(); this.backgroundDrain();
             return intent(request);
           },
         };
@@ -1157,7 +1157,7 @@ export class DataEngine {
           await parent.controller!.save(undefined, selection); active();
           // Only the durable replacement request may retire the suspended correction copy.
           if (amendment && scope) await scope.cancel();
-          await this.prepareCommits(); this.backgroundDrain();
+          this.prepareCommitsInBackground(); this.backgroundDrain();
         }
         active();
         // Reopen from the resolved document, never from the retired form's displayed values.
@@ -1312,10 +1312,12 @@ export class DataEngine {
     this.background(this.retry(), this.owner, this.generation);
   }
 
-  private async prepareCommits(): Promise<void> {
-    // The request is already durable. Preparation failures remain retryable work,
-    // rather than misreporting that the user's Save was discarded.
-    try { await this.commits.drain(false); } catch (error) { this.reportFailure(error); }
+  private prepareCommitsInBackground(): void {
+    if (this.disposed || !this.owner) return;
+    // Capture is already durable. The shared runner may join or be upgraded to
+    // delivery, so completion here must never wait for its network acknowledgement.
+    // Preparation failures stay visible and retryable through the existing owner scope.
+    this.background(this.commits.drain(false), this.owner, this.generation);
   }
 
   private background(operation: Promise<unknown>, owner: string, generation: number, about?: FailureAddress): void {
