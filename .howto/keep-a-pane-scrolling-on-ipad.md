@@ -20,3 +20,13 @@ On an iPad a page coasting under its own momentum takes a finger put on any scro
 - 2026-10-16: the Bible reader — a flick of the text, then a finger on the minimap went on scrolling the text (BUG-20261016-ipad-minimap-finger-taken-by-coasting-text, commit 41ad8e64). The owner remembered the first case; there was no recipe, and it was found by reading old session notes. Same fix, plus `readingSurface.ts` and the swipe-back rule so the text in a pane still goes back.
 
 See also: `.howto/style-scrollbar-and-native-controls.md` · `.howto/debug-on-ipad.md`
+
+## Keep the visible verse when a passage window changes width
+
+A responsive horizontal padding change on the scroll container can suppress native scroll anchoring. In `VerseSheet.tsx`, keep the pane's `px-4` constant and put only the desktop addition in a non-scrolling `flex min-h-0 flex-1 flex-col sm:px-3` wrapper. The total text inset remains16px on phones and28px on wide screens. The phone pane keeps the full dialog width; the wrapper must not become a second scroll container.
+
+Do not call the initial passage jump on every resize: a person who deliberately scrolled to another chapter should stay there. A cached logical-verse hook adds lifecycle state and should not replace the browser mechanism until the structural cause is ruled out.
+
+Reproduce on a built app with real Bible text: open the passage in a plan, cross640px in both directions and compare the first visible verse. Then scroll to a different chapter, resize again and use the explicit return button. Repeat without network after text is ready. Also check the timer's reserved top space, keyboard focus, and overflow. jsdom does not calculate CSS line wrapping, so a class-name assertion does not prove this behavior.
+
+The W3C [Scroll Anchoring suppression triggers](https://www.w3.org/TR/css-scroll-anchoring-1/#suppression-triggers) describe computed padding changes. Chromium before/after browser evidence is in the local VerseWindowResize case for BUG-20261016-verse-window-resize-loses-passage-position; physical iPad and Safari need their own runtime acceptance.

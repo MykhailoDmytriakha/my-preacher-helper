@@ -186,41 +186,44 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
             <XMarkIcon className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        {/* Reachable by Tab, so the keyboard scrolls the text too. */}
-        <div ref={paneRef} tabIndex={0} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 sm:px-7">
-          {state.status === 'ready' ? (
-            <>
-              {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
-              {/* `isolate`: the light of a passage lies under the text and over this card. */}
-              <article className="isolate">
-                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
-              </article>
-              <CrossReferenceSheet
-                at={crossRefs.openAt}
-                bookId={reference.book}
-                bible={reading}
-                locale={locale}
-                set={crossRefs.set}
-                verseText={crossRefs.verseText}
-                onClose={crossRefs.close}
-                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
-                layerClassName="z-[260]"
-              />
-            </>
-          ) : state.status === 'loading' ? (
-            <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>
-          ) : (
-            <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
-              <p className="text-sm text-gray-700 dark:text-gray-200">{t('bible.loadError')}</p>
-              <button
-                type="button"
-                onClick={() => setAttempt((count) => count + 1)}
-                className="min-h-11 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300"
-              >
-                {t('bible.retry')}
-              </button>
-            </div>
-          )}
+        {/* Keep responsive padding outside the scroll container so native scroll anchoring survives reflow. */}
+        <div className="flex min-h-0 flex-1 flex-col sm:px-3">
+          {/* Reachable by Tab, so the keyboard scrolls the text too. */}
+          <div ref={paneRef} tabIndex={0} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
+            {state.status === 'ready' ? (
+              <>
+                {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
+                {/* `isolate`: the light of a passage lies under the text and over this card. */}
+                <article className="isolate">
+                  <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
+                </article>
+                <CrossReferenceSheet
+                  at={crossRefs.openAt}
+                  bookId={reference.book}
+                  bible={reading}
+                  locale={locale}
+                  set={crossRefs.set}
+                  verseText={crossRefs.verseText}
+                  onClose={crossRefs.close}
+                  onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
+                  layerClassName="z-[260]"
+                />
+              </>
+            ) : state.status === 'loading' ? (
+              <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>
+            ) : (
+              <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
+                <p className="text-sm text-gray-700 dark:text-gray-200">{t('bible.loadError')}</p>
+                <button
+                  type="button"
+                  onClick={() => setAttempt((count) => count + 1)}
+                  className="min-h-11 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300"
+                >
+                  {t('bible.retry')}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         {away && (
           // Where the passage went, the button sits: at the top for a passage scrolled off the top, at the bottom otherwise.

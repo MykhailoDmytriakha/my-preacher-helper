@@ -636,7 +636,7 @@ Complete punctuated range grammar prevents unfinished input from becoming a diff
 
 Final frozen frontend:28 changed files. Full Jest814passed suites/8581tests,3suites/17tests skipped,131.457s. ESLint0errors/27 inherited warnings. Standalone TypeScript and production build/type check passed. Browser build `NEuq5KmBrqE-Uka95vWvL`, build17.44s; no frontend byte changes between gates and browser proof. Primary note fixture blocked25write attempts and had0page exceptions, then was destroyed. Plan fixture had0write attempts and0page exceptions; original Groups page remains online with no dialogs.
 
-A separate resize defect discovered during visual review remains open as `BUG-20261016-verse-window-resize-loses-passage-position`: an already-open window can lose its scroll position when width changes. Fresh390px opening is verified; this fix does not claim rotation acceptance.
+A separate resize defect discovered during this visual review was recorded as `BUG-20261016-verse-window-resize-loses-passage-position`: an already-open window can lose its scroll position when width changes. Fresh390px opening was verified here; the dedicated resize fix and its acceptance are documented below.
 
 Evidence: local CrossChapter case artifacts, source snapshot, original/final tracker records, unit/browser RED/GREEN, accepted gate logs and verification manifest. Browser profiles and controlled data are explicitly identified; no production deployment occurred.
 
@@ -648,3 +648,24 @@ Evidence: local CrossChapter case artifacts, source snapshot, original/final tra
 4. Publish/read only an owner-approved test share link: exact span visible, private reference snippet absent. If testing AI, compare raw note with v4 output for lost endpoints, widened spans or invented references; record provider/model/version and cost. Do not equate schema success with extraction quality.
 5. Warm the deployed note/Bible, test stable offline opening and reload, restore connection, verify queued edits receive real ACKs. Check phone/tablet/desktop and physical-device input. Keep the separate resize defect visible until its own fix.
 6. Record deployed revision, screenshots, outcomes and cleanup of disposable test records. Production remains pending until this is actually done.
+
+## BUG-20261016-verse-window-resize-loses-passage-position
+
+Stage: locally verified; fresh independent evidence acceptance precedes the local commit. Production, owner visual acceptance and physical-device/Safari acceptance remain pending.
+
+VerseSheet keeps its scroll container's16px horizontal padding constant. A non-scrolling flex wrapper adds12px on desktop, preserving the existing16/28px text inset and full-width phone scroll target. The ref, tab stop, scroll handler, initial passage placement, explicit return action and timer inset measurement remain on their established paths. No new observer, resize effect, state, schema or data writer was added. All plan and group-conduct consumers use this shared component.
+
+Before source changes, a real Chromium assertion on build NEuq5KmBrqE-Uka95vWvL failed: a1280→390 resize changed first visible verse52:12 to26:20 while all15correct passage rows remained highlighted.600→320 retained52:12; the main reader retained52:12/52:13 at1280/1000/390. Two disposable DOM probes isolated the responsive pane padding; they are diagnostic evidence, not final-build acceptance. The class audit was written in BUGS before FIX and retained in the final tracker artifact.
+
+The identical browser assertion passes on build BnI1x42ZdhJHdPkAWb87D:1280→390→820→320→1280 retains52:12,15selected verses and0page overflow. After manual scrolling to54:1, narrowing preserves54:1; an offline resize also preserves54:1. The explicit return button restores the selected passage. This is actual browser geometry red-to-green. Existing component/reader/geometry tests supply adjacent contracts; jsdom does not prove line wrapping.
+
+Actual preaching view with keepVisible timer passes1280/390/820, including a separate150% stored-text-scale profile. The timer remains above the dialog, the wrapper has no scrolling overflow, focus survives timer updates, PageDown scrolls the focused text, and Escape closes only the verse window. The primary personally viewed desktop/phone before and after plus phone preaching at100%/150%. No API write attempts or page exceptions occurred in these final fixtures; every cloned context was closed and the original Groups page remains online.
+
+The sole changed frontend file stayed byte-identical from the gate source freeze through browser acceptance. Targeted3suites/62tests and full814suites/8581tests pass (3suites/17tests skipped,128.526s). Lint has0errors/27inherited warnings; standalone TypeScript and production build pass (build17.14s, build typecheck3.33s). Actual fixture HTML includes the expected build ID. Local case evidence includes the exact browser assertion, RED/GREEN results, class record, gate logs and verification manifest.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision. Open an existing test plan, open a Bible passage and change width across640px in both directions; preserve the verse being read, correct highlighting and existing text insets.
+2. Scroll to another chapter, rotate/resize, then use the explicit return button. Repeat with large text and with a preaching timer or group-conduct bars visible. Check keyboard focus/PageDown/Escape.
+3. After loading the passage online, repeat resizing offline and restore connection. This checks already-loaded geometry; it does not establish cold offline navigation or service-worker update behavior.
+4. Inspect and scroll on the physical iPad/phone and Safari. Desktop Chromium emulation does not prove their anchoring or touch momentum. Record owner acceptance, screenshots and deployed revision.
