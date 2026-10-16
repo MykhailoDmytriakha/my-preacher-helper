@@ -19,7 +19,7 @@ async function check(name, promise) {
 (async () => {
   // The ten collections production serves through the engine and closes (activation.ts, Vercel
   // DATA_ENGINE_CLOSED_COLLECTIONS). The shipped rules are tested as they ship: the list must be exactly these.
-  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates'];
+  const closed = ['councils', 'groups', 'series', 'sermons', 'tags', 'prayerRequests', 'serviceOrders', 'studyNotes', 'studyMaterials', 'planTemplates', 'bibleMarks'];
   const closedRules = fs.readFileSync('firestore.rules', 'utf8');
   const lists = [...closedRules.matchAll(/return name in \[([^\]]*)\];/g)];
   if (lists.length !== 1) throw new Error('closedToBrowserWrites list not found exactly once in firestore.rules');
@@ -44,6 +44,9 @@ async function check(name, promise) {
   }
   console.log('\n=== a collection outside the list ===');
   await check('prayer categories stay writable', assertSucceeds(updateDoc(doc(a, 'prayerCategories', 'other'), { name: 'y' })));
+  // Marks in the Bible are the person's own: another reader never sees them.
+  const b = testEnv.authenticatedContext('userB').firestore();
+  await check('another user cannot read bibleMarks', assertFails(getDoc(doc(b, 'bibleMarks', 'legacy'))));
   await testEnv.cleanup();
   console.log(`\nRESULT (closed): ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);

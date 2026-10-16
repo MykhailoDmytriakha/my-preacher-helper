@@ -962,3 +962,14 @@ After separately authorized publication, confirm deployed revision/worker and pr
 |3. Editor ownership | Three modal owners lock active capture and protect failed take | Thought, engine Thought, prayer-update regressions | Three widths, engine detail route, explicit discard/manual words |
 |4. Gates and review | Full suite/types/lint/build; review deadlock fixed |828 suites/8864 pass;29 exact RED baseline | Native primary visual review, body-scroll actions |
 |5. Sequential closure | Exact freeze/fresh acceptance/local commit then main intake | Manifest plus fresh acceptance retained separately | Production/device and navigation-recovery limits explicit |
+
+
+## Main intake e408661c (2026-10-16)
+
+At clean local93a27091, imported pinned main/origin e408661c (four commits): Bible marks/tools, common reader window, marks in another translation and the chronology tracker record. Main was read only; no primary checkout drafts were copied. Resolve BUGS by keeping our active-only list plus the one new chronology record. Resolve CrossReferenceSheet by keeping the new ReaderSheet and our cross-chapter versesHeldIn extraction; ReaderSheet delegates focus to canonical useModalLayer, removing duplicate local handling.
+
+Combined state passes28 focused suites/513 tests, full831 suites/8899 tests (3 suites/17 tests skipped), demo-emulator rules306 checks, final types, lint0errors26 inherited warnings and production build ELBA8SNi9kXfHVBj0qv_2. Source review found no confirmed integration regression. Production localhost checks at390/820/1280 cover stored marks, five colours, whole other-translation preview, transition to that Bible,18 native Tab/ShiftTab steps in each reader window, Escape/return and no horizontal overflow. Prior Thought/prayer recorder flows each pass18 checks. Page errors and API mutations0 in final runs. Primary native original-resolution visual inspection completed; long windows use inner scrolling.
+
+Marks/read receipts and microphone/transcription refusals are controlled fixtures in disposable cloned contexts. Real database mark writes, sequential devices, real microphone/provider, offline replay, Safari/PWA and production were not repeated for this integration. Forced Playwright service-worker blocking caused a library exception via the runner's undefined-returning registration stub; diagnostics are retained separately and do not establish a real-browser product bug. Exact evidence is main-intake-e408-* in the local case. Fresh exact acceptance and local merge commit are recorded separately. No RED claimed for ordinary main integration; existing chronology and recording-navigation bugs remain active.
+
+After separately authorized publication, verify deployed revision/worker and engine rule rollout, then repeat the recorded production checklist with disposable authorized marks and actual recording; preserve existing data. No push or deployment occurred in this local intake.

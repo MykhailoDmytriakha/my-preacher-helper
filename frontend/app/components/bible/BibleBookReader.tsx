@@ -21,8 +21,10 @@ import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './Bib
 import { bookSequence, booksOf } from './bookOrder';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { CrossReferenceSettings } from './CrossReferenceSettings';
-import { CrossReferenceSheet, type CrossReferencePlace } from './CrossReferenceSheet';
+import { CrossReferenceSheet } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
+import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
+import { useReaderMarks } from './marks/useReaderMarks';
 import { buildMinimapLayout } from './minimapLayout';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
@@ -184,24 +186,26 @@ function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (p
 }
 
 /**
- * "Open" in the window of links: the window closes first and the reader moves a frame later. On iOS
- * the window pins the page (`useScrollLock`) and, released, puts it back where it was — a jump made
- * while it was pinned was undone, the passage lit out of sight. The pending link is kept until the
- * frame runs, so an effect run again in between schedules it anew instead of losing it.
+ * An action from a window over the reader — "Open" in the window of links, "Open in this translation"
+ * in the window of a verse marked in another Bible: the window closes first and the reader acts a frame
+ * later. On iOS the window pins the page (`useScrollLock`) and, released, puts it back where it was — a
+ * jump made while it was pinned was undone, the passage lit out of sight, and a place written down then
+ * is not the one read. The pending action is kept until the frame runs, so an effect run again in
+ * between schedules it anew instead of losing it.
  */
-function useFollowAfterClose(openAt: CrossReferencePlace | null, close: () => void, follow: (reference: CrossReference, origin: Place) => void) {
-  const pendingRef = useRef<{ reference: CrossReference; origin: Place } | null>(null);
+function useFollowAfterClose<Args extends unknown[]>(open: boolean, close: () => void, follow: (...args: Args) => void) {
+  const pendingRef = useRef<Args | null>(null);
   useEffect(() => {
     const pending = pendingRef.current;
-    if (openAt || !pending) return undefined;
+    if (open || !pending) return undefined;
     const frame = window.requestAnimationFrame(() => {
       pendingRef.current = null;
-      follow(pending.reference, pending.origin);
+      follow(...pending);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [follow, openAt]);
-  return useCallback((reference: CrossReference, origin: Place) => {
-    pendingRef.current = { reference, origin };
+  }, [follow, open]);
+  return useCallback((...args: Args) => {
+    pendingRef.current = args;
     close();
   }, [close]);
 }
@@ -340,6 +344,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const crossRefs = useBookCrossRefs(bookId, bible, text, 'reader');
   const closeCrossRefs = crossRefs.close;
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
+
+  // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
+  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), lineGone: !wide && rowGone, bible, bookId });
 
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
   // at the verse itself. A verse the chapter does not have opens the chapter.
@@ -571,7 +578,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     );
   }, [bible, bookId, onOpenBook]);
   const travel = useCrossReferenceTravel({ bookId, abbrev, jumpTo, light: lightReference, openElsewhere });
-  const openReference = useFollowAfterClose(crossRefs.openAt, closeCrossRefs, travel.open);
+  const openReference = useFollowAfterClose(Boolean(crossRefs.openAt), closeCrossRefs, travel.open);
 
   // The same place in another Bible: this one is written down first, and the page opens the book
   // in the other Bible, which finds it there.
@@ -580,6 +587,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     leavingRef.current = true;
     onChangeBible(next);
   }, [onChangeBible]);
+
+  const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
 
   const fromBookId = from ? bookIdFromSlug(from.slug) : undefined;
   const fromPlace = wayBackPlace(from, fromBookId, bible);
@@ -618,7 +627,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
         <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} text={text} locale={locale} wide={wide} onOpen={openPlace} />
         {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onPick={(chapter) => jumpTo({ chapter, verse: 1 })} /> : null}
-        <span className="ml-auto">
+        {marks.tools}
+        <span className={marks.translationClass}>
           <TranslationPicker bible={bible} wide={wide} onPick={changeBible} />
         </span>
         {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out
@@ -633,11 +643,14 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       <div className={`flex items-start gap-5 ${frame.row}`}>
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
           {text && layout ? (
+            // A tool in hand: the text answers a pull along the line and still scrolls up and down, and
+            // the page's own swipe back keeps off it (`data-gesture-ignore`, navigation/gestures).
             <article
               ref={textRef}
-              className="isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900"
+              data-gesture-ignore={marks.gestureIgnore}
+              className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
             </article>
           ) : null}
@@ -659,6 +672,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         ) : null}
       </div>
 
+      {marks.floatingTools}
       {!wide && text ? (
         <PhoneBar wayBack={wayBackLabel} onWayBack={goBack} showPill={rowGone} bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={openPlace} />
       ) : null}
@@ -673,10 +687,19 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={crossRefs.close}
         onOpenReference={openReference}
       />
+      <MarkedElsewhereSheet
+        at={marks.elsewhere.at}
+        bookId={bookId}
+        locale={locale}
+        entries={marks.elsewhere.entries}
+        onClose={marks.elsewhere.close}
+        onOpenBible={openInBible}
+      />
       {/* The "T" of every reading screen — the text size — and here the cross references under it.
           On a phone it stands above the bar with the way back and the book's pill. */}
       <FloatingTextScaleControls className="max-md:!bottom-24">
         <CrossReferenceSettings />
+        {marks.legend}
       </FloatingTextScaleControls>
     </div>
   );
