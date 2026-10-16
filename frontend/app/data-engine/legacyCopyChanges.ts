@@ -59,10 +59,15 @@ export interface Difference { field: string; device: unknown; server: unknown }
 type Row = Record<string, unknown>;
 const object = (value: unknown): value is Row => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const canonical = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(canonical);
+/**
+ * A value as comparison reads it: keys in one order, bookkeeping left out. `withoutOwnId` also
+ * leaves out the document's own id, which a cached row and its server copy name differently.
+ */
+export const canonical = (value: unknown, withoutOwnId = false): unknown => {
+  if (Array.isArray(value)) return value.map(item => canonical(item));
   if (!object(value)) return value;
-  return Object.fromEntries(Object.keys(value).sort().filter(key => !BOOKKEEPING.has(key)).map(key => [key, canonical(value[key])]));
+  return Object.fromEntries(Object.keys(value).sort().filter(key => !BOOKKEEPING.has(key) && !(withoutOwnId && key === 'id'))
+    .map(key => [key, canonical(value[key])]));
 };
 const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
 
