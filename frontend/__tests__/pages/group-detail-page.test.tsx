@@ -403,14 +403,190 @@ describe('GroupDetailPage', () => {
     expect(stored.meetingDates[0]).toEqual(expect.objectContaining({ date: '2026-03-01' }));
   });
 
-  it('removes the meeting date from the store when the date field is cleared', async () => {
+  it('clears only the date while preserving the meeting and all its details', async () => {
     const { delivered } = setupGroupPage();
     const dateInput = await screen.findByDisplayValue('2026-02-11');
 
     fireEvent.change(dateInput, { target: { value: '' } });
 
     const stored = await delivered();
-    expect(stored.meetingDates).toEqual([]);
+    expect(stored.meetingDates).toEqual([{ ...createMockGroup().meetingDates[0], date: '' }]);
+    expect(screen.getByDisplayValue('Hall')).toBeEnabled();
+    expect(screen.getByDisplayValue('Youth')).toBeEnabled();
+  });
+
+  it.each(['2', '2026-0', '2026-02-31'])('keeps unfinished or impossible date %s out of delivery', async raw => {
+    const { harness, delivered } = setupGroupPage();
+    const dateInput = await screen.findByDisplayValue('2026-02-11');
+    fireEvent.change(dateInput, { target: { value: raw } });
+    fireEvent.blur(dateInput);
+    const stored = await delivered();
+    expect(dateInput).toHaveValue(raw);
+    expect(stored.meetingDates).toEqual(createMockGroup().meetingDates);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  });
+
+  it.each(['2026-0', '2026-02-31', ' 2026-0 ', '2026-02-11T12:00:00Z', ' 2026-02-11 '])('saves details without rewriting an unchanged legacy date %s', async date => {
+    const existing = { ...createMockGroup().meetingDates[0], date };
+    const { harness, delivered } = setupGroupPage({ meetingDates: [existing] });
+    const location = await screen.findByDisplayValue('Hall');
+    fireEvent.change(location, { target: { value: 'Updated legacy hall' } });
+    expect((await delivered()).meetingDates).toEqual([{ ...existing, location: 'Updated legacy hall' }]);
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an initial incomplete date out of the document', async () => {
+    const { harness, delivered } = setupGroupPage({ meetingDates: [] });
+    await screen.findByDisplayValue('Family Group');
+    fireEvent.change(screen.getByPlaceholderText('No date'), { target: { value: '2026-0' } });
+    expect((await delivered()).meetingDates).toEqual([]);
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  });
+
+  it('preserves an unfinished date and meeting details for explicit recovery after leaving', async () => {
+    const { harness, view } = setupGroupPage();
+    const input = await screen.findByDisplayValue('2026-02-11');
+    fireEvent.change(input, { target: { value: '2026-0' } });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'Draft hall' } });
+    await act(async () => { await settleEngine(); });
+    view.rerender(<DataEngineProvider>{null}</DataEngineProvider>);
+    await act(async () => { await settleEngine(); });
+    view.rerender(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await screen.findByDisplayValue('2026-02-11');
+    const choices = await screen.findByLabelText('dataSync.recoveryLabel');
+    const option = choices.querySelectorAll('option')[1] as HTMLOptionElement;
+    fireEvent.change(choices, { target: { value: option.value } });
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    expect(await screen.findByDisplayValue('2026-0')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Draft hall')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByDisplayValue('Draft hall')).toBeEnabled());
+    fireEvent.change(screen.getByDisplayValue('Draft hall'), { target: { value: 'Edited recovered hall' } });
+    expect(screen.getByDisplayValue('Edited recovered hall')).toBeInTheDocument();
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect((harness.server.value as any).meetingDates).toEqual(createMockGroup().meetingDates);
+    expect(screen.getByDisplayValue('2026-0')).toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    // The Jest setup freezes Date.now; debounce needs a clock that actually advances.
+    jest.useFakeTimers();
+    fireEvent.change(screen.getByDisplayValue('2026-0'), { target: { value: '2026-03-12' } });
+    await act(async () => { await jest.advanceTimersByTimeAsync(750); await harness.engine.retry(); await settleEngine(); });
+    expect((harness.server.value as any).meetingDates[0]).toMatchObject({
+      id: 'date-1', date: '2026-03-12', location: 'Edited recovered hall', audience: 'Youth', notes: 'Bring notes', createdAt: 'x',
+    });
+    view.unmount();
+  });
+
+  it('takes ownership of the first date keystroke before immediate navigation', async () => {
+    const { harness, view } = setupGroupPage();
+    const input = await screen.findByDisplayValue('2026-02-11');
+    fireEvent.change(input, { target: { value: '2026-0' } });
+    view.rerender(<DataEngineProvider>{null}</DataEngineProvider>);
+    await act(async () => { await settleEngine(); });
+    view.rerender(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await screen.findByDisplayValue('2026-02-11');
+    const choices = await screen.findByLabelText('dataSync.recoveryLabel');
+    const option = choices.querySelectorAll('option')[1] as HTMLOptionElement;
+    fireEvent.change(choices, { target: { value: option.value } });
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+    expect(await screen.findByDisplayValue('2026-0')).toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('delivers the last meeting detail after immediate route navigation', async () => {
+    const { harness, view } = setupGroupPage();
+    const input = await screen.findByDisplayValue('Hall');
+    fireEvent.change(input, { target: { value: 'Hall typed just before leaving' } });
+    view.rerender(<DataEngineProvider>{null}</DataEngineProvider>);
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+    expect((harness.server.value as any).meetingDates[0].location).toBe('Hall typed just before leaving');
+  });
+
+  it('flushes the staged detail even when pagehide arrives before React renders its dirty state', async () => {
+    const { harness } = setupGroupPage();
+    const input = await screen.findByDisplayValue('Hall');
+    act(() => harness.engine.setOnline(false));
+    // Keep both browser events in the same React batch, as a quick edit followed by pagehide.
+    act(() => {
+      fireEvent.change(input, { target: { value: 'Hall before the next render' } });
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    await act(async () => { await settleEngine(); harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+    await waitFor(() => expect((harness.server.value as any).meetingDates[0].location).toBe('Hall before the next render'));
+  });
+
+  it('batches a finished date and the following detail into the same autosave', async () => {
+    const { harness, delivered } = setupGroupPage();
+    fireEvent.change(await screen.findByDisplayValue('2026-02-11'), { target: { value: '2026-03-19' } });
+    await act(async () => { await settleEngine(); });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'Hall after the date' } });
+    expect((await delivered()).meetingDates[0]).toMatchObject({ date: '2026-03-19', location: 'Hall after the date' });
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('adopts a clean newer meeting before the next edit', async () => {
+    const { harness, delivered } = setupGroupPage();
+    await screen.findByDisplayValue('Hall');
+    await act(async () => { await harness.remote({ meetingDates: [{ ...createMockGroup().meetingDates[0], location: 'Newer hall', date: '2026-03-15' }] }); await settleEngine(); });
+    expect(await screen.findByDisplayValue('Newer hall')).toBeEnabled();
+    expect(screen.getByDisplayValue('2026-03-15')).toBeEnabled();
+    fireEvent.change(screen.getByDisplayValue('Youth'), { target: { value: 'Adults' } });
+    expect((await delivered()).meetingDates[0]).toMatchObject({ id: 'date-1', location: 'Newer hall', date: '2026-03-15', audience: 'Adults' });
+  });
+
+  it('batches fast meeting-detail typing into one delivery', async () => {
+    const { harness, delivered } = setupGroupPage();
+    const input = await screen.findByDisplayValue('Hall');
+    for (const value of ['N', 'Ne', 'New', 'New ', 'New h', 'New ha', 'New hal', 'New hall']) {
+      fireEvent.change(input, { target: { value } });
+    }
+    expect((await delivered()).meetingDates[0].location).toBe('New hall');
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps title autosave separate from an unfinished meeting stage', async () => {
+    const { delivered } = setupGroupPage();
+    const input = await screen.findByDisplayValue('2026-02-11');
+    fireEvent.change(input, { target: { value: '2026-0' } });
+    fireEvent.change(screen.getByDisplayValue('Family Group'), { target: { value: 'Renamed during date draft' } });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'Unsent hall' } });
+    const stored = await delivered();
+    expect(stored.title).toBe('Renamed during date draft');
+    expect(stored.meetingDates).toEqual(createMockGroup().meetingDates);
+    expect(input).toHaveValue('2026-0');
+    expect(screen.getByDisplayValue('Unsent hall')).toBeInTheDocument();
+  });
+
+  it('keeps the same meeting and its sibling through fast offline clear, retype and detail edits', async () => {
+    const sibling = { id: 'date-2', date: '2026-04-19', location: 'Sibling hall', notes: 'Keep sibling', createdAt: 'later' };
+    const { harness, delivered } = setupGroupPage({ meetingDates: [...createMockGroup().meetingDates, sibling] });
+    const input = await screen.findByDisplayValue('2026-02-11');
+    act(() => harness.engine.setOnline(false));
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.change(input, { target: { value: '2' } });
+    fireEvent.change(input, { target: { value: '2026-0' } });
+    fireEvent.change(input, { target: { value: '2026-03-12' } });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'Later hall' } });
+    await delivered();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+    await waitFor(() => expect((harness.server.value as any).meetingDates).toEqual([
+      { ...createMockGroup().meetingDates[0], date: '2026-03-12', location: 'Later hall' }, sibling,
+    ]));
+    expect(input).toHaveValue('2026-03-12');
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+  });
+
+  it('lets an undated meeting keep edited details and later receive a date', async () => {
+    const { delivered } = setupGroupPage();
+    const input = await screen.findByDisplayValue('2026-02-11');
+    fireEvent.change(input, { target: { value: '' } });
+    await delivered();
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'Undated hall' } });
+    expect((await delivered()).meetingDates[0]).toEqual({ ...createMockGroup().meetingDates[0], date: '', location: 'Undated hall' });
+    fireEvent.change(input, { target: { value: '2026-03-12' } });
+    expect((await delivered()).meetingDates[0]).toEqual({ ...createMockGroup().meetingDates[0], date: '2026-03-12', location: 'Undated hall' });
   });
 
   it('stores edited title, description and meeting location', async () => {
@@ -452,7 +628,7 @@ describe('GroupDetailPage with the actual data engine', () => {
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
     const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
       metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {
-        userId: 'user-1', title: 'Prepared group', description: 'Description to read', status: 'draft', templates: [], flow: [], createdAt: 'created', updatedAt: 'old',
+        userId: 'user-1', title: 'Prepared group', description: 'Description to read', status: 'draft', templates: [], flow: [], meetingDates: [{ id: 'meeting', date: '', location: 'Undated hall', audience: 'Youth', notes: 'Prepared notes', createdAt: 'created' }], createdAt: 'created', updatedAt: 'old',
       } });
     let finishOpening!: () => void;
     jest.mocked(createBrowserDataEngine).mockImplementation(() => {
@@ -467,6 +643,9 @@ describe('GroupDetailPage with the actual data engine', () => {
     await act(async () => { await jest.advanceTimersByTimeAsync(STORAGE_SILENCE_MS + STORAGE_WAKE_GRACE_MS + 10); });
     await screen.findByRole('heading', { name: 'Prepared group' });
     expect(screen.getByText('Description to read')).toBeInTheDocument();
+    expect(screen.getByText('No date')).toBeInTheDocument();
+    expect(screen.getByText('Undated hall')).toBeInTheDocument();
+    expect(screen.getByText('Prepared notes')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /delete/i })).not.toBeInTheDocument();
     await act(async () => { finishOpening(); await settleEngine(); });

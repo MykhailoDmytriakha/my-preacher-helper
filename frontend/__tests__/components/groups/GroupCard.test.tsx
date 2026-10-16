@@ -62,6 +62,12 @@ describe('GroupCard', () => {
     expect(links.some((l) => l.getAttribute('href') === '/groups/g1')).toBe(true);
   });
 
+  it.each(['', '2', '2026-0', '2026-02-31'])('shows no scheduled date for an undated or unfinished meeting %s', date => {
+    render(<GroupCard group={{ id: 'g1', userId: 'user-1', title: 'Prepared group', status: 'draft', templates: [], flow: [], createdAt: 'x', updatedAt: 'x', meetingDates: [{ id: 'd1', date, location: 'Hall', createdAt: 'x' }] }} />);
+    expect(screen.getByText('No date')).toBeInTheDocument();
+    expect(screen.getByText('Prepared group')).toBeInTheDocument();
+  });
+
   it('falls back to last meeting and no-date labels', () => {
     const now = new Date();
     const oldA = new Date(now);

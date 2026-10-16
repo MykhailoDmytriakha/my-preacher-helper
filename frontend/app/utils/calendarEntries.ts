@@ -1,5 +1,6 @@
 import { councilProgress, topicPreview } from '@/utils/council';
 import { toDateOnlyKey, toLocalDateOnlyKey } from '@/utils/dateOnly';
+import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
@@ -89,7 +90,7 @@ export function sermonEntries(sermons: Sermon[]): CalendarEntry[] {
 export function groupEntries(groups: Group[]): CalendarEntry[] {
   return groups.flatMap((group) =>
     (group.meetingDates ?? []).flatMap((meetingDate) => {
-      const date = toDateOnlyKey(meetingDate.date);
+      const date = groupMeetingDay(meetingDate.date);
       if (!date) return [];
       return [
         {

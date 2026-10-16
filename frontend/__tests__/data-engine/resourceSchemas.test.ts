@@ -46,6 +46,24 @@ describe('pure resource document validation', () => {
     expect(() => validateResourceDocument(collection as string, { ...fixtures[collection as string], [field as string]: wrong } as DocumentData, { kind: 'update', changedFields: [field as string] })).toThrow();
   });
 
+  it('accepts an undated meeting without removing its identity or details', () => {
+    const meetingDates = [{ id: 'meeting', date: '', location: 'Hall', audience: 'Youth', notes: 'Keep', createdAt: 'created' }];
+    expect(() => validateResourceDocument('groups', { meetingDates }, { kind: 'update', changedFields: ['meetingDates'] })).not.toThrow();
+  });
+
+  it.each(['2', '2026-0', '2026-02-31'])('refuses newly scheduled unfinished or impossible meeting date %s', date => {
+    const meetingDates = [{ id: 'meeting', date, createdAt: 'created' }];
+    expect(() => validateResourceDocument('groups', { meetingDates }, { kind: 'update', changedFields: ['meetingDates'] })).toThrow();
+    // A manual stage may retain the raw text without submitting it.
+    expect(() => validateResourceDocument('groups', { meetingDates }, { kind: 'update', changedFields: [] })).not.toThrow();
+  });
+
+  it('preserves an unchanged legacy meeting date while another detail is edited', () => {
+    const meeting = { id: 'meeting', date: '2', location: 'Old hall', createdAt: 'created' };
+    const value = { meetingDates: [{ ...meeting, location: 'New hall' }] };
+    expect(() => validateResourceDocument('groups', value, { kind: 'update', changedFields: ['meetingDates'], previous: { meetingDates: [meeting] } })).not.toThrow();
+  });
+
   it('keeps unknown fields and untouched malformed legacy fields intact during an unrelated update', () => {
     const legacy = { title: 'Changed', thoughts: 'legacy encoding', unknownHistory: { private: true }, rev: { core: 8 } };
     const original = JSON.stringify(legacy);

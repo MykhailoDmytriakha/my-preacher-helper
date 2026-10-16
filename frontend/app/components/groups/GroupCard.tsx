@@ -16,6 +16,8 @@ import { Chip } from '@/components/ui/Chip';
 import { Group, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
 import { formatDateForLocale } from '@/utils/dateFormatter';
+import { parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
+import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 
 import type { ChipTone } from '@/utils/chipClasses';
@@ -32,22 +34,9 @@ const statusTones: Record<Group['status'], ChipTone> = {
   completed: 'emerald',
 };
 
-const ISO_DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
 const parseMeetingDate = (value: string): Date | null => {
-  if (!value) return null;
-
-  if (ISO_DATE_ONLY_REGEX.test(value)) {
-    const [yearString, monthString, dayString] = value.split('-');
-    const year = Number(yearString);
-    const month = Number(monthString);
-    const day = Number(dayString);
-    const date = new Date(year, month - 1, day);
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  const day = groupMeetingDay(value);
+  return day ? parseDateOnlyAsLocalDate(day) : null;
 };
 
 const resolvePrimaryMeetingDate = (meetingDates: Group['meetingDates']) => {

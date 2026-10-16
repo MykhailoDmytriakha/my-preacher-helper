@@ -1019,10 +1019,14 @@ export class DataEngine {
             if (!record.active) await store.compact(owner, targetId);
           },
           save: async (scopeId: string, checkpoint: import('./session').SessionCheckpoint, options: { predecessorId?: string | null }) => {
-            active();
-            const request = await this.commits.save(scopeId, checkpoint, options); active();
+            // Save was invoked while the form was active. Its captured intent belongs to the
+            // owner even if navigation closes the page before earlier local writes finish.
+            this.assertCurrent(owner, generation);
+            const request = await this.commits.save(scopeId, checkpoint, options);
+            this.assertCurrent(owner, generation);
             if (!request || !request.value) throw new Error('Manual Save did not create an intent');
-            await parent.controller!.adoptManualCommit(request, selection); active();
+            if (!parent.closed) await parent.controller!.adoptManualCommit(request, selection);
+            this.assertCurrent(owner, generation);
             await this.prepareCommits(); this.backgroundDrain();
             return intent(request);
           },

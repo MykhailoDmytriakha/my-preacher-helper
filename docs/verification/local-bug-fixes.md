@@ -339,3 +339,33 @@ errors and dev/HMR warnings occurred; no clean-console claim is made.
 5. Verify title autosave, an undelivered creation and a two-document relation.
    Remove only own fixtures; record revision, timestamps, screenshots and results.
    Production acceptance stays pending until these checks actually run.
+
+## BUG-20261003-group-meeting-date-saved-while-typing / BUG-20261003-group-meeting-clear-drops-place
+
+Stage: locally verified, independently reviewed and accepted; local commit follows this record. QA fixture deleted. Production acceptance pending.
+
+The meeting header now uses one durable `useDataForm` stage through `useGroupMeetingEditor`. Date, place and audience share one 750ms autosave. A partial or impossible new date stays on the device and can be explicitly recovered after leaving; completing or clearing it submits the combined fields. Navigation and pagehide flush the last ready edit. An already-invoked manual Save may finish after its parent closes, within the same owner/generation; new post-close actions remain refused.
+
+`editFirstGroupMeeting` changes only the requested field and preserves meeting identity, creation metadata, notes, outcomes and sibling meetings. An empty date means an existing undated meeting. Details can be prepared before choosing a day. Creation uses the same meeting edit helper and refuses incomplete dates on submission. Read-only content names the empty date. `groupMeetingDay` is the shared reader for group cards, calendar entries, range selection and dashboard scheduling; incomplete/impossible legacy values no longer become another calendar day.
+
+Server admission accepts an empty or finished date and permits an unchanged legacy date when another field changes. Independent review caught the corresponding UI gap: a saved legacy date had blocked place/audience autosave. Five behavioral regressions first failed on blocked detail saving or unwanted normalization, then passed. UI admission compares exact meeting id/raw date with `initialData` (saved predecessor or baseline), so a newly typed or recovered partial date does not become eligible just because it is visible in the stage. Existing unchanged raw values remain intact.
+
+Behavioral red/green evidence includes clearing without losing metadata/siblings, partial/impossible typing, server admission, shared readers, a Save finishing across route close, pagehide before React publishes dirty state, batched date/detail typing, and legacy detail-only edits. An isolated mutation replaced the original saved date with the current editable stage: the recovery regression failed after it admitted `2026-0` and place `Draft hall`. The canonical hook hash stayed unchanged. Early mapper/module-resolution attempts are harness failures and are excluded from this proof.
+
+Final targeted verification passed 11 suites / 376 tests. TypeScript, translation coverage (8 tests), full ESLint (0 errors / 29 inherited warnings), a final test/hook lint check and production build passed. Build ID: `42rcN95sbJJ2no7qnHmYZ`. Full coverage passed805 suites /8385tests;3suites /17tests skipped (883.388s). Coverage:92.77%statements/lines,79.48%branches,87.76%functions; repository thresholds passed. The final strengthened recovery test and hook passed their final lint/type checks. Independent review matched all23source hashes and repeated11suites /376tests without material findings.
+
+Localhost used the actual built application at port3047, the existing test account and one disposable QA group in the real backend. Before the fix, revision3 stored `2026-0`; revision4 removed the meeting and its details. After restoration/integration, explicit draft recovery retained raw date/place with no POST; completing sent revision17, clearing retained the same meeting in18, and offline combined date/place arrived together in19. On the final production build, partial+place sent no command; completing and the following place edit produced one ACK20. Clear+immediate calendar opening produced ACK21 with the same meeting id, empty date and retained place/audience; reload retained them. A sequential second tab's ACK22 was adopted by the clean first form. A hard-offline reload of this already-viewed route through the active service worker opened in2033ms and retained the values; network was restored and the second tab closed.
+
+The primary agent personally inspected final screenshots at320,390 and834px. Date placeholder and editable place/audience are visible, with no horizontal page overflow. Existing single-line text inputs scroll their own long text. These are Chromium viewport checks. Meeting notes and siblings are covered in real-engine page tests, not this live one-meeting fixture. Legacy malformed-date detail saving is covered in the real-engine page suite without injecting invalid data through a backend bypass. An offline reload is not physical PWA fresh-launch proof.
+
+Evidence: ignored case artifacts `group-dates-verification.json`, original reports/class audit, red/green logs, built/restored browser JSON and final screenshots. This manifest, committed regression tests and bug-ID commit retain the durable trace after local tracker removal. Only the disposable QA group was deleted through its explicit confirmation: ACK23 and authenticated GET both show a tombstone, value null and no list card. Manual recovery sources were not purged through internal storage APIs. The temporary authorization capture was removed; A fresh independent hand accepted item10.1 after verifying evidence/source hashes and repeating4focused suites /135tests.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision contains these fixes and the shared accepted-recency prerequisite.
+2. Create an authorized disposable group with a date, place, audience and meeting notes; record its meeting id and a sibling where supported.
+3. Type partial/impossible dates, blur and leave. Confirm no invalid command; explicitly recover the raw date/details, then complete the day.
+4. Change the date and place rapidly; verify one accepted combined save, correct recent-work placement and persistence after reload.
+5. Clear the day, immediately open the calendar or leave. Verify the same meeting id, notes, place, audience and sibling; the group says no date and has no dated calendar entry.
+6. Repeat loaded editing offline/reconnect, a cached-route reload and sequential devices. Check320/390/834 widths and existing legacy values without rewriting them.
+7. Delete only the disposable QA group, confirm its tombstone, restore network/tabs/settings and record deployed revision, results and screenshots. Production acceptance remains pending until this runs.

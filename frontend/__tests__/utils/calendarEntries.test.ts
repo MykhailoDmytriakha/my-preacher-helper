@@ -105,6 +105,16 @@ describe('everything the calendar shows, in one shape', () => {
     expect(groupEntries([stamped])[0].date).toBe('2026-09-06');
   });
 
+  it('keeps an undated meeting out of the calendar without mutating the group', () => {
+    const prepared = group({ meetingDates: [{ id: 'md1', date: '', location: 'Future hall', notes: 'Keep me', createdAt: '' }] });
+    expect(groupEntries([prepared])).toEqual([]);
+    expect(prepared.meetingDates?.[0]).toMatchObject({ id: 'md1', date: '', location: 'Future hall', notes: 'Keep me' });
+  });
+
+  it.each(['2', '2026-0', '2026-02-31'])('does not turn a previously stored unfinished or impossible group date %s into a calendar day', date => {
+    expect(groupEntries([group({ meetingDates: [{ id: 'md1', date, createdAt: '' }] })])).toEqual([]);
+  });
+
   it('turns a group meeting into an entry with its place', () => {
     const [entry] = groupEntries([group()]);
     expect(entry).toMatchObject({ kind: 'group', date: '2026-09-06', href: '/groups/g1', location: 'Зал' });

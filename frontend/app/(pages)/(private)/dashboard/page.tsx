@@ -36,6 +36,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { councilEntries, groupEntries, sermonEntries, type CalendarKind } from '@/utils/calendarEntries';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
+import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -1010,7 +1011,7 @@ function getUpcomingPreachDate(sermon: Sermon) {
 function getNextMeetingDate(group: Group) {
   const now = new Date();
   return [...(group.meetingDates || [])]
-    .map((date) => toDateOnlyKey(date.date))
+    .map((date) => groupMeetingDay(date.date))
     .filter((date): date is string => {
       if (!date) return false;
       return getTime(date) >= startOfDay(now).getTime();

@@ -322,6 +322,7 @@ export interface GroupFlowItem {
 
 export interface GroupMeetingDate {
   id: string;
+  /** Empty means the meeting exists without a scheduled day. */
   date: string;
   location?: string;
   audience?: string;

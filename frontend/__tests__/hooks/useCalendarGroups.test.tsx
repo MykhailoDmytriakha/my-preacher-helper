@@ -23,7 +23,7 @@ beforeEach(() => {
   jest.mocked(useAuth).mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
   jest.mocked(useGroupsDataCollection).mockReturnValue({
     groups: [group('inside', 'user-1', ['2026-02-10']), group('before', 'user-1', ['2026-01-05']),
-      group('undated', 'user-1', []), group('foreign', 'user-2', ['2026-02-10'])],
+      group('undated', 'user-1', []), group('prepared', 'user-1', ['']), group('partial', 'user-1', ['2']), group('foreign', 'user-2', ['2026-02-10'])],
     loading: false, error: null, refreshGroups,
   } as unknown as ReturnType<typeof useGroupsDataCollection>);
 });

@@ -11,6 +11,27 @@ const update = (base: DocumentData, next: DocumentData): DataCommand => ({
 const field = (value: FieldValue['value']): FieldValue => ({ exists: true, value });
 
 describe('DataEngine command protocol', () => {
+  it.each(['2', '2026-0', '2026-02-31'])('refuses a newly changed group date %s at the shared server boundary', date => {
+    const resource = { collection: 'groups', id: 'group' };
+    const meeting = { id: 'meeting', date: '2026-11-19', location: 'Hall', createdAt: 'created' };
+    const before = { userId: 'owner', meetingDates: [meeting] };
+    const after = { ...before, meetingDates: [{ ...meeting, date }] };
+    const result = applyCommand({ ...update(before, after), resource }, { resource, value: before, metadata: null });
+    expect(result).toMatchObject({ kind: 'refused', code: 'invalid-document' });
+    expect(before.meetingDates[0]).toEqual(meeting);
+  });
+
+  it('accepts an undated group meeting and a detail edit over an unchanged legacy date', () => {
+    const resource = { collection: 'groups', id: 'group' };
+    for (const date of ['', '2']) {
+      const meeting = { id: 'meeting', date, location: 'Hall', notes: 'Keep', createdAt: 'created' };
+      const before = { userId: 'owner', meetingDates: [meeting] };
+      const after = { ...before, meetingDates: [{ ...meeting, location: 'New hall' }] };
+      const result = applyCommand({ ...update(before, after), resource }, { resource, value: before, metadata: null });
+      expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { meetingDates: after.meetingDates } } });
+    }
+  });
+
   it('never replaces an unowned scalar or array ancestor with an object', () => {
     for (const [value, path] of [
       [{ userId: 'owner', title: 'keep' }, ['title', 'child']],

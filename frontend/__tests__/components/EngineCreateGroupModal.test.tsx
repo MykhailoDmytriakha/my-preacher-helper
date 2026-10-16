@@ -59,3 +59,35 @@ it('takes durable ownership offline without claiming a server save', async () =>
   expect((await harness.commits.list('owner')).some(commit => commit.value?.title === 'Offline creation')).toBe(true);
   view.unmount();
 });
+
+it('keeps the same first meeting when the creation date is cleared', async () => {
+  const { harness, view, onQueued } = setup();
+  const title = await screen.findByPlaceholderText('workspaces.groups.form.titlePlaceholder');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Prepared without a date' } });
+  const date = screen.getAllByRole('textbox')[2];
+  fireEvent.change(date, { target: { value: '2026-11-19' } });
+  await act(async () => { await settleEngine(); });
+  const draft = (await harness.checkpoints.listRecoverable('owner', resource))[0].record.checkpoint.draft!;
+  const first = (draft.meetingDates as any[])[0];
+  fireEvent.change(date, { target: { value: '' } });
+  fireEvent.submit(title.closest('form')!);
+  await waitFor(() => expect(onQueued).toHaveBeenCalledWith('new-group'));
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.server.value?.meetingDates).toEqual([{ ...first, date: '' }]);
+  view.unmount();
+});
+
+it('does not submit unfinished creation-date text even when native validation is bypassed', async () => {
+  const { harness, view, onQueued } = setup();
+  const title = await screen.findByPlaceholderText('workspaces.groups.form.titlePlaceholder');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Unfinished day' } });
+  fireEvent.change(screen.getAllByRole('textbox')[2], { target: { value: '2026-0' } });
+  fireEvent.submit(title.closest('form')!);
+  await act(async () => { await settleEngine(); });
+  expect(onQueued).not.toHaveBeenCalled();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  expect(screen.getByDisplayValue('2026-0')).toBeInTheDocument();
+  view.unmount();
+});

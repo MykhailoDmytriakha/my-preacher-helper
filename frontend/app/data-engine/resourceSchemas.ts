@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { providerIds } from '@/api/clients/ai/providerId';
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
+import { groupMeetingDay } from '@/utils/groupMeeting';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 
 import type { DocumentData } from './types';
@@ -66,7 +67,7 @@ const scripture = object({ id, book: id, chapter: number.int().positive().option
 const seriesItem = object({ id, type: z.enum(['sermon', 'group']), refId: id, position: number, plannedDate: text.optional(), completedAt: text.optional() });
 const block = object({ id, type: z.enum(['announcement', 'topic', 'scripture', 'questions', 'explanation', 'notes', 'prayer', 'custom']), title: text, summary: text.optional(), content: text, scriptureRefs: strings.optional(), questions: strings.optional(), status: z.enum(['empty', 'draft', 'filled']), createdAt: text, updatedAt: text });
 const flowItem = object({ id, templateId: id, order: number, durationMin: number.nonnegative().nullable().optional(), instanceTitle: text.optional(), instanceNotes: text.optional() });
-const meeting = object({ id, date: id, location: text.optional(), audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text });
+const meeting = object({ id, date: text, location: text.optional(), audience: text.optional(), notes: text.optional(), outcome: outcome.optional(), createdAt: text });
 const councilTopic = object({
   id, title: text, kind: z.enum(['decision', 'info']).optional(), summary: text.optional(),
   questions: children(object({ id, question: text, answer: text.optional() })),
@@ -131,6 +132,8 @@ export interface ResourceValidationOptions {
   kind: 'create' | 'update';
   /** Top-level fields touched by the command, after its merge has been calculated. */
   changedFields?: readonly string[];
+  /** Existing legacy dates may remain untouched when a different meeting field changes. */
+  previous?: DocumentData | null;
 }
 
 /**
@@ -150,8 +153,22 @@ export function validateResourceDocument(collection: string, value: DocumentData
     const result = shape[key].safeParse(value[key]);
     if (!result.success) invalid(`Invalid ${collection}.${key}: ${result.error.issues.map(issue => issue.message).join('; ')}`);
   }
+  validateGroupMeetingDays(collection, value, options, fields);
   if (options.kind === 'create' && collection === 'sermons') {
     if (Array.isArray(value.sourceNoteIds) && value.sourceNoteIds.length > 20) invalid('Too many source notes at birth');
     if (Array.isArray(value.scratch) && value.scratch.length > 300) invalid('Too many scratch notes at birth');
+  }
+}
+
+/** Date admission is separate from structural validation and never rewrites legacy values. */
+function validateGroupMeetingDays(collection: string, value: DocumentData, options: ResourceValidationOptions, fields: readonly string[]): void {
+  if (collection === 'groups' && (options.kind === 'create' || fields.includes('meetingDates'))) {
+    const previous = Array.isArray(options.previous?.meetingDates) ? options.previous.meetingDates : [];
+    const dates = (value.meetingDates ?? []) as DocumentData[];
+    for (const meeting of dates) {
+      const unchanged = options.kind === 'update' && previous.some(item => item && typeof item === 'object' && !Array.isArray(item)
+        && item.id === meeting.id && item.date === meeting.date);
+      if (!unchanged && meeting.date !== '' && !groupMeetingDay(meeting.date as string)) invalid('A meeting needs a finished date or no date');
+    }
   }
 }

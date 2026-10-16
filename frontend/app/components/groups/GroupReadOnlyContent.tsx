@@ -50,7 +50,7 @@ export function GroupReadOnlyContent({ group }: { group: Group }) {
           <div key={meeting.id} className="mt-4 space-y-2 text-sm text-gray-700 dark:text-gray-300">
             <p className="flex flex-wrap gap-x-6 gap-y-2">
               {/* An item is never wider than the row, so a long value wraps inside it instead of widening the page. */}
-              {meeting.date && <span className="inline-flex max-w-full items-center gap-2"><CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.date}</span></span>}
+              <span className="inline-flex max-w-full items-center gap-2"><CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.date || t('workspaces.groups.meetings.datePlaceholder', { defaultValue: 'No date' })}</span></span>
               {meeting.location && <span className="inline-flex max-w-full items-center gap-2"><MapPinIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.location}</span></span>}
               {meeting.audience && <span className="inline-flex max-w-full items-center gap-2"><UsersIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden /><span className="min-w-0 break-words">{meeting.audience}</span></span>}
             </p>

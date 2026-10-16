@@ -21,3 +21,9 @@ Run from `frontend/`. For one or a few files: `npx jest --runTestsByPath <path> 
 - 2026-07-12: a broad acceptance regex skipped a changed boundary test in the other `__tests__` tree.
 
 See also: `.howto/test-async-ui.md` · `.howto/mock-in-jest.md`
+
+## A debounce never finishes in a real-timer test
+
+`frontend/jest.setup.js` freezes `Date.now()` to stabilize older React Query tests. Lodash debounce checks elapsed time, so a real timeout alone cannot finish its wait while that clock stays frozen. For a behavior test that must wait out debounce, enable Jest fake timers after the asynchronous editor has opened, then advance the clock with `await act(async () => { await jest.advanceTimersByTimeAsync(750); })`. Restore real timers during cleanup. Do not increase the timeout or change the global clock policy for one test. Example: the restored meeting date in `frontend/__tests__/pages/group-detail-page.test.tsx`.
+
+- For an isolated negative-control module outside the repository, Next SWC may rewrite an alias import to a relative require before Jest resolves it. Inspect the transformed importer in the isolated Jest cache and map that exact relative require (for example `^\\./useGroupMeetingEditor$`), rather than assuming the authored alias remains. Add the project node_modules absolute path to that temporary config modulePaths so the external copy can resolve React. A missing-module failure is harness failure, not a behavioral red. Verify the canonical source hash after the run.

@@ -389,6 +389,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
               <CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <DatePickerField
                 value={meetingDate}
+                  disabled={!meetingFieldsEnabled}
                 onChange={(nextDate) => {
                   setMeetingDate(nextDate);
                 }}

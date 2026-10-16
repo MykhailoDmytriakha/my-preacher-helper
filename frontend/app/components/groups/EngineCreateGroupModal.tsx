@@ -9,6 +9,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { fillRequiredFieldError, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { editFirstGroupMeeting, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
 
 import { createGroupDraft, CreateGroupView } from './CreateGroupModal';
 
@@ -45,6 +46,7 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
     try {
       await document.commit(current => {
         const next = (current ?? initial) as unknown as Omit<Group, 'id'>;
+        if (!isReadyGroupMeetingDate(next.meetingDates?.[0]?.date ?? '')) throw fillRequiredFieldError('workspaces.groups.meetings.title');
         if (!next.title.trim()) throw fillRequiredFieldError('workspaces.groups.form.title');
         return deepCleanUndefined({ ...next, title: next.title.trim(), description: next.description?.trim() || undefined }) as unknown as DocumentData;
       });
@@ -56,7 +58,7 @@ export function EngineCreateGroupModal({ groupId, recoveryId, onClose, onQueued 
     description={value.description ?? ''} setDescription={description => edit(current => ({ ...current, description }))}
     firstMeetingDate={value.meetingDates?.[0]?.date ?? ''} setFirstMeetingDate={date => {
       const id = newClientId(), createdAt = new Date().toISOString();
-      edit(current => ({ ...current, meetingDates: date ? [{ ...(current.meetingDates?.[0] ?? { id, createdAt }), date }] : [] }));
+      edit(current => ({ ...current, meetingDates: editFirstGroupMeeting(current.meetingDates ?? [], { date }, { id, createdAt }) }));
     }} saving={saving || document.loading || !restored} onClose={onClose}
     handleSubmit={event => { event.preventDefault(); void create(); }}
     feedback={<DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={failure ? sayFailure(failure, t) : document.error} onRetry={async () => {

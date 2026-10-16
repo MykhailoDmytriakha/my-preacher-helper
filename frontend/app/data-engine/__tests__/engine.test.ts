@@ -81,6 +81,32 @@ describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('finishes an already invoked manual Save after its page closes', async () => {
+    const s = setup();
+    const editor = await s.engine.openEditor(resource, 'manual-close');
+    const form = editor.form('content', [['content']]);
+    await form.begin(); await form.update(value => ({ ...value, content: 'Saved before leaving' }));
+    const saving = form.save().catch(error => error);
+    editor.close();
+    await saving; await s.engine.retry(); await drainMicrotasks();
+    expect(s.server.get(keyOf('owner', resource))?.value?.content).toBe('Saved before leaving');
+    expect(() => form.save()).toThrow('Manual parent editor changed');
+    s.engine.dispose();
+  });
+
+  it('does not start a manual Save for an account that has changed', async () => {
+    const s = setup({ online: false });
+    const editor = await s.engine.openEditor(resource, 'manual-owner');
+    const form = editor.form('content', [['content']]);
+    await form.begin(); await form.update(value => ({ ...value, content: 'Old owner stage' }));
+    const saving = form.save().catch(error => error);
+    s.engine.setOwner('other');
+    await saving; await drainMicrotasks();
+    expect(s.transport.send).not.toHaveBeenCalled();
+    expect(await s.commits.list('other')).toEqual([]);
+    s.engine.dispose();
+  });
+
   it('pins pristine manual baseline and preserves the conflict when remote changes before typing', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     const form = editor.form('title', [['title']]); await form.begin();

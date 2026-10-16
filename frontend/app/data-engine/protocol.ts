@@ -505,6 +505,7 @@ function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, val
   try {
     validateResourceDocument(command.resource.collection, value, {
       kind: command.kind,
+      previous,
       changedFields: command.kind === 'update' ? command.changes.map(change => change.path[0]) : undefined,
     });
     return command.resource.collection !== 'sermons' || preservesSermonLinks(previous, value);
