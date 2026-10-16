@@ -1,4 +1,14 @@
-import { MINIMAP_GEOMETRY, buildMinimapLayout, firstVisibleLine, frameOnMap, minimapOffset, verseAtY } from '@/components/bible/minimapLayout';
+import {
+  MINIMAP_GEOMETRY,
+  SETTLE_RATE,
+  buildMinimapLayout,
+  firstVisibleLine,
+  fitPressedFrame,
+  frameOnMap,
+  minimapOffset,
+  settleOffset,
+  verseAtY,
+} from '@/components/bible/minimapLayout';
 
 const geometry = { ...MINIMAP_GEOMETRY, width: 90, charsPerLine: 90, lineStep: 3, verseGap: 1, chapterGap: 8, labelHeight: 13 };
 
@@ -93,5 +103,83 @@ describe('frameOnMap', () => {
     expect(start.top).toBe(0);
     expect(minimapOffset(layout.height + 400, 400, start)).toBe(0);
     expect(frameOnMap(layout, [{ chapter: 2, verse: 1 }, { chapter: 2, verse: 2 }]).top).toBe(layout.labels[1].y);
+  });
+});
+
+describe('settleOffset — a pressed frame comes to its place as the person reads', () => {
+  // A long book: following puts the map at 0.9 of the frame's top, less 200; a box of 600 px, a frame of 100.
+  const following = (frameTop: number) => 0.9 * frameTop - 200;
+  const box = 600;
+  const height = 100;
+
+  /** Reads `steps` steps of `reading` map px from a frame pressed at `shown` px from the top of the box. */
+  function read(shown: number, reading: number, steps: number) {
+    let frameTop = 1000;
+    let attachedBefore = following(frameTop);
+    let mapTop = frameTop - shown;
+    const shownAt = [shown];
+    let settledAt: number | null = null;
+    for (let index = 1; index <= steps; index++) {
+      frameTop += reading;
+      const attachedNow = following(frameTop);
+      const step = settleOffset({ mapTop, attachedBefore, attachedNow, reading, frame: { top: frameTop, height }, boxHeight: box });
+      mapTop = step.top;
+      attachedBefore = attachedNow;
+      shownAt.push(frameTop - mapTop);
+      if (step.settled && settledAt === null) settledAt = index;
+    }
+    return { shownAt, settledAt, placeAt: frameTop - following(frameTop) };
+  }
+
+  it('never moves the frame against the hand: pressed near the top and read upwards, it stays near the top', () => {
+    const { shownAt, settledAt } = read(20, -11, 12);
+    // Its place is 300 px down; reading up it only drifts up with following, never down towards it.
+    shownAt.slice(1).forEach((shown, index) => expect(shown).toBeLessThanOrEqual(shownAt[index] + 1e-9));
+    expect(shownAt[shownAt.length - 1]).toBeGreaterThan(0);
+    expect(settledAt).toBeNull();
+  });
+
+  it('read the way it has to go, closes the gap at an even pace no faster than twice the reading, then slows and arrives', () => {
+    const { shownAt, settledAt, placeAt } = read(20, 11, 40);
+    const moves = shownAt.slice(1).map((shown, index) => shown - shownAt[index]);
+    // Always downwards, with the hand; never a jump: at most the reading's own on-screen pace plus SETTLE_RATE × reading.
+    moves.forEach((move) => {
+      expect(move).toBeGreaterThanOrEqual(0);
+      expect(move).toBeLessThanOrEqual(11 * 0.1 + SETTLE_RATE * 11 + 1e-9);
+    });
+    // The first steps are equal; the last ones are smaller.
+    expect(moves[1]).toBeCloseTo(moves[0], 6);
+    expect(moves[25]).toBeLessThan(moves[0] / 4);
+    expect(settledAt).not.toBeNull();
+    expect(settledAt as number).toBeLessThanOrEqual(30);
+    expect(shownAt[shownAt.length - 1]).toBeCloseTo(placeAt, 6);
+  });
+
+  it('pressed near the bottom, it stays there read downwards and comes up read upwards', () => {
+    const downwards = read(480, 11, 12);
+    downwards.shownAt.slice(1).forEach((shown, index) => expect(shown).toBeGreaterThanOrEqual(downwards.shownAt[index] - 1e-9));
+    expect(downwards.settledAt).toBeNull();
+    const upwards = read(480, -11, 40);
+    upwards.shownAt.slice(1).forEach((shown, index) => expect(shown).toBeLessThanOrEqual(upwards.shownAt[index] + 1e-9));
+    expect(upwards.settledAt).not.toBeNull();
+  });
+
+  it('pulls a frame stretched past the bottom edge back a little at a time, not at once', () => {
+    // Longer verses came in: the frame is 160 px and hangs 61 px below the box.
+    const step = settleOffset({ mapTop: 500, attachedBefore: 600, attachedNow: 610, reading: 11, frame: { top: 1011, height: 160 }, boxHeight: box });
+    expect(step.top).toBe(543);
+    expect(1011 + 160 - step.top - box).toBe(28);
+  });
+
+  it('is in place at once when nothing is left to close', () => {
+    expect(settleOffset({ mapTop: 710.4, attachedBefore: 710, attachedNow: 720, reading: 11, frame: { top: 1011, height }, boxHeight: box })).toEqual({ top: 720, settled: true });
+  });
+});
+
+describe('fitPressedFrame', () => {
+  it('shows a frame pressed at the bottom edge whole, leaves one that fits, and keeps the top of a tall one in sight', () => {
+    expect(fitPressedFrame({ top: 1000, height: 100 }, 500, 600)).toBeNull();
+    expect(fitPressedFrame({ top: 1000, height: 100 }, 450, 600)).toBe(500);
+    expect(fitPressedFrame({ top: 1000, height: 700 }, 900, 600)).toBe(1000);
   });
 });

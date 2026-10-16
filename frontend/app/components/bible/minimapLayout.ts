@@ -111,6 +111,57 @@ export function frameOnMap(
   return { top, height: Math.max(6, bottom - top) };
 }
 
+export type MinimapFrame = { top: number; height: number };
+
+/**
+ * HOW A PRESSED FRAME COMES BACK TO ITS PLACE (owner, 2026-10-15: after a press the frame stands
+ * where it was pressed, and a jump to its place "jerks — align it more smoothly"). The frame closes
+ * on the place following the text would give it only while the person reads the way it has to go —
+ * never against the hand: about two thirds of the way per SETTLE_PX of reading, and never faster
+ * than SETTLE_RATE times the reading itself, so a big gap closes at an even pace and then slows.
+ */
+export const SETTLE_PX = 30;
+export const SETTLE_RATE = 2;
+
+export type SettleStep = {
+  /** How far the map is scrolled now. */
+  mapTop: number;
+  /** Where following the text put the map before this step of reading, and where it puts it now. */
+  attachedBefore: number;
+  attachedNow: number;
+  /** This step of reading in map px: + down the book, − up. Taken from the page's own scroll, not
+   * the frame's: the frame moves a verse at a time, a chapter heading at once, and a pace taken from
+   * it would close the gap in jolts. */
+  reading: number;
+  frame: MinimapFrame;
+  boxHeight: number;
+};
+
+export function settleOffset({ mapTop, attachedBefore, attachedNow, reading, frame, boxHeight }: SettleStep): { top: number; settled: boolean } {
+  // drift > 0: the map is ahead of following, the frame stands above its place, and reading down brings it there.
+  const drift = mapTop - attachedBefore;
+  const closing = reading !== 0 && Math.sign(reading) === Math.sign(drift);
+  const closed = closing ? Math.min(Math.abs(drift) * (1 - Math.exp(-Math.abs(reading) / SETTLE_PX)), SETTLE_RATE * Math.abs(reading)) : 0;
+  let top = attachedNow + drift - Math.sign(drift) * closed;
+  // The frame stays whole in the box (one taller than the box keeps its top in sight) — pulled back a
+  // little at a time when longer verses stretch it past an edge, never at a jolt.
+  const lowest = frame.top + frame.height - boxHeight;
+  const whole = lowest > frame.top ? frame.top : Math.min(frame.top, Math.max(lowest, top));
+  const pull = Math.max(4, 3 * Math.abs(reading));
+  top += Math.max(-pull, Math.min(pull, whole - top));
+  return Math.abs(top - attachedNow) < 0.5 ? { top: attachedNow, settled: true } : { top, settled: false };
+}
+
+/**
+ * A frame pressed near the bottom of the box hangs past its edge: the offset that shows it whole —
+ * reached at once, as the answer to the press, not later as a jolt in the middle of reading — or
+ * null when it already shows whole. A frame taller than the box shows its top.
+ */
+export function fitPressedFrame(frame: MinimapFrame, mapTop: number, boxHeight: number): number | null {
+  const overhang = frame.top + frame.height - mapTop - boxHeight;
+  return overhang > 0 ? Math.min(frame.top, mapTop + overhang) : null;
+}
+
 /**
  * How far the map is scrolled. A map taller than its box moves with the frame around what is on
  * screen, as an editor's minimap does: the frame has travelled the same share of the map as of the
