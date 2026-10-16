@@ -222,3 +222,40 @@ Local evidence: the ignored case artifact directory holds `date-removal-record.m
 4. Delete the last preached date; the sermon must remain, with no remaining preached status. Check month/agenda entries and analytics.
 5. On an already loaded screen, delete a disposable date offline and reconnect. Verify one delivery, no resurrection and sibling preservation. Verify full offline reload separately on the deployed service worker; do not inherit the dev acceptance limitation as success.
 6. Inspect phone/tablet/desktop sizes, all three languages and a physical device where available. Remove the disposable fixture and record deployed revision, server outcomes and screenshots.
+
+
+## BUG-20261004-study-built-sermons-old-title
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+The note page and its **Sermons built on this note** block now derive reverse links from `useSermonsDataCollection`. They share the existing engine collection instead of fetching a separate legacy React Query list. `Sermon.sourceNoteIds` remains the relationship owner. Reading starts only when both an owner and an existing note ID are available.
+
+The live baseline used a disposable sermon linked to an existing QA note. Offline, the sermon's own heading changed from **QA linked name before 2026-10-15** to **QA linked name after 2026-10-15**, but the note's link retained the old name. After the change, repeating the same path with **QA linked name verified 2026-10-15** showed that new name immediately on both screens without network. Reconnection acknowledged the rename (revision 4).
+
+Three real-engine regressions were red before the implementation: an offline rename kept the old name; a new reader with an empty React Query cache returned no stored linked sermon; and a legacy list read still ran beside the shared engine collection. All three are green. Existing derivation tests now use the real engine and still verify exact source-note filtering and no read for a new note.
+
+| # | Criterion | Automated evidence | Browser evidence |
+|---|---|---|---|
+| 1 | Current locally submitted title | `useSermonNoteLinks.engineRead.test.tsx`, offline rename red to green | Original offline path repeated; both screens showed the new name. |
+| 2 | Stored list survives a new reader without network | Same suite, engine reopen with empty React Query cache red to green | A fresh page showed the stored linked sermon before a list request. A data-request blocker was installed but intercepted zero requests before the row appeared; this is cache-first evidence, not an observed network-failure test. |
+| 3 | Shared collection, no separate legacy fetch | Same suite: one collection read across three consumers and zero `getSermons` calls | Response observer saw incremental sermon changes and the acknowledged rename/deletion. Billed Firestore reads were not measured. |
+
+Read-cost scope: the old path invoked an owner-wide SDK/server-first sermon list in addition to engine readers. The new consumer shares the existing collection entry and its normal head/change tracking. The regression measures I/O requests through the real collection logic, with I/O replaced by the harness. It does not establish a daily bill or a new per-hour estimate. No private poller or cache mirror was added.
+
+The primary agent personally inspected before/after desktop screenshots and the final 390px properties drawer. The title remained readable, with the same link and metadata presentation. At 834px the saved drawer screenshot captured only its upper content; it is not evidence of a visually inspected linked-title row. These are Chromium viewport checks, not physical-device acceptance. Complete cold application startup without network remains a separate service-worker acceptance item; this fix does not claim to settle it.
+
+The test sermon `79d5cd2b-d4e5-4d4c-8d39-0ecb07f37a75` was deleted after verification (server ACK revision 5, tombstone true). Returning to the existing note showed zero linked sermons and its original title/content. Network and request routing were restored. Intentional offline network errors are part of the recorded test.
+
+Mechanism audit: both reverse-side consumers call the same hook and are fixed together; the shared engine facade, cache, projection and protocol are reused. The forward `useStudyNoteDirectory` reads another collection and has authoritative-missing rules; its behavior is not established or changed by this reverse-sermon-reader replacement. Source-note writes and compatibility-cache publication keep their existing contract.
+
+Gates: targeted 2 suites / 30 tests passed; full Jest 804 suites / 8329 tests passed (3 suites / 17 tests skipped); full TypeScript and ESLint passed (0 errors / 29 inherited warnings). Independent review found no high-confidence issue and repeated all 30 targeted tests. No route/config/server component or UI copy changed, so a per-bug production build/translation run was not required. The final whole-branch build remains a goal gate.
+
+Local evidence: the ignored case artifacts contain `note-sermon-names-record.md`, red/green/full/type/lint logs, `note-sermon-names-browser.json`, screenshots and the final verification record. The committed tests, manifest and bug-ID commit retain the durable trace.
+
+### Production acceptance after authorized merge
+
+1. Verify the deployed revision. With an authorized test account, link a disposable sermon to a test note and load both screens.
+2. Rename the sermon offline and return to the note through its normal source-note link. The note must show the locally saved new name immediately. Reconnect and verify one acknowledged rename.
+3. Reopen the note with cached data and no network. Verify the list and title; record full cold-start/SW behavior separately. Check a second device after the first change arrives.
+4. Observe collection/head/change requests with both note-page consumers mounted. Verify sharing and absence of the old owner-wide query; compare real read usage only with authorized telemetry and comparable activity.
+5. Check the phone properties drawer and desktop sidebar, follow the sermon link, then delete the disposable sermon and verify the reverse link disappears. Record screenshots and server outcomes; remove the fixture.

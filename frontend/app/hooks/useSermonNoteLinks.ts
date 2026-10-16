@@ -7,13 +7,13 @@ import { toast } from 'sonner';
 
 import { useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
-import { getSermons } from '@services/sermon.service';
 import { getStudyNotes } from '@services/studies.service';
 
 import type { Sermon, StudyNote } from '@/models/models';
@@ -138,23 +138,19 @@ export function useSourceNotes(
   }, [ids, notes, loading, ready]);
 }
 
-/** The other direction: sermons whose stored `sourceNoteIds` name this note. */
+/** Reverse links read the same submitted and persisted collection as the sermon screens. */
 export function useSermonsBuiltOnNote(noteId: string | undefined): {
   sermons: Sermon[];
   loading: boolean;
 } {
   const { uid, isAuthLoading } = useResolvedUid();
-  const query = useServerFirstQuery({
-    queryKey: sermonListKey(uid),
-    queryFn: () => (uid ? getSermons(uid) : Promise.resolve([])),
-    enabled: !!uid && !!noteId,
-  });
+  const collection = useSermonsDataCollection(Boolean(uid && noteId));
   const sermons = useMemo(() => {
     if (!noteId) return [];
-    return (query.data ?? []).filter((sermon) => (sermon.sourceNoteIds ?? []).includes(noteId));
-  }, [query.data, noteId]);
+    return collection.sermons.filter((sermon) => (sermon.sourceNoteIds ?? []).includes(noteId));
+  }, [collection.sermons, noteId]);
 
-  return { sermons, loading: isAuthLoading || query.isLoading };
+  return { sermons, loading: isAuthLoading || collection.loading };
 }
 
 /**

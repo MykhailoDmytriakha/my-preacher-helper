@@ -139,24 +139,37 @@ describe('useSourceNotes — what the sermon screen shows', () => {
   });
 });
 
-describe('useSermonsBuiltOnNote — what the note screen shows', () => {
+describe('useSermonsBuiltOnNote - the engine-backed reverse reader', () => {
+  const engineReader = (sermons: Sermon[]) => {
+    const engine = membershipEngineHarness(sermons.map(sermon => ({
+      resource: { collection: 'sermons', id: sermon.id },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+      value: { userId: sermon.userId, title: sermon.title, verse: sermon.verse, date: sermon.date, thoughts: [],
+        ...(sermon.sourceNoteIds ? { sourceNoteIds: sermon.sourceNoteIds } : {}) },
+    })));
+    jest.mocked(createBrowserDataEngine).mockImplementation(engine.createBrowser);
+    const QueryWrapper = wrapper();
+    const Wrapper = ({ children }: { children: React.ReactNode }) =>
+      <QueryWrapper><DataEngineProvider>{children}</DataEngineProvider></QueryWrapper>;
+    return { engine, Wrapper };
+  };
+
   it('finds every sermon that names this note and no others', async () => {
-    mockGetSermons.mockResolvedValue([
-      sermon('s1', ['n1']),
-      sermon('s2', ['n2', 'n1']),
-      sermon('s3', ['n2']),
-      sermon('s4'),
+    const { Wrapper } = engineReader([
+      sermon('s1', ['n1']), sermon('s2', ['n2', 'n1']), sermon('s3', ['n2']), sermon('s4'),
     ]);
-
-    const { result } = renderHook(() => useSermonsBuiltOnNote('n1'), { wrapper: wrapper() });
-
+    const { result } = renderHook(() => useSermonsBuiltOnNote('n1'), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.sermons).toHaveLength(2));
     expect(result.current.sermons.map((s) => s.id)).toEqual(['s1', 's2']);
+    expect(mockGetSermons).not.toHaveBeenCalled();
   });
 
-  it('does not query at all for a note that does not exist yet', () => {
-    renderHook(() => useSermonsBuiltOnNote(undefined), { wrapper: wrapper() });
-
+  it('does not read either collection path for a note that does not exist yet', async () => {
+    const { engine, Wrapper } = engineReader([]);
+    const { result } = renderHook(() => useSermonsBuiltOnNote(undefined), { wrapper: Wrapper });
+    await act(async () => { await settleEngine(); });
+    expect(result.current.sermons).toEqual([]);
+    expect(engine.collectionTransport.list).not.toHaveBeenCalled();
     expect(mockGetSermons).not.toHaveBeenCalled();
   });
 });
