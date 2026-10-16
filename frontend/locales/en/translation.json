@@ -379,6 +379,27 @@
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",
     "changeTranslation": "{{translation}}: choose another translation",
+    "crossRefs": {
+      "title": "Cross-references",
+      "hint": "A number beside a verse: the places the sources agree on",
+      "inWindow": "Also in a passage window",
+      "inWindowHint": "When a passage opens from a sermon, a note or a group",
+      "show": "Show",
+      "main": "Main",
+      "all": "All",
+      "verseRefs": "Cross-references for verse {{verse}}",
+      "chip": "Verse {{verse}}: {{number}} cross-references",
+      "listTitle": "Cross-references for {{place}}",
+      "mainSection": "Main · {{number}}",
+      "othersSection": "Others · {{number}}",
+      "allSection": "All · {{number}}",
+      "noMain": "No main ones: the sources do not agree here.",
+      "sources": "{{count}} independent sources",
+      "sources_one": "{{count}} independent source",
+      "sources_other": "{{count}} independent sources",
+      "backToList": "All cross-references for {{place}}",
+      "open": "Open {{place}}"
+    },
     "translations": {
       "rst": {
         "name": "Синодальный перевод",

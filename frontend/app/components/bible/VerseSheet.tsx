@@ -7,13 +7,16 @@ import { useTranslation } from 'react-i18next';
 
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
+import { CrossReferenceSheet } from './CrossReferenceSheet';
 import { readTranslation } from './translation';
+import { useBookCrossRefs } from './useBookCrossRefs';
 import { passageAway, passageKeys, restingScrollTop, type PassageBox, type SheetReference } from './verseSheetGeometry';
 
 export type { SheetReference } from './verseSheetGeometry';
@@ -66,6 +69,10 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
   // A window like every other: the page under it holds still, Escape closes the topmost window only.
   const layer = useModalLayer({ onClose });
   useFocusTrap(dialogRef);
+  // Cross references here only when the person asked for them in passage windows too; "Open" goes to
+  // the Bible page, whose way back is the screen this window lies over.
+  const crossRefs = useBookCrossRefs(reference.book, reading, state.status === 'ready' ? state.text : null, 'window');
+  const { openReference: openInBible } = useOpenInBible();
   const restedAtRef = useRef<number | null>(null);
 
   const keys = useMemo(() => passageKeys(reference, reading), [reference, reading]);
@@ -202,8 +209,19 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
               {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
               {/* `isolate`: the light of a passage lies under the text and over this card. */}
               <article className="isolate">
-                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} />
+                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
               </article>
+              <CrossReferenceSheet
+                at={crossRefs.openAt}
+                bookId={reference.book}
+                bible={reading}
+                locale={locale}
+                set={crossRefs.set}
+                verseText={crossRefs.verseText}
+                onClose={crossRefs.close}
+                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse })}
+                layerClassName="z-[260]"
+              />
             </>
           ) : state.status === 'loading' ? (
             <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>
