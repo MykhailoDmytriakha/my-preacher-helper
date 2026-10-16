@@ -1,15 +1,14 @@
 'use client';
 
-import { ArrowLeftIcon, ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { ArrowLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
-import { useModalLayer } from '@/hooks/useModalLayer';
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
+
+import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -63,15 +62,6 @@ function passageText(text: BookText | undefined, reference: CrossReference): str
   return reference.toVerse > last ? `${words} …` : words;
 }
 
-function CloseButton({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <button type="button" onClick={onClose} aria-label={t('common.close')} className="-mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800">
-      <XMarkIcon className="h-5 w-5" aria-hidden="true" />
-    </button>
-  );
-}
-
 /** One link: its text, how many independent sources give it, and "Open". */
 function ReferenceDetail({ reference, label, text, place, titleId, onBack, onClose, onOpen }: {
   reference: CrossReference; label: string; text: string | null; place: string; titleId: string;
@@ -85,7 +75,7 @@ function ReferenceDetail({ reference, label, text, place, titleId, onBack, onClo
           <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
           {t('bible.crossRefs.backToList', { place })}
         </button>
-        <CloseButton onClose={onClose} />
+        <SheetCloseButton onClose={onClose} />
       </div>
       <h3 id={titleId} className="font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
       <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</p>
@@ -156,7 +146,7 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
     <>
       <div className="flex items-center justify-between gap-2">
         <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white">{t('bible.crossRefs.listTitle', { place })}</h3>
-        <CloseButton onClose={onClose} />
+        <SheetCloseButton onClose={onClose} />
       </div>
       {verseText ? <p className="mb-2 font-serif text-[15px] leading-snug text-gray-600 dark:text-gray-400">{verseText}</p> : null}
       {loading ? <p className="py-3 text-sm text-gray-600 dark:text-gray-400">{t('common.loading')}</p> : null}
@@ -209,21 +199,6 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
 export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText, onClose, onOpenReference, layerClassName = 'z-[120]' }: CrossReferenceSheetProps) {
   const titleId = useId();
   const [picked, setPicked] = useState<CrossReference | null>(null);
-  const layer = useModalLayer({ onClose, active: Boolean(at) });
-  // The keyboard goes into the window and stays there — over a passage window too, whose own trap
-  // yields to the window above it — and goes back to the chip or number that opened it.
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const isOpen = Boolean(at);
-  useFocusTrap(dialogRef, isOpen);
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const before = document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
-    return () => {
-      if (before?.isConnected) before.focus({ preventScroll: true });
-    };
-  }, [isOpen]);
-
   const placeKey = at ? `${at.chapter}:${at.verse}` : '';
   useEffect(() => setPicked(null), [placeKey]);
 
@@ -237,21 +212,12 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
   );
   const texts = useBookTexts(textBooks, bible);
 
-  if (!at || typeof document === 'undefined') return null;
+  if (!at) return null;
   const place = `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`;
 
-  return createPortal(
-    <div {...layer} className={`fixed inset-0 ${layerClassName} flex items-end justify-center xl:items-start xl:justify-end`}>
-      <button type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} className="absolute inset-0 cursor-default bg-black/30" />
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="relative max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl bg-white px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 shadow-2xl dark:bg-gray-900 md:max-w-xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[24rem] xl:rounded-3xl xl:pb-5 xl:pt-4"
-      >
-        <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-300 xl:hidden dark:bg-gray-600" />
-        {picked ? (
+  return (
+    <ReaderSheet titleId={titleId} onClose={onClose} layerClassName={layerClassName}>
+      {picked ? (
           <ReferenceDetail
             reference={picked}
             label={crossReferenceLabel(picked, bible, locale)}
@@ -276,9 +242,7 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
             onPick={setPicked}
             onClose={onClose}
           />
-        )}
-      </div>
-    </div>,
-    document.body
+      )}
+    </ReaderSheet>
   );
 }
