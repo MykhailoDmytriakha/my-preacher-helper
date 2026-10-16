@@ -17,7 +17,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   { english: 'Numbers', aliases: ['числа', 'книга числа', 'чис'] },
   { english: 'Deuteronomy', aliases: ['второзаконие', 'второзакония', 'книга второзакония', 'втор', 'второзак', 'повторення закону', 'повт'] },
   // Historical
-  { english: 'Joshua', aliases: ['иисус навин', 'книга иисуса навина', 'навин', 'ісус навин', 'і.нав'] },
+  { english: 'Joshua', aliases: ['иисус навин', 'книга иисуса навина', 'навин', 'нав', 'ісус навин', 'і.нав'] },
   { english: 'Judges', aliases: ['судьи', 'книга судей', 'судья', 'суд', 'суддів'] },
   { english: 'Ruth', aliases: ['руфь', 'книга руфь', 'руф', 'рут'] },
   // Note: RU 1-2 Царств = EN 1-2 Samuel, UK 1-2 Самуїлова

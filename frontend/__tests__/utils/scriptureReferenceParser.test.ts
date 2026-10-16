@@ -106,6 +106,12 @@ describe('referenceParser', () => {
     expect(parseReferenceText('Пс 50:12')).toEqual({ book: 'Psalms', chapter: 50, fromVerse: 12 });
   });
 
+  // BUG-20261015-joshua-short-form-not-read: "Нав. 2:18" sat as text in a sermon plan.
+  it('reads Joshua by its Synodal short form "Нав."', () => {
+    expect(parseReferenceText('Нав. 2:18', { locale: 'ru' })).toEqual({ book: 'Joshua', chapter: 2, fromVerse: 18 });
+    expect(parseReferenceText('Нав 6:20')).toEqual({ book: 'Joshua', chapter: 6, fromVerse: 20 });
+  });
+
   it('reads a Psalm named by the word people say, "Псалом 22"', () => {
     expect(parseReferenceText('Псалом 22')).toEqual({ book: 'Psalms', chapter: 22 });
     expect(parseReferenceText('псалом 90:1', { locale: 'uk' })).toEqual({ book: 'Psalms', chapter: 90, fromVerse: 1 });
