@@ -6,7 +6,7 @@ jest.unmock('remark-gfm');
 jest.unmock('rehype-raw');
 jest.unmock('rehype-sanitize');
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 
@@ -15,6 +15,8 @@ import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key }),
 }));
+
+jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn(() => new Promise(() => undefined)) }));
 
 jest.mock('@/hooks/useConductTimer', () => ({
   useConductTimer: () => ({ elapsed: 0, timeLeft: null, isOvertime: false, isWarning: false }),
@@ -42,4 +44,31 @@ it('shows the block content as formatted text: heading, bold and list', () => {
   expect(screen.getByText('Pray').tagName).toBe('STRONG');
   expect(screen.getAllByRole('listitem').map((item) => item.textContent)).toEqual(['first', 'second']);
   expect(screen.queryByText(/\*\*Pray\*\*/)).not.toBeInTheDocument();
+});
+
+// A leader writes the passages into the block's text, Markdown and all: each is a link where it
+// stands, drawn as the sermon's verse is, and opens over the meeting. Prose stays prose.
+it('makes every reference in the block\'s Markdown a link in place that opens over the meeting', () => {
+  render(
+    <ConductBlock
+      flowItem={flowItem}
+      template={{ ...template, content: 'Прочитайте **Рим 12:1–2** и Рим 13. Даниил 3 года молился.\n\n- Бытие 13:1–12.\n\n`Рим 8:28`' }}
+      index={0} total={1} isPaused={false}
+      onPause={jest.fn()} onResume={jest.fn()} globalTimeLeft={null} globalIsOvertime={false}
+      initialElapsed={0} onTimeRecorded={jest.fn()} onPrev={jest.fn()} onNext={jest.fn()}
+      onPeek={jest.fn()} onCompleteAll={jest.fn()}
+    />
+  );
+  const romans = screen.getByRole('button', { name: 'Рим 13' });
+  expect(romans.closest('p')).toHaveTextContent('Прочитайте Рим 12:1–2 и Рим 13. Даниил 3 года молился.');
+  expect(romans).toHaveClass('underline');
+  // Inside bold and inside a list item too; never inside code, never a count.
+  expect(screen.getByRole('button', { name: 'Рим 12:1–2' }).closest('strong')).not.toBeNull();
+  expect(screen.getByRole('button', { name: 'Бытие 13:1–12' }).closest('li')).not.toBeNull();
+  expect(screen.queryByRole('button', { name: 'Рим 8:28' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Даниил/ })).not.toBeInTheDocument();
+  // No chip repeats them under the text.
+  expect(screen.getAllByRole('button', { name: /^(Рим|Бытие) / })).toHaveLength(3);
+  fireEvent.click(romans);
+  expect(screen.getByRole('dialog', { name: 'Рим 13' })).toBeInTheDocument();
 });

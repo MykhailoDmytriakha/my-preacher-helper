@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { useRef, useState } from "react";
 
 import ScriptureOpening from "@/components/common/ScriptureOpening";
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import SourceNoteChips from "@/components/sermon/SourceNoteChips";
-import { useAppLocale } from "@/hooks/useAppLocale";
+import { useOpenInBible } from "@/hooks/useOpenInBible";
 import { leadingReference } from "@/utils/bibleLink";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
@@ -17,6 +16,7 @@ import { hasPlan } from "@/utils/sermonPlanAccess";
 import { PlanModeSwitch } from "./PlanModeSwitch";
 
 import type { CombinedPlan } from "./types";
+import type { SheetReference } from "@/components/bible/VerseSheet";
 import type { Sermon } from "@/models/models";
 
 /**
@@ -83,6 +83,8 @@ export interface PlanPageHeaderProps {
   onLeave?: React.MouseEventHandler<HTMLAnchorElement>;
   onSwitched?: (mode: PlanEditorMode) => void;
   beforeSwitch?: () => Promise<boolean>;
+  /** How the sermon's verse opens when the page decides it — over the plan while a point is being edited. */
+  onOpenReference?: (reference: SheetReference) => void;
   onRequestPlanOverlay: () => void;
   onRequestPreachingMode: () => void;
   onStartPreachingMode: () => void;
@@ -106,6 +108,7 @@ export default function PlanPageHeader({
   onLeave,
   onSwitched,
   beforeSwitch,
+  onOpenReference,
   onRequestPlanOverlay,
   onRequestPreachingMode,
   onStartPreachingMode,
@@ -114,18 +117,8 @@ export default function PlanPageHeader({
   readOnly = false,
 }: PlanPageHeaderProps) {
   const sectionMenuRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const pathname = usePathname();
-  const query = useSearchParams()?.toString();
-  const { locale } = useAppLocale();
-  // The way back is this very screen, its query too: "?source=note" is what keeps the note editor open.
-  const here = `${pathname ?? `/sermons/${sermonId}/plan`}${query ? `?${query}` : ""}`;
-  // Leaving saves the cells being edited first, as switching editors does, and stays put when the save refuses.
-  const openInBible = (href: string) => {
-    if (!beforeSwitch) { router.push(href); return; }
-    // A save that fails stays put like one that refuses; the editor says why.
-    void beforeSwitch().then((saved) => { if (saved) router.push(href); }, () => undefined);
-  };
+  // Leaving for the Bible saves the cells being edited first, as switching editors does.
+  const { here, locale, openHref: openInBible } = useOpenInBible(beforeSwitch, `/sermons/${sermonId}/plan`);
   const [showSectionMenu, setShowSectionMenu] = useState(false);
 
   const noContentText = t("plan.noContent");
@@ -188,7 +181,7 @@ export default function PlanPageHeader({
               <ScriptureOpening
                 text={sermon.verse}
                 reference={leadingReference(sermon.verse, { locale, from: here })}
-                onOpen={openInBible}
+                onOpen={(href, opening) => (onOpenReference ? onOpenReference({ ...opening.reference, label: (sermon.verse ?? "").slice(0, opening.end) }) : openInBible(href))}
               />
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t("common.scripture")}</p>

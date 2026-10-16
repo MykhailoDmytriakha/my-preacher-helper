@@ -140,6 +140,8 @@ describe('referencesInText — every reference a text names', () => {
     expect(found('Песнь Песней 2:1 и Псалом 22')).toEqual([['Песнь Песней 2:1', 'Song of Solomon 2:1'], ['Псалом 22', 'Psalms 22']]);
     // The number after a book of one chapter is its verse.
     expect(found('Иуд 3.')).toEqual([['Иуд 3', 'Jude 1:3']]);
+    // BUG-20261015-joshua-short-form-not-read.
+    expect(found('Раав и алая верёвка: Нав. 2:18.')).toEqual([['Нав. 2:18', 'Joshua 2:18']]);
   });
 
   it('reads a reference as the app prints it, the book glued to its numbers', () => {

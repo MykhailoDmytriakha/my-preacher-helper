@@ -61,3 +61,22 @@ it('uses plain text selection if formatted selection is refused', async () => {
   expect(document.body.children).toHaveLength(0);
   expect(window.getSelection()?.rangeCount).toBe(0);
 });
+
+// A plan drawn with its references as links copies them as words: a document gets text, not buttons.
+it('copies reference links as their words and leaves the page as it was', async () => {
+  const write = jest.fn().mockResolvedValue(undefined);
+  const item = jest.fn();
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+  Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: item });
+  const source = document.createElement('div');
+  source.innerHTML = '<p>Потоп (<button type="button" data-scripture-link="">Быт. 6:13</button>).</p>';
+  try {
+    await copyFormattedFromElement(source);
+    const blob = item.mock.calls[0][0]['text/html'] as Blob;
+    const html = await new Promise<string>((resolve) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob); });
+    expect(html).toBe('<p>Потоп (Быт. 6:13).</p>');
+    expect(source.querySelector('button')).not.toBeNull();
+  } finally {
+    Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: undefined });
+  }
+});
