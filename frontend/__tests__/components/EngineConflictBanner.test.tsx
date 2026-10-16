@@ -431,6 +431,20 @@ describe('a group\'s refused screen draft shows every word the person changed', 
     expect(shown).not.toMatch(/flow-1|templateId/);
   });
 
+  it('shows a status choice with the same label as the group screen', async () => {
+    const shown = await refusedGroupDraft({ status: 'completed' });
+    expect(shown).toContain('legacyRecovery.field.status: workspaces.series.form.statuses.completed');
+    expect(shown).not.toMatch(/status: completed/);
+  });
+
+  it('labels changed choices inside a block without rewriting its authored words', async () => {
+    const shown = await refusedGroupDraft({ templates: [{ ...prayer, title: 'draft', status: 'filled', type: 'custom' }] });
+    expect(shown).toContain('draft');
+    expect(shown).toContain('groupFlow.status.filled');
+    expect(shown).toContain('groupFlow.types.custom');
+    expect(shown).not.toMatch(/\nfilled|\ncustom/);
+  });
+
   it('never hides a changed item it has no words for: it is shown as stored', async () => {
     const shown = await refusedGroupDraft({ flow: [{ ...step, instanceNotes: undefined, durationMin: 12 }] });
     expect(shown).toMatch(/12/);

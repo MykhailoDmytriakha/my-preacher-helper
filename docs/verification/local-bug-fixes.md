@@ -109,3 +109,38 @@ Evidence is retained in the ignored case artifact directory: `dates-locale-red.l
 4. Check dated and undated groups at 320/390/640/834/1280px: complete day/month/year, no clipping, unchanged meeting selection and start controls.
 5. Use a test series with startDate, an enabled deployed build timestamp, and a safe pre-existing archived-copy fixture where available. Verify these three labels explicitly; they had the local live-fixture limits listed above.
 6. Repeat on an already loaded screen offline, restore connectivity, and record the deployed revision, screenshots and outcomes. Production acceptance remains pending until executed.
+
+## BUG-20261013-refused-thoughts-notice-shows-raw-data
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+Readable refused drafts now use the same labels as the document screen for known status, type and other choices. `utils/storedFieldValue.ts` owns this display rule by collection and schema path. It does not translate an arbitrary matching word: a title, paragraph, plan cell or unknown choice stays verbatim. It produces a display copy, never a storage update. The banner compares raw values first, then labels scalar fields, changed-item words and structured fallbacks. A language change refreshes its local listing without waiting for the five-second poll.
+
+The same formatter covers legacy-copy differences, their copied device text and readable content when no comparison is available. Raw details and JSON downloads retain the original data. The new series-kind labels complete an existing screen lookup; the type field name now uses the shared field-label mechanism.
+
+On base `f0ff3427`, three behavioral component regressions failed before production edits: scalar group status, a changed block's status/type, and legacy-copy status differences. Review then found a missing legacy plan-mode mapping; a fourth consumer regression failed on raw manual/ai before that mapping, then passed. Utility tests use all three real locale files and check known screen choices, nested values, authors' words, unknown values and unchanged inputs.
+
+| Mechanism consumer | Coverage and boundary |
+|---|---|
+| Banner scalar values and nested items | Component regressions; actual localhost refused group status, copy and resolution flow |
+| Legacy differences, copied device text and readable fallback | Mounted recovery suite and shared formatter; no artificial legacy archive was injected into live storage |
+| Schema choice paths | Groups, series, prayers, study notes/materials, councils, sermon dates/goals, plan mode, scratch section, narration source and settings |
+| Raw evidence and generated metadata | Raw JSON/details/download retain identifiers. Generated audio-fragment sectionId/kind/role and provider/model identifiers remain diagnostic values |
+| Server, offline journal, data writers and resolution rules | Unchanged; only the two client presentation consumers use the formatter |
+
+Localhost acceptance used the existing test account, Russian UI and an en-US Chromium browser. A targeted window.fetch stub refused exactly one QA group's status change without forwarding it to the API. On the unchanged implementation the groups-list notice showed the raw active value. Afterward it showed the localized label, survived reload, and changed en to uk to ru through the normal menu in 118/147/109 ms observations. The copied text matched the Russian notice. The already loaded notice retained its words offline; connectivity was restored in a finally block.
+
+The primary agent visually inspected before and final 390/1280px screenshots. Browser geometry also passed at 390/834/1280px: all notice text and controls fit. There were no application console errors. Taking the server version removed only the synthetic refused draft; after reload the QA group was again a draft and no notice returned. The language was restored to Russian and the fetch override was gone. These are Chromium viewport checks, not physical-device acceptance.
+
+Gates: full Jest passed 802 suites / 8317 tests (3 suites / 17 tests skipped), targeted 121 tests passed, translations passed 8 tests, TypeScript passed, and ESLint passed with 0 errors and 29 inherited warnings. One full Jest run force-exited a worker at teardown while exiting 0; the targeted suites repeated with --detectOpenHandles and ended normally. The cause of that one full-run warning was not isolated. A production build is not a per-bug gate for this client-only display change; the complete branch build remains required at final acceptance.
+
+Evidence is retained under the ignored case artifact directory as refused-values logs, screenshots, measurements, source hashes and verification JSON. This manifest, tests and the bug-ID commit retain the durable Git trace.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision contains the fix; use an authorized QA account and a disposable test document.
+2. Reproduce a controlled refused status change with delivery intercepted before it reaches the database. Leave its screen and check the notice against the status label on the document screen.
+3. Switch en to uk to ru, copy the draft, reload, and repeat on an already loaded screen offline. Restore language and connectivity.
+4. Check a changed group block and a safe pre-existing legacy copy with status/plan-mode differences; check readable labels and original raw details separately.
+5. Check 390/834/1280px. Take the stored version of the synthetic draft, reload and verify that only that draft was cleared and test content stayed intact.
+6. Record deployed revision, screenshots and outcomes. Production verification remains pending until these steps run.

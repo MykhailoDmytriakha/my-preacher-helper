@@ -17,6 +17,8 @@ Every new `t('key')` goes into all three files frontend/locales/{en,ru,uk}/trans
 - Export screens and the exported document text go through i18n as well — `frontend/app/utils/exportContent.ts` calls `i18n.t(key, 'English fallback')`, so tests without resources still read. A date inside an export uses the app locale, never a hard-coded language.
 - Promoting a page to a default route: add a full en/ru/uk parity test in the same change, like the `dashboardHome` test in `frontend/__tests__/locales/translationKeyCoverage.test.ts` (`collectLeafPaths` compares leaf paths). Without it the page silently ships English-only sample copy.
 
+- Readable document differences and refused drafts use `utils/storedFieldValue.ts` with collection-qualified schema paths. Reuse the actual screen choice keys. Never translate arbitrary matching strings: an authored title or plan cell saying `draft` must stay exact. `EngineConflictBanner` applies it after raw change detection; `LegacyQueryRecovery` uses it for readable values and difference clipboard text. Raw evidence/details/downloads stay exact. Add each new user-choice schema path with all three locale checks.
+
 ## Why
 
 - 2026-02-23: duplicate keys were recorded as a webpack parse error; the build actually accepts them and drops the earlier value without a word, which is why uniqueness is on you.

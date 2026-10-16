@@ -59,6 +59,7 @@
       "studyNotes": "Study note"
     },
     "field": {
+      "type": "Type",
       "name": "Name",
       "title": "Title",
       "verse": "Verse",
@@ -2814,6 +2815,11 @@
   },
   "workspaces": {
     "series": {
+      "kind": {
+        "sermon": "Sermons",
+        "group": "Groups",
+        "mixed": "Sermons and groups"
+      },
       "badge": "Work in progress",
       "title": "Series workspace",
       "description": "Organize upcoming sermon series, attach resources, and keep your team aligned.",

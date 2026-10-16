@@ -11,6 +11,7 @@ import { getCookieLanguage } from '@/services/userSettings.service';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { answerWithin } from '@/utils/deviceStorage';
 import { fieldLabel } from '@/utils/storedFieldLabel';
+import { storedFieldValue } from '@/utils/storedFieldValue';
 import { DEFAULT_LANGUAGE } from '@locales/constants';
 import { i18n } from '@locales/i18n';
 
@@ -197,7 +198,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
   const copyFromDevice = (copy: LegacyQueryCopy) => {
     const differences = current?.comparisons[copy.id]?.differences ?? [];
     void copyToClipboard(differences.length
-      ? differences.map(entry => `${fieldName(entry.field)}: ${shown(entry.device)}`).join('\n\n')
+      ? differences.map(entry => `${fieldName(entry.field)}: ${shown(entry.device, copy.collection, entry.field)}`).join('\n\n')
       : copy.raw);
   };
   const saveFile = (text: string, name: string) => {
@@ -268,7 +269,8 @@ function useCopyFormatting() {
   }), [i18n.language]);
   const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');
   const fieldName = (field: string) => fieldLabel(t, field);
-  const shown = (value: unknown): string => {
+  const shown = (raw: unknown, collection: string, field: string): string => {
+    const value = storedFieldValue(t, collection, field, raw);
     if (value === undefined || value === null) return t('legacyRecovery.absent');
     if (typeof value === 'string') return value.trim() ? value : t('legacyRecovery.empty');
     if (typeof value === 'number' || typeof value === 'boolean') return String(value);
@@ -283,10 +285,10 @@ function useCopyFormatting() {
 }
 
 /** What a copy holds, readable, bookkeeping hidden: an operation's variables, else the whole copy. */
-function copyContent(raw: string, operation: boolean): string {
+function copyContent(raw: string, operation: boolean, collection: string, t: (key: string) => string): string {
   try {
     const parsed = JSON.parse(raw) as { state?: { variables?: unknown } };
-    return JSON.stringify(forDisplay(operation ? parsed.state?.variables ?? parsed : parsed), null, 2);
+    return JSON.stringify(forDisplay(storedFieldValue(t, collection, '', operation ? parsed.state?.variables ?? parsed : parsed)), null, 2);
   } catch { return raw; }
 }
 
@@ -336,7 +338,7 @@ function CopyRow({ copy, comparison, busy, onRemove, onCopy, onDownload }: {
         <dt>{onServer}</dt>
         <dd>{serverLine}</dd>
       </dl>
-      {diffShown ? <CopyDifferences differences={comparison.differences} /> : <CopyContent copy={copy} comparison={comparison} />}
+      {diffShown ? <CopyDifferences collection={copy.collection} differences={comparison.differences} /> : <CopyContent copy={copy} comparison={comparison} />}
       <details className="mt-2">
         <summary className="cursor-pointer text-xs text-gray-600 underline-offset-2 hover:underline dark:text-gray-400">{t('legacyRecovery.rawData')}</summary>
         <pre className={`mt-1 ${CONTENT}`}>{copy.raw}</pre>
@@ -372,13 +374,13 @@ function CopyContent({ copy, comparison }: { copy: LegacyQueryCopy; comparison: 
       {operation && <p className="text-gray-700 dark:text-gray-300">{t('legacyRecovery.operationNote')}</p>}
       {comparison?.kind === 'unreadable' && <p className="text-gray-700 dark:text-gray-300">{t('legacyRecovery.unreadableNote')}</p>}
       <p className="text-xs text-gray-600 dark:text-gray-400">{t(operation ? 'legacyRecovery.operationContent' : 'legacyRecovery.copyContent')}</p>
-      <pre className={CONTENT}>{copyContent(copy.raw, operation)}</pre>
+      <pre className={CONTENT}>{copyContent(copy.raw, operation, copy.collection, t)}</pre>
     </div>
   );
 }
 
 /** The differing fields, as a diff: the device's side goes when the server is kept, the server's stays. */
-function CopyDifferences({ differences }: { differences: LegacyCopyComparison['differences'] }) {
+function CopyDifferences({ differences, collection }: { differences: LegacyCopyComparison['differences']; collection: string }) {
   const { t } = useTranslation();
   const { fieldName, shown, exact } = useCopyFormatting();
   const onDevice = t('legacyRecovery.onDevice'), onServer = t('legacyRecovery.onServer');
@@ -386,7 +388,7 @@ function CopyDifferences({ differences }: { differences: LegacyCopyComparison['d
     <div className="mt-2 space-y-2">
       <p className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('legacyRecovery.differencesTitle')}</p>
       {differences.map(entry => {
-        let device = shown(entry.device), server = shown(entry.server);
+        let device = shown(entry.device, collection, entry.field), server = shown(entry.server, collection, entry.field);
         if (device === server) { device = exact(entry.device); server = exact(entry.server); }
         return (
           <div key={entry.field} className="space-y-1">

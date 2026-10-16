@@ -12,6 +12,7 @@ import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 import { fieldLabel } from '@/utils/storedFieldLabel';
+import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import type { EditorRecord } from '@/data-engine/controller';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
@@ -61,6 +62,7 @@ const show = (value: unknown): string => {
   return JSON.stringify(value, null, 2);
 };
 type Item = Record<string, unknown> & { id: string };
+type DisplayValue = (scope: string, field: string, value: unknown) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 /** Fields that name an item first, when it has them; any other words come after. */
 const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
@@ -68,10 +70,10 @@ const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
  * What the person wrote in one item, field by field: text, a list of short texts (questions,
  * references), never an id, a link to another item or a moment written down by the app.
  */
-function itemWords(item: Item): [string, string][] {
+function itemWords(item: Item, scope: string, display: DisplayValue): [string, string][] {
   const words = (field: string, value: unknown): string => {
     if (field === 'id' || /Ids?$/.test(field) || BOOKKEEPING.has(field)) return '';
-    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : value.trim();
+    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : String(display(scope, field, value)).trim();
     return Array.isArray(value) && value.every(entry => typeof entry === 'string') ? value.join(', ') : '';
   };
   const fields = [...NAMING_FIELDS.filter(field => field in item), ...Object.keys(item).filter(field => !NAMING_FIELDS.includes(field))];
@@ -81,10 +83,10 @@ function itemWords(item: Item): [string, string][] {
  * One changed item in words: the words that changed, with its name first when the name stayed;
  * just its name when only its place or links changed. Null when it has no words at all.
  */
-function changedItem(item: Item, before: Item | undefined): string | null {
-  const words = itemWords(item);
+function changedItem(item: Item, before: Item | undefined, scope: string, display: DisplayValue): string | null {
+  const words = itemWords(item, scope, display);
   if (!words.length) return null;
-  const was = new Map(before ? itemWords(before) : []);
+  const was = new Map(before ? itemWords(before, scope, display) : []);
   const changed = words.filter(([field, text]) => was.get(field) !== text);
   const [name] = words;
   if (!changed.length) return name[1];
@@ -94,21 +96,21 @@ function changedItem(item: Item, before: Item | undefined): string | null {
  * A list of items with ids reads as the words of the items this version added or changed — never
  * their ids, positions or links, and never the items it left as they were
  * (BUG-20261013-refused-thoughts-notice-shows-raw-data). An item changed without any words is
- * never hidden: then the whole list is shown as stored, as is any other list.
+ * never hidden: then the whole structure is shown, with known choices labelled as on screen.
  */
-const showList = (value: unknown[], base: unknown): string => {
-  if (!value.every(isItem)) return show(value);
+const showList = (value: unknown[], base: unknown, scope: string, field: string, display: DisplayValue): string => {
+  if (!value.every(isItem)) return show(display(scope, field, value));
   const before = new Map((Array.isArray(base) ? base.filter(isItem) : []).map(item => [item.id, item]));
   const changed = value.filter(item => JSON.stringify(before.get(item.id)) !== JSON.stringify(item))
-    .map(item => changedItem(item, before.get(item.id)));
-  return changed.includes(null) ? show(value) : changed.join('\n\n');
+    .map(item => changedItem(item, before.get(item.id), `${scope}.${field}`, display));
+  return changed.includes(null) ? show(display(scope, field, value)) : changed.join('\n\n');
 };
 /** Every field a version changed against its base, as "field: value" — steps, tags and structure included. */
-function changedText(value: DocumentData | null | undefined, base: DocumentData | null | undefined, name: (field: string) => string): string {
+function changedText(value: DocumentData | null | undefined, base: DocumentData | null | undefined, name: (field: string) => string, scope: string, display: DisplayValue): string {
   if (!value) return '';
   return Object.keys(value).filter(field => !BOOKKEEPING.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
     .map(field => {
-      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field]) : show(value[field]);
+      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display) : show(display(scope, field, value[field]));
       return shown ? `${name(field)}: ${shown}` : '';
     }).filter(Boolean).join('\n\n');
 }
@@ -141,7 +143,7 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
  * decided, the draft stops waiting (`reconcileRecoveryRecord`) and the entry goes
  * (BUG-20260813-late-refusal-silent-after-navigation).
  */
-function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[], name: (field: string) => string): Waiting[] {
+function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
   // A screen's draft is listed for an ANSWER the server gave; one waiting only on a conflict seen
@@ -157,8 +159,8 @@ function waitingDocuments(records: readonly { record: EditorRecord }[], journal:
       const { checkpoint } = drafts[0];
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
       documents.push({ resource, kind: kindOf(drafts, refused), screen,
-        mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name)).filter(Boolean))],
-        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name) });
+        mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
+        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display) });
     }
   }
   return documents;
@@ -180,7 +182,7 @@ export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
 }
 
 function EngineConflicts({ pollMs }: { pollMs: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { browser, owner } = useDataEngine();
   const actions = useDocumentActions();
   const { copyToClipboard } = useClipboard({
@@ -197,12 +199,15 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const fieldNameRef = useRef((field: string) => fieldLabel(t, field));
   fieldNameRef.current = (field: string) => fieldLabel(t, field);
 
+  const displayRef = useRef<DisplayValue>((scope, field, value) => storedFieldValue(t, scope, field, value));
+  displayRef.current = (scope, field, value) => storedFieldValue(t, scope, field, value);
+
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     if (!browser || !owner) { setWaiting([]); return; }
     try {
       const [records, journal] = await Promise.all([browser.engine.listRecoverable(), browser.engine.listPending()]);
-      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current).map(async entry => (
+      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async entry => (
         entry.screen ? { ...entry, formWork: await browser.engine.formWorkPending(entry.resource),
           decidable: await browser.engine.screenDecides(entry.resource), heldOpen: await browser.engine.answerHeldOpen(entry.resource) } : entry)));
       // A form's answer is resolved by its form, as it always was; it is not said here.
@@ -224,7 +229,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     // short clock catches it too. It reads this device's IndexedDB only — no database reads.
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, pollMs);
     return () => { stop(); window.clearInterval(timer); };
-  }, [browser, refresh, pollMs]);
+  }, [browser, refresh, pollMs, i18n?.language]);
 
   // A screen's draft is not shown on its screen when the editor open there holds the answer: that
   // screen's status already says it, once. One opened before the request existed holds nothing.

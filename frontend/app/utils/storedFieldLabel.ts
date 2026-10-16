@@ -5,7 +5,7 @@
  * as stored.
  */
 const NAMED_FIELDS = new Set(['title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
-  'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
+  'type', 'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
   // Every other field the person writes in councils, groups, series, sermons, prayers and study notes (models.ts).

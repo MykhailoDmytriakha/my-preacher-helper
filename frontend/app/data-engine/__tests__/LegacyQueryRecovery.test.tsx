@@ -165,6 +165,34 @@ describe('legacy cache preservation UI', () => {
     expect(within(row).queryByText('legacyRecovery.field.title')).not.toBeInTheDocument();
   });
 
+  it('uses screen labels for status choices in differences and copied text while retaining the raw evidence', async () => {
+    const device = { id: 's1', userId: 'owner', title: 'Series', status: 'draft', updatedAt: '2026-09-01T00:00:00.000Z' };
+    mockServerCopies.set('series/s1', { ...device, status: 'active' });
+    const copy = rowCopy('status-copy', device);
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(screen.getByText(/workspaces\.series\.form\.statuses\.draft/)).toBeVisible();
+    expect(screen.getByText(/workspaces\.series\.form\.statuses\.active/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.copyDevice' }));
+    expect(mockCopy).toHaveBeenCalledWith('legacyRecovery.field.status: workspaces.series.form.statuses.draft');
+    expect(screen.getByText(copy.raw)).toBeInTheDocument();
+  });
+
+  it('labels a plan mode in legacy differences without hiding the raw version', async () => {
+    const device = { id: 's1', userId: 'owner', title: 'Plan', planMode: 'manual' };
+    mockServerCopies.set('sermons/s1', { ...device, planMode: 'ai' });
+    const copy = { ...rowCopy('mode-copy', device), collection: 'sermons' };
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([copy]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(screen.getByText(/plan\.modeManual/)).toBeVisible();
+    expect(screen.getByText(/plan\.modeFromThoughts/)).toBeVisible();
+    expect(screen.getByText(copy.raw)).toBeInTheDocument();
+  });
+
   it('names settings and every changed user preference with localized recovery labels', async () => {
     const fields = ['language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
       'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
