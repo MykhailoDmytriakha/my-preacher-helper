@@ -1,4 +1,5 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
+import { isServiceOrderCatalogKey, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
@@ -147,7 +148,10 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
       || (['sermons', 'groups'].includes(confirmed.resource.collection) && (draft.seriesId != null || draft.seriesPosition != null))) {
       return failure('Edit membership through its material or series', 'relation-owner-required');
     }
-    prepared = { command: { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
+    const seed = confirmed.resource.collection === 'serviceOrders' && isServiceOrderCatalogKey(draft.catalogKey)
+      && serviceOrderSeedCycle(owner, draft.catalogKey, confirmed.resource.id) !== null;
+    prepared = { command: seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
+      : { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
   } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets);
   return { ...prepared, command: copy(validateCommand(prepared.command)) };
 }

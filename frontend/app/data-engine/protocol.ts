@@ -1,4 +1,5 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
+import { isServiceOrderCatalogKey, isServiceOrderSeedTarget, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
 import { validateResourceDocument } from './resourceSchemas';
 import { preservesSermonLinks, scratchConsumptionConflicts } from './sermonIntegrity';
@@ -119,6 +120,9 @@ export function validateCommand(input: unknown): DataCommand {
 
 function validateCreate(command: Extract<DataCommand, { kind: 'create' }>, policy: ReturnType<typeof getResourcePolicy>): void {
     if (command.generation !== null || !object(command.value)) fail('Invalid create');
+    if (command.resource.collection === 'serviceOrders' && isServiceOrderSeedTarget(command.resource.id)
+      && (!isServiceOrderCatalogKey(command.value.catalogKey)
+        || serviceOrderSeedCycle(command.owner, command.value.catalogKey, command.resource.id) === null)) fail('Reserved service-order seed identity');
     for (const key of Object.keys(command.value)) {
       if (key === 'userId' && policy.ownerField === 'userId' && command.value[key] === command.owner) continue;
       if (!policy.writableFields.includes(key)) fail(`Field is not writable: ${key}`);
@@ -174,8 +178,18 @@ function validateCouncilCreation(command: Extract<DataCommand, { relation: 'coun
     || !equalValues(edit.create.topics, edit.afterTopics)) fail('Invalid council creation');
 }
 
+function validateServiceOrderSeed(command: Extract<DataCommand, { relation: 'service-order-seed' }>): void {
+  if (command.resource.collection !== 'serviceOrders' || !object(command.value) || command.value.userId !== command.owner
+    || !isServiceOrderCatalogKey(command.value.catalogKey)
+    || serviceOrderSeedCycle(command.owner, command.value.catalogKey, command.resource.id) === null) fail('Invalid service-order seed');
+  validateCreate({ ...command, kind: 'create' }, getResourcePolicy('serviceOrders'));
+}
+
 function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): void {
-  if (command.relation === 'series-member-create') return validateSeriesMemberCreation(command);
+  switch (command.relation) {
+    case 'service-order-seed': return validateServiceOrderSeed(command);
+    case 'series-member-create': return validateSeriesMemberCreation(command);
+  }
   const ids = (value: unknown) => Array.isArray(value) && value.length <= 100
     && value.every(isValidIdentifier) && new Set(value).size === value.length;
   const generation = (value: unknown) => value === null || isValidIdentifier(value);

@@ -1,4 +1,5 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
+import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 
 import { validCouncilCarry } from './councilCarryContent';
@@ -9,7 +10,7 @@ import type { CommandResult, ConflictDetail, DataCommand, DocumentData, Json, Re
 import type { SeriesItem } from '@/models/models';
 
 export { MAX_RELATION_RESOURCES } from './protocol';
-export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId'; operator: '==' | 'array-contains'; value: string }
+export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' | 'catalogKey'; operator: '==' | 'array-contains'; value: string }
 export interface RelationReader {
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
@@ -265,6 +266,28 @@ class RelationPlanner {
     }
   }
 
+  /** Guard old generic creates too: different client IDs cannot name the same live standard rite. */
+  private async uniqueServiceOrder(value: DocumentData): Promise<void> {
+    if (!isServiceOrderCatalogKey(value.catalogKey)) return;
+    const matching = await this.list('serviceOrders', { field: 'catalogKey', operator: '==', value: value.catalogKey });
+    if (matching.some(snapshot => snapshot.resource.id !== this.primary.resource.id && snapshot.value !== null)) fail('catalog-entry-exists');
+  }
+
+  private async seedServiceOrder(command: Extract<DataCommand, { relation: 'service-order-seed' }>): Promise<CommandResult | undefined> {
+    validateResourceDocument('serviceOrders', command.value, { kind: 'create' });
+    if (this.primary.metadata?.deleted) return { kind: 'deleted', operationId: command.operationId, snapshot: this.primary };
+    await this.uniqueServiceOrder(command.value);
+    if (this.primary.value) {
+      if (this.primary.value.catalogKey !== command.value.catalogKey) fail('catalog-identity-mismatch');
+      // A new receipt proves this operation; all authored fields and recency come from the stored rite.
+      this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.primary.value, command.operationId, []));
+    } else {
+      const result = applyCommand({ ...command, kind: 'create' }, this.primary);
+      if (result.kind !== 'acknowledged') return result;
+      this.writes.set(key(this.primary.resource), result.snapshot);
+    }
+  }
+
   private guardOrdinary(command: Exclude<DataCommand, { kind: 'relation' }>): void {
     const collection = command.resource.collection;
     if (command.kind === 'create') {
@@ -403,6 +426,7 @@ class RelationPlanner {
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {
     this.guardOrdinary(command);
+    if (command.kind === 'create' && command.resource.collection === 'serviceOrders') await this.uniqueServiceOrder(command.value);
     const effective = command.kind === 'create' && command.resource.collection === 'series'
       ? { ...command, value: { ...command.value, ...seriesFields(currentItems(command.value)) } } : command;
     const result = applyCommand(effective, this.primary);
@@ -416,7 +440,9 @@ class RelationPlanner {
     if (key(this.command.resource) !== key(this.primary.resource)) fail('resource-mismatch');
     this.assertOwned(this.primary);
     let result: CommandResult | undefined;
-    if (this.command.kind === 'relation' && this.command.relation === 'series-member-create') {
+    if (this.command.kind === 'relation' && this.command.relation === 'service-order-seed') {
+      result = await this.seedServiceOrder(this.command);
+    } else if (this.command.kind === 'relation' && this.command.relation === 'series-member-create') {
       result = await this.createSeriesMember(this.command);
     } else if (this.command.kind === 'relation') {
       this.live(this.primary, this.command.generation);

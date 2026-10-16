@@ -9,7 +9,9 @@ import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { needsRenumber, rankForAppend, rankForMove, renumber, sortByRank } from '@/utils/serviceOrderRank';
+import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 
+import type { CollectionState } from '@/data-engine/collections';
 import type { DocumentData } from '@/data-engine/types';
 import type { ServiceOrder, ServiceOrderCatalogKey, ServiceOrderStep } from '@/models/models';
 
@@ -43,6 +45,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
   const collection = useDataCollection(enabled && userId ? 'serviceOrders' : null);
   const actions = useDocumentActions();
   const [seeding, setSeeding] = useState(false);
+  const seedPending = useRef<{ owner: string; promise: Promise<ServiceOrder[]> } | null>(null);
   const [savingSteps, setSavingSteps] = useState(0);
   const [moving, setMoving] = useState(false);
   const movePending = useRef(false);
@@ -84,31 +87,34 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
     }
   }, []);
 
-  /**
-   * THE STANDARD SET, ONCE. The missing rites are taken from a list just read from the server,
-   * not from the screen, and each is created under its own new id: a rite of the set that was
-   * deleted before stays deleted under its old id (the engine never revives a tombstone), and a
-   * fresh one takes its place.
-   */
-  const seedStandardSet = async (): Promise<ServiceOrder[]> => {
-    if (!userId) throw new Error('No user');
-    if (!isOnline) throw new Error('OFFLINE_SEED');
+  /** Complete server absence chooses one target; the server transaction ensures its catalog key once. */
+  const seedStandardSet = (): Promise<ServiceOrder[]> => {
+    if (!userId) return Promise.reject(new Error('No user'));
+    if (seedPending.current?.owner === userId) return seedPending.current.promise;
+    if (!isOnline) return Promise.reject(new Error('OFFLINE_SEED'));
+    const work = { owner: userId, promise: Promise.resolve<ServiceOrder[]>([]) };
+    seedPending.current = work;
     setSeeding(true);
-    try {
-      const fresh = rowsOf((await collection.refresh() as { documents?: { resource: { id: string }; value: DocumentData | null }[] }).documents);
-      const present = new Set(fresh.map(order => order.catalogKey).filter(Boolean));
-      const drafts = buildSeedOrders(userId, t as unknown as (key: string, options?: Record<string, unknown>) => unknown,
-        SERVICE_ORDER_CATALOG.filter(key => !present.has(key)), rankForAppend(fresh));
-      const created: ServiceOrder[] = [];
-      for (const draft of drafts) {
-        const id = newClientId();
-        await actions.create(resource(id), deepCleanUndefined(draft) as unknown as DocumentData);
-        created.push({ ...draft, id });
+    work.promise = (async () => {
+      try {
+        const state = await collection.refresh().catch(() => { throw new Error('OFFLINE_SEED'); }) as CollectionState;
+        if (!state.complete || state.freshness !== 'server' || state.error) throw new Error('OFFLINE_SEED');
+        const fresh = rowsOf(state.documents);
+        const present = new Set(fresh.map(order => order.catalogKey).filter(Boolean));
+        const drafts = buildSeedOrders(userId, t as unknown as (key: string, options?: Record<string, unknown>) => unknown,
+          SERVICE_ORDER_CATALOG.filter(key => !present.has(key)), rankForAppend(fresh));
+        const created: ServiceOrder[] = [];
+        for (const draft of drafts) {
+          const id = nextServiceOrderSeedId(userId, draft.catalogKey!, state.snapshots);
+          await actions.create(resource(id), deepCleanUndefined(draft) as unknown as DocumentData);
+          created.push({ ...draft, id });
+        }
+        return sortByRank([...fresh, ...created]);
+      } finally {
+        if (seedPending.current === work) { seedPending.current = null; setSeeding(false); }
       }
-      return sortByRank([...fresh, ...created]);
-    } finally {
-      setSeeding(false);
-    }
+    })();
+    return work.promise;
   };
 
   const createCustomOrder = async (title: string): Promise<ServiceOrder> => {

@@ -1,3 +1,4 @@
+import { serviceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 import { act, renderHook } from '@testing-library/react';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
@@ -29,7 +30,10 @@ const order = (id: string, extra: Row = {}): Row => ({
 const documents = () => [...store].map(([id, value]) => ({ resource: { collection: 'serviceOrders', id }, value }));
 const actions = {
   ready: true,
-  create: jest.fn(async (resource: { id: string }, value: Row) => { store.set(resource.id, value); }),
+  // Match create-if-absent server semantics: a retry or a second device cannot overwrite a row.
+  create: jest.fn(async (resource: { id: string }, value: Row) => {
+    if (!store.has(resource.id)) store.set(resource.id, value);
+  }),
   remove: jest.fn(async (resource: { id: string }) => { store.delete(resource.id); }),
   commit: jest.fn(async (resource: { id: string }, updater: (value: Row | null) => Row | null) => {
     const next = updater(store.get(resource.id) ?? null);
@@ -41,7 +45,7 @@ function render() {
   jest.mocked(useDocumentActions).mockReturnValue(actions as never);
   jest.mocked(useDataCollection).mockImplementation(() => ({
     state: { snapshots: [], documents: documents(), complete: true, freshness: 'server', checking: false, version: 1, error: null },
-    loading: false, error: null, refresh: jest.fn(async () => ({ documents: documents() })),
+    loading: false, error: null, refresh: jest.fn(async () => ({ complete: true, freshness: 'server', snapshots: [], documents: documents() })),
   }) as never);
   return renderHook(() => useServiceOrdersEngine('u', true));
 }
@@ -134,10 +138,10 @@ describe('whether a rite is gone — said only by the server', () => {
    * from what this device holds. A rite created on the laptop is simply not there yet; "absent" needs
    * a refresh that reached the server (Codex review of the connectivity construction, 2026-10-10).
    */
-  const renderWithRefresh = (answer: { freshness: string; documents: unknown[] }) => {
+  const renderWithRefresh = (answer: { complete: boolean; freshness: string; snapshots: unknown[]; documents: unknown[] }) => {
     jest.mocked(useDocumentActions).mockReturnValue(actions as never);
     jest.mocked(useDataCollection).mockImplementation(() => ({
-      state: { snapshots: [], documents: [], complete: true, freshness: answer.freshness, checking: false, version: 1, error: null },
+      state: { snapshots: answer.snapshots, documents: answer.documents, complete: answer.complete, freshness: answer.freshness, checking: false, version: 1, error: null },
       loading: false, error: null, refresh: jest.fn(async () => answer),
     }) as never);
     return renderHook(() => useServiceOrdersEngine('u', true));
@@ -147,13 +151,115 @@ describe('whether a rite is gone — said only by the server', () => {
 
   it('says absent when the refresh came from the server', async () => {
     online = false;
-    const { result } = renderWithRefresh({ freshness: 'server', documents: [] });
+    const { result } = renderWithRefresh({ complete: true, freshness: 'server', snapshots: [], documents: [] });
     await expect(result.current.recheck('o-missing')).resolves.toBe('absent');
   });
 
   it('says unreachable, never absent, when the refresh answered from this device', async () => {
     online = true;
-    const { result } = renderWithRefresh({ freshness: 'cache', documents: [] });
+    const { result } = renderWithRefresh({ complete: true, freshness: 'cache', snapshots: [], documents: [] });
     await expect(result.current.recheck('o-missing')).resolves.toBe('unreachable');
+  });
+
+  it('does not seed rites when an online refresh only confirms a cached empty list', async () => {
+    online = true;
+    const { result } = renderWithRefresh({ complete: true, freshness: 'cache', snapshots: [], documents: [] });
+
+    await expect(result.current.seedStandardSet()).rejects.toThrow();
+
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
+  });
+
+  it('does not seed when the server response is incomplete', async () => {
+    online = true;
+    const { result } = renderWithRefresh({ complete: false, freshness: 'server', snapshots: [], documents: [] });
+
+    await expect(result.current.seedStandardSet()).rejects.toThrow('OFFLINE_SEED');
+
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(store.size).toBe(0);
+  });
+
+  it('reports a failed refresh as unavailable seeding without capturing creates', async () => {
+    online = true;
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
+    jest.mocked(useDataCollection).mockReturnValue({
+      state: { snapshots: [], documents: [], complete: true, freshness: 'server', checking: false, version: 1, error: null },
+      loading: false, error: null, refresh: jest.fn(async () => { throw new Error('HTTP 503'); }),
+    } as never);
+    const { result } = renderHook(() => useServiceOrdersEngine('u', true));
+
+    await act(async () => {
+      await expect(result.current.seedStandardSet()).rejects.toThrow('OFFLINE_SEED');
+    });
+
+    expect(actions.create).not.toHaveBeenCalled();
+    expect(result.current.seeding).toBe(false);
+  });
+
+  it('coalesces repeated seed clicks made by the same mounted hook', async () => {
+    online = true;
+    const pinnedEmpty = { complete: true, freshness: 'server', snapshots: [], documents: [] };
+    let finishRefresh!: (answer: typeof pinnedEmpty) => void;
+    const refreshAnswer = new Promise<typeof pinnedEmpty>(resolve => { finishRefresh = resolve; });
+    jest.mocked(useDocumentActions).mockReturnValue(actions as never);
+    jest.mocked(useDataCollection).mockReturnValue({
+      state: { snapshots: [], documents: [], complete: true, freshness: 'server', checking: false, version: 1, error: null },
+      loading: false, error: null, refresh: jest.fn(() => refreshAnswer),
+    } as never);
+    const { result } = renderHook(() => useServiceOrdersEngine('u', true));
+    let first!: Promise<unknown>;
+    let second!: Promise<unknown>;
+
+    act(() => {
+      first = result.current.seedStandardSet();
+      second = result.current.seedStandardSet();
+    });
+    expect(second).toBe(first);
+
+    await act(async () => {
+      finishRefresh(pinnedEmpty);
+      await first;
+    });
+    expect(actions.create).toHaveBeenCalledTimes(SERVICE_ORDER_CATALOG.length);
+  });
+
+  it('chooses a new seed target when the complete snapshot contains a deleted prior target', async () => {
+    online = true;
+    const oldTarget = {
+      resource: { collection: 'serviceOrders', id: serviceOrderSeedId('u', 'funeral') },
+      value: null,
+      metadata: { protocol: 1 as const, generation: 'deleted-generation', revision: 2, deleted: true },
+    };
+    const { result } = renderWithRefresh({ complete: true, freshness: 'server', snapshots: [oldTarget], documents: [] });
+
+    await act(async () => { await result.current.seedStandardSet(); });
+
+    const funeral = actions.create.mock.calls.find(([, value]) => value.catalogKey === 'funeral');
+    expect(funeral).toBeDefined();
+    expect(funeral?.[0].id).not.toBe(oldTarget.resource.id);
+    expect(store.has(oldTarget.resource.id)).toBe(false);
+  });
+
+  it('creates each standard rite once when two devices seed from the same confirmed empty snapshot', async () => {
+    online = true;
+    // Both mounted editors keep seeing the same complete server snapshot even after the first
+    // action writes locally. This is the two-device race: each was already shown an empty list.
+    const pinnedEmpty = { complete: true, freshness: 'server', snapshots: [], documents: [] };
+    const first = renderWithRefresh(pinnedEmpty);
+    const second = renderHook(() => useServiceOrdersEngine('u', true));
+
+    await act(async () => {
+      await first.result.current.refresh();
+      await second.result.current.refresh();
+    });
+    await act(async () => { await first.result.current.seedStandardSet(); });
+    await act(async () => { await second.result.current.seedStandardSet(); });
+
+    const catalogKeys = [...store.values()].map(value => value.catalogKey);
+    expect(catalogKeys).toHaveLength(SERVICE_ORDER_CATALOG.length);
+    expect(catalogKeys.sort()).toEqual([...SERVICE_ORDER_CATALOG].sort());
+    expect(new Set(catalogKeys).size).toBe(SERVICE_ORDER_CATALOG.length);
   });
 });

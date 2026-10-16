@@ -37,6 +37,7 @@ export interface CommandBase {
 
 export type DataCommand = CommandBase & (
   | { kind: 'create'; value: DocumentData }
+  | { kind: 'relation'; relation: 'service-order-seed'; value: DocumentData }
   | { kind: 'update'; changes: FieldChange[] }
   | { kind: 'delete'; baseline: DocumentData }
   | { kind: 'relation'; relation: 'material-notes'; beforeNoteIds: string[]; afterNoteIds: string[];

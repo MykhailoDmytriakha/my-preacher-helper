@@ -244,6 +244,19 @@ describe('Orders of service', () => {
     expect(toast.error).toHaveBeenCalledWith('serviceOrders.writeFailed');
   });
 
+  it('explains that a complete server refresh is required when seeding cannot verify the list', async () => {
+    orderState.canSeed = true;
+    mockSeed.mockRejectedValueOnce(new Error('OFFLINE_SEED'));
+    render(<ServiceOrdersPage />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.seed' }).pop() as HTMLElement);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('service-orders-failure')).toHaveTextContent('serviceOrders.seedOffline')
+    );
+    expect(toast.error).toHaveBeenCalledWith('serviceOrders.seedOffline');
+  });
+
   /**
    * The empty page has ONE job — start — so it has one action of full weight. Two buttons of
    * equal weight are none: before this the page opened with a green box and an amber box side

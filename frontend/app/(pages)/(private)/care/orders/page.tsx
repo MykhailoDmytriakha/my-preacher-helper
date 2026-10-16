@@ -85,6 +85,7 @@ const iconFor = (order: ServiceOrder) =>
   (order.catalogKey && CATALOG_ICONS[order.catalogKey]) || ScrollText;
 
 const tone = CARE_CARD_TONES.emerald;
+const SEED_OFFLINE = 'serviceOrders.seedOffline';
 
 function presentOrders(orders: ServiceOrder[], ids: string[] | null): ServiceOrder[] {
   return ids ? ids.flatMap((id) => orders.find((order) => order.id === id) ?? []) : orders;
@@ -175,9 +176,11 @@ export default function ServiceOrdersPage() {
     console.error('serviceOrders write failed', error);
     // Spreading the whole list needs a connection, and saying "could not save" about that
     // sends a person looking for a fault that is not there.
-    if ((error as Error)?.message === 'OFFLINE_RENUMBER') {
-      setFailure({ key: 'serviceOrders.renumberOffline' });
-      toast.error(t('serviceOrders.renumberOffline') as string);
+    const offlineKey = (error as Error)?.message === 'OFFLINE_RENUMBER' ? 'serviceOrders.renumberOffline'
+      : (error as Error)?.message === 'OFFLINE_SEED' ? SEED_OFFLINE : null;
+    if (offlineKey) {
+      setFailure({ key: offlineKey });
+      toast.error(t(offlineKey) as string);
       return;
     }
     // ON THE PAGE, not only in a toast. The toast was the whole answer once, and a live run
@@ -374,7 +377,7 @@ export default function ServiceOrdersPage() {
             type="button"
             onClick={seed}
             disabled={seeding || !isOnline}
-            title={!isOnline ? (t('serviceOrders.seedOffline') as string) : undefined}
+            title={!isOnline ? (t(SEED_OFFLINE) as string) : undefined}
             className="inline-flex shrink-0 items-center rounded-full border border-emerald-700 px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
           >
             {seeding ? t('serviceOrders.seeding') : t('serviceOrders.seed')}
@@ -438,7 +441,7 @@ function FirstOpening({
         type="button"
         onClick={onSeed}
         disabled={seeding || !isOnline}
-        title={!isOnline ? (t('serviceOrders.seedOffline') as string) : undefined}
+        title={!isOnline ? (t(SEED_OFFLINE) as string) : undefined}
         className="mt-7 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
       >
         {seeding ? t('serviceOrders.seeding') : t('serviceOrders.seed')}
