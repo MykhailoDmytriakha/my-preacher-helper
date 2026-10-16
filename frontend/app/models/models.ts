@@ -498,7 +498,7 @@ export interface UserEntitlement {
   paidTier: Tier;
   /** Server-managed referral attribution. Clients must never write this field. */
   referredBy?: string;
-  /** ISO-8601 activity hint for low-stakes admin display only: the client asks once a day, the server stamps its own clock. */
+  /** ISO-8601 activity hint for low-stakes admin display only: each browser asks about once a day, the server stamps its own clock. */
   lastSeenAt?: string;
   promotion?: {
     tier: Tier;

@@ -257,7 +257,10 @@ describe('legacy cache preservation UI', () => {
   });
 
   it('shows what a copy without a visible difference holds and asks before removing it', async () => {
-    jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([record]).mockResolvedValue([]);
+    // The archive holds the copy until it is removed, however often the screen reads it.
+    let removed = false;
+    jest.mocked(listLegacyQueryCopies).mockImplementation(async () => (removed ? [] : [record]));
+    jest.mocked(removeLegacyCopies).mockImplementation(async () => { removed = true; return 1; });
     render(<LegacyQueryCopies owner="owner" />);
     await screen.findByText('legacyRecovery.cacheTitle');
     openDifferences();
@@ -384,6 +387,56 @@ describe('legacy cache preservation UI', () => {
     openDifferences();
     expect(await screen.findByText(record.title)).toBeInTheDocument();
     expect(screen.queryByText(echo.title)).not.toBeInTheDocument();
+  });
+
+  it('shows the difference once a retry finds the server copy it was waiting for', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+      jest.mocked(retireLegacyEchoes).mockResolvedValueOnce({ retired: 0, undecided: 1 }).mockResolvedValueOnce({ retired: 0, undecided: 0 });
+      render(<LegacyQueryCopies owner="owner" />);
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      openDifferences();
+      expect(screen.getByText('legacyRecovery.serverMissing')).toBeInTheDocument();
+      // The engine reads the council meanwhile; the retry finds it different and keeps the copy.
+      mockServerCopies.set('councils/council', { title: 'Server title' });
+      await act(async () => { await jest.advanceTimersByTimeAsync(30_000); });
+      expect(retireLegacyEchoes).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('legacyRecovery.serverMissing')).not.toBeInTheDocument();
+      expect(screen.getByText(/Server title/)).toBeInTheDocument();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('shows the difference when the server copy arrives between the first look and the first pass', async () => {
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([record]);
+    jest.mocked(retireLegacyEchoes).mockImplementationOnce(async () => {
+      mockServerCopies.set('councils/council', { title: 'Server title' });
+      return { retired: 0, undecided: 0 };
+    });
+    render(<LegacyQueryCopies owner="owner" />);
+    await screen.findByText('legacyRecovery.cacheTitle');
+    openDifferences();
+    expect(await screen.findByText(/Server title/)).toBeInTheDocument();
+    expect(screen.queryByText('legacyRecovery.serverMissing')).not.toBeInTheDocument();
+  });
+
+  it('closes the remove question when the copy it was asked about is replaced under the same id', async () => {
+    jest.useFakeTimers();
+    try {
+      const replaced = { ...record, raw: '{"title":"Words filed later by another tab"}' };
+      // The first look and the pass right after it still read the copy the question will be asked about.
+      jest.mocked(listLegacyQueryCopies).mockResolvedValueOnce([record]).mockResolvedValueOnce([record]).mockResolvedValue([replaced]);
+      jest.mocked(retireLegacyEchoes).mockResolvedValueOnce({ retired: 0, undecided: 1 }).mockResolvedValueOnce({ retired: 0, undecided: 0 });
+      render(<LegacyQueryCopies owner="owner" />);
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      openDifferences();
+      fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.removeCopy' }));
+      expect(screen.getByText('legacyRecovery.removeCopyConfirm')).toBeInTheDocument();
+      await act(async () => { await jest.advanceTimersByTimeAsync(30_000); });
+      expect(screen.queryByText('legacyRecovery.removeCopyConfirm')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'legacyRecovery.removeCopyYes' })).not.toBeInTheDocument();
+      expect(removeLegacyCopies).not.toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
   });
 
   it('keeps showing the archive when the comparison fails', async () => {

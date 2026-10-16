@@ -143,7 +143,13 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const reader = engineServerCopies(owner);
+    // Refreshes can overlap: only the latest one started may publish what it read.
+    let latest = 0;
+    // Whether the comparison on screen still waits for a server copy the engine had not read.
+    let waiting = false;
     const show = async () => {
+      const refresh = ++latest;
+      const isLatest = () => active && refresh === latest;
       try {
         const copies = await listLegacyQueryCopies(owner);
         const servers = new Map<string, Promise<Record<string, unknown> | null | undefined>>();
@@ -156,16 +162,20 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
           try { comparisons[copy.id] = compareLegacyCopy(copy, await servers.get(document)); }
           catch { comparisons[copy.id] = { kind: 'row', server: 'unknown', freshness: 'unknown', deviceVersionAt: null, serverVersionAt: null, differences: [] }; }
         }
-        if (active) setState({ owner, copies, comparisons, failed: false });
+        if (!isLatest()) return;
+        waiting = Object.values(comparisons).some(comparison => comparison.server === 'missing');
+        setState({ owner, copies, comparisons, failed: false });
       } catch {
-        if (active) setState({ owner, copies: [], comparisons: {}, failed: true });
+        if (isLatest()) setState({ owner, copies: [], comparisons: {}, failed: true });
       }
     };
     // Copies that say exactly what the server says are retired; whatever differs stays shown.
+    // A pass that removed nothing still shows the comparison again while the screen waits for a
+    // server copy: it may have arrived since, different.
     const retire = (attempt: number) => {
       void retireLegacyEchoes(owner, reader).then(({ retired, undecided }) => {
         if (!active) return;
-        if (retired) void show();
+        if (retired || waiting) void show();
         if (undecided && attempt < ECHO_RETRIES) timer = setTimeout(() => retire(attempt + 1), ECHO_RETRY_MS);
       }, error => { console.error('Previous-version copies could not be compared with the server', error); });
     };
@@ -312,7 +322,9 @@ function CopyRow({ copy, comparison, busy, onRemove, onCopy, onDownload }: {
 }) {
   const { t } = useTranslation();
   const { when } = useCopyFormatting();
-  const [asking, setAsking] = useState(false);
+  // The content the question was asked about: replaced meanwhile (another tab files a new copy
+  // under a freed id), the question closes instead of removing words the person never saw.
+  const [asking, setAsking] = useState<string | null>(null);
   const onDevice = t('legacyRecovery.onDevice'), onServer = t('legacyRecovery.onServer');
   const [tone, word] = freshnessBadge(comparison);
   const diffShown = comparison?.kind === 'row' && comparison.server === 'present' && comparison.differences.length > 0;
@@ -340,18 +352,18 @@ function CopyRow({ copy, comparison, busy, onRemove, onCopy, onDownload }: {
         <summary className="cursor-pointer text-xs text-gray-600 underline-offset-2 hover:underline dark:text-gray-400">{t('legacyRecovery.rawData')}</summary>
         <pre className={`mt-1 ${CONTENT}`}>{copy.raw}</pre>
       </details>
-      {asking ? (
+      {asking === copy.raw ? (
         <div role="alert" className="mt-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-2 dark:border-rose-500/40 dark:bg-black/20">
           <p className="text-rose-900 dark:text-rose-100">{t('legacyRecovery.removeCopyConfirm')}</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button type="button" disabled={busy} onClick={onDownload} className={SECONDARY}>{t('legacyRecovery.export')}</button>
             <button type="button" disabled={busy} onClick={onRemove} className={DANGER}>{t('legacyRecovery.removeCopyYes')}</button>
-            <button type="button" disabled={busy} onClick={() => setAsking(false)} className={QUIET}>{t('common.cancel')}</button>
+            <button type="button" disabled={busy} onClick={() => setAsking(null)} className={QUIET}>{t('common.cancel')}</button>
           </div>
         </div>
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button type="button" disabled={busy} onClick={diffShown ? onRemove : () => setAsking(true)} className={SECONDARY}>
+          <button type="button" disabled={busy} onClick={diffShown ? onRemove : () => setAsking(copy.raw)} className={SECONDARY}>
             {diffShown ? t('legacyRecovery.keepServer') : t('legacyRecovery.removeCopy')}
           </button>
           <button type="button" disabled={busy} onClick={onCopy} className={QUIET}>{t('legacyRecovery.copyDevice')}</button>
