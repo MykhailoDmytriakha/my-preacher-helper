@@ -12,7 +12,7 @@ import { getCardClassName } from "@/components/SortableItem";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
-import { boardLayoutClass } from "../utils/sectionLayout";
+import { boardLayoutClass, structureThoughtGridClass } from "../utils/sectionLayout";
 
 import type { Item, SermonPoint } from "@/models/models";
 
@@ -137,7 +137,7 @@ export function StructureReadOnlyBoard({ containers, outlinePoints, sections, ti
           <h2 className="p-4 text-xl font-semibold dark:text-white">
             {titles.ambiguous} <span className="ml-2 rounded-full bg-gray-200 px-2 py-0.5 text-sm text-gray-800 dark:bg-gray-700 dark:text-gray-200">{ambiguous.length}</span>
           </h2>
-          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
+          <div className={`${structureThoughtGridClass} gap-4 p-4`}>
             {ambiguous.map((item) => <ThoughtCard key={item.id} item={item} />)}
           </div>
         </section>

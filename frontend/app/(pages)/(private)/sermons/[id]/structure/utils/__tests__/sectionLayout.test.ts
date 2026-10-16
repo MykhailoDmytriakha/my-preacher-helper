@@ -6,13 +6,13 @@ describe('boardLayoutClass', () => {
     expect(boardLayoutClass(1, true)).toBe('flex flex-col');
   });
 
-  it('2 visible sections -> side by side when horizontal, stacked when vertical', () => {
-    expect(boardLayoutClass(2, false)).toBe('grid grid-cols-1 md:grid-cols-2 gap-6');
+  it('2 visible sections -> container-fit tracks when horizontal, stacked when vertical', () => {
+    expect(boardLayoutClass(2, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-6');
     expect(boardLayoutClass(2, true)).toBe('flex flex-col gap-6');
   });
 
-  it('3 visible sections -> three columns when horizontal, stacked when vertical', () => {
-    expect(boardLayoutClass(3, false)).toBe('grid grid-cols-1 md:grid-cols-3 gap-6');
+  it('3 visible sections -> container-fit tracks when horizontal, stacked when vertical', () => {
+    expect(boardLayoutClass(3, false)).toBe('grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))] gap-6');
     expect(boardLayoutClass(3, true)).toBe('flex flex-col gap-6');
   });
 });

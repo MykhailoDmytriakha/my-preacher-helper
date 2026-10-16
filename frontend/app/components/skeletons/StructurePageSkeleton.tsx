@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { boardLayoutClass } from '@/utils/structureBoardLayout';
+
 interface StructurePageSkeletonProps {
     isFocusMode?: boolean;
 }
@@ -28,7 +30,7 @@ export const StructurePageSkeleton = ({ isFocusMode = false }: StructurePageSkel
                 </div>
 
                 {/* Columns Skeleton */}
-                <div className={`${!isFocusMode ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'flex flex-col'} w-full mt-8`}>
+                <div className={`${boardLayoutClass(isFocusMode ? 1 : 3, false)} w-full mt-8`}>
                     {/* Column 1 */}
                     <div className="space-y-4">
                         <div className="h-8 w-1/2 bg-gray-200 dark:bg-gray-800 rounded mb-4"></div>

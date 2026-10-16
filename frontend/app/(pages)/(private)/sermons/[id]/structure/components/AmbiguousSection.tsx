@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
+import { structureThoughtGridClass } from "@/utils/structureBoardLayout";
 
 interface DummyDropZoneProps {
   container: string;
@@ -117,7 +118,7 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
         {isVisible && (
           <SortableContext items={safeItems} strategy={focusedColumn ? verticalListSortingStrategy : rectSortingStrategy}>
             <div className={`min-h-[100px] p-4 ${
-              !focusedColumn ? 'grid grid-cols-1 md:grid-cols-3 gap-4' : 'space-y-3'
+              !focusedColumn ? `${structureThoughtGridClass} gap-4` : 'space-y-3'
             }`}>
               {itemCount === 0 ? (
                 <DummyDropZone container="ambiguous" />
@@ -141,7 +142,7 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
                   })}
                   
                   {/* Additional drop area at the end for consistency */}
-                  <div className={`col-span-full ${focusedColumn ? '' : 'md:col-span-3'}`}>
+                  <div className="col-span-full">
                     <AdditionalDropZone />
                   </div>
                 </>

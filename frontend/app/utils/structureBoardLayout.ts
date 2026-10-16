@@ -1,0 +1,17 @@
+/**
+ * Keep enough room for a thought after nested section/point padding and its action rail.
+ * At tablet width a viewport breakpoint can leave only 60px of text. The container chooses
+ * how many 24rem tracks fit; min(100%, ...) lets one track fit a narrow phone as well.
+ * auto-fit collapses unused tracks when only two or three board sections are visible.
+ */
+export const structureThoughtGridClass = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))]';
+
+/** The board keeps one focus column or the person's explicit vertical arrangement. */
+export const boardLayoutClass = (visibleCount: number, isVertical: boolean): string => {
+  if (visibleCount <= 1) return 'flex flex-col';
+  if (isVertical) return 'flex flex-col gap-6';
+  return `${structureThoughtGridClass} gap-6`;
+};
+
+/** Both a pair and all three sections may be stacked; focus has no layout toggle. */
+export const showLayoutToggle = (visibleCount: number): boolean => visibleCount >= 2;

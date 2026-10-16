@@ -6,6 +6,7 @@ Cards, rows and pairs follow a few fixed recipes: flex columns for card footers,
 
 ## How
 
+- Structure thoughts need room after nested point/section padding and the action rail: use the shared `structureThoughtGridClass` / `boardLayoutClass` in `frontend/app/utils/structureBoardLayout.ts`. Its CSS auto-fit tracks use `minmax(min(100%,24rem),1fr)`, so the container fits readable columns and a phone may use its full width. The editable/read-only boards, ambiguous cards and loading skeleton share this rule. A trailing drop zone uses `col-span-full`; a fixed `md:col-span-3` would create unwanted implicit tracks. Focus and explicit vertical layout keep their flex paths. This does not fix independent small-phone nested-padding defects.
 - Footer at the bottom of every card in a grid: the card is `flex flex-col h-full`, the main content `flex-1` / `flex-grow`, the footer `mt-auto` (`frontend/app/components/dashboard/SermonCard.tsx`, `frontend/app/components/groups/GroupCard.tsx`).
 - Equal-width buttons with labels of different lengths: `ACTION_BUTTON_SLOT_CLASS` (`flex-1 basis-0 min-w-[64px]`) on each slot, from `frontend/app/components/common/ActionButton.tsx`.
 - Rows of metadata plus text: a CSS grid with fixed tracks for the metadata and one `1fr` for the flexible text — the dashboard rows use `grid-cols-[70px_1fr_auto_18px]` and similar (`frontend/app/(pages)/(private)/dashboard/page.tsx`).
