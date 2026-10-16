@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { countVerseWords, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
 
@@ -45,6 +47,8 @@ type ReaderMarks = {
   textClass: string;
   /** Verses marked in the person's other Bibles: a sign beside each, for the ribbon (2.9.3). */
   signs: RibbonSigns | undefined;
+  /** What the book's marks need from the person, if anything (a verse changed on two devices at once). */
+  syncStatus: ReactNode;
   /** The window of the verse whose sign was tapped (`MarkedElsewhereSheet`). */
   elsewhere: { at: { chapter: number; verse: number } | null; entries: { bible: BibleId; verses: MarkedElsewhere[] }[]; close: () => void };
 };
@@ -65,7 +69,34 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
   // Whether the browser can paint marks does not change while the page is open.
   const canMark = useSyncExternalStore(subscribeNever, marksSupported, () => false);
   const tool = useMarkTool();
-  const { marks: stored, save, ready: storeReady, others } = useBookMarks(owner, bible, bookId);
+  const { marks: stored, save, ready: storeReady, writable, others, sync } = useBookMarks(owner, bible, bookId);
+  // A stroke starts only when it can be kept: while the book's form cannot write (the device's storage
+  // silent for seconds after an iPad wakes) the reader says to wait instead of showing a stroke it would lose.
+  // A choice the person made in the form's status runs for a moment: no stroke until it has, or the
+  // choice would sweep the stroke away with the draft it replaces.
+  const [deciding, setDeciding] = useState(false);
+  const writableRef = useRef(writable && !deciding);
+  writableRef.current = writable && !deciding;
+  // Why a stroke cannot start: a choice that waits for the person, or the device's storage.
+  const decisionRef = useRef(false);
+  decisionRef.current = deciding || ['conflict', 'refused', 'deleted', 'localFailure', 'blocked'].includes(sync?.status?.phase ?? '');
+  const waitSaid = useRef(0);
+  const beginStroke = tool.beginStroke;
+  const sayWhy = useCallback(() => {
+    if (Date.now() - waitSaid.current <= 4_000) return;
+    waitSaid.current = Date.now();
+    toast(t(decisionRef.current ? 'bible.marks.decideFirst' : 'bible.marks.wait'));
+  }, [t]);
+  const begin = useCallback((pen: boolean) => {
+    if (writableRef.current) return beginStroke(pen);
+    sayWhy();
+    return null;
+  }, [beginStroke, sayWhy]);
+  // A stroke begun before a choice and let go while it runs is checked again when it would be kept.
+  const keep = useCallback((change: Parameters<typeof save>[0]) => {
+    if (writableRef.current) { save(change); return; }
+    sayWhy();
+  }, [save, sayWhy]);
   const marking = canMark && Boolean(owner) && storeReady;
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
   const preview = useMarkHighlights(textRef, ready && marking, stored, text);
@@ -74,9 +105,9 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
     ready,
     order,
     marks: stored,
-    save,
+    save: keep,
     armed: tool.inHand !== null,
-    begin: tool.beginStroke,
+    begin,
     preview,
     enabled: marking,
   });
@@ -114,6 +145,13 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
     penSurface: marking ? '' : undefined,
     textClass: armed ? 'cursor-crosshair touch-pan-y [-webkit-touch-callout:none]' : '',
     signs,
+    // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
+    syncStatus: sync ? (
+      <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-3"
+        onRetry={() => sync.retry()}
+        onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
+        onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />
+    ) : null,
     elsewhere: { at: entries.length ? openAt : null, entries, close: closeElsewhere },
   };
 }

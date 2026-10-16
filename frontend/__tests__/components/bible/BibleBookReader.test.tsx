@@ -6,6 +6,12 @@ import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
 import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
 import { verseCount } from '@/utils/versification';
 
+// The reader's marks keep one form of the data engine per book; these tests mount no engine.
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useDataDocument: () => ({ data: null, loading: true, commit: jest.fn(), status: null, recoveryIdentity: {} }),
+}));
+
 // A book of the real shape: Ruth has four chapters, and the reader refuses a file that does not.
 const book = {
   id: 'Ruth',

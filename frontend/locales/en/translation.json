@@ -389,6 +389,8 @@
       "colorPencilMeaning": "Coloured pencil — the same meaning, as a line",
       "eraser": "Eraser",
       "notKept": "The mark was not kept. Try again.",
+      "decideFirst": "First choose which version of the marks to keep — above the text.",
+      "wait": "The marks cannot be kept this moment — the device’s storage is not answering. Wait a few seconds.",
       "elsewhereSign": "Marks on verse {{verse}} in another translation",
       "elsewhereIntro": "Marks lie on the words of the translation where they were made. This verse there:",
       "openThere": "Open in this translation",

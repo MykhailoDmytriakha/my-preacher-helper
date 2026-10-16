@@ -642,6 +642,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       </header>
 
       <LoadNotice status={state.status} onRetry={() => setAttempt((value) => value + 1)} />
+      {marks.syncStatus}
 
       <div className={`flex items-start gap-5 ${frame.row}`}>
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
