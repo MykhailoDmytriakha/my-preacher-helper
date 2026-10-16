@@ -363,13 +363,17 @@ function settleTreeTwins(base: FieldValue, mine: FieldValue, theirs: FieldValue,
   return intact ? { value: { exists: true, value: settled }, conflicts: [...merged.conflicts, { path, base, mine, theirs }] } : merged;
 }
 
-/** Legacy revisions are server-owned metadata, never an editor's authored intent. */
+/** Resource revisions and accepted recency are metadata, never authored intent. */
 export function mergeDocumentFields(base: DocumentData | null, mine: DocumentData | null, theirs: DocumentData | null): ReturnType<typeof mergeFields> {
   const field = (value: DocumentData | null): FieldValue => value === null ? { exists: false }
-    : { exists: true, value: Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'rev')) };
+    : { exists: true, value: Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'rev' && key !== 'updatedAt')) };
   const merged = mergeFields(field(base), field(mine), field(theirs));
-  if (merged.value.exists && theirs && Object.prototype.hasOwnProperty.call(theirs, 'rev')) {
-    (merged.value.value as DocumentData).rev = clone(theirs.rev);
+  if (merged.value.exists) {
+    const value = merged.value.value as DocumentData;
+    if (theirs && Object.prototype.hasOwnProperty.call(theirs, 'rev')) value.rev = clone(theirs.rev);
+    // A pending creation has no server copy yet; keep its valid creation payload.
+    const recency = theirs ?? mine;
+    if (recency && Object.prototype.hasOwnProperty.call(recency, 'updatedAt')) value.updatedAt = clone(recency.updatedAt);
   }
   return merged;
 }
@@ -456,7 +460,10 @@ function applyExistingFields(command: Extract<DataCommand, { kind: 'update' | 'd
   }
   const conflicts: ConflictDetail[] = command.resource.collection === 'sermons' ? scratchConsumptionConflicts(command.changes, value) : [];
   for (const change of command.changes) {
-    const merged = mergeFields(change.before, change.after, readField(value, change.path), change.path);
+    // Keep the wire candidate valid for legacy documents missing metadata. The accepted
+    // write replaces this provisional value; a client clock never arbitrates content.
+    const merged = change.path[0] === 'updatedAt' ? { value: change.after, conflicts: [] }
+      : mergeFields(change.before, change.after, readField(value, change.path), change.path);
     putField(value, change.path, merged.value);
     conflicts.push(...merged.conflicts);
   }

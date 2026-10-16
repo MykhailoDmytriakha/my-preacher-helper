@@ -1,4 +1,4 @@
-import { applyCommand, commandFingerprint, diffFields, equalValues, getResourcePolicy, mergeFields, readField, validateCommand } from '../protocol';
+import { applyCommand, commandFingerprint, diffFields, equalValues, getResourcePolicy, mergeDocumentFields, mergeFields, readField, validateCommand } from '../protocol';
 
 import type { DataCommand, DocumentData, FieldValue, ResourceSnapshot } from '../types';
 
@@ -49,6 +49,39 @@ describe('DataEngine command protocol', () => {
     expect(mergeFields(field('a'), field('b'), field('b'))).toEqual({ value: field('b'), conflicts: [] });
     expect(mergeFields(field({ x: 0, y: 0 }), field({ x: 1, y: 0 }), field({ x: 0, y: 1 })).value)
       .toEqual(field({ x: 1, y: 1 }));
+  });
+
+  it('rebases independent content without conflicting on root recency metadata', () => {
+    const base = { title: 'First', date: '2026-10-15', updatedAt: '2026-10-15T10:00:00Z' };
+    const mine = { ...base, title: 'Second', updatedAt: '2026-10-15T10:01:00Z' };
+    const theirs = { ...base, date: '2026-10-16', updatedAt: '2026-10-15T10:02:00Z' };
+    expect(mergeDocumentFields(base, mine, theirs)).toEqual({ value: field({ ...mine, date: theirs.date, updatedAt: theirs.updatedAt }), conflicts: [] });
+    expect(mergeDocumentFields(base, mine, { ...theirs, title: 'Other' }).conflicts.map(conflict => conflict.path)).toEqual([['title']]);
+  });
+
+  it('retains a pending creation timestamp while the server document is absent', () => {
+    const mine = { title: 'New', updatedAt: '2026-10-15T10:00:00.000Z' };
+    expect(mergeDocumentFields(null, mine, null)).toEqual({ value: field(mine), conflicts: [] });
+  });
+
+  it('retains authored work and its timestamp in a remote deletion conflict', () => {
+    const base = { title: 'Before', updatedAt: '2026-10-15T10:00:00.000Z' };
+    const mine = { ...base, title: 'Local work', updatedAt: '2026-10-15T10:01:00.000Z' };
+    const result = mergeDocumentFields(base, mine, null);
+    expect(result.value).toEqual(field(mine));
+    expect(result.conflicts).toHaveLength(1);
+    expect(result.conflicts[0].theirs).toEqual({ exists: false });
+    expect(base.title).toBe('Before');
+  });
+
+  it('does not mistake the root of an arbitrary value for resource metadata', () => {
+    const result = mergeFields(field({ updatedAt: 'base' }), field({ updatedAt: 'mine' }), field({ updatedAt: 'theirs' }));
+    expect(result.conflicts.map(conflict => conflict.path)).toEqual([['updatedAt']]);
+  });
+
+  it('keeps nested authored updatedAt fields subject to normal conflict checks', () => {
+    const result = mergeFields(field({ custom: { updatedAt: 'base' } }), field({ custom: { updatedAt: 'mine' } }), field({ custom: { updatedAt: 'theirs' } }));
+    expect(result.conflicts.map(conflict => conflict.path)).toEqual([['custom', 'updatedAt']]);
   });
 
   it('does not resolve deletion against concurrent authored text silently', () => {

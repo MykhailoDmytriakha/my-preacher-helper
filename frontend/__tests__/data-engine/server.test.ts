@@ -75,6 +75,129 @@ beforeEach(() => {
   });
 });
 
+describe('accepted resource recency', () => {
+  const first = '2026-10-15T10:00:00.000Z';
+  const later = '2026-10-15T11:00:00.000Z';
+  beforeEach(() => { jest.useFakeTimers({ now: new Date(first) }); });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('stamps creates and field-only saves consistently in ACK, storage and collection reads', async () => {
+    expect(await processCommand('owner-1', create())).toMatchObject({ kind: 'acknowledged', snapshot: { value: { updatedAt: first } } });
+    jest.setSystemTime(new Date(later));
+    const accepted = await processCommand('owner-1', update());
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Second', updatedAt: later } } });
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(later);
+    expect(await readDocument('owner-1', resource)).toEqual(accepted.kind === 'acknowledged' ? accepted.snapshot : null);
+    expect(await readCollectionChanges('owner-1', 'sermons', 0)).toMatchObject({ snapshots: [{ value: { updatedAt: later } }] });
+  });
+
+  it('preserves native timestamp storage on a no-op and stamps content changes consistently', async () => {
+    const nativeTime = { toDate: () => new Date(first) };
+    documents.set('sermons/sermon-1', { userId: 'owner-1', title: 'First', updatedAt: nativeTime });
+    jest.setSystemTime(new Date(later));
+    const noChange = await processCommand('owner-1', { ...update('native-no-op', null), changes: [
+      { path: ['title'], before: { exists: true, value: 'First' }, after: { exists: true, value: 'First' } },
+    ] });
+    expect(noChange).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'First', updatedAt: first } } });
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(nativeTime);
+    const edited = await processCommand('owner-1', update('native-edit', 'native-no-op'));
+    expect(edited).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Second', updatedAt: later } } });
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(later);
+    if (edited.kind !== 'acknowledged') throw new Error('Expected acknowledgement');
+    expect(await readDocument('owner-1', resource)).toEqual(edited.snapshot);
+  });
+
+  it('accepts a normal legacy edit that supplies missing required recency metadata', async () => {
+    const note = { collection: 'studyNotes', id: 'legacy-note' };
+    documents.set('studyNotes/legacy-note', { userId: 'owner-1', content: 'Before', tags: [], isDraft: false, createdAt: first });
+    jest.setSystemTime(new Date(later));
+    expect(await processCommand('owner-1', { protocol: 1, operationId: 'legacy-edit', owner: 'owner-1', resource: note,
+      generation: null, dependsOn: [], kind: 'update', changes: [
+        { path: ['content'], before: { exists: true, value: 'Before' }, after: { exists: true, value: 'After' } },
+        { path: ['updatedAt'], before: { exists: false }, after: { exists: true, value: '2026-10-15T10:30:00.000Z' } },
+      ] })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { content: 'After', updatedAt: later } } });
+  });
+
+  it('uses one server time for every changed participant of a relation', async () => {
+    documents.set('studyMaterials/m', { userId: 'owner-1', noteIds: [], updatedAt: first });
+    documents.set('studyNotes/n', { userId: 'owner-1', content: 'Keep text', materialIds: [], updatedAt: first });
+    jest.setSystemTime(new Date(later));
+    const accepted = await processCommand('owner-1', { protocol: 1, owner: 'owner-1', operationId: 'attach',
+      resource: { collection: 'studyMaterials', id: 'm' }, generation: null, dependsOn: [], kind: 'relation', relation: 'material-notes',
+      beforeNoteIds: [], afterNoteIds: ['n'], targets: [{ id: 'n', generation: null }] });
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { updatedAt: later } }, relatedSnapshots: [{ value: { updatedAt: later } }] });
+    expect(documents.get('studyMaterials/m')?.updatedAt).toBe(later);
+    expect(documents.get('studyNotes/n')?.updatedAt).toBe(later);
+    expect(documentReadUnits).toBe(5);
+    expect(transactionWrites).toHaveLength(7);
+  });
+
+  it('acknowledges duplicate content and timestamp-only saves without moving recency', async () => {
+    await processCommand('owner-1', create());
+    await processCommand('owner-1', update('title-edit'));
+    jest.setSystemTime(new Date(later));
+    expect(await processCommand('owner-1', create())).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Second', updatedAt: first } } });
+    // Another device submits the same authored change with a stale ancestor.
+    expect(await processCommand('owner-1', update('same-edit'))).toMatchObject({ kind: 'acknowledged', committed: { revision: 3 }, snapshot: { value: { title: 'Second', updatedAt: first } } });
+    const revisionBeforeTimestamp = documents.get('sermons/sermon-1')?.rev;
+    expect(await processCommand('owner-1', { ...update('timestamp-only'), changes: [{ path: ['updatedAt'], before: { exists: true, value: first }, after: { exists: true, value: '2099-01-01T00:00:00.000Z' } }] })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Second', updatedAt: first } } });
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(first);
+    expect(documents.get('sermons/sermon-1')?.rev).toEqual(revisionBeforeTimestamp);
+  });
+
+  it('retains the existing refusal of creation metadata changes', async () => {
+    await processCommand('owner-1', create());
+    jest.setSystemTime(new Date(later));
+    const result = await processCommand('owner-1', { ...update('creation-metadata'), changes: [{ path: ['createdAt'], before: { exists: false }, after: { exists: true, value: '2026-10-01T00:00:00.000Z' } }] });
+    expect(result).toMatchObject({ kind: 'refused', code: 'invalid-argument' });
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(first);
+    expect(documents.get('sermons/sermon-1')).not.toHaveProperty('createdAt');
+  });
+
+  it('does not move either participant for an already-satisfied relation', async () => {
+    documents.set('studyMaterials/m', { userId: 'owner-1', noteIds: [] });
+    documents.set('studyNotes/n', { userId: 'owner-1', content: 'Keep text', materialIds: [] });
+    const command: DataCommand = { protocol: 1, owner: 'owner-1', operationId: 'attach',
+      resource: { collection: 'studyMaterials', id: 'm' }, generation: null, dependsOn: [], kind: 'relation', relation: 'material-notes',
+      beforeNoteIds: [], afterNoteIds: ['n'], targets: [{ id: 'n', generation: null }] };
+    await processCommand('owner-1', command);
+    jest.setSystemTime(new Date(later));
+    const result = await processCommand('owner-1', { ...command, operationId: 'already-attached', generation: 'attach', beforeNoteIds: ['n'], targets: [{ id: 'n', generation: 'attach' }] });
+    expect(result).toMatchObject({ kind: 'acknowledged', committed: { revision: 2, operationId: 'already-attached' }, snapshot: { value: { updatedAt: first } } });
+    expect(documents.get('studyMaterials/m')?.updatedAt).toBe(first);
+    expect(documents.get('studyNotes/n')?.updatedAt).toBe(first);
+  });
+
+  it('does not let an old device timestamp refuse an independent content edit', async () => {
+    await processCommand('owner-1', create());
+    jest.setSystemTime(new Date(later));
+    const command = update();
+    if (command.kind !== 'update') throw new Error('Expected update');
+    const accepted = await processCommand('owner-1', { ...command, changes: [...command.changes,
+      { path: ['updatedAt'], before: { exists: true, value: '2026-10-01T00:00:00.000Z' }, after: { exists: true, value: '2026-10-02T00:00:00.000Z' } }] });
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Second', updatedAt: later } } });
+  });
+
+  it('keeps refusal, blocked delivery, conflict and failed commit from moving recency', async () => {
+    await processCommand('owner-1', create());
+    jest.setSystemTime(new Date(later));
+    expect(await processCommand('owner-1', update('wrong-generation', 'wrong'))).toMatchObject({ kind: 'refused' });
+    expect(await processCommand('owner-1', { ...update('blocked'), dependsOn: ['missing'] })).toMatchObject({ kind: 'blocked' });
+    expect(await processCommand('owner-1', { ...update('conflict'), changes: [{ path: ['title'], before: { exists: true, value: 'Unseen' }, after: { exists: true, value: 'Other' } }] })).toMatchObject({ kind: 'conflict' });
+    failCommit = true;
+    await expect(processCommand('owner-1', update('failed'))).rejects.toThrow('Commit failed');
+    expect(documents.get('sermons/sermon-1')?.updatedAt).toBe(first);
+  });
+
+  it('leaves tombstones without authored fields or a new recency time', async () => {
+    const saved = await processCommand('owner-1', create());
+    if (saved.kind !== 'acknowledged') throw new Error('Expected acknowledgement');
+    jest.setSystemTime(new Date(later));
+    expect(await processCommand('owner-1', { ...update('delete'), kind: 'delete', baseline: saved.snapshot.value! })).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+    expect(documents.get('sermons/sermon-1')).not.toHaveProperty('updatedAt');
+  });
+});
+
 describe('document operation budgets', () => {
   const reset = () => { documentReadUnits = 0; transactionWrites.length = 0; };
   const measured = () => ({ reads: documentReadUnits, writes: transactionWrites.length });

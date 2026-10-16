@@ -259,3 +259,83 @@ Local evidence: the ignored case artifacts contain `note-sermon-names-record.md`
 3. Reopen the note with cached data and no network. Verify the list and title; record full cold-start/SW behavior separately. Check a second device after the first change arrives.
 4. Observe collection/head/change requests with both note-page consumers mounted. Verify sharing and absence of the old owner-wide query; compare real read usage only with authorized telemetry and comparable activity.
 5. Check the phone properties drawer and desktop sidebar, follow the sermon link, then delete the disposable sermon and verify the reverse link disappears. Record screenshots and server outcomes; remove the fixture.
+
+## BUG-20261015-manual-form-does-not-update-recency
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+Manual forms saved content without changing root `updatedAt`, leaving recently
+edited documents in their old list position. `stampAcceptedResource` now derives
+recency for every changed live effect in the existing transaction. Primary ACK,
+related accepted copies, stored resources and subsequent reads agree. One server
+ISO time is used per transaction attempt: acceptance time, not the UI action time
+or exact database commit time. It never decides whose content wins.
+
+Receipt replay returns before planning/writing; no-op and bookkeeping-only edits
+retain prior recency. Tombstones remain without authored fields. Refused, blocked
+and failed commits do not change the resource. Firestore operation budgets stay
+unchanged (including5reads/7writes for a two-document relation).
+
+Resource-document rebase owns root `rev`/`updatedAt`; generic value merge stays
+ordinary, including standalone and nested authored fields named `updatedAt`. A
+pending creation keeps its local timestamp until a server copy exists; revision
+metadata still comes only from the server. A client timestamp can provisionally
+fill missing legacy metadata while validating the candidate; accepted writes
+replace it with server recency, and timestamp-only no-ops preserve the prior value.
+Creation identity remains immutable under the existing validator.
+
+Regression evidence: the original six regressions failed before the fix. Additional
+review found and reproduced the generic-value boundary (one red test), then missing
+legacy metadata and pending-create metadata (two red tests). All are green. The
+no-op control explicitly requires ACK for a stale-before, identical-after content
+edit and checks that timestamp-only writes leave legacy revision unchanged. Final
+focused checks passed306 tests across8 suites; independent clean-context review
+passed460 across13 suites at final acceptance, including the React facade, manual forms, plan trees
+and `mergeOutline`. External Claude review was owner-authorized; its source-only
+claims were checked against code and behavioral regressions.
+
+Final full Jest with coverage passed804suites/8344tests (3suites/17tests skipped).
+Coverage: statements/lines93.43%, branches80.81%, functions87.69%; repository
+thresholds passed. Production build passed through `build-production.js`, including
+route type generation, Next build and build TypeScript. Full ESLint passed with
+0errors/29inherited warnings; both last-added test files also passed targeted ESLint.
+The build script is the repository's production-build step; Jest with coverage ran
+as its own complete gate rather than repeating the package's prebuild Jest command.
+
+Initial live evidence used a disposable sermon on localhost3047. Before the fix,
+creation and manual preaching-date Save returned revisions1/2 without`updatedAt`.
+Afterward, a city edit returned revision3 with server time; an offline edit reached
+revision4 after reconnect and survived reopening/reload. Separate authenticated
+reads matched ACK5 and the built-app ACK6 in content, metadata and timestamp. The
+primary agent inspected tablet834x1112 and phone390x844 screenshots: saved value
+visible, close/Cancel/Save reachable, no horizontal overflow. The fixture was
+deleted through normal UI with an exact-ID guard (ACK7deleted=true). No production
+or physical-device acceptance is claimed; hard-offline startup was not exercised.
+The final built-app pass after all refinements used a new disposable sermon:
+createACK1, manualdateSaveACK2, offlineSave/reconnectACK3 and separateHTTP200reads
+with matching metadata/content/timestamps. Online reload and form reopening kept
+the offline city. Final834x1112and390x844 screenshots were personally inspected;
+controls fit and no horizontal overflow. Cleanup returned ACK4deleted=true,
+the own fixture disappeared and network connectivity was restored.
+
+
+Evidence remains in the ignored case artifact directory: `recency-verification.json`,
+red/green logs, source hashes, source-only review outputs, screenshots and
+`recency-browser.json`, `recency-stored-read.json`, `recency-build-browser.json`
+and final `recency-final-browser.json`.
+The implementation, regression tests, this manifest and bug-ID commit preserve
+the Git trace. Existing records are not backfilled. Expected offline network
+errors and dev/HMR warnings occurred; no clean-console claim is made.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision and use only disposable test records.
+2. Change a group meeting's date/place; verify list recency, and identical accepted
+   `updatedAt` in ACK and a subsequent document read.
+3. Add/edit a preaching date through the ordinary sermon window, reload, and
+   confirm details and timestamp. Preserve real sermons and other records.
+4. Save an already loaded form offline, reconnect and confirm retained content
+   and one accepted result. Keep automated replay/no-op/write-budget evidence.
+5. Verify title autosave, an undelivered creation and a two-document relation.
+   Remove only own fixtures; record revision, timestamps, screenshots and results.
+   Production acceptance stays pending until these checks actually run.

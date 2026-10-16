@@ -206,7 +206,7 @@ describe('settings bootstrap through the shared server protocol', () => {
     expect(documents.get(userPath)).toMatchObject({ language: 'ru', displayName: 'Name', _dataEngine: { revision: 1 } });
     expect([...documents.keys()].some(key => key.startsWith('_dataEngineReceipts/'))).toBe(true);
     expect([...documents.keys()].some(key => key.startsWith('_dataEngineHeads/'))).toBe(true);
-    await expect(readOwnSettings('owner-1')).resolves.toEqual({ language: 'ru', displayName: 'Name' });
+    await expect(readOwnSettings('owner-1')).resolves.toEqual({ language: 'ru', displayName: 'Name', updatedAt: expect.any(String) });
   });
 
   it('preserves entitlements and the saved language when bootstrap adopts an existing profile', async () => {

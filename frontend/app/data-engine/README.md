@@ -367,7 +367,7 @@ unreadable copy, a server copy not loaded, deleted or not comparable) shows what
 asks first; accepting everything from the server always asks once inside the banner, offers to
 download all copies first, and removes only the copies listed when it asked — because a date
 never proves whose words are newer (legacy optimistic edits left `updatedAt` alone, structure
-writes never moved it, and the engine does not set it). One copy whose comparison fails is shown
+writes never moved it, and the engine did not set it at that release). One copy whose comparison fails is shown
 as "could not be compared" and never hides the others. Field differences are computed when the
 banner loads; rows and line diffs render only when the list is opened.
 Measured on the owner's desktop archive before this shipped: 115 of 115 copies were echoes.
@@ -498,3 +498,25 @@ A manual form exposes `openingData` separately from `initialData` (last saved in
 opening. Embedded creation uses it to retain its own child identity after refusal.
 Older already-saved scopes lacking that evidence expose `openingData: null`; features
 that require an origin must preserve/export their text rather than infer an identity.
+
+### Accepted recency
+
+`processCommand` stamps every changed live transaction participant through
+`acceptedResource.server.ts`, before returning accepted snapshots or writing them.
+The primary ACK, related ACK copies and subsequent document/feed reads therefore
+carry the same `updatedAt`. One server ISO time is used per transaction attempt;
+it describes server acceptance, not the UI action time or an exact database commit time.
+It never chooses whose content wins. The existing creation-identity guard still
+refuses updates to root `createdAt`.
+
+A no-op, bookkeeping-only edit (`updatedAt`, `rev`, top-level identity),
+duplicate receipt, refusal or blocked command does not move recency; deletion stays
+a tombstone. Client timestamps remain wire-compatible, but do not override accepted
+recency. Resource-document rebase and command application treat root `updatedAt`
+as derived metadata (a pending creation retains its local timestamp until accepted); the generic value merge remains unaware of resource fields.
+This prevents a false timestamp conflict while retaining authored-field conflicts,
+including nested fields named `updatedAt`. The rule adds no Firestore reads or writes.
+
+A client timestamp can provisionally fill a missing legacy field while validating
+the wire candidate; it cannot cause a content conflict and never determines the
+accepted timestamp. The shared accepted-write rule replaces it before ACK/storage.

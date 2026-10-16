@@ -4,6 +4,7 @@ import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 
+import { stampAcceptedResource } from './acceptedResource.server';
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
@@ -224,7 +225,8 @@ const effectBytes = (effects: ResourceSnapshot[]) => effects.reduce((bytes, effe
 function withAcceptedCopies(result: CommandResult, effects: ResourceSnapshot[]): CommandResult {
   if (result.kind !== 'acknowledged') return result;
   const relatedSnapshots = effects.filter(effect => effect.resource.collection !== result.snapshot.resource.collection || effect.resource.id !== result.snapshot.resource.id);
-  return { ...result, committed: result.snapshot.metadata!, ...(relatedSnapshots.length ? { relatedSnapshots } : {}) };
+  const snapshot = effects.find(effect => effect.resource.collection === result.snapshot.resource.collection && effect.resource.id === result.snapshot.resource.id) ?? result.snapshot;
+  return { ...result, snapshot, committed: snapshot.metadata!, ...(relatedSnapshots.length ? { relatedSnapshots } : {}) };
 }
 
 function previousCommandResult(previous: StoredReceipt | undefined, command: DataCommand, commandHash: string,
@@ -325,7 +327,9 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           });
         },
       });
-      effects = plan.writes;
+      const acceptedAt = new Date().toISOString();
+      // The planner exposes writes only for acknowledged commands.
+      effects = plan.writes.map(effect => stampAcceptedResource(snapshotFromRaw(effect.resource, rawDocuments.get(resourceKey(effect.resource))), effect, acceptedAt));
       result = withAcceptedCopies(plan.result, effects);
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
