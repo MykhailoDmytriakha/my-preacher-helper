@@ -403,3 +403,30 @@ Evidence remains in the ignored current case: `fence-readers-verification.json`,
 4. Create the disposable share link; inspect its metadata and image preview for prose only. Repeat with quoted/list/tilde blocks and a genuine heading after the code; verify outline and prose remain.
 5. Check390/834widths, repeat a loaded route offline/reconnect, and verify normal prose/inline-code behavior. Repeat on physical devices when available.
 6. Delete only the disposable note/link, confirm their removal, restore network/tabs and record the deployed version, results and screenshots. Production acceptance remains pending until this actually runs.
+
+## BUG-20261015-list-code-paste-loses-container
+
+Stage: locally verified and independently reviewed; production acceptance pending.
+
+A code-only list item pasted correctly but its required empty first paragraph was written as a blank boundary line. After save/reload, CommonMark ended the item and placed its code outside the list. Initial Markdown loading also needed that leading paragraph to fit the editor schema. The shared `MarkdownListItem` now supplies it in the Markdown DOM hook and omits only that placeholder during serialization. The first real block starts on the marker line; a first horizontal rule uses underscores to avoid becoming an outside thematic break. Native list schema, commands and editable paragraph remain.
+
+The first isolated item-parser implementation lost inherited rich-HTML marks. Independent review reproduced this and the final fix leaves native HTML parsing in its original context. Schema-derived Markdown preparation and serialization live together in one extension used by every RichMarkdownEditor. StarterKit's list item is replaced by that derived extension; its already installed, deduplicated 3.20.0 package is now a pinned direct dependency. No shared node_modules or environment file was changed. Server, offline storage and display readers keep their existing string contract. Ambiguous previously flattened Markdown is not automatically reattached to a list.
+
+Before production edits, structural regressions failed10/16. The final tests reject the abandoned isolated parser in three native bold/italic/strike comparisons, plus the normal-whitespace control. An early equality-only test missed the original structure loss; an early raw-HTML test had root-position assumptions. Those attempts are retained as diagnostic history, not accepted red evidence. Final focused checks passed4suites/84tests, including32list tests, ordinary serialization, repeated saves, nested/quoted blocks, rule syntax, long fences and native indent/outdent/split. Native HTML paste controls passed without an additional plugin.
+
+Full Jest passed807suites/8456tests (3suites/17tests skipped,177.839s). Full TypeScript, production build `a--3uNrrFP_WmbX2-tYQg` and ESLint passed (0errors/29inherited warnings); the final changed files also passed targeted lint. Independent review found the mark regression, reviewed its correction and repeated focused tests; fresh acceptance checks the final evidence and hashes.
+
+Browser acceptance used the actual built localhost3047 app, an existing test account and one disposable note. Plain-text paste produced ACK3 and retained code inside its item after reload. A source clipboard with both plain and HTML flavours produced ACK4 and retained long code fences, a quoted item, nested code/rule and all three marks. Native rich HTML produced ACK5 with bold, italic and strike retained through saving/reload. A loaded offline edit reached ACK8 after reconnect; a separate authenticated read matched its content/revision, and reload retained it. A cached-route offline reload opened in1431ms with the same content and no recovery banner. A sequential second tab read the exact saved Markdown and sent0commands during observation. This is Chromium evidence, not physical-device/PWA fresh-launch acceptance.
+
+The primary personally inspected390x844 and834x1112 screenshots. Code remains indented within its item, text/controls fit and there is no horizontal page overflow. The editor's required empty leading paragraph remains editable. One earlier immediate offline paste/Done/reload happened before autosave; it offered the complete text as a recoverable draft, which was explicitly restored and acknowledged. That attempt is not proof of automatic pending-write replay. Expected offline request errors occurred; no clean-console claim is made.
+
+Only the own note was removed through its normal confirmation with exact title/URL/resource guards: ACK9 and a separate read both report deleted=true/value=null; no card remains. Network is restored and one tab remains. Evidence is retained in the ignored case as `paste-list-verification.json`, browser JSON, red/green logs, review, source hashes and personally inspected screenshots. This manifest, implementation, tests and bug-ID commit preserve the Git trace.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision and create only an authorized disposable note.
+2. Paste a code-only bullet/ordered item, save and reload; code must remain inside that item.
+3. Repeat with nested/quoted lists, headings, horizontal rules and long fences. Check the ordinary list and indent/outdent/split controls.
+4. Paste Markdown source carrying an HTML flavour, then native rich HTML with bold/italic/strike. Save/reload and confirm content and formatting.
+5. Check390/834widths, loaded offline editing/reconnect, cached reload and a sequential device/tab. Record immediate-departure draft recovery separately from accepted-write replay.
+6. Delete only the disposable fixture, verify its tombstone, restore network/tabs and record deployed revision/results/screenshots. Production acceptance remains pending until executed.

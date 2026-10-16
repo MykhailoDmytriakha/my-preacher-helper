@@ -27,3 +27,29 @@ Main has no custom node, NodeView or decoration yet. Worked examples sit on unme
 - 2026-02-25: TipTap headless + `tiptap-markdown` chosen for WYSIWYG over raw markdown storage; 2026-02-28: studies and notes reuse the thoughts editor so there is one editing experience.
 - 2026-03-10: the toolbar froze after the first render; the same day a node decoration shifted inward did nothing.
 - 2026-03-12: cursor insertion and node ids, both on `main-2`; 2026-05-20: wikilink atoms and chip subscriptions on `feature/studies-wikilinks-v0`.
+
+## Block-first list items and saved Markdown
+
+`MarkdownListItem` keeps the native `paragraph block*` list schema and commands.
+Markdown may begin a list item with code, a quote, a heading, a nested list or a
+rule. Its Markdown `parse.updateDOM` supplies the required paragraph before normal
+schema parsing. Derive block selectors from the active schema; do not reparse the
+item's children through an isolated `getContent` callback: that loses marks
+inherited from list ancestors in native rich HTML.
+
+During serialization, skip only the empty leading paragraph before a nonparagraph
+block. Start the real block on the marker line. A blank marker plus an extra blank
+line ends the item; a bare nested dash can become a Setext heading. Write a first
+horizontal rule with underscores, since `- ---` is an outside thematic break.
+
+Test structure before comparing round trips: equality alone passes when both
+copies already lost the list boundary. Check initial Markdown, repeated saves,
+plain and HTML-source clipboards, and native HTML paste separately. Native
+`EditorView.pasteHTML` uses contextual slice fitting and can already supply the
+paragraph; keep its normal mark context. In jsdom pass an explicit paste Event
+when ClipboardEvent is unavailable. Compare inherited bold/italic/strike with the
+native ListItem parser and retain indent/outdent/split controls.
+
+Already flattened stored Markdown cannot safely be reattached by a regex: an
+intended outside block is indistinguishable. Keep the native editable paragraph;
+hiding it would remove a place where the person can type an introduction.

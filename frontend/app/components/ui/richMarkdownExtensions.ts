@@ -4,13 +4,15 @@ import { Markdown } from 'tiptap-markdown';
 import { MarkdownSourcePaste } from '@/utils/markdownPaste';
 
 import { MarkdownCodeBlock } from './markdownCodeBlock';
+import { MarkdownListItem } from './markdownListItem';
 
 /** What the rich Markdown editor is made of, apart from its placeholder — one list for the editor and its tests. */
 export function richMarkdownExtensions() {
     return [
         // The code block comes separately: its Markdown fence must outgrow the backticks inside.
-        StarterKit.configure({ codeBlock: false }),
+        StarterKit.configure({ codeBlock: false, listItem: false }),
         MarkdownCodeBlock,
+        MarkdownListItem,
         // transformPastedText: parse pasted plain-text markdown (e.g. **bold**, # heading)
         // into real formatting instead of inserting literal characters. Only affects
         // text/plain pastes — rich HTML pastes and "paste as plain text" (Ctrl+Shift+V)
