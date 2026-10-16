@@ -1,8 +1,9 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 
+import { carriedCopy, validNewCouncilCarry } from './councilCarryContent';
 import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
-import type { CommandBase, DataCommand, DocumentData, Json, ResourceRef, ResourceSnapshot } from './types';
+import type { CommandBase, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 export interface DomainPreparation {
   command: DataCommand;
@@ -71,35 +72,15 @@ export function requiredDomainTargets(confirmed: ResourceSnapshot, draft: Docume
 }
 
 /**
- * The copy that lands in the next council, addressed by the operation rather than by chance.
- * A lost acknowledgement makes the client send the same immutable command again; a random id
- * would then add a second copy of the same section beside the first.
- */
-function carriedCopy(topic: DocumentData, operationId: string): DocumentData {
-  const derive = (suffix: string) => `${operationId}-${suffix}`;
-  const list = (value: unknown, kind: string): DocumentData[] => Array.isArray(value)
-    ? value.map((entry, index) => ({ ...(entry as DocumentData), id: derive(`${kind}-${index}`) })) : [];
-  return {
-    id: derive('topic'),
-    ...(topic.kind !== undefined ? { kind: topic.kind } : {}),
-    title: topic.title,
-    ...(topic.summary !== undefined ? { summary: topic.summary } : {}),
-    questions: list(topic.questions, 'q') as unknown as Json[],
-    options: list(topic.options, 'o') as unknown as Json[],
-    ...(topic.forAssembly ? { forAssembly: true } : {}),
-  };
-}
-
-/**
  * One save, two councils. The screen marks a section as carried; the destination, its generation
  * and the copy are the engine's business, so no screen can mark a source without the section
  * actually landing.
  */
 function prepareCarry(base: CommandBase, confirmed: ResourceSnapshot & { value: DocumentData }, draft: DocumentData,
   destinations: string[], targets: readonly ResourceSnapshot[]): DomainPreparation {
-  if (destinations.length !== 1) return failure('Carry one section at a time', 'invalid-argument');
+  if (destinations.length !== 1) return failure('Carry one section at a time');
   const [destination] = destinations;
-  if (destination === confirmed.resource.id) return failure('A section cannot be carried to its own council', 'invalid-argument');
+  if (destination === confirmed.resource.id) return failure('A section cannot be carried to its own council');
   const target = targets.find(candidate => candidate.resource.collection === 'councils' && candidate.resource.id === destination);
   if (!target) return failure('A confirmed destination snapshot is required', 'missing-target-generation');
   if (!target.value || target.metadata?.deleted) return failure('The destination council was deleted', REFERENCED_DOCUMENT_DELETED);
@@ -108,7 +89,7 @@ function prepareCarry(base: CommandBase, confirmed: ResourceSnapshot & { value: 
   const before = carriedTo(confirmed.value);
   const moved = topics(draft).filter(topic => typeof topic.id === 'string'
     && topic.carriedToCouncilId === destination && before.get(topic.id as string) !== destination);
-  if (moved.length !== 1) return failure('Carry one section at a time', 'invalid-argument');
+  if (moved.length !== 1) return failure('Carry one section at a time');
 
   return {
     command: { ...base, kind: 'relation', relation: 'council-carry', edits: [
@@ -188,4 +169,28 @@ export function prepareAtomicSeriesCommand(owner: string, operationId: string, p
     dependsOn: [], kind: 'relation', relation: 'series-member-create', value: copy(creation.draft!), edit: edits[0] });
   return validateCommand({ protocol: 1, owner, operationId, resource: edits[0].resource, generation: edits[0].generation,
     dependsOn: [], kind: 'relation', relation: 'series-membership', edits });
+}
+
+
+/** A click-only council carry uses the same durable participants as a series move. */
+export function prepareAtomicDomainCommand(owner: string, operationId: string,
+  participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
+  if (participants[0]?.confirmed.resource.collection !== 'councils') return prepareAtomicSeriesCommand(owner, operationId, participants);
+  if (participants.length !== 2) return failure('A council carry requires two participants');
+  const [source, target] = participants;
+  if (!source.confirmed.value || source.confirmed.metadata?.deleted || !source.draft
+    || source.confirmed.value.userId !== owner || source.draft.userId !== owner) return failure('A live owned source council is required');
+  if (target.confirmed.resource.collection !== 'councils' || target.confirmed.value || target.confirmed.metadata || !target.draft
+    || target.draft.userId !== owner || target.draft.status !== 'preparing') return failure('A new owned destination council is required');
+  if (diffFields(source.confirmed.value, source.draft).some(change => change.path[0] !== 'topics')) return failure('Save ordinary council fields separately', 'atomic-carry-only');
+  const destinations = newCarryDestinations(source.confirmed, source.draft);
+  if (destinations.length !== 1 || destinations[0] !== target.confirmed.resource.id
+    || source.confirmed.resource.id === target.confirmed.resource.id || topics(target.draft).length !== 1) return failure('Carry one section to one new council');
+  if (!validNewCouncilCarry(topics(source.confirmed.value), topics(source.draft), target.confirmed.resource.id, topics(target.draft))) return failure('Invalid new council carry content');
+  return validateCommand({ protocol: 1, owner, operationId, resource: copy(source.confirmed.resource),
+    generation: source.confirmed.metadata?.generation ?? null, dependsOn: [], kind: 'relation', relation: 'council-carry', edits: [
+      { resource: copy(source.confirmed.resource), generation: source.confirmed.metadata?.generation ?? null,
+        beforeTopics: copy(topics(source.confirmed.value)), afterTopics: copy(topics(source.draft)) },
+      { resource: copy(target.confirmed.resource), generation: null, beforeTopics: [], afterTopics: copy(topics(target.draft)), create: copy(target.draft) },
+    ] });
 }

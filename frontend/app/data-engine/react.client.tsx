@@ -529,6 +529,7 @@ interface OpenEditor {
   editor: ManagedEditor;
   state: EditorState;
   status: SyncStatus;
+  actions: ReturnType<ManagedEditor['getActions']>;
 }
 interface RecoveryRequest {
   base: object;
@@ -588,7 +589,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         if (!active) return;
         try {
           const state = value.getState();
-          setOpened({ identity, owner, key, browser, editor: value, state, status: describeSync(state, value.getObservation(), value.getDelivery()) });
+          setOpened({ identity, owner, key, browser, editor: value, state, actions: value.getActions?.() ?? [], status: describeSync(state, value.getObservation(), value.getDelivery()) });
         } catch (failure) { setError(failure, 'read'); }
       };
       stop = value.subscribe(publish);
@@ -667,13 +668,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const editorRefusal = editorError === null ? null
     : say(refusalWords(Object.assign(new Error(editorError), { code: editorErrorCode }), DOCUMENT_FAILED));
   const isCurrent = useCallback(() => mounted.current && scope.current === identity, [identity]);
-  const run = useCallback(async (action: (editor: ManagedEditor) => Promise<void>) => {
+  const run = useCallback(async <T,>(action: (editor: ManagedEditor) => Promise<T>): Promise<T> => {
     if (!isCurrent()) throw new Error(EDITOR_CHANGED);
     if (!current) throw copy ? readOnlyError(readOnlyReasonKey()) : new Error('The editor is not ready');
     try {
-      await action(current.editor);
+      const result = await action(current.editor);
       if (!isCurrent()) throw new Error(EDITOR_CHANGED);
       setError(null);
+      return result;
     } catch (failure) {
       if (isCurrent()) setError(failure);
       throw failure;
@@ -778,6 +780,12 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       cancelScheduledSave();
       return run(editor => editor.commit(updater));
     },
+    actions: current?.actions ?? [],
+    carryCouncilTopicToNew: (topicId: string, title: string) => {
+      cancelScheduledSave();
+      return run(editor => editor.carryCouncilTopicToNew(topicId, title));
+    },
+    discardAction: (id: string) => run(editor => editor.discardAction(id)),
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
     // After a refusal this also drops the refused change (EditorController.acceptRemote).

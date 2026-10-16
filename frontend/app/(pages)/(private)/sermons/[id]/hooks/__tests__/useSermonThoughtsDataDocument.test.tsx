@@ -19,6 +19,7 @@ const snapshot = (): ResourceSnapshot => ({ resource: { collection: 'sermons', i
 function setup(value: ResourceSnapshot = snapshot()) {
   const session = new DataSession(value);
   const api = {
+    actions: [], carryCouncilTopicToNew: jest.fn(), discardAction: jest.fn(),
     recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),

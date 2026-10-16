@@ -1,7 +1,8 @@
 'use client';
 
+
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, ListChecks, Megaphone, PauseCircle, XCircle } from 'lucide-react';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -12,6 +13,7 @@ import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import {
   applyOutcome,
@@ -48,8 +50,7 @@ const buttonQuiet =
   'inline-flex items-center justify-center gap-2 rounded-full border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800';
 
 export default function CouncilConductPage() {
-  const { id } = useParams();
-  const councilId = typeof id === 'string' ? id : '';
+  const councilId = useRouteId(2);
   return <EngineCouncilConductPage councilId={councilId} />;
 }
 

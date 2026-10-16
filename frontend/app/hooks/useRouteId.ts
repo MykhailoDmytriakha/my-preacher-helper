@@ -12,15 +12,18 @@ import { useParams } from 'next/navigation';
  * `window.location.pathname` (which IS `/sermons/abc`), letting a deep-linked detail
  * page render offline from the Firestore cache without refactoring the page body.
  *
+ * Nested collections such as /care/council/[id] pass segmentIndex=2.
+ * The default remains the second path segment for existing detail screens.
+ *
  * Returns '' when no id can be resolved (e.g. SSR) — callers already guard their data
  * hooks on a falsy id.
  */
-export function useRouteId(): string {
+export function useRouteId(segmentIndex = 1): string {
   const params = useParams<{ id?: string }>();
   if (params?.id) return params.id;
   if (typeof window !== 'undefined') {
     const segments = window.location.pathname.split('/').filter(Boolean);
-    if (segments.length >= 2) return segments[1];
+    if (segments.length > segmentIndex) return segments[segmentIndex];
   }
   return '';
 }

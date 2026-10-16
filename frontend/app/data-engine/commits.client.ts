@@ -89,5 +89,17 @@ export function createIndexedDbCommitStore(): CommitStore {
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),
     createBatch,
     compareAndSetBatch,
+    releaseProjection: (owner, ids) => transaction('readwrite', (store, read, done) => {
+      readCommitRows(store, read, owner, requests => {
+        for (const id of ids) {
+          const request = requests.find(candidate => candidate.id === id);
+          if (!request) continue;
+          const participants = request.atomic ? request.atomic.participants.map(participant => requests.find(candidate => candidate.id === participant)) : [request];
+          if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) continue;
+          store.delete(commitProjectionKey(owner, id));
+        }
+        collectCommitRows(store, read, owner, () => done(undefined));
+      });
+    }),
   };
 }

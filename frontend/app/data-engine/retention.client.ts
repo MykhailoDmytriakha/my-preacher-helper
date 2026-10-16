@@ -5,9 +5,9 @@ import { engineOwnerRange, type StorageRead } from './storage.client';
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 
-export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request'] as const;
+export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request'] as const;
 export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic'>,
-  kind: string = request.atomic?.kind === 'create-member' ? 'creation-request' : request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
+  kind: string = request.atomic?.kind === 'council-carry' ? 'council-carry-request' : request.atomic?.kind === 'create-member' ? 'creation-request' : request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
 export const commitCaptureKey = (owner: string, scopeId: string, id: string): IDBValidKey => ['reference', owner, 'capture', scopeId, id];

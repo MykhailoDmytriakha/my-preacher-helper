@@ -669,3 +669,63 @@ The sole changed frontend file stayed byte-identical from the gate source freeze
 2. Scroll to another chapter, rotate/resize, then use the explicit return button. Repeat with large text and with a preaching timer or group-conduct bars visible. Check keyboard focus/PageDown/Escape.
 3. After loading the passage online, repeat resizing offline and restore connection. This checks already-loaded geometry; it does not establish cold offline navigation or service-worker update behavior.
 4. Inspect and scroll on the physical iPad/phone and Safari. Desktop Chromium emulation does not prove their anchoring or touch momentum. Record owner acceptance, screenshots and deployed revision.
+
+
+## Council carry-to-new and care offline access
+
+Stage: locally verified, independently source-reviewed and accepted by a fresh agent against the exact manifest below; production verification is pending.
+
+Locally closed: BUG-20261013-council-carry-to-new-gone, BUG-20261016-council-carry-success-before-capture,
+BUG-20261016-care-offline-shell-routes-missing and BUG-20261016-offline-card-overflows-phone.
+
+An unfinished topic creates an undated preparing council when none exists. Source mark and destination
+content share one durable atomic capture, immutable retry identity and server transaction. The engine
+pins displayed words and the proven predecessor before storage awaits; later/unrelated words stay
+outside this action. Narrow source adoption, full-action discard and completion references reuse the
+existing queue/checkpoint mechanisms. Success waits for local durable capture; failed capture keeps
+words and shows an error. A new request range prevents older bundles preparing unsupported participants.
+
+All six care screens are registered lazily in the offline shell. The shared route-ID hook retains its
+existing default and supports nested care IDs explicitly. The generic card keeps long URLs within the
+phone width. Lazy screens require their chunks to have been visited online.
+
+RED: original browser no-target refusal2/2; UI4failed/4passed; canonical atomic queue2failed for its
+series-only restriction; server1failed/50passed; extra create-validation3failed/56passed; differential
+HEAD shell/hook9failed/7passed. Invalid test-adapter/router fixtures are explicitly excluded. Same
+regressions and neighboring mechanisms now pass191 tests in12 suites. Full frozen-source gates:
+816 suites/8614 tests pass,3 suites/17 tests skipped; TypeScript pass; ESLint0errors26warnings;
+production build17.92s, build dJUQjUjzCoDzZCmhM_UFI. Thirty-three frontend hashes match after gates/browser.
+
+Real Chromium localhost3047 on cloned owned snapshots with synthetic content proves offline creation,
+source reload, target navigation/reload, stable identity on reconnect, capture refusal, one/multiple
+existing-target selection and all six care routes offline after warming their page types. API writes
+were blocked: no actual live server ACK is claimed. Transactional transport/server tests prove both
+writes, refusal atomicity and lost-ACK replay. Primary personally viewed desktop/phone/tablet and
+before/after generic-card screenshots. Generic-card geometry passes320/390/820/1280. Browser contexts
+were closed; original Groups tab stayed online. Physical device/Safari and owner acceptance remain pending.
+
+An independent review found the close-before-adoption source projection leak; regression reproduced
+and corrected it before final gates. Source/protocol/route reviews found no remaining high-confidence
+issue in this scope. A separate existing-target offline projection defect remains open as
+BUG-20261016-existing-council-carry-invisible-offline; this unit does not claim to fix it.
+
+Local evidence: .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/council-carry-new-verification.json
+SHA-256: 95b4e44b6f0143782ae647103e6ab323794c92bee234a0970c098f713d59f7da. The ignored case retains logs, scripts, snapshots and original records; this registry,
+regression tests and commit carry the durable Git trace. Main was pinned eebdc093 at05:33 with0incoming.
+
+### Production acceptance after separately authorized merge
+
+1. Confirm deployed revision/build; use disposable owned council data. With no preparing council,
+   carry one unfinished topic with summary, questions/answers/options and an old outcome. Exactly one
+   undated preparing destination contains the words with fresh IDs and no outcome; source is marked.
+2. Observe real ACK for both participants, reload and check on a second device. Retry an interrupted
+   response and confirm one council/copy. Check source ordinary/later words remain intact.
+3. Repeat offline after visiting the screen type; open/reload both source and destination, reconnect
+   and verify actual delivery. Check one/multiple existing-target selection separately; the pending
+   copy issue named above must be verified after its own follow-up fix.
+4. Exercise controlled local capture refusal and proven terminal server failure on test data; no
+   premature success, no partial effect, whole-action discard preserves words. Unknown delivery retries
+   the same identity. Leaving immediately after invocation must not lose the action.
+5. Visit all six care screens online, then open them through the offline shell, including nested
+   council conduct/order IDs. Check an unknown long address at320/390/820/1280 and actual phone/tablet.
+6. Record real production/browser/device outcomes. No push, merge, PR or deploy happened in this unit.

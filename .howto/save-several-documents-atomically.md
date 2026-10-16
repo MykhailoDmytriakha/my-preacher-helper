@@ -14,6 +14,14 @@ For engine-owned series, stage a multi-document action through `useDataMembershi
 - Thoughts: Save-button editing is `EngineThoughtModal` + `useDataForm`, never a late patch against a newer ancestor. The pure transforms in `frontend/app/utils/sermonThoughtEdits.ts` (`addSermonThought`, `patchSermonThought`, `replaceSermonOutline`) change the thought, `structure` / `thoughtsBySection` and outline together; outline writers update affected assignments in the same command.
 - Server side, `applyCommand` (`frontend/app/data-engine/protocol.ts`) runs `preservesSermonLinks` on the merged candidate: new dangling point / sub-point references, placements of missing thoughts and duplicate placements are refused; defects already present and untouched stay repairable.
 
+## One-shot council carry
+
+An unfinished council topic with no destination uses useDataDocument().carryCouncilTopicToNew(topicId, title). The facade freezes the displayed checkpoint before awaits; councilCarry.ts selects the parent's proven pending predecessor and captures only that topic. CommitQueue.saveAtomic owns the source mark and absent destination together. councilCarryContent.ts shares the copy rule and new-destination validation with the server. The new council is preparing and undated; content gets stable new child IDs and no past outcome.
+
+getActions/discardAction expose whole-action delivery with the existing DataMembershipStatus presentation. Never resolve one participant with a document-level choice. Cancellation keeps captured/later words and removes only its own marks, measured against the initialized predecessor. A page closing after invocation does not cancel capture.
+
+Council requests use council-carry-request, hiding unsupported participants from older bundles. After all participants are terminal and BOTH actual ACK snapshots are durable, the engine releases projection references through CommitStore.releaseProjection; checkpoint references keep proofs needed for unsent typing. Unknown delivery retains ownership. Tests: app/data-engine/__tests__/councilCarryAtomic.test.ts.
+
 ## Legacy paths (unconverted collections only)
 
 The old `useSeriesMembership` / `seriesMembership.client.ts` writer is compatibility code, not a template for a new multi-document action. Do not chain its calls or independent document saves to imitate atomic Save.

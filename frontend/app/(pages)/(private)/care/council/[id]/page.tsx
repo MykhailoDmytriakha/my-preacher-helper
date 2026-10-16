@@ -1,5 +1,6 @@
 'use client';
 
+
 import {
   DndContext,
   DragOverlay,
@@ -28,8 +29,8 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -42,11 +43,13 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
+import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
@@ -84,8 +87,7 @@ const cardClass = 'rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dar
 type TopicUpdater = (topic: CouncilTopic) => CouncilTopic;
 
 export default function CouncilDetailPage() {
-  const { id } = useParams();
-  const councilId = typeof id === 'string' ? id : '';
+  const councilId = useRouteId(2);
   return <EngineCouncilDetailPage councilId={councilId} />;
 }
 
@@ -115,23 +117,24 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   };
   const { recovery } = document;
 
-  const carryTopicToNext = (_id: string, topic: CouncilTopic, _fallbackTitle: string, targetId?: string | 'new'): Council | undefined => {
+  const carryTopicToNext = async (_id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new'): Promise<Council | undefined> => {
     const targets = preparingCouncils(list.councils).filter(item => item.id !== councilId);
     const target = targetId && targetId !== 'new' ? targets.find(item => item.id === targetId) : targets[0];
-    if (!target) {
-      // Creating the next council from here needs a create outside a render; until the engine
-      // exposes one, the person is told what to do rather than left with a silent button.
-      toast.error(t('council.topic.carryNeedsTarget'));
-      return undefined;
-    }
-    void document.carryTopicToNext(councilId, topic, target.id).catch((error: unknown) => {
+    try {
+      if (targetId && targetId !== 'new' && !target) throw Object.assign(new Error('The destination council was deleted'), { code: 'referenced-document-deleted' });
+      if (target) {
+        await document.carryTopicToNext(councilId, topic, target.id);
+        return target;
+      }
+      return await document.carryTopicToNext(councilId, topic, undefined, fallbackTitle);
+    } catch (error) {
       const code = (error as { code?: unknown } | null)?.code;
       toast.error(code === 'topic-gone' ? t('council.topic.carryGone')
         : code === 'topic-already-carried' ? t('council.topic.carryAlreadyCarried')
         : code === 'referenced-document-deleted' ? t('council.topic.carryTargetDeleted')
         : actionFailureMessage(error, t, 'council.topic.carryFailed'));
-    });
-    return target;
+      return undefined;
+    }
   };
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
@@ -148,6 +151,8 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
+    {document.actions?.map(action => <DataMembershipStatus key={action.id} action={{ durable: true, phase: 'submitted',
+      error: null, delivery: action.delivery, retry: document.refresh, discard: () => document.discardAction(action.id) }} />)}
     <CouncilDetailContent source={source} engineCouncilId={councilId} />
   </>;
 }
@@ -160,7 +165,7 @@ interface CouncilDetailSource {
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council) => void;
   deleteCouncil: (id: string) => Promise<boolean>;
-  carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Council | undefined;
+  carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Promise<Council | undefined>;
   /** The council is a copy for reading: nothing on the page offers a change it could not keep. */
   readOnly?: boolean;
 }
@@ -170,6 +175,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const router = useRouter();
   const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
 
+  const pendingCarries = useRef(new Set<string>());
+  const [carrying, setCarrying] = useState<ReadonlySet<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   /** Where the "add section" form is open — at the top, or at the bottom of a long council. */
@@ -248,12 +255,18 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
    * one when none is. The person is told where it landed and can go there.
    */
   const carryTargets = preparingCouncils(councils);
-  const carryToNext = (topic: CouncilTopic, targetId?: string | 'new') => {
-    const target = carryTopicToNext(council.id, topic, t('council.nextCouncilTitle'), targetId);
-    if (!target) return;
-    toast.success(t('council.topic.movedToNext', { title: target.title }), {
-      action: { label: target.title, onClick: () => router.push(`/care/council/${target.id}`) },
-    });
+  const carryToNext = async (topic: CouncilTopic, targetId?: string | 'new') => {
+    if (pendingCarries.current.has(topic.id)) return;
+    pendingCarries.current.add(topic.id); setCarrying(new Set(pendingCarries.current));
+    try {
+      const target = await carryTopicToNext(council.id, topic, t('council.nextCouncilTitle'), targetId);
+      if (!target) return;
+      toast.success(t('council.topic.movedToNext', { title: target.title }), {
+        action: { label: target.title, onClick: () => router.push(`/care/council/${target.id}`) },
+      });
+    } finally {
+      pendingCarries.current.delete(topic.id); setCarrying(new Set(pendingCarries.current));
+    }
   };
 
   const progressStarted = hasProgress(council);
@@ -456,7 +469,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                 onDone={() => setEditingTopicId(null)}
                 onChange={(updater) => patchTopic(topic.id, updater)}
                 onRemove={() => removeTopic(topic.id)}
-                onCarryToNext={(targetId) => carryToNext(topic, targetId)}
+                carrying={carrying.has(topic.id)}
+                onCarryToNext={(targetId) => { void carryToNext(topic, targetId); }}
                 carryTargets={carryTargets}
                 carriedTo={topic.carriedToCouncilId ? councilsById[topic.carriedToCouncilId] : undefined}
               />
@@ -529,6 +543,7 @@ function TopicCard({
   onChange,
   onRemove,
   onCarryToNext,
+  carrying,
   carryTargets,
   carriedTo,
 }: {
@@ -543,6 +558,7 @@ function TopicCard({
   onChange: (updater: TopicUpdater) => void;
   onRemove: () => void;
   onCarryToNext: (targetId?: string | 'new') => void;
+  carrying: boolean;
   /** Councils being prepared — when there is more than one, the person picks where the section goes. */
   carryTargets: Council[];
   /** The council this section was carried to, when it was. */
@@ -836,6 +852,7 @@ function TopicCard({
                             onClick={() => (carryTargets.length > 1 ? setChoosingTarget((value) => !value) : onCarryToNext())}
                             className={`${buttonText} text-indigo-700 dark:text-indigo-300`}
                             aria-expanded={carryTargets.length > 1 ? choosingTarget : undefined}
+                            disabled={carrying}
                             data-testid={`council-topic-carry-${topic.id}`}
                           >
                             <ArrowRightToLine className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />

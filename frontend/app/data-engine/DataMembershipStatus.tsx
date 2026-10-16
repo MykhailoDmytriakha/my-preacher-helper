@@ -7,7 +7,7 @@ import { isSyncTrouble } from './status';
 
 import type { useDataMembership } from './react.client';
 
-type Membership = ReturnType<typeof useDataMembership>;
+type Membership = Pick<ReturnType<typeof useDataMembership>, 'durable' | 'error' | 'phase' | 'delivery' | 'retry' | 'discard'>;
 const phaseKey = (action: Membership): string => {
   if (!action.durable) return action.error ? 'dataSync.phase.localFailure' : 'dataSync.phase.savingLocally';
   const phase = action.delivery?.phase ?? action.phase;

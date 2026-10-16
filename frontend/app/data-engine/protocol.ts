@@ -167,6 +167,13 @@ function validateSeriesMemberCreation(command: Extract<DataCommand, { relation: 
     || !equalValues(orderedContent(command.edit.beforeItems), orderedContent(command.edit.afterItems.filter(item => !matches(item))))) fail('Creation must only add its new member');
 }
 
+function validateCouncilCreation(command: Extract<DataCommand, { relation: 'council-carry' }>, edit: Extract<DataCommand, { relation: 'council-carry' }>['edits'][number]): void {
+  if (edit.create === undefined) return;
+  if (edit !== command.edits[1] || !object(edit.create) || edit.generation !== null || edit.beforeTopics.length !== 0
+    || edit.create.userId !== command.owner || edit.create.status !== 'preparing'
+    || !equalValues(edit.create.topics, edit.afterTopics)) fail('Invalid council creation');
+}
+
 function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): void {
   if (command.relation === 'series-member-create') return validateSeriesMemberCreation(command);
   const ids = (value: unknown) => Array.isArray(value) && value.length <= 100
@@ -189,6 +196,7 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
         || !isValidIdentifier(edit.resource.id) || !generation(edit.generation)
         || named.has(edit.resource.id) || !Array.isArray(edit.beforeTopics) || !Array.isArray(edit.afterTopics)
         || !edit.beforeTopics.every(object) || !edit.afterTopics.every(object)) fail('Invalid council carry');
+      validateCouncilCreation(command, edit);
       named.add(edit.resource.id);
     }
     if (!equalValues(command.edits[0].resource, command.resource) || command.edits[0].generation !== command.generation) fail('Primary council identity mismatch');

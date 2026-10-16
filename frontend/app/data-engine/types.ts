@@ -51,6 +51,8 @@ export type DataCommand = CommandBase & (
   /** Carrying a section between two councils: the source is marked carried only because it landed. */
   | { kind: 'relation'; relation: 'council-carry'; edits: Array<{
       resource: ResourceRef; generation: string | null; beforeTopics: DocumentData[]; afterTopics: DocumentData[];
+      /** Only the absent destination can be created by this same action. */
+      create?: DocumentData;
     }> }
 );
 

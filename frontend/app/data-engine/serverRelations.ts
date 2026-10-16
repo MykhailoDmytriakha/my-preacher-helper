@@ -1,6 +1,7 @@
 import { deriveSeriesItemsFromSermonIds, deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { isStructureTag } from '@/utils/structureTags';
 
+import { validNewCouncilCarry } from './councilCarryContent';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
@@ -240,8 +241,23 @@ class RelationPlanner {
    * either side is a conflict, never a silent overwrite.
    */
   private async councilCarry(command: Extract<DataCommand, { relation: 'council-carry' }>): Promise<CommandResult | undefined> {
+    const creation = command.edits[1]?.create;
+    if (creation && !validNewCouncilCarry(command.edits[0].beforeTopics, command.edits[0].afterTopics,
+      command.edits[1].resource.id, command.edits[1].afterTopics)) fail(INVALID_DOCUMENT);
     for (const edit of command.edits) {
       const council = await this.get(edit.resource);
+      if (edit.create !== undefined) {
+        if (edit !== command.edits[1] || edit.generation !== null || edit.beforeTopics.length
+          || edit.create.userId !== command.owner || edit.create.status !== 'preparing'
+          || !equalValues(edit.create.topics, edit.afterTopics)) fail(INVALID_DOCUMENT);
+        this.assertOwned(council);
+        if (council.value || council.metadata) fail('destination-already-exists');
+        const result = applyCommand({ protocol: command.protocol, owner: command.owner, operationId: command.operationId,
+          resource: edit.resource, generation: null, dependsOn: command.dependsOn, kind: 'create', value: edit.create }, council);
+        if (result.kind !== 'acknowledged') return result;
+        this.writes.set(key(edit.resource), result.snapshot);
+        continue;
+      }
       const value = this.live(council, edit.generation);
       const merged = mergeFields({ exists: true, value: edit.beforeTopics }, { exists: true, value: edit.afterTopics },
         { exists: true, value: currentTopics(value) }, ['topics']);

@@ -1,12 +1,13 @@
 import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
+import { captureCouncilCarry } from './councilCarry';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
-import { describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
+import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
@@ -64,6 +65,9 @@ export interface ManagedEditor {
   getState(): EditorState;
   getObservation(): Observation;
   getDelivery(): JournalEntry[];
+  getActions(): Array<{ id: string; delivery: MembershipDelivery }>;
+  carryCouncilTopicToNew(topicId: string, title: string): Promise<ResourceSnapshot>;
+  discardAction(id: string): Promise<void>;
   form(slot: string, selection: readonly ManualPath[], recovery?: ManualRecoveryPolicy): ManagedManualForm;
   subscribe(listener: () => void): () => void;
   /** `shown` is the copy the screen showed while the person typed (`DataSession.edit`). */
@@ -116,6 +120,7 @@ const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
 const NEEDS_CONNECTION = 'needs-connection';
 export const needsConnection = (error: unknown): boolean => (error as { code?: unknown } | null)?.code === NEEDS_CONNECTION;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
+const COUNCIL_CARRY = 'council-carry';
 const ENGINE_DISPOSED = 'DataEngine has been disposed';
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
 
@@ -147,6 +152,7 @@ export class DataEngine {
   private membershipOpenings = new Map<string, Promise<MembershipScope>>();
   private membershipReleases = new Map<string, MembershipScope>();
   private membershipListeners = new Set<() => void>();
+  private councilCarries = new Map<string, Promise<ResourceSnapshot>>();
 
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
@@ -165,7 +171,8 @@ export class DataEngine {
         this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation, request.baseline.resource);
       }
       if (request.result?.kind === 'acknowledged') this.background(this.persistSnapshot(request.owner, this.generation, request.result.snapshot), request.owner, this.generation, request.result.snapshot.resource);
-      for (const [editorId, entry] of this.editors) if (!entry.closed && editorId === request.editorId) this.emit(entry);
+      for (const [editorId, entry] of this.editors) if (!entry.closed && (editorId === request.editorId || (request.atomic?.kind === COUNCIL_CARRY && entry.controller
+        && sameResource(entry.controller.getState().checkpoint.confirmed.resource, request.baseline.resource)))) this.emit(entry);
     });
     this.stopRuntime = options.runtime.subscribe(event => this.onRuntime(event));
   }
@@ -696,6 +703,22 @@ export class DataEngine {
     await Promise.all([...this.cacheWrites.values()]
       .filter(write => write.owner === owner && write.generation === generation)
       .map(write => about(write.resource, write.operation)));
+    await this.completeCouncilProjections(owner, generation);
+  }
+
+  private async completeCouncilProjections(owner: string, generation: number): Promise<void> {
+    if (!this.options.commits.releaseProjection) return;
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    for (const primary of requests.filter(request => request.atomic?.kind === COUNCIL_CARRY && request.atomic.id === request.id)) {
+      const participants = primary.atomic!.participants.map(id => requests.find(request => request.id === id));
+      if (participants.some(request => !request || !['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length)) continue;
+      for (const request of participants) if (request!.result?.kind === 'acknowledged') {
+        await this.persistSnapshot(owner, generation, request!.result.snapshot); this.assertCurrent(owner, generation);
+      }
+      // Actual snapshots own successful content now. Checkpoint references still retain
+      // proofs needed to rebase a mounted editor or recover its later unsent words.
+      await this.options.commits.releaseProjection(owner, primary.atomic!.participants); this.assertCurrent(owner, generation);
+    }
   }
 
   listPending(): Promise<JournalEntry[]> {
@@ -866,6 +889,48 @@ export class DataEngine {
         getState: () => { active(); return controller.getState(); },
         getObservation: () => { active(); return copy(entry.observation); },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
+        getActions: () => {
+          active();
+          const requests = [...this.commitRecords.values()];
+          return requests.filter(request => request.atomic?.kind === COUNCIL_CARRY && request.id === request.atomic.id
+            && sameResource(request.baseline.resource, frozen) && !['acknowledged', 'cancelled'].includes(request.state))
+            .map(request => ({ id: request.id, delivery: describeActionDelivery(owner, request.atomic!.participants, requests, this.pending) }));
+        },
+        carryCouncilTopicToNew: (topicId, title) => {
+          active();
+          const key = JSON.stringify([owner, frozen, topicId]);
+          const existing = this.councilCarries.get(key); if (existing) return existing;
+          const pinned = copy(controller.getState().checkpoint);
+          const targetId = this.options.operationId(), now = new Date().toISOString();
+          const run = async () => {
+            const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+            const captured = captureCouncilCarry(owner, editorId, pinned, requests, topicId, targetId, title, now);
+            const saved = await this.commits.saveAtomic(captured.captures); this.assertCurrent(owner, generation);
+            // Durable ownership survives navigation; adoption only updates a parent still on screen.
+            if (!entry.closed) {
+              try { await controller.adoptManualCommit(saved[0], [['topics', { id: topicId }, 'carriedToCouncilId']]); }
+              catch (error) { this.reportFailure(error, frozen); }
+            }
+            this.assertCurrent(owner, generation);
+            await this.prepareCommits(); this.backgroundDrain();
+            return captured.destination;
+          };
+          const pending = run(); this.councilCarries.set(key, pending);
+          void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
+          return pending;
+        },
+        discardAction: async id => {
+          active();
+          const requests = await this.commits.list(); active();
+          const request = requests.find(candidate => candidate.id === id && candidate.atomic?.kind === COUNCIL_CARRY
+            && sameResource(candidate.baseline.resource, frozen));
+          if (!request) throw new Error('Council action evidence changed');
+          await controller.settled(); active();
+          if (controller.needsPersistenceRetry()) await controller.retryPersistence(); active();
+          await this.commits.cancelAction(request.atomic!.participants); this.assertCurrent(owner, generation);
+          if (!entry.closed) await controller.settled();
+          await this.completeCouncilProjections(owner, generation);
+        },
         form: (slot, selection, recovery = 'same-slot') => { active(); return this.manualForm(owner, generation, frozen, editorId, entry, slot, selection, recovery); },
         subscribe: listener => {
           active();

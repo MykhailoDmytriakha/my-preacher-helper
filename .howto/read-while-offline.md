@@ -31,3 +31,14 @@ Show what the persisted cache holds at once; connectivity decides only whether t
 - 2026-10-11: the owner's construction replaced the device/server split, the settle timer and the icon as a gate with one answer by the last real request plus knocking (BUG-20260908-cached-response-counts-as-live-connection and the four records closed with it).
 
 See also: `.howto/use-server-first-query.md` · `.howto/keep-a-write-across-offline.md` · `.howto/read-owner-documents.md`
+
+
+## A cached document exists but a new address opens the generic card
+
+Check the route registry in frontend/app/~offline/page.tsx before changing data reads. Each supported
+screen needs a lazy route entry; detail screens use useRouteId so the shell can read identity from
+the actual URL when Next params are empty. The default segment index is1; nested care paths pass2.
+Keep imports lazy so a seen screen works from cached chunks without precaching every page.
+Care covers overview, council/order lists, both detail screens and council conduct.
+A generic fallback card is a grid item: retain min-w-0 so a long requested URL can truncate on a phone.
+Behavior tests: offlineShell.engine.test.tsx and useRouteId.test.tsx; geometry needs a real browser.

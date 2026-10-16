@@ -1,14 +1,16 @@
 'use client';
 
+
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
+import { useRouteId } from '@/hooks/useRouteId';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import {
   isOfflineQueuedError,
@@ -117,8 +119,7 @@ const parseRefs = (value: string): string[] =>
  * React rule broken and a silent way to lose the last sentence typed.
  */
 export default function ServiceOrderPage() {
-  const { id } = useParams();
-  const orderId = typeof id === 'string' ? id : '';
+  const orderId = useRouteId(2);
   return <ServiceOrderEditor key={orderId} orderId={orderId} />;
 }
 

@@ -11,6 +11,26 @@ const update = (base: DocumentData, next: DocumentData): DataCommand => ({
 const field = (value: FieldValue['value']): FieldValue => ({ exists: true, value });
 
 describe('DataEngine command protocol', () => {
+  it('allows creation only for the absent owned second participant of a council carry', () => {
+    const topic = { id: 'topic', title: 'Matter', questions: [], options: [] };
+    const value = { userId: 'owner', title: 'Next', status: 'preparing', topics: [{ ...topic, id: 'copy' }], createdAt: 'now', updatedAt: 'now' };
+    const command = { protocol: 1, owner: 'owner', operationId: 'carry', resource: { collection: 'councils', id: 'source' }, generation: null, dependsOn: [],
+      kind: 'relation', relation: 'council-carry', edits: [
+        { resource: { collection: 'councils', id: 'source' }, generation: null, beforeTopics: [topic], afterTopics: [{ ...topic, carriedToCouncilId: 'target' }] },
+        { resource: { collection: 'councils', id: 'target' }, generation: null, beforeTopics: [], afterTopics: value.topics, create: value },
+      ] };
+    expect(validateCommand(command)).toEqual(command);
+    const mutate = (change: (copy: typeof command) => void) => { const copy = JSON.parse(JSON.stringify(command)); change(copy); return copy; };
+    for (const invalid of [
+      mutate(copy => { Object.assign(copy.edits[0], { create: value }); }),
+      mutate(copy => { copy.edits[1].create!.userId = 'another'; }),
+      mutate(copy => { copy.edits[1].create!.status = 'held'; }),
+      mutate(copy => { Object.assign(copy.edits[1], { generation: 'existing' }); }),
+      mutate(copy => { copy.edits[1].beforeTopics = [topic]; }),
+      mutate(copy => { copy.edits[1].afterTopics = []; }),
+    ]) expect(() => validateCommand(invalid)).toThrow();
+  });
+
   it.each(['2', '2026-0', '2026-02-31'])('refuses a newly changed group date %s at the shared server boundary', date => {
     const resource = { collection: 'groups', id: 'group' };
     const meeting = { id: 'meeting', date: '2026-11-19', location: 'Hall', createdAt: 'created' };

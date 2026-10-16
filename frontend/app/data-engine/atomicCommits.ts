@@ -1,4 +1,4 @@
-import { prepareAtomicSeriesCommand } from './domainPolicy';
+import { prepareAtomicDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
 
@@ -6,7 +6,7 @@ import type { CommitRequest, CommitStore } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
-export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' }
+export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */
@@ -86,7 +86,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
   if (!primary.command) {
     let command;
     try {
-      command = prepareAtomicSeriesCommand(primary.owner, primary.id, participants.map(record => ({ confirmed: record.working, draft: record.intended })));
+      command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(record => ({ confirmed: record.working, draft: record.intended })));
     } catch (error) {
       const code = (error as { code?: unknown }).code;
       if (typeof code !== 'string') throw error;

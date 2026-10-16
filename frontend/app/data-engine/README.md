@@ -537,3 +537,18 @@ including nested fields named `updatedAt`. The rule adds no Firestore reads or w
 A client timestamp can provisionally fill a missing legacy field while validating
 the wire candidate; it cannot cause a content conflict and never determines the
 accepted timestamp. The shared accepted-write rule replaces it before ACK/storage.
+
+
+### Carry an unfinished council topic into a new council
+
+Use useDataDocument().carryCouncilTopicToNew(topicId, title) when no preparing destination exists.
+The engine pins displayed words and the parent's proven saved predecessor before awaiting storage,
+then saveAtomic captures the source mark and absent destination together. Existing destinations
+continue using the ordinary council-carry relation. Both paths preserve prepared content and clear
+the copied outcome. A new council is preparing and undated.
+
+The public document actions/discardAction contract exposes whole-action delivery through
+DataMembershipStatus. Unknown delivery retains its identity; only proven failure can be discarded.
+The server validates both resources and writes neither on refusal. After actual ACK copies of both
+participants are durable, projection references are released; checkpoint references still protect
+recovery and later unsent typing. See .howto/save-several-documents-atomically.md.

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
@@ -69,7 +69,7 @@ describe('carrying a section from a held council through the engine', () => {
     fireEvent.click(screen.getByRole('button', { name: 'council.topic.editOutcome' }));
     expect(screen.getByTestId('engine-outcome-form')).toHaveTextContent('source/topic-1');
   });
-  it('asks where when two councils are being prepared, and carries on the second press', () => {
+  it('asks where when two councils are being prepared, and carries on the second press', async () => {
     state.councils = [state.council!, council('target-a', 'preparing'), council('target-b', 'preparing')];
     render(<CouncilDetailPage />);
 
@@ -86,7 +86,7 @@ describe('carrying a section from a held council through the engine', () => {
     fireEvent.click(screen.getByText('Council target-b'));
     expect(mockCarry).toHaveBeenCalledTimes(1);
     expect(mockCarry).toHaveBeenCalledWith('source', topic, 'target-b');
-    expect(toast.success).toHaveBeenCalled();
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
   it('carries in one press when exactly one council is being prepared', () => {
@@ -99,13 +99,52 @@ describe('carrying a section from a held council through the engine', () => {
     expect(screen.queryByTestId('council-carry-chooser')).not.toBeInTheDocument();
   });
 
-  it('tells the person to prepare a council first when there is nowhere to carry to', () => {
+  it('offers the newly prepared council after the carry is saved locally', async () => {
     state.councils = [state.council!];
+    const created = council('created-target', 'preparing', [{ ...topic, id: 'carried-topic' }]);
+    mockCarry.mockResolvedValue(created);
     render(<CouncilDetailPage />);
 
     fireEvent.click(carryButton());
-    expect(mockCarry).not.toHaveBeenCalled();
-    expect(toast.error).toHaveBeenCalledWith('council.topic.carryNeedsTarget');
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('council.topic.movedToNext', {
+      action: { label: created.title, onClick: expect.any(Function) },
+    }));
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('waits for durable capture before announcing the destination', async () => {
+    const target = council('only-target', 'preparing');
+    state.councils = [state.council!, target];
+    let finish!: (value: Council) => void;
+    mockCarry.mockReturnValue(new Promise<Council>(resolve => { finish = resolve; }));
+    render(<CouncilDetailPage />);
+
+    fireEvent.click(carryButton());
+    expect(toast.success).not.toHaveBeenCalled();
+    await act(async () => { finish(target); });
+    expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed carry from announcing success', async () => {
+    state.councils = [state.council!, council('only-target', 'preparing')];
+    mockCarry.mockRejectedValue(new Error('Device storage refused the action'));
+    render(<CouncilDetailPage />);
+
+    fireEvent.click(carryButton());
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(carryButton()).toBeInTheDocument();
+  });
+
+  it('does not capture the same carry twice while its first capture is pending', async () => {
+    state.councils = [state.council!, council('only-target', 'preparing')];
+    mockCarry.mockReturnValue(new Promise(() => undefined));
+    render(<CouncilDetailPage />);
+
+    fireEvent.click(carryButton());
+    fireEvent.click(carryButton());
+    expect(mockCarry).toHaveBeenCalledTimes(1);
     expect(toast.success).not.toHaveBeenCalled();
   });
 

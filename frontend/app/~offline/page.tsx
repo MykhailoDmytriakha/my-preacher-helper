@@ -52,6 +52,12 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   // book never opened online still opens offline once /bible itself has been seen.
   { test: (p) => p === '/bible', Component: lazy(() => import('@/(pages)/(private)/bible/page')) },
   { test: (p) => p === '/calendar', Component: lazy(() => import('@/(pages)/(private)/calendar/page')) },
+  { test: (p) => p === '/care', Component: lazy(() => import('@/(pages)/(private)/care/page')) },
+  { test: (p) => p === '/care/council', Component: lazy(() => import('@/(pages)/(private)/care/council/page')) },
+  { test: (p) => p === '/care/orders', Component: lazy(() => import('@/(pages)/(private)/care/orders/page')) },
+  { test: (p) => /^\/care\/council\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/page')) },
+  { test: (p) => /^\/care\/council\/[^/]+\/conduct$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/conduct/page')) },
+  { test: (p) => /^\/care\/orders\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/orders/[id]/page')) },
   // Param detail routes — single-segment match.
   { test: (p) => /^\/sermons\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },
   { test: (p) => /^\/series\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/series/[id]/page')) },
@@ -82,7 +88,7 @@ function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
   const { t } = useTranslation();
   return (
     <main className="min-h-screen grid place-items-center bg-[#0b1220] px-6 text-slate-100">
-      <div className="w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-900/60 p-8 text-center shadow-xl">
+      <div className="min-w-0 w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-900/60 p-8 text-center shadow-xl">
         <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-amber-500/15 text-2xl">
           📡
         </div>

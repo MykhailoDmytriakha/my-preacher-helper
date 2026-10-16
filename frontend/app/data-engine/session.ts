@@ -113,6 +113,21 @@ export class DataSession {
         rebased.conflicts = [...new Map(conflicts.map(conflict => [JSON.stringify(conflict.path), conflict])).values()];
       }
     }
+    if (request.atomic?.kind === 'council-carry' && request.baseline.value && this.state.draft && rebased.value.exists) {
+      const ancestor = request.initialized ? request.working.value : predecessor?.value ?? request.baseline.value;
+      const before = (ancestor?.topics ?? []) as DocumentData[];
+      const carried = ((request.value?.topics ?? []) as DocumentData[]).filter(topic => typeof topic.id === 'string'
+        && typeof topic.carriedToCouncilId === 'string' && before.find(old => old.id === topic.id)?.carriedToCouncilId !== topic.carriedToCouncilId);
+      const paths = carried.map(topic => ['topics', { id: topic.id as string }, 'carriedToCouncilId']);
+      const ordinary = mergeDocumentFields(this.state.confirmed.value, this.state.draft, accepted.value);
+      if (ordinary.value.exists) {
+        rebased.value = { exists: true, value: projectManualSelection(ordinary.value.value as DocumentData, rebased.value.value as DocumentData, paths) };
+        const owned = (conflict: ConflictDetail) => conflict.path[0] === 'topics' && conflict.path.at(-1) === 'carriedToCouncilId';
+        const conflicts = [...this.state.conflicts.filter(conflict => !owned(conflict)), ...ordinary.conflicts.filter(conflict => !owned(conflict)),
+          ...rebased.conflicts.filter(owned)];
+        rebased.conflicts = [...new Map(conflicts.map(conflict => [JSON.stringify(conflict.path), conflict])).values()];
+      }
+    }
     this.state.confirmed = copy(accepted);
     this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
     this.state.conflicts = copy(rebased.conflicts);

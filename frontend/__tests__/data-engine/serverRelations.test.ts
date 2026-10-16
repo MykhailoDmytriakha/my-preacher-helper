@@ -311,6 +311,54 @@ describe('council carry', () => {
     expect(written.target).toEqual([{ ...moved, id: 'copy' }]);
   });
 
+  it('creates a preparing destination and marks the source in the same carry', async () => {
+    const moved = topic('t1', { summary: 'Keep these words' });
+    const source = council('source', [moved], { status: 'held', heldAt: 'then' });
+    const created = { userId: 'owner', title: 'Next council', status: 'preparing',
+      topics: [{ ...moved, id: 'copy' }], createdAt: 'now', updatedAt: 'now' };
+    const command = { ...commandBase(source), kind: 'relation', relation: 'council-carry', edits: [
+      { resource: source.resource, generation: source.metadata?.generation ?? null,
+        beforeTopics: [moved], afterTopics: [{ ...moved, carriedToCouncilId: 'new-target' }] },
+      { resource: { collection: 'councils', id: 'new-target' }, generation: null,
+        beforeTopics: [], afterTopics: created.topics, create: created },
+    ] } as unknown as DataCommand;
+    const plan = await planDataCommand(command, source, reader);
+
+    expect(plan.result.kind).toBe('acknowledged');
+    expect(plan.writes).toHaveLength(2);
+    expect(changed(plan.writes, 'councils', 'source').value?.topics).toEqual([
+      { ...moved, carriedToCouncilId: 'new-target' },
+    ]);
+    expect(changed(plan.writes, 'councils', 'new-target').value).toMatchObject(created);
+    expect(changed(plan.writes, 'councils', 'new-target').value).not.toHaveProperty('date');
+  });
+
+  it.each(['foreign-owner', 'existing-live', 'tombstone', 'bad-schema', 'missing-mark', 'copied-outcome', 'wrong-words', 'create-on-source'])
+    ('refuses unsafe new-council carry %s without exposing any partial write', async variant => {
+      const moved = topic('t1', { summary: 'Keep these words' });
+      const source = council('source', [moved], { status: 'held', heldAt: 'then' });
+      const created: DocumentData = { userId: 'owner', title: 'Next council', status: 'preparing',
+        topics: [{ ...moved, id: 'copy' }], createdAt: 'now', updatedAt: 'now' };
+      const after = [{ ...moved, carriedToCouncilId: 'new-target' }];
+      if (variant === 'foreign-owner') created.userId = 'another';
+      if (variant === 'bad-schema') created.title = 42;
+      if (variant === 'copied-outcome') (created.topics as DocumentData[])[0].discussed = true;
+      if (variant === 'wrong-words') (created.topics as DocumentData[])[0].summary = 'Different words';
+      if (variant === 'existing-live') council('new-target', []);
+      if (variant === 'tombstone') records.set('councils/new-target', { resource: { collection: 'councils', id: 'new-target' }, value: null,
+        metadata: { protocol: 1, generation: 'deleted', revision: 2, deleted: true } });
+      const edits = [
+        { resource: source.resource, generation: source.metadata?.generation ?? null, beforeTopics: [moved],
+          afterTopics: variant === 'missing-mark' ? [moved] : after, ...(variant === 'create-on-source' ? { create: created } : {}) },
+        { resource: { collection: 'councils', id: 'new-target' }, generation: null, beforeTopics: [], afterTopics: created.topics, create: created },
+      ];
+      const command = { ...commandBase(source), kind: 'relation', relation: 'council-carry', edits } as unknown as DataCommand;
+      const plan = await planDataCommand(command, source, reader);
+      expect(plan.result.kind).toBe('refused');
+      expect(plan.writes).toEqual([]);
+      expect(source.value?.topics).toEqual([moved]);
+    });
+
   it('keeps a section another device added to the destination while this carry flew', async () => {
     const moved = topic('t1');
     const source = council('source', [moved]);
