@@ -34,3 +34,21 @@ it('does not end a code fence with a mismatched or too short delimiter', () => {
   const content = '````\n~~~\n```\n*John 1:1: code*\n````';
   expect(replacePlanReferenceParagraphs(content, [])).toBe(content);
 });
+
+it('replaces real references after an unclosed list code block', () => {
+  const content = '- item\n\n  ```\n  *John 1:1: code*\n\n*John 2:1: real*';
+  expect(replacePlanReferenceParagraphs(content, ['John 3:1: new']))
+    .toBe('- item\n\n  ```\n  *John 1:1: code*\n\n*John 3:1: new*');
+});
+
+it('does not open a block with a backtick in a backtick fence info string', () => {
+  const content = '```invalid`info\n\n*John 2:1: real*';
+  expect(replacePlanReferenceParagraphs(content, ['John 3:1: new']))
+    .toBe('```invalid`info\n\n*John 3:1: new*');
+});
+
+it('replaces prose after code with mixed line endings without rewriting the code', () => {
+  const content = 'Before\n```\rinside\r```\n\n*John 2:1: real*';
+  expect(replacePlanReferenceParagraphs(content, ['John 3:1: new']))
+    .toBe('Before\n```\rinside\r```\n\n*John 3:1: new*');
+});

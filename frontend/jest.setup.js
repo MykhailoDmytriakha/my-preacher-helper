@@ -412,11 +412,7 @@ jest.mock('react-markdown', () => ({
   default: ({ children }) => <div data-testid="markdown">{children}</div>
 }));
 
-// Mock remark-gfm
-jest.mock('remark-gfm', () => ({
-  __esModule: true,
-  default: {}
-}));
+// Keep remark-gfm real: source readers use the same parser plugin as the renderer.
 
 // Mock rehype-raw / rehype-sanitize (ESM-only, same reason as react-markdown).
 // rehype-sanitize also re-exports defaultSchema, which MarkdownDisplay imports

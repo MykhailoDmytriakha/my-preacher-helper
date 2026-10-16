@@ -1,4 +1,4 @@
-import { createFenceTracker } from '@/utils/markdownFence';
+import { markdownCodeLines } from '@/utils/markdownCode';
 
 /**
  * A STUDY NOTE, BROKEN INTO THE SECTIONS ITS AUTHOR WROTE.
@@ -36,17 +36,18 @@ export function splitNoteIntoSections(content: string): NoteSection[] {
   const sections: NoteSection[] = [];
   let heading = '';
   let lines: string[] = [];
-  const fence = createFenceTracker();
+  const codeLines = markdownCodeLines(content);
 
   const flush = () => {
-    const text = lines.join('\n').trim();
-    if (!text) return;
+    // Trim blank lines only: leading indentation can make the first line code.
+    const text = lines.join('\n').replace(/^(?:[ \t]*\r?\n)+|(?:\r?\n[ \t]*)+$/g, '');
+    if (!text.trim()) return;
     sections.push({ index: sections.length, heading, text, words: countWords(text) });
   };
 
-  for (const raw of content.split('\n')) {
+  for (const [index, raw] of content.split('\n').entries()) {
     const line = raw.trim();
-    const match = fence.isCode(raw) ? null : HEADING.exec(line);
+    const match = codeLines.has(index) ? null : HEADING.exec(line);
     if (match) {
       flush();
       heading = match[1].replace(/[*_`]/g, '').trim();

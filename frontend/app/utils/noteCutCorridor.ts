@@ -1,3 +1,5 @@
+import { withoutMarkdownCode } from '@/utils/markdownCode';
+
 /**
  * HOW MANY SCRATCH NOTES A STUDY NOTE SHOULD YIELD — a corridor, not a number.
  *
@@ -33,10 +35,8 @@ export const WORDS_PER_CLAIM_LOW = 400;
 /** Dense prose — a claim every this many words. */
 export const WORDS_PER_CLAIM_HIGH = 250;
 
-const CODE_FENCE = /```[\s\S]*?```/g;
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
 const MARKDOWN_LINK = /\[([^\]]*)\]\([^)]*\)/g;
-const INLINE_CODE = /`[^`]*`/g;
 const HTML_TAG = /<[^>]+>/g;
 const HEADING_LINE = /^\s*#{1,6}\s/;
 /** A token counts as a word only if it carries a letter or a digit — "—" and "##" do not. */
@@ -48,17 +48,19 @@ const CARRIES_WORD = /[\p{L}\p{N}]/u;
  * change how many words there are.
  */
 function readableText(content: string): string {
-  return content
-    .replace(CODE_FENCE, ' ')
+  return withoutMarkdownCode(content, true)
     .replace(MARKDOWN_IMAGE, ' ')
     .replace(MARKDOWN_LINK, '$1')
-    .replace(INLINE_CODE, ' ')
     .replace(HTML_TAG, ' ');
 }
 
 export function countWords(content: string): number {
   if (!content) return 0;
-  return readableText(content)
+  return wordsInText(readableText(content));
+}
+
+function wordsInText(text: string): number {
+  return text
     .split(/\s+/)
     .filter((token) => CARRIES_WORD.test(token)).length;
 }
@@ -69,7 +71,11 @@ export function countWords(content: string): number {
  */
 export function countParagraphs(content: string): number {
   if (!content) return 0;
-  return readableText(content)
+  return paragraphsInText(readableText(content));
+}
+
+function paragraphsInText(text: string): number {
+  return text
     .split(/\n\s*\n+/)
     .map((block) => block.trim())
     .filter((block) => {
@@ -88,8 +94,9 @@ function corridorFromWords(words: number): ScratchCountCorridor {
 
 /** Words, paragraphs and the corridor they justify — measured in one pass. */
 export function measureNoteForCut(content: string): NoteCutMeasure {
-  const words = countWords(content);
-  return { words, paragraphs: countParagraphs(content), corridor: corridorFromWords(words) };
+  const text = readableText(content);
+  const words = wordsInText(text);
+  return { words, paragraphs: paragraphsInText(text), corridor: corridorFromWords(words) };
 }
 
 export function expectedScratchCountCorridor(content: string): ScratchCountCorridor {

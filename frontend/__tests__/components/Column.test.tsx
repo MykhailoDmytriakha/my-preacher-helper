@@ -212,8 +212,6 @@ jest.mock('@/utils/themeColors', () => ({
 
 // Mock react-markdown to prevent ESM errors
 jest.mock('react-markdown', () => (props: any) => <>{props.children}</>);
-// Mock remark-gfm as well
-jest.mock('remark-gfm', () => ({}));
 
 // Mock the AudioRecorder component
 jest.mock('../../app/components/AudioRecorder', () => ({

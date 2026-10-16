@@ -22,7 +22,6 @@ jest.mock('@/hooks/useAiUsage', () => ({
 
 jest.mock('react-markdown', () => ({ children }: any) => <div>{children}</div>);
 
-jest.mock('remark-gfm', () => ({}));
 
 jest.mock('jspdf', () => ({
   __esModule: true,

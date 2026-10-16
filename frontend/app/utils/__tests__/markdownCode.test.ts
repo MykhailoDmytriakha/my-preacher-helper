@@ -1,12 +1,16 @@
-import { createFenceTracker } from '@/utils/markdownFence';
+import { markdownCodeLines, withoutMarkdownCode } from '@/utils/markdownCode';
 
 /** Which lines of the text the tracker calls code, in order. */
 const codeLines = (text: string): boolean[] => {
-  const fence = createFenceTracker();
-  return text.split('\n').map((line) => fence.isCode(line));
+  const lines = markdownCodeLines(text);
+  return text.split('\n').map((_line, index) => lines.has(index));
 };
 
-describe('createFenceTracker', () => {
+describe('markdownCodeLines', () => {
+  it('maps mixed line endings back to the consumers LF-delimited lines', () => {
+    expect(codeLines('# First\n```\rinside\r```\n# Real')).toEqual([false, true, false]);
+  });
+
   it('reads fences in text with Windows line endings', () => {
     expect(codeLines('```\r\n# Fake\r\n```\r\n# Real')).toEqual([true, true, true, false]);
   });
@@ -39,5 +43,25 @@ describe('createFenceTracker', () => {
 
   it('keeps a line at the margin inside a fence indented less than four spaces', () => {
     expect(codeLines('  ```\n# Fake\n  ```\n# Real')).toEqual([true, true, true, false]);
+  });
+});
+
+describe('withoutMarkdownCode', () => {
+  it('keeps source offsets, Unicode and line endings outside code byte-for-byte', () => {
+    const source = '🙂 **Before**\r\n> ~~~\r\n> hidden\r\n> ~~~\r\nAfter `hidden` end';
+    const result = withoutMarkdownCode(source, true);
+    expect(result).toBe('🙂 **Before**\r\n     \r\n        \r\n     \r\nAfter          end');
+    expect(result.length).toBe(source.length);
+  });
+
+  it('leaves code-like plain text unchanged', () => {
+    const source = 'Before \\`literal words\\` after';
+    expect(withoutMarkdownCode(source, true)).toBe(source);
+  });
+
+  it('reads code spans in GFM table cells using the renderer syntax', () => {
+    const source = '| Heading |\n| --- |\n| `hidden words` |';
+    expect(withoutMarkdownCode(source, true)).not.toContain('hidden');
+    expect(withoutMarkdownCode(source)).toBe(source);
   });
 });

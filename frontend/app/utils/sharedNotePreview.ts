@@ -1,3 +1,4 @@
+import { withoutMarkdownCode } from '@/utils/markdownCode';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 
@@ -39,8 +40,6 @@ const TITLE_LIMIT = 90;
 const DESCRIPTION_LIMIT = 200;
 const PASSAGE_LIMIT = 3;
 
-// An unclosed fence runs to the end of the text; a tag is `<b>` or `</p>`, not "5 < 7 > 3".
-const FENCE = /```[\s\S]*?(?:```|$)/g;
 const IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
 const LINK = /\[([^\]]*)\]\([^)]*\)/g;
 const TAG = /<\/?[a-zA-Z][^<>]*>/g;
@@ -58,7 +57,7 @@ function plainParagraphs(markdown: string): string[][] {
     if (current.length > 0) paragraphs.push(current);
     current = [];
   };
-  const cleaned = markdown.replace(FENCE, ' ').replace(IMAGE, ' ').replace(LINK, '$1').replace(TAG, ' ');
+  const cleaned = withoutMarkdownCode(markdown).replace(IMAGE, ' ').replace(LINK, '$1').replace(TAG, ' ');
   for (const raw of cleaned.split('\n')) {
     if (THEMATIC_BREAK.test(raw)) {
       flush();

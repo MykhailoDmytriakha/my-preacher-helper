@@ -1,3 +1,5 @@
+import { markdownCodeLines } from '@/utils/markdownCode';
+
 /** Replace standalone reference paragraphs in the generated cue format, preserving every other byte. */
 export function replacePlanReferenceParagraphs(content: string, refs: string[]): string {
   const newline = content.includes('\r\n') ? '\r\n' : '\n';
@@ -5,15 +7,10 @@ export function replacePlanReferenceParagraphs(content: string, refs: string[]):
   const lines = content.split('\n');
   const ranges: { start: number; end: number }[] = [];
   let offset = 0;
-  let fence: { marker: string; length: number } | null = null;
+  const codeLines = markdownCodeLines(content);
   lines.forEach((raw, index) => {
     const line = raw.replace(/\r$/, '');
-    const delimiter = line.match(/^ {0,3}(`{3,}|~{3,})/);
-    if (delimiter) {
-      if (!fence) fence = { marker: delimiter[1][0], length: delimiter[1].length };
-      else if (delimiter[1][0] === fence.marker && delimiter[1].length >= fence.length
-        && line.slice(delimiter[0].length).trim() === '') fence = null;
-    } else if (!fence) {
+    if (!codeLines.has(index)) {
       const paragraph = line.match(/^\*([^*]+)\*[ \t]*$/);
       const standalone = (index === 0 || !lines[index - 1].trim())
         && (index === lines.length - 1 || !lines[index + 1].trim());

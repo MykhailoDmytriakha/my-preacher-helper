@@ -377,3 +377,29 @@ Committed main changes for settings archive comparison and recovery refresh/conf
 The merged state passed805 Jest suites /8390tests (3suites /17tests skipped), full ESLint (0errors /29inherited warnings), TypeScript and production build `OjdRj2-43Cv-xyTEr_3tN`. Browser smoke confirmed that exact build, editable group header fields and Settings; the primary inspected the390px Settings capture with no page overflow. No content/preferences were edited. One existing tab navigation stalled; a fresh same-context tab loaded Settings, without clearing data/cache. The server answered the same request in2ms. No live archived-copy fixture was forced; its detailed behavior is covered by component/storage tests. Production/physical-device acceptance is pending.
 
 BUG-20261015-settings-copy-never-matches-server was already handled by main commitd4d0a0c2. BUG-20261015-late-server-copy-keeps-echo-banner remains active: the bounded refresh still lacks a subscription. The local merge commit follows independent case acceptance.
+
+
+## BUG-20261006-fence-readers-miss-long-and-quoted-fences
+
+Stage: locally verified and independently reviewed. Production acceptance pending.
+
+Code boundaries now come from the same CommonMark/GFM parser as MarkdownDisplay. The shared `markdownCode` reader masks original code ranges for preview/measurements and supplies source-line indexes to all five scanners: Markdown outline, plan heading normalization, note sections, cut heading grounding and plan-reference paragraph replacement. Quote/list termination, long backtick/tilde fences, indented blocks and exact inline delimiters follow that parser. Preview keeps inline-code text; word/paragraph measurement excludes it. The lightweight `codeFenceFor` writer remains unchanged. The existing installed parser and type packages are now direct pinned dependencies; no shared node_modules or environment file was changed.
+
+The class sweep also found meaningful indentation removed by note-section `.trim()`. Section preparation now trims boundary blank lines only, keeping indented code as code in its text and measurement. Independent review caught parser logical line indexes diverging from LF-split source lines with mixed CR/LF. Mapping source offsets to those exact consumer lines fixes that regression without rewriting line endings. Direct regressions cover all five consumers. Empty GFM test stubs were removed so source-reader tests run the actual parser plugin.
+
+Original behavior tests failed13/44; the plan-reference reader failed2/9; section indentation failed1/23; the review's mixed-ending example failed2 targeted assertions. Final focused verification passed10 suites/157tests. Full Jest passed806suites/8424tests (3suites/17tests skipped,141.679s). Full lint passed0errors/29inherited warnings; TypeScript and the production build passed. Build ID:`kEaeN5RqyBAIArJmpHgIQ`. Independent review verified the correction and repeated the server-heading and plan-reference suites:35tests passed, with no remaining material finding. The first broad run overlapped ongoing test additions and reported the intentionally added indentation failure; final broad and focused gates supersede it.
+
+Browser verification used localhost3047, the actual built app, existing test account and one own disposable note/share link. The original editor paste measured4words/3paragraphs and exposed `Inside code` in its link description. The built result, after server ACK3 and reload, measured2words/2paragraphs and described `Before. After`. A complex pasted example retained quote/code text, excluded hidden headings, showed only `Visible` in the outline, measured4words/3paragraphs and described `Before. After. Visible. Prose`. No sermon or paid AI call was created. The primary personally inspected390x844 and834x1112 captures: readable counts and reachable buttons, no horizontal page overflow. A cached-route hard-offline reload through the active service worker opened and showed the correct count in1654ms; network was restored. These are Chromium checks, not physical PWA acceptance.
+
+Cleanup used the note's ordinary Delete confirmation with exact URL/title/resource guards. ACK4 and an independent authenticated read show deleted=true/value=null; no list card remained and the public note API returned404. One browser tab remains online. Expected offline request errors occurred; no page exception was captured. Only owned fixtures were changed. A separate editor paste observation (a code-only list item becomes an empty bullet plus an outside code block) was recorded as BUG-20261015-list-code-paste-loses-container for recheck; editor paste logic was not changed here.
+
+Evidence remains in the ignored current case: `fence-readers-verification.json`, red/green logs, source hashes, independent review, browser JSON and personally inspected screenshots. The committed tests, this manifest and bug-ID commit preserve the durable trace after local tracker removal.
+
+### Production acceptance after authorized merge
+
+1. Confirm the deployed revision and create only an authorized disposable note.
+2. Paste prose around a four-backtick block containing triple backticks and a fake heading; save and reload.
+3. Open Create sermon without submitting it: confirm only prose contributes to words/paragraphs and expected scratch count. Keep the code block intact in the note.
+4. Create the disposable share link; inspect its metadata and image preview for prose only. Repeat with quoted/list/tilde blocks and a genuine heading after the code; verify outline and prose remain.
+5. Check390/834widths, repeat a loaded route offline/reconnect, and verify normal prose/inline-code behavior. Repeat on physical devices when available.
+6. Delete only the disposable note/link, confirm their removal, restore network/tabs and record the deployed version, results and screenshots. Production acceptance remains pending until this actually runs.

@@ -187,6 +187,18 @@ describe('grounding helpers', () => {
     expect([...headings.values()]).toEqual(['Real']);
   });
 
+  it('grounds headings after a code block with mixed line endings', () => {
+    expect([...collectNoteHeadings('# First\n```\rinside\r```\n# Real').values()]).toEqual(['First', 'Real']);
+  });
+
+  it('ends an unclosed code fence when its list item ends', () => {
+    expect([...collectNoteHeadings('- item\n\n  ```\n  # Fake\n# Real').values()]).toEqual(['Real']);
+  });
+
+  it('keeps the heading in a fence after a thematic break out of grounding', () => {
+    expect([...collectNoteHeadings('- - -\n  ```\ncode\n# Fake\n```\n# Real').values()]).toEqual(['Real']);
+  });
+
   it('collects headings as written, ignoring emphasis and fenced code', () => {
     const headings = collectNoteHeadings('# **Первая** тема\ntext\n```\n# not a heading\n```\n## Вторая ##\n');
     expect(Array.from(headings.values())).toEqual(['Первая тема', 'Вторая']);

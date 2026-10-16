@@ -166,7 +166,6 @@ jest.mock('react-markdown', () => (props: any) => {
   const React = require('react');
   return React.createElement(React.Fragment, null, props.children);
 });
-jest.mock('remark-gfm', () => ({}));
 
 jest.mock('../../app/components/AudioRecorder', () => ({
   AudioRecorder: () => {

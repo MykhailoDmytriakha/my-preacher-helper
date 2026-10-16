@@ -15,7 +15,10 @@ when: show note markdown · render markdown with headings · heading hierarchy �
 
 ## Traps
 
-- The current code does not follow the fence rule: `splitMarkdownSections` flips on any line starting with three backticks or three tildes. Probe 2026-09-27: a four-backtick fence quoting a three-backtick block with `# Inside code` returns that heading as a section; a tilde fence holding a backtick line closes early and swallows the real heading after it. The same naive flip lives in `normalizePlanPointHeadings` (`frontend/app/utils/markdownUtils.ts`) and `collectNoteHeadings` (`frontend/app/api/studies/notes/[id]/cut/route.ts`), both backticks only. Fix all three with one fence tracker.
+- Read code boundaries with `markdownCodeLines(content)` / `withoutMarkdownCode(content, includeInline)` from `frontend/app/utils/markdownCode.ts`. They use the renderer's existing `unified` + `remark-parse` + `remark-gfm` parser, so long fences, quotes, list termination and indented code agree with the rendered note. Never add a separate container/fence regex.
+- `withoutMarkdownCode` masks the original source ranges and keeps line endings/offsets. Previews keep inline-code text; measurements opt into excluding it. Heading scanners use the line set and leave the code bytes untouched.
+- Keep `codeFenceFor` in the lightweight writer module `markdownFence.ts`; a serializer does not need to load the reader/parser.
+- Parser packages are direct dependencies pinned to the installed renderer-compatible versions. Tests must use the real GFM plugin: an empty `remark-gfm` mock cannot be registered with `unified`.
 
 ## Why
 
