@@ -101,7 +101,14 @@ it.each(['local', 'remote'] as const)('retains the opening thought ancestor and 
   await deliver(harness); await save(); await deliver(harness);
   expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text: 'Remote text' }, b]);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('My text');
-  fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' }));
+  const resolution = await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  await waitFor(() => expect(resolution).toBeEnabled());
+  fireEvent.click(resolution);
+  if (choice === 'remote') {
+    // The local thought remains visible until the discard confirmation is accepted.
+    expect(screen.getByLabelText('Thought')).toHaveValue('My text');
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+  }
   await deliver(harness); const text = choice === 'local' ? 'My text' : 'Remote text';
   await ready(text); expect(harness.read(resource).value?.thoughts).toEqual([{ ...a, text }, b]); view.unmount();
 });
@@ -130,7 +137,11 @@ it('keeps the staged text when another device deletes the thought and accepts th
   await deliver(harness); await ready('My retained text'); await save(); await deliver(harness);
   expect(harness.read(resource).value?.thoughts).toEqual([b]);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('My retained text');
-  fireEvent.click(await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' })); await settle();
+  const acceptDeletion = await screen.findByRole('button', { name: 'freshness.conflictTakeTheirs' });
+  await waitFor(() => expect(acceptDeletion).toBeEnabled());
+  fireEvent.click(acceptDeletion);
+  expect(screen.getByLabelText('Thought')).toHaveValue('My retained text');
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' })); await settle();
   expect(screen.queryByLabelText('Thought')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'buttons.save' })).toBeDisabled();
   expect(harness.read(resource).value?.thoughts).toEqual([b]); view.unmount();

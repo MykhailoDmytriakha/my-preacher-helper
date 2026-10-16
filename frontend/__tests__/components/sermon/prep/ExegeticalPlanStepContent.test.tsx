@@ -17,7 +17,7 @@ describe('ExegeticalPlanStepContent', () => {
     expect(input).toHaveValue('New Title');
   });
 
-  it('adds a child and sibling, then deletes a node', () => {
+  it('adds a child and sibling, then deletes a node', async () => {
     render(<ExegeticalPlanStepContent value={[{ id: 'root', title: 'Root', children: [] }]} />);
     // Add child to root
     const addChildBtn = screen.getByTitle(/wizard.steps.exegeticalPlan.builder.tooltips.addChild/i);
@@ -33,9 +33,10 @@ describe('ExegeticalPlanStepContent', () => {
     // Delete one node using delete button (multiple delete buttons exist)
     const deleteBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.delete');
     fireEvent.click(deleteBtns[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
 
-    // Still at least one input remains
-    expect(screen.getAllByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder').length).toBeGreaterThan(0);
+    // The selected root and its child are removed; its sibling remains.
+    await waitFor(() => expect(screen.getAllByPlaceholderText('wizard.steps.exegeticalPlan.builder.placeholder')).toHaveLength(1));
   });
 
   it('saves the tree and author intent', async () => {
@@ -96,7 +97,7 @@ describe('ExegeticalPlanStepContent', () => {
     expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
   });
 
-  it('enables save button when a node is deleted', () => {
+  it('enables save button when a node is deleted', async () => {
     render(<ExegeticalPlanStepContent value={[{ id: 'root', title: 'Root', children: [{ id: 'child', title: 'Child', children: [] }] }]} />);
     
     // Initially save button should be disabled
@@ -106,10 +107,11 @@ describe('ExegeticalPlanStepContent', () => {
     // Delete the child node
     const deleteBtns = screen.getAllByTitle('wizard.steps.exegeticalPlan.builder.tooltips.delete');
     fireEvent.click(deleteBtns[1]); // Delete child (first is root)
+    fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
 
-    // Save button should now be enabled
-    expect(saveButton).toBeEnabled();
-    expect(saveButton).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
+    // Save button should now be enabled once the confirmed deletion reaches the tree.
+    await waitFor(() => expect(screen.getByRole('button', { name: /buttons.save/i })).toBeEnabled());
+    expect(screen.getByRole('button', { name: /buttons.save/i })).toHaveClass('bg-blue-600', 'hover:bg-blue-700');
   });
 });
 

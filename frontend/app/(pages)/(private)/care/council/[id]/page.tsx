@@ -46,6 +46,7 @@ import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
@@ -460,6 +461,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
             <li key={topic.id}>
               <TopicCard
                 engineCouncilId={engineCouncilId}
+                subjectId={JSON.stringify([council.userId, council.id])}
                 index={index + 1}
                 topic={topic}
                 held={held}
@@ -533,6 +535,7 @@ function BackToList() {
 
 function TopicCard({
   engineCouncilId,
+  subjectId,
   index,
   topic,
   held,
@@ -548,6 +551,7 @@ function TopicCard({
   carriedTo,
 }: {
   engineCouncilId?: string;
+  subjectId: string;
   index: number;
   topic: CouncilTopic;
   held: boolean;
@@ -609,7 +613,7 @@ function TopicCard({
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
           {editing ? (
-            <TopicEditor topic={topic} onChange={onChange} onRemove={onRemove} onDone={onDone} />
+            <TopicEditor subjectId={subjectId} topic={topic} onChange={onChange} onRemove={onRemove} onDone={onDone} />
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
@@ -903,19 +907,77 @@ function TopicCard({
 }
 
 function TopicEditor({
+  subjectId,
   topic,
   onChange,
   onRemove,
   onDone,
 }: {
+  subjectId: string;
   topic: CouncilTopic;
   onChange: (updater: TopicUpdater) => void;
   onRemove: () => void;
   onDone: () => void;
 }) {
   const { t } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
+  const targetRef = useRef({
+    subjectId,
+    topicId: topic.id,
+    topicSnapshot: JSON.stringify(topic),
+    questionSnapshots: Object.fromEntries(topic.questions.map((question) => [question.id, JSON.stringify(question)])),
+    optionSnapshots: Object.fromEntries(topic.options.map((option) => [
+      option.id,
+      JSON.stringify({ option, acceptedOptionId: topic.acceptedOptionId, decision: topic.decision, discussed: topic.discussed }),
+    ])),
+  });
+  targetRef.current = {
+    subjectId,
+    topicId: topic.id,
+    topicSnapshot: JSON.stringify(topic),
+    questionSnapshots: Object.fromEntries(topic.questions.map((question) => [question.id, JSON.stringify(question)])),
+    optionSnapshots: Object.fromEntries(topic.options.map((option) => [
+      option.id,
+      JSON.stringify({ option, acceptedOptionId: topic.acceptedOptionId, decision: topic.decision, discussed: topic.discussed }),
+    ])),
+  };
+
+  const askBeforeDelete = async (target: { kind: 'topic' } | { kind: 'question' | 'option'; id: string }) => {
+    const captured = targetRef.current;
+    const accepted = await confirm({
+      title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' },
+      confirmText: { key: 'common.delete' },
+      cancelText: { key: 'common.cancel' },
+    });
+    if (!accepted) return false;
+    const current = targetRef.current;
+    if (current.subjectId !== captured.subjectId || current.topicId !== captured.topicId) return false;
+    if (target.kind === 'topic' && current.topicSnapshot !== captured.topicSnapshot) return false;
+    if (target.kind === 'question' && current.questionSnapshots[target.id] !== captured.questionSnapshots[target.id]) return false;
+    if (target.kind === 'option' && current.optionSnapshots[target.id] !== captured.optionSnapshots[target.id]) return false;
+    return true;
+  };
+
+  const removeQuestion = async (questionId: string) => {
+    if (!(await askBeforeDelete({ kind: 'question', id: questionId }))) return;
+    onChange((current) => ({
+      ...current,
+      questions: current.questions.filter((question) => question.id !== questionId),
+    }));
+  };
+
+  const removeOption = async (optionId: string) => {
+    if (!(await askBeforeDelete({ kind: 'option', id: optionId }))) return;
+    onChange((current) => removeTopicOption(current, optionId));
+  };
+
+  const removeCurrentTopic = async () => {
+    if (await askBeforeDelete({ kind: 'topic' })) onRemove();
+  };
 
   return (
+    <>
     <div className="space-y-4">
       <LiveTextInput
         autoFocus
@@ -1010,12 +1072,7 @@ function TopicEditor({
               </div>
               <button
                 type="button"
-                onClick={() =>
-                  onChange((current) => ({
-                    ...current,
-                    questions: current.questions.filter((item) => item.id !== question.id),
-                  }))
-                }
+                onClick={() => void removeQuestion(question.id)}
                 className={`${buttonText} self-start`}
                 aria-label={t('council.topic.remove')}
               >
@@ -1056,9 +1113,7 @@ function TopicEditor({
               />
               <button
                 type="button"
-                onClick={() =>
-                  onChange((current) => removeTopicOption(current, option.id))
-                }
+                onClick={() => void removeOption(option.id)}
                 className={buttonText}
                 aria-label={t('council.topic.remove')}
               >
@@ -1092,7 +1147,7 @@ function TopicEditor({
       </label>
 
       <div className="flex items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-        <button type="button" onClick={onRemove} className={`${buttonText} text-red-600 hover:text-red-700 dark:text-red-400`}>
+        <button type="button" onClick={() => void removeCurrentTopic()} className={`${buttonText} text-red-600 hover:text-red-700 dark:text-red-400`}>
           <Trash2 className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           {t('council.topic.delete')}
         </button>
@@ -1102,6 +1157,8 @@ function TopicEditor({
         </button>
       </div>
     </div>
+    {confirmDialog}
+    </>
   );
 }
 

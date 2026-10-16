@@ -107,19 +107,27 @@ export function useConfirm(): {
  * A form's Cancel discards its draft, while its close button and Escape keep it for later — so
  * Cancel was the one click that lost dictated text for good (BUG-20261003-one-click-delete-other-screens).
  */
-export function useDiscardQuestion(): {
-  askBeforeDiscard: (unsaved: boolean, discard: () => void) => Promise<void>;
+export function useDiscardQuestion(kind: 'changes' | 'text' = 'changes'): {
+  askBeforeDiscard: (unsaved: boolean, discard: () => void | Promise<void>, isCurrent?: () => boolean) => Promise<void>;
   discardDialog: React.ReactElement;
+  withdraw: () => void;
 } {
-  const { confirm, confirmDialog } = useConfirm();
-  const askBeforeDiscard = useCallback(async (unsaved: boolean, discard: () => void) => {
+  const { confirm, confirmDialog, withdraw } = useConfirm();
+  const askBeforeDiscard = useCallback(async (
+    unsaved: boolean,
+    discard: () => void | Promise<void>,
+    isCurrent: () => boolean = () => true,
+  ) => {
+    if (!isCurrent()) return;
+    const words = kind === 'text' ? 'common.discardText' : 'common.discardChanges';
     if (unsaved && !(await confirm({
-      title: { key: 'common.discardChanges.title' }, description: { key: 'common.discardChanges.description' },
-      confirmText: { key: 'common.discardChanges.confirm' }, cancelText: { key: 'common.discardChanges.keep' },
+      title: { key: words + '.title' }, description: { key: words + '.description' },
+      confirmText: { key: words + '.confirm' }, cancelText: { key: words + '.keep' },
     }))) return;
-    discard();
-  }, [confirm]);
-  return { askBeforeDiscard, discardDialog: confirmDialog };
+    // The question names the copy shown when it opened; a replacement is a new choice.
+    if (isCurrent()) await discard();
+  }, [confirm, kind]);
+  return { askBeforeDiscard, discardDialog: confirmDialog, withdraw };
 }
 
 export default useConfirm;

@@ -4,6 +4,8 @@ import type { ExegeticalPlanNode } from '@/models/models';
 export type PlanEdit = (nodes: ExegeticalPlanNode[]) => ExegeticalPlanNode[];
 
 export interface ExegeticalPlanModuleProps {
+  /** Owner/resource/session shown by this module; a new subject retires open questions. */
+  subject?: unknown;
   value?: ExegeticalPlanNode[];
   /**
    * The plan lives in an open document (the data engine): each edit goes into it at once and the

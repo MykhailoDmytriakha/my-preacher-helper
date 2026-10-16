@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { useClipboard } from "@/hooks/useClipboard";
+import { useDiscardQuestion } from "@/hooks/useConfirm";
 
 /** Unsaved, non-empty cells whose node the outline no longer has. */
 export function orphanedCells(
@@ -33,13 +35,26 @@ export function OrphanedPlanText({
   cells,
   onDiscard,
   readOnly = false,
+  subject,
 }: {
   cells: { id: string; text: string }[];
   onDiscard: (nodeIds: string[]) => void;
   /** A copy for reading: the words stay in sight and copyable, and letting them go waits. */
   readOnly?: boolean;
+  subject?: unknown;
 }) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+  const current = useRef({ cells, readOnly, subject });
+  current.current = { cells, readOnly, subject };
+  const shownCells = JSON.stringify(cells);
+  useEffect(() => { withdraw(); }, [subject, readOnly, shownCells, withdraw]);
+  const discard = (cell: { id: string; text: string }) => {
+    void askBeforeDiscard(true, () => onDiscard([cell.id]), () =>
+      current.current.subject === subject && !current.current.readOnly
+      && current.current.cells.some(candidate => candidate.id === cell.id && candidate.text === cell.text));
+  };
+
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t("freshness.copiedToast")); },
     onError: () => { toast.error(t("common.saveError")); },
@@ -68,7 +83,7 @@ export function OrphanedPlanText({
               </button>
               {!readOnly && <button
                 type="button"
-                onClick={() => onDiscard([cell.id])}
+                onClick={() => discard(cell)}
                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
               >
                 {t("plan.orphanedDiscard")}
@@ -77,6 +92,7 @@ export function OrphanedPlanText({
           </li>
         ))}
       </ul>
+      {discardDialog}
     </section>
   );
 }

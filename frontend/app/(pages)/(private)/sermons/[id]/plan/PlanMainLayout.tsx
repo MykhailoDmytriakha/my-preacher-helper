@@ -760,6 +760,7 @@ export default function PlanMainLayout({
             if (!outlinePoint) return null;
             return (
               <KeyFragmentsModal
+                subject={JSON.stringify([sermon?.userId, sermonId])}
                 data-testid="key-fragments-modal-instance"
                 isOpen={!!modalSermonPointId}
                 onClose={() => setModalSermonPointId(null)}

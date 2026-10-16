@@ -951,6 +951,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
   // readiness screen, and text that has no point left must not vanish with it.
   const orphanArea = (
     <OrphanedPlanText
+      subject={JSON.stringify([sermon?.userId, sermonId])}
       cells={planOrphans}
       readOnly={readOnly}
       onDiscard={(nodeIds) => {
@@ -1096,6 +1097,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
           cells unsaved that cannot be saved, and discarding it would lose the only copy. */}
       {planDraft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
+          subject={JSON.stringify([sermon?.userId, sermonId])}
           cells={recoveredCells(planDraft.recovered, sermon)}
           onRestore={() => {
             restorePlanCells(planDraft.recovered ?? {});

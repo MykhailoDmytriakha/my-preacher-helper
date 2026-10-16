@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { SermonOutline } from '@/models/models';
@@ -66,6 +67,7 @@ export default function EditThoughtModal({
   // Editing is never locked by the connection icon (owner's rule 3): what cannot be sent says so
   // when it is saved.
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
@@ -85,6 +87,11 @@ export default function EditThoughtModal({
     !areStringArraysEqual(tags, initialTags) ||
     selectedSermonPointId !== initialSermonPointId ||
     (selectedSubPointId ?? null) !== (initialSubPointId ?? null);
+  const isBusy = isSubmitting || dictation.isProcessing;
+  const guardedClose = () => {
+    if (isBusy) return;
+    void askBeforeDiscard(isChanged, onClose);
+  };
   const saveFailureWords = (error: unknown): FailureWords =>
     ({ key: writeFailureTranslationKey(error, 'writeRecovery.thoughtEditFailed') });
 
@@ -101,7 +108,7 @@ export default function EditThoughtModal({
   };
 
   const handleSave = async () => {
-    if (isSubmitting || !isChanged) return;
+    if (isBusy || !isChanged) return;
     const submittedDraft: EditThoughtDraft = {
       text,
       tags: [...tags],
@@ -149,10 +156,11 @@ export default function EditThoughtModal({
   );
 
   return (
-    <FormDialog size="standard" title={t('editThought.editTitle')} eyebrow={t('thought.editorLabel')} onClose={onClose} dismissOnBackdrop showCloseButton
+    <>
+    <FormDialog size="standard" title={t('editThought.editTitle')} eyebrow={t('thought.editorLabel')} onClose={guardedClose} closeDisabled={isBusy} dismissOnBackdrop showCloseButton
       onSubmit={event => { event.preventDefault(); void handleSave(); }}
-      footer={<FormActions onCancel={onClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
-          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!isChanged} />}>
+      footer={<FormActions onCancel={guardedClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
+          savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isBusy} submitDisabled={!isChanged || dictation.isProcessing} />}>
       <div className="space-y-5">
         {sermonOutline && <ThoughtOutlineField sermonOutline={sermonOutline} section={containerSection}
           outlinePointId={selectedSermonPointId} subPointId={selectedSubPointId}
@@ -166,5 +174,7 @@ export default function EditThoughtModal({
         {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{sayFailure(saveError, t)}</p>}
       </div>
     </FormDialog>
+    {discardDialog}
+    </>
   );
 }

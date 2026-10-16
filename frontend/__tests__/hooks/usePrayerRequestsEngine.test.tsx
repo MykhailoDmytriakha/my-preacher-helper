@@ -1,4 +1,5 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, fireEvent, render as renderComponent, renderHook, screen, within } from '@testing-library/react';
+import React from 'react';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { usePrayerRequestsEngine } from '@/hooks/usePrayerRequestsEngine';
@@ -49,6 +50,66 @@ describe('prayers on the engine', () => {
     expect(current.description).toBe('Laptop text');
     second.unmount();
     expect(render().result.current.saveConflict).toBeNull();
+  });
+
+  it('asks before discarding a refused prayer edit, and cancel keeps its durable conflict', async () => {
+    let latest!: ReturnType<typeof usePrayerRequestsEngine>;
+    function Consumer() {
+      latest = usePrayerRequestsEngine('u', 'p1', true);
+      return <>{latest.discardDialog}<button onClick={() => void latest.takeTheirsOnConflict()}>take core</button></>;
+    }
+    renderComponent(<Consumer />);
+    await act(async () => {
+      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined);
+    });
+    const pending = latest.saveConflict;
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'take core' })); });
+    const dialog = await screen.findByRole('dialog');
+    expect(latest.saveConflict).toBe(pending);
+    await act(async () => { fireEvent.click(within(dialog).getAllByRole('button')[1]); });
+    expect(latest.saveConflict).toBe(pending);
+    expect(window.localStorage.length).toBeGreaterThan(0);
+  });
+
+  it('asks before discarding a refused prayer answer and confirms only that answer conflict', async () => {
+    let latest!: ReturnType<typeof usePrayerRequestsEngine>;
+    function Consumer() {
+      latest = usePrayerRequestsEngine('u', 'p1', true);
+      return <>{latest.discardDialog}<button onClick={() => void latest.takeTheirsOnStatusConflict()}>take answer</button></>;
+    }
+    renderComponent(<Consumer />);
+    await act(async () => {
+      await latest.setStatus('p1', 'answered', 'Laptop answer', undefined, { answerText: 'Old answer' }).persistence.catch(() => undefined);
+    });
+    const pending = latest.statusConflict;
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'take answer' })); });
+    const dialog = await screen.findByRole('dialog');
+    expect(latest.statusConflict).toBe(pending);
+    await act(async () => { fireEvent.click(within(dialog).getAllByRole('button')[0]); });
+    expect(latest.statusConflict).toBeNull();
+    expect(latest.saveConflict).toBeNull();
+    expect(current.answerText).toBeUndefined();
+  });
+
+  it('withdraws an open Take Theirs question when its prayer scope changes', async () => {
+    let latest!: ReturnType<typeof usePrayerRequestsEngine>;
+    function Consumer({ docId }: { docId: string }) {
+      latest = usePrayerRequestsEngine('u', docId, true);
+      return <>{latest.discardDialog}<button onClick={() => void latest.takeTheirsOnConflict()}>take core</button></>;
+    }
+    const view = renderComponent(<Consumer docId="p1" />);
+    await act(async () => {
+      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined);
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'take core' })); });
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    view.rerender(<Consumer docId="p2" />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(window.localStorage.length).toBeGreaterThan(0);
+    expect(latest.saveConflict).toBeNull();
   });
 
   it('adds an update, answers the prayer and creates a new one through engine actions', async () => {

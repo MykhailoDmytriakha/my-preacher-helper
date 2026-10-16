@@ -176,6 +176,8 @@ describe('TagsSection', () => {
     // Find the remove button within the mock editable list
     const removePrayerButton = await screen.findByRole('button', { name: /Remove Prayer/i });
     await userEvent.click(removePrayerButton);
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(dialog.querySelectorAll('button')[0]);
 
     // Check that the service was called within the component's handler
     await waitFor(() => {
@@ -185,6 +187,25 @@ describe('TagsSection', () => {
 
     // A queued tag removal never announces server-side completion.
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('does not remove a custom tag until the person confirms, and cancel keeps it', async () => {
+    renderSection();
+
+    const removeButton = await screen.findByRole('button', { name: /Remove Prayer/i });
+    await userEvent.click(removeButton);
+    expect(mockRemoveCustomTag).not.toHaveBeenCalled();
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(dialog.querySelectorAll('button')[1]);
+    expect(mockRemoveCustomTag).not.toHaveBeenCalled();
+    expect(screen.getByText('Prayer')).toBeInTheDocument();
+
+    await userEvent.click(removeButton);
+    const confirm = await screen.findByRole('dialog');
+    await userEvent.click(confirm.querySelectorAll('button')[0]);
+    await waitFor(() => expect(mockRemoveCustomTag).toHaveBeenCalledTimes(1));
+    expect(mockRemoveCustomTag).toHaveBeenCalledWith('Prayer');
   });
 
   it('opens ColorPickerModal when editable TagList calls onEditColor', async () => {

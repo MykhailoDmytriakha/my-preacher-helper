@@ -226,6 +226,33 @@ describe('GroupDetailPage', () => {
     return { harness, view, delivered };
   }
 
+  it('does not apply an old flow-item confirmation after its item and template change', async () => {
+    const template = {
+      id: 'tpl-1', type: 'topic', title: 'Main topic', content: 'Original words', status: 'filled',
+      scriptureRefs: [], questions: [], createdAt: 'created', updatedAt: 'old',
+    };
+    const flowItem = {
+      id: 'flow-1', templateId: 'tpl-1', order: 1, durationMin: 25, instanceNotes: 'Original notes',
+    };
+    const { harness, delivered } = setupGroupPage({ templates: [template], flow: [flowItem] });
+    await screen.findByDisplayValue('Family Group');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByTestId('confirm-modal');
+    const latestTemplate = { ...template, content: 'Newly written words', updatedAt: 'new' };
+    const latestFlowItem = { ...flowItem, instanceNotes: 'Newly written notes' };
+    await act(async () => {
+      await harness.remote({ templates: [latestTemplate], flow: [latestFlowItem] });
+      await settleEngine();
+    });
+
+    fireEvent.click(dialog.querySelectorAll('button')[0]);
+    const stored = await delivered();
+    expect(stored.flow).toContainEqual(latestFlowItem);
+    expect(stored.templates).toContainEqual(latestTemplate);
+  });
+
   it('shows a loading skeleton before the document arrives', async () => {
     setupGroupPage({}, { cached: false });
     expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
@@ -347,10 +374,49 @@ describe('GroupDetailPage', () => {
     // Delete the original block: its flow item and its now unreferenced template go away.
     fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    const deleteDialog = await screen.findByTestId('confirm-modal');
+    fireEvent.click(deleteDialog.querySelectorAll('button')[0]);
     stored = await delivered();
     expect(stored.flow.map((item: any) => item.id)).not.toContain('flow-1');
     expect(stored.templates.map((template: any) => template.id)).not.toContain('tpl-1');
     expect(stored.flow).toHaveLength(1);
+  });
+
+  it.each([
+    ['last reference', [{ id: 'flow-1', templateId: 'tpl-1', order: 1, durationMin: 25, instanceNotes: 'Keep this preparation.' }], false],
+    ['shared reference', [
+      { id: 'flow-1', templateId: 'tpl-1', order: 1, durationMin: 25, instanceNotes: 'Keep this preparation.' },
+      { id: 'flow-2', templateId: 'tpl-1', order: 2, durationMin: 15, instanceNotes: 'Use it again.' },
+    ], true],
+  ])('asks before deleting a flow item with a %s template reference', async (_description, flow, expectTemplateToRemain) => {
+    const templates = [{
+      id: 'tpl-1', type: 'topic', title: 'Main topic', content: 'Authored group discussion', status: 'filled',
+      scriptureRefs: [], questions: [], createdAt: 'x', updatedAt: 'x',
+    }];
+    const { delivered } = setupGroupPage({ templates, flow });
+    await screen.findByDisplayValue('Family Group');
+
+    const deleteFirstFlowItem = () => {
+      fireEvent.click(screen.getAllByRole('button', { name: 'More options' })[0]);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    };
+    deleteFirstFlowItem();
+    const dialog = await screen.findByTestId('confirm-modal');
+    let stored = await delivered();
+    expect(stored.flow.map((item: any) => item.id)).toContain('flow-1');
+    expect(stored.templates[0].content).toBe('Authored group discussion');
+
+    fireEvent.click(dialog.querySelectorAll('button')[1]);
+    stored = await delivered();
+    expect(stored.flow.map((item: any) => item.id)).toContain('flow-1');
+    expect(stored.templates[0].content).toBe('Authored group discussion');
+
+    deleteFirstFlowItem();
+    const confirm = await screen.findByTestId('confirm-modal');
+    fireEvent.click(confirm.querySelectorAll('button')[0]);
+    stored = await delivered();
+    expect(stored.flow.map((item: any) => item.id)).not.toContain('flow-1');
+    expect(stored.templates.some((template: any) => template.id === 'tpl-1')).toBe(expectTemplateToRemain);
   });
 
   it('pins the block editor below the measured app nav and bounds it to the window', async () => {
@@ -713,6 +779,8 @@ describe('GroupDetailPage with the actual data engine', () => {
     expect(harness.server.value?.title).toBe('Remote competing text');
     expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictTakeTheirs' }));
+    await screen.findByTestId('confirm-modal');
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
     await waitFor(() => expect(input).toHaveValue('Remote competing text'));
     view.unmount();
   });

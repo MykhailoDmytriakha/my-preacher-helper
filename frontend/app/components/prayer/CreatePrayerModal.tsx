@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { PrayerRequest } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
@@ -27,15 +28,21 @@ interface Props {
 
 export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mode = 'create', closeOnSuccess = true }: Props) {
   const { t } = useTranslation();
-  const [title, setTitle] = useState(initialValues?.title ?? '');
-  const [description, setDescription] = useState(initialValues?.description ?? '');
-  const [tagsInput, setTagsInput] = useState((initialValues?.tags ?? []).join(', '));
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
+  const [startingValues] = useState(() => ({
+    title: initialValues?.title ?? '',
+    description: initialValues?.description ?? '',
+    tagsInput: (initialValues?.tags ?? []).join(', '),
+  }));
+  const [title, setTitle] = useState(startingValues.title);
+  const [description, setDescription] = useState(startingValues.description);
+  const [tagsInput, setTagsInput] = useState(startingValues.tagsInput);
   const [saving, setSaving] = useState(false);
 
-  const handleClose = () => {
-    if (!saving) {
-      onClose();
-    }
+  const isChanged = title !== startingValues.title || description !== startingValues.description || tagsInput !== startingValues.tagsInput;
+  const guardedClose = () => {
+    if (saving) return;
+    void askBeforeDiscard(isChanged, onClose);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,10 +86,11 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
   if (typeof document === 'undefined') return null;
 
   return (
+    <>
     <FormDialog title={t(`${i18nPrefix}.title`)} eyebrow={t('navigation.prayer')} tone="rose" size="compact"
-      onClose={handleClose} closeDisabled={saving} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
+      onClose={guardedClose} closeDisabled={saving} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
       footer={
-        <FormActions onCancel={handleClose} cancelLabel={t(`${i18nPrefix}.cancel`)}
+        <FormActions onCancel={guardedClose} cancelLabel={t(`${i18nPrefix}.cancel`)}
           submitLabel={t(`${i18nPrefix}.submit`)} saving={saving} savingLabel={t('buttons.saving')}
           submitDisabled={!title.trim()} cancelDisabled={saving} tone="rose" />
       }>
@@ -103,5 +111,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
         </FormField>
       </div>
     </FormDialog>
+    {discardDialog}
+    </>
   );
 }

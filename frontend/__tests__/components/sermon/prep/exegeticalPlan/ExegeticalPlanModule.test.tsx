@@ -126,13 +126,15 @@ describe('ExegeticalPlanModule', () => {
           },
           {
             name: 'removes nodes',
-            run: () => {
+            run: async () => {
               const value: ExegeticalPlanNode[] = [
                 { id: '1', title: 'First', children: [] },
                 { id: '2', title: 'Second', children: [] }
               ];
               render(<ExegeticalPlanModule value={value} />);
               fireEvent.click(screen.getAllByLabelText('Delete this point')[0]);
+              fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
+              await waitFor(() => expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1));
               expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1);
             }
           }
@@ -320,7 +322,7 @@ describe('ExegeticalPlanModule', () => {
           },
           {
             name: 'removing node cleans up its draft value',
-            run: () => {
+            run: async () => {
               const value: ExegeticalPlanNode[] = [
                 { id: '1', title: 'First', children: [] },
                 { id: '2', title: 'Second', children: [] }
@@ -330,6 +332,8 @@ describe('ExegeticalPlanModule', () => {
                 target: { value: 'Modified First' }
               });
               fireEvent.click(screen.getAllByLabelText('Delete this point')[0]);
+              fireEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
+              await waitFor(() => expect(screen.getAllByPlaceholderText('Enter point title...')).toHaveLength(1));
               fireEvent.click(screen.getByRole('button', { name: /Save/i }));
               expect(mockOnSave).toHaveBeenCalledWith(
                 expect.arrayContaining([expect.objectContaining({ id: '2', title: 'Second' })])

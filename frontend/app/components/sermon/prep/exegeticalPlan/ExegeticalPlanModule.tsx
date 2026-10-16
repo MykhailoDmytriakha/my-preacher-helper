@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
+import { useConfirm } from '@/hooks/useConfirm';
 import { useFieldDraft } from '@/hooks/useFieldDraft';
 
 import AuthorIntentSection from './AuthorIntentSection';
@@ -20,6 +21,7 @@ import {
   areTreesEqual,
   setNodeTitle,
   findPlace,
+  findNode,
   insertNode,
   previousSiblingId
 } from './treeUtils';
@@ -32,12 +34,17 @@ const NO_DRAFT_TITLES: Record<string, string> = {};
 
 const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
   value = [],
+  subject,
   onEdit,
   onSave,
   saving,
   authorIntent = '',
   onSaveAuthorIntent
 }) => {
+  const { confirm, confirmDialog, withdraw } = useConfirm();
+  const currentSubject = useRef(subject);
+  currentSubject.current = subject;
+  useEffect(() => () => { withdraw(); }, [subject, withdraw]);
   const [showInstruction, setShowInstruction] = useState(false);
   // An empty plan shows one line to type into; it joins the plan once it is edited.
   const [blankPlan, setBlankPlan] = useState<ExegeticalPlanNode[]>(() => [createNewNode()]);
@@ -107,8 +114,15 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     apply(nodes => [...nodes, newNode]);
   }, [apply]);
 
-  const handleRemoveNode = useCallback((id: string) => {
-    const newTree = removeNode(tree, id);
+  const latestTree = useRef(tree);
+  latestTree.current = tree;
+  const handleRemoveNode = useCallback(async (id: string) => {
+    const shown = findNode(tree, id);
+    const shownSubject = subject;
+    if (!shown || !await confirm({ title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' }, confirmText: { key: 'common.delete' }, cancelText: { key: 'common.cancel' } })) return;
+    if (currentSubject.current !== shownSubject || JSON.stringify(findNode(latestTree.current, id)) !== JSON.stringify(shown)) return;
+    const newTree = removeNode(latestTree.current, id);
 
     const getAllNodeIds = (nodes: ExegeticalPlanNode[]): string[] => {
       const ids: string[] = [];
@@ -133,7 +147,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
     });
 
     apply(nodes => removeNode(nodes, id));
-  }, [tree, apply]);
+  }, [tree, subject, apply, confirm]);
 
   const handleAddChild = useCallback((parentId: string) => {
     const newNode = createNewNode();
@@ -214,6 +228,7 @@ const ExegeticalPlanModule: React.FC<ExegeticalPlanModuleProps> = ({
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <BlockDiagramSection />
 
       <InstructionSection

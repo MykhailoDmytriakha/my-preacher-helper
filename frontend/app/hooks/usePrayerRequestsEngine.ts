@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
@@ -49,7 +50,18 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   const [saveConflict, setSaveConflict] = usePersistedConflict<SaveConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE);
   const [statusConflict, setStatusConflict] = usePersistedConflict<StatusConflictPayload>(userId ?? null, activeDocId ?? null, PRAYER_STATUS_AGGREGATE);
   const [resolvingConflict, setResolvingConflict] = useState(false);
+  const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+  const saveConflictRef = useRef(saveConflict);
+  saveConflictRef.current = saveConflict;
+  const statusConflictRef = useRef(statusConflict);
+  statusConflictRef.current = statusConflict;
+  const userIdRef = useRef(userId ?? null);
+  userIdRef.current = userId ?? null;
+  const activeDocIdRef = useRef(activeDocId ?? null);
+  activeDocIdRef.current = activeDocId ?? null;
   const pending = useRef(new Set<string>());
+
+  useEffect(() => { withdraw(); }, [userId, activeDocId, withdraw]);
 
   const prayerRequests = useMemo<PrayerRequest[]>(() => (collection.state?.documents ?? [])
     .flatMap(row => row.value ? [{ ...(row.value as unknown as PrayerRequest), id: row.resource.id }] : [])
@@ -131,11 +143,38 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     keepMineOnConflict: () => saveConflict ? resolve(() => guardedEdit(saveConflict.payload.id, PRAYER_CORE_AGGREGATE,
       saveConflict.payload.updates as DocumentData, null), () => setSaveConflict(null, saveConflict.payload.id)) : Promise.resolve(),
     // The engine rows are already the current copy: taking theirs only retires the held text.
-    takeTheirsOnConflict: async () => { setSaveConflict(null, saveConflict?.payload.id); },
+    takeTheirsOnConflict: async () => {
+      const held = saveConflictRef.current;
+      if (!held || resolvingConflict) return;
+      const capturedUserId = userIdRef.current;
+      const capturedDocId = activeDocIdRef.current;
+      const isCurrent = () => userIdRef.current === capturedUserId &&
+        activeDocIdRef.current === capturedDocId && saveConflictRef.current === held;
+      setResolvingConflict(true);
+      try {
+        await askBeforeDiscard(true, () => setSaveConflict(null, held.payload.id), isCurrent);
+      } finally {
+        setResolvingConflict(false);
+      }
+    },
     statusConflict,
     keepMineOnStatusConflict: () => statusConflict ? resolve(() => guardedEdit(statusConflict.payload.id, PRAYER_STATUS_AGGREGATE,
       statusPatch(statusConflict.payload.status, statusConflict.payload.answerText), null), () => setStatusConflict(null, statusConflict.payload.id)) : Promise.resolve(),
-    takeTheirsOnStatusConflict: () => { setStatusConflict(null, statusConflict?.payload.id); },
+    takeTheirsOnStatusConflict: async () => {
+      const held = statusConflictRef.current;
+      if (!held || resolvingConflict) return;
+      const capturedUserId = userIdRef.current;
+      const capturedDocId = activeDocIdRef.current;
+      const isCurrent = () => userIdRef.current === capturedUserId &&
+        activeDocIdRef.current === capturedDocId && statusConflictRef.current === held;
+      setResolvingConflict(true);
+      try {
+        await askBeforeDiscard(true, () => setStatusConflict(null, held.payload.id), isCurrent);
+      } finally {
+        setResolvingConflict(false);
+      }
+    },
+    discardDialog,
     deletePrayer: (id: string): WriteSubmission => once(`prayer:delete:${id}`, () => actions.remove(resource(id))),
     addUpdate: (id: string, text: string): WriteSubmission => {
       const entry = { id: newClientId(), text, createdAt: now() };

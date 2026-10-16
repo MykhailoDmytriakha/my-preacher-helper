@@ -502,6 +502,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
       {/* Not on a copy for reading — see the paired screen: the draft waits in storage. */}
       {draft.recovered && !readOnly && (
         <PlanDraftRecoveryBar
+          subject={JSON.stringify([sermon?.userId, sermonId])}
           cells={recoveredCells(draft.recovered, sermon)}
           onRestore={() => {
             conspectus.restoreCells(draft.recovered ?? {});
@@ -512,6 +513,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
       )}
 
       <OrphanedPlanText
+      subject={JSON.stringify([sermon?.userId, sermonId])}
         cells={orphans}
         readOnly={readOnly}
         onDiscard={(nodeIds) => {

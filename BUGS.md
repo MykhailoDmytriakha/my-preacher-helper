@@ -14,6 +14,24 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261016-focus-recorder-lifetime-loses-source · Closing dictation or failing to start a replacement loses the only recording
+**Severity.** P2 — dictated words can lose their only retry/download source; microphone permission can outlive its visible owner.
+**Found.** 2026-10-16 · source review during BUG-20261003-one-click-delete-other-screens; browser reproduction pending.
+**Anchors.** FocusRecorderButton.tsx:351-372, 423-445, 477-488, 615-622, 680-682; useTextDictation.ts:26-34,53-60; EditThoughtModal.tsx:85-94; prayer/AddUpdateModal.tsx:27-42.
+**Expected / actual.** Recording and permission acquisition protect modal exits and Save. A failed replacement keeps the prior blob. A permission result after unmount stops its stream. Currently capture activity is private, close cleanup clears chunks, replacement clears the blob before acquisition succeeds, and a late stream has no lifetime check.
+**Reproduce.** Open a thought or prayer update, start dictation, close before Stop; alternatively fail transcription, choose record again, and deny microphone access. Resolve a deferred microphone permission after closing to check hidden capture.
+**Effect.** The retry/download copy disappears, or the microphone starts without its screen.
+**User contract.** Dictation remains available until deliberately discarded or accepted as text. Ordinary modal exits and Save wait while recording; permission failure preserves prior work. Successful processing and explicit discard keep their intended cleanup.
+**Class: recorder work outlives or is destroyed before its visible owner's decision.**
+| place | verdict | reason |
+|---|---|---|
+| FocusRecorderButton and useTextDictation | affected | private capture lifecycle and in-memory source; replacement clears before acquisition |
+| Thought / prayer update modals | affected | pending transcription is guarded, pending capture is not exposed |
+| OutlinePointCard | affected | the same recorder's failed source is only retained while mounted |
+| AudioRecorder shared lifecycle | separate mechanism | exposes recording/initializing state; audit its durable recovery during this fix |
+| server / command queue | not the source of this loss | local raw blob can disappear before a request exists |
+**Direction.** Reuse the existing activity callback shape; guard modal exits/submission, retire late streams, preserve the previous source until replacement is ready. Verify microphone lifecycle with deferred promises and a fake browser microphone. Durable mid-capture navigation recovery is a separate question to investigate, not an assumed guarantee.
+
 ### BUG-20261013-relation-scan-blocks-delete · Проповедь, группу или заметку нельзя удалить, когда у владельца около сотни серий или материалов, даже не связанных с ней
 **Severity.** P2 — операция пропадает целиком у активного пользователя (в отказе), но только начиная с ~100 серий или материалов; сейчас у тестового владельца их единицы.
 **Найден.** 2026-10-13 · независимое ревью Codex сноса старого пути записи, чтением кода; не воспроизводилось.
@@ -53,26 +71,6 @@
 | движок данных (снимки по документам) | не поражено | хранит по документу, не одним снимком |
 **Попытка 2026-10-11 (откатана после первого круга Codex: новые P1).** Запись через `update` idb-keyval со слиянием в хранимую копию: чужие запросы и паузы оставались, из двух копий запроса побеждал более свежий `dataUpdatedAt`, своё убранное оставалось убранным (`known` на экземпляр). Ревью: (P1) восстановленная после перезапуска и успешно отправленная правка оставалась в копии и уходила второй раз после следующего перезапуска — восстановление не помечало записи «своими»; (P1) кэш не разделён по пользователю, слияние сохраняло записи прежнего аккаунта; (P2) восстановленный и потом убранный или отфильтрованный запрос возвращался, обходился `buster`, работа записи росла квадратично, перевод часов назад запирал свежие ответы. Патч: `.cases/2026-10-10-bugs-10-connectivity/artifacts/cache-two-tabs-attempt.patch`.
 **Направление.** Не слияние одного снимка, а перестройка хранения: раздел по пользователю (ключ и клиент от uid, восстановление после входа), хранение по записи (запрос и пауза — свой ключ, как снимки движка), метки удаления/завершения с версией, у паузы — id операции, сквозной до сервера (идемпотентность), и захват повтора одной вкладкой. Запросов вне движка осталось немного (ссылки на заметки, права, даты проповедей, рефералы) — перенос их на движок закрывает запись без этого слоя.
-
-### BUG-20261003-one-click-delete-other-screens · Вне редактора плана один клик по-прежнему стирает написанное без вопроса
-**Severity.** P2 — проповедник теряет набранный текст одним промахом мыши; найдено прочёсом класса при фиксе «удаления с одного клика» в редакторе плана (решение владельца касалось только редактора плана).
-**Найден.** 2026-10-03 · прочёс класса (субагент Sonnet, чтением кода, не воспроизводилось).
-**Ожидалось.** Удаление того, что человек написал, спрашивает; без вопроса — только то, что легко вернуть или где есть «отменить».
-**Получилось (места).**
-| место | что стирает | заметка |
-|---|---|---|
-| `care/council/[id]/page.tsx:1087` (`removeTopic`) | раздел совета целиком | вопроса нет |
-| `care/council/[id]/page.tsx:1005`, `:1051` | вопрос совета с ответом, вариант решения | вопроса нет |
-| `groups/[id]/page.tsx:184` (`removeFlowBlock`, меню `FlowItemRow.tsx:206`) | блок встречи, а с последней ссылкой и его шаблон | вопроса нет |
-| `components/sermon/prep/exegeticalPlan/ExegeticalPlanModule.tsx:73` | узел экзегетического плана с детьми | вопроса нет |
-| `components/plan/KeyFragmentsModal.tsx:299`, `:317` | ключевые фрагменты мысли («удалить все» тоже) | вопроса нет |
-| `components/settings/TagsSection.tsx:60` | своя метка | вопроса нет |
-| окна без черновика: `components/EditThoughtModal.tsx:152` (мысль на доске структуры), `prayer/CreatePrayerModal.tsx:82`, `prayer/AddUpdateModal.tsx:60`, `groups/CreateGroupModal.tsx:39`, `series/EngineCreateSeriesModal.tsx:63` | набранный текст | вопроса нет ни у «Отмены», ни у крестика; у доски и молитв — ещё и клик по фону (найдено 2026-10-13 при фиксе «Отмены» в окнах движка) |
-| `care/orders/[id]/page.tsx:1105` (`removeStep`) | шаг служения | есть undo — проверить, что он виден |
-| «Отбросить» у найденных черновиков: `plan/OrphanedPlanText.tsx:68`, `plan/PlanDraftRecoveryBar.tsx:76`, `studies/[id]/page.tsx:1323`, `OutboxConflictBanner.tsx:227` | последняя копия несохранённого текста | вопроса нет |
-**Направление после решения 2026-10-15.** Все действия без отмены, которые стирают написанное (включая один фрагмент и закрытие заполненного окна без черновика), используют общий вопрос подтверждения. Существующий видимый Undo можно сохранить. Реализацию и прочёс класса выполняет агент; отдельных ответов по каждому экрану не нужно.
-**Решено владельцем 2026-10-13.** «Отмена» в окнах движка, стирающая черновик (мысль, проповедь новая и правка, план, дата проповеди, серия, состав серии), спрашивает `useDiscardQuestion`, если в окне есть правки.
-**Решено владельцем 2026-10-15.** Общее правило распространяется на остальные экраны: перед действием, которое без возможности отмены стирает написанный текст, спросить подтверждение. Действие с доступной отменой сохраняет этот путь возврата.
 
 ### BUG-20260810-auth-mirrors-in-localstorage · Два самодельных зеркала сессии в localStorage: вечный спиннер и протухшая личность
 **P2** — не теряет данные, но подвешивает вход и уже порождал P1-класс · `frontend/app/components/ProtectedRoute.tsx:30-69` · `frontend/app/hooks/useAuth.ts:14-44` · `PublicRoute.tsx` · `useResolvedUid.ts` · `queryKeys.ts`
@@ -292,6 +290,13 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261016-recovery-discard-scope-can-expand · A late recovery decision may include work that was not shown
+**Candidate, not reproduced.** Independent source review of BUG-20261003-one-click-delete-other-screens found a separate engine settlement boundary: EngineConflictBanner.tsx:310-315 rechecks the shown fingerprints, then engine.ts:612-623 awaits a fresh commit list and cancels all answered requests for that resource; atomicCommits.ts:130-139 can include dependent requests.
+**Expected.** A decision to discard the shown copy must not discard a different copy that arrived afterward.
+**Possible trigger.** Pause the final commit-list read after UI confirmation, deliver a newly refused same-owner request for the same document, resume, and inspect whether its retained text is also cancelled. Actual loss has not been established; dependency-chain semantics need a deterministic test.
+**User contract.** Work on sequential devices can arrive late; unseen text does not become part of a prior discard decision merely because it is delivered during that decision.
+**Next.** Reproduce at the existing engine/commit-store seam. If confirmed, bind settlement to the reviewed request scope using the canonical mechanism; no second queue or writer. This does not reopen the missing-confirmation UI mechanism by assumption.
 
 ### BUG-20261013-note-editor-update-loop · Набор текста в теле заметки вызывает «Maximum update depth exceeded»
 **Recheck 2026-10-16, local HEAD eaa1185b.** Production build bqrqFxkFGCLohb1uMWH1c: update recursion 0/5 variants (keyboard/native burst before and after creation, paste before creation). All typed words retained through permanent-ID adoption; no page errors. Three controlled-server variants retained text after reload, one create each. API mutations intercepted; synthetic ACKs, not actual server acceptance. Existing editor/buffer/autosave tests:3 suites/33 passed. Initial unready trial never adopted an ID and is excluded. Historical Oct13/14 evidence stays valid. Root cause and reason for current non-reproduction are unproved; no new fix claimed. Extension reconfiguration is a hypothesis only. Reproduce with exact input/load/ID timing, full stack/build, dev with/without SW, IME and owner device. Evidence: artifacts/note-typing-* in the local case; summary in docs/verification/local-bug-fixes.md.

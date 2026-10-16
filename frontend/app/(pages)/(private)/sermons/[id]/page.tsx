@@ -603,6 +603,8 @@ function SermonPageContent({ id }: { id: string }) {
       ),
       exegeticalPlan: (
         <ExegeticalPlanStepContent
+          key={JSON.stringify([sermon?.userId, id])}
+          subject={JSON.stringify([sermon?.userId, id])}
           value={prepDraft?.exegeticalPlan || []}
           // Each plan edit goes straight into the document, which saves and merges it.
           onEdit={(edit) => core.editPreparation(prep => ({ ...prep, exegeticalPlan: edit(prep.exegeticalPlan ?? []) }))}

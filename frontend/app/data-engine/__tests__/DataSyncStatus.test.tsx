@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import en from '../../../locales/en/translation.json';
 import ru from '../../../locales/ru/translation.json';
@@ -15,6 +15,14 @@ jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) =>
 } }) }));
 const status = (phase: SyncPhase, extras: Partial<SyncStatus> = {}): SyncStatus => ({ phase, freshness: 'server', checking: false, readFailed: false, hasForeignChange: false, canSave: false, canRemove: false, canAcceptRemote: false, canKeepLocal: false, ...extras });
 const deferred = () => { let resolve!: () => void; let reject!: (reason: unknown) => void; const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
+const discardText = (en as unknown as { common?: { discardText?: { title?: string; confirm?: string; keep?: string } } }).common?.discardText;
+const discardTitle = discardText?.title ?? 'common.discardText.title';
+const discardConfirm = discardText?.confirm ?? 'common.discardText.confirm';
+const discardKeep = discardText?.keep ?? 'common.discardText.keep';
+const confirmDiscardDialog = async () => {
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: discardConfirm }));
+};
 
 describe('DataSyncStatus', () => {
   it('makes earlier unfinished drafts visible beside an otherwise saved document', () => {
@@ -58,8 +66,30 @@ describe('DataSyncStatus', () => {
     await act(async () => { await Promise.resolve(); });
     expect(keep).toHaveBeenCalledTimes(1); expect(button).toBeDisabled();
     await act(async () => waiting.resolve());
+    await waitFor(() => expect(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs }));
+    await confirmDiscardDialog();
     await act(async () => { await Promise.resolve(); }); expect(accept).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks before taking the stored copy from the conflict banner', async () => {
+    const accept = jest.fn();
+    render(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={jest.fn()} onAcceptRemote={accept} />);
+
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs }));
+    await act(async () => { await Promise.resolve(); });
+    expect(accept).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent(discardTitle);
+
+    fireEvent.click(screen.getByRole('button', { name: discardKeep }));
+    expect(accept).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictTakeTheirs }));
+    await confirmDiscardDialog();
+    await act(async () => { await Promise.resolve(); });
+    expect(accept).toHaveBeenCalledTimes(1);
   });
 
   it('does the action that was clicked even when the screen re-renders before it starts', async () => {
@@ -79,6 +109,9 @@ describe('DataSyncStatus', () => {
       rerender(<DataSyncStatus subject="doc" status={conflict} onKeepLocal={keep} onAcceptRemote={accept} />);
     });
     await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await confirmDiscardDialog();
+    await act(async () => { await Promise.resolve(); });
     expect(acceptNext).toHaveBeenCalledTimes(1); expect(accept).not.toHaveBeenCalled();
   });
 
@@ -96,7 +129,7 @@ describe('DataSyncStatus', () => {
     expect(acceptNext).not.toHaveBeenCalled();
     await act(async () => waiting.resolve());
     expect(theirs).toBeEnabled();
-    fireEvent.click(theirs); await act(async () => { await Promise.resolve(); });
+    fireEvent.click(theirs); await confirmDiscardDialog(); await act(async () => { await Promise.resolve(); });
     expect(acceptNext).toHaveBeenCalledTimes(1);
   });
 
@@ -110,6 +143,8 @@ describe('DataSyncStatus', () => {
     const theirs = screen.getByRole('button', { name: en.freshness.conflictTakeTheirs });
     expect(theirs).toBeEnabled();
     fireEvent.click(theirs); await act(async () => { await Promise.resolve(); });
+    expect(acceptOther).not.toHaveBeenCalled();
+    await confirmDiscardDialog(); await act(async () => { await Promise.resolve(); });
     expect(acceptOther).toHaveBeenCalledTimes(1);
     // The previous subject's late failure is not this one's.
     await act(async () => hanging.reject(new Error('Old sermon failure')));
@@ -171,7 +206,41 @@ describe('DataSyncStatus', () => {
     await act(async () => { await Promise.resolve(); }); expect(keep).toHaveBeenCalledTimes(1);
     rerender(<DataSyncStatus subject="doc" status={status('remoteChanged', { canAcceptRemote: true })} onAcceptRemote={accept} />);
     fireEvent.click(screen.getByRole('button', { name: en.dataSync.acceptRemote }));
+    await confirmDiscardDialog();
     await act(async () => { await Promise.resolve(); }); expect(accept).toHaveBeenCalledTimes(1);
+  });
+
+  it('withdraws an acceptance question when its subject changes', async () => {
+    const accept = jest.fn();
+    const { rerender } = render(<DataSyncStatus subject="note-1" status={status('refused', { canAcceptRemote: true })} onAcceptRemote={accept} />);
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.acceptRemote }));
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    rerender(<DataSyncStatus subject="note-2" status={status('refused', { canAcceptRemote: true })} onAcceptRemote={accept} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(accept).not.toHaveBeenCalled();
+  });
+
+  it('asks before accepting the stored copy from a non-conflict refusal', async () => {
+    const accept = jest.fn();
+    render(<DataSyncStatus subject="doc" status={status('refused', { canAcceptRemote: true })} onAcceptRemote={accept} />);
+
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.acceptRemote }));
+    await act(async () => { await Promise.resolve(); });
+    expect(accept).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toHaveTextContent(discardTitle);
+
+    fireEvent.click(screen.getByRole('button', { name: discardKeep }));
+    expect(accept).not.toHaveBeenCalled();
+    expect(screen.getByText(en.dataSync.phase.refused)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: en.dataSync.acceptRemote })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.acceptRemote }));
+    await confirmDiscardDialog();
+    await act(async () => { await Promise.resolve(); });
+    expect(accept).toHaveBeenCalledTimes(1);
   });
 
   it('reports local storage and read failures, and surfaces a failed retry without claiming a save', async () => {

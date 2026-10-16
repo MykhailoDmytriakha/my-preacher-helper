@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
@@ -109,7 +109,10 @@ describe('AddUpdateModal', () => {
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
     });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+    const discardQuestion = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+    fireEvent.click(within(discardQuestion).getByRole('button', { name: 'common.discardChanges.confirm' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('keeps the exact update in the textarea when the write is refused', async () => {
@@ -157,6 +160,77 @@ describe('AddUpdateModal', () => {
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith('Manual note\n\nVoice update from prayer meeting');
       expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deleteGuard dismissal behavior', () => {
+    const exits = [
+      ['Cancel', () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))],
+      ['close button', () => fireEvent.click(screen.getByRole('button', { name: 'common.close' }))],
+      ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['backdrop', () => fireEvent.click(screen.getByRole('dialog').parentElement!)],
+    ] as const;
+
+    it.each(exits)('asks before discarding update text through %s and keeps it on Keep', async (_name, exit) => {
+      const onClose = jest.fn();
+      render(<AddUpdateModal onClose={onClose} onSubmit={jest.fn()} />);
+      const textarea = screen.getByPlaceholderText('Share an update');
+      fireEvent.change(textarea, { target: { value: 'Exact unsaved update' } });
+      exit();
+      expect(onClose).not.toHaveBeenCalled();
+
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(textarea).toHaveValue('Exact unsaved update');
+    });
+
+    it('does not ask when the update is still blank', () => {
+      const onClose = jest.fn();
+      render(<AddUpdateModal onClose={onClose} onSubmit={jest.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+    });
+
+    it('closes only after the person confirms discarding update text', async () => {
+      const onClose = jest.fn();
+      render(<AddUpdateModal onClose={onClose} onSubmit={jest.fn()} />);
+      fireEvent.change(screen.getByPlaceholderText('Share an update'), { target: { value: 'Discard this update' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.confirm' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it.each(exits)('blocks %s while the update save is pending', async (_name, exit) => {
+      let resolveSubmit!: () => void;
+      const onClose = jest.fn();
+      const onSubmit = jest.fn(() => persistedWrite(new Promise<void>(resolve => { resolveSubmit = resolve; })));
+      render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
+      const textarea = screen.getByPlaceholderText('Share an update');
+      fireEvent.change(textarea, { target: { value: 'Pending update' } });
+      fireEvent.submit(screen.getByRole('button', { name: 'Save Update' }).closest('form') as HTMLFormElement);
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      exit();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(textarea).toHaveValue('Pending update');
+      resolveSubmit();
+    });
+
+    it.each(exits)('blocks %s while dictated text is being prepared', async (_name, exit) => {
+      let resolveTranscription!: (value: { polishedText: string; originalText: string }) => void;
+      mockTranscribeAudioWithRetry.mockReturnValue(new Promise(resolve => { resolveTranscription = resolve; }));
+      const onClose = jest.fn();
+      render(<AddUpdateModal onClose={onClose} onSubmit={jest.fn()} />);
+      const textarea = screen.getByPlaceholderText('Share an update');
+      fireEvent.change(textarea, { target: { value: 'Manual words' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Record voice' }));
+      await waitFor(() => expect(mockTranscribeAudioWithRetry).toHaveBeenCalledTimes(1));
+      exit();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(textarea).toHaveValue('Manual words');
+      resolveTranscription({ polishedText: 'Dictated words', originalText: 'dictated words' });
     });
   });
 });

@@ -1,4 +1,4 @@
-import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -214,6 +214,126 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
     expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
     expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
     expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
+  });
+
+  it('asks before taking the stored template and leaves the refusal intact on cancel', async () => {
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeEnabled());
+
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    const dialog = await screen.findByRole('dialog');
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getAllByRole('button')[1]);
+    expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
+    expect(mockRefresh).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeEnabled());
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    const confirmation = await screen.findByRole('dialog');
+    fireEvent.click(within(confirmation).getAllByRole('button')[0]);
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
+  });
+
+  it('does not refresh or retire the refused copy after the account changes under its question', async () => {
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    const view = render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+
+    view.rerender(<PlanTemplatesSection user={{ uid: 'u2' } as unknown as User} />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(localStorage.length).toBeGreaterThan(0);
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+  });
+
+  it('keeps the refused copy when refreshing the stored template fails', async () => {
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    mockRefresh.mockRejectedValueOnce(new Error('offline'));
+    render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeEnabled());
+
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getAllByRole('button')[0]);
+
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
+  });
+
+  it('does not let a structure confirmation discard a newer outline draft', async () => {
+    jest.useFakeTimers();
+    try {
+      mockTemplates = [tpl('t1', 'Alpha')];
+      mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+      render(<PlanTemplatesSection user={user} />);
+      fireEvent.click(screen.getByLabelText('common.expand'));
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+      let pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'Refused outline text' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      await act(async () => { await jest.advanceTimersByTimeAsync(400); });
+      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+      pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'Newer outline text' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      fireEvent.click(within(dialog).getAllByRole('button')[0]);
+
+      expect(mockRefresh).not.toHaveBeenCalled();
+      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+      expect(screen.getByText('Refused outline text')).toBeInTheDocument();
+      expect(screen.getByText('Newer outline text')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('does not clear a newer outline draft after the confirmed refresh returns', async () => {
+    jest.useFakeTimers();
+    let finishRefresh!: (result: { isError: false }) => void;
+    try {
+      mockTemplates = [tpl('t1', 'Alpha')];
+      mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+      mockRefresh.mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
+      render(<PlanTemplatesSection user={user} />);
+      fireEvent.click(screen.getByLabelText('common.expand'));
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+      let pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'Refused outline text' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      await act(async () => { await jest.advanceTimersByTimeAsync(400); });
+      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getAllByRole('button')[0]);
+      await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
+
+      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+      pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+      fireEvent.change(pointInput, { target: { value: 'Draft changed during refresh' } });
+      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      await act(async () => { finishRefresh({ isError: false }); await Promise.resolve(); });
+
+      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+      expect(screen.getByText('Draft changed during refresh')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('offers the choice when the conflict arrives AFTER the write was accepted', async () => {

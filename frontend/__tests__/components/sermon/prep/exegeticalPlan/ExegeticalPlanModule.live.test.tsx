@@ -187,6 +187,8 @@ describe('the exegetical plan on the engine document', () => {
     const deletedId = doc.read()[0].id;
 
     fireEvent.click(screen.getByLabelText('wizard.steps.exegeticalPlan.builder.tooltips.delete'));
+    const confirmDelete = await screen.findByRole('button', { name: 'common.delete' });
+    await act(async () => { fireEvent.click(confirmDelete); });
     await settle();
     expect(doc.read()).toEqual([]);
     type(fields()[0], 'Next point');

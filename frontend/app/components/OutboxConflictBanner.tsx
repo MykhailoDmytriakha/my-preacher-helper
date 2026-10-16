@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { doc } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -13,6 +13,7 @@ import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { discoverLegacyRecovery, exportLegacyRecovery, type LegacyRecoverySource } from '@/data-engine/legacyRecovery.client';
 import { LegacyDataRecoveryNotice, useRemotePeek } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { pendingOutboxConflicts, recordOutboxRecoveryRefusal } from '@/services/outboxReplay.client';
@@ -38,6 +39,7 @@ const refusalOf = (entry: OutboxEntry) => `${entry.id}@${entry.actualRevision ??
 function LegacyConflictBanner() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
     onError: () => { toast.error(t(SAVE_ERROR_KEY)); },
@@ -82,6 +84,14 @@ function LegacyConflictBanner() {
   }, [refresh]);
 
   const entry = conflicts[0];
+  const selection = JSON.stringify(entry);
+  const current = useRef({ owner: user?.uid, selection });
+  current.current = { owner: user?.uid, selection };
+  useEffect(() => { withdraw(); }, [user?.uid, selection, withdraw]);
+  const stillShown = () => Boolean(user?.uid && current.current.owner === user.uid
+    && current.current.selection === selection
+    && JSON.stringify(listOutbox(user.uid).find(candidate => candidate.id === entry.id)) === selection);
+
 
   if (!entry) {
     if (stuck === 0) return null;
@@ -143,8 +153,10 @@ function LegacyConflictBanner() {
         setTheirs({ refusal: refusalOf(entry), value: snapshot.value });
         return;
       }
-      await queryClient.invalidateQueries();
-      removeFromOutbox(entry.id);
+      await askBeforeDiscard(true, async () => {
+        await queryClient.invalidateQueries();
+        if (stillShown()) removeFromOutbox(entry.id);
+      }, stillShown);
     } catch (error) {
       console.error('outbox: could not load the other version', error);
       toast.error(t(SAVE_ERROR_KEY));
@@ -163,6 +175,7 @@ function LegacyConflictBanner() {
     setBusy(true);
     try {
       await queryClient.invalidateQueries();
+      if (!stillShown()) return;
       removeFromOutbox(entry.id);
       setTheirs(null);
     } catch (error) {
@@ -185,8 +198,10 @@ function LegacyConflictBanner() {
 
   /** Discard without loading anything — the document is GONE, so there is nothing to load. */
   const discardMissingTarget = () => {
-    removeFromOutbox(entry.id);
-    refresh();
+    void askBeforeDiscard(true, () => {
+      removeFromOutbox(entry.id);
+      refresh();
+    }, stillShown);
   };
 
   /**
@@ -201,6 +216,7 @@ function LegacyConflictBanner() {
   if (entry.targetMissing) {
     return (
       <div>
+        {discardDialog}
         <div
           role="alert"
           className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10"
@@ -268,6 +284,7 @@ function LegacyConflictBanner() {
   // and adding `mx-auto/px-*` here leaked a page-level container into every screen.
   return (
     <div>
+      {discardDialog}
       <SaveConflictBanner
         entityKey="entityRecord"
         pendingText={previewText || t(CONFLICT_PENDING_LABEL_KEY)}

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordingDrafts } from "@/hooks/useRecordingDrafts";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 
@@ -33,7 +34,30 @@ export default function RecordingDraftBanner({
 }: RecordingDraftBannerProps) {
   const { t } = useTranslation();
   const { drafts, loading, removeDraft } = useRecordingDrafts(context, contextId);
+  const { confirm, confirmDialog, withdraw } = useConfirm();
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
+  const currentScope = `${context}:${contextId ?? ''}`;
+  const currentScopeRef = useRef(currentScope);
+  const currentDraftsRef = useRef(drafts);
+  const pendingDiscard = useRef<{ id: string; blob: Blob; scope: string } | null>(null);
+  const deletingIds = useRef(new Set<string>());
+  currentScopeRef.current = currentScope;
+  currentDraftsRef.current = drafts;
+
+  const isCurrentDraft = useCallback((id: string, blob: Blob, scope: string) =>
+    currentScopeRef.current === scope && currentDraftsRef.current.some(candidate => candidate.id === id && candidate.blob === blob), []);
+
+  useEffect(() => {
+    const pending = pendingDiscard.current;
+    if (pending && !isCurrentDraft(pending.id, pending.blob, pending.scope)) {
+      pendingDiscard.current = null;
+      deletingIds.current.delete(pending.id);
+      setBusyIds(previous => { const next = { ...previous }; delete next[pending.id]; return next; });
+      withdraw();
+    }
+  }, [context, contextId, drafts, isCurrentDraft, withdraw]);
+
+  useEffect(() => () => { withdraw(); }, [withdraw]);
 
   // One object URL per draft, rebuilt whenever the draft set changes. The
   // cleanup revokes the URLs from the *previous* render (and on unmount) so no
@@ -71,12 +95,35 @@ export default function RecordingDraftBanner({
     [busyIds, isProcessing, onResend, removeDraft]
   );
 
-  if (loading || drafts.length === 0) return null;
+  const handleDiscard = useCallback(async (draft: RecordingDraft) => {
+    if (isProcessing || busyIds[draft.id] || deletingIds.current.has(draft.id)) return;
+    const scope = currentScope;
+    const request = { id: draft.id, blob: draft.blob, scope };
+    pendingDiscard.current = request;
+    deletingIds.current.add(draft.id);
+    setBusyIds(previous => ({ ...previous, [draft.id]: true }));
+    try {
+      const accepted = await confirm({
+        title: { key: 'common.deleteItem.title' },
+        description: { key: 'common.deleteItem.description' },
+        confirmText: { key: 'common.delete' },
+        cancelText: { key: 'common.cancel' },
+      });
+      if (accepted && isCurrentDraft(request.id, request.blob, request.scope)) await removeDraft(request.id);
+    } finally {
+      if (pendingDiscard.current === request) pendingDiscard.current = null;
+      deletingIds.current.delete(draft.id);
+      setBusyIds(previous => { const next = { ...previous }; delete next[draft.id]; return next; });
+    }
+  }, [busyIds, confirm, currentScope, isCurrentDraft, isProcessing, removeDraft]);
+
+  if (loading || drafts.length === 0) return <>{confirmDialog}</>;
 
   const buttonBase =
     "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
   return (
+    <>
     <div className={`flex flex-col gap-3 ${className}`}>
       {drafts.map((draft) => {
         const busy = isProcessing || Boolean(busyIds[draft.id]);
@@ -135,7 +182,7 @@ export default function RecordingDraftBanner({
               </button>
               <button
                 type="button"
-                onClick={() => removeDraft(draft.id)}
+                onClick={() => { void handleDiscard(draft); }}
                 disabled={busy}
                 className={`${buttonBase} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700`}
               >
@@ -146,5 +193,7 @@ export default function RecordingDraftBanner({
         );
       })}
     </div>
+    {confirmDialog}
+    </>
   );
 }

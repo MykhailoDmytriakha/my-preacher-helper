@@ -178,11 +178,28 @@ describe('when the target document is gone', () => {
     expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
   });
 
+  it('keeps the deleted targets last copy until discard is confirmed', async () => {
+    deletedTarget();
+    render(<OutboxConflictBanner />);
+    fireEvent.click(await screen.findByText('freshness.discardAction'));
+    expect(listOutbox('u1')).toHaveLength(1);
+    expect(await screen.findByRole('dialog', { name: 'common.discardText.title' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.keep' }));
+    expect(listOutbox('u1')).toHaveLength(1);
+    expect(screen.getByText(/the title I typed on the train/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('freshness.discardAction'));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(() => expect(listOutbox('u1')).toHaveLength(0));
+    expect(mockGuardedWrite).not.toHaveBeenCalled();
+  });
+
   it('discards only when the person says so, and never writes', async () => {
     deletedTarget();
     render(<OutboxConflictBanner />);
 
     fireEvent.click(await screen.findByText('freshness.discardAction'));
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
 
     await waitFor(() => expect(listOutbox('u1')).toHaveLength(0));
     expect(mockGuardedWrite).not.toHaveBeenCalled();

@@ -185,7 +185,8 @@ describe('the save button on the hand-written screen', () => {
     expect(await screen.findByText('plan.orphanedTitle')).toBeInTheDocument();
     expect(screen.getByText('абзац, набранный здесь')).toBeInTheDocument();
     fireEvent.click(screen.getByText('plan.orphanedDiscard'));
-    expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(() => expect(screen.queryByText('plan.orphanedTitle')).not.toBeInTheDocument());
   });
 
   it('lights up in the section colour the moment something is unsaved', async () => {

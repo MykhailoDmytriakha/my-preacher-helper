@@ -1,7 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { readPlanText } from "@/utils/planText";
 
 import { planNodeNames } from "./planNodes";
@@ -41,12 +43,23 @@ export function PlanDraftRecoveryBar({
   cells,
   onRestore,
   onDiscard,
+  subject,
 }: {
   cells: RecoveredCell[];
   onRestore: () => void;
   onDiscard: () => void;
+  subject?: unknown;
 }) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion('text');
+  const current = useRef({ cells, subject });
+  current.current = { cells, subject };
+  const discard = () => {
+    const shown = JSON.stringify(cells);
+    void askBeforeDiscard(true, onDiscard, () =>
+      current.current.subject === subject && JSON.stringify(current.current.cells) === shown);
+  };
+
   const box = "mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white/70 px-3 py-2 text-gray-900 dark:bg-black/20 dark:text-gray-100";
 
   return (
@@ -73,7 +86,7 @@ export function PlanDraftRecoveryBar({
           </button>
           <button
             type="button"
-            onClick={onDiscard}
+            onClick={discard}
             className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
           >
             {t("plan.draftRecoveryDiscard")}
@@ -93,6 +106,7 @@ export function PlanDraftRecoveryBar({
           </li>
         ))}
       </ul>
+      {discardDialog}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { PlanDraftRecoveryBar, recoveredCells } from '@/(pages)/(private)/sermons/[id]/plan/PlanDraftRecoveryBar';
 
@@ -32,4 +32,35 @@ describe('offering back text a previous session left', () => {
     const [cell] = recoveredCells({ p1: 'From the draft' }, older);
     expect(cell.current).toBe('Stored the old way');
   });
+});
+
+
+it('asks before discarding recovered cells and preserves them when declined', async () => {
+  const discard = jest.fn();
+  render(<PlanDraftRecoveryBar cells={recoveredCells({ p1: 'Last unsubmitted words' }, sermon)} onRestore={jest.fn()} onDiscard={discard} />);
+  fireEvent.click(screen.getByText('plan.draftRecoveryDiscard'));
+  expect(discard).not.toHaveBeenCalled();
+  expect(await screen.findByRole('dialog', { name: 'common.discardText.title' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'common.discardText.keep' }));
+  expect(discard).not.toHaveBeenCalled();
+  expect(screen.getByText('Last unsubmitted words')).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText('plan.draftRecoveryDiscard'));
+  fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+  await waitFor(() => expect(discard).toHaveBeenCalledTimes(1));
+});
+
+
+it('does not let an old confirmation discard replacement recovered words', async () => {
+  const discard = jest.fn();
+  const oldCells = recoveredCells({ p1: 'First recovered copy' }, sermon);
+  const nextCells = recoveredCells({ p1: 'Replacement recovered copy' }, sermon);
+  const view = render(<PlanDraftRecoveryBar subject="sermon" cells={oldCells} onRestore={jest.fn()} onDiscard={discard} />);
+  fireEvent.click(screen.getByText('plan.draftRecoveryDiscard'));
+  await screen.findByRole('dialog', { name: 'common.discardText.title' });
+  view.rerender(<PlanDraftRecoveryBar subject="sermon" cells={nextCells} onRestore={jest.fn()} onDiscard={discard} />);
+  fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(discard).not.toHaveBeenCalled();
+  expect(screen.getByText('Replacement recovered copy')).toBeInTheDocument();
 });

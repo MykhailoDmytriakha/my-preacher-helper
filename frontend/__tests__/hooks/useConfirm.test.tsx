@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
-import { useConfirm, type ConfirmOptions } from '@/hooks/useConfirm';
+import { useConfirm, useDiscardQuestion, type ConfirmOptions } from '@/hooks/useConfirm';
 import '@testing-library/jest-dom';
 
 // English says the default or the key; another language prefixes the key and lists the values,
@@ -195,3 +195,37 @@ describe('useConfirm', () => {
   });
 });
 
+
+
+function CopyDiscard({ revision, onDiscard, onSettled }: { revision: number; onDiscard: () => Promise<void>; onSettled: () => void }) {
+  const current = React.useRef(revision);
+  current.current = revision;
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion('text');
+  return <>
+    <button type="button" onClick={() => {
+      void askBeforeDiscard(true, onDiscard, () => current.current === revision).then(onSettled);
+    }}>Discard copy</button>
+    {discardDialog}
+  </>;
+}
+
+it('binds a discard to the shown copy and waits for its accepted asynchronous action', async () => {
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const discard = jest.fn(() => pending), settled = jest.fn();
+  const view = render(<CopyDiscard revision={1} onDiscard={discard} onSettled={settled} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard copy' }));
+  expect(screen.getByRole('dialog', { name: 'common.discardText.title' })).toHaveAccessibleDescription('common.discardText.description');
+  view.rerender(<CopyDiscard revision={2} onDiscard={discard} onSettled={settled} />);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' })); });
+  expect(discard).not.toHaveBeenCalled();
+  expect(settled).toHaveBeenCalledTimes(1);
+
+  settled.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Discard copy' }));
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' })); });
+  expect(discard).toHaveBeenCalledTimes(1);
+  expect(settled).not.toHaveBeenCalled();
+  await act(async () => { finish(); await pending; });
+  expect(settled).toHaveBeenCalledTimes(1);
+});

@@ -13,6 +13,16 @@ Use `useConfirm()` from `frontend/app/hooks/useConfirm.tsx`: `const { confirm, c
 - Need a busy state or extra content inside the question? Render `ConfirmModal` directly with `isOpen`, `onConfirm`, `onClose`, plus `isDeleting`, `confirmDisabled` or `children` (`frontend/app/components/column/DeletePointConfirmModal.tsx`).
 - Replacing an old `window.confirm` with the window: delete the `window.confirm()` call from the handler too. Otherwise both fire in sequence — the custom window says yes, then the system dialog appears.
 
+## Protect every destructive exit
+
+- Local-only forms route Cancel, X, Escape and opted-in backdrop through one close callback using useDiscardQuestion(). Do not also set FormActions.unsaved when its onCancel already asks, or two questions appear. Successful Save closes directly. A pending save or transcription locks every exit and incomplete submission.
+- A draft retained by the engine after ordinary closure is not discarded. Verify its recovery path instead of warning about imaginary loss.
+- A last-copy text discard uses useDiscardQuestion('text'), whose shared wording describes a copy rather than a window. askBeforeDiscard awaits an asynchronous discard and accepts an optional isCurrent predicate checked before asking and after yes; return withdraw can cancel a now-obsolete question.
+- Bind any asynchronous deletion to owner, resource/session and the exact shown item or copy. The same ID with different written contents is a new choice. Check again after asynchronous prerequisites before capture/removal; cancelling must enqueue nothing.
+- FormDialog respects dismissOnBackdrop identically with and without footer. Its closeDisabled and the caller callback protect X, Escape and backdrop as well as Cancel.
+- An internal rollback callback is not visible Undo. A service-order step therefore asks before removal even though its failed write can roll back.
+- Keep comparison-only actions separate from final discard. A button that merely loads another version must not ask as if it already removed words; guard the final destructive choice at its owner. Reuse existing confirmation where review/removal already has a second explicit step.
+
 ## Tests
 
 - Walk the whole lifecycle: click the trigger → `await screen.findByRole('dialog')` → click the confirm button inside it → assert the callback ran. Cancel must not run it.

@@ -57,6 +57,7 @@ export default function PrayerDetailPage() {
     statusConflict,
     keepMineOnStatusConflict,
     takeTheirsOnStatusConflict,
+    discardDialog,
   } =
     // The id makes a refused save durable — see usePrayerRequests.
     usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
@@ -240,6 +241,7 @@ export default function PrayerDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      {discardDialog}
       {/* A save was TURNED AWAY. The optimistic cache was rolled back to the server's
           truth, so this banner holds the only remaining copy of what was typed. */}
       {saveConflict && (

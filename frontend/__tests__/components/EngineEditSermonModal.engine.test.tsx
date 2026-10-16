@@ -84,7 +84,13 @@ it.each(['local', 'remote'] as const)('keeps the opening ancestor and resolves %
   expect((await harness.commits.list('owner')).some(request => request.state === 'conflict')).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready();
   await screen.findByText('freshness.conflictDescription');
-  fireEvent.click(screen.getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' }));
+  const resolution = screen.getByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  await waitFor(() => expect(resolution).toBeEnabled());
+  fireEvent.click(resolution);
+  if (choice === 'remote') {
+    expect(screen.getByLabelText('addSermon.titleLabel')).toHaveValue('My title');
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+  }
   const expected = choice === 'local' ? 'My title' : 'Their title';
   await waitFor(() => expect(screen.queryByText('freshness.conflictDescription')).not.toBeInTheDocument());
   await act(async () => { await harness.engine.retry(); await settleEngine(); });

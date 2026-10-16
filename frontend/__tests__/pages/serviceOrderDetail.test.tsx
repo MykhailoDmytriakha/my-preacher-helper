@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import ServiceOrderPage from '@/(pages)/(private)/care/orders/[id]/page';
 import '@testing-library/jest-dom';
+import type { ServiceOrderStep } from '@/models/models';
 
 /**
  * The page a pastor writes into. Everything here is about not losing his words: the save that
@@ -63,7 +64,7 @@ const order = (steps: unknown[]) => ({
   updatedAt: '2026-09-10T00:00:00.000Z',
 });
 
-const step = (id: string, title: string, body = '') => ({ id, title, body, scriptureRefs: [] });
+const step = (id: string, title: string, body = ''): ServiceOrderStep => ({ id, title, body, scriptureRefs: [] });
 
 describe('One service', () => {
   beforeEach(() => {
@@ -98,6 +99,10 @@ describe('One service', () => {
 
   describe('editing', () => {
     const enterEdit = () => fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+    const confirmStepRemoval = async () => {
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getAllByRole('button')[0]);
+    };
 
     /**
      * THE SAVE THAT DOES NOT WAIT FOR A BLUR. A phone locks, a lid closes, a PWA is killed —
@@ -175,7 +180,7 @@ describe('One service', () => {
     });
 
     /** Text waiting for a step that is being removed must not be sent after it. */
-    it('leaves no timer behind for a step that is removed', () => {
+    it('leaves no timer behind for a step that is removed', async () => {
       jest.useFakeTimers();
       render(<ServiceOrderPage />);
       enterEdit();
@@ -183,6 +188,7 @@ describe('One service', () => {
       const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
       fireEvent.change(words, { target: { value: 'не доживёт' } });
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
 
       const callsAfterRemoval = mockUpdateSteps.mock.calls.length;
       jest.advanceTimersByTime(2000);
@@ -265,7 +271,7 @@ describe('One service', () => {
      * lossy: a refused removal brings the step back on the next read without the sentence that
      * was typed into it, and nothing anywhere says so.
      */
-    it('sends the words of a step before removing it', () => {
+    it('sends the words of a step before removing it', async () => {
       jest.useFakeTimers();
       render(<ServiceOrderPage />);
       enterEdit();
@@ -275,6 +281,7 @@ describe('One service', () => {
       expect(mockUpdateSteps).not.toHaveBeenCalled();
 
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
 
       // Two writes, in this order: the words, then the removal.
       expect(mockUpdateSteps.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -396,11 +403,54 @@ describe('One service', () => {
       enterEdit();
 
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
 
       await waitFor(() =>
         expect(screen.getByTestId('service-order-failure')).toBeInTheDocument()
       );
       expect(screen.getAllByRole('textbox', { name: 'serviceOrders.stepTitle' })).toHaveLength(2);
+    });
+
+    it('asks before removing a step that contains body text and scripture references', async () => {
+      const preserved = step('s1', 'Opening', 'Read John 3:16 together.');
+      preserved.scriptureRefs = ['John 3:16'];
+      state.orders = [order([preserved])];
+      render(<ServiceOrderPage />);
+      enterEdit();
+
+      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.removeStep' }));
+      expect(mockUpdateSteps).not.toHaveBeenCalled();
+      const dialog = await screen.findByRole('dialog');
+      expect((screen.getByRole('textbox', { name: 'serviceOrders.stepWords' }) as HTMLTextAreaElement).value)
+        .toBe('Read John 3:16 together.');
+      fireEvent.click(within(dialog).getAllByRole('button')[1]);
+      expect(mockUpdateSteps).not.toHaveBeenCalled();
+      expect(screen.getByRole('textbox', { name: 'serviceOrders.stepWords' })).toHaveValue('Read John 3:16 together.');
+
+      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.removeStep' }));
+      const confirm = await screen.findByRole('dialog');
+      fireEvent.click(within(confirm).getAllByRole('button')[0]);
+      await waitFor(() => expect(mockUpdateSteps).toHaveBeenCalledTimes(1));
+      const [orderId, mutate] = mockUpdateSteps.mock.calls[0];
+      expect(orderId).toBe('order-1');
+      expect(mutate([preserved])).toEqual([]);
+    });
+
+    it('does not apply an old removal confirmation after the step body changes', async () => {
+      state.orders = [order([step('s1', 'Opening', 'Original words')])];
+      render(<ServiceOrderPage />);
+      enterEdit();
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      const dialog = await screen.findByRole('dialog');
+      const body = screen.getByRole('textbox', { name: 'serviceOrders.stepWords' });
+      fireEvent.change(body, { target: { value: 'New words written while the question was open' } });
+      await act(async () => { fireEvent.click(within(dialog).getAllByRole('button')[0]); await Promise.resolve(); });
+
+      expect(mockUpdateSteps).not.toHaveBeenCalled();
+      expect(screen.getByRole('textbox', { name: 'serviceOrders.stepWords' }))
+        .toHaveValue('New words written while the question was open');
+      expect(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })).toHaveLength(1);
     });
 
     /**
@@ -420,6 +470,8 @@ describe('One service', () => {
       enterEdit();
 
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
+      await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'serviceOrders.stepTitle' })).toHaveLength(1));
       // The pastor carries on writing in the step that is left, before the refusal arrives.
       const words = screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0];
       fireEvent.change(words, { target: { value: 'молитва у гроба' } });
@@ -859,9 +911,9 @@ describe('One service', () => {
 
       // The step itself is removed, and the server confirms a rite without it.
       mockUpdateSteps.mockImplementationOnce(async () => [step('s2', 'Молитва')]);
-      await act(async () => {
-        fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
-      });
+      fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
+      await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'serviceOrders.stepTitle' })).toHaveLength(1));
 
       // No marker is left standing, so the screen follows the document again — and the
       // confirmed deletion does not come back with it.
@@ -1018,6 +1070,7 @@ describe('One service', () => {
       enterEdit();
 
       fireEvent.click(screen.getAllByRole('button', { name: 'serviceOrders.removeStep' })[0]);
+      await confirmStepRemoval();
 
       await waitFor(() =>
         expect(screen.getByTestId('service-order-failure')).toHaveTextContent('serviceOrders.stepGone')

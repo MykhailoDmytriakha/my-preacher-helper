@@ -6,6 +6,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -18,6 +19,7 @@ interface Props {
 
 export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
+  const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<FailureWords | null>(null);
@@ -32,6 +34,11 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     fallbackErrorKey: 'prayer.update.dictationError',
   });
   const transcriptionUnavailableLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
+  const isBusy = saving || dictation.isProcessing;
+  const guardedClose = () => {
+    if (isBusy) return;
+    void askBeforeDiscard(text.length > 0, onClose);
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -57,11 +64,12 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   if (typeof document === 'undefined') return null;
 
   return (
-    <FormDialog title={t('prayer.update.title')} eyebrow={t('navigation.prayer')} tone="rose" size="compact" onClose={onClose} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
+    <>
+    <FormDialog title={t('prayer.update.title')} eyebrow={t('navigation.prayer')} tone="rose" size="compact" onClose={guardedClose} closeDisabled={isBusy} dismissOnBackdrop showCloseButton onSubmit={handleSubmit}
       footer={
-        <FormActions onCancel={onClose} cancelLabel={t('prayer.update.cancel')} submitLabel={t('prayer.update.submit')}
+        <FormActions onCancel={guardedClose} cancelLabel={t('prayer.update.cancel')} submitLabel={t('prayer.update.submit')}
           saving={saving} savingLabel={t('prayer.update.saving')} submitDisabled={dictation.isProcessing || !text.trim()}
-          cancelDisabled={saving || dictation.isProcessing} tone="rose" />
+          cancelDisabled={isBusy} tone="rose" />
       }>
       <div className="space-y-4">
         <div className="flex items-center justify-end gap-2">
@@ -80,5 +88,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
         {error && <p className="text-sm text-red-500" role="alert">{sayFailure(error, t)}</p>}
       </div>
     </FormDialog>
+    {discardDialog}
+    </>
   );
 }

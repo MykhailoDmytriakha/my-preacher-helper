@@ -122,6 +122,7 @@ export default function PrayerPage() {
     statusConflict,
     keepMineOnStatusConflict,
     takeTheirsOnStatusConflict,
+    discardDialog,
   } = usePrayerRequests(user?.uid ?? null, conflictDocId);
 
   const [filterStatus, setFilterStatus] = useQueryState<PrayerFilterStatus>('filter', {
@@ -362,6 +363,7 @@ export default function PrayerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+      {discardDialog}
       <Link
         href="/care"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 transition-opacity hover:opacity-80"

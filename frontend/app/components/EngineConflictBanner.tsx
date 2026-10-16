@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswers, waitsForDecision } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
@@ -34,7 +35,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; formWork?: boolean }
+interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; fingerprint: string; operationIds: string[]; decidable?: boolean; formWork?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -116,6 +117,13 @@ function changedText(value: DocumentData | null | undefined, base: DocumentData 
 }
 
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
+const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting) => Boolean(current
+  && sameResource(current.resource, target.resource)
+  && current.kind === target.kind
+  && current.screen === target.screen
+  && current.fingerprint === target.fingerprint
+  && current.operationIds.length === target.operationIds.length
+  && current.operationIds.every((id, index) => id === target.operationIds[index]));
 
 function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
   if (drafts.length > 1) return 'several';
@@ -157,10 +165,25 @@ function waitingDocuments(records: readonly { record: EditorRecord }[], journal:
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
       const drafts = decided.filter(entry => isOneShotRecord(entry) !== screen && sameResource(entry.checkpoint.confirmed.resource, resource));
       const { checkpoint } = drafts[0];
+      const operationIds = [...new Set(drafts.flatMap(({ checkpoint: item, prepared, unfinalized, completedCommits }) => [
+        ...Object.keys(item.pending), prepared?.operationId, ...unfinalized, ...(completedCommits ?? []),
+      ].filter((id): id is string => Boolean(id))))].sort();
+      const fingerprint = JSON.stringify(drafts.map(({ owner, editorId, checkpoint: item, prepared, unfinalized, completedCommits }) => ({
+        owner,
+        editorId,
+        confirmed: { resource: item.confirmed.resource, value: item.confirmed.value, metadata: item.confirmed.metadata },
+        draft: item.draft,
+        remoteCandidate: item.remoteCandidate,
+        pending: Object.fromEntries(Object.entries(item.pending).sort(([a], [b]) => a.localeCompare(b))),
+        preparedOperationId: prepared?.operationId ?? null,
+        unfinalized: [...unfinalized].sort(),
+        completedCommits: [...(completedCommits ?? [])].sort(),
+      })).sort((a, b) => a.editorId.localeCompare(b.editorId)));
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
       documents.push({ resource, kind: kindOf(drafts, refused), screen,
         mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
-        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display) });
+        theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
+        fingerprint, operationIds });
     }
   }
   return documents;
@@ -184,6 +207,8 @@ export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
 function EngineConflicts({ pollMs }: { pollMs: number }) {
   const { t, i18n } = useTranslation();
   const { browser, owner } = useDataEngine();
+  const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+  const { confirm, confirmDialog, withdraw: withdrawDelete } = useConfirm();
   const openAnswers = useOpenDocumentAnswers();
   const actions = useDocumentActions();
   const { copyToClipboard } = useClipboard({
@@ -195,6 +220,12 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0);
+  const browserRef = useRef(browser);
+  const ownerRef = useRef(owner);
+  const entryRef = useRef<Waiting | null>(null);
+  const pendingChoice = useRef<{ target: Waiting; browser: typeof browser; owner: typeof owner } | null>(null);
+  browserRef.current = browser;
+  ownerRef.current = owner;
   // Field names in the person's words, as on the list of legacy copies. Read through a ref: `t` is
   // no key for the list's effect — a new function on a render would restart it in a loop.
   const fieldNameRef = useRef((field: string) => fieldLabel(t, field));
@@ -203,9 +234,12 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const displayRef = useRef<DisplayValue>((scope, field, value) => storedFieldValue(t, scope, field, value));
   displayRef.current = (scope, field, value) => storedFieldValue(t, scope, field, value);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<Waiting[] | null> => {
     const request = ++sequence.current;
-    if (!browser || !owner) { setWaiting([]); return; }
+    if (!browser || !owner) {
+      if (browserRef.current === browser && ownerRef.current === owner) setWaiting([]);
+      return [];
+    }
     try {
       const [records, journal] = await Promise.all([browser.engine.listRecoverable(), browser.engine.listPending()]);
       const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async entry => (
@@ -214,12 +248,32 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       // A form's answer is resolved by its form, as it always was; it is not said here.
       const documents = listed.filter(entry => !('formWork' in entry && entry.formWork));
       // A slower, older pass must not bring back an entry a newer pass already settled.
-      if (request === sequence.current) setWaiting(documents);
+      if (request === sequence.current && browserRef.current === browser && ownerRef.current === owner) {
+        setWaiting(documents);
+        return documents;
+      }
+      return null;
     } catch (error) {
       // Before the engine knows its owner there is nothing of this person's to list yet.
       if (!(error instanceof Error && error.message === 'Authentication required')) console.error('Engine conflicts could not be listed', error);
+      return null;
     }
   }, [browser, owner]);
+
+  const readCurrentWaiting = useCallback(async (targetBrowser: typeof browser, targetOwner: typeof owner): Promise<Waiting[] | null> => {
+    if (!targetBrowser || !targetOwner || browserRef.current !== targetBrowser || ownerRef.current !== targetOwner) return null;
+    try {
+      const [records, journal] = await Promise.all([targetBrowser.engine.listRecoverable(), targetBrowser.engine.listPending()]);
+      const listed = await Promise.all(waitingDocuments(records, journal, fieldNameRef.current, displayRef.current).map(async candidate => (
+        candidate.screen ? { ...candidate, formWork: await targetBrowser.engine.formWorkPending(candidate.resource),
+          decidable: await targetBrowser.engine.screenDecides(candidate.resource) } : candidate)));
+      if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner) return null;
+      return listed.filter(candidate => !('formWork' in candidate && candidate.formWork));
+    } catch (error) {
+      if (!(error instanceof Error && error.message === 'Authentication required')) console.error('Engine conflicts could not be listed', error);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -229,19 +283,71 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     // The result is written into the checkpoint after the journal moves, so a local re-read on a
     // short clock catches it too. It reads this device's IndexedDB only — no database reads.
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, pollMs);
-    return () => { stop(); window.clearInterval(timer); };
-  }, [browser, refresh, pollMs, i18n?.language]);
+    return () => { stop(); window.clearInterval(timer); sequence.current += 1; withdraw(); };
+  }, [browser, refresh, pollMs, i18n?.language, withdraw]);
 
   // A screen's draft is not shown on its screen when the editor open there holds the answer: that
   // screen's status already says it, once. One opened before the request existed holds nothing.
   const entry = waiting.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
-  if (!entry) return null;
+  entryRef.current = entry ?? null;
+  useEffect(() => {
+    const pending = pendingChoice.current;
+    if (pending && (browser !== pending.browser || owner !== pending.owner || !sameWaitingChoice(entryRef.current, pending.target))) {
+      pendingChoice.current = null;
+      withdraw();
+      withdrawDelete();
+    }
+  }, [browser, owner, waiting, openAnswers, pathname, withdraw, withdrawDelete]);
+  if (!entry) return <>{discardDialog}{confirmDialog}</>;
 
-  const settle = async (choice: 'mine' | 'theirs') => {
+  const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs') => {
+    const targetBrowser = browser;
+    const targetOwner = owner;
+    const pending = { target, browser: targetBrowser, owner: targetOwner };
+    pendingChoice.current = pending;
+    const isCurrent = () => browserRef.current === targetBrowser && ownerRef.current === targetOwner && sameWaitingChoice(entryRef.current, target);
+    try {
+      await askBeforeDiscard(true, async () => {
+        const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
+        const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
+        if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
+          || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
+        await settle(choice, targetBrowser);
+      }, isCurrent);
+    } finally {
+      if (pendingChoice.current === pending) pendingChoice.current = null;
+    }
+  };
+
+  const askBeforeDelete = async (target: Waiting) => {
+    const targetBrowser = browser;
+    const targetOwner = owner;
+    const isCurrent = () => browserRef.current === targetBrowser && ownerRef.current === targetOwner && sameWaitingChoice(entryRef.current, target);
+    if (!isCurrent()) return;
+    const pending = { target, browser: targetBrowser, owner: targetOwner };
+    pendingChoice.current = pending;
+    try {
+      const accepted = await confirm({
+        title: { key: 'common.deleteItem.title' },
+        description: { key: 'common.deleteItem.description' },
+        confirmText: { key: 'common.delete' },
+        cancelText: { key: 'common.cancel' },
+      });
+      if (!accepted || !isCurrent()) return;
+      const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
+      const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
+      if (!sameWaitingChoice(currentEntry, target) || !isCurrent()) return;
+      await settle('mine', targetBrowser);
+    } finally {
+      if (pendingChoice.current === pending) pendingChoice.current = null;
+    }
+  };
+
+  const settle = async (choice: 'mine' | 'theirs', targetBrowser = browser) => {
     if (busy) return;
     setBusy(true);
     try {
-      if (entry.screen) await browser?.engine.takeStoredVersion(entry.resource);
+      if (entry.screen) await targetBrowser?.engine.takeStoredVersion(entry.resource);
       else await actions.resolve(entry.resource, choice);
     }
     catch (error) {
@@ -256,20 +362,26 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
 
   const mine = entry.mine.join('\n\n———\n\n');
   if (entry.screen) {
-    return entry.decidable
-      ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void settle('theirs'); }} />
-      : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void settle('theirs'); }} />;
+    return <>
+      {entry.decidable
+        ? <ScreenDraftNotice entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />
+        : <UndecidableScreenDrafts entry={entry} mine={mine} busy={busy} onCopy={() => { void copyToClipboard(mine); }} onTakeStored={() => { void askBeforeSettling(entry, 'theirs'); }} />}
+      {discardDialog}{confirmDialog}
+    </>;
   }
   if (entry.kind === 'conflict') {
     return (
-      <SaveConflictBanner
-        entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
-        pendingText={mine || undefined}
-        onKeepMine={() => { void settle('mine'); }}
-        onTakeTheirs={() => { void settle('theirs'); }}
-        busy={busy}
-        className="mb-3"
-      />
+      <>
+        <SaveConflictBanner
+          entityKey={entry.resource.collection === 'studyNotes' ? 'entityNote' : entry.resource.collection === 'sermons' ? 'entitySermon' : 'entityRecord'}
+          pendingText={mine || undefined}
+          onKeepMine={() => { void settle('mine'); }}
+          onTakeTheirs={() => { void askBeforeSettling(entry, 'theirs'); }}
+          busy={busy}
+          className="mb-3"
+        />
+        {discardDialog}{confirmDialog}
+      </>
     );
   }
 
@@ -285,6 +397,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const deletion = entry.kind === 'deletedHere' || entry.kind === 'refusedDelete';
   const shown = deletion ? entry.theirs : mine;
   return (
+    <>
     <div role="alert" className={NOTICE_BOX}>
       <p className={NOTICE_TITLE}>{title}</p>
       {body && <p className={NOTICE_BODY}>{body}</p>}
@@ -295,20 +408,22 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
         {deletion ? (
           <>
             <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={PRIMARY_BUTTON}>{t('dataSync.keepRecord')}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle('mine'); }} className={SECONDARY_BUTTON}>
+            <button type="button" disabled={busy} onClick={() => { void (entry.theirs ? askBeforeDelete(entry) : settle('mine')); }} className={SECONDARY_BUTTON}>
               {entry.kind === 'refusedDelete' ? t('dataSync.retryDelete') : t('dataSync.deleteAnyway')}
             </button>
           </>
         ) : (
           <>
             <button type="button" disabled={busy || !mine} onClick={() => { void copyToClipboard(mine); }} className={PRIMARY_BUTTON}>{t(COPY_ACTION)}</button>
-            <button type="button" disabled={busy} onClick={() => { void settle('theirs'); }} className={SECONDARY_BUTTON}>
+            <button type="button" disabled={busy} onClick={() => { void askBeforeSettling(entry, 'theirs'); }} className={SECONDARY_BUTTON}>
               {entry.kind === 'deletedThere' || entry.kind === 'refusedCreate' ? t('freshness.discardAction') : t(ACCEPT_REMOTE)}
             </button>
           </>
         )}
       </div>
     </div>
+    {discardDialog}{confirmDialog}
+    </>
   );
 }
 

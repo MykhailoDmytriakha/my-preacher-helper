@@ -6,6 +6,7 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonOutline } from '@/models/models';
 import { toast } from 'sonner';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
+import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -40,8 +41,12 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
-  FocusRecorderButton: ({ onError, disabled, isProcessing }: any) => (
+  FocusRecorderButton: ({ onError, onRecordingComplete, disabled, isProcessing }: any) => (
     <div>
+      <button type="button" data-testid="focus-recorder-record" disabled={disabled}
+        onClick={() => onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}>
+        Record voice
+      </button>
       <button type="button"
         data-testid="focus-recorder-error"
         disabled={disabled}
@@ -58,9 +63,16 @@ jest.mock('@services/thought.service', () => ({
   transcribeThoughtAudio: jest.fn(),
 }));
 
+jest.mock('@/utils/transcriptionRetryClient', () => ({
+  ...jest.requireActual('@/utils/transcriptionRetryClient'),
+  transcribeAudioWithRetry: jest.fn(),
+}));
+
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn() },
 }));
+
+const mockTranscribeAudioWithRetry = jest.mocked(transcribeAudioWithRetry);
 
 // Mock translations
 jest.mock('react-i18next', () => ({
@@ -462,6 +474,96 @@ describe('EditThoughtModal Component', () => {
 
     expect(toast.error).toHaveBeenCalledWith('errors.microphoneUnavailable');
     expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false');
+  });
+
+  describe('deleteGuard dismissal behavior', () => {
+    const exits = [
+      ['Cancel', (dialog: HTMLElement) => fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))],
+      ['close button', () => fireEvent.click(screen.getByRole('button', { name: 'common.close' }))],
+      ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['backdrop', (dialog: HTMLElement) => fireEvent.click(dialog.parentElement!)],
+    ] as const;
+
+    test.each(exits)('asks before discarding edited text through %s and preserves it on Keep', async (_name, exit) => {
+      const onClose = jest.fn();
+      render(<EditThoughtModal {...mockProps} onClose={onClose} />);
+      const editor = screen.getByTestId('mock-rich-editor');
+      fireEvent.change(editor, { target: { value: 'Exact unsaved thought' } });
+      exit(screen.getByRole('dialog', { name: 'Edit Thought' }));
+
+      expect(onClose).not.toHaveBeenCalled();
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(editor).toHaveValue('Exact unsaved thought');
+    });
+
+    test('closes after explicitly confirming discard, while untouched opening values close immediately', async () => {
+      const cleanClose = jest.fn();
+      const clean = render(<EditThoughtModal {...mockProps} onClose={cleanClose} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(cleanClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+      clean.unmount();
+
+      const onClose = jest.fn();
+      render(<EditThoughtModal {...mockProps} onClose={onClose} />);
+      fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Discard this thought' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.confirm' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    test.each(exits)('blocks %s while a save is pending', async (_name, exit) => {
+      let resolveSave!: () => void;
+      const onClose = jest.fn();
+      const onSave = jest.fn(() => persistedWrite(new Promise<void>(resolve => { resolveSave = resolve; })));
+      render(<EditThoughtModal {...mockProps} onClose={onClose} onSave={onSave} />);
+      fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Pending thought' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+      exit(screen.getByRole('dialog', { name: 'Edit Thought' }));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByTestId('mock-rich-editor')).toHaveValue('Pending thought');
+      resolveSave();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    test.each(exits)('blocks %s without opening discard while transcription is pending', async (_name, exit) => {
+      let resolveTranscription!: (value: { polishedText: string; originalText: string }) => void;
+      mockTranscribeAudioWithRetry.mockReturnValue(new Promise(resolve => { resolveTranscription = resolve; }));
+      const onClose = jest.fn();
+      render(<EditThoughtModal {...mockProps} onClose={onClose} />);
+      const editor = screen.getByTestId('mock-rich-editor');
+      fireEvent.change(editor, { target: { value: 'Words before transcription' } });
+      fireEvent.click(screen.getByTestId('focus-recorder-record'));
+      await waitFor(() => expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('true'));
+
+      exit(screen.getByRole('dialog', { name: 'Edit Thought' }));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+      expect(editor).toHaveValue('Words before transcription');
+
+      resolveTranscription({ polishedText: 'Complete dictated text', originalText: 'complete dictated text' });
+      await waitFor(() => expect(editor).toHaveValue('Words before transcription\n\nComplete dictated text'));
+    });
+
+    test('does not submit the pre-dictation text while transcription is pending', async () => {
+      let resolveTranscription!: (value: { polishedText: string; originalText: string }) => void;
+      mockTranscribeAudioWithRetry.mockReturnValue(new Promise(resolve => { resolveTranscription = resolve; }));
+      const onSave = jest.fn(() => persistedWrite(Promise.resolve()));
+      render(<EditThoughtModal {...mockProps} onSave={onSave} />);
+      const editor = screen.getByTestId('mock-rich-editor');
+      fireEvent.change(editor, { target: { value: 'Words before transcription' } });
+      fireEvent.click(screen.getByTestId('focus-recorder-record'));
+      await waitFor(() => expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('true'));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect(onSave).not.toHaveBeenCalled();
+      expect(editor).toHaveValue('Words before transcription');
+      resolveTranscription({ polishedText: 'Complete dictated text', originalText: 'complete dictated text' });
+    });
   });
 
 });

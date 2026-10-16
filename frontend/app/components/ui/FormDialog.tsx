@@ -90,7 +90,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
     );
     return createPortal(
       <div {...layer} className="fixed inset-0 z-[110] flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4"
-        onClick={event => { if (!closeDisabled && event.target === event.currentTarget) onClose(); }}>
+        onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
           className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-gray-50 shadow-xl dark:bg-gray-900 sm:max-h-[85vh] sm:rounded-2xl ${width}`}>

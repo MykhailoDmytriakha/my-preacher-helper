@@ -28,7 +28,7 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -44,6 +44,7 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { LiveTextInput, LiveTextArea } from '@/components/ui/LiveTextInput';
 import Select from '@/components/ui/Select';
 import { DataDocumentProvider } from '@/data-engine/react.client';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
 import { useOpenInBible } from '@/hooks/useOpenInBible';
@@ -98,9 +99,18 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     meetingAudience, setMeetingAudience, deleteGroupDetail, feedback,
     meetingFieldsEnabled } = editor;
   const [selectedFlowItemId, setSelectedFlowItemId] = useState<string | null>(null);
+  const { confirm, confirmDialog } = useConfirm();
   const [deletingGroup, setDeletingGroup] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const groupsUserId = user?.uid ?? null;
+  const groupRef = useRef(group);
+  groupRef.current = group;
+  const flowRef = useRef(flow);
+  flowRef.current = flow;
+  const templatesRef = useRef(templates);
+  templatesRef.current = templates;
+  const ownerRef = useRef(groupsUserId);
+  ownerRef.current = groupsUserId;
   const { series } = useSeries(groupsUserId);
 
   // Which series this group belongs to — DERIVED from series.items (sole truth).
@@ -185,15 +195,42 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
     );
   };
 
-  const removeFlowBlock = (flowItemId: string) => {
-    const item = flow.find((f) => f.id === flowItemId);
-    if (!item) return;
-    setFlow((prev) => removeFlowItem(prev, flowItemId));
-    const otherRefs = flow.filter((f) => f.id !== flowItemId && f.templateId === item.templateId);
+  const removeFlowBlock = async (flowItemId: string) => {
+    const capturedGroup = groupRef.current;
+    const capturedOwner = ownerRef.current;
+    const item = flowRef.current.find((flowItem) => flowItem.id === flowItemId);
+    if (!capturedGroup || !capturedOwner || capturedGroup.userId !== capturedOwner || !item) return;
+    const template = templatesRef.current.find((candidate) => candidate.id === item.templateId);
+    const captured = {
+      ownerId: capturedOwner,
+      groupId: capturedGroup.id,
+      flowItemId,
+      templateId: item.templateId,
+      flowItemSnapshot: JSON.stringify(item),
+      templateSnapshot: template ? JSON.stringify(template) : null,
+    };
+    const accepted = await confirm({
+      title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' },
+      confirmText: { key: 'common.delete' },
+      cancelText: { key: 'common.cancel' },
+    });
+    if (!accepted) return;
+
+    const latestGroup = groupRef.current;
+    const latestItem = flowRef.current.find((flowItem) => flowItem.id === captured.flowItemId);
+    const latestTemplate = templatesRef.current.find((candidate) => candidate.id === captured.templateId);
+    if (ownerRef.current !== captured.ownerId || !latestGroup || latestGroup.id !== captured.groupId ||
+        latestGroup.userId !== captured.ownerId || !latestItem ||
+        JSON.stringify(latestItem) !== captured.flowItemSnapshot ||
+        (latestTemplate ? JSON.stringify(latestTemplate) : null) !== captured.templateSnapshot) return;
+
+    setFlow((prev) => removeFlowItem(prev, captured.flowItemId));
+    const otherRefs = flowRef.current.filter((flowItem) => flowItem.id !== captured.flowItemId && flowItem.templateId === captured.templateId);
     if (otherRefs.length === 0) {
-      setTemplates((prev) => prev.filter((t) => t.id !== item.templateId));
+      setTemplates((prev) => prev.filter((template) => template.id !== captured.templateId));
     }
-    if (selectedFlowItemId === flowItemId) setSelectedFlowItemId(null);
+    setSelectedFlowItemId((selectedId) => selectedId === captured.flowItemId ? null : selectedId);
   };
 
   const cycleStatus = (templateId: string) => {
@@ -550,6 +587,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         confirmText={t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
         isDeleting={deletingGroup}
       />
+      {confirmDialog}
     </section>
   );
 }

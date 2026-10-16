@@ -200,7 +200,7 @@ export const promoteNode = (
   return nodes;
 };
 
-const findNode = (nodes: ExegeticalPlanNode[], id: string): ExegeticalPlanNode | null => {
+export const findNode = (nodes: ExegeticalPlanNode[], id: string): ExegeticalPlanNode | null => {
   for (const n of nodes) {
     if (n.id === id) return n;
     const inner = n.children ? findNode(n.children, id) : null;

@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -73,6 +74,15 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   // background. Mirrors how PlanEditorModal owns its own `outline` state.
   const [draftStructure, setDraftStructure] = useState<SermonOutline | null>(null);
   const [pendingDeleteTpl, setPendingDeleteTpl] = useState<PlanTemplate | null>(null);
+  const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+  const conflictRef = useRef(conflict);
+  conflictRef.current = conflict;
+  const conflictTemplateIdRef = useRef(conflictTemplateId);
+  conflictTemplateIdRef.current = conflictTemplateId;
+  const draftStructureRef = useRef(draftStructure);
+  draftStructureRef.current = draftStructure;
+  const userIdRef = useRef(user?.uid ?? null);
+  userIdRef.current = user?.uid ?? null;
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
   // The save each waiting timer will run, so the page going away can run it now.
   const pendingSaves = useRef<Record<string, () => void>>({});
@@ -97,6 +107,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
+
+  useEffect(() => { withdraw(); }, [user?.uid, conflictTemplateId, withdraw]);
 
   const toggleExpand = (tpl: PlanTemplate) => {
     if (expandedId === tpl.id) {
@@ -284,19 +296,45 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   };
 
   const handleTakeTheirs = async () => {
-    if (!conflict || resolvingConflict) return;
+    const heldConflict = conflictRef.current;
+    if (!heldConflict || resolvingConflict) return;
+    const capturedOwnerId = userIdRef.current;
+    const capturedTemplateId = heldConflict.payload.templateId;
+    const discardsStructure = Boolean(heldConflict.payload.updates.structure);
+    const capturedDraftSnapshot = JSON.stringify(draftStructureRef.current);
+    const isCurrent = () => userIdRef.current === capturedOwnerId &&
+      conflictTemplateIdRef.current === capturedTemplateId &&
+      conflictRef.current === heldConflict &&
+      (!discardsStructure || JSON.stringify(draftStructureRef.current) === capturedDraftSnapshot);
     setResolvingConflict(true);
     try {
-      const result = await refresh();
-      // `refetch()` resolves an error result instead of throwing; clearing the
-      // conflict then would discard the only copy without loading theirs.
-      if ((result as { isError?: boolean })?.isError) {
-        toast.error(t('planTemplates.saveStructureError'));
-        return;
-      }
-      setDraftStructure(null);
-      setConflict(null, conflict.payload.templateId);
-      advanceToNextStoredConflict();
+      await askBeforeDiscard(true, async () => {
+        if (!isCurrent()) return;
+        let result: unknown;
+        try {
+          result = await refresh();
+        } catch {
+          toast.error(t('planTemplates.saveStructureError'));
+          return;
+        }
+        // `refetch()` resolves an error result instead of throwing; clearing the
+        // conflict then would discard the only copy without loading theirs.
+        if ((result as { isError?: boolean })?.isError) {
+          toast.error(t('planTemplates.saveStructureError'));
+          return;
+        }
+        // A second conflict or a new draft can arrive while refresh is in flight.
+        // The old answer may retire only the exact copy it asked about.
+        if (!isCurrent()) return;
+        if (discardsStructure) {
+          clearTimeout(saveTimers.current[capturedTemplateId]);
+          delete saveTimers.current[capturedTemplateId];
+          delete pendingSaves.current[capturedTemplateId];
+          setDraftStructure(null);
+        }
+        setConflict(null, capturedTemplateId);
+        advanceToNextStoredConflict();
+      }, isCurrent);
     } finally {
       setResolvingConflict(false);
     }
@@ -308,6 +346,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         <span suppressHydrationWarning={true}>{t('settings.planTemplates')}</span>
       </h2>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">{t('planTemplates.description')}</p>
+      {discardDialog}
 
       {/* A save was TURNED AWAY. The rename input has already closed and the
           structure lives only in memory, so this panel holds the refused edit. */}

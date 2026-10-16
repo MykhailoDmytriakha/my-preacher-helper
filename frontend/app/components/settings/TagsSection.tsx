@@ -1,10 +1,11 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useConfirm } from '@/hooks/useConfirm';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import { awaitAcceptance, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -22,6 +23,11 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
   const { tags, addCustomTag, removeCustomTag, updateTag } = useTags(user?.uid);
+  const { confirm, confirmDialog } = useConfirm();
+  const ownerRef = useRef(user?.uid);
+  ownerRef.current = user?.uid;
+  const customTagsRef = useRef(tags.customTags);
+  customTagsRef.current = tags.customTags;
 
   const handleAddTag = (name: string, color: string): WriteSubmission => {
     // No signed-in user means nothing holds this tag name — refuse, so the form keeps it
@@ -58,6 +64,19 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   };
 
   const handleRemoveTag = async (tagName: string) => {
+    const ownerId = user?.uid;
+    const tag = tags.customTags.find((candidate) => candidate.name === tagName);
+    if (!ownerId || !tag) return;
+    const accepted = await confirm({
+      title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' },
+      confirmText: { key: 'common.delete' },
+      cancelText: { key: 'common.cancel' },
+    });
+    if (!accepted) return;
+    const latestTag = customTagsRef.current.find((candidate) => candidate.id === tag.id && candidate.name === tag.name);
+    if (ownerRef.current !== ownerId || !latestTag) return;
+
     // Reported by the remove descriptor in useTags — see the note above.
     const reportFailure = (error: unknown) => {
       console.error('Error removing tag:', error);
@@ -142,6 +161,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
           onCancel={handleCancelColorUpdate}
         />
       )}
+      {confirmDialog}
     </div>
   );
 };

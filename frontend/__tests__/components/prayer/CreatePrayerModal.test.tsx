@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
@@ -18,6 +18,7 @@ jest.mock('react-i18next', () => ({
         'prayer.create.tagsPlaceholder': 'family, health, evangelism',
         'prayer.create.submit': 'Add Prayer',
         'prayer.create.cancel': 'Cancel',
+        'prayer.edit.cancel': 'Cancel',
         'buttons.saving': 'Saving...',
         'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
       };
@@ -186,6 +187,62 @@ describe('CreatePrayerModal', () => {
       title: 'Pray for the family',
       description: 'Exact context with spaces',
       tags: ['family', 'health'],
+    });
+  });
+
+  describe('deleteGuard dismissal behavior', () => {
+    const exits = [
+      ['Cancel', () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))],
+      ['close button', () => fireEvent.click(screen.getByRole('button', { name: 'common.close' }))],
+      ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['backdrop', () => fireEvent.click(screen.getByRole('dialog').parentElement!)],
+    ] as const;
+
+    it.each(exits)('asks before discarding edited prayer fields through %s and keeps them on Keep', async (_name, exit) => {
+      const onClose = jest.fn();
+      render(<CreatePrayerModal onClose={onClose} onSubmit={jest.fn()} />);
+      const title = screen.getByPlaceholderText('What are you praying for?');
+      fireEvent.change(title, { target: { value: 'Exact unsaved prayer' } });
+      exit();
+      expect(onClose).not.toHaveBeenCalled();
+
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.keep' }));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(title).toHaveValue('Exact unsaved prayer');
+    });
+
+    it('does not ask for unchanged initialValues', () => {
+      const onClose = jest.fn();
+      render(<CreatePrayerModal mode="edit" initialValues={{ title: 'Existing title', description: 'Existing description', tags: ['family'] }} onClose={onClose} onSubmit={jest.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+    });
+
+    it('closes only after the person confirms discarding changed prayer fields', async () => {
+      const onClose = jest.fn();
+      render(<CreatePrayerModal onClose={onClose} onSubmit={jest.fn()} />);
+      fireEvent.change(screen.getByPlaceholderText('What are you praying for?'), { target: { value: 'Discard this prayer' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      const question = await screen.findByRole('dialog', { name: 'common.discardChanges.title' });
+      fireEvent.click(within(question).getByRole('button', { name: 'common.discardChanges.confirm' }));
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    });
+
+    it.each(exits)('blocks %s while prayer save is pending', async (_name, exit) => {
+      let resolveSubmit!: () => void;
+      const onClose = jest.fn();
+      const onSubmit = jest.fn(() => persistedWrite(new Promise<void>(resolve => { resolveSubmit = resolve; })));
+      render(<CreatePrayerModal onClose={onClose} onSubmit={onSubmit} />);
+      const title = screen.getByPlaceholderText('What are you praying for?');
+      fireEvent.change(title, { target: { value: 'Pending prayer' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Add Prayer' }));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+      exit();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(title).toHaveValue('Pending prayer');
+      resolveSubmit();
     });
   });
 });

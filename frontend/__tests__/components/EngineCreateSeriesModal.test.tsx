@@ -75,3 +75,23 @@ it('keeps local creation available when an unrelated background read fails', asy
   expect(harness.transport.read).not.toHaveBeenCalled(); expect(harness.transport.send).not.toHaveBeenCalled();
   expect((await harness.commits.list('owner')).some(commit => commit.value?.title === 'Local during outage')).toBe(true); view.unmount();
 });
+
+describe('deleteGuard recoverable draft behavior', () => {
+  it('keeps a typed series draft discoverable after the person closes the form', async () => {
+    const { harness, view, onClose } = setup();
+    const title = await screen.findByPlaceholderText('workspaces.series.form.titlePlaceholder');
+    await waitFor(() => expect(title).toBeEnabled());
+    fireEvent.change(title, { target: { value: 'Recoverable series words' } });
+    await act(async () => { await settleEngine(); });
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    const choices = await harness.checkpoints.listRecoverable('owner', resource);
+    expect(choices).toEqual(expect.arrayContaining([expect.objectContaining({ record: expect.objectContaining({
+      checkpoint: expect.objectContaining({ draft: expect.objectContaining({ title: 'Recoverable series words' }) }),
+    }) })]));
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+});

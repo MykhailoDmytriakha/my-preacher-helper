@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useConfirm } from '@/hooks/useConfirm';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { SermonPoint, Thought } from "@/models/models";
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -16,6 +17,7 @@ interface KeyFragmentsModalProps {
   outlinePoint: SermonPoint;
   thoughts: Thought[];
   onThoughtSave: (updatedThought: Thought) => WriteSubmission;
+  subject?: unknown;
 }
 
 interface ActiveSelection {
@@ -30,9 +32,21 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   outlinePoint,
   thoughts,
   onThoughtSave,
+  subject,
 }) => {
   const { t } = useTranslation();
   const [localThoughts, setLocalThoughts] = useState<Thought[]>(thoughts);
+  const { confirm, confirmDialog, withdraw } = useConfirm();
+  useEffect(() => () => { withdraw(); }, [isOpen, subject, outlinePoint.id, withdraw]);
+  const current = useRef({ localThoughts, isOpen, subject });
+  current.current = { localThoughts, isOpen, subject };
+  const confirmRemoval = async (thought: Thought) => {
+    const shown = JSON.stringify(thought);
+    if (!await confirm({ title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' }, confirmText: { key: 'common.delete' }, cancelText: { key: 'common.cancel' } })) return false;
+    return current.current.isOpen && current.current.subject === subject
+      && JSON.stringify(current.current.localThoughts.find(item => item.id === thought.id)) === shown;
+  };
   const [activeSelection, setActiveSelection] = useState<ActiveSelection | null>(null);
   const [showInstructions, setShowInstructions] = useState(true);
   const selectionPopupRef = useRef<HTMLDivElement>(null);
@@ -147,6 +161,8 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
       return;
     }
 
+    if (!await confirmRemoval(thought)) return;
+
     const newKeyFragments = thought.keyFragments.filter((_, i) => i !== index);
 
     try {
@@ -160,6 +176,8 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
 
   // Remove all fragments from a thought
   const handleRemoveAllFragments = async (thoughtId: string) => {
+    const thought = localThoughts.find(item => item.id === thoughtId);
+    if (!thought?.keyFragments?.length || !await confirmRemoval(thought)) return;
     try {
       const acceptance = await updateThoughtOnBackend(thoughtId, []);
       announceIfPersisted(acceptance, () => toast.success(t("plan.allFragmentsRemoved")));
@@ -202,6 +220,8 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   if (!isOpen) return null;
 
   return (
+    <>
+    {confirmDialog}
     <div {...layer} role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black bg-opacity-50">
       <div
         ref={modalRef}
@@ -371,6 +391,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
         )}
       </div>
     </div>
+    </>
   );
 };
 

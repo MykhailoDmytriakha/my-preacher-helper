@@ -91,3 +91,23 @@ it('does not submit unfinished creation-date text even when native validation is
   expect(screen.getByDisplayValue('2026-0')).toBeInTheDocument();
   view.unmount();
 });
+
+describe('deleteGuard recoverable draft behavior', () => {
+  it('keeps a typed group draft discoverable after the person closes the form', async () => {
+    const { harness, view, onClose } = setup();
+    const title = await screen.findByPlaceholderText('workspaces.groups.form.titlePlaceholder');
+    await waitFor(() => expect(title).toBeEnabled());
+    fireEvent.change(title, { target: { value: 'Recoverable group words' } });
+    await act(async () => { await settleEngine(); });
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    const choices = await harness.checkpoints.listRecoverable('owner', resource);
+    expect(choices).toEqual(expect.arrayContaining([expect.objectContaining({ record: expect.objectContaining({
+      checkpoint: expect.objectContaining({ draft: expect.objectContaining({ title: 'Recoverable group words' }) }),
+    }) })]));
+    expect(screen.queryByRole('dialog', { name: 'common.discardChanges.title' })).not.toBeInTheDocument();
+  });
+});

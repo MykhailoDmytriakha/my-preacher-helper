@@ -32,6 +32,10 @@ const draft: RecordingDraft = {
   context: "thought",
   sizeBytes: 5,
 };
+const confirmRecordingDelete = async () => {
+  await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "common.delete" }));
+};
 
 beforeAll(() => {
   // jsdom lacks these; the component creates/revokes object URLs per draft.
@@ -93,11 +97,47 @@ describe("RecordingDraftBanner", () => {
     expect(mockRemoveDraft).not.toHaveBeenCalled();
   });
 
-  it("calls removeDraft when Discard is clicked", () => {
+  it("calls removeDraft when Discard is confirmed", async () => {
     render(<RecordingDraftBanner context="thought" onResend={jest.fn()} />);
 
     fireEvent.click(screen.getByText("audio.draft.discard"));
+    expect(mockRemoveDraft).not.toHaveBeenCalled();
+    await confirmRecordingDelete();
 
+    await waitFor(() => expect(mockRemoveDraft).toHaveBeenCalledWith(draft.id));
+  });
+
+  it("asks before discarding the only recording copy and keeps it when cancelled", async () => {
+    render(<RecordingDraftBanner context="thought" onResend={jest.fn()} />);
+
+    fireEvent.click(screen.getByText("audio.draft.discard"));
+    expect(mockRemoveDraft).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("common.deleteItem.title");
+
+    fireEvent.click(screen.getByRole("button", { name: "common.cancel" }));
+    expect(mockRemoveDraft).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("audio.draft.title")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("audio.draft.discard")).toBeEnabled());
+
+    fireEvent.click(screen.getByText("audio.draft.discard"));
+    await confirmRecordingDelete();
+    await waitFor(() => expect(mockRemoveDraft).toHaveBeenCalledTimes(1));
     expect(mockRemoveDraft).toHaveBeenCalledWith(draft.id);
+  });
+
+  it("withdraws a discard choice when the same id now names a replacement recording", async () => {
+    const view = render(<RecordingDraftBanner context="thought" contextId="thought-1" onResend={jest.fn()} />);
+
+    fireEvent.click(screen.getByText("audio.draft.discard"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    mockDrafts = [{ ...draft, blob: new Blob(["replacement"], { type: "audio/webm" }) }];
+    view.rerender(<RecordingDraftBanner context="thought" contextId="thought-1" onResend={jest.fn()} />);
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(mockRemoveDraft).not.toHaveBeenCalled();
+    expect(screen.getByText("audio.draft.title")).toBeInTheDocument();
   });
 });

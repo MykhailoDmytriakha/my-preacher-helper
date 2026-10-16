@@ -142,15 +142,21 @@ it.each(['local', 'remote'] as const)('resolves a changed source with the explic
   await deliver(harness); await save(); await deliver(harness);
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('Generated heading');
   const resolution = await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  await waitFor(() => expect(resolution).toBeEnabled());
   // The engine may still be reporting when the person clicks — the build machine hit it now and then,
   // and the choice was dropped. Re-render in the same step so every run checks it.
-  act(() => { fireEvent.click(resolution); view.rerender(<Workspace />); }); await deliver(harness);
+  act(() => { fireEvent.click(resolution); view.rerender(<Workspace />); });
   if (choice === 'remote') {
+    // The source remains staged until the person confirms accepting the server copy.
+    expect(screen.getByDisplayValue('Generated heading')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+    await deliver(harness);
     expect(harness.read(resource).value).toMatchObject({ scratch, outline: original.value!.outline });
     // The store settles before React commits the discarded stage; on a busy machine the render lags
     // (this file runs ~7x slower on the two-worker build machine than locally).
     await waitFor(() => expect(screen.queryByDisplayValue('Generated heading')).not.toBeInTheDocument(), { timeout: BUILD_MACHINE_WAIT_MS });
   } else {
+    await deliver(harness);
     // The local choice re-sends on its own after the scope write and the replacement save; on a busy
     // build machine that lands after the one delivery round above. Wait for it passively — another
     // retry() here would also rescue a resend the engine failed to schedule.

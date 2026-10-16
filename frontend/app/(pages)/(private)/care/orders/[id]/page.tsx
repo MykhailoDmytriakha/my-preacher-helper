@@ -185,6 +185,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   // An order just created opens ready to be written in: its name is a placeholder, and the first
   // thing its owner wants is to replace it.
   const [editing, setEditing] = useState(searchParams?.get('new') === '1');
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
 
   /**
    * ONE NAME FOR ONE SITTING AT THIS RITE.
@@ -195,6 +197,10 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * server with nothing to be refused against.
    */
   const [session, setSession] = useState(() => newClientId());
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const orderIdRef = useRef(orderId);
+  orderIdRef.current = orderId;
   const startEditing = () => {
     if (!editing) setSession(newClientId());
     setEditing((was) => !was);
@@ -841,7 +847,25 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     });
   };
 
-  const removeStep = (stepId: string) => {
+  const removeStep = async (stepId: string) => {
+    const capturedOrder = orderRef.current;
+    const capturedSession = sessionRef.current;
+    const capturedStep = typedRef.current.find((step) => step.id === stepId);
+    if (!capturedOrder || !capturedStep || !editingRef.current) return;
+    const accepted = await confirm({
+      title: { key: 'common.deleteItem.title' },
+      description: { key: 'common.deleteItem.description' },
+      confirmText: { key: 'common.delete' },
+      cancelText: { key: 'common.cancel' },
+    });
+    if (!accepted) return;
+
+    const latestOrder = orderRef.current;
+    if (!editingRef.current || orderIdRef.current !== capturedOrder.id || !latestOrder ||
+        latestOrder.id !== capturedOrder.id || latestOrder.userId !== capturedOrder.userId ||
+        sessionRef.current !== capturedSession ||
+        JSON.stringify(typedRef.current.find((step) => step.id === stepId)) !== JSON.stringify(capturedStep)) return;
+
     /*
      * The words go FIRST, even though the step is about to be removed.
      *

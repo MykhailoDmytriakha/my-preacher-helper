@@ -19,7 +19,7 @@ import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
-import { useConfirm } from '@/hooks/useConfirm';
+import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -965,6 +965,26 @@ export default function StudyNoteEditorPage() {
     };
 
     const { confirm, confirmDialog } = useConfirm();
+    const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
+    const recoveredChoice = useRef({ uid, noteId, recovered });
+    recoveredChoice.current = { uid, noteId, recovered };
+    const conflictChoice = JSON.stringify({ uid, noteId, local: draftPayload, remote: rowPayload, saveConflict, isEditing });
+    const currentConflictChoice = useRef(conflictChoice);
+    currentConflictChoice.current = conflictChoice;
+    useEffect(() => () => { withdraw(); }, [uid, noteId, withdraw]);
+    const forgetRecovered = async () => {
+        if (!recovered) return;
+        const shown = JSON.stringify(recovered);
+        await askBeforeDiscard(true, discardRecovered, () => {
+            const current = recoveredChoice.current;
+            return current.uid === uid && current.noteId === noteId && JSON.stringify(current.recovered) === shown;
+        });
+    };
+    const acceptStoredNote = () => askBeforeDiscard(true, () => {
+        adoptRow();
+        setSaveConflict(false);
+    }, () => saveConflict && Boolean(rowPayload) && currentConflictChoice.current === conflictChoice);
+
     const handleDelete = useNoteDeletion({
         t,
         confirm,
@@ -1221,10 +1241,7 @@ export default function StudyNoteEditorPage() {
                             setSaveConflict(false);
                             setResaveNonce((n) => n + 1);
                         }}
-                        onTakeTheirs={() => {
-                            adoptRow();
-                            setSaveConflict(false);
-                        }}
+                        onTakeTheirs={() => { void acceptStoredNote(); }}
                         className="mb-2"
                     />
                 )}
@@ -1251,7 +1268,7 @@ export default function StudyNoteEditorPage() {
                             </button>
                             <button
                                 type="button"
-                                onClick={discardRecovered}
+                                onClick={() => { void forgetRecovered(); }}
                                 className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
                             >
                                 {t('unsavedDraft.discard')}
@@ -1430,6 +1447,7 @@ export default function StudyNoteEditorPage() {
                 text is covered anyway. */}
             {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
             {confirmDialog}
+            {discardDialog}
         </div>
     );
 }

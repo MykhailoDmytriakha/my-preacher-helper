@@ -288,6 +288,44 @@ describe('note editor on the engine', () => {
     await act(async () => { jest.advanceTimersByTime(1500); });
     expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
     fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Typed on the laptop');
+    expect(screen.getByRole('dialog', { name: 'common.discardText.title' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.keep' }));
+    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Typed on the laptop');
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    });
     expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Written on the phone');
   });
+  it.each(['stored row', 'local words'])('keeps the current text when %s changes under an open discard question', async (changed) => {
+    const refusal = Object.assign(new Error('stale'), { isStaleWrite: true, aggregate: 'note', expectedRevision: 1, actualRevision: 2 });
+    const refused = Promise.reject(refusal);
+    refused.catch(() => undefined);
+    updateNote.mockReturnValue({ ...persistedWrite(refused), result: refused });
+    const view = render(<StudyNoteEditorPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'common.edit' }));
+    fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Typed on the laptop' } });
+    mockCache = { ...initialNote, content: 'Written on the phone', rev: { note: 2 } };
+    view.rerender(<StudyNoteEditorPage />);
+    await act(async () => { jest.advanceTimersByTime(1500); });
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    expect(screen.getByRole('dialog', { name: 'common.discardText.title' })).toBeInTheDocument();
+    if (changed === 'stored row') {
+      mockCache = { ...mockCache, content: 'Later stored words', rev: { note: 3 } };
+      view.rerender(<StudyNoteEditorPage />);
+    } else {
+      fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Later local words' } });
+    }
+    const savesBeforeYes = updateNote.mock.calls.length;
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    });
+    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(changed === 'stored row' ? 'Typed on the laptop' : 'Later local words');
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(updateNote).toHaveBeenCalledTimes(savesBeforeYes);
+  });
+
 });

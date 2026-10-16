@@ -114,7 +114,14 @@ it.each(['local', 'remote'] as const)('keeps the pinned title conflict and resol
   await deliver(harness); await save(); await deliver(harness);
   expect(harness.read(resource).value?.outline).toMatchObject({ main: [{ text: 'Remote main' }] });
   fireEvent.click(screen.getByRole('button', { name: 'Open' })); await ready('My main');
-  fireEvent.click(await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' }));
+  const resolution = await screen.findByRole('button', { name: choice === 'local' ? 'freshness.conflictKeepMine' : 'freshness.conflictTakeTheirs' });
+  await waitFor(() => expect(resolution).toBeEnabled());
+  fireEvent.click(resolution);
+  if (choice === 'remote') {
+    // Taking the remote copy is an explicit discard, so the local title stays until confirmation.
+    expect(screen.getByDisplayValue('My main')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'common.discardText.confirm' }));
+  }
   await deliver(harness); const expected = choice === 'local' ? 'My main' : 'Remote main'; await ready(expected);
   expect(harness.read(resource).value?.outline).toMatchObject({ main: [{ text: expected }] }); view.unmount();
 });

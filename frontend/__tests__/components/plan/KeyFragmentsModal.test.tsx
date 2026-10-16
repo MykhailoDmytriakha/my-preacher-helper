@@ -150,6 +150,7 @@ describe('KeyFragmentsModal', () => {
      expect(removeButton).toBeInTheDocument();
 
      await userEvent.click(removeButton);
+     await userEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
 
      await waitFor(() => {
        expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
@@ -166,6 +167,32 @@ describe('KeyFragmentsModal', () => {
      await waitFor(() => {
        expect(screen.queryByText(fragmentToRemoveText)).not.toBeInTheDocument();
      });
+   });
+
+   it('asks before removing the last selected fragment and keeps it when declined', async () => {
+     renderModal();
+     await userEvent.click(screen.getByRole('button', { name: /Trash/i }));
+     expect(mockOnThoughtSave).not.toHaveBeenCalled();
+     expect(await screen.findByRole('dialog', { name: 'common.deleteItem.title' })).toBeInTheDocument();
+     await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+     expect(mockOnThoughtSave).not.toHaveBeenCalled();
+     expect(screen.getByText('first fragment')).toBeInTheDocument();
+
+     await userEvent.click(screen.getByRole('button', { name: /Trash/i }));
+     await userEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
+     await waitFor(() => expect(mockOnThoughtSave).toHaveBeenCalledTimes(1));
+     expect(mockOnThoughtSave).toHaveBeenCalledWith(expect.objectContaining({ keyFragments: [] }));
+   });
+
+   it('asks before removing all selected fragments', async () => {
+     mockThoughts[0].keyFragments = ['first fragment', 'second authored fragment'];
+     renderModal();
+     await userEvent.click(screen.getByTitle('plan.removeAllFragments'));
+     expect(mockOnThoughtSave).not.toHaveBeenCalled();
+     expect(await screen.findByRole('dialog', { name: 'common.deleteItem.title' })).toBeInTheDocument();
+     await userEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+     expect(mockOnThoughtSave).not.toHaveBeenCalled();
+     expect(screen.getByText('second authored fragment')).toBeInTheDocument();
    });
 
    it('can toggle instruction visibility', async () => {
@@ -212,6 +239,7 @@ describe('KeyFragmentsModal', () => {
      renderModal();
      const removeButton = screen.getByRole('button', { name: /Trash/i });
      await userEvent.click(removeButton);
+     await userEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
 
      await waitFor(() => {
        expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
@@ -226,6 +254,7 @@ describe('KeyFragmentsModal', () => {
      renderModal();
      const removeButton = screen.getByRole('button', { name: /Trash/i });
      await userEvent.click(removeButton);
+     await userEvent.click(await screen.findByRole('button', { name: 'common.delete' }));
 
      await waitFor(() => {
        expect(mockOnThoughtSave).toHaveBeenCalledWith(expect.objectContaining({
@@ -356,3 +385,15 @@ describe('KeyFragmentsModal', () => {
    });
 });
  
+
+it('retires a fragment deletion question when the modal closes and reopens', async () => {
+  const save = jest.fn();
+  const thoughts: Thought[] = JSON.parse(JSON.stringify(initialMockThoughts));
+  const view = render(<KeyFragmentsModal isOpen subject="sermon" onClose={jest.fn()} outlinePoint={mockSermonPoint} thoughts={thoughts} onThoughtSave={save} />);
+  fireEvent.click(screen.getByTitle('actions.remove'));
+  await screen.findByRole('dialog', { name: 'common.deleteItem.title' });
+  view.rerender(<KeyFragmentsModal isOpen={false} subject="sermon" onClose={jest.fn()} outlinePoint={mockSermonPoint} thoughts={thoughts} onThoughtSave={save} />);
+  view.rerender(<KeyFragmentsModal isOpen subject="sermon" onClose={jest.fn()} outlinePoint={mockSermonPoint} thoughts={thoughts} onThoughtSave={save} />);
+  expect(screen.queryByRole('dialog', { name: 'common.deleteItem.title' })).not.toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});

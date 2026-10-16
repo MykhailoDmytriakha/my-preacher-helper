@@ -89,3 +89,23 @@ it('asks before Cancel throws away changes, and only then', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'common.discardChanges.confirm' }));
   await waitFor(() => expect(cancel).toHaveBeenCalledTimes(2));
 });
+
+
+it('honors backdrop opt-in for footer dialogs as well as plain dialogs', () => {
+  const close = jest.fn();
+  const props = { title: 'Protected form', onClose: close, footer: <button type="button">Save</button> };
+  const { rerender } = render(<FormDialog {...props}><textarea aria-label="Authored text" defaultValue="Keep these words" /></FormDialog>);
+  fireEvent.click(screen.getByRole('dialog', { name: 'Protected form' }).parentElement!);
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox')).toHaveValue('Keep these words');
+
+  rerender(<FormDialog {...props} dismissOnBackdrop><textarea aria-label="Authored text" defaultValue="Keep these words" /></FormDialog>);
+  fireEvent.click(screen.getByRole('dialog', { name: 'Protected form' }).parentElement!);
+  expect(close).toHaveBeenCalledTimes(1);
+
+  close.mockClear();
+  rerender(<FormDialog {...props} dismissOnBackdrop closeDisabled><textarea aria-label="Authored text" defaultValue="Keep these words" /></FormDialog>);
+  fireEvent.click(screen.getByRole('dialog', { name: 'Protected form' }).parentElement!);
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(close).not.toHaveBeenCalled();
+});

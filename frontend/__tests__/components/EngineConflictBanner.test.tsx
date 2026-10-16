@@ -20,6 +20,32 @@ const ON_ENGINE = 'NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS';
 const resource = { collection: 'studyNotes', id: 'note-1' };
 const stored = { userId: 'owner', title: 'Grace', content: 'Opening text', scriptureRefs: [], tags: [], isDraft: true, type: 'note',
   createdAt: '2026-09-01T00:00:00.000Z', updatedAt: '2026-09-01T00:00:00.000Z' };
+const confirmTextAction = async (label: string) => {
+  fireEvent.click(screen.getByText(label));
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    for (let index = 0; index < 20; index += 1) await Promise.resolve();
+  });
+  await act(async () => { await settleEngine(); await settleEngine(); });
+};
+const confirmDeleteAction = async (label: string) => {
+  fireEvent.click(screen.getByText(label));
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'common.delete' }));
+    for (let index = 0; index < 20; index += 1) await Promise.resolve();
+  });
+  await act(async () => { await settleEngine(); await settleEngine(); });
+};
+const waitForRemoteCandidate = async (harness: ReturnType<typeof documentEngineHarness>, content: string) => {
+  await waitFor(async () => {
+    const records = await harness.engine.listRecoverable();
+    expect(records.some(({ record }) => record.checkpoint.remoteCandidate?.value?.content === content)).toBe(true);
+  });
+  // Let the banner's polling read publish the checkpoint just observed in the harness.
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+};
 
 let actions: ReturnType<typeof useDocumentActions> | null = null;
 function Actions() { const current = useDocumentActions(); useEffect(() => { actions = current; }); return null; }
@@ -40,6 +66,7 @@ describe('a late conflict on a document no screen has open', () => {
     harness.silentRemote({ content: 'Written on the phone' });
     await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Written on the laptop' })); });
     await act(async () => { await settleEngine(); await settleEngine(); });
+    await waitForRemoteCandidate(harness, 'Written on the phone');
   };
 
   it('shows the words this device kept and saves them when kept', async () => {
@@ -56,8 +83,36 @@ describe('a late conflict on a document no screen has open', () => {
     const harness = setup();
     await conflict(harness);
     await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument());
-    await act(async () => { fireEvent.click(screen.getByText('freshness.conflictTakeTheirs')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('freshness.conflictTakeTheirs');
     await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
+    expect(harness.server.value?.content).toBe('Written on the phone');
+  });
+
+  it('withdraws acceptance when the same checkpoint has newer draft words at the final storage read', async () => {
+    const harness = setup();
+    await conflict(harness);
+    await waitFor(() => expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+
+    const [checkpoint] = await harness.engine.listRecoverable();
+    if (!checkpoint) throw new Error('Expected the settled conflict checkpoint');
+    const latestRead = [{ ...checkpoint, record: { ...checkpoint.record,
+      checkpoint: { ...checkpoint.record.checkpoint,
+        draft: { ...checkpoint.record.checkpoint.draft!, content: 'A newer draft from another editor' } } } }];
+    const resolve = jest.spyOn(actions!, 'resolve');
+    const readRecoverable = jest.spyOn(harness.engine, 'listRecoverable').mockResolvedValueOnce(latestRead);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(resolve).not.toHaveBeenCalled();
+    readRecoverable.mockRestore();
+    resolve.mockRestore();
+    const [retained] = await harness.engine.listRecoverable();
+    expect(retained.record.checkpoint.draft?.content).toBe('Written on the laptop');
     expect(harness.server.value?.content).toBe('Written on the phone');
   });
 
@@ -76,7 +131,7 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
     expect(screen.getByText(/legacyRecovery\.field\.title: Refused title/)).toBeInTheDocument();
     expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
     expect(harness.server.value?.content).toBe('Opening text');
   });
@@ -103,7 +158,7 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(screen.getByText('dataSync.deleteRefusedTitle')).toBeInTheDocument());
     expect(screen.queryByText('dataSync.deleteConflictTitle')).not.toBeInTheDocument();
     expect(screen.getByText('dataSync.keepRecord')).toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.retryDelete')); await settleEngine(); await settleEngine(); });
+    await confirmDeleteAction('dataSync.retryDelete');
     await waitFor(() => expect(screen.queryByText('dataSync.deleteRefusedTitle')).not.toBeInTheDocument());
     expect(harness.server.metadata?.deleted).toBe(true);
   });
@@ -120,10 +175,11 @@ describe('a late conflict on a document no screen has open', () => {
     harness.silentRemote({ content: 'Written on the phone' });
     send.mockImplementation(deliver);
     await act(async () => { await harness.engine.retry(resource); await settleEngine(); await settleEngine(); });
+    await waitForRemoteCandidate(harness, 'Written on the phone');
     await waitFor(() => expect(screen.getByText('dataSync.severalDrafts')).toBeInTheDocument());
     expect(screen.getByText(/Offline one[\s\S]*Offline two/)).toBeInTheDocument();
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText('dataSync.severalDrafts')).not.toBeInTheDocument());
     expect(harness.server.value?.content).toBe('Written on the phone');
   });
@@ -136,7 +192,7 @@ describe('a late conflict on a document no screen has open', () => {
     await waitFor(() => expect(screen.getByText('freshness.deletedElsewhereTitle')).toBeInTheDocument());
     expect(screen.getByText(/Typed on the laptop/)).toBeInTheDocument();
     expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('freshness.discardAction')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('freshness.discardAction');
     await waitFor(() => expect(screen.queryByText('freshness.deletedElsewhereTitle')).not.toBeInTheDocument());
   });
 });
@@ -193,7 +249,7 @@ describe('a late answer to a one-shot change of a sermon', () => {
     await waitFor(() => expect(screen.getByText('dataSync.phase.refused')).toBeInTheDocument());
     expect(screen.getByText(/Renamed from the note/)).toBeInTheDocument();
     expect(screen.queryByText(/Typed on the sermon page/)).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText(/Renamed from the note/)).not.toBeInTheDocument());
 
     const left = await harness.engine.listRecoverable(sermon);
@@ -221,7 +277,7 @@ describe('a late answer to a one-shot change of a sermon', () => {
     await screenDraftLeftBehind(harness);
     await waitFor(() => expect(screen.getByText(/Typed on the sermon page/)).toBeInTheDocument());
 
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText(/Typed on the sermon page/)).not.toBeInTheDocument());
     expect(await harness.engine.listRecoverable(sermon)).toHaveLength(0);
     expect((await harness.engine.listPending()).filter(entry => entry.state === 'refused')).toHaveLength(0);
@@ -233,6 +289,42 @@ describe('a late answer to a one-shot change of a sermon', () => {
     reopened.close({ flush: false });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 120)); });
     expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument();
+  });
+
+  it('keeps the refused draft and engine journal until accepting the stored version is confirmed', async () => {
+    const harness = setupSermon();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await screenDraftLeftBehind(harness);
+    await waitFor(() => expect(screen.getByText(/Typed on the sermon page/)).toBeInTheDocument());
+
+    const refused = async () => (await harness.engine.listPending()).filter(entry => entry.state === 'refused');
+    const retained = async () => (await harness.engine.listRecoverable(sermon))
+      .some(({ record }) => record.checkpoint.draft?.verse === 'Typed on the sermon page');
+    await waitFor(async () => expect(await retained()).toBe(true));
+    expect(await refused()).toHaveLength(1);
+
+    fireEvent.click(screen.getByText('dataSync.acceptRemote'));
+    await act(async () => { await settleEngine(); });
+    expect({
+      retainedDraft: await retained(),
+      refusedJournalEntries: (await refused()).length,
+      confirmationTitle: screen.queryByRole('dialog')?.textContent ?? null,
+    }).toEqual({
+      retainedDraft: true,
+      refusedJournalEntries: 1,
+      confirmationTitle: expect.stringContaining('common.discardText.title'),
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.keep' }));
+    await act(async () => { await settleEngine(); });
+    expect(await retained()).toBe(true);
+    expect(await refused()).toHaveLength(1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('dataSync.acceptRemote'));
+    fireEvent.click(screen.getByRole('button', { name: 'common.discardText.confirm' }));
+    await waitFor(async () => expect(await harness.engine.listRecoverable(sermon)).toHaveLength(0));
+    expect(await refused()).toHaveLength(0);
   });
 
   it('says the same words once however many openings of the screen kept a copy of the draft', async () => {
@@ -395,7 +487,7 @@ describe('a late answer to a one-shot change of a sermon', () => {
     expect(screen.getByText(/Typed in one tab/)).toBeInTheDocument();
     expect(screen.getByText(/Typed in another tab/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'dataSync.openToDecide' })).not.toBeInTheDocument();
-    await act(async () => { fireEvent.click(screen.getByText('dataSync.acceptRemote')); await settleEngine(); await settleEngine(); });
+    await confirmTextAction('dataSync.acceptRemote');
     await waitFor(() => expect(screen.queryByText('dataSync.screenDraftsUndecidable')).not.toBeInTheDocument());
     expect(await harness.engine.listRecoverable(sermon)).toHaveLength(0);
   });
