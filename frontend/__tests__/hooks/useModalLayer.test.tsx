@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
-import { useModalLayer } from '@/hooks/useModalLayer';
+import { hasOpenLayer, useModalLayer } from '@/hooks/useModalLayer';
 import '@testing-library/jest-dom';
 
 /**
@@ -133,4 +133,14 @@ describe('a modal layer answers Escape, and only the topmost one does', () => {
 
     expect(screen.getByTestId('one')).toHaveAttribute('data-modal-layer', 'true');
   });
+});
+
+
+it('does not block page gestures for a closed layer that stays mounted', () => {
+  const { rerender } = render(<Window name="persistent" onClose={jest.fn()} active={false} />);
+  expect(hasOpenLayer()).toBe(false);
+  rerender(<Window name="persistent" onClose={jest.fn()} />);
+  expect(hasOpenLayer()).toBe(true);
+  rerender(<Window name="persistent" onClose={jest.fn()} active={false} />);
+  expect(hasOpenLayer()).toBe(false);
 });

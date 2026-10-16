@@ -1,11 +1,10 @@
 'use client';
 
 import { ArrowLeftIcon, ChevronDownIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
@@ -210,20 +209,6 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
   const titleId = useId();
   const [picked, setPicked] = useState<CrossReference | null>(null);
   const layer = useModalLayer({ onClose, active: Boolean(at) });
-  // The keyboard goes into the window and stays there — over a passage window too, whose own trap
-  // yields to the window above it — and goes back to the chip or number that opened it.
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const isOpen = Boolean(at);
-  useFocusTrap(dialogRef, isOpen);
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    const before = document.activeElement as HTMLElement | null;
-    dialogRef.current?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
-    return () => {
-      if (before?.isConnected) before.focus({ preventScroll: true });
-    };
-  }, [isOpen]);
-
   const placeKey = at ? `${at.chapter}:${at.verse}` : '';
   useEffect(() => setPicked(null), [placeKey]);
 
@@ -244,7 +229,6 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
     <div {...layer} className={`fixed inset-0 ${layerClassName} flex items-end justify-center xl:items-start xl:justify-end`}>
       <button type="button" aria-hidden="true" tabIndex={-1} onClick={onClose} className="absolute inset-0 cursor-default bg-black/30" />
       <div
-        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

@@ -200,4 +200,19 @@ describe('FloatingTextScaleControls', () => {
     const container = await screen.findByLabelText('Text size');
     expect(container.parentElement).toHaveClass('custom-class');
   });
+it('puts keyboard focus in text settings, wraps Tab, and restores its trigger', async () => {
+  const user = userEvent.setup();
+  render(<TextScaleProvider><FloatingTextScaleControls /></TextScaleProvider>);
+  const trigger = await screen.findByLabelText('Text size');
+  await user.click(trigger);
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  const last = screen.getByRole('button', { name: 'Increase text size' });
+  last.focus();
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Decrease text size' })).toHaveFocus();
+  await user.keyboard('{Escape}');
+  expect(trigger).toHaveFocus();
+});
+
 });

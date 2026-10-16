@@ -195,7 +195,6 @@ function GrowingField({ id, value, onChange, placeholder, disabled, className, f
   );
 }
 
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export default function CreateSermonFromNoteModal({
   noteId,
@@ -334,37 +333,8 @@ export default function CreateSermonFromNoteModal({
    * create has started its id is fixed, so the sermon that may still be born is the same
    * one a retry would answer — there is nothing here a person can be trapped into.
    */
-  const close = useCallback(() => {
-    onClose();
-    const opener = returnFocusTo?.current;
-    if (opener && typeof opener.focus === 'function' && !opener.hasAttribute('disabled')) opener.focus();
-  }, [onClose, returnFocusTo]);
-
-  /*
-   * Escape and the page lock come from the shared rule; the Tab trap below stays, because
-   * keeping focus inside THIS dialog is its own business and differs window by window.
-   */
-  const layer = useModalLayer({ onClose: close });
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-      const nodes = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
-      if (nodes.length === 0) return;
-      const first = nodes[0];
-      const last = nodes[nodes.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close]);
+  const close = useCallback(() => { onClose(); }, [onClose]);
+  const layer = useModalLayer({ onClose: close, returnFocusTo });
 
   const setStep = (key: string, status: StepStatus) => {
     if (!aliveRef.current) return;

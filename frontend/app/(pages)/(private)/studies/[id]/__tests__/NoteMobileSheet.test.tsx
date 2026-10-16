@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import { splitMarkdownSections } from '@/utils/markdownSections';
@@ -183,4 +184,16 @@ describe('NoteMobileSheet', () => {
         fireEvent.keyDown(document, { key: 'Escape' });
         expect(onClose).not.toHaveBeenCalled();
     });
+it('keeps Tab and Shift+Tab in the open note sheet', async () => {
+  render(<NoteMobileSheet {...props} outline={makeControl()} />);
+  const dialog = screen.getByRole('dialog');
+  const controls = [...dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+  controls.at(-1)!.focus();
+  const user = userEvent.setup();
+  await user.tab();
+  expect(controls[0]).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(controls.at(-1)).toHaveFocus();
+});
+
 });

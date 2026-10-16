@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { useAppLocale } from '@/hooks/useAppLocale';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate, shownDayOf } from "@/utils/dateOnly";
@@ -89,7 +90,8 @@ export default function DatePickerField({
     width: DESKTOP_POPOVER_WIDTH,
   });
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const calendarLayer = useModalLayer({ onClose: () => setOpen(false), active: open && mounted });
+  const popoverRef = calendarLayer.ref;
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // finishedDatesOnly: what the field shows, which may run ahead of `value` while a date is typed.
@@ -184,26 +186,16 @@ export default function DatePickerField({
       setOpen(false);
     };
 
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        // This Escape closes the calendar only; the form the field sits in stays open.
-        event.stopPropagation();
-        setOpen(false);
-      }
-    };
-
     window.addEventListener("resize", updatePopoverPosition);
     window.addEventListener("scroll", updatePopoverPosition, true);
     document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       window.removeEventListener("resize", updatePopoverPosition);
       window.removeEventListener("scroll", updatePopoverPosition, true);
       document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, updatePopoverPosition]);
+  }, [open, popoverRef, updatePopoverPosition]);
 
   const openCalendar = () => {
     if (!disabled) {
@@ -286,8 +278,9 @@ export default function DatePickerField({
           />
         )}
         <div
-          ref={popoverRef}
+          {...calendarLayer}
           role="dialog"
+          aria-modal="true"
           aria-label={label}
           data-testid={`${inputId}-calendar-popover`}
           className={`z-[220] rounded-xl border border-gray-200 bg-white p-3 shadow-2xl dark:border-gray-700 dark:bg-gray-800 ${isCompactViewport

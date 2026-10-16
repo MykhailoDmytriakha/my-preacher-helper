@@ -1,13 +1,12 @@
 'use client';
 
 import { X } from 'lucide-react';
-import React, { useEffect, useId, useRef } from 'react';
+import React, { useId } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from '@/utils/markdownUtils';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
@@ -27,11 +26,7 @@ export default function PlanSectionDialog({ section, markdown, onClose }: PlanSe
   const { t } = useTranslation();
   const titleId = useId();
   const closeLabel = t('actions.close') || t('common.close');
-  const panelRef = useRef<HTMLDivElement>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
   const layer = useModalLayer({ onClose });
-  useFocusTrap(panelRef);
-  useEffect(() => { closeRef.current?.focus(); }, []);
 
   const colors = section === 'main' ? SERMON_SECTION_COLORS.mainPart : SERMON_SECTION_COLORS[section];
   const content = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown || t('plan.noContent'))));
@@ -42,11 +37,11 @@ export default function PlanSectionDialog({ section, markdown, onClose }: PlanSe
     <div {...layer}
       className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
       onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby={titleId}
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId}
         className="bg-white dark:bg-gray-800 rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto p-6 shadow-lg">
         <div className="flex justify-between items-center gap-4 mb-4">
           <h2 id={titleId} className="text-xl font-bold">{t('plan.pageTitle')} - {t(`sections.${section}`)}</h2>
-          <button ref={closeRef} type="button" onClick={onClose}
+          <button type="button" onClick={onClose}
             title={closeLabel} aria-label={closeLabel}
             className="shrink-0 flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors bg-gray-600 text-white hover:bg-gray-700">
             <X size={16} aria-hidden="true" />

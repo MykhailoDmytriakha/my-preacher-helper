@@ -4,6 +4,8 @@ import { Type } from 'lucide-react';
 import React, { useState, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
+
 import { TextScaleControls } from './TextScaleControls';
 
 interface FloatingTextScaleControlsProps {
@@ -24,14 +26,15 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const layer = useModalLayer({ onClose: () => setIsOpen(false), active: isOpen, returnFocusTo: buttonRef });
 
-  // Показывать кнопку через небольшой delay для smooth entrance
+  // Reveal the trigger after the entrance delay.
   useEffect(() => {
     const timer = setTimeout(() => setIsVisible(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
-  // Закрывать при клике вне компонента
+  // Close when the pointer leaves the panel and its trigger.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -50,23 +53,6 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isOpen]);
-
-  // Закрывать при нажатии Escape
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape);
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape);
     };
   }, [isOpen]);
 
@@ -97,7 +83,7 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
         `shrink-0` with a set size, and the percentage is tabular so 80% and 200%
         measure the same). See BUG-20260814-text-scale-panel-reflows.
       */}
-      <div className={`page-gesture-follow fixed bottom-6 right-4 sm:right-6 z-50 flex justify-end ${className}`}>
+      <div {...layer} className={`page-gesture-follow fixed bottom-6 right-4 sm:right-6 z-50 flex justify-end ${className}`}>
         <button
           ref={buttonRef}
           onClick={toggleModal}

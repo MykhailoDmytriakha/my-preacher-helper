@@ -18,6 +18,19 @@ A new form window is `FormDialog` (`frontend/app/components/ui/FormDialog.tsx`):
 - Several older overlays still render in the tree without a portal (`ColorPickerModal`, `KeyFragmentsModal`, `AudioExportModal`, …) — do not copy them.
 - A textarea that grows inside a modal: `.howto/make-a-text-field-grow.md`.
 
+## Keyboard focus
+
+- `useModalLayer` owns initial focus, Tab/Shift+Tab containment, and return focus. Do not add another Tab listener or generic focus-restoration effect to a modal.
+- An existing `autoFocus` or a caller's specific focus effect keeps its chosen control. `ConfirmModal` starts on Cancel; an editor may consume Tab with `preventDefault()` before the shared navigation handler runs.
+- If opening from a menu removes the original control, pass `returnFocusTo` (a ref to the surviving menu button). The shared layer also remembers the prior active element as a fallback if that explicit target becomes disabled or disappears.
+- Closed but mounted panels must not advertise an active modal: `useModalLayer` removes `data-modal-layer` while inactive, so page gestures and workspace keyboards resume.
+- The overlay ref can first appear on a later render. Registration follows the actual element; a stable overlay is not registered again during typing. Reopening captures a new return target.
+- Modal keyboard order follows the overlay's computed z-index, then opening order for equal layers. This also handles a confirmation already open when its parent form first mounts. Keep visual layers consistent with the intended foreground window.
+- `utils/focusableElements.ts` owns the Tab sequence: available visible controls, no negative tabindex, one checked/first stop per named radio group, positive tabindex ordering. An empty/busy dialog receives programmatic focus on its panel; focus changes use `preventScroll`.
+- Headless UI dialogs keep their own trap. The shared mechanism yields when focus is in an external `aria-modal` dialog; custom portals are separate body roots and are not necessarily made inert by that library. Keep the real Headless UI integration regression.
+- A full-screen workspace can use `useFocusTrap` directly; it yields while a modal stands above it. Server writes and offline queues are unrelated to focus ownership.
+- Verify actual browser Tab and Shift+Tab at both edges, Escape through nested layers, the opener after closing, and page scroll before/after. jsdom checks alone do not prove the browser's native Tab order or physical iPad behavior.
+
 ## Traps
 
 - A part inside a window that answers Escape itself (inline edit cancel, a calendar popover, a keyboard drag lift, a point note) must stop the press: `e.stopPropagation()` in a React handler, or in a document-level listener — the window listens at the window and runs last. Without it one Escape cancels the edit AND closes the window (BUG-20261003-escape-cancelling-inner-action-closes-dialog). Do not key the window on `defaultPrevented` instead: ProseMirror prevents every Escape it sees, so rich-text fields would stop closing their window (`__tests__/components/ui/escapeInsideDialogs.test.tsx`).

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
 
@@ -178,6 +179,17 @@ describe('Admin Page', () => {
     expect(within(drawer).getByText('admin.users.fields.lastSeen')).toBeInTheDocument();
     const invitedCount = within(drawer).getByText('admin.users.fields.invitedCount').parentElement;
     expect(invitedCount).toHaveTextContent('3');
+  });
+
+  it('keeps keyboard navigation in the open user drawer', async () => {
+    mockAuthorizedList();
+    render(<AdminPage />);
+    fireEvent.click((await screen.findByText('alpha@example.com')).closest('tr')!);
+    const drawer = await screen.findByRole('dialog');
+    const controls = [...drawer.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')];
+    controls.at(-1)!.focus();
+    await userEvent.setup().tab();
+    expect(controls[0]).toHaveFocus();
   });
 
   it('closes the drawer with Escape', async () => {

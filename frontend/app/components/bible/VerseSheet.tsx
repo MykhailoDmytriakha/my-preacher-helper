@@ -5,7 +5,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -64,11 +63,8 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [away, setAway] = useState<'up' | 'down' | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const closeRef = useRef<HTMLButtonElement | null>(null);
   // A window like every other: the page under it holds still, Escape closes the topmost window only.
   const layer = useModalLayer({ onClose });
-  useFocusTrap(dialogRef);
   // Cross references here only when the person asked for them in passage windows too; "Open" goes to
   // the Bible page, whose way back is the screen this window lies over.
   const crossRefs = useBookCrossRefs(reference.book, reading, state.status === 'ready' ? state.text : null, 'window');
@@ -114,16 +110,6 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
       observer?.disconnect();
     };
   }, [topRef, bottomRef]);
-
-  // Focus goes into the window when it opens and back where it was when it closes — once, not on
-  // every render of the screen under it (a meeting's timer renders it every second).
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus({ preventScroll: true });
-    return () => {
-      if (before?.isConnected) before.focus({ preventScroll: true });
-    };
-  }, []);
 
   const passageBox = useCallback((): PassageBox | null => {
     const pane = paneRef.current;
@@ -180,7 +166,6 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
     <div {...layer} className="fixed inset-x-0 z-[250]" style={{ top: insets.top, bottom: insets.bottom }}>
       <button type="button" tabIndex={-1} aria-label={t('bible.sheet.close')} onClick={onClose} className="absolute inset-0 h-full w-full cursor-default bg-gray-950/50" />
       <div
-        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -193,7 +178,6 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
             <p className="truncate text-xs text-gray-500 dark:text-gray-400">{t(`bible.translations.${reading}.name`)}</p>
           </div>
           <button
-            ref={closeRef}
             type="button"
             aria-label={t('bible.sheet.close')}
             onClick={onClose}

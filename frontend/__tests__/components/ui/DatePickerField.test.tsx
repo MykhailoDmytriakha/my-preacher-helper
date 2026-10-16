@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import DatePickerField from '@/components/ui/DatePickerField';
+import FormDialog from '@/components/ui/FormDialog';
 
 import '@testing-library/jest-dom';
 
@@ -25,10 +27,7 @@ jest.mock('react-day-picker', () => ({
 
 jest.mock('react-day-picker/dist/style.css', () => ({}));
 
-jest.mock('react-dom', () => ({
-  ...jest.requireActual('react-dom'),
-  createPortal: (node: React.ReactNode) => node,
-}));
+jest.unmock('react-dom');
 
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' } }),
@@ -330,4 +329,20 @@ describe('DatePickerField', () => {
       expect(input).toHaveValue('2026-02-16');
     });
   });
+it('owns keyboard focus as a calendar above a form and returns to its field trigger', async () => {
+  const user = userEvent.setup();
+  render(<FormDialog title="Group" onClose={() => undefined}><DatePickerField id="date" value="" onChange={jest.fn()} /></FormDialog>);
+  const trigger = screen.getByRole('button', { name: 'Open calendar' });
+  await user.click(trigger);
+  const calendar = screen.getByRole('dialog', { name: 'Open calendar' });
+  expect(calendar).toContainElement(document.activeElement as HTMLElement);
+  const buttons = [...calendar.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+  buttons.at(-1)!.focus();
+  await user.tab();
+  expect(buttons[0]).toHaveFocus();
+  await user.keyboard('{Escape}');
+  expect(screen.getByRole('dialog', { name: 'Group' })).toBeInTheDocument();
+  expect(trigger).toHaveFocus();
+});
+
 });

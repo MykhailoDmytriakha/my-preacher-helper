@@ -71,83 +71,10 @@ export default function SourceNotePickerModal({
 
   useEffect(() => setMounted(true), []);
 
-  /**
-   * KEYBOARD OWNERSHIP. The control that opened this dialog unmounts with the menu, so without
-   * an explicit move focus is left on nothing: Tab then walks the page BEHIND an `aria-modal`
-   * overlay. Focus goes to the search field (the first thing anyone does here is look for a
-   * note), stays inside while the dialog lives, and returns to whatever had it before.
-   */
+  // The shared layer keeps Tab inside and restores the surviving menu control on close.
+  const layer = useModalLayer({ onClose, closeDisabled: saving, returnFocusTo });
   useEffect(() => {
-    if (!mounted) return;
-    // Captured at MOUNT, both of them: reading the ref during cleanup can find an element that
-    // has since unmounted or now belongs to a different row, which is how focus ends up on the
-    // wrong control instead of back where it came from.
-    const opener = returnFocusTo?.current ?? null;
-    const fallback = document.activeElement as HTMLElement | null;
-    searchRef.current?.focus();
-    return () => {
-      // Connected is not enough: the opener can be DISABLED by the time this closes (a pending
-      // sync disables the menu button), and focusing a disabled control does nothing at all —
-      // focus would silently land on `body`.
-      const usable = (node: HTMLElement | null): boolean =>
-        !!node &&
-        node.isConnected &&
-        typeof node.focus === 'function' &&
-        !(node as HTMLButtonElement).disabled;
-      [opener, fallback].find(usable)?.focus();
-    };
-  }, [mounted, returnFocusTo]);
-
-  /*
-   * Escape, the page lock and "am I the topmost window" now come from the one rule every
-   * window in the app follows (`useModalLayer`). This dialog kept its own copy, which listened
-   * on `window` and therefore also closed when a picker ON TOP of it was dismissed.
-   */
-  const layer = useModalLayer({ onClose, closeDisabled: saving });
-
-  /**
-   * TAB STAYS INSIDE, even when the element that had focus disappeared.
-   *
-   * Rows come and go here — a removed "deleted note" row, a "Unlink all" button that vanishes
-   * at zero — and whatever had focus unmounts with them. Focus then falls to `body`, which is
-   * OUTSIDE the dialog, so a handler bound to the dialog would never see the next Tab. Bound
-   * to the document, it can pull focus back in.
-   */
-  useEffect(() => {
-    if (!mounted) return;
-    const onTab = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-      if (!dialog.contains(document.activeElement)) {
-        // Focus already escaped — usually because the element holding it unmounted.
-        event.preventDefault();
-        searchRef.current?.focus();
-        return;
-      }
-      // Still inside: wrap at the edges, or the browser's default action would step off the
-      // last control and out of the dialog before any of this could react.
-      // No visibility filtering: `offsetParent` is always null in jsdom, so a filter written
-      // that way would collapse the ring to a single element in tests and silently stop
-      // guarding anything.
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
-        )
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      }
-    };
-    document.addEventListener('keydown', onTab);
-    return () => document.removeEventListener('keydown', onTab);
+    if (mounted) searchRef.current?.focus();
   }, [mounted]);
 
   const bibleLocale = useMemo(() => resolveAppLocale(i18n.language), [i18n.language]);

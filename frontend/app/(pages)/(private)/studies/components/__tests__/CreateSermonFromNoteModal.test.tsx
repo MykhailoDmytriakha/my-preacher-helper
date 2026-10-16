@@ -488,9 +488,10 @@ describe('CreateSermonFromNoteModal', () => {
 
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledTimes(1);
+    // The real parent removes the dialog when onClose runs; focus returns when it leaves.
+    unmount();
     expect(document.activeElement).toBe(opener);
     opener.remove();
-    unmount();
 
     let releaseCut: (value: typeof cutAnswer) => void = () => undefined;
     mockCut.mockImplementationOnce(() => new Promise((resolve) => { releaseCut = resolve; }));

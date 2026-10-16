@@ -1,10 +1,11 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 import { NoteOutlineTree } from './NoteOutlineTree';
 
@@ -47,38 +48,18 @@ export function NoteMobileSheet({
 }: NoteMobileSheetProps) {
     const { t } = useTranslation();
     const [tab, setTab] = useState<SheetTab>('outline');
-    const panelRef = useRef<HTMLDivElement>(null);
-    /** Where the focus came from, so closing puts it back instead of dropping it. */
-    const openerRef = useRef<HTMLElement | null>(null);
+    const layer = useModalLayer({ onClose, active: open });
+    const panelRef = layer.ref;
 
     // A note with no headings has no table of contents to open on.
     useEffect(() => {
         if (!outline.hasSections) setTab('properties');
     }, [outline.hasSections]);
 
+    // This reading sheet starts at its panel so its title precedes the outline controls.
     useEffect(() => {
-        if (!open) return;
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [open, onClose]);
-
-    // Opening moves focus into the sheet and closing gives it back to whatever opened it.
-    // Without this a keyboard user opens a panel they are not in, and closing it drops
-    // them at the top of the document.
-    useEffect(() => {
-        if (open) {
-            openerRef.current = document.activeElement as HTMLElement | null;
-            panelRef.current?.focus();
-            return;
-        }
-        const opener = openerRef.current;
-        openerRef.current = null;
-        // Only if focus is still inside the sheet: the person may have clicked elsewhere.
-        if (opener && panelRef.current?.contains(document.activeElement)) opener.focus();
-    }, [open]);
+        if (open) panelRef.current?.focus({ preventScroll: true });
+    }, [open, panelRef]);
 
     // `inert` on the whole thing while closed: the sheet stays mounted so it can slide, and
     // every control inside it — outline rows, tabs, "collapse all" — would otherwise still
@@ -92,7 +73,7 @@ export function NoteMobileSheet({
                 className={`fixed inset-0 z-40 bg-gray-900/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
             />
             <div
-                ref={panelRef}
+                {...layer}
                 tabIndex={-1}
                 role="dialog"
                 aria-modal={open}

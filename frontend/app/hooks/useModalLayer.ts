@@ -1,8 +1,13 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useInsertionEffect, useLayoutEffect, useRef } from 'react';
 
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useScrollLock } from '@/hooks/useScrollLock';
+import { isAvailableFocusTarget } from '@/utils/focusableElements';
+import { hasExternalDialogFocus, isTopmostLayer, registerModalLayer } from '@/utils/modalLayerRegistry';
+
+export { hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
 
 /**
  * WHAT IT MEANS TO BE A MODAL WINDOW IN THIS APP — in one place.
@@ -15,7 +20,7 @@ import { useScrollLock } from '@/hooks/useScrollLock';
  * Rewriting thirty-eight components into one is a change nobody can review. So the RULES move
  * into a hook and the markup stays where it is: a window calls this, spreads the props it
  * returns onto the overlay it already draws, and from then on it locks the page, answers
- * Escape and names itself — without a line of its layout changing.
+ * Escape and keeps keyboard focus inside — without changing its layout.
  *
  * Deliberately NOT here: the backdrop click. What a click on the dark area should do differs
  * by window — a form with typing in it must not vanish that way — so the caller keeps it.
@@ -32,55 +37,47 @@ export interface ModalLayerOptions {
   active?: boolean;
   /** A window that is a dialog in every way except that Escape is not its way out. */
   closeOnEscape?: boolean;
+  /** An opener inside a menu may have disappeared before this dialog mounts. */
+  returnFocusTo?: React.RefObject<HTMLElement | null>;
 }
 
-export interface ModalLayerProps {
-  ref: React.RefObject<HTMLDivElement | null>;
-  'data-modal-layer': 'true';
+export interface ModalLayerProps<T extends HTMLElement = HTMLDivElement> {
+  ref: React.RefObject<T | null>;
+  'data-modal-layer': 'true' | undefined;
 }
 
-/** Every layer currently on screen, oldest first — so the topmost one can answer alone. */
-const layers: HTMLElement[] = [];
-
-/** Whether `element` is the topmost window on screen — the one the keyboard belongs to. */
-export function isTopmostLayer(element: HTMLElement): boolean {
-  return layers.length > 0 && layers[layers.length - 1] === element;
-}
-
-/**
- * Whether any window stands over the page — a held page, a modal, a dialog, an open menu. What is
- * under it answers neither the page's gestures nor its keyboard shortcuts.
- */
-export function hasOpenLayer(): boolean {
-  // A held page: the scroll lock holds the root, and on iOS pins the body too (useScrollLock).
-  const root = document.documentElement.style;
-  const body = document.body.style;
-  if (root.overflow === 'hidden' || body.overflow === 'hidden' || body.position === 'fixed') return true;
-  return Array.from(document.querySelectorAll<HTMLElement>('[data-modal-layer], [aria-modal="true"], dialog[open], [role="menu"]'))
-    .some(element => !element.hidden && getComputedStyle(element).display !== 'none' && getComputedStyle(element).visibility !== 'hidden');
-}
-
-export function useModalLayer({
+export function useModalLayer<T extends HTMLElement = HTMLDivElement>({
   onClose,
   closeDisabled = false,
   active = true,
   closeOnEscape = true,
-}: ModalLayerOptions): ModalLayerProps {
-  const ref = useRef<HTMLDivElement>(null);
+  returnFocusTo,
+}: ModalLayerOptions): ModalLayerProps<T> {
+  const ref = useRef<T>(null);
   useScrollLock(active);
 
-  // Registration is by mounting order, and unregistration is by identity: a window closing
-  // from the middle of the stack must not shift the one above it out of "topmost".
-  useEffect(() => {
-    if (!active) return;
-    const element = ref.current;
-    if (!element) return;
-    layers.push(element);
-    return () => {
-      const at = layers.indexOf(element);
-      if (at >= 0) layers.splice(at, 1);
-    };
+  const opener = useRef<HTMLElement | null>(null);
+  const registration = useRef<{ element: HTMLElement; release: () => void } | null>(null);
+  // Capture before React's layout-time autoFocus; reading in a passive effect loses the opener.
+  useInsertionEffect(() => {
+    if (active) opener.current = document.activeElement as HTMLElement | null;
   }, [active]);
+
+  // Synchronize the actual ref on every commit: some portals first render after mount. A stable
+  // element keeps its registration, so typing/rerenders never reset focus or the return target.
+  useLayoutEffect(() => {
+    const element = active ? ref.current : null;
+    if (registration.current?.element === element) return;
+    registration.current?.release();
+    registration.current = element
+      ? { element, release: registerModalLayer(element, returnFocusTo?.current ?? null, opener.current) }
+      : null;
+  });
+  useLayoutEffect(() => () => {
+    registration.current?.release();
+    registration.current = null;
+  }, []);
+  useFocusTrap(ref, active);
 
   useEffect(() => {
     if (!active || !closeOnEscape || closeDisabled) return;
@@ -89,7 +86,7 @@ export function useModalLayer({
       // ONLY THE TOPMOST WINDOW CLOSES. Two windows both closing on one press is a form
       // disappearing because the picker in front of it was dismissed.
       const element = ref.current;
-      if (element && layers.length > 0 && layers[layers.length - 1] !== element) return;
+      if (!element || !isTopmostLayer(element) || !isAvailableFocusTarget(element) || hasExternalDialogFocus(element)) return;
       event.stopPropagation();
       onClose();
     };
@@ -100,7 +97,7 @@ export function useModalLayer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [active, closeDisabled, closeOnEscape, onClose]);
 
-  return { ref, 'data-modal-layer': 'true' };
+  return { ref, 'data-modal-layer': active ? 'true' : undefined };
 }
 
 export default useModalLayer;

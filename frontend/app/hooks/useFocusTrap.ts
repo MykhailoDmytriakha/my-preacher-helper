@@ -2,55 +2,43 @@
 
 import { useEffect, type RefObject } from 'react';
 
-import { isTopmostLayer } from '@/hooks/useModalLayer';
+import { focusableElements, focusInside, isAvailableFocusTarget } from '@/utils/focusableElements';
+import { hasExternalDialogFocus, hasOpenLayer, isTopmostLayer } from '@/utils/modalLayerRegistry';
 
-/** What Tab can reach. No visibility filter: jsdom lays nothing out, and a filter on layout would empty the ring in tests. */
-const REACHABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/**
- * KEEPS TAB INSIDE A WINDOW — the keyboard agrees with the eye. From the last control Tab goes to the
- * first and Shift+Tab from the first to the last; focus that got out (its element unmounted, a click
- * beside the window) comes back in. It listens before anything on the page does, and the page's own
- * keyboard handlers do not see Tab while the window is open: a screen with a trap of its own (a
- * council's meeting) cannot pull focus out from under the window above it.
- *
- * Four older windows still keep their own copy of this (`SourceNotePickerModal`,
- * `CreateSermonFromNoteModal`, the council's meeting `Shell`, `CustomTimePicker`); they differ in
- * small ways, so moving them here is its own change, checked window by window.
- */
+/** One Tab ring for a modal, or a full-screen workspace when no modal is above it. */
 export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active = true): void {
   useEffect(() => {
     if (!active) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
+      if (event.key !== 'Tab' || event.defaultPrevented) return;
       const container = containerRef.current;
-      if (!container) return;
+      if (!container || !isAvailableFocusTarget(container) || hasExternalDialogFocus(container)) return;
       // A window opened above this one (a question asked over it) has the keyboard.
       const layer = container.closest<HTMLElement>('[data-modal-layer]');
-      if (layer && !isTopmostLayer(layer)) return;
+      if (layer ? !isTopmostLayer(layer) : hasOpenLayer()) return;
       event.stopPropagation();
-      const reachable = Array.from(container.querySelectorAll<HTMLElement>(REACHABLE));
+      const reachable = focusableElements(container);
       if (reachable.length === 0) {
         event.preventDefault();
+        focusInside(container);
         return;
       }
       const first = reachable[0];
       const last = reachable[reachable.length - 1];
       const current = document.activeElement;
-      if (!container.contains(current)) {
+      if (!reachable.includes(current as HTMLElement)) {
         event.preventDefault();
-        (event.shiftKey ? last : first).focus();
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
       } else if (event.shiftKey && current === first) {
         event.preventDefault();
-        last.focus();
+        last.focus({ preventScroll: true });
       } else if (!event.shiftKey && current === last) {
         event.preventDefault();
-        first.focus();
+        first.focus({ preventScroll: true });
       }
     };
-    document.addEventListener('keydown', onKeyDown, true);
-    return () => document.removeEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [active, containerRef]);
 }
 

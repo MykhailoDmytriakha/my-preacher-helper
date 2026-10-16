@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
@@ -13,6 +13,7 @@ import {
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
 import { Chip } from '@/components/ui/Chip';
 import UsageBar from '@/components/usage/UsageBar';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { stickyTopBelowNav, useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
@@ -648,26 +649,8 @@ type DrawerProps = {
 
 function UserDrawer(props: DrawerProps) {
   const { t, i18n } = useTranslation();
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const onCloseRef = useRef(props.onClose);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
   const { open, user } = props;
-
-  useEffect(() => { onCloseRef.current = props.onClose; }, [props.onClose]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeButtonRef.current?.focus();
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') onCloseRef.current();
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => {
-      window.removeEventListener('keydown', handleEscape);
-      previousFocusRef.current?.focus();
-    };
-  }, [open]);
+  const layer = useModalLayer<HTMLElement>({ onClose: props.onClose, active: open });
 
   if (!open) return null;
   const promotion = user?.promotion ? `${t(`admin.users.tiers.${user.promotion.tier}`)} · ${formatDate(user.promotion.expiresAt, '—', i18n.language)}` : '—';
@@ -675,11 +658,11 @@ function UserDrawer(props: DrawerProps) {
   return (
     <>
       <button aria-label={t('admin.users.closeDrawer')} className="fixed inset-0 z-40 cursor-default bg-slate-950/35" onClick={props.onClose} type="button" />
-      <aside aria-label={t('admin.users.drawerLabel')} aria-modal="true" className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" role="dialog">
+      <aside {...layer} aria-label={t('admin.users.drawerLabel')} aria-modal="true" className="fixed inset-y-0 right-0 z-50 flex w-[440px] max-w-[92vw] flex-col border-l border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900" role="dialog">
         <header className="flex items-center gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           {user ? <Avatar large user={user} /> : <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-lg text-slate-600 dark:bg-slate-700 dark:text-slate-300">?</span>}
           <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-slate-900 dark:text-white">{user?.email ?? t('admin.users.manualEdit')}</p><p className="mt-0.5 truncate font-mono text-[11px] text-slate-400 dark:text-slate-500">{user ? user.uid : t('admin.users.manualUidHint')}</p></div>
-          <button aria-label={t('admin.users.closeDrawer')} className="rounded-md p-2 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-white" onClick={props.onClose} ref={closeButtonRef} type="button">×</button>
+          <button aria-label={t('admin.users.closeDrawer')} className="rounded-md p-2 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:hover:bg-slate-800 dark:hover:text-white" onClick={props.onClose} type="button">×</button>
         </header>
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={props.onSubmit}>
           <div className="flex-1 overflow-y-auto px-5 py-4">
