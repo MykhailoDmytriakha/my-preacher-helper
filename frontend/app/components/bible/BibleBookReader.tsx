@@ -23,6 +23,7 @@ import { CrossReferenceSettings } from './CrossReferenceSettings';
 import { CrossReferenceSheet, type CrossReferencePlace } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
 import { buildMinimapLayout } from './minimapLayout';
+import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -240,6 +241,17 @@ export function roomBelow(lastVerseTop: number, readingTop: number, viewportHeig
   return Math.max(0, Math.ceil(lastVerseTop - readingTop + viewportHeight - pageHeight) + 1);
 }
 
+/**
+ * The reader's frame: on a computer the page stands still, the book's line stands above the text,
+ * and the text scrolls in its own pane beside the minimap — focusable, so the keys scroll it as they
+ * scrolled the page (`readingSurface.ts`); on a phone the page scrolls and leaves room for the pill.
+ */
+function readerFrame(wide: boolean) {
+  return wide
+    ? { root: 'flex min-h-0 flex-1 flex-col', line: 'z-30 shrink-0 py-1.5', row: 'min-h-0 flex-1', pane: 'min-h-0 min-w-0 flex-1 self-stretch overflow-y-auto overscroll-contain', paneTabIndex: 0 }
+    : { root: 'pb-24', line: 'py-1', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined };
+}
+
 export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
   const { t, i18n } = useTranslation();
   const router = useRouter();
@@ -261,14 +273,22 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     setFrom(readEntryFrom());
   }, []);
 
-  // THE TOP OF THE READING AREA, measured: under the app's nav, and on a computer under the book's
-  // own line too, which sticks there. "The verse I am at" is read from here and a verse jumped to is
-  // put here — one number for both: with the jump lower than the reading, the verse above showed a
+  // WHAT THE TEXT SCROLLS IN: on a phone the page; on a screen with the minimap its own pane beside
+  // it, so a finger on the minimap is the minimap's even while the text still glides (`readingSurface.ts`).
+  // The pane is drawn before the text comes: the first jump and the room under the book use it.
+  const [pane, setPane] = useState<HTMLElement | null>(null);
+  const surface = useMemo(() => readingSurface(wide ? pane : null), [pane, wide]);
+  const surfaceRef = useRef(surface);
+  surfaceRef.current = surface;
+
+  // THE TOP OF THE READING AREA, measured from the top of what the text scrolls in: on a phone under
+  // the app's nav, in the pane at its top. "The verse I am at" is read from here and a verse jumped to
+  // is put here — one number for both: with the jump lower than the reading, the verse above showed a
   // strip and counted as the place, so every Back landed a verse higher.
-  const { setHeaderRef, navHeight, belowHeader } = useStickyOffsets();
-  const readingTop = (wide ? belowHeader : navHeight) + STICKY_PANEL_GAP_PX;
-  const readingTopRef = useRef(readingTop);
-  readingTopRef.current = readingTop;
+  const { setHeaderRef, navHeight } = useStickyOffsets();
+  const readingInset = (wide ? 0 : navHeight) + STICKY_PANEL_GAP_PX;
+  const readingInsetRef = useRef(readingInset);
+  readingInsetRef.current = readingInset;
   const setRowRef = useCallback((element: HTMLElement | null) => {
     setHeaderRef(element);
     setRow(element);
@@ -310,28 +330,28 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
     if (!target) return;
     target.scrollIntoView({ block: 'start' });
-    broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: window.scrollY };
+    broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
   }, []);
 
-  // ROOM UNDER THE BOOK: the page scrolls on until the last verse stands at the reading top, and no
+  // ROOM UNDER THE BOOK: the text scrolls on until the last verse stands at the reading top, and no
   // further — so a verse near the end (Rom 16:21) comes to the top like any other (the owner, 2026-10-15).
-  // The room is the text card's bottom margin: the minimap sticks inside the row it shares with the
-  // card, and only within that row's content — a block below the row, or the row's own padding, let
-  // the row end with the text and pushed the minimap up under the nav (live, 326 px).
+  // The room is the text card's bottom margin, inside what scrolls: on a phone a block below the card
+  // would do as well, but in the pane only what is in it scrolls.
   const fitRoom = useCallback(() => {
     const article = textRef.current;
     const rows = article?.querySelectorAll<HTMLElement>('[data-verse]');
     const last = rows?.[rows.length - 1];
     if (!article || !last) return;
-    // The page's own height, without the room: a page shorter than the window measures as the window
-    // (`scrollHeight` never goes below it), so it is measured with a room of a window at least, and
-    // that room taken off. Never less than the room there is, so a page read at its end does not
+    const surface = surfaceRef.current;
+    // The text's own height, without the room: a text shorter than what shows it measures as that
+    // (`scrollHeight` never goes below it), so it is measured with a room of a screen at least, and
+    // that room taken off. Never less than the room there is, so a book read at its end does not
     // shrink under the reader and lose the place. Both writes land before the next paint.
-    const probe = Math.max(parseFloat(article.style.marginBottom) || 0, window.innerHeight);
+    const probe = Math.max(parseFloat(article.style.marginBottom) || 0, surface.height());
     article.style.marginBottom = `${probe}px`;
-    const pageHeight = document.documentElement.scrollHeight - probe;
-    const lastTop = last.getBoundingClientRect().top + window.scrollY;
-    article.style.marginBottom = `${roomBelow(lastTop, readingTopRef.current, window.innerHeight, pageHeight)}px`;
+    const pageHeight = surface.contentHeight() - probe;
+    const lastTop = last.getBoundingClientRect().top - surface.edge() + surface.top();
+    article.style.marginBottom = `${roomBelow(lastTop, readingInsetRef.current, surface.height(), pageHeight)}px`;
   }, []);
 
   // THE VERSE A LINK CAME TO: lit at once, then fading back on its own — near the end of a book it
@@ -386,7 +406,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     // The room first: without it a verse near the end of the book cannot come to the top.
     fitRoom();
     if (target) jumpTo(target);
-    else window.scrollTo({ top: 0 });
+    else surfaceRef.current.scrollTo(0);
     // The passage the link named, each verse found in this Bible: "Rom 12:1-2" lights both.
     const link = `${bookId} ${initialBible} ${startChapter}:${startVerse}-${passageEnd}`;
     if (linked && passageEnd) saveEntryArrival({ link, litUntil: Date.now() + ARRIVAL_LIT_MS });
@@ -414,21 +434,33 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     // the room catches up, and the verse slid down by the growth: the end is kept as the end.
     let atEnd = false;
     const onScroll = () => {
-      atEnd = window.scrollY >= document.documentElement.scrollHeight - window.innerHeight - 1;
+      atEnd = surface.top() >= surface.contentHeight() - surface.height() - 1;
     };
     const onResize = () => {
       const keepEnd = atEnd;
       fitRoom();
-      if (keepEnd) window.scrollTo({ top: document.documentElement.scrollHeight - window.innerHeight });
+      if (keepEnd) surface.scrollTo(surface.contentHeight() - surface.height());
     };
-    window.addEventListener('scroll', onScroll, { passive: true });
+    surface.target.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
     return () => {
       observer?.disconnect();
-      window.removeEventListener('scroll', onScroll);
+      surface.target.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
     };
-  }, [fitRoom, readingTop, text]);
+  }, [fitRoom, readingInset, surface, text]);
+
+  // The text moved to another surface (a window made narrow or wide): the room is measured in it again
+  // and the person kept at the verse they were reading — the new one opens at its own top.
+  const shownSurfaceRef = useRef(surface);
+  useLayoutEffect(() => {
+    if (shownSurfaceRef.current === surface) return;
+    shownSurfaceRef.current = surface;
+    const here = placeRef.current;
+    if (!text || !here) return;
+    fitRoom();
+    jumpTo(here);
+  }, [fitRoom, jumpTo, surface, text]);
 
   // Remember where the person is ("Continue" on the list, Back to this entry, the way back from
   // another book) and keep the chapter button on the chapter. The place is read on every scroll (a
@@ -458,8 +490,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     const note = () => {
       if (leavingRef.current) return;
       // Moved from where a jump left the page: from here the place is what the top shows.
-      if (broughtRef.current && Math.abs(window.scrollY - broughtRef.current.scrollY) >= 1) broughtRef.current = null;
-      const here = broughtRef.current?.place ?? visibleVerseRange(rows, readingTopRef.current, window.innerHeight)?.[0];
+      if (broughtRef.current && Math.abs(surface.top() - broughtRef.current.scrollY) >= 1) broughtRef.current = null;
+      const here = broughtRef.current?.place ?? visibleVerseRange(rows, surface.edge() + readingInsetRef.current, surface.bottom())?.[0];
       if (here) {
         placeRef.current = here;
         setCurrentChapter(here.chapter);
@@ -469,13 +501,13 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     };
     flushPlaceRef.current = store;
     note();
-    window.addEventListener('scroll', note, { passive: true });
+    surface.target.addEventListener('scroll', note, { passive: true });
     return () => {
-      window.removeEventListener('scroll', note);
+      surface.target.removeEventListener('scroll', note);
       if (timer !== null) store();
       flushPlaceRef.current = () => undefined;
     };
-  }, [bible, bookId, text]);
+  }, [bible, bookId, surface, text]);
 
   // A phone: once the book's line has scrolled away, a pill at the bottom holds the book and chapter.
   useEffect(() => {
@@ -541,6 +573,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const cameFromLabel = !fromLabel && cameFrom ? t(`bible.wayBack.${wayBackKind(cameFrom)}`) : null;
   // A cross reference followed within the book comes first: its way back is to the very verse.
   const wayBackLabel = travel.label ?? fromLabel ?? cameFromLabel;
+  const frame = readerFrame(wide);
   const goBack = () => travel.back(() => {
     if (fromPlace && fromBookId) {
       openPlace(fromBookId, { chapter: fromPlace.chapter, verse: fromPlace.verse });
@@ -552,15 +585,19 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   });
 
   return (
-    <div className={`mx-auto w-full max-w-7xl ${wide ? '' : 'pb-24'}`} style={{ '--reading-top': `${readingTop}px` } as CSSProperties}>
+    // With the minimap the reader holds its panes and the page itself stands still (`data-reader-panes`, globals.css).
+    <div
+      data-reader-panes={wide ? '' : undefined}
+      className={`mx-auto w-full max-w-7xl ${frame.root}`}
+      style={{ '--reading-top': `${readingInset}px` } as CSSProperties}
+    >
       {/* THE BOOK'S LINE, from the start: the book and the chapter at the text's left edge, the
-          translation at its right one. On a computer it
-          sticks under the app's nav, so both buttons are at hand anywhere in the book; on a phone it
-          stays at the top and a pill at the bottom takes over while reading. A long name wraps. */}
+          translation at its right one. On a computer it stands above the text's pane, so both buttons
+          are at hand anywhere in the book; on a phone it stays at the top and a pill at the bottom
+          takes over while reading. A long name wraps. */}
       <header
         ref={setRowRef}
-        style={wide ? { top: navHeight } : undefined}
-        className={`${wide ? 'sticky z-30 py-1.5' : 'relative py-1'} mb-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-900/90`}
+        className={`${frame.line} relative mb-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-900/90`}
       >
         {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
         <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} text={text} locale={locale} wide={wide} onOpen={openPlace} />
@@ -577,31 +614,34 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
 
       <LoadNotice status={state.status} onRetry={() => setAttempt((value) => value + 1)} />
 
-      {text && layout ? (
-        <div className="flex items-start gap-5">
-          <article
-            ref={textRef}
-            className="isolate min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900"
-          >
-            <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
-            <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
-          </article>
-          {wide ? (
-            <aside style={{ top: readingTop }} className="sticky shrink-0 rounded-xl border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
-              <BibleMinimap
-                layout={layout}
-                textRef={textRef}
-                chapterLabel={chapterWord}
-                placeLabel={placeLabel}
-                readingLabel={readingLabel}
-                title={t('bible.minimap')}
-                readingTop={readingTop}
-                onJump={jumpTo}
-              />
-            </aside>
+      <div className={`flex items-start gap-5 ${frame.row}`}>
+        <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
+          {text && layout ? (
+            <article
+              ref={textRef}
+              className="isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900"
+            >
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
+              <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
+            </article>
           ) : null}
         </div>
-      ) : null}
+        {wide && text && layout ? (
+          <aside className="shrink-0 rounded-xl border border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-900">
+            <BibleMinimap
+              layout={layout}
+              textRef={textRef}
+              chapterLabel={chapterWord}
+              placeLabel={placeLabel}
+              readingLabel={readingLabel}
+              title={t('bible.minimap')}
+              surface={surface}
+              readingInset={readingInset}
+              onJump={jumpTo}
+            />
+          </aside>
+        ) : null}
+      </div>
 
       {!wide && text ? (
         <PhoneBar wayBack={wayBackLabel} onWayBack={goBack} showPill={rowGone} bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={openPlace} />

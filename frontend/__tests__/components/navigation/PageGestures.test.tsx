@@ -103,11 +103,12 @@ describe('Page touch gestures', () => {
     const field = screen.getByLabelText('Draft');
     start(200, 100, field); move(); end();
     field.focus(); start(); move(); end(); field.blur();
+    // A pane that scrolls sideways owns every swipe in it.
     const page = screen.getByTestId('page');
-    page.style.overflowY = 'auto';
-    Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 500 });
-    Object.defineProperty(page, 'clientHeight', { configurable: true, value: 200 });
-    start(); move(); end(); page.style.overflowY = '';
+    page.style.overflowX = 'auto';
+    Object.defineProperty(page, 'scrollWidth', { configurable: true, value: 900 });
+    Object.defineProperty(page, 'clientWidth', { configurable: true, value: 300 });
+    start(); move(); end(); page.style.overflowX = '';
     document.body.style.overflow = 'hidden'; start(); move(); end();
     // The scroll lock holds the root alone off iOS: a held root is an open layer too.
     document.body.style.overflow = ''; document.documentElement.style.overflow = 'hidden'; start(); move(); end();
@@ -116,6 +117,25 @@ describe('Page touch gestures', () => {
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'focused-editor' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'open-layer' });
+  });
+
+  it('leaves the pull to a pane that scrolls only up and down, but a swipe across it still goes back', () => {
+    // A text in its own pane — a study, the Bible beside its minimap — goes back as a text in the page did.
+    const { back, refresh } = setup();
+    const page = screen.getByTestId('page');
+    page.style.overflowY = 'auto';
+    Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 500 });
+    Object.defineProperty(page, 'clientHeight', { configurable: true, value: 200 });
+    start(); move(); end();
+    expect(refresh).not.toHaveBeenCalled();
+    // With nowhere to go back to, the pane keeps the whole gesture.
+    Object.defineProperty(window.history, 'length', { configurable: true, value: 1 });
+    start(); move(); end();
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });
+    Object.defineProperty(window.history, 'length', { configurable: true, value: 2 });
+    start(200); slide(200, 360, 300); end(360, 105); wait(LEAVE_MS);
+    expect(back).toHaveBeenCalledTimes(1);
+    page.style.overflowY = '';
   });
 
   it('cancels when a second finger joins or the browser owns a noncancelable move', () => {

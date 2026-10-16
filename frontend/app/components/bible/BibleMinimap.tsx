@@ -14,6 +14,8 @@ import {
   type MinimapLayout,
 } from './minimapLayout';
 
+import type { ReadingSurface } from './readingSurface';
+
 type VersePlace = { chapter: number; verse: number };
 
 type BibleMinimapProps = {
@@ -26,8 +28,10 @@ type BibleMinimapProps = {
   readingLabel: (place: VersePlace) => string;
   title: string;
   onJump: (place: VersePlace) => void;
-  /** Where the reading area starts, under every sticky bar: "the verse I am at" is measured from here. */
-  readingTop: number;
+  /** What the text scrolls in: the page, or its own pane beside the minimap (`readingSurface.ts`). */
+  surface: ReadingSurface;
+  /** Where reading starts below the surface's top edge: "the verse I am at" is measured from here. */
+  readingInset: number;
 };
 
 const MAP_WIDTH = 132;
@@ -136,7 +140,7 @@ function edgePassed(frame: MinimapFrame, offset: number, boxHeight: number): Edg
  * the map follows it; one leafed away comes back as soon as the text moves, and a frame gone past the
  * edge leaves a mark at that edge that brings the map back.
  */
-function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, readingTop }: BibleMinimapProps) {
+function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset }: BibleMinimapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLElement[]>([]);
@@ -159,7 +163,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
   const [edge, setEdge] = useState<Edge | null>(null);
 
   const reading = (): { place: VersePlace; frame: MinimapFrame } | null => {
-    const range = visibleVerseRange(rowsRef.current, readingTop, window.innerHeight);
+    const range = visibleVerseRange(rowsRef.current, surface.edge() + readingInset, surface.bottom());
     return range ? { place: range[0], frame: frameOnMap(layout, range) } : null;
   };
   const followingTop = (frame: MinimapFrame) => minimapOffset(layout.height, boxHeight, frame);
@@ -173,7 +177,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
 
   const remember = () => {
     const now = reading();
-    if (now) previousRef.current = { frame: now.frame, attached: followingTop(now.frame), pageY: window.scrollY };
+    if (now) previousRef.current = { frame: now.frame, attached: followingTop(now.frame), pageY: surface.top() };
   };
 
   const stopGlide = () => {
@@ -265,7 +269,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
   // The map follows the text unless it was leafed or pressed away; then a frame still in sight comes to
   // its place as the person reads, and one gone past the edge is brought back.
   const onPageScroll = () => {
-    const pageY = window.scrollY;
+    const pageY = surface.top();
     const expected = expectedPageYRef.current;
     expectedPageYRef.current = null;
     const ours = expected !== null && Math.abs(pageY - expected) < 2;
@@ -303,7 +307,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
   const measure = () => {
     pointerYRef.current = null;
     setHover(null);
-    setBoxHeight(Math.max(120, Math.min(layout.height, window.innerHeight - readingTop - BOTTOM_MARGIN)));
+    setBoxHeight(Math.max(120, Math.min(layout.height, surface.bottom() - surface.edge() - readingInset - BOTTOM_MARGIN)));
     scheduleDraw();
   };
 
@@ -318,28 +322,38 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
     handlersRef.current = { draw, onPageScroll, measure, follow };
   });
 
-  // A new book or reading top: its rows, a map that follows the text, the box measured again.
+  // A new book, surface or reading top: its rows, a map that follows the text, the box measured again.
   useEffect(() => {
     rowsRef.current = Array.from(textRef.current?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
     freeRef.current = false;
     previousRef.current = null;
     handlersRef.current?.measure();
-  }, [layout, readingTop, textRef]);
+  }, [layout, readingInset, surface, textRef]);
 
   useEffect(() => {
     handlersRef.current?.follow();
-  }, [boxHeight, chapterLabel, layout, readingTop]);
+  }, [boxHeight, chapterLabel, layout, readingInset, surface]);
 
+  // The text's scroll, wherever it happens; a pane that changes size (a line that wraps, a notice above) measures the box again.
   useEffect(() => {
     const onScroll = () => handlersRef.current?.onPageScroll();
     const onResize = () => handlersRef.current?.measure();
+    surface.target.addEventListener('scroll', onScroll, { passive: true });
+    const paneObserver = surface.target instanceof HTMLElement && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
+    if (surface.target instanceof HTMLElement) paneObserver?.observe(surface.target);
+    return () => {
+      surface.target.removeEventListener('scroll', onScroll);
+      paneObserver?.disconnect();
+    };
+  }, [surface]);
+
+  useEffect(() => {
+    const onResize = () => handlersRef.current?.measure();
     const redraw = () => handlersRef.current?.draw();
-    window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
     const themeObserver = new MutationObserver(redraw);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     return () => {
-      window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onResize);
       themeObserver.disconnect();
       if (drawFrameRef.current !== null) window.cancelAnimationFrame(drawFrameRef.current);
@@ -403,7 +417,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
     stopGlide();
     freeRef.current = true;
     onJump(place);
-    expectedPageYRef.current = window.scrollY;
+    expectedPageYRef.current = surface.top();
     remember();
     const now = reading();
     const fit = now ? fitPressedFrame(now.frame, map.scrollTop, boxHeight) : null;

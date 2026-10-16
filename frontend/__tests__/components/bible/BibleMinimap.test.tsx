@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { BibleMinimap, visibleVerseRange } from '@/components/bible/BibleMinimap';
 import { buildMinimapLayout, frameOnMap, minimapOffset, verseAtY } from '@/components/bible/minimapLayout';
+import { readingSurface } from '@/components/bible/readingSurface';
 
 // Forty chapters of twenty-five one-line verses: a map of ~4800 px, far taller than its box.
 const CHAPTERS = 40;
@@ -87,7 +88,8 @@ describe('BibleMinimap — the map leafs on its own, the text moves only on a pr
         placeLabel={({ chapter, verse }) => `${chapter}:${verse}`}
         readingLabel={({ chapter, verse }) => `Reading ${chapter}:${verse}`}
         title="Book minimap"
-        readingTop={READING_TOP}
+        surface={readingSurface(null)}
+        readingInset={READING_TOP}
         onJump={onJump}
       />,
     );

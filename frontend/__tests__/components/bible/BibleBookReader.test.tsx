@@ -368,14 +368,28 @@ describe('BibleBookReader', () => {
     expect(screen.queryByRole('button', { name: 'bible.allBooks' })).not.toBeInTheDocument();
   });
 
-  it('keeps the book and the chapter in a line that sticks under the nav on a computer', async () => {
+  it('on a computer keeps the book and the chapter in a line above the text, which scrolls in its own pane beside the minimap', async () => {
+    // A page coasting under the finger took a finger put on the minimap nested in it (iPad): the
+    // page stands still, and the text and the minimap are sibling panes.
     wideScreen = true;
-    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+    const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
     await screen.findByText('Третья глава');
     const line = screen.getByRole('heading', { level: 1, name: 'Ruth' }).closest('header');
-    expect(line).toHaveClass('sticky');
+    expect(line).not.toHaveClass('sticky');
     expect(within(line as HTMLElement).getByRole('button', { name: 'bible.changeChapter' })).toBeInTheDocument();
     expect(within(line as HTMLElement).getByRole('button', { name: 'bible.changeTranslation' })).toBeInTheDocument();
+    expect(container.querySelector('[data-reader-panes]')).toContainElement(line as HTMLElement);
+    const pane = screen.getByText('Третья глава').closest('article')?.parentElement as HTMLElement;
+    expect(pane).toHaveClass('overflow-y-auto');
+    expect(pane.contains(screen.getByTestId('bible-minimap'))).toBe(false);
+    expect(pane.parentElement).toContainElement(screen.getByTestId('bible-minimap'));
+  });
+
+  it('on a phone reads with the page itself, no pane of its own', async () => {
+    const { container } = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
+    await screen.findByText('Третья глава');
+    expect(container.querySelector('[data-reader-panes]')).toBeNull();
+    expect(screen.getByText('Третья глава').closest('article')?.parentElement).not.toHaveClass('overflow-y-auto');
   });
 
   it('leads on at the end of the book in the Synodal order, and back to the book before', async () => {

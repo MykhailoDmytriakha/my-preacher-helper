@@ -335,6 +335,41 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
   }
 }
 
+/* The Bible reader beside its minimap holds two sibling panes in the same way (owner, 2026-10-16,
+   iPad): the page never coasts, so a finger put on the minimap while the text still glides is the
+   minimap's (components/bible/readingSurface.ts). The reader marks itself only while the minimap
+   shows, so no media query here; the main keeps its padding. */
+#app-shell:has([data-reader-panes]) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#app-shell:has([data-reader-panes]) > * {
+  flex-shrink: 0;
+}
+
+#app-shell > :has([data-reader-panes]) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#app-shell > :has([data-reader-panes]) > :not(main) {
+  flex-shrink: 0;
+}
+
+#app-shell > :has([data-reader-panes]) > main {
+  display: flex;
+  width: 100%;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Fixed page chrome travels with the page under a swipe or a pull (PageGestures). Only while a gesture
    moves the page: a translate at rest would make each element the containing block of its own fixed
    descendants. Durations match the page surface's motion classes. */
