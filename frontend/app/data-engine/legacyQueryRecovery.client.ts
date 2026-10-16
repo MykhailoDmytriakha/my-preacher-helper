@@ -7,6 +7,7 @@ import { queryCacheStore } from '@/utils/queryPersister';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { hydrateSermon } from '@/utils/sermonDocument';
 
+import { BOOKKEEPING, canonical } from './legacyCopyChanges';
 import { equalValues, personFields } from './protocol';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
@@ -257,17 +258,6 @@ export function listLegacyQueryCopies(owner: string): Promise<LegacyQueryCopy[]>
  */
 export type ServerCopyReader = (collection: string, documentId: string) => Promise<Record<string, unknown> | null | undefined>;
 
-/** Fields that record when and how a copy was written, never what the person wrote. */
-const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', '_dataEngine', '_dataEngineOwner']);
-
-const canonical = (value: unknown, top = true): unknown => {
-  if (Array.isArray(value)) return value.map(item => canonical(item, false));
-  if (!object(value)) return value;
-  return Object.fromEntries(Object.keys(value).sort()
-    .filter(key => !BOOKKEEPING.has(key) && !(top && key === 'id'))
-    .map(key => [key, canonical(value[key], false)]));
-};
-
 /**
  * The previous version's read transform, so a cached row and the server copy are compared through
  * the same lens: it kept a sermon's legacy aliases in step (`thoughtsBySection`/`structure`,
@@ -330,8 +320,8 @@ export async function retireLegacyEchoes(owner: string, readServer: ServerCopyRe
     if (server === null) continue;
     let same = false;
     try {
-      same = JSON.stringify(canonical(asThePersonWrote(copy.collection, row)))
-        === JSON.stringify(canonical(asThePersonWrote(copy.collection, server)));
+      same = JSON.stringify(canonical(asThePersonWrote(copy.collection, row), true))
+        === JSON.stringify(canonical(asThePersonWrote(copy.collection, server), true));
     } catch { undecided += 1; continue; }
     if (same) echoes.set(copy.id, copy.raw);
   }
@@ -378,6 +368,8 @@ export interface LegacyCopyComparison {
   serverVersionAt: string | null;
   /** Only the fields that differ, read as the person wrote them, bookkeeping aside. */
   differences: { field: string; device: unknown; server: unknown }[];
+  /** Both whole documents read as the person wrote them, when both exist: a list of thoughts reads its sections by them. */
+  rows: { device: Record<string, unknown>; server: Record<string, unknown> } | null;
 }
 
 const isoOrNull = (value: unknown): string | null => {
@@ -407,7 +399,7 @@ const SERMON_ALIASES = { thoughtsBySection: 'structure', draft: 'plan' } as cons
 /** Only the fields that differ, read as the person wrote them, bookkeeping aside. */
 function differencesOf(collection: string, row: Record<string, unknown>, server: Record<string, unknown>): LegacyCopyComparison['differences'] {
   const mine = asThePersonWrote(collection, row), theirs = asThePersonWrote(collection, server);
-  const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left, false)) === JSON.stringify(canonical(right, false));
+  const same = (left: unknown, right: unknown) => JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
   // An alias that repeats its field on both sides is one line, not two. One that drifted apart
   // stays: the previous version read it first on some screens, and any difference the echo check
   // keeps a copy for must be on screen.
@@ -432,6 +424,7 @@ export function compareLegacyCopy(copy: LegacyQueryCopy, server: Record<string, 
   return {
     kind: copyKind(copy, row), server: serverState, freshness: freshnessOf(deviceVersionAt, serverVersionAt, !ownVersionAt), deviceVersionAt, serverVersionAt,
     differences: row && server ? differencesOf(copy.collection, row, server) : [],
+    rows: row && server ? { device: asThePersonWrote(copy.collection, row), server: asThePersonWrote(copy.collection, server) } : null,
   };
 }
 

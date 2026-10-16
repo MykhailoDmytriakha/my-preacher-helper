@@ -210,6 +210,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   );
   const abbrev = getLocalizedAbbrev(bookId, locale);
   const placeLabel = useCallback(({ chapter, verse }: Place) => `${abbrev} ${chapter}:${verse}`, [abbrev]);
+  const readingLabel = useCallback((place: Place) => t('bible.minimapReading', { place: placeLabel(place) }), [placeLabel, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -493,6 +494,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
                 textRef={textRef}
                 chapterLabel={chapterWord}
                 placeLabel={placeLabel}
+                readingLabel={readingLabel}
                 title={t('bible.minimap')}
                 readingTop={readingTop}
                 onJump={jumpTo}
