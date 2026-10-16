@@ -15,6 +15,8 @@ const status = z.enum(['draft', 'active', 'completed']);
 const section = z.enum(['introduction', 'main', 'conclusion']);
 const outcome = z.enum(['excellent', 'good', 'average', 'poor']);
 const object = <T extends z.ZodRawShape>(shape: T) => z.object(shape).passthrough();
+/** A verse layer of Bible marks: one string of runs (`utils/bibleMarks.ts`); a list is the form tried first, 2026-10-16. */
+const markRuns = z.union([text, strings]);
 const optionalStrings = (keys: readonly string[]): z.ZodRawShape => Object.fromEntries(keys.map(key => [key, text.optional()]));
 
 /** IDs are the merge identity, so duplicates would make a later edit ambiguous. */
@@ -102,6 +104,8 @@ const shapes: Record<string, z.ZodRawShape> = {
   serviceOrders: { ...owner, ...timestamps, title: id, summary: text.optional(), steps: children(orderStep), rank: number, catalogKey: text.refine(value => SERVICE_ORDER_CATALOG.includes(value as typeof SERVICE_ORDER_CATALOG[number]), 'Unknown catalog identity').optional() },
   councils: { ...owner, ...timestamps, title: text, date: text.optional(), status: z.enum(['preparing', 'held']), heldAt: text.optional(), topics: children(councilTopic) },
   planTemplates: { ...owner, ...timestamps, name: id, structure: outline },
+  // A run is one string "first-last-colour": Firestore keeps no array inside an array (`encodeBookMarks`).
+  bibleMarks: { ...owner, ...timestamps, bible: id, book: id, verses: z.record(text, object({ m: markRuns.optional(), p: markRuns.optional() })) },
   tags: { ...owner, name: id, color: text, required: boolean, createdAt: text.optional(), updatedAt: text.optional() },
   users: { lastSeenAt: text.optional(), language: text.optional(), email: text.optional(), displayName: text.optional(), firstDayOfWeek: z.enum(['sunday', 'monday']).optional(), enablePrepMode: boolean.optional(), enableAudioGeneration: boolean.optional(), enableStructurePreview: boolean.optional(), enableGroups: boolean.optional(), showAppVersion: boolean.optional(), preferredProviderId: z.enum(providerIds).optional(), preferredModelId: id.optional(), preferredTranscription: preference.optional(), preferredText: preference.optional(), preferredTts: preference.optional(), createdAt: text.optional(), updatedAt: text.optional() },
 };

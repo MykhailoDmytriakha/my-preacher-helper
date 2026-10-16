@@ -451,7 +451,7 @@ describe('BibleBookReader', () => {
       await screen.findByText('Psalm 23:1');
       expect(global.fetch).toHaveBeenCalledWith('/bible-text/kjv/v1/psalms.json', expect.anything());
       expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="23"]')]);
-      expect(document.querySelector('[data-verse="23:1"] p')).toHaveAttribute('lang', 'en');
+      expect(document.querySelector('[data-verse="23:1"] [data-verse-text]')).toHaveAttribute('lang', 'en');
       window.history.replaceState(null, '');
     });
 

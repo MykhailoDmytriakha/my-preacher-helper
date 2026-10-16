@@ -30,6 +30,9 @@ import type { DocumentData, FailureAddress, FieldValue, JournalEntry, ResourceRe
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
+/** A refusal only because this device holds no copy and the server cannot be asked now (offline, hidden tab). */
+export const needsConnectionFailure = (error: unknown): boolean => needsConnection(error);
+
 interface EngineContextValue {
   browser: BrowserDataEngine | null;
   owner: string | null;

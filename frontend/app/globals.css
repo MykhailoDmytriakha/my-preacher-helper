@@ -393,3 +393,40 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
     transition: translate 250ms ease-out;
   }
 }
+
+/* MARKS IN THE BIBLE (components/bible/marks): the browser paints them over the words, no element of
+   their own. The marker fills the words with the colour of their meaning, light enough to read through;
+   the pencil is a line under them — grey, or one of the five colours — and lies over a colour too. The dark theme takes the same hues
+   as a thin wash. The legend in the "T" menu (MarkLegend.tsx) shows the same fills. */
+::highlight(bible-mark-red) { background-color: #fdd8d8; }
+::highlight(bible-mark-green) { background-color: #d3f2df; }
+::highlight(bible-mark-yellow) { background-color: #fff0a0; }
+::highlight(bible-mark-orange) { background-color: #ffdcc2; }
+::highlight(bible-mark-blue) { background-color: #d9e2fc; }
+::highlight(bible-mark-pencil-gray),
+::highlight(bible-mark-pencil-red),
+::highlight(bible-mark-pencil-green),
+::highlight(bible-mark-pencil-yellow),
+::highlight(bible-mark-pencil-orange),
+::highlight(bible-mark-pencil-blue) {
+  text-decoration-line: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.14em;
+}
+::highlight(bible-mark-pencil-gray) { text-decoration-color: #8b8f98; }
+::highlight(bible-mark-pencil-red) { text-decoration-color: #e5484d; }
+::highlight(bible-mark-pencil-green) { text-decoration-color: #30a46c; }
+::highlight(bible-mark-pencil-yellow) { text-decoration-color: #e0b100; }
+::highlight(bible-mark-pencil-orange) { text-decoration-color: #f76b15; }
+::highlight(bible-mark-pencil-blue) { text-decoration-color: #3e63dd; }
+:root.dark ::highlight(bible-mark-red) { background-color: rgba(255, 107, 107, 0.3); }
+:root.dark ::highlight(bible-mark-green) { background-color: rgba(61, 214, 140, 0.26); }
+:root.dark ::highlight(bible-mark-yellow) { background-color: rgba(255, 214, 10, 0.3); }
+:root.dark ::highlight(bible-mark-orange) { background-color: rgba(255, 139, 62, 0.3); }
+:root.dark ::highlight(bible-mark-blue) { background-color: rgba(123, 155, 255, 0.32); }
+:root.dark ::highlight(bible-mark-pencil-gray) { text-decoration-color: #9ca3af; }
+:root.dark ::highlight(bible-mark-pencil-red) { text-decoration-color: #ff6b6b; }
+:root.dark ::highlight(bible-mark-pencil-green) { text-decoration-color: #3dd68c; }
+:root.dark ::highlight(bible-mark-pencil-yellow) { text-decoration-color: #ffd60a; }
+:root.dark ::highlight(bible-mark-pencil-orange) { text-decoration-color: #ff8b3e; }
+:root.dark ::highlight(bible-mark-pencil-blue) { text-decoration-color: #7b9bff; }

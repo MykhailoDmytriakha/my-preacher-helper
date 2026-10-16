@@ -379,6 +379,26 @@
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",
     "changeTranslation": "{{translation}}: choose another translation",
+    "marks": {
+      "toolbar": "Marks",
+      "colors": "Marker colour",
+      "marker": "Marker: {{meaning}}",
+      "pencil": "Pencil: {{meaning}}",
+      "pencilColors": "Pencil colour",
+      "plainPencil": "Plain pencil",
+      "colorPencilMeaning": "Coloured pencil — the same meaning, as a line",
+      "eraser": "Eraser",
+      "notKept": "The mark was not kept. Try again.",
+      "legend": "Marks — what the colours mean",
+      "pencilMeaning": "Plain pencil — under the words",
+      "meaning": {
+        "red": "About God",
+        "green": "About God's word, the Church, ministers",
+        "yellow": "About heaven and promises",
+        "orange": "About faith and prayer",
+        "blue": "About man"
+      }
+    },
     "crossRefs": {
       "title": "Cross-references",
       "hint": "A number beside a verse: the places the sources agree on",

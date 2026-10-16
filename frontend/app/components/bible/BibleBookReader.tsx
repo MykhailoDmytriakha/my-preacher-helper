@@ -22,6 +22,7 @@ import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
 import { CrossReferenceSettings } from './CrossReferenceSettings';
 import { CrossReferenceSheet, type CrossReferencePlace } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
+import { useReaderMarks } from './marks/useReaderMarks';
 import { buildMinimapLayout } from './minimapLayout';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
@@ -342,6 +343,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const closeCrossRefs = crossRefs.close;
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
+  // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
+  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), lineGone: !wide && rowGone, bible, bookId });
+
   // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
   // at the verse itself. A verse the chapter does not have opens the chapter.
   // The verse jumped to is the place until the page moves from where the jump left it: a verse near
@@ -621,7 +625,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
         <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} text={text} locale={locale} wide={wide} onOpen={openPlace} />
         {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onPick={(chapter) => jumpTo({ chapter, verse: 1 })} /> : null}
-        <span className="ml-auto">
+        {marks.tools}
+        <span className={marks.translationClass}>
           <TranslationPicker bible={bible} wide={wide} onPick={changeBible} />
         </span>
         {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out
@@ -636,9 +641,12 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       <div className={`flex items-start gap-5 ${frame.row}`}>
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
           {text && layout ? (
+            // A tool in hand: the text answers a pull along the line and still scrolls up and down, and
+            // the page's own swipe back keeps off it (`data-gesture-ignore`, navigation/gestures).
             <article
               ref={textRef}
-              className="isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900"
+              data-gesture-ignore={marks.gestureIgnore}
+              className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
               <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
@@ -662,6 +670,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         ) : null}
       </div>
 
+      {marks.floatingTools}
       {!wide && text ? (
         <PhoneBar wayBack={wayBackLabel} onWayBack={goBack} showPill={rowGone} bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} onOpen={openPlace} />
       ) : null}
@@ -680,6 +689,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
           On a phone it stands above the bar with the way back and the book's pill. */}
       <FloatingTextScaleControls className="max-md:!bottom-24">
         <CrossReferenceSettings />
+        {marks.legend}
       </FloatingTextScaleControls>
     </div>
   );

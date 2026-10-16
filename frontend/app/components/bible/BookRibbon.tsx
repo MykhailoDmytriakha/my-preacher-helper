@@ -80,11 +80,14 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs }: { chapter: number; v
       ) : (
         <span className={VERSE_NUMBER_CLASSES}>{verse}</span>
       )}
-      {/* The text is in its Bible's language whatever the interface speaks: a screen reader reads it so. */}
-      <p lang={lang} style={VERSE_TEXT_STYLE} className="min-w-0 flex-1 font-serif leading-[1.65] text-gray-800 dark:text-gray-100">
-        {segments.map((segment, index) =>
-          segment.kind === 'break' ? <br key={index} /> : <Fragment key={index}><Segment segment={segment} /></Fragment>
-        )}
+      <p style={VERSE_TEXT_STYLE} className="min-w-0 flex-1 font-serif leading-[1.65] text-gray-800 dark:text-gray-100">
+        {/* The verse's own words, apart from the chip: marks count and paint them (`marks/verseWordDom.ts`).
+            They are in their Bible's language whatever the interface speaks: a screen reader reads them so. */}
+        <span data-verse-text="" lang={lang}>
+          {segments.map((segment, index) =>
+            segment.kind === 'break' ? <br key={index} /> : <Fragment key={index}><Segment segment={segment} /></Fragment>
+          )}
+        </span>
         {crossRefs && shown > 0 ? (
           <>
             {' '}

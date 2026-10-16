@@ -40,6 +40,8 @@ const fields: Record<string, readonly string[]> = {
   serviceOrders: ['title', 'summary', 'steps', 'rank', 'catalogKey'],
   councils: ['title', 'date', 'status', 'heldAt', 'topics'],
   planTemplates: ['name', 'structure'],
+  // Marks in the Bible text: one document per person, Bible and book (`utils/bibleMarks.ts`).
+  bibleMarks: ['bible', 'book', 'verses'],
   tags: ['name', 'color', 'required'],
   users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
     'enableStructurePreview', 'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId',
