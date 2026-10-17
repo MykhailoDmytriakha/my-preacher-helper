@@ -1317,7 +1317,7 @@ Evidence is indexed by local carry-notice-verification.json and carry-notice-sel
 
 ## BUG-20261017-council-conduct-undo-closed-editor — Finish and Undo across routes
 
-Stage: locally verified candidate; publication remains deferred.
+Stage: independently accepted locally as source6f25ef6ef76b9aadc67f6cd3bebd84bfb6060206; publication remains deferred.
 
 Finish now captures through the live public council editor before navigation and returns an entity-bound Undo through useDocumentActions. Both screens use one council UI orchestrator for pending/failed state, duplicate taps, neutral eight-second Undo and route handoff. Capture failure leaves conduct available for retry; retry saves the existing held draft without inventing a later heldAt. Undo changes status/heldAt/updatedAt over the latest canonical stored/submitted copy. No stale whole-council snapshot, revived editor, feature queue or route registry is introduced.
 
