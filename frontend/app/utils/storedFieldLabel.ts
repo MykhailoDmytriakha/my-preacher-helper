@@ -12,7 +12,7 @@ const NAMED_FIELDS = new Set([
   'transitionSentence', 'sermonInOneSentence', 'homileticalAnswers', 'whyPreach', 'impactOnChurch',
   'practicalQuestions', 'timelessTruth', 'christConnection', 'preachingGoal', 'statement',
   'homileticPlan', 'modernTranslation', 'updatedPlan', 'sermonPlan', 'children',
-  'title', 'name', 'verse', 'description', 'date', 'items', 'sermonIds', 'seriesKind', 'thoughts',
+  'title', 'name', 'verse', 'description', 'date', 'items', 'steps', 'sermonIds', 'seriesKind', 'thoughts',
   'type', 'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',
   'enableGroups', 'showAppVersion', 'preferredProviderId', 'preferredModelId', 'preferredTranscription', 'preferredText', 'preferredTts',
@@ -32,5 +32,8 @@ export const fieldLabel = (t: (key: string) => string, field: string): string =>
   if (field === 'durationMin') return t('legacyRecovery.field.duration');
   if (field === 'flagged') return t('serviceOrders.flag');
   if (field === 'forAssembly') return t('council.topic.forAssembly');
+  if (field === 'instanceTitle') return t('groupFlow.editor.stepTitleLabel');
+  if (field === 'instanceNotes') return t('groupFlow.editor.notesLabel');
+  if (field === 'answer') return t('council.topic.answerPlaceholder');
   return NAMED_FIELDS.has(field) ? t(`legacyRecovery.field.${field}`) : field;
 };

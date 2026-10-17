@@ -66,6 +66,7 @@
       "description": "Description",
       "date": "Date",
       "items": "Series contents",
+      "steps": "Steps",
       "sermonIds": "Sermons",
       "seriesKind": "Series kind",
       "thoughts": "Thoughts",

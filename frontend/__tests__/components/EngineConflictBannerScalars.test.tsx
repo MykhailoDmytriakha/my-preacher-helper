@@ -37,8 +37,8 @@ async function preview(collection: string, field: string, value: DocumentData, l
   });
   editor?.close({ flush: false });
   await screen.findByText(screenOwned ? 'dataSync.screenDraftBody' : 'freshness.conflictTitle');
-  const label = field === 'steps' ? field : `legacyRecovery.field.${field}`;
-  const shown = screen.getByText(content => content.startsWith(`${label}: `)).textContent ?? '';
+  const labels = field === 'steps' ? ['steps', 'legacyRecovery.field.steps'] : [`legacyRecovery.field.${field}`];
+  const shown = screen.getByText(content => labels.some(label => content.startsWith(`${label}: `))).textContent ?? '';
   expect(shown).toContain('Opening step');
   expect(shown).not.toMatch(/changed-step|private-template|order:|updatedAt/);
   expect(harness.server.value?.[field]).toEqual(remote);
@@ -86,6 +86,7 @@ describe('authored scalar values in saved-version choices', () => {
     const value = { userId: 'owner', title: 'Sunday service', steps: [item], rank: 1, createdAt: at, updatedAt: at };
     const shown = await preview('serviceOrders', 'steps', value, [{ ...item, flagged }], []);
     expect(shown).toContain(`Opening step\nserviceOrders.flag: legacyRecovery.${flagged ? 'valueOn' : 'valueOff'}`);
+    expect(shown).toContain('legacyRecovery.field.steps: Opening step');
     expect(shown).not.toContain('Keep these words.');
   });
 

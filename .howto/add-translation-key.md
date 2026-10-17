@@ -24,6 +24,8 @@ Every new `t('key')` goes into all three files frontend/locales/{en,ru,uk}/trans
 
 - Meaning-bearing scalar leaves use that same display reader at exact schema paths: `groups.flow.durationMin` reads with `groupFlow.minutesShort`, and explicit null with `legacyRecovery.absent`; `serviceOrders.steps.flagged` and `councils.topics.forAssembly` use the existing On/Off words. `fieldLabel` owns their readable labels. The engine item preview retains these converted strings with a label and compares them against the opening copy, so unchanged duration stays quiet. Never convert every number/boolean: positions, IDs, derived states and unknown extension data keep their original shape. Display copies never become saved payloads. Legacy comparison removals still use their established struck-through-line presentation for null; do not change generic diff fingerprints just to reuse the engine preview's unset wording.
 
+- Recovery field captions belong to `utils/storedFieldLabel.ts`; reuse the original editor wording for a known authored field. This helper receives a bare property name, so check every schema and consumer before adding a contextual alias: a registered name is global, while unregistered property names remain exact. Cover actual mounted preview and copied text, and retain raw archived JSON unchanged. Do not guess labels by splitting arbitrary property names.
+
 ## Why
 
 - 2026-02-23: duplicate keys were recorded as a webpack parse error; the build actually accepts them and drops the earlier value without a word, which is why uniqueness is on you.

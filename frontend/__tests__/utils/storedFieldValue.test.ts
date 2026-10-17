@@ -66,6 +66,19 @@ describe.each(['en', 'ru', 'uk'] as const)('Stored choices in %s', language => {
     expect(storedFieldValue(t, 'groups', 'status', 42)).toBe(42);
   });
 
+  it.each([
+    ['steps', 'legacyRecovery.field.steps'],
+    ['instanceTitle', 'groupFlow.editor.stepTitleLabel'],
+    ['instanceNotes', 'groupFlow.editor.notesLabel'],
+    ['answer', 'council.topic.answerPlaceholder'],
+  ])('labels the authored %s field with the familiar screen wording', (field, key) => {
+    expect(fieldLabel(t, field)).toBe(t(key));
+  });
+
+  it('leaves unregistered property names exact, including prototype-like keys', () => {
+    for (const key of ['extensionEvidence', 'constructor', '__proto__', 'toString']) expect(fieldLabel(t, key)).toBe(key);
+  });
+
   it('reads only declared authored scalar paths with their existing screen labels', () => {
     expect(storedFieldValue(t, 'groups.flow', 'durationMin', 12)).toBe(`12 ${t('groupFlow.minutesShort')}`);
     expect(storedFieldValue(t, 'groups.flow', 'durationMin', 0)).toBe(`0 ${t('groupFlow.minutesShort')}`);

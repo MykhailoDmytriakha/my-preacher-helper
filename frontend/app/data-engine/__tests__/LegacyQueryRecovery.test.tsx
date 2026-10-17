@@ -634,6 +634,26 @@ describe('legacy cache preservation UI', () => {
     expect(screen.getByRole('heading', { name: record.title })).toBeInTheDocument();
     error.mockRestore();
   });
+  it('labels and copies a saved group step title and leader note without rewriting its words', async () => {
+    const step = { id: 'flow-1', templateId: 'template-1', order: 1, durationMin: 5, instanceTitle: 'Stored step', instanceNotes: 'Stored leader note.' };
+    const value = { id: 'group-1', userId: 'owner', title: 'Group', description: '', status: 'active', templates: [], flow: [step], meetingDates: [] };
+    const local = { ...value, flow: [{ ...step, instanceTitle: 'My saved step', instanceNotes: 'My saved leader note.' }] };
+    const raw = JSON.stringify(local);
+    mockServerCopies.set('groups/group-1', value);
+    jest.mocked(listLegacyQueryCopies).mockResolvedValue([{ ...record, collection: 'groups', documentId: 'group-1', title: 'Group', raw }]);
+    render(<LegacyQueryCopies owner="owner" />);
+    await openReview();
+    const change = screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(change).toHaveTextContent('groupFlow.editor.stepTitleLabel: My saved step');
+    expect(change).toHaveTextContent('groupFlow.editor.notesLabel: My saved leader note.');
+    expect(change).not.toHaveTextContent(/instanceTitle:|instanceNotes:/);
+    fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('groupFlow.editor.stepTitleLabel: My saved step'));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('groupFlow.editor.notesLabel: My saved leader note.'));
+    expect(screen.getByText(raw)).toBeInTheDocument();
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
   it('shows a nested part that differs in full: a prepared answer under an unchanged question', async () => {
     const topic = (answer: string) => ({ id: 'm1', title: 'Camp', questions: [{ id: 'q1', question: 'Who leads?', answer }] });
     mockServerCopies.set('councils/council', { id: 'council', userId: 'owner', title: 'Council', topics: [topic('Server answer')] });
@@ -643,6 +663,10 @@ describe('legacy cache preservation UI', () => {
     const change = screen.getByRole('group', { name: 'legacyRecovery.kindReplaced' });
     expect(within(change).getByText(/Device answer/)).toBeInTheDocument();
     expect(within(change).getByText(/Server answer/)).toBeInTheDocument();
+    expect(change).toHaveTextContent('council.topic.answerPlaceholder: Device answer');
+    expect(change).not.toHaveTextContent(/\banswer:/);
+    fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('council.topic.answerPlaceholder: Device answer'));
   });
 
   it('keeps a copy whose difference is partly invisible when the review closes, and asks before removing it', async () => {

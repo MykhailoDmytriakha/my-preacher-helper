@@ -112,13 +112,13 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-order-conflict-raw-steps-label - The service-order choice shows the internal steps field name
-**Severity.** P3: a recovery notice exposes an untranslated field key before the person's step title; the saved words and decision controls remain usable.
-**Found / anchor.** 2026-10-17, actual localhost Care -> Conducting services -> existing order -> Edit -> change a step -> conflict -> back to list, at390px. The preview reads “steps: Opening step”. `frontend/app/utils/storedFieldLabel.ts:7-33` omits steps; `frontend/app/components/EngineConflictBanner.tsx:133-139` prefixes the returned raw field name.
-**Expected / observed.** Name the list using the interface language instead of the internal English key. Existing shared field labels cover flow/topics but not service-order steps.
-**Reproduce.** Leave a saved step change requiring a choice and inspect the global notice on the service-order list in Russian or Ukrainian.
-**User behavior.** A preacher reviewing their saved work sees familiar service/step words. Authored title/body stays verbatim; ordinary saved items produce no notice.
-**Class / limits.** Field-label coverage, separate from omitted numeric/boolean values. Check the schema-owned root fields shown by both recovery readers before choosing the existing/localized label seam. Runtime confirmed on original local build over RAM protocol; no backend/production claim.
+### BUG-20261017-archive-flow-item-shows-placement - An archived meeting step uses its contents and order number as its heading
+**Severity.** P3: the archived-copy review repeats the step's contents and shows a technical order number; the stored words remain intact.
+**Found / anchors.** 2026-10-17, actual Groups -> copies-from-previous-version review at390px. `frontend/app/data-engine/LegacyQueryRecovery.tsx:121,131,427-445`: ITEM_NAMES omits instanceTitle, so item() falls back to entry(); ITEM_PLACEMENT omits order. A named step's heading becomes “Duration:5 · instanceNotes:... · instanceTitle:... · order:1”.
+**Expected / observed.** Identify the old step by its authored custom title and show changed fields underneath; no numeric placement in that heading. The current fallback repeats leader notes/title/duration and exposes order even when it was unchanged.
+**Reproduce.** Keep a previous-version group copy whose flow item has instanceTitle, instanceNotes, order and durationMin; change title/notes in the current copy; open its review. The subject uses all values instead of the step title.
+**User behavior.** A person recognizes which step they are reviewing from their own title. Number-only placement changes must remain reported as hidden structural differences, without disguising them as written words. Unknown prose under extension keys must remain recoverable.
+**Class / limits.** Item naming/placement policy, separate from the missing localized field labels repaired in the neighboring record. Check every consumer of ITEM_NAMES/ITEM_PLACEMENT and the unseen projection before changing it. Actual local component and canonical synthetic IndexedDB archive fixture; no migration-ingestion/backend/production proof.
 
 ### BUG-20261017-reference-conflict-choice-stays-stale - A newly shown conflict can need another choice after its stored version refreshes
 **Severity.** P3: an early click can be refused or cancelled while the notice catches up; after its five-second refresh both choices work. No text loss was observed. The earlier permanent-block/P2 interpretation is withdrawn.

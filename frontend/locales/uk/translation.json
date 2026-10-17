@@ -66,6 +66,7 @@
       "description": "Опис",
       "date": "Дата",
       "items": "Склад серії",
+      "steps": "Кроки",
       "sermonIds": "Проповіді",
       "seriesKind": "Вид серії",
       "thoughts": "Думки",
