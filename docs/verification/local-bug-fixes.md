@@ -1334,7 +1334,7 @@ Evidence lives in local council-undo-verification.json, selected-browser.json, v
 
 ## BUG-20261017-scratch-undo-closed-editor — Delete Undo after leaving Scratch
 
-Stage: local source and root browser acceptance complete; fresh independent acceptance and local source commit pending. Publication remains deferred.
+Stage: independently accepted locally as source64781fb473f438c158b0da7aeadf8ad0af2673d4; publication remains deferred.
 
 Scratch restore now uses the public entity-bound useDocumentActions commit and awaits local capture. It restores the exact original note only when its identity is absent; existing same-ID newer words and current siblings remain. Ordinary additions/edits keep the live editor and trimming behavior. The toast catches capture failure with the existing localized save-error message and prevents duplicate pending restoration. It does not call local capture a server acknowledgement.
 

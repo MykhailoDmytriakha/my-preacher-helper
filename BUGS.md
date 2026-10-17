@@ -110,19 +110,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-scratch-undo-closed-editor · Delete Undo silently fails after leaving the sermon
-P3 · `frontend/app/components/sermon/ScratchPanel.tsx:395` · `frontend/app/(pages)/(private)/sermons/[id]/hooks/useScratchDataDocument.ts:26`.
-Sermon → Scratch → delete and confirm → Sermons breadcrumb → offered Undo → reopen: the thought stays absent. Undo must restore only that thought, preserving its identity, later words and siblings.
-
-| Place | Class boundary |
-|---|---|
-| ScratchPanel Undo and useScratchDataDocument restore | Detached callback must use the original entity, await local capture and guard repeated taps |
-| Ordinary scratch add/edit and EngineScratchWorkspace | Live editor behavior stays page-owned; workspace only forwards the callback |
-| DataSession/EditorController submitted projection | A unique action root from the exact confirmed baseline must be visible offline without advancing confirmation or taking ordinary screen drafts |
-| Server source/owner/deletion guards | Canonical provenance and resource guards still apply |
-| Council action notice | Uses the canonical detached action; no second queue or editor registry |
-
-
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
 **Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.
