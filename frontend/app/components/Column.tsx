@@ -12,6 +12,7 @@ import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBann
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
+import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { useRecordingOwner } from '@/hooks/useRecordingOwner';
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
@@ -187,6 +188,8 @@ export default function Column({
   // property of the recording that happened to meet it.
   const [audioLimitReached, setAudioLimitReached] = useState(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
+  const normalAudioPanelRef = useRef<HTMLDivElement | null>(null);
+  usePanelPosition(normalAudioPanelRef, showAudioPopover);
   const normalAudioErrorRef = useRef<FailureWords | null>(null);
 
   const setNormalAudioErrorSafely = useCallback((error: FailureWords | null) => {
@@ -760,8 +763,8 @@ export default function Column({
                 <MicrophoneIcon className="h-4 w-4 text-white" />
               </button>
               {showAudioPopover && (
-                <div className="absolute right-0 mt-2 z-50">
-                  <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 w-[320px]">
+                <div ref={normalAudioPanelRef} className="absolute right-0 mt-2 z-50 w-[320px]">
+                  <div className="w-full p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
 	                    <AudioRecorder
 	                      key={recordingOwner.key}
 	                      onDiscardRecording={() => recordingOwner.discard('section')}

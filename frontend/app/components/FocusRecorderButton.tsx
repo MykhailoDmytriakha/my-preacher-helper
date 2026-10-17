@@ -789,6 +789,7 @@ export const FocusRecorderButton = ({
       />
 
       <AudioRecoveryPanel
+        floating
         limitReached={transcriptionLimitReached}
         show={shouldShowRecovery}
         audioUrl={storedAudioUrl}

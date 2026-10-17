@@ -1,3 +1,6 @@
+import { useRef } from "react";
+
+import { usePanelPosition } from "@/hooks/usePanelPosition";
 import { MicFilledIcon } from "@components/Icons";
 
 import {
@@ -324,7 +327,10 @@ export const AudioRecoveryPanel = ({
   onDownload,
   t,
   className = "",
+  floating = false,
 }: AudioRecoveryPanelProps) => {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  usePanelPosition(panelRef, Boolean(floating && show && audioUrl && errorMessage), className);
   if (!show || !audioUrl || !errorMessage) return null;
 
   const canRetry = !limitReached && retryCount < maxRetries && !isProcessing;
@@ -335,6 +341,7 @@ export const AudioRecoveryPanel = ({
   return (
     <div
       className={`${compact ? "p-4" : "p-5"} rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}
+      ref={panelRef}
       data-testid="audio-recovery-panel"
     >
       <div className="flex min-w-0 items-start gap-3">

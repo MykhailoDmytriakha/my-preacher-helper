@@ -1,6 +1,8 @@
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import React from "react";
 
+import { usePanelPosition } from "@/hooks/usePanelPosition";
+
 type PopoverAlignment = 'left' | 'right';
 
 const useDismissablePopover = () => {
@@ -68,6 +70,8 @@ export const SermonSectionGuidanceTooltip: React.FC<{
 }> = ({ t, section, popoverAlignment = 'left' }) => {
   const { open, setOpen, popoverRef } = useDismissablePopover();
   const config = SECTION_CONFIG[section];
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  usePanelPosition(panelRef, open, popoverAlignment);
 
   return (
     <div className="relative" ref={popoverRef}>
@@ -81,7 +85,7 @@ export const SermonSectionGuidanceTooltip: React.FC<{
         <InformationCircleIcon className="h-5 w-5 text-white" />
       </button>
       {open && (
-        <div className={`absolute ${popoverAlignment === 'right' ? 'right-0' : 'left-0'} mt-2 z-50 w-[320px]`}>
+        <div ref={panelRef} className={`absolute ${popoverAlignment === 'right' ? 'right-0' : 'left-0'} mt-2 z-50 w-[320px]`}>
           <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 text-xs">
             <div className="font-semibold mb-2 text-gray-900 dark:text-gray-100">
               {t(`${config.baseKey}.title`, { defaultValue: config.defaultTitle })}
@@ -110,6 +114,7 @@ export const OutlinePointGuidanceTooltip: React.FC<{
     vertical: 'top' | 'bottom';
     horizontal: 'left' | 'right';
   }>({ vertical: 'top', horizontal: popoverAlignment === 'right' ? 'right' : 'left' });
+  usePanelPosition(tooltipRef, open, `${tooltipPosition.vertical}:${tooltipPosition.horizontal}`);
 
   // Calculate tooltip positioning to stay within container bounds
   React.useEffect(() => {

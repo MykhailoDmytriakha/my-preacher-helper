@@ -87,6 +87,8 @@ export interface AudioRecoveryPanelProps {
   onDownload?: () => void;
   t: TranslationFn;
   className?: string;
+  /** Anchored recovery beside a microphone, rather than an ordinary in-flow card. */
+  floating?: boolean;
 }
 
 export interface RecordingProgressProps {

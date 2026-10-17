@@ -309,6 +309,7 @@ export function FlatRecorderButton({
       </div>
 
       <AudioRecoveryPanel
+        floating
         limitReached={transcriptionLimitReached}
         show={shouldShowRecovery}
         audioUrl={storedAudioUrl}
