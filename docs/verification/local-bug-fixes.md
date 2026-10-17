@@ -1140,7 +1140,7 @@ This is integration, not a new bug closure or performance comparison. Synthetic 
 
 ## BUG-20261016-one-shot-answer-notice-doubles-on-document / BUG-20261016-null-draft-choice-says-keep-text
 
-Stage: locally verified; fresh exact-version acceptance and source commit are recorded separately in the case. Both tracker entries remain until that gate. Production pending.
+Stage: independently accepted locally and committed as `0bcc3ab6`. Fresh acceptance repeats 327 tests and 18 browser cases, inspecting 28 new native images. This tracker-only closure follows the accepted source commit; both listed BUGS.md entries are locally closed. Production pending.
 
 An answering document now owns the saved question only for the same owner's complete waiting group, held request IDs and identical words on its actual route. The shared open-editor query publishes an exact derived snapshot while preserving the old resource subscription boundary. Transient action editors have no answering screen. One selector serves initial display and both final-choice rechecks. Other requests and later unseen words remain globally discoverable. No queue, storage schema, cancellation scope or chronology rule changes.
 

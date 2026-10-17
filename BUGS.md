@@ -14,15 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261016-null-draft-choice-says-keep-text · A pending deletion is offered as Keep my text
-**Severity.** P2 — a misleading action can delete the record while the person thinks they are preserving text.
-**Found.** Native Chromium on local candidate buildzrRb8Y2jw_WMVT_0BxaBd: actual engine-generated sermon removal conflict, one visible Keep my text button; clicking it sends a controlled delete command. No real backend writes. Source boundary also applies to the existing series null-draft status.
-**Anchors.** `frontend/app/data-engine/DataSyncStatus.tsx:97-105,127-134` labels any local conflict as a text choice; `frontend/app/data-engine/status.ts:27-36,86-96` does not describe local deletion intent. The global notice already uses explicit delete/keep-record words.
-**Expected/observed.** Keeping the record cancels this device's pending deletion; deleting again must explicitly say Delete and ask before it runs. Currently Keep my text repeats deletion, with no deletion confirmation.
-**Reproduction.** A one-shot deletion waits in conflict. Open its answering sermon page in the corrected candidate. Click Keep my text. Native artifacts: one-shot-notice-screen-candidate/one-shot-notice-removal-mine-1280-decision.png and corresponding JSON (one intercepted delete). This candidate is local only.
-**User contract.** A destructive decision must name its actual consequence. Removing a field or keeping text never means deleting a whole entity. Do not enable a choice for unknown outcomes or manual/atomic work that cannot own it.
-**Class.** All DataSyncStatus document deletion decisions; shared describeSync projection and shared presentation. Ordinary text conflicts, selected-field manual saves, already deleted records and unknown delivery retain their distinct behavior. Reuse existing localized delete/keep-record words and confirmation hook; no writer or queue changes.
-
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
@@ -118,27 +109,6 @@
 ---
 
 ## 🔵 P3 — открыто
-
-### BUG-20261016-one-shot-answer-notice-doubles-on-document · Opening the document shows the same one-shot answer twice
-**Severity.** P3 — one saved change looks like two separate questions.
-**Found.** Confirmed in guarded Chromium at1280/390, HEADc7f62850/build_FB_JWwb4u_8oQfSmrYiG: one actual engine request, two Keep/Take pairs on the series, still two after reload; one again on Settings. Controlled server replies, native IndexedDB; ordinary UI creation of the fixture is not proved.
-**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:280,301,327` bypass open-answer suppression for every one-shot; `frontend/app/data-engine/engine.ts:582-608` publishes only resource addresses; `frontend/app/components/series/EngineSeriesDetail.tsx:64,85` shows the answering document status.
-**Expected/observed.** One question for the same saved work on its answering screen; currently two. Leaving that screen must keep the global question discoverable.
-**Reproduction.** One closed one-shot request waits in conflict. Settings -> its series -> reload -> Settings. Exact scripts, logs and native screenshots: local case artifacts/one-shot-notice-before-1280/390.*. Both repeats show the duplicate; no command or unexpected write.
-**User contract.** Explain saved work once where it can be decided. A matching address alone is insufficient: another unheld request or unseen words must keep their own notice. No screen/unknown route, a closed editor and offline navigation must retain discovery.
-**Class (mechanism).** Global notice ownership is selected by entry kind and resource address rather than the actual saved work held by the answering editor.
-| place | verdict | reason |
-|---|---|---|
-| EngineConflictBanner selection and both final-choice rechecks | affected | three copies of the same kind/resource predicate; one-shot always stays visible |
-| DataEngine open-answer snapshot / public hook | insufficient scope | resource set cannot prove that the opened editor holds these exact requests and words; safety controls needed |
-| Sermon null-data status / group meeting-loading view | affected screen boundary | current candidate r3FI hands off adopted work before these branches render the existing status; actual sermon deletion regression is RED, group overlap is source-derived |
-| Series null-data, council, settings | retain existing status | these branches keep feedback; read-only copies do not register an answering editor |
-| Routed prayer, study-note and service-order pages | no registered answering document editor | cannot suppress a global question through this query |
-| Unrouted collections, a route without an answering editor, independent/unseen copies | preserve | their only global decision must not be hidden |
-| Manual-form/membership status, legacy outbox, usage-cap notices | separate ownership | form work is already filtered; other queues/error objects do not use this engine predicate |
-| Collection summary status | separate aggregate | no Keep/Take decision controls; this bug concerns duplicated document decisions |
-| Server / offline | no server selection; local path shared | no write/CAS/schema change; actual offline route and close/reopen checks required |
-**Fix direction.** Compare held pending identities and draft words through one derived engine view and one shared selector, preserving the route check. Resource-only hiding can silence unheld work; per-screen patches duplicate the common rule. Actual component RED also covers an independent answered document request hidden behind the earlier action; same-request later-word and independent-action controls already pass.
 
 ### BUG-20261016-reader-has-rules-restyle-document · В Chrome любой элемент, появившийся на экране чтения, пересчитывает стиль всей книги: открытие окна связей, статус синхронизации — около 150 мс в Псалтири
 **Severity.** P3 — Chrome (Android, компьютер), большая книга: каждое появление или исчезновение элемента на экране чтения подвешивает его на ~150 мс (Псалтирь, 69 тыс. узлов, боевая сборка, Mac; на телефоне больше). WebKit (iPad) этого не делает. Палитра пометок, где это било на каждом нажатии, уже обойдена.
