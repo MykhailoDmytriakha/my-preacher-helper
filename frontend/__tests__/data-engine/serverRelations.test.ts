@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import { carriedCopy } from '@/data-engine/councilCarryContent';
 import { planDataCommand } from '@/data-engine/serverRelations';
 
 import type { RelationReader } from '@/data-engine/serverRelations';
@@ -497,4 +498,66 @@ describe('exclusive series membership across documents', () => {
     expect(await planDataCommand(command, target, reader)).toMatchObject({ result: { code: 'membership-already-assigned' }, writes: [] });
   });
 
+});
+
+
+describe('legacy child defects in relation projections', () => {
+  it('carries a clean topic while another source topic holds old duplicate questions', async () => {
+    const clean = { id: 'clean', title: 'Carry these words', questions: [], options: [] };
+    const legacy = { id: 'legacy', title: 'Keep this topic', questions: [{ id: 'old', question: 'First words' }, { id: 'old', question: 'Second words' }], options: [] };
+    const source = put('councils', 'source', { title: 'Source', status: 'preparing', topics: [clean, legacy], createdAt: 'now', updatedAt: 'now' });
+    const target = put('councils', 'target', { title: 'Target', status: 'preparing', topics: [], createdAt: 'now', updatedAt: 'now' });
+    const command = { ...commandBase(source), kind: 'relation', relation: 'council-carry', edits: [
+      { resource: source.resource, generation: null, beforeTopics: [clean, legacy], afterTopics: [{ ...clean, carriedToCouncilId: 'target' }, legacy] },
+      { resource: target.resource, generation: null, beforeTopics: [], afterTopics: [{ ...clean, id: 'copy' }] },
+    ] } as DataCommand;
+    const plan = await planDataCommand(command, source, reader);
+    expect(plan.result.kind).toBe('acknowledged');
+    expect(changed(plan.writes, 'councils', 'source').value?.topics).toEqual([{ ...clean, carriedToCouncilId: 'target' }, legacy]);
+    expect(changed(plan.writes, 'councils', 'target').value?.topics).toEqual([{ ...clean, id: 'copy' }]);
+  });
+
+  it('unlinks a note while preserving both old duplicate material sections and their words', async () => {
+    const sections = [{ id: 'old', title: 'First section', noteIds: ['note'], connector: 'First words' },
+      { id: 'old', title: 'Second section', noteIds: ['note'], connector: 'Second words' }];
+    const material = put('studyMaterials', 'material', { title: 'Material', type: 'study', noteIds: ['note'], sections });
+    put('studyNotes', 'note', { content: 'Retained note words', materialIds: ['material'] });
+    const plan = await planDataCommand(materialCommand(material, ['note'], []), material, reader);
+    expect(plan.result.kind).toBe('acknowledged');
+    expect(changed(plan.writes, 'studyMaterials', 'material').value).toMatchObject({ noteIds: [], sections: sections.map(section => ({ ...section, noteIds: [] })) });
+    expect(changed(plan.writes, 'studyNotes', 'note').value).toMatchObject({ content: 'Retained note words', materialIds: [] });
+  });
+});
+
+
+describe('council carry addresses topics but preserves legacy question words', () => {
+  it('carries all words from old duplicate questions into fresh question identities', async () => {
+    const topic = { id: 'topic', title: 'Keep both questions', questions: [{ id: 'old', question: 'First words' }, { id: 'old', question: 'Second words' }], options: [] };
+    const source = put('councils', 'source', { title: 'Source', status: 'preparing', topics: [topic], createdAt: 'now', updatedAt: 'now' });
+    const target = put('councils', 'target', { title: 'Target', status: 'preparing', topics: [], createdAt: 'now', updatedAt: 'now' });
+    const copy = carriedCopy(topic, 'operation');
+    const command = { ...commandBase(source), kind: 'relation', relation: 'council-carry', edits: [
+      { resource: source.resource, generation: null, beforeTopics: [topic], afterTopics: [{ ...topic, carriedToCouncilId: 'target' }] },
+      { resource: target.resource, generation: null, beforeTopics: [], afterTopics: [copy] },
+    ] } as DataCommand;
+    const plan = await planDataCommand(command, source, reader);
+    expect(plan.result.kind).toBe('acknowledged');
+    expect((changed(plan.writes, 'councils', 'source').value?.topics as DocumentData[])[0]).toMatchObject({ questions: topic.questions });
+    const questions = (changed(plan.writes, 'councils', 'target').value?.topics as DocumentData[])[0].questions as DocumentData[];
+    expect(questions.map(question => question.question)).toEqual(['First words', 'Second words']);
+    expect(new Set(questions.map(question => question.id)).size).toBe(2);
+  });
+
+  it('still refuses ambiguous topic identities before making any relation write', async () => {
+    const first = { id: 'same', title: 'First', questions: [], options: [] }, second = { ...first, title: 'Second' };
+    const source = put('councils', 'source', { title: 'Source', status: 'preparing', topics: [first, second], createdAt: 'now', updatedAt: 'now' });
+    const target = put('councils', 'target', { title: 'Target', status: 'preparing', topics: [], createdAt: 'now', updatedAt: 'now' });
+    const command = { ...commandBase(source), kind: 'relation', relation: 'council-carry', edits: [
+      { resource: source.resource, generation: null, beforeTopics: [first, second], afterTopics: [{ ...first, carriedToCouncilId: 'target' }, second] },
+      { resource: target.resource, generation: null, beforeTopics: [], afterTopics: [carriedCopy(first, 'operation')] },
+    ] } as DataCommand;
+    const plan = await planDataCommand(command, source, reader);
+    expect(plan.result).toMatchObject({ kind: 'refused', code: 'invalid-document' });
+    expect(plan.writes).toHaveLength(0);
+  });
 });

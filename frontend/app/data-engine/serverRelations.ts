@@ -3,6 +3,7 @@ import { isServiceOrderCatalogKey } from '@/utils/serviceOrderSeedIdentity';
 import { isStructureTag } from '@/utils/structureTags';
 
 import { validCouncilCarry } from './councilCarryContent';
+import { childIdentityIssues } from './legacyChildIdentity';
 import { advanceResourceSnapshot, applyCommand, equalValues, mergeFields, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
@@ -59,7 +60,10 @@ function carryMarks(side: { exists: boolean; value?: Json } | undefined): string
 function currentTopics(value: DocumentData): DocumentData[] {
   if (value.topics === undefined) return [];
   if (!Array.isArray(value.topics)) return fail(INVALID_DOCUMENT);
-  validateResourceDocument('councils', { topics: value.topics }, { kind: 'update', changedFields: ['topics'] });
+  validateResourceDocument('councils', { topics: value.topics }, { kind: 'update', changedFields: ['topics'], previous: value });
+  // Carry addresses a topic, while its copy receives fresh question/option IDs.
+  // Existing nested duplicates may remain; an ambiguous topic address may not.
+  if (childIdentityIssues(value.topics).length) return fail(INVALID_DOCUMENT);
   return value.topics as DocumentData[];
 }
 
@@ -131,9 +135,10 @@ class RelationPlanner {
   private stage(snapshot: ResourceSnapshot, patch: DocumentData): void {
     const original = this.cached.get(key(snapshot.resource)) ?? snapshot;
     const prior = this.writes.get(key(snapshot.resource));
-    const value = { ...this.live(prior ?? snapshot), ...patch };
-    if (equalValues(value, (prior ?? snapshot).value)) return;
-    validateResourceDocument(snapshot.resource.collection, value, { kind: 'update', changedFields: Object.keys(patch) });
+    const previous = this.live(prior ?? snapshot);
+    const value = { ...previous, ...patch };
+    if (equalValues(value, previous)) return;
+    validateResourceDocument(snapshot.resource.collection, value, { kind: 'update', changedFields: Object.keys(patch), previous, derivedSectionNoteIds: true });
     // An ordinary primary command already advanced its revision once. Deriving
     // additional fields in that same aggregate must not advance it again.
     this.writes.set(key(snapshot.resource), prior ? { ...prior, value }

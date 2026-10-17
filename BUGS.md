@@ -110,6 +110,13 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261017-council-carry-success-before-ack · Council carry reports success even when the server refuses it
+**P3** — misleading confirmation; the refusal banner preserves the draft. Anchor: `frontend/app/(pages)/(private)/care/council/[id]/page.tsx:263` (`carryToNext`).
+**User contract.** Care → Council → held council → carry a topic: confirm where the copy was saved only after acceptance; pending or refused work must say so.
+**Reproduce.** Carry into a preparing council while the relation command is refused: a green “section added” toast appears alongside the refusal notice.
+**Class.** The shared `carryToNext` success toast covers both existing and newly created destinations; inspect the delivery result rather than local enqueue completion.
+
+
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
 **Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.
@@ -174,7 +181,20 @@
 **P3** — такие двойники движок сам не создаёт (слияние списка с повтором id даёт спор), они возможны только в старых данных; если есть, не сохраняется ни одно поле подготовки · `frontend/app/data-engine/resourceSchemas.ts:21` (`children`: уникальность внутри списка) + `frontend/app/data-engine/protocol.ts` `validCandidate` (правка любого поля `preparation` проверяет её целиком).
 **Найден.** 2026-10-11 · ревью Codex `refute-twins` r1 (находка 5); унаследовано; боевые данные не проверялись (решение владельца — без скана прода).
 **Как должно работать для человека:** старые двойники ничему не мешают — правка других полей подготовки сохраняется.
-**Направление.** Сравнивать дефекты «до и после», как `preservesSermonLinks` для связей: отклонять только новый двойник в списке.
+**Направление.** Сравнивать со старой копией: разрешать правки остальных полей, сохраняя строки с повторяющимся ID без изменения содержимого. Новые двойники и неоднозначная перезапись старых строк отклоняются.
+
+
+**Class (mechanism).** Validation of a touched aggregate rejects unchanged legacy child-identity defects in a sibling field.
+| Location | Verdict | Reason |
+|---|---|---|
+| `resourceSchemas.ts:24-33,37-112` — all22 `children(...)` schema sites and the outline global-identity check | affected ordinary updates | Duplicate IDs are always rejected even when the trusted previous document has exactly the same defect. Covers preparation trees/homiletic lists, outline/subpoints, council topics/questions/options and the remaining flat child lists. One admission mechanism must retain each list's identity scope. |
+| `protocol.ts:543-552` / server command path through `applyCommand` | affected | The merged value is validated with the trusted previous snapshot; this is the common admission point, including replay after offline work. |
+| `serverRelations.ts` `currentTopics` and `stage` | affected → fix here | An old nested question duplicate blocks a different topic carry; old material-section IDs block note unlink/delete. Stage compares against its trusted transaction value. Council input permits old nested defects but still requires unique topic addresses through the same identity detector. |
+| `serverRelations.ts` `currentItems`, `seriesFields`, new-record checks | retain strict checks | Flat series membership IDs are relation addresses; new records have no held-defect allowance. |
+| `manualScope.ts:106,336`, `membershipScope.ts:78,149` | no duplicate admission on stage; create stays strict | Empty changedFields checks only storage safety. New-document checks have no legacy baseline. |
+| `serverEdit.server.ts:61` | not affected | Only user settings; no child identity lists. |
+**Direction.** Tag only identity violations, compare their identity/count and stable parent-list scope to the trusted previous schema result, and retain duplicate rows only as an unchanged multiset subset. This permits unrelated edits and removing held copies, never an ambiguous rewrite or an extra copy of different words. Other schema/storage/authorization rules remain strict. Parent ordering must not move a defect; ambiguous duplicate parents require an unchanged same-ID peer-group witness. Material relation staging alone may project section noteIds; authored section fields remain unchanged. New records never inherit defects. No data is deduplicated or rewritten.
+**Rejected alternatives.** Removing uniqueness admits new ambiguous records; rebuilding/deduplicating legacy plans discards authored words; skipping preparation validation accepts malformed data; a preparation-only exception leaves the same mechanism in councils and outlines.
 
 ### BUG-20261011-refused-move-keep-mine-loops · Мысль или подпункт плана, переставленные на двух устройствах в разные места: «оставить моё» ставит их в оба места и снова получает отказ
 **P3** — нужен перенос одной мысли между секциями (или подпункта плана в разные места) на двух устройствах, пока одно не видело другое; текст не теряется, но выход только «взять пришедшее» · `frontend/app/data-engine/session.ts:238` `keepLocal` (заново сливает своё с пришедшим по спискам, мысль попадает в обе секции) → отказ `invalid-document` по `frontend/app/data-engine/sermonIntegrity.ts:65` (`duplicate-placement`) и `frontend/app/data-engine/resourceSchemas.ts:40` (план проповеди уникален целиком; та же схема у шаблона плана `planTemplates.structure`).

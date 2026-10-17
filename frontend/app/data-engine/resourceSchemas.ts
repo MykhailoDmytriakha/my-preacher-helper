@@ -5,6 +5,8 @@ import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 
+import { childIdentityIssue, childIdentityIssues, keepsExistingChildIdentities } from './legacyChildIdentity';
+
 import type { DocumentData } from './types';
 
 const text = z.string();
@@ -23,25 +25,20 @@ const optionalStrings = (keys: readonly string[]): z.ZodRawShape => Object.fromE
 /** IDs are the merge identity, so duplicates would make a later edit ambiguous. */
 function children<T extends z.ZodTypeAny>(schema: T) {
   return z.array(schema).superRefine((values, context) => {
-    const seen = new Set<string>();
-    values.forEach((value, index) => {
-      if (typeof value.id !== 'string' || seen.has(value.id)) {
-        context.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'id'], message: 'Child identity must be unique' });
-      }
-      seen.add(value.id);
-    });
+    childIdentityIssues(values).forEach(issue => context.addIssue(issue));
   });
 }
 
 const subPoint = object({ id, text, position: number, note: text.optional() });
 const point = object({ id, text, isReviewed: boolean.optional(), subPoints: children(subPoint).optional(), note: text.optional() });
 const outline = object({ introduction: children(point), main: children(point), conclusion: children(point) }).superRefine((value, context) => {
-  const ids = new Set<string>();
+  const ids = new Map<string, number>();
   for (const name of ['introduction', 'main', 'conclusion'] as const) {
     value[name].forEach((entry, index) => {
       for (const child of [entry, ...(entry.subPoints ?? [])]) {
-        if (ids.has(child.id)) context.addIssue({ code: z.ZodIssueCode.custom, path: [name, index], message: 'Outline identity must be globally unique' });
-        ids.add(child.id);
+        const count = (ids.get(child.id) ?? 0) + 1;
+        if (count > 1) context.addIssue(childIdentityIssue('outline', child.id, count, [name, index]));
+        ids.set(child.id, count);
       }
     });
   }
@@ -142,8 +139,10 @@ export interface ResourceValidationOptions {
   kind: 'create' | 'update';
   /** Top-level fields touched by the command, after its merge has been calculated. */
   changedFields?: readonly string[];
-  /** Existing legacy dates may remain untouched when a different meeting field changes. */
+  /** Trusted existing state for unchanged legacy dates and ambiguous child rows. */
   previous?: DocumentData | null;
+  /** Internal relation staging may project section membership without changing authored rows. */
+  derivedSectionNoteIds?: boolean;
 }
 
 /**
@@ -161,7 +160,11 @@ export function validateResourceDocument(collection: string, value: DocumentData
   for (const key of new Set(fields)) {
     if (!Object.prototype.hasOwnProperty.call(shape, key)) invalid(`Unknown changed field: ${key}`);
     const result = shape[key].safeParse(value[key]);
-    if (!result.success) invalid(`Invalid ${collection}.${key}: ${result.error.issues.map(issue => issue.message).join('; ')}`);
+    if (!result.success && !(options.kind === 'update'
+      && keepsExistingChildIdentities(shape[key], value[key], options.previous?.[key], result.error.issues,
+        options.derivedSectionNoteIds && collection === 'studyMaterials' && key === 'sections' ? ['noteIds'] : []))) {
+      invalid(`Invalid ${collection}.${key}: ${result.error.issues.map(issue => issue.message).join('; ')}`);
+    }
   }
   validateGroupMeetingDays(collection, value, options, fields);
   if (options.kind === 'create' && collection === 'sermons') {
