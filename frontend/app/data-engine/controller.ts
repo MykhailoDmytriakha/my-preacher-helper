@@ -1,3 +1,4 @@
+import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
@@ -390,11 +391,18 @@ export class EditorController {
 
   private async adoptSubmittedSuccessor(request: CommitRequest): Promise<boolean> {
     if (this.prepared || this.atomicPending.size || !this.options.commits
-      || !request.predecessor || !this.session.checkpoint().pending[request.predecessor]) return false;
-    // The existing submitted-chain owner refuses known competing branches before any event can pick one.
-    const chain = submittedWorkCheckpoint(this.options.owner, this.options.snapshot.resource, await this.options.commits.list());
+      || !['queued', 'prepared'].includes(request.state)) return false;
+    const pending = this.session.checkpoint().pending;
+    if (request.predecessor ? !pending[request.predecessor] : Object.keys(pending).length > 0) return false;
+    // The current durable capture, not an older queued event, owns the published intent.
+    const requests = await this.options.commits.list();
     this.assertCurrent();
-    return Boolean(chain?.pending[request.id]) && this.session.adoptSubmittedSuccessor(request);
+    const current = requests.find(record => record.id === request.id);
+    if (!current) return false;
+    assertCommitCapture(current, request);
+    // Known competing branches stay separate; no event may choose one before this queue snapshot.
+    const chain = submittedWorkCheckpoint(this.options.owner, this.options.snapshot.resource, requests);
+    return Boolean(chain?.pending[current.id]) && this.session.adoptSubmittedSuccessor(current);
   }
 
   private async applyCommit(request: CommitRequest): Promise<void> {

@@ -1,4 +1,5 @@
 import { prepareDomainCommand } from './domainPolicy';
+import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { projectManualSelection } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
 
@@ -75,15 +76,21 @@ export class DataSession {
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
-  /** Follow only an ordinary saved descendant of this editor's known pending tip. */
+  /** Follow one ordinary saved descendant, or a one-shot root update of this exact confirmed copy. */
   adoptSubmittedSuccessor(request: CommitRequest): boolean {
     const parent = request.predecessor ? this.state.pending[request.predecessor] : undefined;
     const resource = this.state.confirmed.resource;
-    if (!parent || this.state.pending[request.id] || request.atomic || !['queued', 'prepared'].includes(request.state)
+    const root = !request.predecessor && Object.keys(this.state.pending).length === 0
+      && request.baseline.value !== null && request.value !== null
+      && editorSlot(request.editorId) === ACTION_SLOT && !request.retentionScope
+      && (!request.command || request.command.kind === 'update')
+      && equalValues(request.baseline, this.state.confirmed)
+      && (!request.initialized || equalValues(request.working, request.baseline));
+    if ((!parent && !root) || this.state.pending[request.id] || request.atomic || !['queued', 'prepared'].includes(request.state)
       || request.baseline.resource.collection !== resource.collection || request.baseline.resource.id !== resource.id
       || this.state.conflicts.length || this.state.remoteCandidate
-      || Object.entries(this.state.pending).some(([id, item]) => id !== request.predecessor && item.generation >= parent.generation)) return false;
-    const merged = mergeDocumentFields(parent.value, this.state.draft, request.value);
+      || (parent && Object.entries(this.state.pending).some(([id, item]) => id !== request.predecessor && item.generation >= parent.generation))) return false;
+    const merged = mergeDocumentFields(parent ? parent.value : this.state.confirmed.value, this.state.draft, request.value);
     // Two private local branches are not a server answer. Keep them separate until delivery or recovery.
     if (merged.conflicts.length) return false;
     const draft = merged.value.exists ? merged.value.value as DocumentData : null;

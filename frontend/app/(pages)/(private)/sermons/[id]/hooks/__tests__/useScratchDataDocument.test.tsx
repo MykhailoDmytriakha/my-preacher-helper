@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useDataDocument } from '@/data-engine/react.client';
+import { useDataDocument, useDocumentActions } from '@/data-engine/react.client';
 import { DataSession } from '@/data-engine/session';
 import { newClientId } from '@/utils/clientId';
 
@@ -11,7 +11,7 @@ import type { SyncStatus } from '@/data-engine/status';
 import type { DocumentData, Json } from '@/data-engine/types';
 import type { ScratchNote } from '@/models/models';
 
-jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn() }));
+jest.mock('@/data-engine/react.client', () => ({ useDataDocument: jest.fn(), useDocumentActions: jest.fn() }));
 jest.mock('@/utils/clientId', () => ({ newClientId: jest.fn() }));
 
 const note = (id: string, text = id): ScratchNote => ({ id, text, createdAt: '2026-09-12' });
@@ -42,6 +42,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
     await staged;
     await save();
   });
+  jest.mocked(useDocumentActions).mockReturnValue({ commit: (_resource, updater) => commit(updater) } as ReturnType<typeof useDocumentActions>);
   const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
@@ -98,15 +99,23 @@ describe('useScratchDataDocument', () => {
     expect(result.current.isWritePending).toBe(true);
   });
 
-  it('rejects blank captures and restores the same identity and provenance once', async () => {
-    const s = setup(); const { result } = renderHook(() => useScratchDataDocument('sermon'));
+  it('rejects blank captures and restores the exact identity, words and provenance once', async () => {
+    const s = setup({ userId: 'owner', title: 'Keep title', scratch: json([note('b')]) }); const { result } = renderHook(() => useScratchDataDocument('sermon'));
     expect(result.current.addScratchNote(' ')).toBeNull();
-    expect(result.current.restoreScratchNote(note('empty', '\n'))).toBeNull();
+    expect(await result.current.restoreScratchNote(note('empty', '\n'))).toBeNull();
     expect(s.update).not.toHaveBeenCalled();
     expect(newClientId).not.toHaveBeenCalled();
     const restored = { ...note('a', '  restored  '), source: { noteId: 'source', heading: 'Heading' } };
-    await act(async () => { result.current.restoreScratchNote(restored); result.current.restoreScratchNote(restored); });
-    expect(s.notes()).toEqual([{ ...restored, text: 'restored' }, note('b')]);
+    await act(async () => { await result.current.restoreScratchNote(restored); await result.current.restoreScratchNote(restored); });
+    expect(s.notes()).toEqual([restored, note('b')]);
+  });
+
+  it('keeps newer words when the thought identity already exists', async () => {
+    const s = setup(); const { result } = renderHook(() => useScratchDataDocument('sermon'));
+    let restored: ScratchNote | null = null;
+    await act(async () => { restored = await result.current.restoreScratchNote(note('a', 'Stale deleted words')); });
+    expect(restored).toEqual(note('a'));
+    expect(s.notes()).toEqual([note('a'), note('b')]);
   });
 
   it('edits text and optional sections, reorders and deletes without changing sibling notes', async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import ScratchPanel from "../ScratchPanel";
 const mockRecordingRows = new Map<string, unknown>();
@@ -149,7 +149,7 @@ function renderScratchPanel(overrides: Partial<ComponentProps<typeof ScratchPane
       createdAt: "2026-07-05T00:00:00.000Z",
     })),
     addRecordedScratchNote: async (text: string, _recordingId: string) => props.addScratchNote(text),
-    restoreScratchNote: jest.fn((note: ScratchNote) => note),
+    restoreScratchNote: jest.fn(async (note: ScratchNote) => note),
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
     isScratchWritePending: false,
@@ -194,7 +194,7 @@ describe("ScratchPanel", () => {
     expect(screen.queryByRole("textbox", { name: "Write a note" })).not.toBeInTheDocument();
   });
 
-  it("keeps scratch labels out of note cards and restores a deleted note from the toast action", () => {
+  it("keeps scratch labels out of note cards and restores a deleted note from the toast action", async () => {
     const note: ScratchNote = {
       id: "note-1",
       text: "A concrete preaching note",
@@ -221,8 +221,40 @@ describe("ScratchPanel", () => {
       })
     );
 
-    options.action.onClick();
+    await act(async () => { await options.action.onClick(); });
     expect(props.restoreScratchNote).toHaveBeenCalledWith(note);
+  });
+
+  it("starts restoration only once while the offered Undo is still being captured", async () => {
+    const note: ScratchNote = { id: "note-1", text: "Keep these words", createdAt: "2026-07-05" };
+    let settle!: (value: ScratchNote | null) => void;
+    const capture = new Promise<ScratchNote | null>(resolve => { settle = resolve; });
+    const restore = jest.fn(() => capture);
+    renderScratchPanel({ notes: [note], restoreScratchNote: restore });
+    fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    const options = toastMock().success.mock.calls[0][1] as { action: { onClick: () => Promise<void> } };
+    let first!: Promise<void>; let second!: Promise<void>;
+    act(() => { first = options.action.onClick(); second = options.action.onClick(); });
+    const calls = restore.mock.calls.length;
+    await act(async () => { settle(note); await Promise.all([first, second]); });
+    expect(calls).toBe(1);
+  });
+
+  it("reports a failed Undo instead of hiding the restoration failure", async () => {
+    const note: ScratchNote = { id: "note-1", text: "Keep these words", createdAt: "2026-07-05" };
+    const failure = new Error("Local capture failed");
+    const report = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const props = renderScratchPanel({ notes: [note], restoreScratchNote: jest.fn().mockRejectedValue(failure) });
+      fireEvent.click(within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", { name: "Delete note" }));
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+      const options = toastMock().success.mock.calls[0][1] as { action: { onClick: () => Promise<void> } };
+      await act(async () => { await options.action.onClick(); });
+      expect(props.restoreScratchNote).toHaveBeenCalledWith(note);
+      expect(toastMock().error).toHaveBeenCalledWith("common.saveError", { position: "bottom-right" });
+      expect(report).toHaveBeenCalledWith("Failed to restore a scratch note", failure);
+    } finally { report.mockRestore(); }
   });
 
   it("asks for confirmation before deleting a note and keeps it when the preacher backs out", () => {

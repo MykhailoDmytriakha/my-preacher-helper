@@ -56,7 +56,7 @@ interface ScratchPanelProps {
   outline?: SermonOutline;
   addScratchNote: (text: string, section?: SectionKey) => ScratchNote | null;
   addRecordedScratchNote: (text: string, recordingId: string) => Promise<ScratchNote | null>;
-  restoreScratchNote: (note: ScratchNote) => ScratchNote | null;
+  restoreScratchNote: (note: ScratchNote) => Promise<ScratchNote | null>;
   updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
   deleteScratchNote: (noteId: string) => void;
   /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
@@ -388,17 +388,24 @@ export default function ScratchPanel({
       deleteScratchNote(noteId);
       clearComposition();
       if (!deletedNote) return;
+      let restoring = false;
 
       toast.success(t("scratch.card.deleteSuccess"), {
         ...SCRATCH_TOAST_OPTIONS,
         action: {
           label: t("scratch.card.undoDelete"),
-          onClick: () => {
-            if (scratchMutationLockedRef.current) return;
-            const restored = restoreScratchNote(deletedNote);
-            if (!restored) return;
-            markScratchChanged();
-            clearComposition();
+          onClick: async () => {
+            if (scratchMutationLockedRef.current || restoring) return;
+            restoring = true;
+            try {
+              const restored = await restoreScratchNote(deletedNote);
+              if (!restored) return;
+              markScratchChanged();
+              clearComposition();
+            } catch (error) {
+              console.error('Failed to restore a scratch note', error);
+              toast.error(t('common.saveError'), SCRATCH_TOAST_OPTIONS);
+            } finally { restoring = false; }
           },
         },
       });

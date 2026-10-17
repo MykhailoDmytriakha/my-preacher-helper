@@ -1,4 +1,4 @@
-import { useDataDocument } from '@/data-engine/react.client';
+import { useDataDocument, useDocumentActions } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { moveNoteTo } from '@/utils/scratchOrder';
 
@@ -16,6 +16,7 @@ function existing(document: DocumentData | null): DocumentData {
 /** Scratch domain operations; the shared editor owns persistence, merging and delivery. */
 export function useScratchDataDocument(sermonId: string | null) {
   const document = useDataDocument(sermonId ? { collection: 'sermons', id: sermonId } : null, { slot: 'scratch' });
+  const actions = useDocumentActions();
   const mutateNotes = (mutate: (notes: ScratchNote[]) => ScratchNote[]) => {
     // useDataDocument publishes failures. Void UI callbacks must not add an unhandled rejection.
     void document.update(current => {
@@ -23,16 +24,24 @@ export function useScratchDataDocument(sermonId: string | null) {
       return { ...sermon, scratch: mutate(notesOf(sermon)) as unknown as Json };
     }).catch(() => undefined);
   };
-  const restoreScratchNote = (note: ScratchNote): ScratchNote | null => {
-    const text = note.text.trim();
-    if (!text) return null;
-    const restored = { ...note, text };
-    mutateNotes(notes => [restored, ...notes.filter(item => item.id !== restored.id)]);
+  const restoreScratchNote = async (note: ScratchNote): Promise<ScratchNote | null> => {
+    if (!note.text.trim()) return null;
+    if (!sermonId) throw new Error('The sermon is not available for scratch editing');
+    let restored: ScratchNote | null = null;
+    await actions.commit({ collection: 'sermons', id: sermonId }, current => {
+      const sermon = existing(current);
+      const notes = notesOf(sermon);
+      const prior = notes.find(item => item.id === note.id);
+      restored = prior ?? note;
+      return prior ? sermon : { ...sermon, scratch: [note, ...notes] as unknown as Json };
+    });
     return restored;
   };
   const addScratchNote = (text: string, section?: ScratchNote['section']): ScratchNote | null => {
     if (!text.trim()) return null;
-    return restoreScratchNote({ id: newClientId(), text, createdAt: new Date().toISOString(), ...(section ? { section } : {}) });
+    const note = { id: newClientId(), text: text.trim(), createdAt: new Date().toISOString(), ...(section ? { section } : {}) };
+    mutateNotes(notes => [note, ...notes]);
+    return note;
   };
   const addRecordedScratchNote = async (text: string, recordingId: string): Promise<ScratchNote | null> => {
     if (!text.trim() || !recordingId) return null;

@@ -110,6 +110,19 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261017-scratch-undo-closed-editor · Delete Undo silently fails after leaving the sermon
+P3 · `frontend/app/components/sermon/ScratchPanel.tsx:395` · `frontend/app/(pages)/(private)/sermons/[id]/hooks/useScratchDataDocument.ts:26`.
+Sermon → Scratch → delete and confirm → Sermons breadcrumb → offered Undo → reopen: the thought stays absent. Undo must restore only that thought, preserving its identity, later words and siblings.
+
+| Place | Class boundary |
+|---|---|
+| ScratchPanel Undo and useScratchDataDocument restore | Detached callback must use the original entity, await local capture and guard repeated taps |
+| Ordinary scratch add/edit and EngineScratchWorkspace | Live editor behavior stays page-owned; workspace only forwards the callback |
+| DataSession/EditorController submitted projection | A unique action root from the exact confirmed baseline must be visible offline without advancing confirmation or taking ordinary screen drafts |
+| Server source/owner/deletion guards | Canonical provenance and resource guards still apply |
+| Council action notice | Uses the canonical detached action; no second queue or editor registry |
+
+
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
 **Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.
@@ -299,6 +312,8 @@
 **P3** — текст не теряется: вторая доставка встречает конфликт и хранит свои слова (`frontend/app/data-engine/__tests__/twoTabsOffline.test.ts`), но до доставки человек видит в другой вкладке старый текст · у каждой вкладки свой экземпляр движка; открытый редактор принимает чужое изменение только подтверждённым — с сервера или из подтверждённой копии на устройстве (`data-engine/controller.ts`: из заявок применяются только свои и из своего черновика).
 **Инженерная задача, низкий приоритет.** Последовательно продолжая работу в другой открытой вкладке того же устройства, человек должен видеть свою сохранённую на устройстве работу. Проверить обмен через существующий движок и локальные записи, не заводить отдельный писатель экрана. Неоднозначное объединение не должно терять текст. Слова уже защищены при доставке, поэтому этот край ниже заметных сбоев; решение «оставить» владельцем не принято.
 
+**Related verified subcase (Phase60).** A single already-open editor also ignores a separate ordinary action while offline when its earlier edit is already acknowledged: the new request has no pending predecessor. The scratch Undo actual-hook control captures the restore but the visible note stays absent (scratch-undo-controls.log). Phase60 addresses this exact-known-confirmed-root case; real cross-instance/tab propagation and ambiguous branch behavior still need separate acceptance. Do not close this broader record merely because the Scratch subcase becomes green.
+
 ---
 
 ## ⏸ Отложено владельцем
@@ -317,13 +332,8 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261017-scratch-undo-closed-editor · Check scratch delete Undo after leaving its editor
-**Severity.** P3 candidate — an offered Undo may fail to restore the explicitly deleted thought after navigation.
-**Found.** 2026-10-17, source review of the council callback class; browser reproduction is not yet run.
-**Anchors.** `frontend/app/components/sermon/ScratchPanel.tsx:395` retains restoreScratchNote in a global toast; `frontend/app/(pages)/(private)/sermons/[id]/hooks/useScratchDataDocument.ts:26` routes it to the page-bound document.update and catches rejection.
-**User contract.** Sermon → thoughts/scratch → confirm deletion → leave the screen → Undo while offered: restore only that note to the same sermon, preserving later notes/words. Without Undo, keep the explicit deletion.
-**Check.** Delete a disposable thought, navigate away, click its toast Undo and reopen the sermon. Compare exact note identity/words and later content. Expected restored; suspected actual no request because the captured editor is closed. Do not count source reasoning as a live failure.
-**Direction if confirmed.** Use the canonical entity action lifecycle for this specific restore, preserving exact note identity and later content; no stale scratch array or revived editor. Separate domain repair from council Finish.
+### BUG-20261017-undo-before-capture-hard-restart · Немедленный перезапуск после Undo может опередить локальный захват
+`frontend/app/components/sermon/ScratchPanel.tsx:401` · `frontend/app/data-engine/react.client.tsx:320` · `frontend/app/data-engine/engine.ts:1018`. Без сети: удалить мысль → список → Undo → сразу перезапустить документ. Восстановление не попало в очередь; обычный переход работает. Ожидание: подтверждённое локальное действие переживает перезапуск. Границу захвата и связь с BUG-20261016-engine-draft-before-request ещё проверить.
 
 ### BUG-20261016-bible-deeplink-lands-early-verse · По ссылке на стих (Исаия 26:20) Safari iPadOS показал вверху стих 8 той же главы
 **Severity.** P3 — человек открывает место по ссылке и видит не тот стих наверху; ищет глазами.
