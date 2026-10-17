@@ -433,7 +433,6 @@
       "sources_few": "{{count}} независимых источника",
       "sources_many": "{{count}} независимых источников",
       "sources_other": "{{count}} независимого источника",
-      "backToList": "Все ссылки к {{place}}",
       "open": "Открыть {{place}}",
       "othersAsVerses": "Стихи",
       "othersAsVersesSetting": "Остальные — стихами",

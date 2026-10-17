@@ -138,6 +138,32 @@ describe('cross references in the Bible reader', () => {
       && event.data.code === 'crossRefs-othersAsVerses' && event.data.result === 'on')).toBe(true);
   });
 
+  // The owner's iPad, 2026-10-16: a link opened in place of the list, and going back the list started over.
+  it('a link opens over the list as a cascade; closed, the list is found exactly as it was', async () => {
+    renderRuth();
+    const list = await openLinksOfSubject();
+    await userEvent.click(within(list).getByRole('button', { name: 'bible.crossRefs.othersSection' }));
+    list.scrollTop = 240;
+    await userEvent.click(within(list).getByText(label(subject.outside)));
+    const windows = screen.getAllByRole('dialog');
+    expect(windows).toHaveLength(2);
+    const link = screen.getByRole('dialog', { name: label(subject.outside) });
+    expect(link).not.toBe(list);
+    expect(list).toBeInTheDocument();
+    // Escape closes the window on top only.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: label(subject.outside) })).not.toBeInTheDocument();
+    const same = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+    expect(same).toBe(list);
+    expect(same.scrollTop).toBe(240);
+    expect(within(same).getByRole('button', { name: 'bible.crossRefs.othersSection' })).toHaveAttribute('aria-expanded', 'true');
+    // Its own ✕ too.
+    await userEvent.click(within(same).getByText(label(subject.outside)));
+    const again = screen.getByRole('dialog', { name: label(subject.outside) });
+    await userEvent.click(within(again).getByRole('button', { name: 'common.close' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
   it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {
     const onOpenBook = renderRuth();
     const dialog = await openLinksOfSubject();

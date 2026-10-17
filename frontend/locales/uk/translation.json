@@ -433,7 +433,6 @@
       "sources_few": "{{count}} незалежні джерела",
       "sources_many": "{{count}} незалежних джерел",
       "sources_other": "{{count}} незалежного джерела",
-      "backToList": "Усі посилання до {{place}}",
       "open": "Відкрити {{place}}",
       "othersAsVerses": "Вірші",
       "othersAsVersesSetting": "Інші — віршами",

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -34,6 +34,8 @@ type CrossReferenceSheetProps = {
   onOpenReference: (reference: CrossReference, from: CrossReferencePlace) => void;
   /** The window's layer: over the reader, or over the passage window, which stands at z-[250]. */
   layerClassName?: string;
+  /** The layer of one link's window, opened over this one: a step above `layerClassName`. */
+  linkLayerClassName?: string;
 };
 
 /**
@@ -87,22 +89,18 @@ function passageText(text: BookText | undefined, reference: CrossReference): str
   return reference.toVerse > last ? `${words} …` : words;
 }
 
-/** One link: its text, how many independent sources give it, and "Open". */
-function ReferenceDetail({ reference, label, text, place, titleId, onBack, onClose, onOpen }: {
-  reference: CrossReference; label: string; text: string | null; place: string; titleId: string;
-  onBack: () => void; onClose: () => void; onOpen: () => void;
+/** One link: its text, how many independent sources give it, and "Open". Closed, the links are under it. */
+function ReferenceDetail({ reference, label, text, titleId, onClose, onOpen }: {
+  reference: CrossReference; label: string; text: string | null; titleId: string;
+  onClose: () => void; onOpen: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={onBack} className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
-          <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
-          {t('bible.crossRefs.backToList', { place })}
-        </button>
+      <div className="flex items-start justify-between gap-2">
+        <h3 id={titleId} className="pt-1 font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
         <SheetCloseButton onClose={onClose} />
       </div>
-      <h3 id={titleId} className="font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
       <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</p>
       <p className="mt-3 font-serif text-lg leading-relaxed text-gray-800 dark:text-gray-100">{text ?? t('common.loading')}</p>
       <button
@@ -268,8 +266,9 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
  * only "Open" moves the reader. A phone gets it from the bottom edge, a tablet in the middle, a wide
  * screen as a card on the right.
  */
-export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText, onClose, onOpenReference, layerClassName = 'z-[120]' }: CrossReferenceSheetProps) {
+export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText, onClose, onOpenReference, layerClassName = 'z-[120]', linkLayerClassName = 'z-[130]' }: CrossReferenceSheetProps) {
   const titleId = useId();
+  const linkTitleId = useId();
   const [picked, setPicked] = useState<CrossReference | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const { othersAsVerses } = useCrossReferencePrefs();
@@ -299,35 +298,37 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
   const place = `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`;
 
   return (
-    <ReaderSheet titleId={titleId} onClose={onClose} layerClassName={layerClassName}>
+    <>
+      <ReaderSheet titleId={titleId} onClose={onClose} layerClassName={layerClassName}>
+        <ReferenceList
+          key={placeKey}
+          references={references}
+          loading={!set}
+          place={place}
+          verseText={verseText}
+          titleId={titleId}
+          bible={bible}
+          locale={locale}
+          texts={texts}
+          othersOpen={othersOpen}
+          onToggleOthers={() => setShowOthers((value) => !value)}
+          onPick={setPicked}
+          onClose={onClose}
+        />
+      </ReaderSheet>
+      {/* One link over the list, as a cascade: closed, the list is found exactly as it was. */}
       {picked ? (
+        <ReaderSheet titleId={linkTitleId} onClose={() => setPicked(null)} layerClassName={linkLayerClassName} depth={2}>
           <ReferenceDetail
             reference={picked}
             label={crossReferenceLabel(picked, bible, locale)}
             text={passageText(texts.get(picked.book), picked)}
-            place={place}
-            titleId={titleId}
-            onBack={() => setPicked(null)}
-            onClose={onClose}
+            titleId={linkTitleId}
+            onClose={() => setPicked(null)}
             onOpen={() => onOpenReference(picked, at)}
           />
-        ) : (
-          <ReferenceList
-            key={placeKey}
-            references={references}
-            loading={!set}
-            place={place}
-            verseText={verseText}
-            titleId={titleId}
-            bible={bible}
-            locale={locale}
-            texts={texts}
-            othersOpen={othersOpen}
-            onToggleOthers={() => setShowOthers((value) => !value)}
-            onPick={setPicked}
-            onClose={onClose}
-          />
-      )}
-    </ReaderSheet>
+        </ReaderSheet>
+      ) : null}
+    </>
   );
 }

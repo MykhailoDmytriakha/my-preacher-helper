@@ -423,7 +423,6 @@
       "sources": "{{count}} independent sources",
       "sources_one": "{{count}} independent source",
       "sources_other": "{{count}} independent sources",
-      "backToList": "All cross-references for {{place}}",
       "open": "Open {{place}}",
       "othersAsVerses": "Verses",
       "othersAsVersesSetting": "The rest as verses",
