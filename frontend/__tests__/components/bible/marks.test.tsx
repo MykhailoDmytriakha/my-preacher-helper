@@ -294,6 +294,29 @@ describe('the three tools', () => {
     expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
   });
 
+  // The owner's iPad, 2026-10-16: the links lit up under a Pencil held over the glass, the tools did not.
+  it('a tool lights up under a mouse or a Pencil held over it, never under a finger', () => {
+    render(<Toolbar />);
+    const eraser = screen.getByRole('button', { name: 'bible.marks.eraser' });
+    // jsdom has no PointerEvent: React builds pointer enter and leave from pointerover and pointerout.
+    const point = (type: 'pointerover' | 'pointerout', pointerType: string) => {
+      const event = new MouseEvent(type, { bubbles: true, relatedTarget: type === 'pointerover' ? document.body : document.body });
+      Object.defineProperties(event, { pointerType: { value: pointerType }, pointerId: { value: 1 } });
+      act(() => { eraser.dispatchEvent(event); });
+    };
+    point('pointerover', 'pen');
+    expect(eraser).toHaveAttribute('data-hover');
+    point('pointerout', 'pen');
+    expect(eraser).not.toHaveAttribute('data-hover');
+    point('pointerover', 'mouse');
+    expect(eraser).toHaveAttribute('data-hover');
+    point('pointerout', 'mouse');
+    point('pointerover', 'touch');
+    expect(eraser).not.toHaveAttribute('data-hover');
+    expect(eraser.className).toContain('data-[hover]:bg-gray-100');
+    expect(eraser.className).not.toMatch(/(^|\s)hover:/);
+  });
+
   it('the pencil and the eraser are taken and put away by their own buttons', () => {
     render(<Toolbar />);
     fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.pencil:/ }));
