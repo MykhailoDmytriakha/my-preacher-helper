@@ -4,15 +4,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { useLasting } from '@/hooks/useLasting';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 
 import { isSyncTrouble } from './status';
-import { useLasting } from './useLasting';
 
 import type { SyncStatus } from './status';
 
-export { STATUS_SETTLE_MS } from './useLasting';
+export { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 
 export interface RecoveryChoice {
   id: string;

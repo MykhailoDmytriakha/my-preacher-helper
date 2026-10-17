@@ -12,6 +12,7 @@ import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
+import { redeliveryDelay } from './unanswered';
 
 import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
@@ -125,6 +126,9 @@ export class DataEngine {
   private online = true;
   private visible = true;
   private disposed = false;
+  /** The next send of an unanswered delivery (`unanswered.ts`), and the attempts its pause was set for. */
+  private redeliveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private redeliveryAttempts = 0;
   private readonly editors = new Map<string, EditorEntry>();
   private readonly recovering = new Map<string, object>();
   private readonly cacheWrites = new Map<string, { owner: string; generation: number; resource: ResourceRef; operation: Promise<ResourceSnapshot> }>();
@@ -169,6 +173,7 @@ export class DataEngine {
 
   setOwner(owner: string | null): void {
     if (this.disposed || this.owner === owner) return;
+    this.stopRedelivery();
     // Leaving an account retires its editors as surely as leaving a screen: what storage has not
     // caught up with is written under the account that typed it, never under the next one.
     const previous = this.owner, previousGeneration = this.generation;
@@ -685,6 +690,7 @@ export class DataEngine {
   dispose(): void {
     if (this.disposed) return;
     this.setOwner(null);
+    this.stopRedelivery();
     this.disposed = true;
     this.stopRuntime();
     this.stopCommits();
@@ -1071,6 +1077,7 @@ export class DataEngine {
     if (this.disposed || event.owner !== this.owner) return;
     if (event.kind === 'journal') {
       this.publishPending(event.entries);
+      this.scheduleRedelivery(event.entries);
     } else if (event.result.kind === 'acknowledged') {
       this.background(this.refreshAcknowledged(event.result.operationId, event.result.snapshot, event.owner, this.generation), event.owner, this.generation, event.result.snapshot.resource);
       if (this.options.collections) this.background(this.refreshAcknowledgedCollections(event.result.operationId,
@@ -1198,6 +1205,36 @@ export class DataEngine {
   private backgroundDrain(): void {
     if (this.disposed || !this.owner) return;
     this.background(this.retry(), this.owner, this.generation);
+  }
+
+  /**
+   * A delivery left unanswered (a weak signal cut its request) is sent again by itself, after a
+   * growing pause (`unanswered.ts`): before, it waited for the next edit, a return to the tab or the
+   * network coming back. Offline or hidden, nothing is sent; coming back online or into view drains
+   * at once (`setOnline`, `setVisible`), and the journal that follows schedules the next pause.
+   */
+  private scheduleRedelivery(entries: readonly JournalEntry[]): void {
+    const unanswered = entries.filter(entry => entry.state === 'unknown');
+    if (!unanswered.length) {
+      this.stopRedelivery();
+      return;
+    }
+    // The journal is published more than once around a send, and a copy made before it can arrive after
+    // it: the pause follows the most attempts seen, and an outdated count never shortens it.
+    const attempts = Math.max(...unanswered.map(entry => entry.attempts));
+    if (this.redeliveryTimer !== null && attempts <= this.redeliveryAttempts) return;
+    this.stopRedelivery();
+    this.redeliveryAttempts = attempts;
+    this.redeliveryTimer = setTimeout(() => {
+      this.redeliveryTimer = null;
+      if (this.online && this.visible) this.backgroundDrain();
+    }, redeliveryDelay(attempts));
+  }
+
+  private stopRedelivery(): void {
+    if (this.redeliveryTimer !== null) clearTimeout(this.redeliveryTimer);
+    this.redeliveryTimer = null;
+    this.redeliveryAttempts = 0;
   }
 
   private async prepareCommits(): Promise<void> {

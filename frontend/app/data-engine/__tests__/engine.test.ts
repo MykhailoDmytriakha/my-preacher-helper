@@ -4,6 +4,7 @@ import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
+import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
@@ -398,6 +399,35 @@ describe('DataEngine composition', () => {
     await s.engine.retry(); await drainMicrotasks();
     expect(s.engine.getPending()).toEqual([]); expect(editor.getDelivery()).toEqual([]);
     expect(states).toContain('empty');
+    s.engine.dispose();
+  });
+
+  // The owner, 2026-10-17: on a weak signal a mark's send ran out of time and waited for the next edit,
+  // a return to the tab or the network coming back. It is sent again by itself, after a pause.
+  it('sends an unanswered delivery again by itself after a pause, and not while offline', async () => {
+    const settle = async () => { for (let i = 0; i < 8; i += 1) await drainMicrotasks(); };
+    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    const send = jest.mocked(s.transport.send).getMockImplementation()!;
+    jest.mocked(s.transport.send).mockRejectedValue(new Error('Request expired'));
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'weak signal' }); await editor.save();
+    s.engine.setOnline(true); await settle();
+    expect(s.engine.getPending()[0].state).toBe('unknown');
+    const tried = jest.mocked(s.transport.send).mock.calls.length;
+    // Offline, the pause passes and nothing is sent.
+    s.engine.setOnline(false);
+    await jest.advanceTimersByTimeAsync(redeliveryDelay(s.engine.getPending()[0].attempts)); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(tried);
+    // Back online the engine sends at once; still unanswered, it waits its pause and sends again by itself.
+    s.engine.setOnline(true); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(tried + 1);
+    expect(s.engine.getPending()[0].state).toBe('unknown');
+    jest.mocked(s.transport.send).mockImplementation(send);
+    const pause = redeliveryDelay(s.engine.getPending()[0].attempts);
+    await jest.advanceTimersByTimeAsync(pause - 1); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(tried + 1);
+    await jest.advanceTimersByTimeAsync(1); await settle();
+    expect(s.transport.send).toHaveBeenCalledTimes(tried + 2);
+    expect(s.engine.getPending()).toEqual([]); expect(editor.getDelivery()).toEqual([]);
     s.engine.dispose();
   });
 

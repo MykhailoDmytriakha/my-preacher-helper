@@ -11,7 +11,7 @@ const checkConnection = jest.fn();
 describe('manual connectivity check messages', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (useConnection as jest.Mock).mockReturnValue({ isOnline: false, checkConnection });
+    (useConnection as jest.Mock).mockReturnValue({ isOnline: false, offlineShown: true, checkConnection });
   });
 
   it.each([

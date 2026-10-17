@@ -17,10 +17,10 @@ import { useConnection } from '@/providers/ConnectionProvider';
  */
 export function OfflineIndicator() {
   const { t } = useTranslation();
-  const { isOnline, checkConnection } = useConnection();
+  const { offlineShown, checkConnection } = useConnection();
   const [isChecking, setIsChecking] = useState(false);
 
-  if (isOnline) return null;
+  if (!offlineShown) return null;
 
   const handleRetry = async () => {
     if (isChecking) return;

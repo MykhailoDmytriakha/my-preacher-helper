@@ -1,4 +1,5 @@
 import { cancellationScope, canCancelSavedIntent } from './atomicCommits';
+import { shownDeliveryState } from './unanswered';
 
 import type { CommitRequest } from './commits';
 import type { MembershipScopeRecord } from './membershipScope';
@@ -26,7 +27,7 @@ export function describeMembershipDelivery(record: MembershipScopeRecord, reques
   const deliveries = entries.filter(entry => operations.has(entry.command.operationId));
   let phase: MembershipDelivery['phase'] = 'queued';
   for (const next of ['sending', 'blocked', 'refused', 'conflict', 'unknown'] as const) {
-    if (deliveries.some(entry => entry.state === next) || complete.some(request => request.state === next)) phase = next;
+    if (deliveries.some(entry => shownDeliveryState(entry) === next) || complete.some(request => request.state === next)) phase = next;
   }
   const refused = complete.find(request => request.result?.kind === 'refused')?.result;
   return status(phase, canCancelSavedIntent(chain, entries), refused?.kind === 'refused' ? refused.code : null);

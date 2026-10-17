@@ -7,6 +7,7 @@ import {
   reportServerReachable,
   reportServerUnreachable,
   subscribeToConnectivity,
+  subscribeToPhoneFlag,
 } from '@/utils/connectivity';
 
 /**
@@ -200,5 +201,30 @@ describe('isKnownOffline', () => {
   it('is false while the phone says there is a network, even when the last request did not reach', () => {
     reportServerUnreachable();
     expect(isKnownOffline()).toBe(false);
+  });
+
+  // Codex review 2026-10-17: the answer was "no" already (a request did not reach), then the Wi-Fi
+  // went — `isKnownOffline` turned true while the answer stayed, and nobody re-read it.
+  it('tells the phone flag listeners when the flag changes while the answer stays "no"; the answer listeners hear nothing', () => {
+    const answer = jest.fn();
+    const phone = jest.fn();
+    const stopAnswer = subscribeToConnectivity(answer);
+    const stopPhone = subscribeToPhoneFlag(phone);
+    reportServerUnreachable();
+    answer.mockClear();
+
+    setOnLine(false);
+    window.dispatchEvent(new Event('offline'));
+    expect(phone).toHaveBeenCalledTimes(1);
+    expect(answer).not.toHaveBeenCalled();
+    expect(isKnownOffline()).toBe(true);
+
+    setOnLine(true);
+    window.dispatchEvent(new Event('online'));
+    expect(phone).toHaveBeenCalledTimes(2);
+    expect(answer).not.toHaveBeenCalled();
+
+    stopPhone();
+    stopAnswer();
   });
 });

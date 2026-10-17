@@ -1,4 +1,5 @@
 import { sameManualSelection } from './manualScope';
+import { shownDeliveryState } from './unanswered';
 
 import type { EditorState } from './controller';
 import type { ManualScope } from './manualScope';
@@ -101,7 +102,7 @@ function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], fo
   if (checkpoint.dirty) phase = 'draft';
   if (pendingCount) phase = 'queued';
   for (const next of ['queued', 'sending', 'unknown', 'blocked', 'refused', 'conflict'] as const) {
-    if (delivery.some(entry => entry.state === next)) phase = next;
+    if (delivery.some(entry => shownDeliveryState(entry) === next)) phase = next;
   }
   if (foreign) phase = deletedCandidate ? 'deleted' : 'remoteChanged';
   if (checkpoint.conflicts.length || state.result?.kind === 'conflict') phase = 'conflict';

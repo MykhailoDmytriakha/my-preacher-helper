@@ -1,6 +1,7 @@
 import { DataSession } from '../session';
 import { ManualScope } from '../manualScope';
 import { describeManualSync, describeSync } from '../status';
+import { UNANSWERED_SAID_AFTER_ATTEMPTS } from '../unanswered';
 import type { EditorState } from '../controller';
 import type { Observation } from '../observer';
 import type { JournalEntry, ResourceSnapshot } from '../types';
@@ -8,7 +9,9 @@ import type { JournalEntry, ResourceSnapshot } from '../types';
 const snapshot: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' }, value: { userId: 'owner', content: 'base' }, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
 const observation: Observation = { snapshot, source: 'cache', readiness: 'cache', checking: false, error: false };
 const state = (): EditorState => ({ checkpoint: new DataSession(snapshot).checkpoint(), durable: true, error: null, result: null });
-const pending = (status: JournalEntry['state']): JournalEntry => ({ command: { protocol: 1, operationId: 'mine', owner: 'owner', resource: snapshot.resource, generation: 'g', dependsOn: [], kind: 'delete', baseline: snapshot.value! }, state: status, createdAt: 1, attempts: 1 });
+const pending = (status: JournalEntry['state'], attempts = 1): JournalEntry => ({ command: { protocol: 1, operationId: 'mine', owner: 'owner', resource: snapshot.resource, generation: 'g', dependsOn: [], kind: 'delete', baseline: snapshot.value! }, state: status, createdAt: 1, attempts });
+/** An unanswered delivery whose retries are spent: the only kind said as unknown (`unanswered.ts`). */
+const spent = (status: JournalEntry['state']): JournalEntry => pending(status, status === 'unknown' ? UNANSWERED_SAID_AFTER_ATTEMPTS : 1);
 
 describe('Shared synchronization status', () => {
   it('describes manual durability and selected-field changes independently of the parent', async () => {
@@ -66,7 +69,16 @@ describe('Shared synchronization status', () => {
   });
   it.each(['queued', 'sending', 'unknown', 'blocked', 'refused', 'conflict'] as const)('exposes delivery %s without claiming server success', phase => {
     const s = state(); s.checkpoint.pending.mine = { generation: 1, value: snapshot.value }; s.checkpoint.dirty = true;
-    expect(describeSync(s, observation, [pending(phase)])).toMatchObject({ phase, canSave: false });
+    expect(describeSync(s, observation, [spent(phase)])).toMatchObject({ phase, canSave: false });
+  });
+  // The owner, 2026-10-17: a mark on a weak signal showed "The result of sending is unknown" for five
+  // seconds while the engine sent it again by itself. Until its retries are spent it is still on its way.
+  it('says an unanswered delivery is still on its way until its retries are spent, then unknown', () => {
+    const s = state(); s.checkpoint.pending.mine = { generation: 1, value: snapshot.value }; s.checkpoint.dirty = true;
+    for (let attempts = 1; attempts < UNANSWERED_SAID_AFTER_ATTEMPTS; attempts += 1) {
+      expect(describeSync(s, observation, [pending('unknown', attempts)])).toMatchObject({ phase: 'sending', canSave: false });
+    }
+    expect(describeSync(s, observation, [pending('unknown', UNANSWERED_SAID_AFTER_ATTEMPTS)])).toMatchObject({ phase: 'unknown', canSave: false });
   });
   it('suppresses the false other-device warning when our SDK echo arrives before the HTTP ACK', () => {
     const s = state(); s.checkpoint.dirty = true; s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };
@@ -84,7 +96,7 @@ describe('Shared synchronization status', () => {
   it('allows one durable successor while offline and stops once its generation is queued', () => {
     const s = state(); s.checkpoint.dirty = true; s.checkpoint.editGeneration = 2;
     s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };
-    expect(describeSync(s, observation, [pending('unknown')])).toMatchObject({ phase: 'unknown', canSave: true, canRemove: false });
+    expect(describeSync(s, observation, [spent('unknown')])).toMatchObject({ phase: 'unknown', canSave: true, canRemove: false });
     s.checkpoint.pending.successor = { generation: 2, value: { content: 'B' } };
     expect(describeSync(s, observation, [pending('unknown')]).canSave).toBe(false);
     s.checkpoint.editGeneration = 3;

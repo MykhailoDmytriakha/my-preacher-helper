@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-/** How long a freshness or read-trouble state must last before the page says it. */
+/** How long a state must last before the page says it: a copy unconfirmed, a check failing, no connection. */
 export const STATUS_SETTLE_MS = 10_000;
 
 /**
@@ -12,12 +12,15 @@ export const STATUS_SETTLE_MS = 10_000;
  * owner, only reading, saw the page jump. A routine check is not news; a copy that stays unconfirmed
  * or a check that keeps failing is, so those are said once they have lasted.
  */
-export function useLasting(active: boolean): boolean {
+export function useLasting(active: boolean, atOnce = false): boolean {
   const [lasted, setLasted] = useState(false);
   useEffect(() => {
     if (!active) { setLasted(false); return; }
+    // Something certain says it now (the phone itself: no network); said once, it stays said while
+    // the state lasts — it does not go quiet and come back when the certainty is gone.
+    if (atOnce) { setLasted(true); return; }
     const timer = setTimeout(() => setLasted(true), STATUS_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [active]);
-  return active && lasted;
+  }, [active, atOnce]);
+  return active && (lasted || atOnce);
 }

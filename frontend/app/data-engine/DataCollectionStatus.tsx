@@ -2,7 +2,7 @@
 
 import { useTranslation } from 'react-i18next';
 
-import { useLasting } from './useLasting';
+import { useLasting } from '@/hooks/useLasting';
 
 import type { CollectionState } from './collections';
 

@@ -78,10 +78,11 @@ export function DataFreshnessBanner({
 }: DataFreshnessBannerProps) {
   const { t } = useTranslation();
   /**
-   * This banner stands down for ONE reason: there is no connection, so the crossed-out Wi-Fi icon
-   * already says everything there is to say. The icon is the one answer — the last real request did
-   * not reach our server — and a single failed request is corrected within seconds by the knock
-   * (`utils/connectivityKnock.ts`), after which the stale warning returns if it still applies.
+   * This banner stands down for ONE reason: there is no connection, and the crossed-out Wi-Fi icon
+   * is the one place that says so — at once when the phone has no network, once "no" has lasted when
+   * a request did not reach (`providers/ConnectionProvider.tsx`). A single failed request is corrected
+   * within seconds by the knock (`utils/connectivityKnock.ts`), after which the stale warning returns
+   * if it still applies.
    */
   const offline = !useOnlineStatus();
 
