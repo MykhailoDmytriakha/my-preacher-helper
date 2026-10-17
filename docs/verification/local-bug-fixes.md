@@ -1266,7 +1266,7 @@ The added manual WebKit probe logs into the existing test account, marks an init
 
 ## BUG-20261016-reader-has-rules-restyle-document — pane layout ownership
 
-Stage: primary local validation complete; independent fresh acceptance and source commit pending. Publication remains deferred.
+Stage: independently accepted locally as source3e64bb3033037c9ae7e94f8e7af03dca9e25eaa5; publication remains deferred.
 
 Opening a cross-reference sheet inside a wide Bible reader invalidated the whole application subtree. Seven descendant-discovery selectors shared by reader and study layouts caused it. One common useWorkspacePanes hook now claims explicit shell/workspace attributes through owned refs before paint, releases them on width/route/unmount changes, preserves previous values and counts overlapping holders. Existing geometry, reader windowing, modal locks and local markers remain unchanged. Direct-child :has() selectors were tested as a narrower alternative and still invalidated the full subtree.
 
