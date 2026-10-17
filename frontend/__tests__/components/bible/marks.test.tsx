@@ -153,11 +153,28 @@ describe('marks kept through the data engine', () => {
     expect(commit).toHaveBeenCalledTimes(2);
   });
 
-  it('a refused stroke says so', async () => {
+  it('a refused stroke says so, and is no longer shown', async () => {
     commit.mockRejectedValue(Object.assign(new Error('A decision waits'), { code: 'decision-required' }));
+    const lost = jest.fn();
     const { result } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
-    await act(async () => result.current.save(paintFirstWord));
+    await act(async () => result.current.save(paintFirstWord, lost));
     expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(lost).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the same marks one object through every new copy of the form, a new one only when they change', () => {
+    // A save hands a new copy at each of its steps — kept on the device, queued, sent, answered — and the
+    // page drew the whole book's marks again at each (the iPad's Psalms, 2026-10-16).
+    draft = { userId: 'alice', verses: { v26_3: { m: '0-0-red' }, v26_4: { p: '1-1-gray' } } };
+    const { result, rerender } = renderHook(() => useBookMarks('alice', 'rst', 'Isaiah'));
+    const first = result.current.marks;
+    draft = { userId: 'alice', verses: { v26_4: { p: '1-1-gray' }, v26_3: { m: '0-0-red' } }, updatedAt: 'later' };
+    rerender();
+    expect(result.current.marks).toBe(first);
+    draft = { userId: 'alice', verses: { v26_3: { m: '0-1-red' }, v26_4: { p: '1-1-gray' } } };
+    rerender();
+    expect(result.current.marks).not.toBe(first);
+    expect(result.current.marks['26:3']).toEqual({ m: [[0, 1, 'red']] });
   });
 
   it('while the form is a copy for reading (storage silent), shows the marks and takes no stroke', () => {
@@ -211,26 +228,32 @@ describe('the three tools', () => {
     );
   }
 
-  it('the marker opens its colours; a colour closes them and stays in hand; pressed again it is put away', () => {
+  // The owner, 2026-10-16: the open colours are how he sees the marker is taken. Colours that closed
+  // after a pick left the marker looking put away, and the press meant to change the colour put it away.
+  it('the marker opens its colours and keeps them out while in hand: a colour picked, another one, then put away', () => {
     render(<Toolbar />);
-    const marker = screen.getByRole('button', { name: /bible\.marks\.marker/ });
-    fireEvent.click(marker);
+    const marker = () => screen.getByRole('button', { name: /bible\.marks\.marker/ });
+    const colours = () => screen.queryByRole('group', { name: 'bible.marks.colors' });
+    fireEvent.click(marker());
     expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
-    expect(screen.getByRole('group', { name: 'bible.marks.colors' })).toBeInTheDocument();
+    expect(colours()).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'bible.marks.meaning.blue' }));
-    expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /bible\.marks\.marker/ })).toHaveAccessibleName('bible.marks.marker:bible.marks.meaning.blue');
-    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    expect(colours()).toBeInTheDocument();
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
+    expect(marker()).toHaveAccessibleName('bible.marks.marker:bible.marks.meaning.blue');
+    fireEvent.click(screen.getByRole('button', { name: 'bible.marks.meaning.green' }));
+    expect(marker()).toHaveAccessibleName('bible.marks.marker:bible.marks.meaning.green');
+    fireEvent.click(marker());
     expect(screen.getByTestId('in-hand')).toHaveTextContent('none');
+    expect(colours()).not.toBeInTheDocument();
   });
 
-  it('pressing the marker while its colours are out only closes them', () => {
+  it('Escape puts the tool away with its colours', () => {
     render(<Toolbar />);
-    const marker = screen.getByRole('button', { name: /bible\.marks\.marker/ });
-    fireEvent.click(marker);
-    fireEvent.click(marker);
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('none');
     expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
   });
 
   it('with two sets of tools on the page, a colour picked in one is the colour taken', () => {
@@ -253,10 +276,21 @@ describe('the three tools', () => {
     expect(column.getByRole('button', { name: /bible\.marks\.marker/ })).toHaveAccessibleName('bible.marks.marker:bible.marks.meaning.blue');
   });
 
-  it('a press outside every set of tools closes the colours', () => {
+  it('a press elsewhere — a stroke on the text — leaves the marker in hand with its colours out', () => {
     render(<Toolbar />);
     fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
     fireEvent.pointerDown(document.body);
+    expect(screen.getByRole('group', { name: 'bible.marks.colors' })).toBeInTheDocument();
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
+  });
+
+  it('taking another tool closes the colours of the one put down', () => {
+    render(<Toolbar />);
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'bible.marks.eraser' }));
+    expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.pencil:/ }));
+    expect(screen.getByRole('group', { name: 'bible.marks.pencilColors' })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'bible.marks.colors' })).not.toBeInTheDocument();
   });
 
@@ -307,7 +341,8 @@ describe('a stroke over the words', () => {
 
   function Ribbon({ begin }: { begin: () => null }) {
     const rootRef = useRef<HTMLElement | null>(null);
-    useMarkStrokes({ rootRef, ready: true, order: verseOrder([['In the beginning']], countVerseWords), marks: {}, save: jest.fn(), armed: false, begin, preview: jest.fn(), enabled: true });
+    const painter = { draw: jest.fn(), release: jest.fn(), drop: jest.fn(), shown: () => ({}) };
+    useMarkStrokes({ rootRef, ready: true, order: verseOrder([['In the beginning']], countVerseWords), save: jest.fn(() => true), armed: false, begin, painter, enabled: true });
     return (
       <article ref={rootRef}>
         <div data-verse="1:1">

@@ -110,6 +110,14 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261016-reader-has-rules-restyle-document · В Chrome любой элемент, появившийся на экране чтения, пересчитывает стиль всей книги: открытие окна связей, статус синхронизации — около 150 мс в Псалтири
+**Severity.** P3 — Chrome (Android, компьютер), большая книга: каждое появление или исчезновение элемента на экране чтения подвешивает его на ~150 мс (Псалтирь, 69 тыс. узлов, боевая сборка, Mac; на телефоне больше). WebKit (iPad) этого не делает. Палитра пометок, где это било на каждом нажатии, уже обойдена.
+**Найден.** 2026-10-16 · трасса Chrome при нажатии на инструмент пометок: `UpdateLayoutTree` 144–170 мс, `elementCount` 68 959; инвалидация `StyleRecalcInvalidationTracking … Affected by :has()` вверх до `HTML` и `Invalidation set invalidates subtree` по селекторам `#app-shell:has([data-reader-panes]) > *`, `#app-shell > :has([data-reader-panes]) > :not(main)`. Стенд — `tools/webkit-lab/marks-responsiveness.js`, рецепт — `.howto/measure-typing-lag.md` «Taps and strokes».
+**Якоря.** `frontend/app/globals.css:342-371` — раскладка экрана чтения (и `:300-306` — экрана изучения) через `:has()` на `#app-shell`; Chrome перепроверяет `:has()` на каждую вставку узла внутрь `#app-shell` и инвалидирует поддеревья детей.
+**Прочёс класса (что вставляется на экране чтения).** Палитры пометок — обойдено (`MarkToolbar.tsx`, всегда в документе, `hidden`) · окно связей стиха (`CrossReferenceSheet`) и окно пометки из другого перевода (`MarkedElsewhereSheet`) — поражены, не замерены · статус синхронизации пометок (`DataSyncStatus`) — поражён, редкий · тосты — зависит от того, внутри ли `#app-shell` стоит Toaster, не проверено.
+**Шаги.** Боевая сборка, Chrome, Псалтирь, трасса с категорией `disabled-by-default-devtools.timeline.invalidationTracking` вокруг открытия окна связей стиха.
+**Как должно работать для пользователя.** Окно открывается и закрывается в том же кадре в любой книге. Направление: раскладку панелей включать атрибутом, который ставит сам экран (`#app-shell[data-…]`), а не `:has()` по всему дереву; проверить обе раскладки — чтение с миникартой и изучение.
+
 ### BUG-20261016-engine-asks-instead-of-chronology · Одно поле изменено на двух своих устройствах — движок спрашивает «моё или с сервера», хотя это спор человека с самим собой
 **Severity.** P3 — ничего не теряется, но человек выбирает между двумя своими версиями, не помня, какая новее; неверный выбор возвращает старое. Бывает, когда одно из устройств работало без сети.
 **Найден.** 2026-10-16 · владелец, в разговоре о синхронизации пометок в Библии; по коду и пробе `mergeFields`, живьём на экране не воспроизведено.
@@ -314,6 +322,13 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261016-marks-form-error-in-hidden-tab · Книга, открытая в скрытой вкладке: пометки показывают «С этой записью что-то пошло не так» и не поднимаются сами, когда вкладку открыли
+**Severity.** P3 — нужен заход в книгу, пока вкладка скрыта (ссылка открыта в фоне на компьютере; возможно, восстановление приложения iPad из фона). Пометки и инструменты не видны до «Повторить».
+**Найден.** 2026-10-16 · попутно при замере: вкладка Claude-in-Chrome (`visibilityState: hidden`), Псалтирь, над текстом статус ошибки формы (`useReaderMarks.tsx` — `DataSyncStatus` с `error`, когда форма не открылась); подмена видимости и `visibilitychange` его не сняли, «Повторить» снял. Не проверено, не артефакт ли это самой вкладки расширения.
+**Якоря.** `frontend/app/components/bible/marks/markStore.ts` (`useDataDocument(resource, …)`), чтение скрытой вкладки в движке (`engine.ts` `canRead`, рецепт `use-data-engine-in-a-screen.md`).
+**Шаги.** Компьютер, Chrome: открыть `/bible?book=psalms` ссылкой в фоновой вкладке, подождать, перейти на неё.
+**Как должно работать для пользователя.** Пока вкладка скрыта, пометки ждут; открыл вкладку — они читаются и инструменты появляются без «Повторить».
 
 ### BUG-20261016-recovery-discard-scope-can-expand · A late recovery decision may include work that was not shown
 **Candidate, not reproduced.** Independent source review of BUG-20261003-one-click-delete-other-screens found a separate engine settlement boundary: EngineConflictBanner.tsx:310-315 rechecks the shown fingerprints, then engine.ts:612-623 awaits a fresh commit list and cancels all answered requests for that resource; atomicCommits.ts:130-139 can include dependent requests.
