@@ -553,6 +553,40 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
 
+    it('retires a restored legacy draft after saving content without dropping existing recording receipts', async () => {
+        jest.useFakeTimers();
+        window.localStorage.clear();
+        let stored = { ...mockNotes[1], dictationSourceIds: ['old-dictation'], recordingSourceIds: ['old-recording'] };
+        const key = 'draft:v1:user-1:note-1:note';
+        window.localStorage.setItem(key, JSON.stringify({ savedAt: Date.now() - 60000, value: {
+            title: stored.title, content: 'Recovered older words', tags: stored.tags,
+            scriptureRefs: stored.scriptureRefs, type: stored.type,
+        } }));
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            stored = { ...stored, ...updates };
+            return persistedWrite(Promise.resolve({ id: stored.id, revision: 5 }));
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [stored], loading: false,
+            createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Recovered older words');
+            await act(async () => { await jest.advanceTimersByTimeAsync(2500); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(stored.content).toBe('Recovered older words');
+            expect(stored.dictationSourceIds).toEqual(['old-dictation']);
+            expect(stored.recordingSourceIds).toEqual(['old-recording']);
+            expect(updateNote.mock.calls[0][0].updates).not.toHaveProperty('dictationSourceIds');
+            expect(updateNote.mock.calls[0][0].updates).not.toHaveProperty('recordingSourceIds');
+            expect(screen.getByText('common.saved')).toBeInTheDocument();
+            expect(window.localStorage.getItem(key)).toBeNull();
+        } finally {
+            view.unmount(); window.localStorage.clear(); jest.useRealTimers();
+        }
+    });
+
     it('restores the typed draft and then its cached voice after a refused save without appending twice', async () => {
         window.localStorage.clear();
         const updateNote = jest.fn((_args: { updates: Partial<StudyNote> }) => persistedWrite(Promise.reject(new Error('Local note write refused'))));

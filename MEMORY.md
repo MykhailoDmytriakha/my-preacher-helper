@@ -30,6 +30,7 @@
 *   **Ideal Storage (TRIZ+IFR):** If a resource (images) is only needed for transient context (email), avoid duplicating it in persistent storage (Firestore). Leverage existing systems (inbox) to solve storage needs without bloating the core database.
 
 ### ⚖️ Domain Axioms
+*   **Scripture Reference Meaning:** Bible identity, location, range and quote belong to one authored reference. Divergent edits of one reference must never synthesize a third passage. The canonical command/rebase rule is `data-engine/protocol.ts` (`mergeFields`); see `.howto/write-a-document-field.md`.
 *   **User Control:** Heavy AI actions require explicit buttons, not auto-magic.
 *   **Seen Once, Available Offline (owner, 2026-09-30):** anything the person has once seen on THIS device (list, document, page) is already in device storage (IndexedDB) and must open without network. An empty screen, endless skeleton or full reload offline where it was seen before is a bug, not "no network". Content that only exists on another device and never reached this one is exempt.
 *   **Session-Log:** One Chat = One Session Log = Single Source of Truth.

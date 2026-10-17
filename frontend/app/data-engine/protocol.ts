@@ -313,6 +313,11 @@ function mergedOrder(base: Map<string, Json>, mine: Map<string, Json>, theirs: M
   return ordered;
 }
 
+// A reference's Bible, location and quote describe one authored meaning.
+// Separate reference IDs still merge; two edits of one must not invent a third.
+const isAtomicScriptureReference = (path: readonly string[]): boolean => path.length === 2
+  && path[0] === 'scriptureRefs' && path[1].startsWith('id:');
+
 /** Shared three-way merge: an untouched sibling always belongs to the remote copy. */
 export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldValue, path: string[] = []): {
   value: FieldValue; conflicts: ConflictDetail[];
@@ -321,7 +326,7 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
   if (base.exists && mine.exists && theirs.exists) {
     if (object(base.value) && object(mine.value) && object(theirs.value)) {
-      return mergeObjects(base.value, mine.value, theirs.value, path);
+      if (!isAtomicScriptureReference(path)) return mergeObjects(base.value, mine.value, theirs.value, path);
     }
     if (Array.isArray(base.value) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
       const merged = mergeArrays(base.value, mine.value, theirs.value, path);

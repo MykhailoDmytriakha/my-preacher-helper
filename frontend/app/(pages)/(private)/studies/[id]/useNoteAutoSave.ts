@@ -177,12 +177,21 @@ export function useNoteAutoSave({
         // an untouched field is written back from the snapshot this tab loaded, so
         // a stale tab silently reverts text edited elsewhere. The baseline advances
         // only after acceptance, so a failed write remains changed on the next pass.
-        const updates: Partial<StudyNote> = changedFields(baselineRef.current, {
+        const payload: NoteDraftPayload = {
             title, content, tags, scriptureRefs, type,
             ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
-        });
+        };
+        const updates: Partial<StudyNote> = changedFields(baselineRef.current, payload);
 
         if (Object.keys(updates).length === 0) return;
+
+        // An unchanged picker or recovery can copy reference values without retaining
+        // their raw read provenance. Keep the opened identity until references change;
+        // all other fields must still match the exact editor payload being confirmed.
+        const submittedPayload: NoteDraftPayload = {
+            ...payload,
+            scriptureRefs: updates.scriptureRefs ?? baselineRef.current?.scriptureRefs ?? scriptureRefs,
+        };
 
         inFlightRef.current = true;
         setIsSaving(true);
@@ -225,7 +234,7 @@ export function useNoteAutoSave({
                  * note and can exhaust storage the later typing depends on.
                  */
                 if (acceptance.kind === 'queued') {
-                    baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
+                    baselineRef.current = submittedPayload;
                     // A deliberate overwrite is one send; left armed, every later save
                     // would go out unguarded until the next persisted one.
                     if (wasDeliberate) deliberateOverwriteRef.current = false;
@@ -238,7 +247,7 @@ export function useNoteAutoSave({
                             if (saved.revision < (revisionRef.current ?? 0)) return;
                             revisionRef.current = saved.revision;
                         }
-                        onSaved?.({ title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) });
+                        onSaved?.(submittedPayload);
                     }).catch(() => undefined);
                 }
                 return;
@@ -252,9 +261,9 @@ export function useNoteAutoSave({
             }
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.
-            baselineRef.current = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
+            baselineRef.current = submittedPayload;
             if (wasDeliberate) deliberateOverwriteRef.current = false;
-            onSaved?.({ title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) });
+            onSaved?.(submittedPayload);
             announceIfPersisted(acceptance, () => setLastSaved(new Date()));
         } catch (e) {
             if (isStaleWriteError(e)) {

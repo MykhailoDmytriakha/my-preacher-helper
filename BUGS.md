@@ -14,6 +14,8 @@
 
 ## 🟠 P2 — открыто
 
+
+
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
@@ -110,15 +112,50 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-needless-conflict-after-copied-reference-list · Редкий лишний вопрос «моё или их» в старой заметке, где на другом устройстве ничего не меняли
-**Severity.** P3 — данные целы, но человек видит выбор «оставить моё / взять их» без причины. Только заметки со ссылками, записанными до 2026-10-14 (без Библии), и только на двух путях.
-**Найден.** 2026-10-17 · Codex, седьмой круг ревью защиты записи (`.claude/codex-logs/2026-10-17_11-29-56_oldrefs-author-r7-1017.final.txt`), воспроизведено его зондами через настоящий `useNoteAutoSave`.
-**Шаги.** (1) Старая заметка со старой ссылкой → открыть ссылку в окне правки и нажать «Сохранить» без изменений → поправить текст → изменить ссылки → отказ записи. (2) Черновик, восстановленный из памяти устройства, после смены языка → изменить ссылки → отказ записи.
-**Якорь.** `frontend/app/hooks/useStudyNotesEngine.ts` (`readFrom`: «из какого сохранённого списка прочитан список экрана» привязано к самому массиву); копия списка его теряет — окно правки копирует список (`studies/[id]/page.tsx:1106`), автосохранение берёт копию основой (`useNoteAutoSave.ts:239`), черновик приходит из JSON. Тогда сравнение идёт с копией как она есть, а в базе лежит старый вид — разные записи одного и того же.
-**Как должно работать для пользователя.** Вопрос «моё или их» появляется только когда другое устройство правда что-то поменяло.
-**Направление.** Не по значению: «тот же по содержанию список → тот же источник» прячет правку 9→10 (оба читаются как Синодальный 9). Нести происхождение вместе с копией там, где копию делает приложение (окно правки, автосохранение), или записать старые ссылки заметки с Библией при первом сохранении любой правки.
-**Стадия.** открыто, записано.
+### BUG-20261017-reference-conflict-hides-verse-numbers - Reference conflict preview shows book and Bible code but hides chapter and verse
+**Severity.** P3: the stored choices preserve complete values, but the person cannot read the decisive reference coordinates from the offered local version.
+**Found.** 2026-10-17, root native/sheet visual acceptance of actual local UI at1280 and390px, buildruIWHmt1_DPCjToTKvpoz.
+**Path / reproduce.** Studies -> existing note -> Edit -> add John3:16 after an actual late remote change to its old reference -> inspect the global conflict notice. The local preview says Psalms, rst, John, rst, omitting9:1 and3:16. Same in V6 control and V10 settled-choice captures.
+**Expected.** Display readable complete references using their actual Bible and coordinates, including ranges. The person must see the meaning they choose. IDs/metadata remain hidden; text-only thoughts keep their readable prose.
+**Observed / effect.** Numeric chapter, verse and range fields are omitted even though they distinguish versions; a book name is insufficient to review the choice. No claim that underlying reference data is missing. Both settled choice outcomes pass, but this display defect remains.
+**Anchors.** frontend/app/components/EngineConflictBanner.tsx:72-102 itemWords/changedItem/showList. itemWords accepts strings and string arrays, drops numeric coordinates; an existing book string prevents its null-item fallback. Conflict branch:371-385 passes the resulting mine string to SaveConflictBanner.
+**Evidence.** reference-provenance-v6-control-after-390-real-conflict-retained.png; reference-provenance-v10-settled-mine-390-real-conflict-retained.png; root visual sheets12/14. Real UI over disposable synthetic RAM data with actual protocol; no backend/provider/prod writes.
+**User behavior.** Show complete reference meaning when reference versions need a decision. Stay silent for ordinary unchanged references and bookkeeping. One person reviews their saved versions; no invented chronology.
+**Class.** Generic prose extraction drops meaningful numeric fields of keyed structured values.
+| place | verdict | reason |
+|---|---|---|
+| EngineConflictBanner itemWords -> showList for studyNotes.scriptureRefs | affected | book/Bible strings remain but chapter/verse/range numbers disappear |
+| canonical server merge and stored reference objects | not this display mechanism | complete values survive; both V10 choice outcomes checked |
+| ordinary thought/plan prose and other keyed numeric entities | require focused class check before fix | intentional metadata filtering must not be replaced by raw technical JSON |
+| page-local conflict notice | not assessed for this display defect | shown reference list remains on the editor; investigate separately if it previews copies |
+**Root / direction.** Use the canonical domain formatter for structured references at the display boundary, preserving item-level meaning and existing prose presentation. Add a RED mounted notice regression before fixing; verify both widths and Bible-specific numbering/ranges. No implementation change inPhase65.
 
+### BUG-20261017-reference-conflict-choice-stays-stale - A newly shown conflict can need another choice after its stored version refreshes
+**Severity.** P3: an early click can be refused or cancelled while the notice catches up; after its five-second refresh both choices work. No text loss was observed. The earlier permanent-block/P2 interpretation is withdrawn.
+**Found.** 2026-10-17, local browser QA of Studies -> existing note -> Edit -> add a reference whose earlier version has changed.
+**Expected.** The notice shows the complete known server answer promptly. A choice about a genuinely changed copy must stop safely and refresh; a stable reviewed choice must apply once.
+**Observed.** The first shown scope can have no remote candidate although the journal already reports conflict. Resolving moments later sees server revision3. Keep mine refuses with decision-changed; confirmed discard returns without taking the stale choice. After waiting for the refreshed notice, both choices succeed at1280 and390px, preserving accepted words and one complete reference.
+**Reproduce.** After the local reference command is captured, deliver an actual remote reference update before applying it. Click the first notice within2.5seconds; then review the refreshed notice and choose again. Ordinary settled choices were verified sequentially after7seconds.
+**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:275-311`, `frontend/app/data-engine/engine.ts:170-184,786-791,1272-1284`, `commits.ts:430-456`, `react.client.tsx:342-358`.
+**Evidence.** V6/V7 early-click failures use actual RAM protocol commands with valid remote operation identity. V10 settled mine/stored at1280/390 all pass on buildruIWHmt1_DPCjToTKvpoz. V8/V9 browser-only tracing captures different inputs (null remote candidate versus revision3); their overlapping runner lifetimes make those traces diagnostic, not acceptance. No product diagnostic patch was added. No Firestore/provider/production writes.
+**User contract.** One person is choosing between their saved versions. Show the answer that exists, preserve their words, and reject a choice only when what they reviewed has changed. Never guess chronology or weaken the reviewed-scope guard.
+**Class.** The global notice observes the journal while its recovery projection also depends on durable CommitRequests.
+| place | verdict | reason |
+|---|---|---|
+| `engine.ts:170-184` CommitQueue subscription | affected | durable request updates notify matching open editors, not global pending subscribers |
+| `EngineConflictBanner.tsx:275-281` | affected | journal refresh can precede request projection; five-second poll is the fallback |
+| `react.client.tsx:345-358` and controller scope guard | preserve | captured and current scopes really differ; strict rejection protects unseen changes |
+| mounted document/collection commit subscriptions | not shown affected by this mechanism | they already observe CommitQueue updates; verify neighbors with any shared notification fix |
+| server merge / offline request persistence | separate owners | this finding concerns local notice refresh after a known delivery result, not capture or server priority |
+**Root / direction.** Source review proves the missing request-update notification to the notice. Preserve canonical projection and strict choice scope. Add a deterministic notification regression before changing that shared path; verify early click, refreshed choices, and no duplicate notice. Not fixed in the current reference candidate.
+
+
+### BUG-20261017-note-offline-reload-false-saved · После перезагрузки без сети заметка показывает «Сохранено», хотя правки ещё в очереди
+**Severity.** P3 — текст и ссылки не потеряны, но статус ошибочно обещает сохранение в базе и может побудить продолжить на другом устройстве раньше доставки.
+**Экран и шаги.** Изучения → открыть заметку → редактировать без сети → изменить текст и добавить ссылку → дождаться локального захвата → перезагрузить страницу без сети → открыть редактирование. До перезагрузки «Сохранено» отсутствует; после неё зелёный статус появляется, хотя RAM-сервер по-прежнему держит исходный текст и не принял ни одной команды.
+**Как должно работать для пользователя.** Сохранённое на устройстве остаётся доступно после перезагрузки. Пока доставка не подтверждена, редактор не называет эти слова сохранёнными в базе. После принятия показывается правдивое состояние текущего текста.
+**Якорь.** `frontend/app/(pages)/(private)/studies/[id]/page.tsx:154-163` и `1434-1439`: инициализация берёт `existingNote` из движковой проекции с локальной работой и ставит `lastSaved` из её `updatedAt`; значение не доказывает доставку. Поле статуса инициализации не менялось исправлением происхождения ссылок.
+**QA.** 2026-10-17, локальный buildYPI92ICs60GqJU7gXiIbp, реальные браузер и service worker,1280/390px, публичные команды движка на одноразовом RAM-стенде. `reference-provenance-after-offline-{1280,390}.{js,json,log}`:0команд серверу, текст/John3:16 видны после офлайн-перезагрузки, ошибочный Saved; native wide screenshot осмотрен. Firestore/provider/prod не проверены. Первоначальная запись — отдельная задача после текущего фикса; новое поведение не принято.
 
 
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
@@ -324,6 +361,7 @@
 ---
 
 ## 🔍 Требует перепроверки
+
 
 ### BUG-20261017-undo-before-capture-hard-restart · Немедленный перезапуск после Undo может опередить локальный захват
 `frontend/app/components/sermon/ScratchPanel.tsx:401` · `frontend/app/data-engine/react.client.tsx:320` · `frontend/app/data-engine/engine.ts:1018`. Без сети: удалить мысль → список → Undo → сразу перезапустить документ. Восстановление не попало в очередь; обычный переход работает. Ожидание: подтверждённое локальное действие переживает перезапуск. Границу захвата и связь с BUG-20261016-engine-draft-before-request ещё проверить.
