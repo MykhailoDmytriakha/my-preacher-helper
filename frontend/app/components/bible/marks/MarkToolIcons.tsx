@@ -17,9 +17,14 @@ export const MARK_SWATCH: Record<MarkColor, string> = {
 /** The pencil's line colours: plain graphite grey, and the five as lines. */
 export const PENCIL_SWATCH: Record<PencilColor, string> = { gray: '#8b8f98', ...MARK_SWATCH };
 
-const DISC = 'fill-white stroke-gray-900/20 dark:fill-gray-800 dark:stroke-white/20';
-const INK = 'stroke-gray-600 dark:stroke-gray-300';
-const PAPER = 'fill-white dark:fill-gray-800';
+/*
+ * Under a mouse or a Pencil held over the tool (its button carries `group` and `data-hover`, see
+ * `MarkToolbar`) the disc brightens and its rim turns indigo: the disc covers the whole button, so a
+ * background of the button alone was hidden behind it (the owner's iPad, 2026-10-16: "the hover is faint").
+ */
+const DISC = 'fill-white stroke-gray-900/20 dark:fill-gray-800 dark:stroke-white/20 group-data-[hover]:fill-indigo-100 group-data-[hover]:stroke-indigo-500 dark:group-data-[hover]:fill-indigo-900 dark:group-data-[hover]:stroke-indigo-300';
+const INK = 'stroke-gray-600 dark:stroke-gray-300 group-data-[hover]:stroke-indigo-950 dark:group-data-[hover]:stroke-white';
+const PAPER = 'fill-white dark:fill-gray-800 group-data-[hover]:fill-indigo-100 dark:group-data-[hover]:fill-indigo-900';
 
 function Disc() {
   return <circle cx="20" cy="20" r="19.4" strokeWidth="1.2" className={DISC} />;
