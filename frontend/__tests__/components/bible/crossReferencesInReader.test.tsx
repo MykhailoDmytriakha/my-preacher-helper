@@ -9,6 +9,7 @@ import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossRef
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { TextScaleProvider } from '@/providers/TextScaleProvider';
+import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
@@ -115,6 +116,26 @@ describe('cross references in the Bible reader', () => {
     const start = verseWords(verses[others[0].fromVerse - 1]).split(' ').slice(0, 4).join(' ');
     expect(await within(dialog).findByText((text) => text.startsWith(start))).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: label(first) })).not.toBeInTheDocument();
+  });
+
+  // The owner's iPad, 2026-10-16: a small switch laid over the row's own button; a finger a few pixels
+  // off it folded the rest instead ("it blinks back and forth, then switches on the second time").
+  it('the rest\'s switch stands beside the row\'s button, never over or inside it, and a tap on it never folds the rest', async () => {
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const row = within(dialog).getByRole('button', { name: 'bible.crossRefs.othersSection' });
+    await userEvent.click(row);
+    const asVerses = within(dialog).getByRole('switch', { name: 'bible.crossRefs.othersAsVerses' });
+    expect(row.contains(asVerses)).toBe(false);
+    expect(asVerses.contains(row)).toBe(false);
+    expect(asVerses.parentElement).toBe(row.parentElement);
+    expect(getComputedStyle(asVerses).position).not.toBe('absolute');
+    await userEvent.click(asVerses);
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
+    // The change and where it came from reach the technical details a feedback report sends.
+    expect(diagnosticEvents().some((event) => event.name === 'setting' && event.data.source === 'window'
+      && event.data.code === 'crossRefs-othersAsVerses' && event.data.result === 'on')).toBe(true);
   });
 
   it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {

@@ -43,7 +43,7 @@ export function ReaderSheet({ titleId, onClose, layerClassName = 'z-[120]', chil
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl bg-white px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 shadow-2xl dark:bg-gray-900 md:max-w-2xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[28rem] xl:rounded-3xl xl:pb-5 xl:pt-4"
+        className="relative max-h-[85dvh] w-full overflow-y-auto rounded-t-3xl bg-white px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-2 shadow-2xl dark:bg-gray-900 md:max-w-3xl xl:mr-6 xl:mt-24 xl:max-h-[calc(100dvh-8rem)] xl:w-[28rem] xl:rounded-3xl xl:pb-5 xl:pt-4"
       >
         <div aria-hidden="true" className="mx-auto mb-2 h-1 w-10 rounded-full bg-gray-300 xl:hidden dark:bg-gray-600" />
         {children}

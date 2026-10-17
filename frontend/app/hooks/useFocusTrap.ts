@@ -4,9 +4,14 @@ import { useEffect, type RefObject } from 'react';
 
 import { isTopmostLayer } from '@/hooks/useModalLayer';
 
-/** What Tab can reach. No visibility filter: jsdom lays nothing out, and a filter on layout would empty the ring in tests. */
-const REACHABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+/**
+ * What Tab can reach. No visibility filter: jsdom lays nothing out, and a filter on layout would empty the
+ * ring in tests. An element taken out of the tab order (`tabindex="-1"` — a duplicate of a row's button for
+ * a finger) is never the ring's first or last: counted, Shift+Tab landed on it and Tab left the window.
+ */
+const REACHABLE = [
+  'a[href]', 'button:not([disabled])', 'input:not([disabled])', 'textarea:not([disabled])', 'select:not([disabled])', '[tabindex]',
+].map((selector) => `${selector}:not([tabindex="-1"])`).join(', ');
 
 /**
  * KEEPS TAB INSIDE A WINDOW — the keyboard agrees with the eye. From the last control Tab goes to the

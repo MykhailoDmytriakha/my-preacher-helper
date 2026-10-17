@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
+import { recordDiagnostic } from '@/utils/appDiagnostics';
+
 /*
  * HOW CROSS REFERENCES SHOW ON THIS DEVICE (the owner, 2026-10-15): shown while reading the Bible,
  * as a count beside a verse; in a passage window opened from a sermon, a note or a group only when
@@ -60,9 +62,15 @@ export function readCrossReferencePrefs(): CrossReferencePrefs {
   return snapshot.prefs;
 }
 
-export function saveCrossReferencePrefs(change: Partial<CrossReferencePrefs>): void {
+/** Where a change came from, for the technical details a feedback report sends. */
+export type CrossReferencePrefsSource = 'window' | 'menu';
+
+const said = (value: unknown) => (typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
+
+export function saveCrossReferencePrefs(change: Partial<CrossReferencePrefs>, from?: CrossReferencePrefsSource): void {
   const next = { ...readCrossReferencePrefs(), ...change };
   const raw = JSON.stringify(next);
+  let kept = true;
   try {
     window.localStorage.setItem(STORAGE_KEY, raw);
     memory = null;
@@ -70,7 +78,14 @@ export function saveCrossReferencePrefs(change: Partial<CrossReferencePrefs>): v
   } catch {
     // Storage refused: the choice lasts until the page is left.
     memory = next;
+    kept = false;
   }
+  // Each change and where it came from: a setting the person saw flip by itself is then told apart from
+  // their own taps (the owner's iPad, 2026-10-16: "on" in portrait read "off" after turning the screen).
+  Object.entries(change).forEach(([name, value]) => recordDiagnostic('setting', {
+    // Letters and hyphens only: the diagnostics keep nothing else (`appDiagnostics` `safeData`).
+    source: from ?? 'code', code: `crossRefs-${name}`, result: kept ? said(value) : `${said(value)}-memory-only`,
+  }));
   listeners.forEach((listener) => listener());
 }
 
@@ -78,7 +93,9 @@ function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   // Another tab of the app changed it.
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY) listener();
+    if (event.key !== STORAGE_KEY) return;
+    recordDiagnostic('setting', { source: 'other-tab', code: 'crossRefs' });
+    listener();
   };
   window.addEventListener('storage', onStorage);
   return () => {

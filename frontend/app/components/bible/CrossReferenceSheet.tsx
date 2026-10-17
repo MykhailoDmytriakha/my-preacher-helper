@@ -36,20 +36,43 @@ type CrossReferenceSheetProps = {
   layerClassName?: string;
 };
 
-/** The texts of the books the links point into, fetched as they are needed (kept on the device by the worker). */
+/**
+ * The texts of the books the links point into, fetched as they are needed (kept on the device by the
+ * worker). Books that arrive together are drawn together, once a frame: the rest of a verse's links as
+ * verses ask for twenty books at once, and a list drawn again for each one flickered on an iPad.
+ */
 function useBookTexts(books: readonly string[], bible: BibleId): ReadonlyMap<string, BookText> {
   const [texts, setTexts] = useState<ReadonlyMap<string, BookText>>(new Map());
   const wanted = books.join('|');
   useEffect(() => {
     let alive = true;
+    let frame = 0;
+    const arrived = new Map<string, BookText>();
+    const draw = () => {
+      frame = 0;
+      const batch = new Map(arrived);
+      arrived.clear();
+      setTexts((known) => {
+        const next = new Map(known);
+        batch.forEach((text, book) => next.set(book, text));
+        return next;
+      });
+    };
     for (const book of new Set(wanted ? wanted.split('|') : [])) {
       if (texts.has(book)) continue;
       fetchBookText(book, bible).then(
-        (text) => { if (alive) setTexts((known) => new Map(known).set(book, text)); },
+        (text) => {
+          if (!alive) return;
+          arrived.set(book, text);
+          if (!frame) frame = window.requestAnimationFrame(draw);
+        },
         () => undefined,
       );
     }
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      if (frame) window.cancelAnimationFrame(frame);
+    };
     // `texts` is read to skip books already here; refetching on its change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bible, wanted]);
@@ -168,7 +191,6 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
 }) {
   const { t } = useTranslation();
   const { othersAsVerses } = useCrossReferencePrefs();
-  const switchLabelId = useId();
   const main = references.filter(isMainReference);
   const others = references.filter((reference) => !isMainReference(reference));
   const label = (reference: CrossReference) => crossReferenceLabel(reference, bible, locale);
@@ -195,23 +217,37 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
       ) : null}
       {others.length > 0 ? (
         <section className="mt-1">
-          {/* The switch lies over the row's right end, beside its button, never inside it. */}
-          <div className="relative">
+          {/*
+            The row's own button, the switch and the chevron stand side by side, never one over another:
+            a finger a few pixels off a small switch laid over the row folded the rest instead (the
+            owner's iPad, 2026-10-16: "it blinks back and forth, then switches on the second time").
+          */}
+          <div className="flex items-center gap-1">
             <button
               type="button"
               aria-expanded={othersOpen}
               onClick={onToggleOthers}
-              className="flex min-h-11 w-full items-center justify-between text-sm font-semibold text-gray-700 dark:text-gray-200"
+              className="flex min-h-11 min-w-0 flex-1 items-center text-left text-sm font-semibold text-gray-700 dark:text-gray-200"
             >
               {main.length > 0 ? t('bible.crossRefs.othersSection', { number: others.length }) : t('bible.crossRefs.allSection', { number: others.length })}
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${othersOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>
             {othersOpen ? (
-              <span className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                <span id={switchLabelId} className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('bible.crossRefs.othersAsVerses')}</span>
-                <Switch checked={othersAsVerses} aria-labelledby={switchLabelId} onClick={() => saveCrossReferencePrefs({ othersAsVerses: !othersAsVerses })} />
-              </span>
+              <Switch
+                checked={othersAsVerses}
+                label={t('bible.crossRefs.othersAsVerses')}
+                onClick={() => saveCrossReferencePrefs({ othersAsVerses: !othersAsVerses }, 'window')}
+              />
             ) : null}
+            {/* The chevron is the row's button again for a finger; the keyboard has the row's own. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden="true"
+              onClick={onToggleOthers}
+              className="-mr-2 inline-flex h-11 w-10 shrink-0 items-center justify-center text-gray-700 dark:text-gray-200"
+            >
+              <ChevronDownIcon className={`h-4 w-4 transition-transform ${othersOpen ? 'rotate-180' : ''}`} />
+            </button>
           </div>
           {othersOpen && othersAsVerses ? (
             <ul className="border-t border-gray-100 dark:border-gray-800">
