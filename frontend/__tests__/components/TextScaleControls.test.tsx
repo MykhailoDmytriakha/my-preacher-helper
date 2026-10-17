@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { TextScaleControls } from '@/components/TextScaleControls';
@@ -259,6 +259,105 @@ describe('TextScaleControls', () => {
       pressAt(60);
       await waitFor(() => {
         expect(screen.getByText('140%')).toBeInTheDocument();
+      });
+    });
+
+    // The owner's iPad, 2026-10-16: in Isaiah a drag across the rail restyled the whole book at every
+    // step it crossed — eight seconds of stiff frames. The handle and the number follow the finger; the
+    // page takes the size when the finger rests or lets go.
+    it('a drag moves the handle and the number at once, and the page takes the size when the finger rests or lets go', () => {
+      jest.useFakeTimers();
+      try {
+        render(
+          <TextScaleProvider>
+            <TextScaleControls showPercentage={true} />
+          </TextScaleProvider>
+        );
+        const rail = railAt();
+        const pointer = (type: string, clientX: number, buttons = 1) =>
+          fireEvent(rail, new MouseEvent(type, { bubbles: true, clientX, buttons }));
+        const pageScale = () => document.documentElement.style.getPropertyValue('--text-scale');
+        const before = pageScale();
+        pointer('pointerdown', 0);
+        pointer('pointermove', 30);
+        pointer('pointermove', 60);
+        expect(screen.getByText('140%')).toBeInTheDocument();
+        expect(rail).toHaveAttribute('aria-valuenow', '140');
+        // Mid-drag, frames go by and the page keeps its size: no restyle per step crossed.
+        act(() => { jest.advanceTimersByTime(60); });
+        act(() => { jest.advanceTimersByTime(60); });
+        expect(pageScale()).toBe(before);
+        // The finger rests: the page takes the size under it (a frame after the control shows it).
+        act(() => { jest.advanceTimersByTime(100); });
+        act(() => { jest.advanceTimersByTime(50); });
+        expect(pageScale()).toBe('1.4');
+        pointer('pointermove', 120);
+        expect(pageScale()).toBe('1.4');
+        // Let go: the number shows the size at once, the page takes it a frame later.
+        pointer('pointerup', 120, 0);
+        expect(screen.getByText('200%')).toBeInTheDocument();
+        expect(pageScale()).toBe('1.4');
+        act(() => { jest.advanceTimersByTime(50); });
+        expect(pageScale()).toBe('2');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    // Codex's review, 2026-10-16: a drag's pending size came back over a later key or button.
+    describe('a drag\'s pending size never overrides what comes after it', () => {
+      const pageScale = () => document.documentElement.style.getPropertyValue('--text-scale');
+      const settle = () => {
+        act(() => { jest.advanceTimersByTime(250); });
+        act(() => { jest.advanceTimersByTime(50); });
+      };
+      const pointer = (rail: HTMLElement, type: string, clientX: number) =>
+        fireEvent(rail, new MouseEvent(type, { bubbles: true, clientX, buttons: type === 'pointerup' ? 0 : 1 }));
+      const mount = () => {
+        render(
+          <TextScaleProvider>
+            <TextScaleControls showPercentage={true} />
+          </TextScaleProvider>
+        );
+        return railAt();
+      };
+      beforeEach(() => jest.useFakeTimers());
+      afterEach(() => jest.useRealTimers());
+
+      it('a press held still takes the page to its size once the finger has rested', () => {
+        const rail = mount();
+        pointer(rail, 'pointerdown', 80);
+        settle();
+        expect(pageScale()).toBe('1.6');
+      });
+
+      it('End during a drag wins over the drag\'s pending size', () => {
+        const rail = mount();
+        pointer(rail, 'pointerdown', 20);
+        pointer(rail, 'pointermove', 80);
+        fireEvent.keyDown(rail, { key: 'End' });
+        settle();
+        expect(pageScale()).toBe('2');
+      });
+
+      it('Home during a drag, then the release, leaves the page at 100%', () => {
+        const rail = mount();
+        pointer(rail, 'pointerdown', 20);
+        pointer(rail, 'pointermove', 80);
+        fireEvent.keyDown(rail, { key: 'Home' });
+        pointer(rail, 'pointerup', 80);
+        settle();
+        expect(pageScale()).toBe('1');
+      });
+
+      it('A+ during a drag steps from the size shown', () => {
+        const rail = mount();
+        pointer(rail, 'pointerdown', 20);
+        pointer(rail, 'pointermove', 80);
+        fireEvent.click(screen.getByLabelText('Increase text size'));
+        pointer(rail, 'pointerup', 80);
+        settle();
+        expect(pageScale()).toBe('1.7');
       });
     });
 

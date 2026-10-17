@@ -1,9 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 
 interface TextScaleContextType {
   scale: number; // 1.0 = 100%, 1.2 = 120%, etc.
+  /** The size the page has taken: a frame after `scale` changes, see the provider. */
+  appliedScale: number;
   setScale: (scale: number) => void;
   increaseScale: () => void;
   decreaseScale: () => void;
@@ -38,11 +40,15 @@ const generateAvailableScales = (): number[] => {
 
 export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [scale, setScaleState] = useState<number>(DEFAULT_SCALE);
+  const [appliedScale, setAppliedScale] = useState<number>(DEFAULT_SCALE);
   const [mounted, setMounted] = useState(false);
+  const appliedOnce = useRef(false);
 
   // Load from localStorage on mount
   useEffect(() => {
-    const savedScale = localStorage.getItem(STORAGE_KEY);
+    let savedScale: string | null = null;
+    // Browser storage can refuse (a private window, blocked site data): the reader still opens.
+    try { savedScale = localStorage.getItem(STORAGE_KEY); } catch { savedScale = null; }
     if (savedScale) {
       const parsedScale = parseFloat(savedScale);
       if (!isNaN(parsedScale) && parsedScale >= MIN_SCALE && parsedScale <= MAX_SCALE) {
@@ -52,12 +58,31 @@ export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children 
     setMounted(true);
   }, []);
 
-  // Apply scale to root element via CSS variable
+  /*
+   * Apply scale to root element via CSS variable. A new size restyles every word on the page — in a
+   * big Bible book a third of a second on a computer, more on an iPad (the owner, 2026-10-16) — so a
+   * change made by the person waits for the control to show it first: the number and the handle are
+   * painted, then the page takes the size. The size read on opening is applied at once.
+   */
   useEffect(() => {
-    if (!mounted) return;
-
-    document.documentElement.style.setProperty('--text-scale', scale.toString());
-    localStorage.setItem(STORAGE_KEY, scale.toString());
+    if (!mounted) return undefined;
+    // The choice is kept at once: a page left before the restyle still opens next time at this size.
+    try { localStorage.setItem(STORAGE_KEY, scale.toString()); } catch { /* the size lasts for the visit */ }
+    const apply = () => {
+      document.documentElement.style.setProperty('--text-scale', scale.toString());
+      setAppliedScale(scale);
+    };
+    if (!appliedOnce.current) {
+      appliedOnce.current = true;
+      apply();
+      return undefined;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => { timer = setTimeout(apply, 0); });
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
   }, [scale, mounted]);
 
   const setScale = useCallback((newScale: number) => {
@@ -81,6 +106,7 @@ export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const value: TextScaleContextType = {
     scale,
+    appliedScale,
     setScale,
     increaseScale,
     decreaseScale,
@@ -97,10 +123,11 @@ export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children 
 };
 
 /**
- * The text size, or null outside a provider — for a screen that only follows a change of it (the
- * Bible reader keeps the verse being read in place), so it renders in tests and previews without one.
+ * The text size the page has taken, or null outside a provider — for a screen that only follows a change
+ * of it (the Bible reader keeps the verse being read in place, once the new size is on the page), so it
+ * renders in tests and previews without one.
  */
-export const useTextScaleValue = (): number | null => useContext(TextScaleContext)?.scale ?? null;
+export const useTextScaleValue = (): number | null => useContext(TextScaleContext)?.appliedScale ?? null;
 
 export const useTextScale = (): TextScaleContextType => {
   const context = useContext(TextScaleContext);

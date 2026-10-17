@@ -227,4 +227,26 @@ describe('TextScaleProvider', () => {
 
     spy.mockRestore();
   });
+
+  it('opens when browser storage refuses to read', () => {
+    const read = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    try {
+      expect(() => render(<TextScaleProvider><span>reader</span></TextScaleProvider>)).not.toThrow();
+    } finally {
+      read.mockRestore();
+    }
+  });
+
+  // Codex's review, 2026-10-16: the page takes a new size a frame later; the choice must be kept at once,
+  // or a page left within that frame opens next time at the old size.
+  it('keeps a new size on the device at once, before the page has taken it', () => {
+    function Pick() {
+      const { setScale } = useTextScale();
+      return <button onClick={() => setScale(1.6)}>pick</button>;
+    }
+    const view = render(<TextScaleProvider><Pick /></TextScaleProvider>);
+    fireEvent.click(screen.getByText('pick'));
+    expect(localStorage.getItem('text-scale-preference')).toBe('1.6');
+    view.unmount();
+  });
 });

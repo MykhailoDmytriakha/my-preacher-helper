@@ -166,9 +166,9 @@ function PhoneBar({ wayBack, onWayBack, showPill, bookId, bible, currentChapter,
 }
 
 /**
- * A new text size (the "T" button) reflows the whole book: the verse being read is taken before the
- * page moves and put back at the reading top once the size is on the page — the provider writes it
- * in its own effect, after this one, so the jump waits a frame.
+ * A new text size (the "T" button) reflows the whole book: the verse being read is put back at the
+ * reading top once the size is on the page — `useTextScaleValue` is the size the page has taken (the
+ * provider applies a person's change a frame after the control shows it), and the jump waits a frame more.
  */
 function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (place: Place) => void) {
   const scale = useTextScaleValue();
