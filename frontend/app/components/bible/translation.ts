@@ -11,13 +11,18 @@ import type { AppLocale } from '@/utils/appLocale';
 const STORAGE_KEY = 'bible:translation';
 
 export function readTranslation(locale: AppLocale): BibleId {
+  return readStoredTranslation() ?? bibleForLocale(locale);
+}
+
+/** A real personal choice; the locale fallback is deliberately kept separate. */
+export function readStoredTranslation(): BibleId | null {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (isBibleId(stored)) return stored;
   } catch {
-    // Storage refused: the interface's language decides.
+    // Storage refused: a caller may still retain the choice for this visit.
   }
-  return bibleForLocale(locale);
+  return null;
 }
 
 export function saveTranslation(bible: BibleId): void {

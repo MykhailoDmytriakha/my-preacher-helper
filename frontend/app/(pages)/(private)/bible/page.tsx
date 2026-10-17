@@ -1,15 +1,14 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { BibleBookList } from '@/components/bible/BibleBookList';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { newEntryState, parsePlaceParam, readLastPlace, type LastPlace } from '@/components/bible/lastPlace';
-import { readTranslation, saveTranslation } from '@/components/bible/translation';
-import { resolveAppLocale } from '@/utils/appLocale';
+import { useReadingBible } from '@/components/bible/useReadingBible';
 import { parsePassageEndpoint, wayBackPath } from '@/utils/bibleLink';
-import { isBibleId, type BibleId } from '@/utils/bibles';
+import { isBibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
 import { isBrowserOffline } from '@/utils/connectivity';
 import { useTranslation } from '@locales/useTranslation';
@@ -26,8 +25,7 @@ import '@locales/i18n';
  * address is built and read by `utils/bibleLink.ts`.
  */
 export default function BiblePage() {
-  const { t, language: interfaceLanguage } = useTranslation();
-  const locale = resolveAppLocale(interfaceLanguage);
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const slug = searchParams?.get('book') ?? null;
   const place = parsePlaceParam(searchParams?.get('at'));
@@ -37,22 +35,8 @@ export default function BiblePage() {
   const bookId = slug ? bookIdFromSlug(slug) : undefined;
   const [lastPlace, setLastPlace] = useState<LastPlace | null>(null);
   const [storageFailed, setStorageFailed] = useState(false);
-  // The Bible this device reads, known after mount (it lives in browser storage); nothing is opened
-  // before it is known, so a book is never fetched in one Bible and then again in another.
-  const [bible, setBible] = useState<BibleId | null>(null);
-  // A Bible chosen in this visit stays chosen even when the device refuses to store it and the
-  // interface's language changes; before any choice, the language decides.
-  const chosenRef = useRef<BibleId | null>(null);
-
-  useEffect(() => {
-    setBible(chosenRef.current ?? readTranslation(locale));
-  }, [locale]);
-
-  const changeBible = useCallback((next: BibleId) => {
-    chosenRef.current = next;
-    saveTranslation(next);
-    setBible(next);
-  }, []);
+  // An unnumbered arrival must not become a reading entry in a temporary default Bible.
+  const { bible, changeBible } = useReadingBible(Boolean(bookId && place && !isBibleId(placeBible)));
 
   useEffect(() => {
     if (!slug) setLastPlace(readLastPlace());
@@ -104,7 +88,7 @@ export default function BiblePage() {
     window.scrollTo({ top: 0 });
   }, []);
 
-  if (!bible) return null;
+  if (!bible) return <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('common.loading')}</p>;
 
   if (!slug) {
     return (

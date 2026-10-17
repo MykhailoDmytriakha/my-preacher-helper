@@ -209,10 +209,15 @@ export async function initializeUserSettings(
  * Helper function to get language from cookie
  */
 export function getCookieLanguage(): string {
+  return readLanguageCookie() || DEFAULT_LANGUAGE;
+}
+
+/** A stored device preference, without treating the app default as a known choice. */
+export function readLanguageCookie(): string | undefined {
   if (typeof document !== 'undefined') {
-    return document.cookie.match(new RegExp(`${COOKIE_LANG_KEY}=([^;]+)`))?.[1] || DEFAULT_LANGUAGE;
+    return document.cookie.match(new RegExp(`${COOKIE_LANG_KEY}=([^;]+)`))?.[1];
   }
-  return DEFAULT_LANGUAGE;
+  return undefined;
 }
 
 /**
