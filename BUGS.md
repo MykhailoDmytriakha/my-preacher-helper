@@ -112,23 +112,16 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-reference-conflict-hides-verse-numbers - Reference conflict preview shows book and Bible code but hides chapter and verse
-**Severity.** P3: the stored choices preserve complete values, but the person cannot read the decisive reference coordinates from the offered local version.
-**Found.** 2026-10-17, root native/sheet visual acceptance of actual local UI at1280 and390px, buildruIWHmt1_DPCjToTKvpoz.
-**Path / reproduce.** Studies -> existing note -> Edit -> add John3:16 after an actual late remote change to its old reference -> inspect the global conflict notice. The local preview says Psalms, rst, John, rst, omitting9:1 and3:16. Same in V6 control and V10 settled-choice captures.
-**Expected.** Display readable complete references using their actual Bible and coordinates, including ranges. The person must see the meaning they choose. IDs/metadata remain hidden; text-only thoughts keep their readable prose.
-**Observed / effect.** Numeric chapter, verse and range fields are omitted even though they distinguish versions; a book name is insufficient to review the choice. No claim that underlying reference data is missing. Both settled choice outcomes pass, but this display defect remains.
-**Anchors.** frontend/app/components/EngineConflictBanner.tsx:72-102 itemWords/changedItem/showList. itemWords accepts strings and string arrays, drops numeric coordinates; an existing book string prevents its null-item fallback. Conflict branch:371-385 passes the resulting mine string to SaveConflictBanner.
-**Evidence.** reference-provenance-v6-control-after-390-real-conflict-retained.png; reference-provenance-v10-settled-mine-390-real-conflict-retained.png; root visual sheets12/14. Real UI over disposable synthetic RAM data with actual protocol; no backend/provider/prod writes.
-**User behavior.** Show complete reference meaning when reference versions need a decision. Stay silent for ordinary unchanged references and bookkeeping. One person reviews their saved versions; no invented chronology.
-**Class.** Generic prose extraction drops meaningful numeric fields of keyed structured values.
-| place | verdict | reason |
-|---|---|---|
-| EngineConflictBanner itemWords -> showList for studyNotes.scriptureRefs | affected | book/Bible strings remain but chapter/verse/range numbers disappear |
-| canonical server merge and stored reference objects | not this display mechanism | complete values survive; both V10 choice outcomes checked |
-| ordinary thought/plan prose and other keyed numeric entities | require focused class check before fix | intentional metadata filtering must not be replaced by raw technical JSON |
-| page-local conflict notice | not assessed for this display defect | shown reference list remains on the editor; investigate separately if it previews copies |
-**Root / direction.** Use the canonical domain formatter for structured references at the display boundary, preserving item-level meaning and existing prose presentation. Add a RED mounted notice regression before fixing; verify both widths and Bible-specific numbering/ranges. No implementation change inPhase65.
+### BUG-20261017-flow-conflict-hides-duration - A meeting step preview can omit its changed duration
+**Severity.** P3: the saved step retains its duration, but a recovery choice can show only its unchanged title or notes, hiding the numeric decision.
+**Found.** 2026-10-17, source class review of BUG-20261017-reference-conflict-hides-verse-numbers; mounted/browser reproduction pending.
+**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:72-109`; `frontend/app/data-engine/resourceSchemas.ts:73`; duration input `frontend/app/components/groups/FlowEditor.tsx:140-142`.
+**Expected.** Groups -> existing group -> meeting flow -> change a step's duration -> when that saved change needs a decision, preview the duration with its step and unit. Clearing the duration remains an explicit unset value.
+**Observed.** itemWords drops durationMin. A remaining instanceTitle or instanceNotes makes changedItem return that unchanged wording, preventing raw numeric fallback. Existing test at EngineConflictBanner.test.tsx:574 covers only a step with its notes removed, so it misses this case.
+**Reproduce to confirm.** Keep a step's title/notes, change 5 minutes to 12, obtain a refused/conflicting saved change, inspect and copy the offered preview. Compare with the case without any words.
+**User behavior.** Show the authored duration when it distinguishes the saved versions; hide IDs, order and placement. Ordinary unchanged steps produce no notice. Preserve the duration in either explicit choice.
+**Class.** Same numeric-leaf omission as the reference bug, but meeting duration needs a separate readable unit/unset presentation; it must not be routed through the Scripture formatter. Global notice variants share the same preview owner; server/offline storage are separate owners and keep the numeric value. Legacy copy readers already include numeric leaves. No duration fix in the reference unit.
+**Effect / limits.** Source-proven presentation loss; runtime frequency, reproduction and exact localized display remain to be verified before fixing.
 
 ### BUG-20261017-reference-conflict-choice-stays-stale - A newly shown conflict can need another choice after its stored version refreshes
 **Severity.** P3: an early click can be refused or cancelled while the notice catches up; after its five-second refresh both choices work. No text loss was observed. The earlier permanent-block/P2 interpretation is withdrawn.

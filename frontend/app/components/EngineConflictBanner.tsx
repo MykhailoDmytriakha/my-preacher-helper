@@ -10,7 +10,10 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
+import { resolveAppLocale } from '@/utils/appLocale';
+import { isBibleId } from '@/utils/bibles';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
+import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { useTranslation } from '@locales/useTranslation';
@@ -65,6 +68,21 @@ const show = (value: unknown): string => {
 type Item = Record<string, unknown> & { id: string };
 type DisplayValue = (scope: string, field: string, value: unknown) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
+const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerse'];
+const REFERENCE_FIELDS = new Set(['id', 'bible', 'book', 'text', ...REFERENCE_COORDINATES]);
+
+/** The canonical reader owns the numbers; unsupported evidence stays complete rather than disappearing. */
+function referenceItemText(item: Item, language: string): string {
+  const supported = typeof item.book === 'string' && item.book.trim()
+    && (item.bible === undefined || isBibleId(item.bible))
+    && (item.text === undefined || typeof item.text === 'string')
+    && REFERENCE_COORDINATES.every(field => item[field] === undefined || (Number.isSafeInteger(item[field]) && Number(item[field]) > 0))
+    && Object.keys(item).every(field => REFERENCE_FIELDS.has(field) || BOOKKEEPING.has(field) || /Ids?$/.test(field));
+  if (!supported) return show(item);
+  return [formatScriptureReference(item as Item & ScriptureRefShape, { locale: resolveAppLocale(language), style: 'long' }),
+    typeof item.text === 'string' ? item.text : ''].filter(text => text.trim()).join('\n');
+}
+
 /** Fields that name an item first, when it has them; any other words come after. */
 const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
 /**
@@ -85,6 +103,8 @@ function itemWords(item: Item, scope: string, display: DisplayValue): [string, s
  * just its name when only its place or links changed. Null when it has no words at all.
  */
 function changedItem(item: Item, before: Item | undefined, scope: string, display: DisplayValue): string | null {
+  const formatted = display(scope, '', item);
+  if (typeof formatted === 'string') return formatted;
   const words = itemWords(item, scope, display);
   if (!words.length) return null;
   const was = new Map(before ? itemWords(before, scope, display) : []);
@@ -227,8 +247,10 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const fieldNameRef = useRef((field: string) => fieldLabel(t, field));
   fieldNameRef.current = (field: string) => fieldLabel(t, field);
 
-  const displayRef = useRef<DisplayValue>((scope, field, value) => storedFieldValue(t, scope, field, value));
-  displayRef.current = (scope, field, value) => storedFieldValue(t, scope, field, value);
+  const displayValue: DisplayValue = (scope, field, value) => scope === 'studyNotes.scriptureRefs' && !field && isItem(value)
+    ? referenceItemText(value, interfaceLanguage) : storedFieldValue(t, scope, field, value);
+  const displayRef = useRef<DisplayValue>(displayValue);
+  displayRef.current = displayValue;
 
   const refresh = useCallback(async (): Promise<Waiting[] | null> => {
     const request = ++sequence.current;
