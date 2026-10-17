@@ -21,6 +21,9 @@ Every new `t('key')` goes into all three files frontend/locales/{en,ru,uk}/trans
 
 - Readable document differences and refused drafts use `utils/storedFieldValue.ts` with collection-qualified schema paths. Reuse the actual screen choice keys. Never translate arbitrary matching strings: an authored title or plan cell saying `draft` must stay exact. `EngineConflictBanner` applies it after raw change detection; `LegacyQueryRecovery` uses it for readable values and difference clipboard text. Raw evidence/details/downloads stay exact. Add each new user-choice schema path with all three locale checks.
 
+
+- Meaning-bearing scalar leaves use that same display reader at exact schema paths: `groups.flow.durationMin` reads with `groupFlow.minutesShort`, and explicit null with `legacyRecovery.absent`; `serviceOrders.steps.flagged` and `councils.topics.forAssembly` use the existing On/Off words. `fieldLabel` owns their readable labels. The engine item preview retains these converted strings with a label and compares them against the opening copy, so unchanged duration stays quiet. Never convert every number/boolean: positions, IDs, derived states and unknown extension data keep their original shape. Display copies never become saved payloads. Legacy comparison removals still use their established struck-through-line presentation for null; do not change generic diff fingerprints just to reuse the engine preview's unset wording.
+
 ## Why
 
 - 2026-02-23: duplicate keys were recorded as a webpack parse error; the build actually accepts them and drops the earlier value without a word, which is why uniqueness is on you.

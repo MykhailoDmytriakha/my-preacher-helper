@@ -1,3 +1,4 @@
+import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
 import en from '@locales/en/translation.json';
@@ -63,6 +64,32 @@ describe.each(['en', 'ru', 'uk'] as const)('Stored choices in %s', language => {
     expect(storedFieldValue(t, 'sermons', 'planText', { status: 'draft' })).toEqual({ status: 'draft' });
     expect(storedFieldValue(t, 'groups', 'status', null)).toBeNull();
     expect(storedFieldValue(t, 'groups', 'status', 42)).toBe(42);
+  });
+
+  it('reads only declared authored scalar paths with their existing screen labels', () => {
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', 12)).toBe(`12 ${t('groupFlow.minutesShort')}`);
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', 0)).toBe(`0 ${t('groupFlow.minutesShort')}`);
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', null)).toBe(t('legacyRecovery.absent'));
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', undefined)).toBeUndefined();
+    for (const value of [true, false]) {
+      const label = t(`legacyRecovery.${value ? 'valueOn' : 'valueOff'}`);
+      expect(storedFieldValue(t, 'serviceOrders.steps', 'flagged', value)).toBe(label);
+      expect(storedFieldValue(t, 'councils.topics', 'forAssembly', value)).toBe(label);
+    }
+    expect(fieldLabel(t, 'durationMin')).toBe(t('legacyRecovery.field.duration'));
+    expect(fieldLabel(t, 'flagged')).toBe(t('serviceOrders.flag'));
+    expect(fieldLabel(t, 'forAssembly')).toBe(t('council.topic.forAssembly'));
+  });
+
+  it('keeps raw evidence and unrelated scalar fields structurally unchanged', () => {
+    for (const value of [42, null, true, false]) expect(storedFieldValue(t, 'unregistered', 'durationMin', value)).toBe(value);
+    const value = [{ id: 'step', order: 7, durationMin: null, instanceTitle: 'Keep exact words.', extension: { durationMin: 12 }, flagged: true }];
+    const before = JSON.stringify(value);
+    expect(storedFieldValue(t, 'groups', 'flow', value)).toEqual([{ ...value[0], durationMin: t('legacyRecovery.absent') }]);
+    expect(JSON.stringify(value)).toBe(before);
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', 'twelve')).toBe('twelve');
+    expect(storedFieldValue(t, 'groups.flow', 'durationMin', -1)).toBe(-1);
+    expect(storedFieldValue(t, 'serviceOrders.steps', 'flagged', 'true')).toBe('true');
   });
 
   it('formats nested choices without changing the source or its identifiers, positions and authored text', () => {

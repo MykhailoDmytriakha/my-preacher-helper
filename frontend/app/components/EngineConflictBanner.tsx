@@ -86,13 +86,15 @@ function referenceItemText(item: Item, language: string): string {
 /** Fields that name an item first, when it has them; any other words come after. */
 const NAMING_FIELDS = ['text', 'title', 'name', 'instanceTitle'];
 /**
- * What the person wrote in one item, field by field: text, a list of short texts (questions,
- * references), never an id, a link to another item or a moment written down by the app.
+ * What the person wrote in one item: words, short text lists and schema-labelled scalar choices;
+ * never an id, placement, a link to another item or a moment written down by the app.
  */
-function itemWords(item: Item, scope: string, display: DisplayValue): [string, string][] {
+function itemWords(item: Item, scope: string, display: DisplayValue, name: (field: string) => string): [string, string][] {
   const words = (field: string, value: unknown): string => {
     if (field === 'id' || /Ids?$/.test(field) || BOOKKEEPING.has(field)) return '';
-    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : String(display(scope, field, value)).trim();
+    const shown = display(scope, field, value);
+    if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}T/.test(value) ? '' : String(shown).trim();
+    if (typeof shown === 'string') return `${name(field)}: ${shown}`;
     return Array.isArray(value) && value.every(entry => typeof entry === 'string') ? value.join(', ') : '';
   };
   const fields = [...NAMING_FIELDS.filter(field => field in item), ...Object.keys(item).filter(field => !NAMING_FIELDS.includes(field))];
@@ -102,12 +104,12 @@ function itemWords(item: Item, scope: string, display: DisplayValue): [string, s
  * One changed item in words: the words that changed, with its name first when the name stayed;
  * just its name when only its place or links changed. Null when it has no words at all.
  */
-function changedItem(item: Item, before: Item | undefined, scope: string, display: DisplayValue): string | null {
+function changedItem(item: Item, before: Item | undefined, scope: string, display: DisplayValue, label: (field: string) => string): string | null {
   const formatted = display(scope, '', item);
   if (typeof formatted === 'string') return formatted;
-  const words = itemWords(item, scope, display);
+  const words = itemWords(item, scope, display, label);
   if (!words.length) return null;
-  const was = new Map(before ? itemWords(before, scope, display) : []);
+  const was = new Map(before ? itemWords(before, scope, display, label) : []);
   const changed = words.filter(([field, text]) => was.get(field) !== text);
   const [name] = words;
   if (!changed.length) return name[1];
@@ -119,11 +121,11 @@ function changedItem(item: Item, before: Item | undefined, scope: string, displa
  * (BUG-20261013-refused-thoughts-notice-shows-raw-data). An item changed without any words is
  * never hidden: then the whole structure is shown, with known choices labelled as on screen.
  */
-const showList = (value: unknown[], base: unknown, scope: string, field: string, display: DisplayValue): string => {
+const showList = (value: unknown[], base: unknown, scope: string, field: string, display: DisplayValue, name: (field: string) => string): string => {
   if (!value.every(isItem)) return show(display(scope, field, value));
   const before = new Map((Array.isArray(base) ? base.filter(isItem) : []).map(item => [item.id, item]));
   const changed = value.filter(item => JSON.stringify(before.get(item.id)) !== JSON.stringify(item))
-    .map(item => changedItem(item, before.get(item.id), `${scope}.${field}`, display));
+    .map(item => changedItem(item, before.get(item.id), `${scope}.${field}`, display, name));
   return changed.includes(null) ? show(display(scope, field, value)) : changed.join('\n\n');
 };
 /** Every field a version changed against its base, as "field: value" — steps, tags and structure included. */
@@ -131,7 +133,7 @@ function changedText(value: DocumentData | null | undefined, base: DocumentData 
   if (!value) return '';
   return Object.keys(value).filter(field => !BOOKKEEPING.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
     .map(field => {
-      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display) : show(display(scope, field, value[field]));
+      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display, name) : show(display(scope, field, value[field]));
       return shown ? `${name(field)}: ${shown}` : '';
     }).filter(Boolean).join('\n\n');
 }

@@ -112,16 +112,13 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-flow-conflict-hides-duration - A meeting step preview can omit its changed duration
-**Severity.** P3: the saved step retains its duration, but a recovery choice can show only its unchanged title or notes, hiding the numeric decision.
-**Found.** 2026-10-17, source class review of BUG-20261017-reference-conflict-hides-verse-numbers; mounted/browser reproduction pending.
-**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:72-109`; `frontend/app/data-engine/resourceSchemas.ts:73`; duration input `frontend/app/components/groups/FlowEditor.tsx:140-142`.
-**Expected.** Groups -> existing group -> meeting flow -> change a step's duration -> when that saved change needs a decision, preview the duration with its step and unit. Clearing the duration remains an explicit unset value.
-**Observed.** itemWords drops durationMin. A remaining instanceTitle or instanceNotes makes changedItem return that unchanged wording, preventing raw numeric fallback. Existing test at EngineConflictBanner.test.tsx:574 covers only a step with its notes removed, so it misses this case.
-**Reproduce to confirm.** Keep a step's title/notes, change 5 minutes to 12, obtain a refused/conflicting saved change, inspect and copy the offered preview. Compare with the case without any words.
-**User behavior.** Show the authored duration when it distinguishes the saved versions; hide IDs, order and placement. Ordinary unchanged steps produce no notice. Preserve the duration in either explicit choice.
-**Class.** Same numeric-leaf omission as the reference bug, but meeting duration needs a separate readable unit/unset presentation; it must not be routed through the Scripture formatter. Global notice variants share the same preview owner; server/offline storage are separate owners and keep the numeric value. Legacy copy readers already include numeric leaves. No duration fix in the reference unit.
-**Effect / limits.** Source-proven presentation loss; runtime frequency, reproduction and exact localized display remain to be verified before fixing.
+### BUG-20261017-order-conflict-raw-steps-label - The service-order choice shows the internal steps field name
+**Severity.** P3: a recovery notice exposes an untranslated field key before the person's step title; the saved words and decision controls remain usable.
+**Found / anchor.** 2026-10-17, actual localhost Care -> Conducting services -> existing order -> Edit -> change a step -> conflict -> back to list, at390px. The preview reads “steps: Opening step”. `frontend/app/utils/storedFieldLabel.ts:7-33` omits steps; `frontend/app/components/EngineConflictBanner.tsx:133-139` prefixes the returned raw field name.
+**Expected / observed.** Name the list using the interface language instead of the internal English key. Existing shared field labels cover flow/topics but not service-order steps.
+**Reproduce.** Leave a saved step change requiring a choice and inspect the global notice on the service-order list in Russian or Ukrainian.
+**User behavior.** A preacher reviewing their saved work sees familiar service/step words. Authored title/body stays verbatim; ordinary saved items produce no notice.
+**Class / limits.** Field-label coverage, separate from omitted numeric/boolean values. Check the schema-owned root fields shown by both recovery readers before choosing the existing/localized label seam. Runtime confirmed on original local build over RAM protocol; no backend/production claim.
 
 ### BUG-20261017-reference-conflict-choice-stays-stale - A newly shown conflict can need another choice after its stored version refreshes
 **Severity.** P3: an early click can be refused or cancelled while the notice catches up; after its five-second refresh both choices work. No text loss was observed. The earlier permanent-block/P2 interpretation is withdrawn.
@@ -355,6 +352,13 @@
 
 ## 🔍 Требует перепроверки
 
+
+### BUG-20261017-stored-choice-list-projection - Immediate list cards can show the opening copy after taking the saved version
+**Status.** Requires recheck: immediate visible mismatch and seven-second DOM residue reproduced under isolated collection-head Listen; source/product cause is not established.
+**Found / anchors.** 2026-10-17, actual localhost Groups -> group -> step minutes5 -> local12 versus accepted remote8 -> Groups -> take saved version. The actual RAM protocol remains8 and the notice disappears, but the immediate390px card shows5. Council's analogous remote topic removal also leaves the opening topic on its immediate list capture. Readers: `frontend/app/hooks/useGroupsDataCollection.ts:12-17`, `frontend/app/(pages)/(private)/groups/page.tsx:36,219`; shared choices `frontend/app/components/EngineConflictBanner.tsx`.
+**Expected / observed.** After an explicit choice, show that selected version or indicate that the screen is refreshing. Do not show opening values as if the decision selected them. The immediate screenshot shows the mismatch; seven-second DOM text still contains the topic, but its later screenshot shows only a blank visible area. The RAM harness blocks live Firestore collection-head notifications. This does not establish data loss or a production defect.
+**Reproduce / next.** Repeat both choices over accepted real protocol commands, inspect the list immediately and after7/15seconds, then navigate/reload. Check collection projection/cancellation before changing source; confirm the RAM harness also models collection version/change delivery correctly.
+**User behavior.** One person continues with their own selected saved version. Preserve accepted words and distinguish persistence from what the current card displays. Source cause/runtime duration and backend behavior remain unverified.
 
 ### BUG-20261017-undo-before-capture-hard-restart · Немедленный перезапуск после Undo может опередить локальный захват
 `frontend/app/components/sermon/ScratchPanel.tsx:401` · `frontend/app/data-engine/react.client.tsx:320` · `frontend/app/data-engine/engine.ts:1018`. Без сети: удалить мысль → список → Undo → сразу перезапустить документ. Восстановление не попало в очередь; обычный переход работает. Ожидание: подтверждённое локальное действие переживает перезапуск. Границу захвата и связь с BUG-20261016-engine-draft-before-request ещё проверить.

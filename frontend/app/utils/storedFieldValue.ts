@@ -32,6 +32,13 @@ const CHOICES: Record<string, Record<string, string>> = {
 /** A display-only copy. Paths include the collection so equal words in unrelated fields stay text. */
 export function storedFieldValue(t: Translate, scope: string, field: string, value: unknown): unknown {
   const visit = (current: unknown, path: string): unknown => {
+    if (path === 'groups.flow.durationMin') {
+      if (typeof current === 'number' && Number.isFinite(current) && current >= 0) return `${current} ${t('groupFlow.minutesShort')}`;
+      if (current === null) return t('legacyRecovery.absent');
+    }
+    if ((path === 'serviceOrders.steps.flagged' || path === 'councils.topics.forAssembly') && typeof current === 'boolean') {
+      return t(current ? 'legacyRecovery.valueOn' : 'legacyRecovery.valueOff');
+    }
     if (typeof current === 'string') {
       const key = Object.hasOwn(CHOICES, path) && Object.hasOwn(CHOICES[path], current) ? CHOICES[path][current] : undefined;
       return key ? t(key) : current;

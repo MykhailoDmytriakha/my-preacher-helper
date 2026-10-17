@@ -28,5 +28,9 @@ const NAMED_FIELDS = new Set([
   'providerId', 'modelId']);
 
 /** The field's name as `legacyRecovery.field.*` says it; a field without a name of its own shows as stored. */
-export const fieldLabel = (t: (key: string) => string, field: string): string =>
-  NAMED_FIELDS.has(field) ? t(`legacyRecovery.field.${field}`) : field;
+export const fieldLabel = (t: (key: string) => string, field: string): string => {
+  if (field === 'durationMin') return t('legacyRecovery.field.duration');
+  if (field === 'flagged') return t('serviceOrders.flag');
+  if (field === 'forAssembly') return t('council.topic.forAssembly');
+  return NAMED_FIELDS.has(field) ? t(`legacyRecovery.field.${field}`) : field;
+};
