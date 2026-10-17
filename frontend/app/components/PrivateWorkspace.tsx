@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
 
 import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
 import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
@@ -18,6 +18,7 @@ import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { DataEngineWorkspace } from '@/data-engine/react.client';
+import { useWorkspacePanes } from '@/hooks/useWorkspacePanes';
 import { UserSettingsProvider, UserSettingsSyncStatus } from '@/providers/UserSettingsProvider';
 
 /**
@@ -45,6 +46,8 @@ export function PrivateWorkspace({ children }: { children: ReactNode }) {
  */
 export function PrivateChrome({ pathname, search, children }: { pathname: string; search: string; children: ReactNode }) {
   const isStudyDetail = /^\/studies\/(?!share-links(?:\/|$))[^/]+\/?$/.test(pathname);
+  const contentRef = useRef<HTMLElement | null>(null);
+  useWorkspacePanes(contentRef, 'study', isStudyDetail);
   const isPreachingPlan = Boolean(
     pathname.startsWith('/sermons/') &&
       pathname.includes('/plan') &&
@@ -80,6 +83,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       )}
       <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /><UserSettingsSyncStatus /></div>
       <main
+        ref={contentRef}
         id="main-content"
         tabIndex={-1}
         role="main"

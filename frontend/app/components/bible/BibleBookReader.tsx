@@ -7,6 +7,7 @@ import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { scrollPinnedPageBy } from '@/hooks/useScrollLock';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
+import { useWorkspacePanes } from '@/hooks/useWorkspacePanes';
 import { useTextScaleValue } from '@/providers/TextScaleProvider';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
@@ -447,6 +448,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // on a phone landed hundreds to thousands of pixels above its verse (2026-10-16, measured, the old
   // ribbon too). The page and the text are watched; while the jump's place holds, it is jumped to again.
   const readerRef = useRef<HTMLDivElement | null>(null);
+  useWorkspacePanes(readerRef, 'reader', wide);
   useEffect(() => {
     if (!text || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => {

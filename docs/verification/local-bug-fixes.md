@@ -1257,8 +1257,25 @@ Evidence: local case offline-icons-* artifacts, including original browser/Jest 
 
 ## Incoming main422c877c — manual two-device marks probe
 
-Stage: local integration candidate; independent fresh acceptance and final local merge identity are recorded in the case evidence. Publication remains deferred.
+Stage: locally accepted as merge032405016c6bccd3c3c1642a5c8e0e32f3055a4f; publication remains deferred.
 
 The incoming commit adds only tools/webkit-lab/marks-two-devices.js. Its bytes match the pinned upstream commit, and node --check passes. The application and all2206 frontend fingerprints remain byte-identical to the independently accepted offline-icons build9GPkU-es3ErY49zHLk8Pl; its848-suite/9168-test build and8-browser-row evidence are inherited by exact identity, not rerun or described as new results. BUGS.md and its accepted icon closure are unchanged by this intake.
 
 The added manual WebKit probe logs into the existing test account, marks an initially unmarked verse, reloads, opens the same place with independent storage, erases and reopens it. It writes real test-user data and its exception path exits without guaranteed cleanup; logged HTTP statuses are not independently asserted. It was syntax-checked and inspected here, not executed. Its addition establishes no new backend, physical-device, Safari or production acceptance. Use an explicitly prepared disposable test-data stand and verify cleanup before treating a future run as evidence. No push, merge into main or deployment occurs here.
+
+
+## BUG-20261016-reader-has-rules-restyle-document — pane layout ownership
+
+Stage: primary local validation complete; independent fresh acceptance and source commit pending. Publication remains deferred.
+
+Opening a cross-reference sheet inside a wide Bible reader invalidated the whole application subtree. Seven descendant-discovery selectors shared by reader and study layouts caused it. One common useWorkspacePanes hook now claims explicit shell/workspace attributes through owned refs before paint, releases them on width/route/unmount changes, preserves previous values and counts overlapping holders. Existing geometry, reader windowing, modal locks and local markers remain unchanged. Direct-child :has() selectors were tested as a narrower alternative and still invalidated the full subtree.
+
+Two existing-component regressions fail before the implementation (2failed/60controls passed), then the same62 tests pass. Six hook lifecycle tests cover inactive/active transitions, overlapping and independent claims, restoration, StrictMode and isolated previews. Expanded focus passes16suites/207tests; types and lint pass (25 inherited warnings). The official build passes849suites/9177tests (3suites/17tests skipped), buildPwSeCYRMTZaC9TKgA8qLY; all2208 frontend fingerprints remain unchanged through the gates/build.
+
+In visible Chromium, three identical real sheet clicks on the old/current production previews each affect9616 versus141 Blink style elements, respectively. Max traced restyles are37.867–39.181ms before and8.366–9.008ms after. The app-shell subtree invalidation disappears in all three candidate traces. These are instrumented style metrics, including pseudo-elements, not native DOM counts or promised user latency. Before/after scripts differ only by build ID/output paths. Four study widths1280/1024/820/390 retain identical pane geometry.
+
+Live controls verify independent text/outline wheel scrolling; modal locking and release with offsets retained; reader1280→390→820→1280; release when opening the real book list and reclamation on return; and service-worker delivery after actual offline reload for both reader and study. Controlled private snapshots avoid backend data writes. The first offline-control attempt used the wrong unversioned cache lookup; its failure is retained and corrected with ignoreSearch. Final controls enforce no online diagnostics and classify expected offline network/prefetch/Firebase failures separately. They have no JS errors, unexpected diagnostics or blocked writes; no blanket console-clean offline claim is made.
+
+Primary visual acceptance inspects18 before/after/control captures through two labeled sheets, plus full-size reader, modal, offline and responsive study originals. The text, toolbar, minimap, outline and modal remain readable; the offline banner takes its own space above the panes. Evidence lives in local reader-layout-* case artifacts, including actual RED, GREEN, raw traces, source review and frozen identities.
+
+After separately authorized publication, verify the deployed revision and updated worker, real book/sheet clicks on a long Psalms location, reader width/route cleanup, study independent scrolling and modal release, and offline reload with retained panes. Repeat on Safari and the physical iPad; local Chromium does not establish that acceptance. No push, merge into main or deployment occurs here.

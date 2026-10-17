@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+import { PrivateChrome } from '@/components/PrivateWorkspace';
+
 import PrivateLayout from '../../app/(pages)/(private)/layout';
 
 let mockPathname = '/studies/note-1';
@@ -18,13 +20,26 @@ jest.mock('@/components/ProtectedRoute', () => ({ children }: { children: ReactN
 jest.mock('@/components/navigation/DashboardNav', () => () => <nav>Navigation</nav>);
 jest.mock('@/components/navigation/Breadcrumbs', () => () => <div>Breadcrumbs</div>);
 jest.mock('@/components/navigation/DevQuickNav', () => () => null);
-jest.mock('@/components/navigation/PageGestures', () => ({ children, enabled: _enabled, ...attributes }: { children: ReactNode; enabled?: boolean }) => <div {...attributes}>{children}</div>);
+jest.mock('@/components/navigation/PageGestures', () => ({ children, enabled: _enabled, ...attributes }: { children: ReactNode; enabled?: boolean }) => <div data-page-gesture="idle" {...attributes}>{children}</div>);
 jest.mock('@/components/GuestBanner', () => ({ GuestBanner: () => <div>Guest notice</div> }));
 jest.mock('@/components/OutboxConflictBanner', () => ({ OutboxConflictBanner: () => <div>Unsent changes</div> }));
 jest.mock('@/components/EngineConflictBanner', () => ({ EngineConflictBanner: () => null }));
 jest.mock('@/components/OutboxDrain', () => ({ OutboxDrain: () => <div data-testid="outbox-drain" /> }));
 
 describe('bounded study workspace routing', () => {
+    it('claims the shell and workspace panes only while a study detail is open', () => {
+        const { container, rerender } = render(
+            <div id="app-shell"><PrivateChrome pathname="/studies/note-1" search="">Note panes</PrivateChrome></div>,
+        );
+        const shell = container.querySelector('#app-shell');
+        const workspace = container.querySelector('[data-page-gesture]');
+        expect(shell).toHaveAttribute('data-study-layout');
+        expect(workspace).toHaveAttribute('data-study-layout');
+        rerender(<div id="app-shell"><PrivateChrome pathname="/studies" search="">Notes list</PrivateChrome></div>);
+        expect(shell).not.toHaveAttribute('data-study-layout');
+        expect(workspace).not.toHaveAttribute('data-study-layout');
+    });
+
     beforeEach(() => { mockSearch = ''; });
     it.each(['/studies/note-1', '/studies/new', '/studies/note-1/'])(
         'includes navigation and notices above the panes at %s', (pathname) => {

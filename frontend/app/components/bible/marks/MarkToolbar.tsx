@@ -49,9 +49,9 @@ const SWATCH = 'h-[30px] w-[30px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_
 type Swatch = { id: string; color: string; label: string; chosen: boolean; pick: () => void };
 
 /*
- * Both palettes stay in the page and are only hidden: Chrome checks the app shell's `:has()` rules
- * (`globals.css`, the reader's panes) on every element put into the page, and a palette put in and
- * taken out on each tool restyled the whole book — 150 ms a tap in the Psalms (2026-10-16, traced).
+ * Both palettes stay mounted and toggle hidden, retaining their established tool and colour behavior.
+ * Shell layout is declared separately by useWorkspacePanes, so other sheets can mount without
+ * restyling the whole book (the earlier global :has workaround, 2026-10-16).
  * Open, a palette stands in the row before its tool and the row makes room for it.
  */
 function Palette({ swatches, label, vertical, open }: { swatches: Swatch[]; label: string; vertical: boolean; open: boolean }) {

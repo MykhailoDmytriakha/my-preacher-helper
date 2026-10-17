@@ -297,13 +297,13 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
     --note-pane-scroll: 1;
   }
 
-  #app-shell:has([data-study-workspace]) {
+  #app-shell[data-study-layout] {
     height: 100dvh;
     min-height: 0;
     overflow: hidden;
   }
 
-  #app-shell:has([data-study-workspace]) > * {
+  #app-shell[data-study-layout] > * {
     flex-shrink: 0;
   }
 
@@ -335,21 +335,23 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
   }
 }
 
+/* Pane flags are owned by useWorkspacePanes: descendant insertions never rediscover shell layout. */
+
 /* The Bible reader beside its minimap holds two sibling panes in the same way (owner, 2026-10-16,
    iPad): the page never coasts, so a finger put on the minimap while the text still glides is the
    minimap's (components/bible/readingSurface.ts). The reader marks itself only while the minimap
    shows, so no media query here; the main keeps its padding. */
-#app-shell:has([data-reader-panes]) {
+#app-shell[data-reader-layout] {
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
 }
 
-#app-shell:has([data-reader-panes]) > * {
+#app-shell[data-reader-layout] > * {
   flex-shrink: 0;
 }
 
-#app-shell > :has([data-reader-panes]) {
+#app-shell > [data-reader-layout] {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -357,11 +359,11 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
   overflow: hidden;
 }
 
-#app-shell > :has([data-reader-panes]) > :not(main) {
+#app-shell > [data-reader-layout] > :not(main) {
   flex-shrink: 0;
 }
 
-#app-shell > :has([data-reader-panes]) > main {
+#app-shell > [data-reader-layout] > main {
   display: flex;
   width: 100%;
   flex: 1;

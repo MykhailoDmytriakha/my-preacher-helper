@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
@@ -47,6 +47,28 @@ beforeEach(() => {
 });
 
 describe('BibleBookReader', () => {
+  it.each([true, false])('claims shell panes only for a mounted wide reader: wide=%s', async (wide) => {
+    wideScreen = wide;
+    const { container, unmount } = render(
+      <div id="app-shell"><div data-page-gesture="idle">
+        <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />
+      </div></div>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-verse="1:1"]')).toBeInTheDocument());
+    const shell = container.querySelector('#app-shell');
+    const workspace = container.querySelector('[data-page-gesture]');
+    if (wide) {
+      expect(shell).toHaveAttribute('data-reader-layout');
+      expect(workspace).toHaveAttribute('data-reader-layout');
+    } else {
+      expect(shell).not.toHaveAttribute('data-reader-layout');
+      expect(workspace).not.toHaveAttribute('data-reader-layout');
+    }
+    unmount();
+    expect(shell).not.toHaveAttribute('data-reader-layout');
+    expect(workspace).not.toHaveAttribute('data-reader-layout');
+  });
+
   it('reads the whole book as one ribbon, marking added words and words of Jesus', async () => {
     render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);
 

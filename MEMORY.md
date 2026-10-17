@@ -11,6 +11,7 @@
 ### 🗺️ Architecture Map
 *   **Structure:** `app/` (Next.js 15 App Router) | `api/` (Server Actions/Routes) | `utils/` (Pure Logic).
 *   **State Ownership:** DataEngine owns migrated user documents, durable drafts and delivery. React Query retains legacy and unrelated request state; URL params own navigation, Context owns dependency injection.
+*   **Pane Layout:** `frontend/app/hooks/useWorkspacePanes.ts` owns the shell/workspace reader and study flags; view lifecycle declares layout, CSS never searches the shell subtree. See `.howto/keep-a-pane-scrolling-on-ipad.md`.
 *   **Data Flow:** UI → DataEngine public facade → durable local intent → authenticated command processor → Firestore/feed → the same facade. Read-only fallback can show server/memory content while device storage is unavailable.
 *   **AI Stack:** structured calls through `callWithStructuredOutput` with Zod schemas; providers and models come from the tier catalog, not from this line — `.howto/call-ai-with-structured-output.md`, `.howto/gate-and-meter-an-ai-call.md`.
 
