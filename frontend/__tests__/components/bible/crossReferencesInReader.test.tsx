@@ -12,7 +12,7 @@ import { TextScaleProvider } from '@/providers/TextScaleProvider';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
-import type { BookText } from '@/utils/bibleText';
+import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
 jest.mock('@/data-engine/react.client', () => ({
@@ -87,6 +87,36 @@ describe('cross references in the Bible reader', () => {
     expect(within(dialog).getByText(label(subject.main[0]))).toBeInTheDocument();
   });
 
+  // The owner's iPad, 2026-10-16: a main link's verse was cut after two lines.
+  it('shows a main link\'s verse whole, never cut after two lines', async () => {
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const row = within(dialog).getByText(label(subject.main[0])).closest('button') as HTMLElement;
+    expect(row.querySelector('.line-clamp-2')).toBeNull();
+  });
+
+  it('the rest of a verse\'s links: a switch beside the open row shows them as verses with their text, the same choice as in the "T" menu', async () => {
+    const others = subject.all.filter((reference) => !isMainReference(reference));
+    expect(others.length).toBeGreaterThan(0);
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    expect(within(dialog).queryByRole('switch', { name: 'bible.crossRefs.othersAsVerses' })).not.toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'bible.crossRefs.othersSection' }));
+    const asVerses = within(dialog).getByRole('switch', { name: 'bible.crossRefs.othersAsVerses' });
+    expect(asVerses).not.toBeChecked();
+    // Only the references: each a chip named by its place.
+    const first = [...others].sort((a, b) => (a.book === b.book ? a.chapter - b.chapter || a.fromVerse - b.fromVerse : 0))[0];
+    expect(within(dialog).getByRole('button', { name: label(first) })).toBeInTheDocument();
+
+    await userEvent.click(asVerses);
+    expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
+    // As verses: each with its text, once its book has come.
+    const verses = publicFile(`bible-text/rst/v1/${bookSlug(others[0].book)}.json`).chapters[others[0].chapter - 1] as string[];
+    const start = verseWords(verses[others[0].fromVerse - 1]).split(' ').slice(0, 4).join(' ');
+    expect(await within(dialog).findByText((text) => text.startsWith(start))).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: label(first) })).not.toBeInTheDocument();
+  });
+
   it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {
     const onOpenBook = renderRuth();
     const dialog = await openLinksOfSubject();
@@ -159,13 +189,13 @@ describe('cross references in the Bible reader', () => {
 
 describe('the cross-reference settings', () => {
   it('keeps the choice on the device and reads a broken record as the defaults', () => {
-    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: false, mode: 'main' });
+    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: false, mode: 'main', othersAsVerses: false });
     saveCrossReferencePrefs({ inWindow: true });
     resetCrossReferencePrefsForTests();
-    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: true, mode: 'main' });
+    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: true, mode: 'main', othersAsVerses: false });
     window.localStorage.setItem('bible:cross-references', '{not json');
     resetCrossReferencePrefsForTests();
-    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: false, mode: 'main' });
+    expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: false, mode: 'main', othersAsVerses: false });
   });
 
   it('lives under the text size in the "T" menu; off, its two sub-rows rest', async () => {
@@ -190,6 +220,25 @@ describe('the cross-reference settings', () => {
     expect(readCrossReferencePrefs().show).toBe(false);
     expect(inWindow).toBeDisabled();
     expect(within(settings).getByRole('button', { name: 'bible.crossRefs.main' })).toBeDisabled();
+  });
+
+  it('carries the window\'s "the rest as verses" switch too: one choice for both', async () => {
+    render(
+      <TextScaleProvider>
+        <FloatingTextScaleControls>
+          <CrossReferenceSettings />
+        </FloatingTextScaleControls>
+      </TextScaleProvider>
+    );
+    await userEvent.click(await screen.findByLabelText('Text size'));
+    const settings = within(screen.getByRole('dialog', { name: 'Text size' })).getByTestId('cross-reference-settings');
+    const asVerses = within(settings).getByRole('switch', { name: 'bible.crossRefs.othersAsVersesSetting' });
+    expect(asVerses).not.toBeChecked();
+    await userEvent.click(asVerses);
+    expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
+    expect(asVerses).toBeChecked();
+    act(() => saveCrossReferencePrefs({ othersAsVerses: false }));
+    expect(asVerses).not.toBeChecked();
   });
 
   it('without settings of its own a screen keeps the bare size capsule', async () => {

@@ -424,7 +424,10 @@
       "sources_one": "{{count}} independent source",
       "sources_other": "{{count}} independent sources",
       "backToList": "All cross-references for {{place}}",
-      "open": "Open {{place}}"
+      "open": "Open {{place}}",
+      "othersAsVerses": "Verses",
+      "othersAsVersesSetting": "The rest as verses",
+      "othersAsVersesHint": "In a verse's links: with their text, or only the references"
     },
     "translations": {
       "rst": {

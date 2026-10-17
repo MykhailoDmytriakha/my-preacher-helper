@@ -434,7 +434,10 @@
       "sources_many": "{{count}} незалежних джерел",
       "sources_other": "{{count}} незалежного джерела",
       "backToList": "Усі посилання до {{place}}",
-      "open": "Відкрити {{place}}"
+      "open": "Відкрити {{place}}",
+      "othersAsVerses": "Вірші",
+      "othersAsVersesSetting": "Інші — віршами",
+      "othersAsVersesHint": "У посиланнях до вірша: з текстом або лише посилання"
     },
     "translations": {
       "rst": {

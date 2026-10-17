@@ -434,7 +434,10 @@
       "sources_many": "{{count}} независимых источников",
       "sources_other": "{{count}} независимого источника",
       "backToList": "Все ссылки к {{place}}",
-      "open": "Открыть {{place}}"
+      "open": "Открыть {{place}}",
+      "othersAsVerses": "Стихи",
+      "othersAsVersesSetting": "Остальные — стихами",
+      "othersAsVersesHint": "В ссылках к стиху: с текстом или только ссылки"
     },
     "translations": {
       "rst": {
