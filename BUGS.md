@@ -177,25 +177,6 @@
 **Как должно работать для человека:** перенос и правка слов одного пункта на разных устройствах складываются: пункт на новом месте с новыми словами.
 **Направление.** Слияние дерева по идентичности (см. BUG-20261011-plan-tree-move-merge-duplicates).
 
-### BUG-20261011-plan-sibling-twin-blocks-preparation · Если в одном списке экзегетического плана уже лежат два пункта с одним id, любая правка подготовки отклоняется
-**P3** — такие двойники движок сам не создаёт (слияние списка с повтором id даёт спор), они возможны только в старых данных; если есть, не сохраняется ни одно поле подготовки · `frontend/app/data-engine/resourceSchemas.ts:21` (`children`: уникальность внутри списка) + `frontend/app/data-engine/protocol.ts` `validCandidate` (правка любого поля `preparation` проверяет её целиком).
-**Найден.** 2026-10-11 · ревью Codex `refute-twins` r1 (находка 5); унаследовано; боевые данные не проверялись (решение владельца — без скана прода).
-**Как должно работать для человека:** старые двойники ничему не мешают — правка других полей подготовки сохраняется.
-**Направление.** Сравнивать со старой копией: разрешать правки остальных полей, сохраняя строки с повторяющимся ID без изменения содержимого. Новые двойники и неоднозначная перезапись старых строк отклоняются.
-
-
-**Class (mechanism).** Validation of a touched aggregate rejects unchanged legacy child-identity defects in a sibling field.
-| Location | Verdict | Reason |
-|---|---|---|
-| `resourceSchemas.ts:24-33,37-112` — all22 `children(...)` schema sites and the outline global-identity check | affected ordinary updates | Duplicate IDs are always rejected even when the trusted previous document has exactly the same defect. Covers preparation trees/homiletic lists, outline/subpoints, council topics/questions/options and the remaining flat child lists. One admission mechanism must retain each list's identity scope. |
-| `protocol.ts:543-552` / server command path through `applyCommand` | affected | The merged value is validated with the trusted previous snapshot; this is the common admission point, including replay after offline work. |
-| `serverRelations.ts` `currentTopics` and `stage` | affected → fix here | An old nested question duplicate blocks a different topic carry; old material-section IDs block note unlink/delete. Stage compares against its trusted transaction value. Council input permits old nested defects but still requires unique topic addresses through the same identity detector. |
-| `serverRelations.ts` `currentItems`, `seriesFields`, new-record checks | retain strict checks | Flat series membership IDs are relation addresses; new records have no held-defect allowance. |
-| `manualScope.ts:106,336`, `membershipScope.ts:78,149` | no duplicate admission on stage; create stays strict | Empty changedFields checks only storage safety. New-document checks have no legacy baseline. |
-| `serverEdit.server.ts:61` | not affected | Only user settings; no child identity lists. |
-**Direction.** Tag only identity violations, compare their identity/count and stable parent-list scope to the trusted previous schema result, and retain duplicate rows only as an unchanged multiset subset. This permits unrelated edits and removing held copies, never an ambiguous rewrite or an extra copy of different words. Other schema/storage/authorization rules remain strict. Parent ordering must not move a defect; ambiguous duplicate parents require an unchanged same-ID peer-group witness. Material relation staging alone may project section noteIds; authored section fields remain unchanged. New records never inherit defects. No data is deduplicated or rewritten.
-**Rejected alternatives.** Removing uniqueness admits new ambiguous records; rebuilding/deduplicating legacy plans discards authored words; skipping preparation validation accepts malformed data; a preparation-only exception leaves the same mechanism in councils and outlines.
-
 ### BUG-20261011-refused-move-keep-mine-loops · Мысль или подпункт плана, переставленные на двух устройствах в разные места: «оставить моё» ставит их в оба места и снова получает отказ
 **P3** — нужен перенос одной мысли между секциями (или подпункта плана в разные места) на двух устройствах, пока одно не видело другое; текст не теряется, но выход только «взять пришедшее» · `frontend/app/data-engine/session.ts:238` `keepLocal` (заново сливает своё с пришедшим по спискам, мысль попадает в обе секции) → отказ `invalid-document` по `frontend/app/data-engine/sermonIntegrity.ts:65` (`duplicate-placement`) и `frontend/app/data-engine/resourceSchemas.ts:40` (план проповеди уникален целиком; та же схема у шаблона плана `planTemplates.structure`).
 **Найден.** 2026-10-11 · прочёс класса BUG-20261011-plan-tree-move-merge-duplicates; проба на `DataSession` + `applyCommand` (`.cases/2026-10-10-bugs-10-connectivity/artifacts/refusal-loop-spike.test.ts`): первый ответ — отказ; после «оставить моё» мысль T в `main` и `conclusion`, подпункт S и под пунктом, и на уровне секции; повторная отправка — снова отказ.

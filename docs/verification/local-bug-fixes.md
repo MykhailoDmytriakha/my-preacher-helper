@@ -1283,7 +1283,7 @@ After separately authorized publication, verify the deployed revision and update
 
 ## BUG-20261011-plan-sibling-twin-blocks-preparation — preserve unrelated work beside legacy identities
 
-Stage: local verification complete; independent acceptance and local source commit pending. Publication remains deferred.
+Stage: independently accepted locally as source68931d426d9020701a3423b225a2fe0b9141fe70; publication remains deferred.
 
 The common resource validator now tags only child-identity defects and compares them with trusted prior state. Existing duplicates remain an unchanged multiset subset in their own parent-list scope; unrelated fields and unique rows can change, held copies can be removed, and parent reordering does not transfer a defect. New, increased, moved or rewritten ambiguous rows remain refused. One helper serves all22 child schemas and global outline identities. Malformed values, storage safety, authorization and create checks remain strict. Material relation staging alone projects section noteIds while preserving authored section words. Council carry accepts unchanged legacy nested questions, regenerates copy identities, and still requires uniquely addressable topics.
 
