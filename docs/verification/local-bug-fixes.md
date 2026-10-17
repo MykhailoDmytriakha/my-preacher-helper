@@ -1253,3 +1253,12 @@ Six additional en/ru/uk controls at390/1280 preserve the actual worker fallback,
 Primary visual acceptance inspects all16 native captures through4 labeled contact sheets and4 full-resolution originals. The localized card, banner and actions remain readable and stable across reload at both widths. Page screenshots do not establish browser-chrome or OS-installed icon appearance.
 
 Evidence: local case offline-icons-* artifacts, including original browser/Jest RED evidence, the unchanged-test GREEN, source review, full source/build fingerprints and final native captures. After separately authorized publication, verify the deployed revision and active worker, cold eight-URL precache, all seven resources without network after navigation/reload, retained locales and normal Bible/offline navigation. Inspect tab and installed PWA/Apple icon appearance on target devices separately. Production, Safari and physical iPad remain unproved. No push, merge into main or deployment occurs here.
+
+
+## Incoming main422c877c — manual two-device marks probe
+
+Stage: local integration candidate; independent fresh acceptance and final local merge identity are recorded in the case evidence. Publication remains deferred.
+
+The incoming commit adds only tools/webkit-lab/marks-two-devices.js. Its bytes match the pinned upstream commit, and node --check passes. The application and all2206 frontend fingerprints remain byte-identical to the independently accepted offline-icons build9GPkU-es3ErY49zHLk8Pl; its848-suite/9168-test build and8-browser-row evidence are inherited by exact identity, not rerun or described as new results. BUGS.md and its accepted icon closure are unchanged by this intake.
+
+The added manual WebKit probe logs into the existing test account, marks an initially unmarked verse, reloads, opens the same place with independent storage, erases and reopens it. It writes real test-user data and its exception path exits without guaranteed cleanup; logged HTTP statuses are not independently asserted. It was syntax-checked and inspected here, not executed. Its addition establishes no new backend, physical-device, Safari or production acceptance. Use an explicitly prepared disposable test-data stand and verify cleanup before treating a future run as evidence. No push, merge into main or deployment occurs here.
