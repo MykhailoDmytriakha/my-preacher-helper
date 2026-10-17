@@ -109,6 +109,10 @@ to disagree, including reading one account's text to another. The right fix is d
 observation: carry the refusal with the write (a durable draft marked "refused"), so the screen that started
 it shows it when it next opens.
 
+## Textless access revocation
+
+A failed share-link revoke remains important after restart even though it carries no typed text. Its descriptor explicitly uses `retainWithoutTextAcrossSessions`; ordinary switches and failed creates keep the default silence for old textless errors. `utils/studyNoteShareLinkWrites.ts` owns the stable keys, recovery identifiers and one acknowledged-delete handler for the live hook and restored defaults. The existing mutation cache retains the unresolved action; only a successful DELETE for the same owner and permanent link ID retires its failures. A list response is not proof of that operation. The handler preserves neighboring failures and paused work, patches an already-known list without inventing an empty loaded list, and prunes earlier successful delete records. There is no second storage or queue.
+
 ## What has not moved yet
 
 The settings (`users`) and study-note share links are still on the React Query road. A screen that writes them follows the descriptor contract above; moving such a collection to the engine is a migration of its own (`docs/architecture/data-engine-migration-log.md`), not a copy of a neighbouring hook.

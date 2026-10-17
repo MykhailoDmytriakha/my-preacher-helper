@@ -1,5 +1,5 @@
 import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
-import { createStudyNoteShareLink, deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { createStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import {
   updateAudioGenerationAccess,
   updateFirstDayOfWeek,
@@ -9,15 +9,17 @@ import {
   updateShowAppVersion,
   updateStructurePreviewAccess,
 } from '@/services/userSettings.service';
+import { revokeShareLinkMutationOptions, SHARE_LINK_MUTATION_KEYS, STUDY_NOTE_SHARE_LINKS_KEY } from '@/utils/studyNoteShareLinkWrites';
 
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 import type { QueryClient } from '@tanstack/react-query';
 
+export { SHARE_LINK_MUTATION_KEYS } from '@/utils/studyNoteShareLinkWrites';
+
 const USER_SETTINGS_KEY = 'user-settings';
 const STUDY_NOTES_KEY = 'study-notes';
-const STUDY_NOTE_SHARE_LINKS_KEY = 'study-note-share-links';
 
 /**
  * Stable mutation keys shared between the hooks (where the in-session mutation
@@ -89,10 +91,6 @@ export const STUDY_NOTE_MUTATION_KEYS = {
   delete: [STUDY_NOTES_KEY, 'delete'] as const,
 };
 
-export const SHARE_LINK_MUTATION_KEYS = {
-  create: [STUDY_NOTE_SHARE_LINKS_KEY, 'create'] as const,
-  delete: [STUDY_NOTE_SHARE_LINKS_KEY, 'delete'] as const,
-};
 
 /**
  * Sermon operations the previous version queued from the dashboard, the calendar and the
@@ -214,11 +212,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       createStudyNoteShareLink(userId, noteId),
     onSuccess: invalidate([STUDY_NOTE_SHARE_LINKS_KEY]),
   });
-  queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.delete, {
-    mutationFn: ({ userId, linkId }: { userId: string; linkId: string }) =>
-      deleteStudyNoteShareLink(userId, linkId),
-    onSuccess: invalidate([STUDY_NOTE_SHARE_LINKS_KEY]),
-  });
+  queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.delete, revokeShareLinkMutationOptions(queryClient));
 
   // ---- sermons ----
   // The engine owns sermons; a paused edit of the previous version gets the same refusal, and its

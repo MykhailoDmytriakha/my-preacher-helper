@@ -235,6 +235,41 @@ describe('useStudyNoteShareLinks', () => {
       forgetReportedFailures();
     });
 
+    it('restores an unresolved revoke warning even when the cached list is empty', async () => {
+      const toastError = jest.spyOn(toast, 'error');
+      signedIn([]);
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      const failed = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-1' });
+      const { result } = renderWith(queryClient);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await waitFor(() => expect(toastIds(toastError)).toContain('write-recovery:study-note-share-link:delete:link-1'));
+      expect(queryClient.getMutationCache().getAll()).toContain(failed);
+      toastError.mockRestore();
+    });
+
+    it('settles only the acknowledged owner and link failure and never restores its warning again', async () => {
+      const toastError = jest.spyOn(toast, 'error');
+      signedIn([makeShareLink({ ownerId: 'auth-1' })]);
+      mockDeleteShareLink.mockResolvedValue(undefined);
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      const mine = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-1' });
+      const sibling = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-1', linkId: 'link-2' });
+      const otherOwner = await restoreFailure(queryClient, SHARE_LINK_MUTATION_KEYS.delete, { userId: 'auth-2', linkId: 'link-1' });
+      for (const mutation of [mine, sibling, otherOwner]) mutation.state.submittedAt = Date.now();
+      const first = renderWith(queryClient);
+      await waitFor(() => expect(first.result.current.loading).toBe(false));
+      await act(async () => { await awaitAcceptance(first.result.current.deleteShareLink('link-1'), () => undefined); });
+      expect(queryClient.getMutationCache().getAll()).not.toContain(mine);
+      expect(queryClient.getMutationCache().getAll()).toEqual(expect.arrayContaining([sibling, otherOwner]));
+      first.unmount();
+      forgetReportedFailures();
+      toastError.mockClear();
+      const second = renderWith(queryClient);
+      await waitFor(() => expect(second.result.current.loading).toBe(false));
+      expect(toastIds(toastError)).not.toContain('write-recovery:study-note-share-link:delete:link-1');
+      toastError.mockRestore();
+    });
+
     it('does not bring back a link creation that failed in an earlier session', async () => {
       // Its "Retry" could make a link the person has since disabled; a missing link shows in the list anyway.
       const toastError = jest.spyOn(toast, 'error');

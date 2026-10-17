@@ -334,6 +334,8 @@ export interface WriteRecoveryDescriptor<TVars> {
   titleParams?: (vars: TVars) => Record<string, unknown>;
   /** VERBATIM text the person typed — everything they would otherwise have to retype. */
   recoveryText: (vars: TVars) => string | undefined;
+  /** Keep a textless unresolved action reportable after restart; its mutation must also be retained until an authoritative outcome. */
+  retainWithoutTextAcrossSessions?: boolean;
   /** Stable toast id, so a remount reports the same failure once, not twice. */
   toastId: (vars: TVars) => string;
   /**
@@ -425,15 +427,16 @@ export function useWriteRecovery<TVars>(
 
           const description = current.recoveryText(vars) ?? '';
           /**
-           * A REFUSAL FROM A PREVIOUS SESSION IS ONLY WORTH REPEATING IF IT STILL HOLDS
+           * BY DEFAULT, A PREVIOUS SESSION FAILURE IS REPEATED ONLY IF IT HOLDS
            * SOMETHING TO LOSE. A refused toggle carries no text, so restoring it on every
            * launch showed a red "your change was refused" on whatever page the person
            * happened to open — with no way to tell WHICH change, and no way to act on it.
            * It was already said in the session where it happened; here it is only noise,
            * so it is dropped from the cache instead of accumulating forever. A refusal
-           * that carries the person's draft still comes back, which is the whole point.
+           * that carries the person's draft still comes back. Access revocation can opt in
+           * without text: its writer retains the failure until an exact acknowledgement.
            */
-          if (!description.trim() && (mutation.state.submittedAt ?? 0) < SESSION_STARTED_AT) {
+          if (!description.trim() && !current.retainWithoutTextAcrossSessions && (mutation.state.submittedAt ?? 0) < SESSION_STARTED_AT) {
             queryClient.getMutationCache().remove(mutation);
             return false;
           }

@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNoteShareLink } from '@/models/models';
-import { SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
   mutationOutcomeWrite,
   refusedWrite,
@@ -12,21 +11,20 @@ import {
   useWriteRecovery,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import {
+  createFailureToastId, revokeFailureToastId, revokeShareLinkMutationOptions,
+  SHARE_LINK_MUTATION_KEYS, shareLinksKey, type RevokeShareLinkVariables,
+} from '@/utils/studyNoteShareLinkWrites';
 import { useTranslation } from '@locales/useTranslation';
 import {
   createStudyNoteShareLink,
-  deleteStudyNoteShareLink,
   getStudyNoteShareLinks,
 } from '@services/studyNoteShareLinks.service';
 
-const shareLinksKey = (uid: string | undefined) => ['study-note-share-links', uid];
 /** One empty list for as long as the links are not loaded: a fresh [] per render breaks every memo built on it. */
 const NO_SHARE_LINKS: StudyNoteShareLink[] = [];
-const createFailureToastId = (noteId: string) => `write-recovery:study-note-share-link:create:${noteId}`;
-const revokeFailureToastId = (linkId: string) => `write-recovery:study-note-share-link:delete:${linkId}`;
 
 type CreateShareLinkVars = { userId: string; noteId: string };
-type DeleteShareLinkVars = { userId: string; linkId: string };
 
 export function useStudyNoteShareLinks() {
   const { t } = useTranslation();
@@ -55,20 +53,7 @@ export function useStudyNoteShareLinks() {
     },
   });
 
-  const deleteLinkMutation = useMutation({
-    mutationKey: SHARE_LINK_MUTATION_KEYS.delete,
-    mutationFn: ({ userId, linkId }: DeleteShareLinkVars) =>
-      deleteStudyNoteShareLink(userId, linkId),
-    onSuccess: (_data, { linkId }) => {
-      const revoked = queryClient.getQueryData<StudyNoteShareLink[]>(shareLinksKey(uid))?.find((link) => link.id === linkId);
-      toast.dismiss(revokeFailureToastId(linkId));
-      // The person no longer wants a link for this note: an earlier "not created — retry" must not make one.
-      if (revoked) toast.dismiss(createFailureToastId(revoked.noteId));
-      queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) =>
-        (old ?? []).filter((link) => link.id !== linkId)
-      );
-    },
-  });
+  const deleteLinkMutation = useMutation(revokeShareLinkMutationOptions(queryClient));
 
   const hasPendingMutation = <TVars,>(
     mutationKey: readonly unknown[],
@@ -87,9 +72,9 @@ export function useStudyNoteShareLinks() {
    * The words say only what is known: the service turns every failure into a plain error, so a
    * refusal cannot be told from a dropped connection, and "could not confirm" is the true sentence.
    *
-   * Across sessions this keeps the shared rule — a textless failure from an earlier session is
-   * dropped. Keeping a failed revoke alive until it is settled needs evidence of the write's outcome
-   * that a cached list cannot give; two review rounds showed each shortcut losing a real warning.
+   * An unresolved revoke remains important after restart even without typed text. Its durable
+   * mutation is retired only by the shared, exact owner/link acknowledgement handler; a cached
+   * list, a remount or an unsuccessful retry never proves that access has ended.
    */
   useWriteRecovery<CreateShareLinkVars>(queryClient, {
     mutationKey: SHARE_LINK_MUTATION_KEYS.create,
@@ -100,9 +85,10 @@ export function useStudyNoteShareLinks() {
     retry: (vars) => createLinkMutation.mutate(vars),
   });
 
-  useWriteRecovery<DeleteShareLinkVars>(queryClient, {
+  useWriteRecovery<RevokeShareLinkVariables>(queryClient, {
     mutationKey: SHARE_LINK_MUTATION_KEYS.delete,
     fallbackTitleKey: 'studiesWorkspace.shareLinks.revokeUnconfirmed',
+    retainWithoutTextAcrossSessions: true,
     recoveryText: () => undefined,
     toastId: (vars) => revokeFailureToastId(vars.linkId),
     owns: (vars) => Boolean(uid) && vars.userId === uid,
@@ -128,8 +114,8 @@ export function useStudyNoteShareLinks() {
     },
     deleteShareLink: (linkId: string): WriteSubmission => {
       if (!uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
-      const vars: DeleteShareLinkVars = { userId: uid, linkId };
-      if (hasPendingMutation<DeleteShareLinkVars>(
+      const vars: RevokeShareLinkVariables = { userId: uid, linkId };
+      if (hasPendingMutation<RevokeShareLinkVariables>(
         SHARE_LINK_MUTATION_KEYS.delete,
         (pending) => pending.linkId === linkId && pending.userId === uid
       )) return skippedWrite();
