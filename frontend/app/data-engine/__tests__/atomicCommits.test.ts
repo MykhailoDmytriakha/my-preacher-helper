@@ -327,10 +327,25 @@ it('projects a source conflict only to its own editor and retains both failed dr
   await queue.cancelAction((await queue.list()).filter(row => row.editorId === 'from').map(row => row.id)); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
 });
 
+it('retries cancelled atomic journal cleanup after restart without sending either side again', async () => {
+  const s = setup(), { queue, runtime } = s.make(); await queue.saveAtomic(s.moving());
+  s.rows.get('a')!.value!.items = []; s.rows.get('c')!.value!.items = [member]; await queue.drain(true);
+  const ids = (await queue.list()).filter(row => row.editorId === 'to').map(row => row.id);
+  await queue.cancelAction(ids);
+  const cleanup = jest.spyOn(runtime, 'discard').mockRejectedValueOnce(new Error('cleanup failed'));
+  await expect(queue.finishCancellation('', ids)).rejects.toThrow('cleanup failed');
+  expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
+  expect((await queue.list()).some(record => record.unfinalized.length > 0)).toBe(true);
+  cleanup.mockRestore(); const restarted = s.make(); await restarted.queue.drain(false);
+  expect((await restarted.queue.list()).every(record => record.state === 'cancelled' && !record.unfinalized.length)).toBe(true);
+  expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
+});
+
 it('does not partially cancel an atomic pair when persistence fails during the explicit decision', async () => {
   const s = setup(); const { queue } = s.make(); await queue.saveAtomic(s.moving());
   s.rows.get('a')!.value!.items = []; s.rows.get('c')!.value!.items = [member]; await queue.drain(true);
   s.storage.writeFailure = true; await expect(queue.cancelAction((await queue.list()).filter(row => row.editorId === 'from').map(row => row.id))).rejects.toThrow('disk full'); s.storage.writeFailure = false;
+  expect([...s.entries.values()].map(entry => entry.state)).toEqual(['refused']);
   expect((await queue.list()).every(record => record.state === 'refused')).toBe(true);
   await queue.cancelAction((await queue.list()).filter(row => row.editorId === 'to').map(row => row.id)); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
 });

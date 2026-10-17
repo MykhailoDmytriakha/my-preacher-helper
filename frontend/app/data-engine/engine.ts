@@ -481,6 +481,7 @@ export class DataEngine {
       await entry.controller?.settled();
     }));
     this.assertCurrent(owner, generation);
+    await this.commits.finishCancellation('', record.requestIds); this.assertCurrent(owner, generation);
     await store!.compact(owner, scopeId); this.assertCurrent(owner, generation);
     this.releaseMembership(scopeId);
   }
@@ -619,7 +620,14 @@ export class DataEngine {
     if (hasFormWork(owner, resource, requests)) return 0;
     const answered = requests.filter(request => request.owner === owner
       && sameResource(request.baseline.resource, resource) && (request.state === 'refused' || request.state === 'conflict'));
-    if (answered.length) await this.commits.cancel('', answered.map(request => request.id));
+    if (answered.length) {
+      const ids = answered.map(request => request.id);
+      await this.commits.cancel('', ids); this.assertCurrent(owner, generation);
+      await Promise.all([...this.editors.values()].filter(entry => entry.controller
+        && sameResource(entry.controller.getState().checkpoint.confirmed.resource, resource)).map(entry => entry.controller!.settled()));
+      this.assertCurrent(owner, generation);
+      await this.commits.finishCancellation('', ids); this.assertCurrent(owner, generation);
+    }
     return answered.length;
   }
 
@@ -940,6 +948,7 @@ export class DataEngine {
           if (controller.needsPersistenceRetry()) await controller.retryPersistence(); active();
           await this.commits.cancelAction(request.atomic!.participants); this.assertCurrent(owner, generation);
           if (!entry.closed) await controller.settled();
+          await this.commits.finishCancellation('', request.atomic!.participants); this.assertCurrent(owner, generation);
           await this.completeCouncilProjections(owner, generation);
         },
         form: (slot, selection, recovery = 'same-slot') => { active(); return this.manualForm(owner, generation, frozen, editorId, entry, slot, selection, recovery); },

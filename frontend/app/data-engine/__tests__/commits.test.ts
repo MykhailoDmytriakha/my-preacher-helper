@@ -4,6 +4,7 @@ import { ResourceObserver } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
+import { describeSync } from '../status';
 import { recoveryCheckpointId, selectRecoverableCheckpoints } from '../recovery.client';
 import { planDataCommand } from '../serverRelations';
 
@@ -231,6 +232,80 @@ describe('Durable commit requests', () => {
     await queue.cancel('tab'); expect((await queue.list()).every(request => request.state === 'cancelled')).toBe(true);
   });
 
+  it.each(['local', 'remote'] as const)('restores both choices after interrupted %s conflict cancellation and Retry', async choice => {
+    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    try {
+      await editor.commit(value => ({ ...value, title: 'my held words' }));
+      s.replace({ ...initial(), value: { ...initial().value, title: 'remote words' }, metadata: { ...initial().metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      const status = () => describeSync(editor.getState(), editor.getObservation(), editor.getDelivery());
+      expect(status()).toMatchObject({ phase: 'conflict', canKeepLocal: true, canAcceptRemote: true });
+      const write = s.requests.compareAndSet.bind(s.requests);
+      const failing = jest.spyOn(s.requests, 'compareAndSet').mockImplementation(async (previous, next) => {
+        if (next.state === 'cancelled') throw new Error('disk full');
+        return write(previous, next);
+      });
+      await expect(choice === 'local' ? editor.keepLocal() : editor.acceptRemote()).rejects.toThrow('disk full');
+      failing.mockRestore(); await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.draft?.title).toBe('my held words');
+      expect(status()).toMatchObject({ phase: 'conflict', canKeepLocal: true, canAcceptRemote: true });
+      expect(s.transport.send).toHaveBeenCalledTimes(1);
+      if (choice === 'local') { await editor.keepLocal(); await editor.save(); }
+      else await editor.acceptRemote();
+      await engine.retry(); await settle();
+      expect(editor.getState().checkpoint.draft?.title).toBe(choice === 'local' ? 'my held words' : 'remote words');
+      expect(s.server().value?.title).toBe(choice === 'local' ? 'my held words' : 'remote words');
+      expect(s.transport.send).toHaveBeenCalledTimes(choice === 'local' ? 2 : 1);
+    } finally { engine.dispose(); }
+  });
+
+  it.each(['local', 'remote'] as const)('persists the %s choice before reporting a journal cleanup failure', async choice => {
+    const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
+    try {
+      await editor.commit(value => ({ ...value, title: 'my held words' }));
+      s.replace({ ...initial(), value: { ...initial().value, title: 'remote words' }, metadata: { ...initial().metadata!, revision: 2 } });
+      engine.setOnline(true); await engine.retry(); await settle();
+      jest.mocked(s.journal.remove).mockRejectedValueOnce(new Error('cleanup failed'));
+      await expect(choice === 'local' ? editor.keepLocal() : editor.acceptRemote()).rejects.toThrow('cleanup failed');
+      const expected = choice === 'local' ? 'my held words' : 'remote words';
+      expect(editor.getState().checkpoint).toMatchObject({ draft: { title: expected }, pending: {}, conflicts: [] });
+      expect([...s.records.values()].at(-1)?.checkpoint.draft?.title).toBe(expected);
+      await engine.retry(); await settle();
+      expect(editor.getState().checkpoint).toMatchObject({ draft: { title: expected }, pending: {}, conflicts: [] });
+      expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
+      if (choice === 'local') { await editor.save(); await engine.retry(); }
+      expect(s.server().value?.title).toBe(expected);
+    } finally { engine.dispose(); }
+  });
+
+  it('treats competing cleanup of the same cancelled request as one successful retirement', async () => {
+    const s = setup(), first = s.makeQueue(), second = s.makeQueue(), session = new DataSession(initial());
+    session.edit({ ...initial().value, title: 'mine' }); await first.queue.save('tab', session.checkpoint());
+    s.replace({ ...initial(), value: { ...initial().value, title: 'remote' }, metadata: { ...initial().metadata!, revision: 2 } });
+    await first.queue.drain(true); await first.queue.cancel('tab');
+    await expect(Promise.all([first.queue.finishCancellation('tab'), second.queue.finishCancellation('tab')])).resolves.toEqual([undefined, undefined]);
+    expect((await first.queue.list())[0]).toMatchObject({ state: 'cancelled', unfinalized: [] });
+    expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps terminal proof when cancellation storage fails and retries cancelled cleanup after restart', async () => {
+    const s = setup(), { queue } = s.makeQueue(), session = new DataSession(initial());
+    session.edit({ ...initial().value, title: 'mine' }); await queue.save('tab', session.checkpoint());
+    s.replace({ ...initial(), value: { ...initial().value, title: 'remote' }, metadata: { ...initial().metadata!, revision: 2 } });
+    await queue.drain(true);
+    const failure = jest.spyOn(s.requests, 'compareAndSet').mockRejectedValueOnce(new Error('disk full'));
+    await expect(queue.cancel('tab')).rejects.toThrow('disk full');
+    expect([...s.entries.values()].map(entry => entry.state)).toEqual(['conflict']);
+    expect((await queue.list())[0]).toMatchObject({ state: 'conflict' });
+    failure.mockRestore(); await queue.cancel('tab');
+    jest.mocked(s.journal.remove).mockRejectedValueOnce(new Error('cleanup failed'));
+    await expect(queue.drain(false)).rejects.toThrow('cleanup failed');
+    expect((await queue.list())[0]).toMatchObject({ state: 'cancelled', unfinalized: ['op-1'] });
+    const restarted = s.makeQueue(); await restarted.queue.drain(true);
+    expect((await restarted.queue.list())[0]).toMatchObject({ state: 'cancelled', unfinalized: [] });
+    expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
+  });
+
   it('turns a draft the domain policy cannot express into a refusal the person can resolve, not a queue that retries for ever', async () => {
     const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
     // Membership belongs to the series, so no command exists for this draft — and none ever will.
@@ -321,6 +396,36 @@ describe('Durable commit requests', () => {
     expect(Object.keys(session.checkpoint().pending)).toEqual(['B']);
     session.accept({ kind: 'acknowledged', operationId: 'B', snapshot });
     expect(session.checkpoint()).toMatchObject({ draft: { title: 'C' }, conflicts: [], dirty: true, pending: {} });
+  });
+
+  it('finalizes an acknowledged relation receipt when a later local rebase needs a choice', async () => {
+    const s = setup();
+    const material: ResourceSnapshot = { resource: { collection: 'studyMaterials', id: 'material' },
+      value: { userId: 'owner', title: 'Old title', type: 'study', noteIds: [], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'material-generation', revision: 1, deleted: false } };
+    const note: ResourceSnapshot = { resource: { collection: 'studyNotes', id: 'note' },
+      value: { userId: 'owner', content: 'Note', tags: [], scriptureRefs: [], isDraft: true, materialIds: [], createdAt: 'now', updatedAt: 'now' },
+      metadata: { protocol: 1, generation: 'note-generation', revision: 1, deleted: false } };
+    const rows = new Map([['studyMaterials/material', copy(material)], ['studyNotes/note', note]]);
+    jest.mocked(s.transport.read).mockImplementation(async (_owner, resource) => copy(rows.get(`${resource.collection}/${resource.id}`)!));
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      rows.set('studyMaterials/material', { ...material, value: { ...material.value, title: 'Remote title' }, metadata: { ...material.metadata!, revision: 2 } });
+      const plan = await planDataCommand(command, rows.get(`${command.resource.collection}/${command.resource.id}`)!, {
+        get: async resource => copy(rows.get(`${resource.collection}/${resource.id}`)!), list: async () => [],
+      });
+      for (const value of plan.writes) rows.set(`${value.resource.collection}/${value.resource.id}`, value);
+      return plan.result;
+    });
+    const { queue } = s.makeQueue(), session = new DataSession(material);
+    session.edit({ ...material.value, title: 'My title', noteIds: ['note'] });
+    await queue.save('tab', session.checkpoint()); await queue.drain(true);
+    expect((await queue.list())[0]).toMatchObject({ state: 'conflict', result: { kind: 'conflict' } });
+    expect([...s.entries.values()].map(entry => entry.state)).toEqual(['acknowledged']);
+    await queue.cancel('tab'); await queue.finishCancellation('tab');
+    expect((await queue.list())[0]).toMatchObject({ state: 'cancelled', unfinalized: [] });
+    expect(s.entries.size).toBe(0); expect(s.transport.send).toHaveBeenCalledTimes(1);
+    expect(rows.get('studyMaterials/material')?.value).toMatchObject({ title: 'Remote title', noteIds: ['note'] });
+    expect(rows.get('studyNotes/note')?.value?.materialIds).toEqual(['material']);
   });
 
   it('durably includes both a relation and ordinary fields, completing both without an editor', async () => {

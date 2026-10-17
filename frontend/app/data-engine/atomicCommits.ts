@@ -1,3 +1,4 @@
+import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 import { coversCommittedEffect } from './snapshotFreshness';
@@ -66,9 +67,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
     context.assertCurrent(); saved.forEach(context.emit); return true;
   };
   if (participants.some(record => record.unfinalized.length)) {
-    for (const id of new Set(participants.flatMap(record => record.unfinalized))) {
-      await context.runtime.finalize(id); context.assertCurrent();
-    }
+    await retireCommitJournal(participants, context.runtime, context.assertCurrent);
     return commit(participants.map(record => ({ ...record, unfinalized: [] })));
   }
   if (participants.some(record => !record.initialized)) {
@@ -127,7 +126,7 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
 
 
 /** Replacing failed intent retires its whole relation and dependent local chain. */
-export function cancellationScope(records: readonly CommitRequest[], editorId: string, additionalIds: readonly string[]): CommitRequest[] {
+export function cancellationScope(records: readonly CommitRequest[], editorId: string, additionalIds: readonly string[], includeCancelled = false): CommitRequest[] {
   const selected = new Set(records.filter(record => record.editorId === editorId || additionalIds.includes(record.id)).map(record => record.id));
   let added: boolean;
   do {
@@ -136,7 +135,7 @@ export function cancellationScope(records: readonly CommitRequest[], editorId: s
       for (const participant of atomicParticipants(record, records)) if (!selected.has(participant.id)) { selected.add(participant.id); added = true; }
     }
   } while (added);
-  return records.filter(record => selected.has(record.id) && record.state !== 'acknowledged' && record.state !== 'cancelled');
+  return records.filter(record => selected.has(record.id) && record.state !== 'acknowledged' && (includeCancelled || record.state !== 'cancelled'));
 }
 
 /** Shared by the authoritative queue guard and the action's presentation. */
@@ -149,10 +148,7 @@ export function canCancelSavedIntent(records: readonly CommitRequest[], journal:
 export async function cancelActionCommits(records: readonly CommitRequest[], context: AtomicCommitContext): Promise<void> {
   if (!records.length) return;
   if (!context.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
-  for (const id of new Set(records.flatMap(record => record.command ? [record.command.operationId] : []))) {
-    await context.runtime.discard(id); context.assertCurrent();
-  }
   // Dependents and every participant retire together, even across several moves.
-  const saved = await context.store.compareAndSetBatch(records.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const, cancelledByAction: true } })));
+  const saved = await context.store.compareAndSetBatch(records.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const, cancelledByAction: true, unfinalized: pendingCommitRetirement(previous) } })));
   context.assertCurrent(); saved.forEach(context.emit);
 }

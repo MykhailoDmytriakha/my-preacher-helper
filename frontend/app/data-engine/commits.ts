@@ -1,4 +1,5 @@
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
+import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
@@ -35,6 +36,7 @@ export interface CommitRequest {
   sequence: number;
   state: 'queued' | 'prepared' | 'acknowledged' | 'conflict' | 'refused' | 'cancelled';
   result: CommandResult | null;
+  /** Journal cleanup owned durably by this request, including explicit cancellation. */
   unfinalized: string[];
 }
 
@@ -80,6 +82,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || current.retentionScope !== incoming.retentionScope) throw new Error('Saved generation cannot change its captured intent');
 }
 const AUTHENTICATION_REQUIRED = 'Authentication required';
+const COMMIT_CHANGED = 'commit-changed';
 const INVALID_PREDECESSOR_REQUEST = 'Invalid predecessor request';
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const terminal = (request: CommitRequest) => ['acknowledged', 'conflict', 'refused', 'cancelled'].includes(request.state);
@@ -305,6 +308,33 @@ export class CommitQueue {
     return this.cancelOwned('', requestIds, true);
   }
 
+  /** The deciding owner calls this only after its chosen projection is durable. */
+  async finishCancellation(editorId: string, additionalRequestIds: readonly string[] = []): Promise<void> {
+    const owner = this.owner, generation = this.generation;
+    if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
+    let races = 0;
+    for (;;) {
+      const all = await this.options.store.list(owner);
+      this.assertCurrent(owner, generation);
+      const records = orderRequests(cancellationScope(all, editorId, additionalRequestIds, true).filter(record => record.state === 'cancelled'));
+      const processed = new Set<string>();
+      try {
+        for (const record of records) {
+          const groupId = record.atomic?.id ?? record.id;
+          if (processed.has(groupId) || !record.unfinalized.length) continue;
+          processed.add(groupId);
+          await this.advanceRequest(record, all, owner, generation);
+        }
+        return;
+      } catch (error) {
+        this.assertCurrent(owner, generation);
+        // Another worker may already have retired the same immutable journal entry.
+        if ((error as { code?: string }).code === COMMIT_CHANGED && ++races < 100) continue;
+        throw error;
+      }
+    }
+  }
+
   private async cancelOwned(editorId: string, additionalRequestIds: readonly string[], wholeAction: boolean): Promise<void> {
     const owner = this.owner, generation = this.generation;
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
@@ -317,11 +347,11 @@ export class CommitQueue {
       new Error('Resolve the complete action before replacing one participant'), { code: 'atomic-action-resolution-required' });
     const journal = await this.options.runtime.list();
     if (!canCancelSavedIntent(records, journal)) throw Object.assign(new Error('Resolve pending commands before replacing saved intent'), { code: 'pending-delivery-first' });
+    this.requested = true;
     if (wholeAction) return cancelActionCommits(orderRequests(records), this.atomicContext(owner, generation));
     for (const record of records) {
-      if (record.command) await this.options.runtime.discard(record.command.operationId);
       this.assertCurrent(owner, generation);
-      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) });
+      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled', unfinalized: pendingCommitRetirement(record), ...(chosen.has(record.id) ? { cancelledByChoice: true } : {}) });
       this.assertCurrent(owner, generation);
       this.emit(cancelled);
     }
@@ -340,7 +370,7 @@ export class CommitQueue {
         changed = await this.advanceRequest(record, records, owner, generation) || changed;
       }
       catch (error) {
-        if ((error as { code?: string }).code === 'commit-changed' && ++races < 100) { changed = true; continue; }
+        if ((error as { code?: string }).code === COMMIT_CHANGED && ++races < 100) { changed = true; continue; }
         if (!this.current(owner, generation)) throw error;
         for (const participant of atomicParticipants(record, records)) failures.set(participant.id, { error, about: participant.baseline.resource });
       }
@@ -366,10 +396,7 @@ export class CommitQueue {
       return true;
     };
     if (record.unfinalized.length) {
-      for (const id of record.unfinalized) {
-        await this.options.runtime.finalize(id);
-        this.assertCurrent(owner, generation);
-      }
+      await retireCommitJournal([record], this.options.runtime, () => this.assertCurrent(owner, generation));
       return commit({ ...record, unfinalized: [] });
     }
     if (!record.initialized) return this.initialize(record, records, commit);
@@ -444,7 +471,7 @@ export function createMemoryCommitStore(): CommitStore {
     },
     compareAndSet: async (previous, next) => {
       const current = records.get(previous.id);
-      if (!current || current.revision !== previous.revision) throw Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
+      if (!current || current.revision !== previous.revision) throw Object.assign(new Error('Commit changed'), { code: COMMIT_CHANGED });
       assertCommitCapture(current, next);
       const updated = { ...clone(next), revision: previous.revision + 1 };
       records.set(previous.id, updated); return clone(updated);

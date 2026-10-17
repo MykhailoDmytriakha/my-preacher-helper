@@ -226,6 +226,13 @@ action slot and field selection; sharing fields does not make opposite actions i
 with unique slots (see `EngineThoughtModal`). Do not use it for opposite actions. An acknowledged or explicitly cancelled Save is
 terminal: reopening starts from the current document, and clean inactive manual
 records can be compacted. Later unsaved typing must still survive.
+Cancellation persists both its terminal state and journal-cleanup ownership before
+removing a receipt. The deciding editor/action persists the chosen projection before
+targeted cleanup runs; retry/restart may finish cleanup without replaying decided work.
+A relation receipt may already be acknowledged while rebasing its remaining ordinary
+fields needs a choice, so cleanup follows the actual journal result. Screens continue
+using their managed hook; queue retirement belongs to the existing engine owners.
+
 
 A clean active form preserves the document's queued/unknown/conflict/refused status;
 it must not relabel an unresolved Save as a saved or merely stale form. Expose

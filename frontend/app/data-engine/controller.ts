@@ -245,7 +245,8 @@ export class EditorController {
       // A refusal has no other version to take: "use the server's version" drops the refused change.
       const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
         && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
-      if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
+      const cancelled = Object.keys(this.session.checkpoint().pending);
+      if (this.options.commits && cancelled.length) await this.cancelCommits();
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
@@ -256,6 +257,7 @@ export class EditorController {
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
       await this.persist();
+      if (this.options.commits && cancelled.length) await this.options.commits.finishCancellation(this.options.editorId, cancelled);
     });
   }
 
@@ -267,7 +269,8 @@ export class EditorController {
         throw new Error('Manual resolution changed an unselected field');
       }
       this.assertManualResolution(selection);
-      if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
+      const cancelled = Object.keys(this.session.checkpoint().pending);
+      if (this.options.commits && cancelled.length) await this.cancelCommits();
       const checkpoint = this.session.checkpoint();
       if (this.result?.kind === 'refused' && this.result.code === 'generation-mismatch'
         && (!checkpoint.remoteCandidate?.metadata
@@ -294,6 +297,7 @@ export class EditorController {
       }
       this.result = null;
       await this.persist();
+      if (this.options.commits && cancelled.length) await this.options.commits.finishCancellation(this.options.editorId, cancelled);
     });
   }
 
