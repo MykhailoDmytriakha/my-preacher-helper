@@ -40,6 +40,11 @@ Missing held requests, unknown sibling commands and atomic scopes cannot enable 
 single-document choice. A directly owned legacy prepared command retains its existing
 terminal-journal behavior. None of this changes persisted formats or writers.
 
+A synchronization status derives optional `deleting` for a null local draft over an existing
+confirmed record. Whole-document choices use explicit keep-record/delete wording and the
+shared deletion confirmation. All selected-field manual forms clear that intent, even while opening; keeping
+their fields never becomes a whole-record removal. This is a derived view, not a persisted field.
+
 ## Public React interface
 
 Mount `DataEngineWorkspace` once around authenticated pages, including pages hiding
@@ -163,6 +168,12 @@ with a conflict or a refusal, the list shows the stored version while this devic
 in closed checkpoints. `listRecoverable` derives an optional `answer` through `savedDocumentAnswer`
 from the existing request state: a relation command ACK can leave a request conflict, and local
 policy refusal can have no journal entry. The same query publishes open answering resources.
+The exact `getOpenAnswerScopes` / `useOpenDocumentAnswerScopes` view also carries held request
+IDs and draft words. A routed document screen owns the global question only when
+`isRecoveryHeldOpen` matches every record in its complete group by owner, resource, nonempty
+pending IDs and equal draft. Adopted one-shot requests follow the same rule; transient action
+editors are not answering screens. Independent saved work and later unseen words stay visible.
+The older resource snapshot keeps its stable notification boundary. Both views are derived;
 Legacy direct-command checkpoints retain owned journal answers; no checkpoint schema changes.
 `waitsForDecision` consumes this query view alongside checkpoint conflicts and legacy answers. Until the person decides, further one-shot changes to that document are refused
 with `decision-required`, so nothing piles up behind the answer. `resolve(resource, choice)`

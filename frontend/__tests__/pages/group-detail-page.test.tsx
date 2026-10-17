@@ -5,6 +5,7 @@ import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
@@ -687,6 +688,45 @@ describe('GroupDetailPage with the actual data engine', () => {
     }
     return { ...harness, harness, Workspace, view: render(<Workspace />) };
   }
+  it('keeps a held document answer visible while the meeting form is still opening', async () => {
+    mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+    const resource = { collection: 'groups', id: 'group-1' };
+    const { id: _id, ...value } = createMockGroup({ meetingDates: [] });
+    const h = documentEngineHarness({ resource, value,
+      metadata: { protocol: 1, generation: 'group-generation', revision: 1, deleted: false } });
+    const browser = h.createBrowser(), engine = browser.engine;
+    engine.setOnline(false);
+    engine.setOwner('user-1');
+    const action = await engine.openEditor(resource, editorIdentity('qa-group', resource, 'action', 'first'));
+    await action.edit({ ...value, title: 'Held group words' });
+    await action.save();
+    action.close({ flush: false });
+    h.silentRemote({ title: 'Stored group words' });
+    engine.setOnline(true);
+    await engine.retry();
+    await settleEngine();
+    await settleEngine();
+    expect(await h.commits.list('user-1')).toEqual([expect.objectContaining({ state: 'conflict' })]);
+    const open = engine.openEditor.bind(engine);
+    jest.spyOn(engine, 'openEditor').mockImplementation(async (...args) => {
+      const editor = await open(...args), form = editor.form.bind(editor);
+      jest.spyOn(editor, 'form').mockImplementation((slot, ...options) => {
+        const opened = form(slot, ...options);
+        if (slot === 'group-meeting') jest.spyOn(opened, 'begin').mockImplementation(() => new Promise(() => undefined));
+        return opened;
+      });
+      return editor;
+    });
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => browser);
+    render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await waitFor(() => expect(engine.getOpenAnswerScopes()).toEqual([expect.objectContaining({ resource,
+      draft: expect.objectContaining({ title: 'Held group words' }) })]));
+    expect(document.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'freshness.conflictTakeTheirs' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'freshness.conflictKeepMine' })).toBeInTheDocument();
+  });
+
   it('reads the group during silent storage and becomes editable when the editor opens', async () => {
     const { trackStorage, resetDeviceStorageForTests, STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS } = await import('@/utils/deviceStorage');
     jest.useFakeTimers(); resetDeviceStorageForTests();

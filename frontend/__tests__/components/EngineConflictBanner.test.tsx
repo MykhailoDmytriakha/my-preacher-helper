@@ -4,11 +4,13 @@ import React, { useEffect } from 'react';
 
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
-import { DataEngineProvider, useDataDocument, useDocumentActions } from '@/data-engine/react.client';
+import { DataEngineProvider, isOneShotRecord, useDataDocument, useDocumentActions } from '@/data-engine/react.client';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { editorIdentity } from '@/data-engine/editorIdentity';
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 
 import type { DocumentData } from '@/data-engine/types';
+import type { ManagedEditor } from '@/data-engine/engine';
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
@@ -628,5 +630,91 @@ describe('a request refused locally before transport preparation', () => {
     const h = await refusedWithoutReceipt();
     await expect(actions!.commit(resource, current => ({ ...current!, content: 'Next words' }))).rejects.toMatchObject({ code: 'decision-required' });
     expect(await h.commits.list('owner')).toHaveLength(1);
+  });
+});
+
+
+/** A document may adopt a closed one-shot request; that is still one question for the person. */
+describe('one-shot answers on their answering document screen', () => {
+  beforeEach(() => { process.env[ON_ENGINE] = 'studyNotes'; actions = null; mockPathname = '/settings'; });
+  afterEach(() => { delete process.env[ON_ENGINE]; mockPathname = '/dashboard'; });
+
+  function AnsweringNote() {
+    const document = useDataDocument(resource);
+    return <section aria-label="Answering note">
+      <h2>{String(document.data?.content ?? '')}</h2>
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error}
+        onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} onRetry={document.retry} />
+    </section>;
+  }
+
+  async function waitingAction(beforeCapture?: (h: ReturnType<typeof documentEngineHarness>) => Promise<void>) {
+    const h = documentEngineHarness({ resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(h.createBrowser);
+    const tree = (open: boolean, pollMs: number) => <DataEngineProvider><Actions />{open && <AnsweringNote />}<EngineConflictBanner pollMs={pollMs} /></DataEngineProvider>;
+    const view = render(tree(false, 50));
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    if (beforeCapture) await beforeCapture(h);
+    h.silentRemote({ content: 'Accepted phone words' });
+    await act(async () => {
+      await actions!.commit(resource, current => ({ ...current!, content: 'Saved action words' }));
+      await settleEngine(); await settleEngine();
+    });
+    await screen.findByText(/Saved action words/);
+    return { h, view, tree };
+  }
+
+  it('shows one decision after the document adopts the answered one-shot request and restores global discovery on leaving', async () => {
+    const { h, view, tree } = await waitingAction();
+    expect(screen.getAllByRole('button', { name: 'freshness.conflictKeepMine' })).toHaveLength(1);
+    mockPathname = '/studies/note-1';
+    view.rerender(tree(true, 60_000));
+    await screen.findByRole('heading', { name: 'Saved action words' });
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'freshness.conflictKeepMine' })).toHaveLength(1), { timeout: 300 });
+    expect(h.engine.getOpenAnswers()).toEqual([resource]);
+    mockPathname = '/settings';
+    view.rerender(tree(false, 60_000));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'freshness.conflictKeepMine' })).toHaveLength(1), { timeout: 300 });
+    expect(screen.getByText(/Saved action words/)).toBeInTheDocument();
+    expect(await h.commits.list('owner')).toHaveLength(1);
+    expect(h.server.value?.content).toBe('Accepted phone words');
+    view.unmount();
+  });
+
+  it('keeps unseen words visible when the screen holds the same request but a different draft', async () => {
+    const { h, view, tree } = await waitingAction();
+    mockPathname = '/studies/note-1'; view.rerender(tree(true, 50));
+    await screen.findByRole('heading', { name: 'Saved action words' });
+    const saved = (await h.engine.listRecoverable(resource)).find(({ record }) => isOneShotRecord(record));
+    if (!saved) throw new Error('Expected the saved action checkpoint');
+    const reopened = await h.engine.openEditor(resource, saved.record.editorId);
+    await act(async () => {
+      await reopened.edit({ ...reopened.getState().checkpoint.draft!, content: 'Unseen ordinary words' });
+      reopened.close({ flush: false }); await settleEngine();
+    });
+    await screen.findByText(/Unseen ordinary words/);
+    expect(screen.getByRole('heading', { name: 'Saved action words' })).toBeInTheDocument();
+    expect(await h.commits.list('owner')).toHaveLength(1);
+    view.unmount();
+  });
+
+  it.each(['action', 'document'])('keeps an independent %s request visible while the screen holds only the earlier answer', async slot => {
+    let late: ManagedEditor | null = null;
+    const { h, view, tree } = await waitingAction(async harness => {
+      late = await harness.engine.openEditor(resource, editorIdentity('test-tab', resource, slot, 'unseen'));
+      await late.edit({ ...stored, content: 'Independent saved words' });
+    });
+    mockPathname = '/studies/note-1'; view.rerender(tree(true, 50));
+    await screen.findByRole('heading', { name: 'Saved action words' });
+    await act(async () => {
+      await late!.save(); late!.close({ flush: false });
+      await settleEngine(); await h.engine.retry(); await settleEngine();
+    });
+    const pending = await h.commits.list('owner');
+    expect(pending).toHaveLength(2);
+    expect(pending.map(request => request.state)).toEqual(['conflict', 'conflict']);
+    await screen.findByText(/Independent saved words/);
+    expect(screen.getByRole('heading', { name: 'Saved action words' })).toBeInTheDocument();
+    view.unmount();
   });
 });

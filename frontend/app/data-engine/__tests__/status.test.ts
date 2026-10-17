@@ -11,6 +11,16 @@ const state = (): EditorState => ({ checkpoint: new DataSession(snapshot).checkp
 const pending = (status: JournalEntry['state']): JournalEntry => ({ command: { protocol: 1, operationId: 'mine', owner: 'owner', resource: snapshot.resource, generation: 'g', dependsOn: [], kind: 'delete', baseline: snapshot.value! }, state: status, createdAt: 1, attempts: 1 });
 
 describe('Shared synchronization status', () => {
+  it('distinguishes a local deletion from a missing or already deleted record', () => {
+    const s = state();
+    expect(describeSync(s, observation, [])).toMatchObject({ deleting: false });
+    s.checkpoint.draft = null;
+    s.checkpoint.dirty = true;
+    expect(describeSync(s, observation, [])).toMatchObject({ deleting: true });
+    s.checkpoint.confirmed = { ...snapshot, value: null, metadata: { ...snapshot.metadata!, deleted: true } };
+    expect(describeSync(s, observation, [])).toMatchObject({ deleting: false });
+  });
+
   it('describes manual durability and selected-field changes independently of the parent', async () => {
     const editor = state();
     const form = ManualScope.begin({ owner: 'owner', resource: snapshot.resource, scopeId: 'form', selection: [['content']], port: {
@@ -51,6 +61,25 @@ describe('Shared synchronization status', () => {
       phase: ['conflict', 'refused'].includes(phase) ? phase : 'draft',
       canKeepLocal: phase === 'conflict', canAcceptRemote: false,
     });
+  });
+
+  it('never gives a selected-field form the parent document deletion intent', async () => {
+    const editor = state();
+    const form = ManualScope.begin({ owner: 'owner', resource: snapshot.resource, scopeId: 'form', selection: [['content']], port: {
+      isCurrent: () => true, capture: () => ({ checkpoint: editor.checkpoint, provenance: [], requests: [] }),
+      persist: async () => undefined, save: jest.fn(),
+    } });
+    await form.settled();
+    editor.checkpoint.draft = null;
+    const parent = { ...describeSync(editor, observation, []), phase: 'conflict' as const, canKeepLocal: true, canAcceptRemote: true };
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ deleting: false });
+    await form.update(value => ({ ...value, content: 'Selected-field correction' }));
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ deleting: false, canKeepLocal: true });
+    const inactive = form.getState();
+    inactive.record.active = false;
+    expect(describeManualSync(inactive, editor, parent, null)).toMatchObject({ deleting: false });
+    expect(describeManualSync(null, editor, parent, null)).toMatchObject({ deleting: false });
+    expect(parent.deleting).toBe(true);
   });
 
   it('keeps save confirmation separate from current freshness', () => {

@@ -292,6 +292,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   if (loading) {
     return (
       <div className="space-y-4">
+        {feedback}
         {[1, 2, 3].map((index) => (
           <div
             key={index}

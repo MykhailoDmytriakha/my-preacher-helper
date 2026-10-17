@@ -4,6 +4,7 @@ import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { editorIdentity } from '@/data-engine/editorIdentity';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { TestProviders } from '@test-utils/test-providers';
 import { createAudioThought } from '@services/thought.service';
@@ -518,6 +519,30 @@ describe('Sermon Detail Page', () => {
       });
       expect(screen.queryByTestId('sermon-detail-skeleton')).not.toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Back to list' })).toHaveAttribute('href', '/sermons');
+    });
+
+    it('keeps an answered one-shot deletion decidable when the sermon draft is absent', async () => {
+      const browser = harness.createBrowser();
+      browser.engine.setOnline(false);
+      browser.engine.setOwner('u1');
+      const action = await browser.engine.openEditor(resource, editorIdentity('qa-delete', resource, 'action', 'first'));
+      await action.remove();
+      action.close({ flush: false });
+      harness.silentRemote({ title: 'Stored after deletion' });
+      browser.engine.setOnline(true);
+      await browser.engine.retry();
+      await settleEngine();
+      await settleEngine();
+      expect(await harness.commits.list('u1')).toEqual([expect.objectContaining({ state: 'conflict', value: null })]);
+      jest.mocked(createBrowserDataEngine).mockImplementation(() => browser);
+      renderPage();
+
+      await screen.findByText('Sermon not found or unavailable');
+      expect(browser.engine.getOpenAnswerScopes()).toEqual([expect.objectContaining({ resource, draft: null })]);
+      expect(screen.queryByRole('button', { name: 'freshness.conflictKeepMine' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'dataSync.keepRecord' }));
+      await screen.findByText('Stored after deletion');
+      expect(screen.queryByRole('button', { name: 'dataSync.keepRecord' })).not.toBeInTheDocument();
     });
 
     it('opens a sermon whose stored document has no thoughts list', async () => {

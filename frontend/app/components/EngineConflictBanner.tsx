@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { captureRecoveryChoice, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswers, waitsForDecision, type RecoveryChoiceScope } from '@/data-engine/react.client';
+import { captureRecoveryChoice, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, isRecoveryHeldOpen, useDataEngine, useDocumentActions, useOpenDocumentAnswerScopes, waitsForDecision, type OpenDocumentAnswer, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -125,6 +125,13 @@ const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting)
   && current.operationIds.length === target.operationIds.length
   && current.operationIds.every((id, index) => id === target.operationIds[index]));
 
+/** A matching route yields only when its document editors hold all the shown work and words. */
+function visibleWaiting(candidates: readonly Waiting[] | null | undefined, pathname: string | null | undefined,
+  answers: readonly OpenDocumentAnswer[]): Waiting | undefined {
+  return candidates?.find(candidate => !isOnDocumentScreen(pathname, candidate.resource)
+    || !isRecoveryHeldOpen(candidate.records, answers));
+}
+
 function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
   if (drafts.length > 1) return 'several';
   const { checkpoint } = drafts[0];
@@ -198,7 +205,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const { browser, owner } = useDataEngine();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const { confirm, confirmDialog, withdraw: withdrawDelete } = useConfirm();
-  const openAnswers = useOpenDocumentAnswers();
+  const openAnswers = useOpenDocumentAnswerScopes();
   const actions = useDocumentActions();
   const { copyToClipboard } = useClipboard({
     onSuccess: () => { toast.success(t('freshness.copiedToast')); },
@@ -275,9 +282,9 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     return () => { stop(); window.clearInterval(timer); sequence.current += 1; withdraw(); };
   }, [browser, refresh, pollMs, i18n?.language, withdraw]);
 
-  // A screen's draft is not shown on its screen when the editor open there holds the answer: that
-  // screen's status already says it, once. One opened before the request existed holds nothing.
-  const entry = waiting.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
+  // One question for the same held work, regardless of which editor originally captured it.
+  // Other requests or unseen draft words keep their global notice.
+  const entry = visibleWaiting(waiting, pathname, openAnswers);
   entryRef.current = entry ?? null;
   useEffect(() => {
     const pending = pendingChoice.current;
@@ -298,7 +305,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     try {
       await askBeforeDiscard(true, async () => {
         const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
-        const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
+        const currentEntry = visibleWaiting(fresh, pathname, openAnswers);
         if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
           || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
         await settle(choice, targetBrowser, target);
@@ -324,7 +331,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       });
       if (!accepted || !isCurrent()) return;
       const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
-      const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
+      const currentEntry = visibleWaiting(fresh, pathname, openAnswers);
       if (!sameWaitingChoice(currentEntry, target) || !isCurrent()) return;
       await settle('mine', targetBrowser, target);
     } finally {

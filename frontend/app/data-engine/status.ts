@@ -25,6 +25,8 @@ export function isSyncTrouble(phase: string | null | undefined): boolean {
 }
 
 export interface SyncStatus {
+  /** Keeping this local intent repeats a whole-record deletion, rather than preserving text. */
+  deleting?: boolean;
   phase: SyncPhase;
   freshness: Observation['readiness'];
   checking: boolean;
@@ -42,6 +44,8 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   // choice to offer (a screen's editor offers it; EditorController.acceptRemote). A real newer version
   // from elsewhere is still offered, as it always was.
   if (parent?.phase === 'refused' && !parent.hasForeignChange) parent = { ...parent, canAcceptRemote: false };
+  // A selected-field form never owns a whole-document deletion, including while it opens.
+  if (parent?.deleting) parent = { ...parent, deleting: false };
   if (!form?.record.active || !editor || !parent) return parent;
   // Explicit Keep local may include durable corrections to a known failed command.
   // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
@@ -84,6 +88,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   const deletedCandidate = foreign && candidate?.value === null;
   const phase = deliveryPhase(state, delivery, foreign, deletedCandidate, pendingIds.length);
   return {
+    deleting: checkpoint.draft === null && checkpoint.confirmed.value !== null,
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
     hasForeignChange: foreign,
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,

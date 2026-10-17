@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import en from '../../../locales/en/translation.json';
 import ru from '../../../locales/ru/translation.json';
@@ -25,6 +25,50 @@ const confirmDiscardDialog = async () => {
 };
 
 describe('DataSyncStatus', () => {
+  it.each(['conflict', 'refused'] as const)('names a %s deletion honestly and keeps the record without discarding text', async phase => {
+    const keep = jest.fn(), accept = jest.fn();
+    const deletion = { ...status(phase, { canKeepLocal: true, canAcceptRemote: true }), deleting: true };
+    render(<DataSyncStatus subject="delete" status={deletion} onKeepLocal={keep} onAcceptRemote={accept} />);
+    expect(screen.queryByRole('button', { name: en.freshness.conflictKeepMine })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: phase === 'refused' ? en.dataSync.retryDelete : en.dataSync.deleteAnyway })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.keepRecord }));
+    await waitFor(() => expect(accept).toHaveBeenCalledTimes(1));
+    expect(keep).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps selected-field corrections as ordinary text choices', async () => {
+    const keep = jest.fn();
+    const manual = { ...status('conflict', { canKeepLocal: true, canAcceptRemote: true }), deleting: false };
+    render(<DataSyncStatus subject="form" status={manual} onKeepLocal={keep} onAcceptRemote={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: en.dataSync.deleteAnyway })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: en.freshness.conflictKeepMine }));
+    await waitFor(() => expect(keep).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('asks before repeating a deletion and withdraws it when that decision is no longer available', async () => {
+    const keep = jest.fn(), accept = jest.fn();
+    const deletion = { ...status('conflict', { canKeepLocal: true, canAcceptRemote: true }), deleting: true };
+    const { rerender } = render(<DataSyncStatus subject="delete" status={deletion} onKeepLocal={keep} onAcceptRemote={accept} />);
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.deleteAnyway }));
+    const first = await screen.findByRole('dialog');
+    fireEvent.click(within(first).getByRole('button', { name: en.common.cancel }));
+    await waitFor(() => expect(screen.getByRole('button', { name: en.dataSync.deleteAnyway })).toBeEnabled());
+    expect(keep).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.deleteAnyway }));
+    await screen.findByRole('dialog');
+    rerender(<DataSyncStatus subject="delete" status={status('saved')} onKeepLocal={keep} onAcceptRemote={accept} />);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(keep).not.toHaveBeenCalled();
+    rerender(<DataSyncStatus subject="delete" status={deletion} onKeepLocal={keep} onAcceptRemote={accept} />);
+    fireEvent.click(screen.getByRole('button', { name: en.dataSync.deleteAnyway }));
+    const final = await screen.findByRole('dialog');
+    fireEvent.click(within(final).getByRole('button', { name: en.common.delete }));
+    await waitFor(() => expect(keep).toHaveBeenCalledTimes(1));
+    expect(accept).not.toHaveBeenCalled();
+  });
+
   it('makes earlier unfinished drafts visible beside an otherwise saved document', () => {
     render(<DataSyncStatus subject="doc" status={status('saved')} recoveryChoices={[{ id: 'earlier', title: 'Unfinished draft' }]} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.unfinishedWork);

@@ -1,5 +1,8 @@
 import type { ResourceRef } from './types';
 
+/** Reserved for transient document actions that have no answering screen. */
+export const ACTION_SLOT = 'action';
+
 /**
  * AN EDITOR'S IDENTITY — which tab opened it, for which document, under which slot, with a fresh
  * suffix per opening. Built and read here only, so what kind of editor left a checkpoint is never

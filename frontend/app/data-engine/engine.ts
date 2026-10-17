@@ -3,7 +3,7 @@ import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from './documentDelivery';
-import { editorSlot } from './editorIdentity';
+import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
@@ -19,6 +19,7 @@ import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
+import type { OpenDocumentAnswer } from './openDocumentAnswers';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint, ShownCopy } from './session';
 import type { DocumentData, EngineMetadata, EngineReadOptions, EngineTransport, FailureAddress, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
@@ -142,6 +143,8 @@ export class DataEngine {
   private readonly pendingListeners = new Set<() => void>();
   private openAnswers: readonly ResourceRef[] = Object.freeze([]);
   private readonly openAnswerListeners = new Set<() => void>();
+  private openAnswerScopes: readonly OpenDocumentAnswer[] = Object.freeze([]);
+  private readonly openAnswerScopeListeners = new Set<() => void>();
   private readonly reachableListeners = new Set<() => void>();
   private readonly refreshedOperations = new Set<string>();
   private readonly refreshedCollectionOperations = new Set<string>();
@@ -587,22 +590,51 @@ export class DataEngine {
     return () => { this.openAnswerListeners.delete(listener); };
   }
 
-  private answeredEditorResources(journal: readonly JournalEntry[]): ResourceRef[] {
+  /** Stable exact-work view; ordinary resource subscribers retain their previous notification boundary. */
+  getOpenAnswerScopes(): readonly OpenDocumentAnswer[] { return this.openAnswerScopes; }
+
+  subscribeOpenAnswerScopes(listener: () => void): () => void {
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
+    this.openAnswerScopeListeners.add(listener);
+    return () => { this.openAnswerScopeListeners.delete(listener); };
+  }
+
+  private answeredEditorWork(journal: readonly JournalEntry[]): OpenDocumentAnswer[] {
     const requests = [...this.commitRecords.values()];
-    const resources = new Map<string, ResourceRef>();
-    for (const entry of this.editors.values()) {
+    const scopes: OpenDocumentAnswer[] = [];
+    for (const [editorId, entry] of [...this.editors.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      // A transient action has no answering screen; opening it cannot hide the global question.
+      if (editorSlot(editorId) === ACTION_SLOT) continue;
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
-      if (checkpoint && savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
-        Object.keys(checkpoint.pending), requests, journal)) {
-        const resource = checkpoint.confirmed.resource;
-        resources.set(cacheKey(this.owner ?? '', resource), resource);
-      }
+      if (!checkpoint || !savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
+        Object.keys(checkpoint.pending), requests, journal)) continue;
+      const scope = { owner: this.owner ?? '', resource: checkpoint.confirmed.resource,
+        operationIds: Object.keys(checkpoint.pending).sort(), draft: checkpoint.draft };
+      if (!scopes.some(previous => equalValues(previous, scope))) scopes.push(scope);
     }
+    return scopes;
+  }
+
+  private resourcesForAnswers(scopes: readonly OpenDocumentAnswer[]): ResourceRef[] {
+    const resources = new Map(scopes.map(scope => [cacheKey(scope.owner, scope.resource), scope.resource]));
     return [...resources.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([, resource]) => resource);
   }
 
+  private answeredEditorResources(journal: readonly JournalEntry[]): ResourceRef[] {
+    return this.resourcesForAnswers(this.answeredEditorWork(journal));
+  }
+
   private publishOpenAnswers(): void {
-    const next = this.answeredEditorResources(this.pending);
+    const work = this.answeredEditorWork(this.pending);
+    if (!equalValues(work, this.openAnswerScopes)) {
+      this.openAnswerScopes = Object.freeze(work.map(scope => Object.freeze({ ...copy(scope),
+        resource: Object.freeze(copy(scope.resource)), operationIds: Object.freeze([...scope.operationIds]),
+        draft: scope.draft === null ? null : Object.freeze(copy(scope.draft)) })));
+      for (const listener of this.openAnswerScopeListeners) {
+        try { listener(); } catch { /* Rendering never changes editor ownership. */ }
+      }
+    }
+    const next = this.resourcesForAnswers(work);
     if (equalValues(next, this.openAnswers)) return;
     this.openAnswers = Object.freeze(next.map(resource => Object.freeze(copy(resource))));
     for (const listener of this.openAnswerListeners) {
@@ -762,6 +794,7 @@ export class DataEngine {
     this.commits.setOwner(null);
     this.pendingListeners.clear();
     this.openAnswerListeners.clear();
+    this.openAnswerScopeListeners.clear();
     this.membershipListeners.clear();
     this.reachableListeners.clear();
     this.options.collections?.dispose();

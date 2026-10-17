@@ -11,11 +11,12 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
-import { editorSlot } from './editorIdentity';
+import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals } from './legacyRecovery.client';
+import { recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { mergeFields } from './protocol';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { deletedUnder } from './session';
@@ -34,6 +35,9 @@ import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, Journ
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
 export type { RecoveryChoiceScope } from './recoveryChoice';
+export type { OpenDocumentAnswer } from './openDocumentAnswers';
+/** Whether the answering document screens hold every shown request and the same words. */
+export function isRecoveryHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return heldOpen(records, answers); }
 /** Capture shown recovery work through the public engine facade. */
 export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
 
@@ -224,6 +228,17 @@ export function useOpenDocumentAnswers(): readonly ResourceRef[] {
   return useSyncExternalStore(subscribe, snapshot, noOpenAnswers);
 }
 
+const NO_OPEN_ANSWER_SCOPES: readonly OpenDocumentAnswer[] = Object.freeze([]);
+const noOpenAnswerScopes = () => NO_OPEN_ANSWER_SCOPES;
+
+/** Exact saved work shown by mounted document editors, updated locally without a recovery poll. */
+export function useOpenDocumentAnswerScopes(): readonly OpenDocumentAnswer[] {
+  const { browser } = useDataEngine();
+  const subscribe = useCallback((listener: () => void) => browser?.engine.subscribeOpenAnswerScopes(listener) ?? (() => undefined), [browser]);
+  const snapshot = useCallback(() => browser?.engine.getOpenAnswerScopes() ?? NO_OPEN_ANSWER_SCOPES, [browser]);
+  return useSyncExternalStore(subscribe, snapshot, noOpenAnswerScopes);
+}
+
 /**
  * ONE ACTION ON A DOCUMENT THAT NO SCREEN HAS OPEN — a menu entry on a list row, a link made
  * from the other side of a relation. The editor opens on the document's own baseline, captures
@@ -238,9 +253,6 @@ export function waitsForDecision(record: EditorRecord, journal: readonly Journal
   return record.checkpoint.conflicts.length > 0 || Boolean(answer) || Boolean(savedDocumentAnswer(record.owner,
     record.checkpoint.confirmed.resource, Object.keys(record.checkpoint.pending), [], journal));
 }
-
-/** The slot one-shot actions open their editor under. */
-const ACTION_SLOT = 'action';
 
 /**
  * Whether a checkpoint was left by a one-shot action (useDocumentActions) rather than by a

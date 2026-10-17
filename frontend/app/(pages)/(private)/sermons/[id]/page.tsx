@@ -34,6 +34,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -662,7 +663,9 @@ function SermonPageContent({ id }: { id: string }) {
   // Same rule the app nav reads to hide the sermon mode switcher — see `sermonIsMissing`.
   if (sermonIsMissing(sermon, { loading, awaitingFirstAnswer })) {
     return (
-      <div className="py-8">
+      <div className="space-y-4 py-8">
+        <DataSyncStatus subject={core.recoveryIdentity} status={core.status} error={core.error}
+          onKeepLocal={core.keepLocal} onAcceptRemote={core.acceptRemote} onRetry={core.retry} />
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
           <h2 className="text-xl font-semibold mb-2">
             {isOnline ? t('sermon.notFound') : t('sermon.unavailableOffline')}
