@@ -148,6 +148,17 @@ describe('a reference written before references knew their Bible', () => {
 });
 
 describe('the language a note was written in', () => {
+  // BUG-20261017-old-uk-note-read-as-russian: a Ukrainian title with none of і, ї, є, ґ read as Russian,
+  // and the note's old "Йоїл 3:1" became Synodal 3:1 — Ohienko 4:1, another verse, for its own author.
+  it('reads Cyrillic that either language could have written in the language its author writes in', () => {
+    expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'uk')).toBe('uk');
+    expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'ru')).toBe('ru');
+    expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'en')).toBe('ru');
+    expect(noteLanguage({ title: 'Мы любим', content: '' }, 'uk')).toBe('ru');
+    const [ref] = withNoteReferenceBibles({ title: 'Любов понад усе', content: '', scriptureRefs: [{ book: 'Joel', chapter: 3, fromVerse: 1 }] }, 'uk').scriptureRefs;
+    expect(ref).toEqual({ book: 'Joel', bible: 'ubio', chapter: 3, fromVerse: 1 });
+  });
+
   it('is the language of its words, and the reader’s when it has none', () => {
     expect(noteLanguage({ title: 'Покаяние', content: '' }, 'en')).toBe('ru');
     expect(noteLanguage({ content: 'Серце чисте створи мені, Боже' }, 'ru')).toBe('uk');
@@ -201,5 +212,40 @@ describe('a reference on the screen — BUG-20261012-psalm-verse-numbering-not-m
     expect(formatScriptureReference(stored, { locale: 'ru' })).toBe('Пс.22');
     expect(formatScriptureReference(stored, { locale: 'en' })).toBe('Ps.23');
     expect(formatScriptureReference(stored, { style: 'canonical' })).toBe('Psalms 23');
+  });
+});
+
+// BUG-20261017-reference-across-chapters-in-other-bible: a reference whose verses fall in two chapters of
+// another Bible was printed as those whole chapters, or lost the chapter holding fewer of its verses.
+describe('a reference whose verses fall in two chapters of another Bible', () => {
+  const psalm9 = { bible: 'rst' as const, book: 'Psalms', chapter: 9, fromVerse: 20, toVerse: 25 };
+  const doxology = { bible: 'kjv' as const, book: 'Romans', chapter: 16, fromVerse: 24, toVerse: 27 };
+
+  it('is printed from its first verse to its last across the seam (the owner: "9:19–10:4 is fine")', () => {
+    expect(formatScriptureReference(psalm9, { locale: 'en', style: 'long' })).toBe('Psalms 9:19-10:4');
+    expect(formatScriptureReference(psalm9, { style: 'canonical' })).toBe('Psalms 9:19-10:4');
+    expect(formatScriptureReference(psalm9, { locale: 'ru' })).toBe('Пс.9:20-25');
+  });
+
+  it('is printed in every piece when a gap parts them, none dropped', () => {
+    expect(formatScriptureReference(doxology, { locale: 'ru', style: 'long' })).toBe('К Римлянам 14:24-26, 16:24');
+    expect(formatScriptureReference({ bible: 'kjv', book: 'Romans', chapter: 16 }, { locale: 'ru', style: 'long' })).toBe('К Римлянам 14:24-26, 16');
+  });
+
+  it('covers every one of its verses there', () => {
+    expect(versesHeldIn(doxology, 'rst').map((place) => `${place.chapter}:${place.verse}`)).toEqual(['14:24', '14:25', '14:26', '16:24']);
+    expect(versesHeldIn(psalm9, 'kjv').map((place) => `${place.chapter}:${place.verse}`)).toEqual(['9:19', '9:20', '10:1', '10:2', '10:3', '10:4']);
+  });
+
+  it('is not the same place as the whole chapters around it', () => {
+    expect(sameScriptureReference(psalm9, { bible: 'kjv', book: 'Psalms', chapter: 9, toChapter: 10 })).toBe(false);
+    expect(sameScriptureReference(psalm9, { ...psalm9 })).toBe(true);
+    expect(sameScriptureReference({ bible: 'kjv', book: 'Romans', chapter: 16, fromVerse: 25, toVerse: 27 }, { bible: 'rst', book: 'Romans', chapter: 14, fromVerse: 24, toVerse: 26 })).toBe(true);
+  });
+
+  it('is the same place as its whole chapter written out verse by verse', () => {
+    expect(sameScriptureReference(ps('rst', 9), ps('rst', 9, 1, 39))).toBe(true);
+    expect(sameScriptureReference(ps('rst', 113), ps('rst', 113, 1, 26))).toBe(true);
+    expect(sameScriptureReference(ps('rst', 9), ps('rst', 9, 1, 38))).toBe(false);
   });
 });

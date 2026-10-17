@@ -67,8 +67,11 @@ type Options = {
   readingLine: () => number;
   /** The text took a new width or size: the screen brings the person back to the verse read. */
   onReflow?: () => void;
-  /** Other chapters were drawn, or a jump landed: another verse may stand at the reading line now. */
-  onDrawn?: () => void;
+  /**
+   * Other chapters were drawn, or a jump landed: another verse may stand at the reading line now.
+   * `moved` is how far the window itself moved the page to keep the line (0 when it moved nothing).
+   */
+  onDrawn?: (moved: number) => void;
 };
 
 /**
@@ -160,7 +163,7 @@ export function useChapterWindow({ text, textRef, surfaceRef, readingLine, onRef
     const previous = settledRef.current;
     const width = article.getBoundingClientRect().width;
     settledRef.current = { text, width };
-    if (!previous || previous.text !== text || Math.abs(previous.width - width) >= 1) drawnNow.current?.();
+    if (!previous || previous.text !== text || Math.abs(previous.width - width) >= 1) drawnNow.current?.(0);
   }, [perWeight, reflowed, span, text, textRef, weights]);
 
   const show = useCallback((place: { chapter: number }, then: () => void) => {
@@ -170,7 +173,7 @@ export function useChapterWindow({ text, textRef, surfaceRef, readingLine, onRef
     // Landed, the reader reads its place again: a jump that moved no pixel sends no scroll event.
     const land = () => {
       then();
-      drawnNow.current?.();
+      drawnNow.current?.(0);
     };
     if (!current || inSpan(current, place.chapter)) {
       land();
@@ -201,12 +204,18 @@ export function useChapterWindow({ text, textRef, surfaceRef, readingLine, onRef
       doubtedRef.current.delete(chapter);
     }
     flushSync(() => setState({ text: book, span: next }));
+    // What the window itself moved the page by: the reader tells it from a move of the person's.
+    let moved = 0;
     if (anchor?.isConnected && before !== null) {
       const surface = surfaceRef.current;
       const shift = anchor.getBoundingClientRect().top - before;
-      if (Math.abs(shift) >= 0.5) surface.scrollTo(surface.top() + shift);
+      if (Math.abs(shift) >= 0.5) {
+        const was = surface.top();
+        surface.scrollTo(was + shift);
+        moved = surface.top() - was;
+      }
     }
-    drawnNow.current?.();
+    drawnNow.current?.(moved);
   }, [canReadPosition, surfaceRef, textRef]);
 
   const follow = useCallback(() => {
