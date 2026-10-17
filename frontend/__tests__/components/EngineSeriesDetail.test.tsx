@@ -19,6 +19,8 @@ jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default:
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <p>{content}</p> }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
+const KEPT_SERIES_TITLE = 'My chosen series title';
+const REMOTE_SERIES_TITLE = 'Remote series title';
 const member = { id: 'group-g', type: 'group', refId: 'g', position: 1 };
 const series = (id: string, occupied = false): ResourceSnapshot => ({ resource: { collection: 'series', id },
   metadata: { protocol: 1, generation: `g-${id}`, revision: 1, deleted: false },
@@ -134,4 +136,61 @@ it('reads a series during silent storage without mutation controls, then restore
   await screen.findByRole('button', { name: 'workspaces.series.editSeries' });
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+});
+
+it.each([
+  ...['page', 'delete-dialog'].flatMap(surface => [false, true].map(offline => [surface, offline, false] as const)),
+  ['page', false, true] as const,
+])('submits the explicitly kept series title from %s with offline=%s and interrupted cancellation=%s after reopening', async (surface, offline, interrupted) => {
+  const { harness, view, Workspace } = setup();
+  await screen.findByRole('heading', { name: 'b', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.editSeries' }));
+  const title = await screen.findByDisplayValue('b'); await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: KEPT_SERIES_TITLE } });
+  await act(async () => { await settleEngine(); });
+  const remote = series('b'); remote.value = { ...remote.value, title: REMOTE_SERIES_TITLE, theme: REMOTE_SERIES_TITLE };
+  remote.metadata = { ...remote.metadata!, revision: 2 };
+  harness.replace(remote);
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.actions.saveChanges' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.read(series('b').resource).value?.title).toBe(REMOTE_SERIES_TITLE);
+  if (surface === 'delete-dialog') {
+    fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.deleteSeries' }));
+    await screen.findByRole('dialog', { name: 'workspaces.series.deleteSeries' });
+  }
+  if (offline) act(() => harness.engine.setOnline(false));
+  const keep = surface === 'delete-dialog'
+    ? await within(screen.getByRole('dialog', { name: 'workspaces.series.deleteSeries' })).findByRole('button', { name: 'freshness.conflictKeepMine' })
+    : await screen.findByRole('button', { name: 'freshness.conflictKeepMine' });
+  const cancellation = interrupted ? jest.spyOn(harness.commits, 'compareAndSet').mockRejectedValueOnce(new Error('QA cancellation storage failed')) : null;
+  await waitFor(() => expect(keep).toBeEnabled()); fireEvent.click(keep);
+  await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+  if (cancellation) {
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    expect(harness.read(series('b').resource).value?.title).toBe(REMOTE_SERIES_TITLE);
+    expect((await harness.commits.list('owner')).some(request => request.state === 'conflict')).toBe(true);
+    cancellation.mockRestore();
+    await waitFor(() => expect(keep).toBeEnabled()); fireEvent.click(keep);
+    await act(async () => { await settleEngine(); await harness.engine.retry(); await settleEngine(); });
+  }
+  if (offline) {
+    const waiting = (await harness.commits.list('owner')).filter(request => !['cancelled', 'acknowledged'].includes(request.state));
+    expect(waiting).toHaveLength(1); expect(waiting[0].value?.title).toBe(KEPT_SERIES_TITLE);
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    expect(harness.read(series('b').resource).value?.title).toBe(REMOTE_SERIES_TITLE);
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => { const browser = harness.createBrowser(); browser.engine.setOnline(false); return browser; });
+  } else await waitFor(() => expect(harness.read(series('b').resource).value?.title).toBe(KEPT_SERIES_TITLE));
+  view.unmount(); const reopened = render(<Workspace />);
+  await screen.findByRole('heading', { name: KEPT_SERIES_TITLE, level: 1 });
+  if (offline) {
+    expect(harness.transport.send).toHaveBeenCalledTimes(1);
+    await act(async () => { harness.engine.setOnline(true); await harness.engine.retry(); await settleEngine(); });
+  }
+  await waitFor(() => expect(harness.read(series('b').resource).value?.title).toBe(KEPT_SERIES_TITLE));
+  expect(harness.transport.send).toHaveBeenCalledTimes(2);
+  expect(harness.read(series('b').resource).value?.items).toEqual([]);
+  expect(screen.queryByRole('button', { name: 'freshness.conflictKeepMine' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'dataSync.recover' })).not.toBeInTheDocument();
+  reopened.unmount();
 });

@@ -64,6 +64,10 @@ export interface EditorState {
   /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
   preparing?: boolean;
   actionResolutionRequired?: boolean;
+  /** Derived by the engine from every held request and its cancellation scope. */
+  savedIntentReplaceable?: boolean;
+  /** A legacy checkpoint may still own a command directly rather than a commit request. */
+  preparedOperationId?: string;
   /** A form's save is among the pending work: dropping a refusal of the whole document is not offered. */
   manualWork?: boolean;
 }
@@ -135,6 +139,7 @@ export class EditorController {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
     return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0,
+      preparedOperationId: this.prepared?.operationId,
       actionResolutionRequired: this.atomicPending.size > 0,
       manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
   }

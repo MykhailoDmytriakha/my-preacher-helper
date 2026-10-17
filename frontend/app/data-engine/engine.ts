@@ -2,6 +2,7 @@ import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
+import { canReplaceDocumentIntent } from './documentDelivery';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -926,7 +927,15 @@ export class DataEngine {
         return pending;
       };
       const managed: ManagedEditor = {
-        getState: () => { active(); return controller.getState(); },
+        getState: () => {
+          active();
+          const state = controller.getState();
+          const pendingIds = Object.keys(state.checkpoint.pending);
+          // Directly owned legacy commands keep their existing terminal-journal proof.
+          const legacy = pendingIds.length === 1 && pendingIds[0] === state.preparedOperationId;
+          return { ...state, savedIntentReplaceable: legacy ? undefined : canReplaceDocumentIntent(owner, editorId,
+            pendingIds, [...this.commitRecords.values()], this.pending) };
+        },
         getObservation: () => { active(); return copy(entry.observation); },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
         getActions: () => {

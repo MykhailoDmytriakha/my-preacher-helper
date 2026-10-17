@@ -4,6 +4,9 @@ import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
+import { DataSession } from '../session';
+import { planDataCommand } from '../serverRelations';
+import { describeSync } from '../status';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
 import type { CheckpointStore, EditorRecord } from '../controller';
@@ -80,6 +83,82 @@ function setup({ cached = true, online = true } = {}) {
 describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it.each(['studyMaterials', 'series'].flatMap(collection => ['local', 'remote'].map(choice => [collection, choice])))
+    ('resolves acknowledged %s relation rebase with the %s choice without losing membership', async (collection, choice) => {
+    const s = setup({ online: false });
+    const primary: ResourceSnapshot = { resource: { collection, id: 'qa-ack-rebase-document' },
+      value: { userId: 'owner', title: 'Old title', createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
+        ...(collection === 'series' ? { theme: 'QA series', bookOrTopic: 'James', status: 'active', items: [], sermonIds: [], seriesKind: 'sermon' } : { type: 'study', noteIds: [] }) },
+      metadata: { protocol: 1, generation: 'primary-generation', revision: 1, deleted: false } };
+    const member: ResourceSnapshot = { resource: { collection: collection === 'series' ? 'sermons' : 'studyNotes', id: 'qa-ack-rebase-member' },
+      value: { userId: 'owner', title: 'QA linked member', createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z',
+        ...(collection === 'series' ? { verse: 'James 1:5', date: '2026-10-16', thoughts: [], outline: { introduction: [], main: [], conclusion: [] } }
+          : { content: 'Note', tags: [], scriptureRefs: [], isDraft: true, materialIds: [] }) },
+      metadata: { protocol: 1, generation: 'member-generation', revision: 1, deleted: false } };
+    for (const snapshot of [primary, member]) {
+      s.server.set(keyOf('owner', snapshot.resource), copy(snapshot));
+      s.cache.set(keyOf('owner', snapshot.resource), copy(snapshot));
+    }
+    let changedRemotely = false;
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      if (!changedRemotely) { changedRemotely = true; s.server.set(keyOf('owner', primary.resource), { ...primary,
+        value: { ...primary.value, title: 'Remote title' }, metadata: { ...primary.metadata!, revision: 2 } }); }
+      const plan = await planDataCommand(command, s.server.get(keyOf('owner', command.resource))!, {
+        get: async ref => copy(s.server.get(keyOf('owner', ref))!), list: async () => [],
+      });
+      for (const snapshot of plan.writes) s.server.set(keyOf('owner', snapshot.resource), copy(snapshot));
+      return plan.result;
+    });
+    const editor = await s.engine.openEditor(primary.resource, JSON.stringify(['qa-rebase', collection, primary.resource.id, 'document', 'prior']));
+    try {
+      await editor.commit(current => ({ ...current, title: 'My title', ...(collection === 'series'
+        ? { items: [{ id: 'qa-ack-rebase-item', type: 'sermon', refId: member.resource.id, position: 1 }] } : { noteIds: [member.resource.id] }) }));
+      s.engine.setOnline(true); await s.engine.retry(); await drainMicrotasks();
+      expect((await s.commits.list('owner'))[0]).toMatchObject({ state: 'conflict', result: { kind: 'conflict' } });
+      expect([...s.entries.values()].map(entry => entry.state)).toEqual(['acknowledged']);
+      expect(s.server.get(keyOf('owner', primary.resource))?.value).toMatchObject({ title: 'Remote title', ...(collection === 'series' ? { sermonIds: [member.resource.id] } : { noteIds: [member.resource.id] }) });
+      if (collection === 'studyMaterials') expect(s.server.get(keyOf('owner', member.resource))?.value?.materialIds).toEqual([primary.resource.id]);
+      expect(describeSync(editor.getState(), editor.getObservation(), editor.getDelivery())).toMatchObject({
+        phase: 'conflict', canAcceptRemote: true, canKeepLocal: true,
+      });
+      if (choice === 'local') { await editor.keepLocal(); await editor.save(); }
+      else await editor.acceptRemote();
+      await s.engine.retry(); await drainMicrotasks();
+      const expected = choice === 'local' ? 'My title' : 'Remote title';
+      const saved = s.server.get(keyOf('owner', primary.resource))!;
+      expect(saved.value).toMatchObject({ title: expected,
+        ...(collection === 'series' ? { sermonIds: [member.resource.id] } : { noteIds: [member.resource.id] }) });
+      if (collection === 'studyMaterials') expect(s.server.get(keyOf('owner', member.resource))?.value?.materialIds).toEqual([primary.resource.id]);
+      expect(s.transport.send).toHaveBeenCalledTimes(choice === 'local' ? 2 : 1);
+      expect(s.entries.size).toBe(0);
+      editor.close();
+      const reopened = await s.engine.openEditor(primary.resource, JSON.stringify(['qa-rebase', collection, primary.resource.id, 'document', 'reopened']));
+      expect(reopened.getState().checkpoint.draft?.title).toBe(expected);
+      expect(describeSync(reopened.getState(), reopened.getObservation(), reopened.getDelivery())).toMatchObject({
+        phase: 'saved', canAcceptRemote: false, canKeepLocal: false,
+      });
+    } finally { s.engine.dispose(); }
+  });
+
+  it('preserves terminal choices for a restored checkpoint with a legacy prepared command', async () => {
+    const s = setup({ online: false }), session = new DataSession(initial());
+    session.edit({ ...initial().value, content: 'Legacy words' });
+    const prepared = session.prepare('legacy-operation', 'owner')!;
+    const editorId = JSON.stringify(['qa-legacy', resource.collection, resource.id, 'document', 'prior']);
+    s.records.set(JSON.stringify(['owner', editorId]), { owner: 'owner', editorId, checkpoint: session.checkpoint(), prepared, unfinalized: [] });
+    const remote = initial(2, 'Remote words');
+    jest.mocked(s.transport.send).mockResolvedValue({ kind: 'conflict', operationId: prepared.operationId, snapshot: remote,
+      conflicts: [{ path: ['content'], base: { exists: true, value: 'base' }, mine: { exists: true, value: 'Legacy words' }, theirs: { exists: true, value: 'Remote words' } }] });
+    const editor = await s.engine.openEditor(resource, editorId);
+    try {
+      s.engine.setOnline(true); await s.engine.retry(); await drainMicrotasks();
+      expect(editor.getDelivery().map(entry => entry.state)).toEqual(['conflict']);
+      expect(describeSync(editor.getState(), editor.getObservation(), editor.getDelivery())).toMatchObject({
+        phase: 'conflict', canAcceptRemote: true, canKeepLocal: true,
+      });
+    } finally { s.engine.dispose(); }
+  });
 
   it('finishes an already invoked manual Save after its page closes', async () => {
     const s = setup();

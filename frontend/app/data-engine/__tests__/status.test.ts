@@ -81,6 +81,24 @@ describe('Shared synchronization status', () => {
     s.checkpoint.remoteCandidate = { ...snapshot, metadata: { ...snapshot.metadata!, revision: 3, operationId: 'mine-1' } };
     expect(describeSync(s, observation, [pending('sending')])).toMatchObject({ phase: 'sending', hasForeignChange: false, canAcceptRemote: false });
   });
+  it('offers an own-ACK candidate only for a proven request-level conflict and keeps unknown siblings protected', () => {
+    const s = state();
+    s.checkpoint.dirty = true;
+    s.checkpoint.pending.mine = { generation: 1, value: snapshot.value, operations: ['relation'] };
+    s.checkpoint.remoteCandidate = { ...snapshot, metadata: { ...snapshot.metadata!, revision: 2, operationId: 'relation' } };
+    s.result = { kind: 'conflict', operationId: 'mine', snapshot: s.checkpoint.remoteCandidate, conflicts: [] };
+    s.savedIntentReplaceable = true;
+    expect(describeSync(s, observation, [pending('acknowledged')])).toMatchObject({
+      phase: 'conflict', hasForeignChange: false, canAcceptRemote: true, canKeepLocal: true,
+    });
+    s.savedIntentReplaceable = false;
+    expect(describeSync(s, observation, [pending('conflict')])).toMatchObject({ canAcceptRemote: false, canKeepLocal: false });
+    s.savedIntentReplaceable = true; s.result = null;
+    expect(describeSync(s, observation, [pending('sending')])).toMatchObject({
+      phase: 'sending', hasForeignChange: false, canAcceptRemote: false, canKeepLocal: false,
+    });
+  });
+
   it('allows one durable successor while offline and stops once its generation is queued', () => {
     const s = state(); s.checkpoint.dirty = true; s.checkpoint.editGeneration = 2;
     s.checkpoint.pending.mine = { generation: 1, value: snapshot.value };

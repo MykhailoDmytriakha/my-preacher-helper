@@ -33,6 +33,13 @@ of ten production collections that day; verify live configuration before changin
 Study-material server routes still use the guarded legacy bridge. Share links are server-owned capability tokens, not editable
 user documents. A registered schema alone does not prove a consumer has migrated.
 
+Document conflict choices use the complete durable request scope (`documentDelivery.ts`),
+reusing the queue's cancellation proof. A relation ACK does not finish ordinary fields:
+a request-level rebase conflict still offers both choices against its actual candidate.
+Missing held requests, unknown sibling commands and atomic scopes cannot enable a
+single-document choice. A directly owned legacy prepared command retains its existing
+terminal-journal behavior. None of this changes persisted formats or writers.
+
 ## Public React interface
 
 Mount `DataEngineWorkspace` once around authenticated pages, including pages hiding

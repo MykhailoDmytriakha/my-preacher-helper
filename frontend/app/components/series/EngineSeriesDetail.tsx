@@ -28,6 +28,12 @@ const SERIES_LABEL = 'navigation.series';
 
 type MembershipDialog = { mode: SeriesMembershipDialogMode; member?: Pick<SeriesItem, 'type' | 'refId'>; recoveryId?: string };
 
+/** This screen has no autosave: a deliberate conflict choice must submit its replacement. */
+async function saveKeptSeries(document: Pick<ReturnType<typeof useDataDocument>, 'keepLocal' | 'save'>): Promise<void> {
+  await document.keepLocal();
+  await document.save();
+}
+
 export function EngineSeriesDetail({ seriesId }: { seriesId: string }) {
   return <DataDocumentProvider resource={{ collection: 'series', id: seriesId }} options={{ slot: 'series', autoSave: false, readOnlyCopy: true }}>
     <SeriesWorkspace seriesId={seriesId} />
@@ -56,7 +62,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       title: String(record.checkpoint.draft?.title ?? record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)) })),
     recover: document.recover });
   const sync = <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
-    onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
+    onKeepLocal={() => saveKeptSeries(document)} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} />;
   if (document.loading && !document.data) return <SeriesDetailSkeleton />;
@@ -111,7 +117,7 @@ function DeleteSeries({ seriesId, onClose, onDeleted }: { seriesId: string; onCl
   return <FormDialog title={t('workspaces.series.deleteSeries')} onClose={onClose}>
     <div className="space-y-4"><p>{t('workspaces.series.deleteSeriesConfirm')}</p>
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
-        onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
+        onAcceptRemote={document.acceptRemote} onKeepLocal={() => saveKeptSeries(document)} />
       <button type="button" disabled={busy || !document.status?.canRemove} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50"
         onClick={() => { void remove(); }}>{t('workspaces.series.deleteSeries')}</button>
     </div>

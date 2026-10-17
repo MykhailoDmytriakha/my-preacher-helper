@@ -80,7 +80,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     || delivery.some(entry => ['blocked', 'refused', 'conflict'].includes(entry.state));
   const foreign = Boolean(candidate && !ownEcho);
   const terminal = delivery.length > 0 && delivery.every(entry => entry.state === 'conflict' || entry.state === 'refused');
-  const settled = pendingIds.length === 0 || terminal;
+  const settled = pendingIds.length === 0 || (state.savedIntentReplaceable ?? terminal);
   const deletedCandidate = foreign && candidate?.value === null;
   const phase = deliveryPhase(state, delivery, foreign, deletedCandidate, pendingIds.length);
   return {
@@ -90,7 +90,9 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     canRemove: state.durable && !state.preparing && pendingIds.length === 0 && checkpoint.confirmed.value !== null && !checkpoint.confirmed.metadata?.deleted,
     // A refusal has no other version to take, but "use the server's version" still means dropping
     // this device's refused change — without it a refused screen draft had no way back.
-    canAcceptRemote: !state.actionResolutionRequired && (foreign || (phase === 'refused' && !state.manualWork)) && settled,
+    canAcceptRemote: !state.actionResolutionRequired && (foreign
+      || (phase === 'conflict' && Boolean(candidate) && state.savedIntentReplaceable === true)
+      || (phase === 'refused' && !state.manualWork)) && settled,
     canKeepLocal: !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }
