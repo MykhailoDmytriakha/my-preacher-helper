@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
 import { AlignLeft, List, ListTree } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { PlanStyle } from '@/api/clients/openAI.client';
+import { useTranslation } from '@locales/useTranslation';
+
 
 
 interface PlanStyleSelectorProps {

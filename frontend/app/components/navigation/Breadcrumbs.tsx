@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useGroupRead } from '@/hooks/useGroupRead';
@@ -13,6 +12,7 @@ import { useSermonRead } from '@/hooks/useSermonRead';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
 import { useShellTitle } from './shellTitles';

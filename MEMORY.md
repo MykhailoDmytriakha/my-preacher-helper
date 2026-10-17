@@ -241,7 +241,7 @@ Moved to `.howto/` — each rule now lives in the recipe of its operation: `grep
 
 ### 🌍 i18n
 
-Moved to `.howto/` — each rule now lives in the recipe of its operation: `grep -ril "<words>" .howto/`.
+The app translation/render-language seam is `frontend/locales/useTranslation.ts`; `locales/i18n.ts` owns resources and the live writer. See `.howto/add-translation-key.md` for hydration, late mounts and locale formatting.
 
 ### 🧭 Architecture
 - **Optimistic Thought Sync:** Project optimistic thought entities over server thoughts, but sanitize local `local-thought-*` ids out of structure payloads before persisting. Server ack must reconcile against the latest local structure, not the stale mutation-start snapshot.

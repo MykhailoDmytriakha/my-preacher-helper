@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';

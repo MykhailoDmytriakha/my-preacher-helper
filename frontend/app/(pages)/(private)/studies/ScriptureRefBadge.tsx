@@ -1,12 +1,12 @@
 'use client';
 
 import { memo, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { ScriptureReference } from '@/models/models';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ScriptureRefBadgeProps {
   reference: ScriptureReference;

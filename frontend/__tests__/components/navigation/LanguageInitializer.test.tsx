@@ -91,7 +91,7 @@ describe('LanguageInitializer Component', () => {
     mockGetCookieLanguage.mockReturnValue('ru');
     view.rerender(<LanguageInitializer />);
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
-    // The guest's cookie language arrives a task later, once everything rendered is listening.
+    // The common hook catches the guest language even when its subscriber commits later.
     await waitFor(() => expect(mockChangeLanguage).toHaveBeenCalledWith('ru'));
   });
 

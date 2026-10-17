@@ -1,12 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import ScratchPanel from '@/components/sermon/ScratchPanel';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useTranslation } from '@locales/useTranslation';
 
 import { useScratchDataDocument } from '../hooks/useScratchDataDocument';
 

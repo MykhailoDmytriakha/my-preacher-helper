@@ -2,10 +2,10 @@
 
 import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { jumpToSection, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import { type MarkdownSection } from '@/utils/markdownSections';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * The note's table of contents, drawn once for every surface that shows it.

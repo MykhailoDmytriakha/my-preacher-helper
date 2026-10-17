@@ -3,7 +3,6 @@ import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
@@ -17,6 +16,7 @@ import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { getSectionLabel } from '@lib/sections';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Sermon, SermonOutline, SermonPoint, SubPoint } from '@/models/models';
 

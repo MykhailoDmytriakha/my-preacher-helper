@@ -2,10 +2,10 @@
 
 import { Check, ChevronsUpDown } from "lucide-react";
 import React, { useEffect, useId, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import { useUserChurches } from "@/hooks/useUserChurches";
 import { Church } from "@/models/models";
+import { useTranslation } from "@locales/useTranslation";
 
 interface ChurchFieldProps {
   /** The church currently chosen, or undefined when nothing has been named yet. */

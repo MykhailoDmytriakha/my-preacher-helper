@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@locales/useTranslation';
 
 /** The first stop of the keyboard: jump past the navigation, said in the interface language. */
 export function SkipLink() {

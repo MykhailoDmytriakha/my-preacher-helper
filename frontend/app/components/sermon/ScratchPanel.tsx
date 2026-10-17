@@ -8,7 +8,6 @@ import {
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 
@@ -28,6 +27,7 @@ import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioForma
 import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { getSectionLabel } from "@lib/sections";
+import { useTranslation } from "@locales/useTranslation";
 
 import {
   placementKey, getScratchSignature, getOutlineSignature,

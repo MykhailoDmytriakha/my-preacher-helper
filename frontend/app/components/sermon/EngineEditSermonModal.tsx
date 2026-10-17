@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
+import { useTranslation } from '@locales/useTranslation';
 
 import SermonFormDialog from './SermonFormDialog';
 import { SERMON_METADATA_SELECTION, sermonMetadataDateId, sermonMetadataPatch } from './sermonMetadataForm';

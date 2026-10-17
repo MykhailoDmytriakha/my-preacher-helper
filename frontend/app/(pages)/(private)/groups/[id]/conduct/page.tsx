@@ -2,7 +2,6 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
@@ -14,6 +13,7 @@ import { useGroupConductForm } from '@/hooks/useGroupConductForm';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { GroupFlowItem } from '@/models/models';
 import { normalizeFlow } from '@/utils/groupFlow';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, GroupBlockTemplate } from '@/models/models';
 import type { ReactNode } from 'react';

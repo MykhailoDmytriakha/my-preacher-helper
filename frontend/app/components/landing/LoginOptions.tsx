@@ -2,10 +2,10 @@
 
 import { GoogleLogin } from '@react-oauth/google';
 import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { isTestLoginAvailable } from '@/utils/testLogin';
 import { CheckIcon, GoogleIcon } from '@components/Icons';
+import { useTranslation } from '@locales/useTranslation';
 
 interface LoginOptionsProps {
   onGoogleLogin: () => void;

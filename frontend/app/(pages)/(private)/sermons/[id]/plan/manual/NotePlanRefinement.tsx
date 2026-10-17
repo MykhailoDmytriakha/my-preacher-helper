@@ -2,11 +2,11 @@
 
 import { AlignLeft, ArrowRight, BookOpen, ListPlus, LoaderCircle, RotateCcw, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { NOTE_PLAN_INSTRUCTION_LIMIT, type NotePlanRevisionIntent } from '@/utils/notePlan';
 import { PLAN_REFINEMENT_COLORS as colors } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 export const refinementPanelId = (id: string) => `plan-refinement-${id}`;
 

@@ -1,10 +1,10 @@
 import debounce from 'lodash/debounce';
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
 import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
+import { useTranslation } from '@locales/useTranslation';
 
 import { applyConfirmedThought } from "../utils/confirmedThought";
 

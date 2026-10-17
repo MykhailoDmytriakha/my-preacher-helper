@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { BackArrowIcon } from '@components/Icons';
+import { useTranslation } from '@locales/useTranslation';
+
 
 interface BackLinkProps {
   to?: string;   // fallback URL if no history

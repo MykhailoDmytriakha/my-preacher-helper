@@ -2,12 +2,12 @@
 
 import { XMarkIcon, CheckIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { AppLocale } from '@/utils/appLocale';
 

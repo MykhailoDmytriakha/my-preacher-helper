@@ -2,7 +2,6 @@
 
 import { User } from 'firebase/auth';
 import React, { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useConfirm } from '@/hooks/useConfirm';
@@ -10,6 +9,7 @@ import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import { awaitAcceptance, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import ColorPickerModal from '@components/ColorPickerModal';
+import { useTranslation } from '@locales/useTranslation';
 
 import AddTagForm from './AddTagForm';
 import TagList from './TagList';

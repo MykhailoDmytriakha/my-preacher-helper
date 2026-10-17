@@ -1,10 +1,10 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/providers/AuthProvider';
 import { isDraftStorageRefusedFor, subscribeDraftStorage } from '@/utils/durableDraft';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * ONE PLACE SAYS THAT UNSAVED TEXT HAS NO SAFETY NET (BUG-20260815-durable-draft-fails-silently-when-storage-refuses).

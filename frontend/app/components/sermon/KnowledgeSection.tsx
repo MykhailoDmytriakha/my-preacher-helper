@@ -2,7 +2,6 @@
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import React, { useState, useEffect } from "react";
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import "@locales/i18n";
@@ -22,6 +21,7 @@ import { RefreshIcon } from '@components/Icons';
 // Same reason as useSeriesDetail: the package default instance holds no resources,
 // so these failure messages came out empty.
 import { i18n } from '@locales/i18n';
+import { useTranslation } from '@locales/useTranslation';
 
 // Translation key constants to avoid duplicate strings
 const TRANSLATION_KNOWLEDGE_REFRESH = 'knowledge.refresh';

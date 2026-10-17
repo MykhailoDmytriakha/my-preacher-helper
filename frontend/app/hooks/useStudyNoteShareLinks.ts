@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -13,6 +12,7 @@ import {
   useWriteRecovery,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,

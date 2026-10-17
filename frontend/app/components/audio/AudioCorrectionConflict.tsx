@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SpeechCorrectionConflict } from '@/hooks/usePreparedSpeech';
 

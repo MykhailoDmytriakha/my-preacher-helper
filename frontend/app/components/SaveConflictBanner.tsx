@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * "The server REFUSED your save, because someone changed this elsewhere."

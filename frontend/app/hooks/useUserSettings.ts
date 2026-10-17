@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
 
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
@@ -16,6 +15,7 @@ import {
 } from '@/services/userSettings.service';
 import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { queuedMutation, refusedWrite, useWriteRecovery, type WriteSubmission } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { UserSettings } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';

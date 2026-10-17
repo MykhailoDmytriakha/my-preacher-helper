@@ -3,7 +3,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { doc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
@@ -18,6 +17,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { pendingOutboxConflicts, recordOutboxRecoveryRefusal } from '@/services/outboxReplay.client';
 import { listOutbox, markOutboxConflicted, removeFromOutbox, type OutboxEntry } from '@/services/writeOutbox.client';
+import { useTranslation } from '@locales/useTranslation';
 
 const SAVE_ERROR_KEY = 'common.saveError';
 const CONFLICT_PENDING_LABEL_KEY = 'freshness.conflictPendingLabel';

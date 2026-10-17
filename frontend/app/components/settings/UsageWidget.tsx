@@ -1,13 +1,13 @@
 'use client';
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import Tooltip from '@/components/ui/Tooltip';
 import UsageBar from '@/components/usage/UsageBar';
 import { UsageGraceNotice, UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { User } from 'firebase/auth';
 

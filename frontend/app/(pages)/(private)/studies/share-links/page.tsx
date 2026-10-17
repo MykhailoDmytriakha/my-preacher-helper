@@ -2,11 +2,12 @@
 
 import { ArrowLeftIcon, LinkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
+import { useTranslation } from '@locales/useTranslation';
 
 import ShareLinksPanel from '../components/ShareLinksPanel';
 

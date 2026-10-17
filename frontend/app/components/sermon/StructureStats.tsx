@@ -4,13 +4,14 @@ import { LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
-import { useTranslation } from "react-i18next";
+
 import "@locales/i18n";
 
 import { planEditorRoute } from '@/utils/sermonPlanAccess';
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getFocusModeButtonColors } from "@/utils/themeColors";
 import { getFocusModeUrl } from "@/utils/urlUtils";
+import { useTranslation } from "@locales/useTranslation";
 
 import type { Sermon } from "@/models/models";
 

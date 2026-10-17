@@ -1,9 +1,10 @@
 'use client';
 
 import { useSyncExternalStore } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { ENGINE_STORAGE, getDeviceStorageHealth, subscribeDeviceStorage, type DeviceStorageHealth } from '@/utils/deviceStorage';
+import { useTranslation } from '@locales/useTranslation';
+
 
 const QUIET: DeviceStorageHealth = { silent: [] };
 const engineStorage: readonly string[] = ENGINE_STORAGE;

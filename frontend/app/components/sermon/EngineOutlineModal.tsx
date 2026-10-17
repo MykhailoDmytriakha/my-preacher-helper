@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { ScratchProposalBoard } from '@/components/sermon/scratch/ScratchProposalBoard';
@@ -11,6 +10,7 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { Sermon, SermonOutline } from '@/models/models';

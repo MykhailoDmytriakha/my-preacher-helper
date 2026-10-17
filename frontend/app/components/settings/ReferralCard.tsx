@@ -2,10 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { apiClient } from '@/utils/apiClient';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { User } from 'firebase/auth';
 

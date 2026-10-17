@@ -11,7 +11,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -19,6 +18,7 @@ import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ShareNoteModalProps {
   isOpen: boolean;
@@ -52,7 +52,7 @@ export default function ShareNoteModal({
   onCreate,
   onDelete,
 }: ShareNoteModalProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
   const [isWorking, setIsWorking] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -128,7 +128,7 @@ export default function ShareNoteModal({
   if (!isOpen || !note) return null;
 
   const createdOn = shareLink
-    ? formatDateForLocale(shareLink.createdAt, i18n?.language, { day: 'numeric', month: 'long' })
+    ? formatDateForLocale(shareLink.createdAt, interfaceLanguage, { day: 'numeric', month: 'long' })
     : '';
 
   const modalContent = (

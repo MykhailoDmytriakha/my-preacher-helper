@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { setLanguageCookie, updateUserLanguage } from '@/services/userSettings.service';
+import { useTranslation } from '@locales/useTranslation';
 
 // List of supported languages
 const SUPPORTED_LANGUAGES = [
@@ -13,14 +13,14 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'compact' | 'menu' }) {
-  const { i18n, t } = useTranslation();
+  const { t, i18n, language: interfaceLanguage } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
   const settingsEngine = useSettingsEngine();
 
   const currentLang = SUPPORTED_LANGUAGES.find((lang) =>
-    lang.code === (i18n?.language || 'en')
+    lang.code === (interfaceLanguage || 'en')
   ) || SUPPORTED_LANGUAGES[0];
 
   const toggleDropdown = () => {
@@ -109,14 +109,14 @@ export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'c
                 disabled={Boolean(settingsEngine && (!settingsEngine.document.state || settingsEngine.document.readOnly))}
                 onClick={() => changeLanguage(lang.code)}
                 className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between
-                  ${lang.code === i18n.language
+                  ${lang.code === interfaceLanguage
                     ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
               >
                 <span suppressHydrationWarning={true}>{lang.name}</span>
 
-                {lang.code === i18n.language && (
+                {lang.code === interfaceLanguage && (
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4 ml-2 text-blue-600 dark:text-blue-300"

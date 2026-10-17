@@ -1,11 +1,11 @@
 import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import React, { useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { SPACING } from "@/constants/ui";
 import { TIMING } from "@/constants/ui";
 import { useClipboard } from "@/hooks/useClipboard";
 import { EditIcon, TrashIcon, CopyIcon, CheckIcon } from "@components/Icons";
+import { useTranslation } from '@locales/useTranslation';
 
 interface ThoughtOptionsMenuProps {
   thoughtText: string;

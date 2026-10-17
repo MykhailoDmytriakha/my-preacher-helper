@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
@@ -8,6 +7,7 @@ import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { isBibleId } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { BibleId } from '@/utils/bibles';

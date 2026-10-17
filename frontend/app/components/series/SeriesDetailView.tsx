@@ -3,12 +3,12 @@
 import { ArrowLeftIcon, PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import { useMemo, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
 import type { ChipTone } from '@/utils/chipClasses';
@@ -23,7 +23,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
   onBack: () => void; onAddSermons: () => void; onAddGroups: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void;
   feedback?: ReactNode; itemsContent: ReactNode; reorderHint?: ReactNode; children?: ReactNode;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const stats = useMemo(() => ({ total: items.length,
     sermonsCount: items.filter(entry => entry.item.type === 'sermon').length,
     groupsCount: items.filter(entry => entry.item.type === 'group').length,
@@ -126,7 +126,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
               {series.startDate && (
                 <span className="inline-flex items-center gap-2 rounded-full bg-white/40 px-3 py-1 ring-1 ring-gray-100/50 dark:bg-gray-900/40 dark:ring-gray-800/50">
                   <ClockIcon className="h-4 w-4 text-emerald-500" />
-                  {formatDateForLocale(series.startDate, i18n?.language)}
+                  {formatDateForLocale(series.startDate, interfaceLanguage)}
                 </span>
               )}
             </div>

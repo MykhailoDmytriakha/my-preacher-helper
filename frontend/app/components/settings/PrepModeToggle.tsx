@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 export default function PrepModeToggle() {
   const { t } = useTranslation();

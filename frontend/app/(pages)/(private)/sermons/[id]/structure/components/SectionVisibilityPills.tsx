@@ -1,7 +1,7 @@
 import React from "react";
-import { useTranslation } from 'react-i18next';
 
 import { getSectionLabel } from '@lib/sections';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SectionId } from '../hooks/useFocusMode';
 

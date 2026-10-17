@@ -5,7 +5,6 @@ import { ArrowUturnLeftIcon, ArrowUturnRightIcon, Squares2X2Icon, TrashIcon, XMa
 import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
@@ -17,6 +16,7 @@ import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
 

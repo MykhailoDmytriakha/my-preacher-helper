@@ -3,13 +3,13 @@
 import { ArrowTopRightOnSquareIcon, ChevronRightIcon, RectangleStackIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FoldableMarkdown from '@/components/ui/FoldableMarkdown';
 import { findSectionByHeading, jumpToSection, useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { countWords } from '@/utils/noteCutCorridor';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ScratchNote, Sermon, StudyNote } from '@/models/models';
 
@@ -108,7 +108,7 @@ const NoteCard: React.FC<{
   defaultOpen: boolean;
   revealRequest: RevealNoteSection | null;
 }> = ({ note, scratchNotes, defaultOpen, revealRequest }) => {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const content = note.content ?? '';
   const control = useMarkdownOutline(content);
   const [open, setOpen] = useState(defaultOpen);
@@ -252,7 +252,7 @@ const NoteCard: React.FC<{
                 t('sermon.sourceNoteSection.stats', {
                   // The reader's own locale, not the runtime default: "6,304 слов" put an
                   // English thousands separator into a Russian sentence.
-                  words: stats.words.toLocaleString(i18n.language),
+                  words: stats.words.toLocaleString(interfaceLanguage),
                   minutes: stats.minutes,
                 }),
                 sectionIds.length > 0 ? t('sermon.sourceNoteSection.sections', { count: sectionIds.length }) : null,

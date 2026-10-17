@@ -11,7 +11,6 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@/components/HighlightedText';
 import { Chip } from '@/components/ui/Chip';
@@ -19,6 +18,7 @@ import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 import { type WriteSubmission } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 import PrayerStatusBadge from './PrayerStatusBadge';
 
@@ -57,7 +57,7 @@ export default function PrayerRequestCard({
   onEdit,
   searchQuery = '',
 }: Props) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -133,7 +133,7 @@ export default function PrayerRequestCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
             <span className="flex items-center gap-1">
               <ClockIcon className="h-3 w-3" />
-              {formatDateForLocale(prayer.updatedAt, i18n?.language)}
+              {formatDateForLocale(prayer.updatedAt, interfaceLanguage)}
             </span>
             {prayer.updates.length > 0 && (
               <span>{t('prayer.updates_count', { count: prayer.updates.length })}</span>
@@ -141,7 +141,7 @@ export default function PrayerRequestCard({
             {prayer.answeredAt && (
               <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
                 <CheckCircleIcon className="h-3 w-3" />
-                {formatDateForLocale(prayer.answeredAt, i18n?.language)}
+                {formatDateForLocale(prayer.answeredAt, interfaceLanguage)}
               </span>
             )}
           </div>

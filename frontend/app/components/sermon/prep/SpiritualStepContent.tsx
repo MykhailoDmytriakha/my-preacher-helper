@@ -2,9 +2,9 @@
 
 import { BookOpen, Sparkles, Wrench, AlertTriangle } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Preparation } from '@/models/models';
 

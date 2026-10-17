@@ -16,12 +16,12 @@ import {
 import { ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useAuth } from '@/providers/AuthProvider';
 import { CARE_CARD_TONES, type CareCardTone } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ComponentType, SVGProps } from 'react';
 import '@locales/i18n';

@@ -4,12 +4,12 @@ import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/re
 import { format, isValid, parseISO } from "date-fns";
 import Link from "next/link";
 import { useMemo } from "react";
-import { useTranslation } from "react-i18next";
 
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { formatMonthName } from '@/utils/appLocale';
+import { useTranslation } from "@locales/useTranslation";
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;

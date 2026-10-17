@@ -2,13 +2,14 @@
 
 import { CheckIcon, PauseIcon, PlayIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { useCallback } from "react";
-import { useTranslation } from "react-i18next";
+
 import "@locales/i18n";
 
 import { MicrophoneIcon } from "@/components/Icons";
 import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 import { FLAT_RECORDER_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "@locales/useTranslation";
 
 import { AudioRecoveryPanel, ErrorBanner } from "./audio-recorder/AudioRecorderControls";
 import { useAudioRecorderLifecycle } from "./audio-recorder/useAudioRecorderLifecycle";

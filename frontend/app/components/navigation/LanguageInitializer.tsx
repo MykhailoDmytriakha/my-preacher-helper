@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useAuth } from '@/providers/AuthProvider';
 import { getCookieLanguage } from '@/services/userSettings.service';
 import { initializeLanguageFromDB } from '@locales/getInitialLang';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * Component that initializes language settings from the database
@@ -17,19 +17,13 @@ export default function LanguageInitializer() {
   const { i18n } = useTranslation();
   const deviceLanguageApplied = useRef(false);
 
-  // The page hydrated in the language the server rendered in (locales/i18n.ts); the device's own
-  // language follows the moment hydration is over, without waiting for the account to answer.
-  // Not inside this effect itself: the initializer sits before the page, so its effect runs before
-  // later components subscribe to language changes, and a switch they did not hear left them in
-  // English. A task later, every component of the first render is listening.
+  // Each translated consumer pins its own hydration snapshot, then catches up with the
+  // live language. Apply the cookie after the root commits; later subscribers also catch it.
   useEffect(() => {
     if (deviceLanguageApplied.current) return;
-    const timer = setTimeout(() => {
-      deviceLanguageApplied.current = true;
-      const cookieLang = getCookieLanguage();
-      if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
-    }, 0);
-    return () => clearTimeout(timer);
+    deviceLanguageApplied.current = true;
+    const cookieLang = getCookieLanguage();
+    if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
   }, [i18n]);
 
   useEffect(() => {
@@ -42,13 +36,8 @@ export default function LanguageInitializer() {
         initializeLanguageFromDB()
           .catch((error: Error) => console.error('Failed to initialize language from DB:', error));
       } else {
-        // For guest users, ensure the cookie language is applied — a task later, for the same
-        // reason as the switch above: components after this one may not be listening yet.
-        const timer = setTimeout(() => {
-          const cookieLang = getCookieLanguage();
-          if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
-        }, 0);
-        return () => clearTimeout(timer);
+        const cookieLang = getCookieLanguage();
+        if (cookieLang !== i18n.language) void i18n.changeLanguage(cookieLang);
       }
     }
   }, [user, loading, i18n]);

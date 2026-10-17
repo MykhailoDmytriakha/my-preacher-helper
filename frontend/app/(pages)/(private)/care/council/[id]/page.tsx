@@ -1,6 +1,5 @@
 'use client';
 
-
 import {
   DndContext,
   DragOverlay,
@@ -31,7 +30,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
@@ -55,7 +53,7 @@ import { actionFailureMessage } from '@/utils/actionFailureMessage';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
-
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';

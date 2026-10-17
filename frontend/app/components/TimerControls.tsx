@@ -2,7 +2,8 @@
 
 import { Pause, Play, Square, SkipForward } from 'lucide-react';
 import React, { CSSProperties, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import { SERMON_SECTION_COLORS, TIMER_CONTROL_COLORS } from '../utils/themeColors';
 

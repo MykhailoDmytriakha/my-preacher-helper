@@ -1,10 +1,9 @@
 "use client";
 
-import { useTranslation } from "react-i18next";
-
 import SettingsToggleRow from "@/components/settings/SettingsToggleRow";
 import { useDebugMode } from "@/hooks/useDebugMode";
 import { debugLog } from "@/utils/debugMode";
+import { useTranslation } from "@locales/useTranslation";
 
 export default function DebugModeToggle() {
   const { t } = useTranslation();

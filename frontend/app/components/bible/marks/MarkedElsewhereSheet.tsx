@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { marksOnWord, type MarkedElsewhere, type VerseMarks } from '@/utils/bibleMarks';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ReaderSheet, SheetCloseButton } from '../ReaderSheet';
 

@@ -4,7 +4,6 @@ import { FileText, Pencil, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
@@ -13,6 +12,7 @@ import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client'
 import { useRouteId } from "@/hooks/useRouteId";
 import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
+import { useTranslation } from "@locales/useTranslation";
 
 import { useEngineSermonSource } from "../../hooks/useEngineSermonSource";
 import { SECTION_TONE_CLASSES } from "../constants";

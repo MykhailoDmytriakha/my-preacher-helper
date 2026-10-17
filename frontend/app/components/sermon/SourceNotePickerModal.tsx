@@ -3,7 +3,6 @@
 import { MagnifyingGlassIcon, RectangleStackIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -14,6 +13,7 @@ import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { matchesStudyNoteQuery } from '@/utils/studyNoteUtils';
 import { SOURCE_NOTE_COLORS, UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SourceNoteSaveResult } from '@/hooks/useSermonNoteLinks';
 import type { StudyNote } from '@/models/models';
@@ -59,7 +59,7 @@ export default function SourceNotePickerModal({
   saving = false,
   returnFocusTo,
 }: SourceNotePickerModalProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { notes, loading, ready } = useStudyNoteDirectory();
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(selectedNoteIds));
@@ -77,7 +77,7 @@ export default function SourceNotePickerModal({
     if (mounted) searchRef.current?.focus();
   }, [mounted]);
 
-  const bibleLocale = useMemo(() => resolveAppLocale(i18n.language), [i18n.language]);
+  const bibleLocale = useMemo(() => resolveAppLocale(interfaceLanguage), [interfaceLanguage]);
 
   const tokens = useMemo(() => query.trim().toLowerCase().split(/\s+/).filter(Boolean), [query]);
 

@@ -8,13 +8,13 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import AudioCorrectionConflict from '@/components/audio/AudioCorrectionConflict';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SpeechCorrectionConflict } from '@/hooks/usePreparedSpeech';
 

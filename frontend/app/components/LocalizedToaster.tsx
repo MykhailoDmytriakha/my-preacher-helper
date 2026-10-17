@@ -1,7 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
 import { Toaster } from 'sonner';
+
+import { useTranslation } from '@locales/useTranslation';
 
 /** The notification area and each notification's close button, named in the interface language: sonner's own names are English. */
 export function LocalizedToaster() {

@@ -2,10 +2,10 @@
 
 import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useId, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
+import { useTranslation } from '@locales/useTranslation';
 
 import { EnginePreachDateModal } from './EnginePreachDateModal';
 import { PreachDateRows } from './PreachDateRows';

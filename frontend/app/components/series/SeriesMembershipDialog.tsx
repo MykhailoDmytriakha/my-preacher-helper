@@ -4,7 +4,6 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
@@ -15,6 +14,7 @@ import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useAuth } from '@/providers/AuthProvider';
 import { hydrateSeries } from '@/utils/seriesDocument';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Series, SeriesItem } from '@/models/models';
 

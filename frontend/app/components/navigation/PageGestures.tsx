@@ -3,10 +3,10 @@
 import { ChevronLeft, LoaderCircle, RotateCw } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { reloadPage } from '@/utils/reloadPage';
+import { useTranslation } from '@locales/useTranslation';
 
 import { BACK_THRESHOLD, PULL_THRESHOLD, usePageGestures } from './gestures/usePageGestures';
 

@@ -5,13 +5,13 @@ import { ArrowRightOnRectangleIcon, XMarkIcon } from '@heroicons/react/24/outlin
 import { User } from "firebase/auth";
 import Link from "next/link";
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from "react-i18next";
 
 import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
 import ThemeModeToggle from "@/components/navigation/ThemeModeToggle";
 import UserAvatar from "@/components/navigation/UserAvatar";
 import { getNavItemTheme } from '@/utils/themeColors';
+import { useTranslation } from "@locales/useTranslation";
 import "@locales/i18n";
 
 interface MobileMenuProps {

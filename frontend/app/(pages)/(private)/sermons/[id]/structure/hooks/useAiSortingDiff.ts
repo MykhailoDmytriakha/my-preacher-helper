@@ -1,5 +1,4 @@
 import { useState, useCallback } from "react";
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
@@ -15,6 +14,7 @@ import {
   replaceScopedItemsInColumn,
 } from "@/utils/aiSorting";
 import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
+import { useTranslation } from '@locales/useTranslation';
 
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 

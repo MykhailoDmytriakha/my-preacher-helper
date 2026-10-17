@@ -5,7 +5,6 @@ import { ArrowLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
@@ -20,6 +19,7 @@ import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { EngineCouncilCreator } from './EngineCouncilCreator';
 import { EngineCouncilMigration } from './EngineCouncilMigration';

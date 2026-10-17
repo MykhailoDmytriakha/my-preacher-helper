@@ -1,9 +1,9 @@
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { sayFailure } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { useTextDictation } from '@/hooks/useTextDictation';
 

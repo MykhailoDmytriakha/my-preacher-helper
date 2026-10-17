@@ -2,11 +2,11 @@
 
 import { X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { TimerPhaseDurations } from '@/types/TimerState';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 const TRANSLATION_KEYS = {
   HOURS: 'common.hours',

@@ -10,7 +10,6 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { Group, Series } from '@/models/models';
@@ -19,6 +18,7 @@ import { formatDateForLocale } from '@/utils/dateFormatter';
 import { parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ChipTone } from '@/utils/chipClasses';
 
@@ -77,7 +77,7 @@ const formatMeetingDate = (value: string, language?: string): string | null => {
 };
 
 export default function GroupCard({ group, series = [], onDelete }: GroupCardProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -98,7 +98,7 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
     ? t('workspaces.groups.itemsLabel.nextMeeting', { defaultValue: 'Next meeting' })
     : t('workspaces.groups.itemsLabel.lastMeeting', { defaultValue: 'Last meeting' });
   const meetingDateValue = primaryMeetingDate
-    ? (formatMeetingDate(primaryMeetingDate.date, i18n?.language) ||
+    ? (formatMeetingDate(primaryMeetingDate.date, interfaceLanguage) ||
       t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' }))
     : t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' });
 

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { useClipboard } from "@/hooks/useClipboard";
 import { useDiscardQuestion } from "@/hooks/useConfirm";
+import { useTranslation } from "@locales/useTranslation";
 
 /** Unsaved, non-empty cells whose node the outline no longer has. */
 export function orphanedCells(

@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import Tooltip from '@/components/ui/Tooltip';
@@ -21,6 +20,7 @@ import {
   type UsageIndicatorTone,
   type UsageMetrics,
 } from '@/utils/usageGrace';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { UsageResource, UsageState } from '@/services/usageLimits';
 import type { User } from 'firebase/auth';
@@ -154,13 +154,13 @@ interface UsageGraceIndicatorProps {
 }
 
 export function UsageGraceIndicator({ model, placement }: UsageGraceIndicatorProps) {
-  const { t, i18n } = useTranslation([...GRACE_NAMESPACES]);
+  const { t, language: interfaceLanguage, resolvedLanguage: resolvedInterfaceLanguage } = useTranslation([...GRACE_NAMESPACES]);
   // Bumped where the hovering happens, because the tooltip primitive does not report opening
   // and ten other callers do not need it to.
   const [verseView, setVerseView] = useState(0);
   if (!model?.tone) return null;
 
-  const locale = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  const locale = resolvedInterfaceLanguage ?? interfaceLanguage ?? 'en';
   const dotTone = model.tone === 'warning'
     ? 'bg-amber-500 dark:bg-amber-400'
     : 'bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500';
@@ -272,13 +272,13 @@ function GraceNotice({
   testId: string;
   extraKey?: string;
 }) {
-  const { t, i18n } = useTranslation([...GRACE_NAMESPACES]);
+  const { t, language: interfaceLanguage, resolvedLanguage: resolvedInterfaceLanguage } = useTranslation([...GRACE_NAMESPACES]);
   // Taken once per visit, from the same cycle the tooltip walks: arriving here straight from
   // the tooltip shows the NEXT verse, not the one just read a second ago. Safe to take during
   // render because this notice never reaches the server — the widget renders a skeleton until
   // its client query resolves.
   const [verseView] = useState(takeVerseView);
-  const locale = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  const locale = resolvedInterfaceLanguage ?? interfaceLanguage ?? 'en';
   const verses = normalizeGraceVerses(t(VERSES_KEY, { returnObjects: true }));
   const verse = getRotatingVerse(verses, resetsAt, verseView);
 

@@ -2,12 +2,12 @@
 
 import { BookOpen, Check, Info, Link as LinkIcon, ScrollText, Target, X } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import Select from '@/components/ui/Select';
 import '@locales/i18n';
 import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 // Module-level constants to avoid duplicate strings
 const GOALS_SAVE_FALLBACK = "Save";

@@ -1,11 +1,9 @@
 'use client';
 
-
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -22,6 +20,7 @@ import { bibleHrefForText } from '@/utils/bibleLink';
 import { newClientId } from '@/utils/clientId';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 

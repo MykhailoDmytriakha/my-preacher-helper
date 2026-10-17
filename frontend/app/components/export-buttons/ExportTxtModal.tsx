@@ -2,7 +2,6 @@
 
 import { Check } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -11,6 +10,7 @@ import Switch from "@/components/ui/Switch";
 import { useClipboard } from "@/hooks/useClipboard";
 import { downloadBlobToDevice } from "@/utils/download";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
+import { useTranslation } from "@locales/useTranslation";
 
 import { ACTIVE_BUTTON_CLASS, INACTIVE_BUTTON_CLASS } from "./constants";
 import { ExportDialog } from "./ExportDialog";

@@ -1,7 +1,8 @@
 'use client';
 
 import { ClockIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 interface FlowFooterProps {
     totalDuration: number;

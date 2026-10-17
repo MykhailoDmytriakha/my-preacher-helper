@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
@@ -15,6 +14,7 @@ import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 export type PrayerFormPayload = Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>;
 

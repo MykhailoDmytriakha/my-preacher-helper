@@ -1,5 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -12,6 +11,7 @@ import {
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
 import { isStructureTag } from '@/utils/structureTags';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Tag } from '@/models/models';
 

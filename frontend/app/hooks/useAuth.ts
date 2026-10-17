@@ -1,10 +1,10 @@
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useRouter } from 'next/navigation';
 import { useCallback } from "react";
-import { useTranslation } from 'react-i18next';
 
 import { useAuth as useAuthProvider } from '@/providers/AuthProvider';
 import { debugLog } from "@/utils/debugMode";
+import { useTranslation } from '@locales/useTranslation';
 import { signInWithGoogle, signInAsGuest, logOut, auth } from "@services/firebaseAuth.service";
 import { updateUserProfile } from "@services/userSettings.service";
 

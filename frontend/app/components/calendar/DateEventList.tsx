@@ -1,7 +1,6 @@
 "use client";
 
 import { format, parseISO } from 'date-fns';
-import { useTranslation } from 'react-i18next';
 
 import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
@@ -9,6 +8,7 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { formatMonthTitle } from '@/utils/appLocale';
 import { CALENDAR_KINDS, countByKind, entriesByDate, type CalendarEntry } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Series } from '@/models/models';
 

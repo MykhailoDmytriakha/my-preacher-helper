@@ -3,7 +3,6 @@
 import { ClipboardIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import "@locales/i18n";
 
@@ -12,6 +11,7 @@ import { useClipboard } from '@/hooks/useClipboard';
 import { BrainstormSuggestion } from '@/models/models';
 import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
 import { LightBulbIcon } from '@components/Icons';
+import { useTranslation } from '@locales/useTranslation';
 
 interface BrainstormModuleProps {
   sermonId: string;

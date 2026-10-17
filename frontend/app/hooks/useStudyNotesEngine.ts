@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
@@ -11,6 +10,7 @@ import { getConnectivityStatus } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
@@ -67,8 +67,8 @@ type NoteUpdate = {
  * keep-mine / take-theirs. Offline a write is reported as queued, not saved (`accepted`).
  */
 export function useStudyNotesEngine(enabled: boolean) {
-  const { t, i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n?.language);
+  const { t, language: interfaceLanguage } = useTranslation();
+  const locale = resolveAppLocale(interfaceLanguage);
   const { uid, isAuthLoading } = useResolvedUid();
   const collection = useDataCollection(enabled && uid ? 'studyNotes' : null);
   const actions = useDocumentActions();

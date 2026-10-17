@@ -2,10 +2,10 @@
 
 import { CheckCircleIcon } from '@heroicons/react/24/solid';
 import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { formatTime } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ConductOverviewProps {
   flow: GroupFlowItem[];

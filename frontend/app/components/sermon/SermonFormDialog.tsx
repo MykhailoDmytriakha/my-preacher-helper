@@ -1,7 +1,6 @@
 "use client";
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import ChurchField from '@/components/church/ChurchField';
@@ -11,6 +10,7 @@ import Select from '@/components/ui/Select';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import DatePickerField from '@components/ui/DatePickerField';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Church } from '@/models/models';
 

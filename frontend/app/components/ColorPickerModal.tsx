@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useTranslation } from '@locales/useTranslation';
+
 
 interface ColorPickerModalProps {
   tagName: string;

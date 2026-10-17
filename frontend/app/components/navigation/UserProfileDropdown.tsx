@@ -2,11 +2,11 @@
 
 import { User } from "firebase/auth";
 import { useState, useRef, useEffect } from "react";
-import { useTranslation } from "react-i18next";
 
 import { ChevronIcon } from "@components/Icons";
 import ThemeModeToggle from "@components/navigation/ThemeModeToggle";
 import UserAvatar from "@components/navigation/UserAvatar";
+import { useTranslation } from "@locales/useTranslation";
 import "@locales/i18n";
 
 interface UserProfileDropdownProps {

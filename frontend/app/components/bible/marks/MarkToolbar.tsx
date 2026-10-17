@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, type CSSProperties } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
 import { pointerHover } from '@/utils/pointerHover';
+import { useTranslation } from '@locales/useTranslation';
 
 import { EraserIcon, MARK_SWATCH, MarkerIcon, PENCIL_SWATCH, PencilIcon } from './MarkToolIcons';
 

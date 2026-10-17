@@ -2,10 +2,10 @@
 
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/react';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { buildDiagnosticReport, diagnosticServerVersion } from '@/utils/appDiagnostics';
+import { useTranslation } from '@locales/useTranslation';
 
 /** One shared viewer for feedback and freshness warnings; copying never submits feedback. */
 const OPEN_EVENT = 'preacher:open-developer-information';

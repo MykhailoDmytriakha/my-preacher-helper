@@ -2,7 +2,6 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { BibleBookList } from '@/components/bible/BibleBookList';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
@@ -13,6 +12,7 @@ import { parsePassageEndpoint, wayBackPath } from '@/utils/bibleLink';
 import { isBibleId, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, warmBibleTextOnce } from '@/utils/bibleText';
 import { isBrowserOffline } from '@/utils/connectivity';
+import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
 
@@ -26,8 +26,8 @@ import '@locales/i18n';
  * address is built and read by `utils/bibleLink.ts`.
  */
 export default function BiblePage() {
-  const { t, i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n.language);
+  const { t, language: interfaceLanguage } = useTranslation();
+  const locale = resolveAppLocale(interfaceLanguage);
   const searchParams = useSearchParams();
   const slug = searchParams?.get('book') ?? null;
   const place = parsePlaceParam(searchParams?.get('at'));

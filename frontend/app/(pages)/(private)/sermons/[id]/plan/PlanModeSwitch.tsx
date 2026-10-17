@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { debugLog } from "@/utils/debugMode";
+import { useTranslation } from "@locales/useTranslation";
 
 import { usePlanWriter } from "./planWriter";
 

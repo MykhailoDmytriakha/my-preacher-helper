@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Tag } from '@/models/models';
 import { TrashIcon, PencilIcon } from '@components/Icons';
+import { useTranslation } from '@locales/useTranslation';
 
 interface TagListProps {
   tags: Tag[];

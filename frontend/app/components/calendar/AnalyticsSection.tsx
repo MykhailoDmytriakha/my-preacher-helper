@@ -9,7 +9,6 @@ import {
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
 import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
@@ -19,13 +18,14 @@ import { useAppLocale } from '@/hooks/useAppLocale';
 import { Sermon } from "@/models/models";
 import { formatMonthTitle } from '@/utils/appLocale';
 import { BookInfo } from "@/utils/bibleBooks";
+import { useTranslation } from "@locales/useTranslation";
 
 interface AnalyticsSectionProps {
     sermonsByDate: Record<string, Sermon[]>;
 }
 
 export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
-    const { t, i18n } = useTranslation();
+    const { t, language: interfaceLanguage } = useTranslation();
     const { locale: appLocale, dateLocale } = useAppLocale();
     /*
      * "Притчи: 1 проповедь" — the count picks its own word form and the book is named in the
@@ -55,14 +55,14 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
     const stats = useMemo(() => computeAnalyticsStats({
         sermonsByDate,
         selectedYear,
-        locale: i18n.language,
-    }), [sermonsByDate, selectedYear, i18n.language]);
+        locale: interfaceLanguage,
+    }), [sermonsByDate, selectedYear, interfaceLanguage]);
 
     const bookEntries = useMemo(() => buildBookPreachEntries({
         sermonsByDate,
         selectedYear,
-        locale: i18n.language,
-    }), [sermonsByDate, selectedYear, i18n.language]);
+        locale: interfaceLanguage,
+    }), [sermonsByDate, selectedYear, interfaceLanguage]);
 
     const monthlyEntries = useMemo(() => buildMonthlyPreachEntries({
         sermonsByDate,

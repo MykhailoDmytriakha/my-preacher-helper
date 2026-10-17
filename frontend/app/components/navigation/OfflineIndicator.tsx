@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useConnection } from '@/providers/ConnectionProvider';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * THE ONE THING THE APP SAYS ABOUT A LOST CONNECTION.

@@ -4,7 +4,7 @@ import { BookOpenIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/so
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+
 import "@locales/i18n";
 
 import FeedbackModal from "@/components/navigation/FeedbackModal";
@@ -25,6 +25,7 @@ import { useShellPathname } from "@/hooks/useShellPathname";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 import { isConductRoute } from '@/utils/usageGrace';
+import { useTranslation } from "@locales/useTranslation";
 
 import { AppUpdateButton } from "./AppUpdateButton";
 import ModeToggle, { type SermonMode } from "./ModeToggle";

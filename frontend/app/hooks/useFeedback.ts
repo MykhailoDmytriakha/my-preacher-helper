@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from '@locales/useTranslation';
 import { submitFeedback } from '@services/feedback.service';
 
 export function useFeedback() {

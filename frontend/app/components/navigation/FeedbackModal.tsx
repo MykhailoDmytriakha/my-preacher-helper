@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 
 import FeedbackForm from "@/components/navigation/FeedbackForm";
 import "@locales/i18n";
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useTranslation } from "@locales/useTranslation";
 
 interface FeedbackModalProps {
   isOpen: boolean;

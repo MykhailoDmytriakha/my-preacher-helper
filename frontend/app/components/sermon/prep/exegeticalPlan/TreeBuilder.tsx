@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
 import TreeNode from './TreeNode';

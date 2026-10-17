@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -15,6 +14,7 @@ import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, bookSlug, fetchBookText, type BookText } from '@/utils/bibleText';
 import { placeIn } from '@/utils/versification';
+import { useTranslation } from '@locales/useTranslation';
 
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
@@ -290,9 +290,9 @@ function readerFrame(wide: boolean) {
 }
 
 export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, passageEndChapter = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
-  const locale = resolveAppLocale(i18n.language);
+  const locale = resolveAppLocale(interfaceLanguage);
   const wide = useMediaQuery('(min-width: 768px)', false);
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);

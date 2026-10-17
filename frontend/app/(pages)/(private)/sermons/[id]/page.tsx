@@ -1,14 +1,11 @@
 "use client";
 
-
-
 import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from 'sonner';
 import "@locales/i18n";
 
@@ -51,6 +48,7 @@ import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraft
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import { useTranslation } from "@locales/useTranslation";
 import { createAudioThought } from "@services/thought.service";
 import { UI_COLORS } from "@utils/themeColors";
 import {

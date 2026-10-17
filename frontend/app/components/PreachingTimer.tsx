@@ -3,11 +3,11 @@
 import { X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 import { TimerPhase, TimerPhaseDurations } from '@/types/TimerState';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
+import { useTranslation } from '@locales/useTranslation';
 
 import CustomTimePicker from './CustomTimePicker';
 import DigitalTimerDisplay from './DigitalTimerDisplay';

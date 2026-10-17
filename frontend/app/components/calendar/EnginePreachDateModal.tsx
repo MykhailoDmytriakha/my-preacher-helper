@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -9,6 +8,7 @@ import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { getTodayDateOnlyKey, toDateOnlyKey } from '@/utils/dateOnly';
+import { useTranslation } from '@locales/useTranslation';
 
 import { PreachDateFields } from './PreachDateFields';
 import { patchPreachDate, preachDateTarget, preparePreachDate, PREACH_DATE_SELECTION } from './preachDateForm';

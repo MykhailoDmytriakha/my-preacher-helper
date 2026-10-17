@@ -40,7 +40,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { CareSectionHeader } from '@/components/care/CareSectionHeader';
@@ -49,6 +48,7 @@ import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { ReorderArrows, ServiceOrderFailure } from './ReorderArrows';
 

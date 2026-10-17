@@ -2,7 +2,6 @@
 
 import { X, Plus, Trash2, Lightbulb } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { useConfirm } from '@/hooks/useConfirm';
@@ -10,6 +9,7 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { SermonPoint, Thought } from "@/models/models";
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from "@locales/useTranslation";
 
 interface KeyFragmentsModalProps {
   isOpen: boolean;

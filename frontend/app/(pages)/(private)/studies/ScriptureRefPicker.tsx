@@ -2,7 +2,6 @@
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -11,6 +10,7 @@ import { ScriptureReference } from '@/models/models';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { chapterCount, verseCount } from '@/utils/versification';
+import { useTranslation } from '@locales/useTranslation';
 
 
 /**

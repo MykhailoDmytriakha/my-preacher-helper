@@ -2,10 +2,10 @@
 
 import { CheckCircle2 } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { getLatestPreachedDate, getNextPlannedDate } from '@/utils/preachDateStatus';
+import { useTranslation } from '@locales/useTranslation';
 import { formatDateOnly } from '@utils/dateFormatter';
 
 import type { Sermon } from '@/models/models';

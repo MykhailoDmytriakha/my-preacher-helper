@@ -5,7 +5,6 @@ import { Church, ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/ActionButton';
 import OptionMenu from '@/components/dashboard/OptionMenu';
@@ -19,6 +18,7 @@ import { useUserSettings } from '@/hooks/useUserSettings';
 import { leadingReference } from '@/utils/bibleLink';
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
+import { useTranslation } from '@locales/useTranslation';
 import { buildChipClasses } from '@utils/chipClasses';
 import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';

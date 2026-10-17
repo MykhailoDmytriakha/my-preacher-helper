@@ -2,10 +2,12 @@ when: translation · i18n · aria-label in English · English toast · error.mes
 
 # Add a translation key
 
-Every new `t('key')` goes into all three files frontend/locales/{en,ru,uk}/translation.json in the same change and the same commit — grep the key first. i18next with `useTranslation`; the resources are bundled in `frontend/locales/i18n.ts`.
+Every new `t('key')` goes into all three files frontend/locales/{en,ru,uk}/translation.json in the same change and the same commit — grep the key first. App components import `useTranslation` from `@locales/useTranslation`; the resources are bundled in `frontend/locales/i18n.ts`.
 
 ## How
 
+- Use the app hook in `frontend/locales/useTranslation.ts`, including in a lazy component or offline route. It keeps the server/hydration language stable for each boundary and catches a language change that happened before subscription. The library still owns resources, namespaces, readiness and translation options. Do not add a delayed language event or make the root layout dynamic to repair a missed subscription.
+- Destructure `language` or `resolvedLanguage` from the app hook for rendered dates, numbers, Bible names and language-dependent attributes. The returned `i18n` is deliberately the same live instance for imperative `changeLanguage` and settings initialization; reading its mutable language fields while rendering can disagree with delayed server hydration. Explicit hook `lng` and per-call language overrides still work. Regression: `frontend/__tests__/locales/i18nLateMount.test.tsx`; library compatibility: `frontend/__tests__/locales/useTranslation.test.tsx`.
 - `frontend/locales/__tests__/translationKeyCoverage.test.ts` scans literal `t('a.b')` calls and fails when en, ru or uk lacks the key. It sees literal keys only: a key held in a variable, a constant or a fallback map is invisible to it — check those by hand.
 - Insert the key at the same place in all three files: `frontend/locales/__tests__/translationOrder.test.ts` requires the same key order.
 - Plurals use suffix keys, never ICU `{count, plural, …}` syntax. English needs `_one` and `_other`; Russian and Ukrainian need `_one`, `_few`, `_many` and `_other` (their plural categories). Call `t('key', { count })`.

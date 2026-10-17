@@ -1,9 +1,9 @@
 "use client";
 
 import { AudioLines, File, FileText, FileType, LoaderCircle, Volume2 } from "lucide-react";
-import { useTranslation } from "react-i18next";
 
 import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from "@/components/common/ActionButton";
+import { useTranslation } from "@locales/useTranslation";
 
 import {
   getAudioIconButtonClassName,

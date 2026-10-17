@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import { FormButton } from "@/components/ui/FormDialog";
+import { useTranslation } from "@locales/useTranslation";
 
 import { ExportDialog } from "./ExportDialog";
 import { useExportPreview } from "./useExportPreview";

@@ -2,13 +2,13 @@
 
 // External libraries
 import React, { useState, useEffect } from "react";
-import { useTranslation } from 'react-i18next';
 
 // Path alias imports
 import { getSortedThoughts } from "@/utils/sermonSorting";
 import { SERMON_SECTION_COLORS, getTagStyling } from '@/utils/themeColors'; // Import the central theme
 import { ChevronIcon } from '@components/Icons';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Sermon } from "@/models/models";
 

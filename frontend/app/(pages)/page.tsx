@@ -3,7 +3,6 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FeatureCards from '@/components/landing/FeatureCards';
 import LandingFooter from '@/components/landing/LandingFooter';
@@ -15,6 +14,7 @@ import { auth, signInWithGoogle } from '@/services/firebaseAuth.service';
 import { capturePendingReferral } from '@/services/referral.client';
 import { testAccount } from '@/utils/testLogin';
 import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
+import { useTranslation } from '@locales/useTranslation';
 
 // Public Web OAuth client ID for this Firebase project (not a secret). When set,
 // the landing renders Google's inline FedCM account dropdown instead of the popup.

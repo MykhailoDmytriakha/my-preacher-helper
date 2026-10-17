@@ -1,8 +1,7 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { MARK_COLORS } from '@/utils/bibleMarks';
+import { useTranslation } from '@locales/useTranslation';
 
 import { MARK_FILL_CLASS } from './markPaint';
 

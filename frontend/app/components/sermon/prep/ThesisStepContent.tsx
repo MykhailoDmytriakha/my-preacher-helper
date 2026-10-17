@@ -2,11 +2,11 @@
 
 import { Quote, BookOpen, HelpCircle, Check, X } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
 import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ThesisStepContentProps {
   exegetical?: string;

@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import { Chip } from "@/components/ui/Chip";
 import { Item } from "@/models/models";
 import { getTagStyle } from "@/utils/tagUtils";
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { useTranslation } from "@locales/useTranslation";
 import { normalizeStructureTag } from "@utils/tagUtils";
 
 interface CardContentProps {

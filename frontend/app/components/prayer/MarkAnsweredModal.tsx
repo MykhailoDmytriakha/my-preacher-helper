@@ -2,7 +2,6 @@
 
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
@@ -10,6 +9,7 @@ import FormDialog from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 interface Props {
   onClose: () => void;

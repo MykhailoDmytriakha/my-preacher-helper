@@ -3,7 +3,6 @@
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -49,6 +48,7 @@ import { parseReferenceText } from '@/utils/scriptureReferenceParser';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import HighlightedText from '@components/HighlightedText';
+import { useTranslation } from '@locales/useTranslation';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
@@ -589,8 +589,8 @@ const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
 function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
     const created = new Date(note.createdAt);
     const updated = new Date(note.updatedAt);
-    const { i18n } = useTranslation();
-    const format = (d: Date) => formatDateForLocale(d, i18n?.language);
+    const { language: interfaceLanguage } = useTranslation();
+    const format = (d: Date) => formatDateForLocale(d, interfaceLanguage);
     return (
         <>
             <div>{t('notePanel.created', { date: format(created) })}</div>

@@ -2,7 +2,6 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDocumentActions } from '@/data-engine/react.client';
@@ -14,6 +13,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { sermonListKey, studyNoteListKey } from '@/utils/queryKeys';
 import { serverCopyIsNewer, type VersionedCopy } from '@/utils/readFreshness';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 import { getStudyNotes } from '@services/studies.service';
 
 import type { Sermon, StudyNote } from '@/models/models';
@@ -51,8 +51,8 @@ export interface StudyNoteDirectory {
 export function useStudyNoteDirectory(options: { enabled?: boolean } = {}): StudyNoteDirectory {
   const { enabled = true } = options;
   const { uid, isAuthLoading } = useResolvedUid();
-  const { i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n?.language);
+  const { language: interfaceLanguage } = useTranslation();
+  const locale = resolveAppLocale(interfaceLanguage);
   /**
    * WHEN THIS CONSUMER STARTED LOOKING.
    *

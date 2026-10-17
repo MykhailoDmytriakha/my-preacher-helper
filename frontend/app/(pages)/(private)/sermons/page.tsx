@@ -4,7 +4,6 @@ import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/re
 import { AdjustmentsHorizontalIcon, MagnifyingGlassIcon, XMarkIcon, ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
@@ -19,6 +18,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import { buildInSeriesRefIds } from "@/utils/seriesMembership";
 import AddSermonModal from "@components/AddSermonModal";
+import { useTranslation } from "@locales/useTranslation";
 
 /** Keys the filter popover and its active-filter chips both name. */
 const SEARCH_IN_THOUGHTS_KEY = 'dashboard.searchInThoughts';

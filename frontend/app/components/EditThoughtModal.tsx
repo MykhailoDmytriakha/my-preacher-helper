@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDiscardQuestion } from '@/hooks/useConfirm';
@@ -14,6 +13,7 @@ import {
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from '@locales/useTranslation';
 import { normalizeStructureTag } from "@utils/tagUtils";
 
 import { ThoughtOutlineField } from './thought/ThoughtOutlineField';

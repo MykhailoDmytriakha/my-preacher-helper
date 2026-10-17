@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useId } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { getSectionLabel } from '@/lib/sections';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import { useTranslation } from '@locales/useTranslation';
 import { normalizeStructureTag } from '@utils/tagUtils';
 
 // CSS class constants to avoid duplicate strings

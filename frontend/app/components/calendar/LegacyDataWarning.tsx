@@ -2,10 +2,10 @@
 
 import { ExclamationTriangleIcon, PlusIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
-import { useTranslation } from "react-i18next";
 
 import { Sermon } from "@/models/models";
 import { formatDate } from "@/utils/dateFormatter";
+import { useTranslation } from "@locales/useTranslation";
 
 interface LegacyDataWarningProps {
     pendingSermons: Sermon[];

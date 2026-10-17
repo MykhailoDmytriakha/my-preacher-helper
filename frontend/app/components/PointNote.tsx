@@ -2,10 +2,10 @@
 
 import { LightBulbIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { useConfirm, type ConfirmKey } from '@/hooks/useConfirm';
+import { useTranslation } from '@locales/useTranslation';
 
 interface PointNoteProps {
   /** Current note text (undefined/empty = no note). */

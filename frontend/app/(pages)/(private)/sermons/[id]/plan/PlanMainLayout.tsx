@@ -1,6 +1,5 @@
 import { FileText, Key, Lightbulb, List, Pencil, Save } from "lucide-react";
 import React, { createContext, useContext, useEffect } from "react";
-import { useTranslation } from "react-i18next";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { SwitchViewIcon } from "@/components/Icons";
@@ -16,6 +15,7 @@ import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
+import { useTranslation } from "@locales/useTranslation";
 
 import {
   MARKDOWN_SECTION_VARIANT_CLASSES,

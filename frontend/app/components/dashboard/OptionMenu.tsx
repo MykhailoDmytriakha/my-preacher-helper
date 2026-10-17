@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
 
 import { EnginePreachDateModal } from '@/components/calendar/EnginePreachDateModal';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
@@ -19,6 +18,7 @@ import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import { getSeriesForRef } from "@/utils/seriesMembership";
 import { DotsVerticalIcon } from "@components/Icons";
 import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
+import { useTranslation } from "@locales/useTranslation";
 
 import type { PreachDateAction } from '@/components/calendar/preachDateForm';
 

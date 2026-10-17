@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useConnection } from '@/providers/ConnectionProvider';
+import { useTranslation } from '@locales/useTranslation';
+
 
 export function OfflineBanner() {
   const { t } = useTranslation();

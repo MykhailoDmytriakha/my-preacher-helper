@@ -2,10 +2,10 @@
 
 import { ListTree, HelpCircle } from 'lucide-react';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
 import { Chip } from '@/components/ui/Chip';
+import { useTranslation } from '@locales/useTranslation';
 
 const BlockDiagramSection: React.FC = () => {
   const { t } = useTranslation();

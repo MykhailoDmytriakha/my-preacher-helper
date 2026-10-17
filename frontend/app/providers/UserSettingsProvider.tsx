@@ -2,7 +2,6 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -10,6 +9,7 @@ import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.clien
 import { UserSettingsEngineContext, useSettingsEngine } from '@/hooks/userSettingsEngineContext';
 import { useAuth } from '@/providers/AuthProvider';
 import { setLanguageCookie } from '@/services/userSettings.service';
+import { useTranslation } from '@locales/useTranslation';
 
 /** One settings editor per signed-in workspace, shared by navigation and every feature. */
 export function UserSettingsProvider({ children }: { children: ReactNode }) {

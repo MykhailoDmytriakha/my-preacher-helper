@@ -3,11 +3,11 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useId, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { FORM_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import Chip from './Chip';
 

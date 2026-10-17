@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useRemotePeek } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -11,6 +10,7 @@ import { serializeContent } from '@/utils/contentFingerprint';
 import { ownsPreparationCopy, preparationCopyText, preparationEcho, readLegacyPreparation, removeLegacyPreparation } from '@/utils/legacyPreparationRecovery';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ResourceSnapshot } from '@/data-engine/types';
 import type { LegacyPreparationCopy } from '@/utils/legacyPreparationRecovery';

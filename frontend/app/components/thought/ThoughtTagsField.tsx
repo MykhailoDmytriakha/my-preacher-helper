@@ -1,7 +1,7 @@
-import { useTranslation } from 'react-i18next';
 
 import Chip from '@/components/ui/Chip';
 import { getStructureIcon, getTagStyle, getTranslationKeyForTag } from '@/utils/tagUtils';
+import { useTranslation } from '@locales/useTranslation';
 
 export interface ThoughtTagOption { name: string; color?: string; translationKey?: string }
 interface ThoughtTagsFieldProps {

@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import DatePickerField from '@/components/ui/DatePickerField';
 import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW, GROUP_CARD } from '@/components/ui/formCardClasses';
+import { useTranslation } from '@locales/useTranslation';
 
 import ChurchAutocomplete from './ChurchAutocomplete';
 

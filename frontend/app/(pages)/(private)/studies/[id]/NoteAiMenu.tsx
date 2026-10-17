@@ -2,9 +2,10 @@
 
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
+import { useTranslation } from '@locales/useTranslation';
+
 
 export type NoteAiTarget = 'all' | 'title' | 'scriptureRefs' | 'tags';
 

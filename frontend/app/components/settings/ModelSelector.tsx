@@ -2,7 +2,6 @@
 
 import { MicrophoneIcon, PencilSquareIcon, SpeakerWaveIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { aiFunctionIds, getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
@@ -10,6 +9,7 @@ import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
 import type { User } from 'firebase/auth';

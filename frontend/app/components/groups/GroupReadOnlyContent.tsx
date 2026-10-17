@@ -2,11 +2,11 @@
 
 import { ArrowLeftIcon, CalendarDaysIcon, MapPinIcon, PlayIcon, UsersIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
 
 import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { normalizeFlow } from '@/utils/groupFlow';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, GroupBlockTemplate } from '@/models/models';
 

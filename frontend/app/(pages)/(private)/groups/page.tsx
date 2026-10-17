@@ -9,7 +9,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import { EngineCreateGroupModal } from '@/components/groups/EngineCreateGroupModal';
@@ -24,6 +23,7 @@ import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { newClientId } from '@/utils/clientId';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ReactNode } from 'react';
 import '@locales/i18n';

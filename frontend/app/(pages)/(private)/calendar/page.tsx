@@ -2,7 +2,6 @@
 
 import { format } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import AgendaView from "@/components/calendar/AgendaView";
 import AnalyticsSection from "@/components/calendar/AnalyticsSection";
@@ -36,6 +35,7 @@ import {
     getEffectiveIsPreached,
     getEffectivePreachDateStatus
 } from "@/utils/preachDateStatus";
+import { useTranslation } from "@locales/useTranslation";
 
 export default function CalendarPage() {
     const { t } = useTranslation();

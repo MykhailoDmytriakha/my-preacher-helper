@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordingDrafts } from "@/hooks/useRecordingDrafts";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
+import { useTranslation } from "@locales/useTranslation";
 
 import type { RecordingDraft, RecordingDraftContext } from "@/utils/recordingDraftStore";
 

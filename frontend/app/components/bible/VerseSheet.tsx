@@ -3,7 +3,6 @@
 import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useOpenInBible } from '@/hooks/useOpenInBible';
@@ -11,6 +10,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
+import { useTranslation } from '@locales/useTranslation';
 
 import { visibleVerseRange } from './BibleMinimap';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
@@ -58,8 +58,8 @@ export function VerseSheet({ reference, onClose, keepVisible }: VerseSheetProps)
 type LoadState = { status: 'loading' } | { status: 'ready'; text: BookText } | { status: 'error' };
 
 function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference; onClose: () => void; keepVisible: VerseSheetProps['keepVisible'] }) {
-  const { t, i18n } = useTranslation();
-  const locale = resolveAppLocale(i18n?.language);
+  const { t, language: interfaceLanguage } = useTranslation();
+  const locale = resolveAppLocale(interfaceLanguage);
   // The Bible this device reads, as on the Bible page.
   const reading: BibleId = useMemo(() => readTranslation(locale), [locale]);
   const [state, setState] = useState<LoadState>({ status: 'loading' });

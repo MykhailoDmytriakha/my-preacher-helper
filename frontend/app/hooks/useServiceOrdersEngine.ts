@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -10,6 +9,7 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { needsRenumber, rankForAppend, rankForMove, renumber, sortByRank } from '@/utils/serviceOrderRank';
 import { nextServiceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { CollectionState } from '@/data-engine/collections';
 import type { DocumentData } from '@/data-engine/types';

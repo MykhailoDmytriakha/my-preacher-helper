@@ -3,9 +3,10 @@
 import { UserCircleIcon, SparklesIcon, TagIcon, DocumentTextIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { SETTINGS_SECTIONS, settingsSectionHref, type SettingsSection } from '@/utils/settingsSections';
+import { useTranslation } from '@locales/useTranslation';
+
 
 export type { SettingsSection };
 

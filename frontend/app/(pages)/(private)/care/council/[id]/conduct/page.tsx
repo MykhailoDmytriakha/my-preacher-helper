@@ -1,10 +1,8 @@
 'use client';
 
-
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, ListChecks, Megaphone, PauseCircle, XCircle } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
@@ -26,7 +24,7 @@ import {
   topicState,
   type TopicOutcome,
 } from '@/utils/council';
-
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';

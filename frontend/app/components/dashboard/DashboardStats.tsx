@@ -1,16 +1,15 @@
 "use client";
 
-import { useTranslation } from "react-i18next";
-
 import { Sermon } from "@/models/models";
 import { DocumentIcon, PencilIcon, ChevronIcon } from "@components/Icons";
+import { useTranslation } from "@locales/useTranslation";
 
 interface DashboardStatsProps {
   sermons: Sermon[];
 }
 
 export default function DashboardStats({ sermons }: DashboardStatsProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   
   // Calculate stats
   const totalSermons = sermons.length;
@@ -30,7 +29,7 @@ export default function DashboardStats({ sermons }: DashboardStatsProps) {
     
   // Format the latest sermon date
   const formattedLatestDate = latestSermonDate
-    ? new Intl.DateTimeFormat(i18n.language, {
+    ? new Intl.DateTimeFormat(interfaceLanguage, {
         year: 'numeric',
         month: 'short',
         day: 'numeric'

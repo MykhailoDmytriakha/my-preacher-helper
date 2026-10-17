@@ -3,7 +3,6 @@
 import { CheckIcon, ChevronDownIcon, PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { User } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
@@ -17,6 +16,7 @@ import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
 import { findDraftDocIds } from '@/utils/durableDraft';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
 

@@ -3,13 +3,13 @@
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, ChevronUpIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { BIBLE_IDS, BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { chapterCount } from '@/utils/versification';
+import { useTranslation } from '@locales/useTranslation';
 
 import { booksOf } from './bookOrder';
 import { placeFromReference, type GoToPlace } from './goTo';

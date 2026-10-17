@@ -9,9 +9,9 @@ import {
     TagIcon,
 } from '@heroicons/react/24/outline';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
+import { useTranslation } from '@locales/useTranslation';
 
 import { NoteOutlineTree } from './NoteOutlineTree';
 

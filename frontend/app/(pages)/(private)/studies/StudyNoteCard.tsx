@@ -13,7 +13,6 @@ import {
 } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
 import { useMemo, useCallback, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
@@ -27,6 +26,7 @@ import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { AppLocale } from '@/utils/appLocale';
 
@@ -111,7 +111,7 @@ export default function StudyNoteCard({
   onShare,
   hasShareLink = false,
 }: StudyNoteCardProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
 
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
@@ -146,7 +146,7 @@ export default function StudyNoteCard({
     if (diffDays === 1) return t('common.yesterday');
     if (diffDays < 7) return t('common.daysAgo', { count: diffDays });
     if (diffDays < 30) return t('common.weeksAgo', { count: Math.floor(diffDays / 7) });
-    return formatDateForLocale(date, i18n?.language);
+    return formatDateForLocale(date, interfaceLanguage);
   };
 
   // Check if note needs AI analysis (no title, no refs, no tags)
@@ -553,7 +553,7 @@ export default function StudyNoteCard({
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}
               </button>
-              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDateForLocale(note.createdAt, i18n?.language)}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{formatDateForLocale(note.createdAt, interfaceLanguage)}</span>
             </div>
           </div>
         </div>

@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import {
   aiFunctionIds,
@@ -20,8 +19,8 @@ import { auth } from '@/services/firebaseAuth.service';
 import { hardCap } from '@/services/usageLimits';
 import { refusalWords, saidError, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
-
 
 import type {
   AiFunctionId,
@@ -351,12 +350,12 @@ function StatusBadge({ user }: { user: AdminUser }) {
 
 /** F6: an inviter flagged by the third referral, for the owner to look at — nothing is blocked. */
 function ReferralWarningBadge({ user }: { user: AdminUser }) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   if (!user.referralWarning) return null;
   return (
     <Chip weight="bold" tone="violet" title={t('admin.users.referralWarning.detail', {
       count: user.referralWarning.referralCount,
-      date: formatDate(user.referralWarning.at, '—', i18n.language),
+      date: formatDate(user.referralWarning.at, '—', interfaceLanguage),
     })}>
       {t('admin.users.referralWarning.badge')}
     </Chip>
@@ -648,12 +647,12 @@ type DrawerProps = {
 };
 
 function UserDrawer(props: DrawerProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { open, user } = props;
   const layer = useModalLayer<HTMLElement>({ onClose: props.onClose, active: open });
 
   if (!open) return null;
-  const promotion = user?.promotion ? `${t(`admin.users.tiers.${user.promotion.tier}`)} · ${formatDate(user.promotion.expiresAt, '—', i18n.language)}` : '—';
+  const promotion = user?.promotion ? `${t(`admin.users.tiers.${user.promotion.tier}`)} · ${formatDate(user.promotion.expiresAt, '—', interfaceLanguage)}` : '—';
 
   return (
     <>
@@ -666,7 +665,7 @@ function UserDrawer(props: DrawerProps) {
         </header>
         <form className="flex min-h-0 flex-1 flex-col" onSubmit={props.onSubmit}>
           <div className="flex-1 overflow-y-auto px-5 py-4">
-            {user && <><h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{t('admin.users.profile')}</h2><dl className="grid grid-cols-2 gap-x-4 gap-y-3"><DetailItem label={t('admin.users.fields.email')}>{user.email ?? t(NO_EMAIL_KEY)}</DetailItem><DetailItem label={t('admin.users.fields.verified')}>{user.emailVerified ? t('admin.users.verified') : t('admin.users.unverified')}</DetailItem><DetailItem label={t('admin.users.fields.disabled')}>{user.disabled ? t('admin.users.disabled') : t('admin.users.enabled')}</DetailItem><DetailItem label={t('admin.users.fields.lastLogin')}><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={i18n.language} value={user.lastSignInTime} /></DetailItem><DetailItem label={t('admin.users.fields.lastSeen')}><ActivityTime fallback={t('admin.users.neverSeen')} language={i18n.language} value={resolveLastSeenAt(user)} /></DetailItem><DetailItem label={t('admin.users.fields.creation')}>{formatDate(user.creationTime, '—', i18n.language)}</DetailItem><DetailItem label={t('admin.users.fields.paidTier')}><TierBadge tier={user.paidTier} /></DetailItem><DetailItem label={t('admin.users.fields.effectiveTier')}><TierBadge tier={user.effectiveTier} /></DetailItem><DetailItem label={t('admin.users.fields.promotion')}>{promotion}</DetailItem><DetailItem label={t('admin.users.fields.referredBy')}>{user.referredBy ?? '—'}</DetailItem><DetailItem label={t('admin.users.fields.invitedCount')}>{user.referralCount}</DetailItem>{user.referralWarning && <DetailItem label={t('admin.users.fields.referralWarning')}>{t('admin.users.referralWarning.detail', { count: user.referralWarning.referralCount, date: formatDate(user.referralWarning.at, '—', i18n.language) })}</DetailItem>}</dl></>}
+            {user && <><h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500">{t('admin.users.profile')}</h2><dl className="grid grid-cols-2 gap-x-4 gap-y-3"><DetailItem label={t('admin.users.fields.email')}>{user.email ?? t(NO_EMAIL_KEY)}</DetailItem><DetailItem label={t('admin.users.fields.verified')}>{user.emailVerified ? t('admin.users.verified') : t('admin.users.unverified')}</DetailItem><DetailItem label={t('admin.users.fields.disabled')}>{user.disabled ? t('admin.users.disabled') : t('admin.users.enabled')}</DetailItem><DetailItem label={t('admin.users.fields.lastLogin')}><ActivityTime fallback={t('admin.users.neverLoggedIn')} language={interfaceLanguage} value={user.lastSignInTime} /></DetailItem><DetailItem label={t('admin.users.fields.lastSeen')}><ActivityTime fallback={t('admin.users.neverSeen')} language={interfaceLanguage} value={resolveLastSeenAt(user)} /></DetailItem><DetailItem label={t('admin.users.fields.creation')}>{formatDate(user.creationTime, '—', interfaceLanguage)}</DetailItem><DetailItem label={t('admin.users.fields.paidTier')}><TierBadge tier={user.paidTier} /></DetailItem><DetailItem label={t('admin.users.fields.effectiveTier')}><TierBadge tier={user.effectiveTier} /></DetailItem><DetailItem label={t('admin.users.fields.promotion')}>{promotion}</DetailItem><DetailItem label={t('admin.users.fields.referredBy')}>{user.referredBy ?? '—'}</DetailItem><DetailItem label={t('admin.users.fields.invitedCount')}>{user.referralCount}</DetailItem>{user.referralWarning && <DetailItem label={t('admin.users.fields.referralWarning')}>{t('admin.users.referralWarning.detail', { count: user.referralWarning.referralCount, date: formatDate(user.referralWarning.at, '—', interfaceLanguage) })}</DetailItem>}</dl></>}
             <h2 className={`${user ? 'mt-6' : ''} mb-3 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400 dark:text-slate-500`}>{t('admin.users.editSection')}</h2>
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-slate-600 dark:text-slate-300" htmlFor="target-uid">{t('admin.targetUid')}<input className={fieldClassName} id="target-uid" onChange={(event) => props.onTargetUidChange(event.target.value)} required value={props.targetUid} /></label>
@@ -685,7 +684,7 @@ function UserDrawer(props: DrawerProps) {
 }
 
 export default function AdminPage() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { navHeight } = useStickyOffsets();
   const [access, setAccess] = useState<AdminAccessState>('checking');
   const [activeSection, setActiveSection] = useState<AdminSection>('users');
@@ -906,5 +905,5 @@ export default function AdminPage() {
     ? t('admin.users.pageDescription')
     : t('admin.modelDefaults.description');
 
-  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={i18n.language} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError ? sayFailure(modelDefaultsError, t) : ''} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError ? sayFailure(submitError, t) : ''} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
+  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky" style={{ top: stickyTopBelowNav(navHeight) }}><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={interfaceLanguage} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError ? sayFailure(modelDefaultsError, t) : ''} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError ? sayFailure(submitError, t) : ''} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
 }

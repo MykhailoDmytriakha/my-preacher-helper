@@ -5,13 +5,12 @@ import { CSS, type Transform } from "@dnd-kit/utilities";
 import { ArrowTopRightOnSquareIcon } from "@heroicons/react/24/outline";
 import { CheckIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import React from "react";
-import { useTranslation } from "react-i18next";
-
 
 import { Chip } from '@/components/ui/Chip';
 import { Item } from "@/models/models";
 import { structureThoughtPaddingClass } from "@/utils/structureBoardLayout";
 import { EditIcon, TrashIcon } from "@components/Icons";
+import { useTranslation } from "@locales/useTranslation";
 
 import CardContent from "./CardContent";
 import { getSectionIconClasses } from "./column/utils";

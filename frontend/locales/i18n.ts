@@ -16,8 +16,9 @@ import ukTranslation from './uk/translation.json';
  * The server cannot know the device's language for a prerendered page, so it renders in the
  * default one. A browser that started in the cookie's language failed hydration on every
  * translated string: text was thrown away and rendered again, and mismatched attributes such as
- * `aria-label` were left in English. Both sides start in the default language; the device's own
- * is applied the moment hydration is over (`LanguageInitializer`).
+ * `aria-label` were left in English. The app hook (`locales/useTranslation.ts`) pins that
+ * default for each boundary's hydration; `LanguageInitializer` applies the device choice
+ * after the root commits, and the hook catches it even for later subscribers.
  */
 // Create a reusable configuration
 const i18nConfig = {

@@ -12,7 +12,6 @@ import {
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import HighlightedText from '@/components/HighlightedText';
@@ -33,12 +32,13 @@ import {
   awaitAcceptance,
   skippedWrite,
 } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
 
 export default function PrayerDetailPage() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -306,16 +306,16 @@ export default function PrayerDetailPage() {
         <div className="flex flex-wrap gap-4 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-700 pt-3">
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
-            {t('prayer.detail.addedOn')}: {formatDateForLocale(prayer.createdAt, i18n?.language)}
+            {t('prayer.detail.addedOn')}: {formatDateForLocale(prayer.createdAt, interfaceLanguage)}
           </span>
           <span className="flex items-center gap-1">
             <ClockIcon className="h-3.5 w-3.5" />
-            {t('prayer.detail.updatedOn')}: {formatDateForLocale(prayer.updatedAt, i18n?.language)}
+            {t('prayer.detail.updatedOn')}: {formatDateForLocale(prayer.updatedAt, interfaceLanguage)}
           </span>
           {prayer.answeredAt && (
             <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
               <CheckCircleIcon className="h-3.5 w-3.5" />
-              {t('prayer.detail.answeredOn')}: {formatDateForLocale(prayer.answeredAt, i18n?.language)}
+              {t('prayer.detail.answeredOn')}: {formatDateForLocale(prayer.answeredAt, interfaceLanguage)}
             </span>
           )}
         </div>
@@ -448,7 +448,7 @@ export default function PrayerDetailPage() {
                   <HighlightedText text={update.text} searchQuery={highlightQuery} />
                 </p>
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                  {formatDateTimeForLocale(update.createdAt, i18n?.language)}
+                  {formatDateTimeForLocale(update.createdAt, interfaceLanguage)}
                 </p>
               </div>
             ))}

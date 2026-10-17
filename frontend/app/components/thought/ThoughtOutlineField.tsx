@@ -1,8 +1,8 @@
 import { ChevronDown } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { isVisualSectionKey } from '@/utils/sermonVisualOrder';
+import { useTranslation } from '@locales/useTranslation';
 
 import { OutlinePointOptions, type OutlinePointGroups } from './OutlinePointOptions';
 

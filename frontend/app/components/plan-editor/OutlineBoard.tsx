@@ -12,7 +12,6 @@ import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, LightBulbIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import PointNote from '@/components/PointNote';
@@ -27,6 +26,7 @@ import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/s
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
+import { useTranslation } from '@locales/useTranslation';
 
 import { DraggableCard, DropZone } from './BoardDragPrimitives';
 import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop, describeDropPlace } from './outlineBoardModel';

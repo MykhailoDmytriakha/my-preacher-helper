@@ -1,10 +1,10 @@
 "use client";
 
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import { OutlinePoint } from "@/models/models";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "@locales/useTranslation";
 
 /**
  * HOW MUCH OF THE PLAN IS STILL EMPTY, AT A GLANCE.

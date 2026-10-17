@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import ColorPickerModal from '@/components/ColorPickerModal';
@@ -10,6 +9,7 @@ import FormField, { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import Select from '@/components/ui/Select';
 import { SERIES_COLOR_PRESETS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Series } from '@/models/models';
 

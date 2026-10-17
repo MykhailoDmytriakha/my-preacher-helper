@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryState } from 'nuqs';
 import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 
 import Select from '@/components/ui/Select';
@@ -27,6 +27,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { isKnownOffline } from '@/utils/connectivity';
 import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
+import { useTranslation } from '@locales/useTranslation';
 
 import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
@@ -34,7 +35,7 @@ import StudyNoteCard from './StudyNoteCard';
 import type { AppLocale } from '@/utils/appLocale';
 
 export default function StudiesPage() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
   const {
     uid,
@@ -52,7 +53,7 @@ export default function StudiesPage() {
 
 
   // Get current locale for Bible data
-  const bibleLocale: AppLocale = useMemo(() => resolveAppLocale(i18n.language), [i18n.language]);
+  const bibleLocale: AppLocale = useMemo(() => resolveAppLocale(interfaceLanguage), [interfaceLanguage]);
 
   // Get localized book list for dropdowns
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);

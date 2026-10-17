@@ -1,9 +1,9 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useTranslation } from 'react-i18next';
 
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
 
 import { LiveTextInput, LiveTextArea } from '../ui/LiveTextInput';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';

@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
 import { CALENDAR_KINDS, type CalendarKind } from '@/utils/calendarEntries';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * WHAT THE CALENDAR IS SHOWING, AND THE SWITCH FOR IT — in one place, so the switch always

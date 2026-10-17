@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { useDataMembership } from '@/data-engine/react.client';
 import { churchForNewPreachDate } from '@/utils/church';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { hydrateSeries } from '@/utils/seriesDocument';
+import { useTranslation } from '@locales/useTranslation';
 
 import SermonFormDialog from './SermonFormDialog';
 

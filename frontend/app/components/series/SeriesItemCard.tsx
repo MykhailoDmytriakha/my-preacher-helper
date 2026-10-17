@@ -4,10 +4,10 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Bars3Icon, BookOpenIcon, UserGroupIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
+import { useTranslation } from '@locales/useTranslation';
 import { formatDate } from '@utils/dateFormatter';
 import { getEffectiveIsPreached } from '@utils/preachDateStatus';
 

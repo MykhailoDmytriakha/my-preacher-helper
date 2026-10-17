@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
@@ -9,6 +8,7 @@ import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildRecordingFilename, downloadBlobToDevice, getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
+import { useTranslation } from '@locales/useTranslation';
 
 import { AudioRecoveryPanel } from "./audio-recorder/AudioRecorderControls";
 import { AUDIO_RECORDER_CLEAR_EVENT } from "./audio-recorder/constants";

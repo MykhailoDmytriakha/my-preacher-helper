@@ -2,7 +2,6 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
@@ -10,6 +9,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import ThemeModeToggle from '@components/navigation/ThemeModeToggle';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ScriptureReference } from '@/models/models';
 
@@ -28,7 +28,7 @@ interface ShareNotePayload {
 }
 
 export default function SharedNotePage() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const params = useParams<{ token?: string }>();
   const token = params?.token;
 
@@ -40,7 +40,7 @@ export default function SharedNotePage() {
   // The link's preview card names the note the way every screen does (title, else first passage);
   // the page opened from that card shows the same name above the text, or the card promised
   // something the page hides. A passage that became the heading is not repeated under it.
-  const locale = resolveAppLocale(i18n?.language);
+  const locale = resolveAppLocale(interfaceLanguage);
   const heading = studyNoteOwnName({ title, scriptureRefs }, locale);
   const passageRefs = title ? scriptureRefs : scriptureRefs.slice(1);
   const passages = formatScriptureReferences(passageRefs, { locale, style: 'long', limit: PASSAGE_PREVIEW });

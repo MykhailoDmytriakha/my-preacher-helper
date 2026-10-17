@@ -1,12 +1,12 @@
 "use client";
 import { MapPinIcon, PencilSquareIcon, TrashIcon, FaceSmileIcon } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
-import { useTranslation } from "react-i18next";
 
 import { Chip } from "@/components/ui/Chip";
 import { useAppLocale } from "@/hooks/useAppLocale";
 import { parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
 import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
+import { useTranslation } from "@locales/useTranslation";
 
 import type { PreachDate } from "@/models/models";
 import type { ChipTone } from "@/utils/chipClasses";

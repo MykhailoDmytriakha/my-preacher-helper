@@ -2,10 +2,10 @@
 
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataMembership, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useTranslation } from '@locales/useTranslation';
 
 const SeriesMembershipDialog = dynamic(() => import('./SeriesMembershipDialog').then(module => module.SeriesMembershipDialog), { ssr: false });
 const EngineCreateSermonModal = dynamic(() => import('../sermon/EngineCreateSermonModal').then(module => module.EngineCreateSermonModal), { ssr: false });

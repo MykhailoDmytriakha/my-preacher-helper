@@ -2,7 +2,6 @@
 
 import { List, MessageSquareText, Calendar, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
 import { SermonStatusChip, getSermonStatusDateTexts } from "@/components/sermon/SermonStatusChip";
@@ -17,6 +16,7 @@ import { getSeriesForRef } from "@/utils/seriesMembership";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
+import { useTranslation } from "@locales/useTranslation";
 import { getContrastColor } from "@utils/color";
 import { formatDateOnly, extractIsoString } from "@utils/dateFormatter";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";

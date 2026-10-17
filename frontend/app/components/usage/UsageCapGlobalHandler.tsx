@@ -2,12 +2,12 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import UsageCapDialog from '@/components/usage/UsageCapDialog';
 import { USER_ENTITLEMENT_QUERY_KEY } from '@/hooks/useUserEntitlement';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
 import { getDeterministicVerse, normalizeGraceVerses } from '@/utils/usageGrace';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { UsageResource } from '@/services/usageLimits';
 

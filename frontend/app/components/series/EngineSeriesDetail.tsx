@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
@@ -16,6 +15,7 @@ import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
 import { hydrateSeries } from '@/utils/seriesDocument';
+import { useTranslation } from '@locales/useTranslation';
 
 import { EngineEditSeriesModal, SERIES_METADATA_SELECTION } from './EngineEditSeriesModal';
 import { SeriesDetailView } from './SeriesDetailView';

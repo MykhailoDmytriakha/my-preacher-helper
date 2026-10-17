@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
@@ -9,6 +8,7 @@ import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdat
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
 import { queuedMutation, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { PrayerRequest, PrayerStatus } from '@/models/models';

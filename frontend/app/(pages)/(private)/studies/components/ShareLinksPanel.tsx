@@ -2,7 +2,6 @@
 
 import { DocumentDuplicateIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import Select from '@/components/ui/Select';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -11,6 +10,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ShareLinksPanelProps {
   notes: StudyNote[];
@@ -35,7 +35,7 @@ export default function ShareLinksPanel({
   onCreate,
   onDelete,
 }: ShareLinksPanelProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
@@ -189,7 +189,7 @@ export default function ShareLinksPanel({
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 md:text-center">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.createdLabel')}:</span>
-                    {formatDateForLocale(link.createdAt, i18n?.language)}
+                    {formatDateForLocale(link.createdAt, interfaceLanguage)}
                   </div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 md:text-center tabular-nums">
                     <span className="md:hidden font-semibold mr-2">{t('studiesWorkspace.shareLinks.viewsLabel')}:</span>

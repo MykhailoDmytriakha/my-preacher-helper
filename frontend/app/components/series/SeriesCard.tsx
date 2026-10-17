@@ -7,11 +7,11 @@ import {
   UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { Chip } from "@/components/ui/Chip";
 import { Series } from "@/models/models";
+import { useTranslation } from "@locales/useTranslation";
 
 import type { ChipTone } from "@/utils/chipClasses";
 

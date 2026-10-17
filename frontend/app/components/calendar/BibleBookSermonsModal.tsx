@@ -3,12 +3,12 @@
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 import { format, isValid, parseISO } from "date-fns";
 import Link from "next/link";
-import { useTranslation } from "react-i18next";
 
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { PreachDate, Sermon } from "@/models/models";
 import { BookInfo } from "@/utils/bibleBooks";
+import { useTranslation } from "@locales/useTranslation";
 
 interface BibleBookSermonsModalProps {
     isOpen: boolean;

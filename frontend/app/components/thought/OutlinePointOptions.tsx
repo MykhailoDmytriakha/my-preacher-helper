@@ -1,6 +1,5 @@
-import { useTranslation } from 'react-i18next';
-
 import { sortSubPointsByPosition } from '@/utils/subPoints';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SermonOutline } from '@/models/models';
 

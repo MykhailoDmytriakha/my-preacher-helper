@@ -2,11 +2,11 @@
 
 import { ChevronRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useMarkdownOutline, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import { type MarkdownSection } from '@/utils/markdownSections';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { useTranslation } from '@locales/useTranslation';
 
 import { FOLD_ARROW_TONE, foldArrowOffset, headingTone, sectionAir } from './foldableHeadingStyle';
 

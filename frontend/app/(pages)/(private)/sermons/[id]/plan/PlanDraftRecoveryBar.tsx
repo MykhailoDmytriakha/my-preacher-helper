@@ -1,10 +1,10 @@
 "use client";
 
 import { useRef } from "react";
-import { useTranslation } from "react-i18next";
 
 import { useDiscardQuestion } from "@/hooks/useConfirm";
 import { readPlanText } from "@/utils/planText";
+import { useTranslation } from "@locales/useTranslation";
 
 import { planNodeNames } from "./planNodes";
 

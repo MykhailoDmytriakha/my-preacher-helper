@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -14,6 +13,7 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
@@ -201,7 +201,7 @@ export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
 }
 
 function EngineConflicts({ pollMs }: { pollMs: number }) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const { browser, owner } = useDataEngine();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const { confirm, confirmDialog, withdraw: withdrawDelete } = useConfirm();
@@ -280,7 +280,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     // short clock catches it too. It reads this device's IndexedDB only — no database reads.
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, pollMs);
     return () => { stop(); window.clearInterval(timer); sequence.current += 1; withdraw(); };
-  }, [browser, refresh, pollMs, i18n?.language, withdraw]);
+  }, [browser, refresh, pollMs, interfaceLanguage, withdraw]);
 
   // One question for the same held work, regardless of which editor originally captured it.
   // Other requests or unseen draft words keep their global notice.

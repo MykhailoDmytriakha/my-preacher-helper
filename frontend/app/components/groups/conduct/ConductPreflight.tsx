@@ -2,10 +2,10 @@
 
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
 
 interface ConductPreflightProps {
   flow: GroupFlowItem[];

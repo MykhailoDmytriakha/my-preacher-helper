@@ -13,7 +13,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { EngineCreateSeriesModal } from '@/components/series/EngineCreateSeriesModal';
 import SeriesCard from '@/components/series/SeriesCard';
@@ -25,6 +24,7 @@ import { useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client'
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
 import type { Series } from '@/models/models';

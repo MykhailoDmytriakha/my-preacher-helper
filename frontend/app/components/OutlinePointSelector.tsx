@@ -3,11 +3,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { OutlinePointOptions } from '@/components/thought/OutlinePointOptions';
 import { Thought, SermonOutline } from '@/models/models';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
+import { useTranslation } from '@locales/useTranslation';
 import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@utils/tagUtils";
 
 interface SermonPointSelectorProps {

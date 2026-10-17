@@ -2,9 +2,9 @@
 
 import { Type } from 'lucide-react';
 import React, { useState, useRef, useEffect, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useTranslation } from '@locales/useTranslation';
 
 import { TextScaleControls } from './TextScaleControls';
 

@@ -11,9 +11,9 @@
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Volume2 } from 'lucide-react';
 import React, { useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { useTranslation } from '@locales/useTranslation';
 
 import StepByStepWizard from './audio/StepByStepWizard';
 

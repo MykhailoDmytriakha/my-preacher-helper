@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import ChurchField from "@/components/church/ChurchField";
 import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW } from "@/components/ui/formCardClasses";
 import { Church } from "@/models/models";
+import { useTranslation } from "@locales/useTranslation";
 
 interface ChurchAutocompleteProps {
     initialValue?: Church;

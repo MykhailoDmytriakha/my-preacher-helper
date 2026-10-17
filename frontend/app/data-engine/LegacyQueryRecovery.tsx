@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import FormDialog from '@/components/ui/FormDialog';
@@ -14,6 +13,7 @@ import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 import { DEFAULT_LANGUAGE } from '@locales/constants';
 import { i18n } from '@locales/i18n';
+import { useTranslation } from '@locales/useTranslation';
 
 import { BOOKKEEPING, fingerprint, reviewOf, type Change, type ChangeKind, type ChangeReader, type Review } from './legacyCopyChanges';
 import {
@@ -408,14 +408,14 @@ type Formatting = ReturnType<typeof useCopyFormatting>;
  * out (`leftOut`), and `unseen` returns exactly those parts so a difference in them is named.
  */
 function useCopyFormatting() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   return useMemo(() => {
-    const dateFormat = new Intl.DateTimeFormat(resolveAppLocale(i18n.language), {
+    const dateFormat = new Intl.DateTimeFormat(resolveAppLocale(interfaceLanguage), {
       day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
     const when = (iso: string | null) => iso ? dateFormat.format(new Date(iso)) : t('legacyRecovery.noDate');
     // A calendar day is the same day wherever it is read; a moment reads in local time.
-    const dayFormat = new Intl.DateTimeFormat(resolveAppLocale(i18n.language), { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const dayFormat = new Intl.DateTimeFormat(resolveAppLocale(interfaceLanguage), { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     const asDate = (value: string): string => {
       const at = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00Z`) : /^\d{4}-\d{2}-\d{2}T/.test(value) ? new Date(value) : null;
       if (!at || Number.isNaN(at.getTime())) return value;
@@ -504,7 +504,7 @@ function useCopyFormatting() {
       } catch { return [copy.raw]; }
     };
     return { when, fieldName, reader, read };
-  }, [t, i18n.language]);
+  }, [t, interfaceLanguage]);
 }
 
 /** A copy's name and where its two versions come from, the same for every kind of card. */

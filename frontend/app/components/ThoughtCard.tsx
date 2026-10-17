@@ -2,11 +2,12 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import React, { memo, useCallback, useMemo } from "react";
-import { useTranslation } from 'react-i18next';
+
 import "@locales/i18n";
 
 // Utils imports
 import MarkdownDisplay from '@components/MarkdownDisplay';
+import { useTranslation } from '@locales/useTranslation';
 import { formatDate } from "@utils/dateFormatter";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, getCanonicalTagForSection } from "@utils/tagUtils";
 

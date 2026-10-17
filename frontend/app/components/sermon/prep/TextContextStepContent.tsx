@@ -2,11 +2,12 @@
 
 import { BookOpen, CheckCircle, Search, Repeat, Check, X } from 'lucide-react';
 import React, { useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 
 import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 // Module-level constants to avoid duplicate strings
 const TEXT_CONTEXT_SAVE_FALLBACK = "Save";

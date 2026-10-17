@@ -2,9 +2,10 @@
 
 import { ChevronDown } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
+
 
 export interface PrepStepCardProps {
   stepId: string;

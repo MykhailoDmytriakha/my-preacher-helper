@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
@@ -11,6 +10,7 @@ import { debugLog } from "@/utils/debugMode";
 import { persistedWrite, queuedMutation, refusedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import { insertThoughtIdInStructure, replaceThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
 import { recoveryText, showRecoverableWriteFailure, writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from "@locales/useTranslation";
 import { auth } from "@services/firebaseAuth.service";
 
 import { buildStructureFromContainers, buildItemForUI, findOutlinePoint } from "../utils/structure";

@@ -2,13 +2,13 @@
 
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useEffect, useId, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import Switch from '@/components/ui/Switch';
 import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { crossReferenceLabel, crossReferenceNumbers, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 import { versesHeldIn } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 
 import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';

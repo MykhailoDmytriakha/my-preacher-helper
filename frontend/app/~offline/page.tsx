@@ -9,12 +9,12 @@ import {
   type ComponentType,
   type ReactNode,
 } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasPersistedSession } from '@/utils/persistedSession';
+import { useTranslation } from '@locales/useTranslation';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
 // document as the navigation fallback whenever an offline navigation misses the

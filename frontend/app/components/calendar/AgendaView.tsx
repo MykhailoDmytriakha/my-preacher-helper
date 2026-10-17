@@ -1,12 +1,12 @@
 "use client";
 
 import { CalendarDaysIcon } from '@heroicons/react/24/outline';
-import { useTranslation } from 'react-i18next';
 
 import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { byNewestFirst, type CalendarEntry } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Series } from '@/models/models';
 

@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import CardContent from "@/components/CardContent";
 import { buildColumnItemIndex } from "@/components/column/columnItemModel";
@@ -12,6 +11,7 @@ import { getCardClassName } from "@/components/SortableItem";
 import { structureBodyPaddingClass, structureSubPointInsetClass } from "@/utils/structureBoardLayout";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "@locales/useTranslation";
 
 import { boardLayoutClass, structureThoughtGridClass } from "../utils/sectionLayout";
 

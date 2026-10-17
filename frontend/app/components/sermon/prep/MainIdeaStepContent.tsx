@@ -2,11 +2,12 @@
 
 import { Lightbulb, BookText, ListChecks, Check, X } from 'lucide-react';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 
 import { useFieldDraft } from '@/hooks/useFieldDraft';
 import { UI_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 // Module-level constants to avoid duplicate strings
 const MAIN_IDEA_SAVE_FALLBACK = "Save";

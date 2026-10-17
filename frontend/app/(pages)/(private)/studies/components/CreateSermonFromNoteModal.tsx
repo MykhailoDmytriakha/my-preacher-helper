@@ -11,7 +11,6 @@ import {
 import { useRouter } from 'next/navigation';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
 
 import { useDocumentActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
@@ -32,6 +31,7 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { ScriptureReference, Sermon } from '@/models/models';
@@ -204,7 +204,7 @@ export default function CreateSermonFromNoteModal({
   onClose,
   returnFocusTo,
 }: CreateSermonFromNoteModalProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
   const documentActions = useDocumentActions();
   /**
@@ -227,12 +227,12 @@ export default function CreateSermonFromNoteModal({
   const formatNumber = useCallback(
     (value: number) => {
       try {
-        return value.toLocaleString(i18n.language || 'en');
+        return value.toLocaleString(interfaceLanguage || 'en');
       } catch {
         return String(value);
       }
     },
-    [i18n.language],
+    [interfaceLanguage],
   );
   /** Above a thousand the exact word count is false precision — round it to the hundred. */
   const roundedWords = measure.words >= 1000 ? Math.round(measure.words / 100) * 100 : measure.words;

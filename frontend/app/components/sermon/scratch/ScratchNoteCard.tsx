@@ -3,9 +3,9 @@
 import { Bars3Icon } from '@heroicons/react/24/outline';
 import { Trash2 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import PointNote from '@/components/PointNote';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { DragHandleProps } from '@/components/plan-editor/OutlineBoard';
 import type { ScratchNote } from '@/models/models';

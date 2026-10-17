@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useTranslation } from "@locales/useTranslation";
 
 import { TRANSLATION_COMMON_DELETE } from "./constants";
 

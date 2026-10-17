@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useTextScale } from '@/providers/TextScaleProvider';
+import { useTranslation } from '@locales/useTranslation';
+
 
 interface TextScaleControlsProps {
   className?: string;

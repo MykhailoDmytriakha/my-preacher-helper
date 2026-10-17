@@ -1,7 +1,6 @@
 "use client";
 
 import React, { type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import DatePickerField from '@/components/ui/DatePickerField';
@@ -10,6 +9,7 @@ import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { useBufferedText } from '@/components/ui/useBufferedText';
 import { Group } from '@/models/models';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
+import { useTranslation } from '@locales/useTranslation';
 
 const generateMeetingDateId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

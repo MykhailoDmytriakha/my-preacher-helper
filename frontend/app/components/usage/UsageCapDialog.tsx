@@ -4,9 +4,9 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle, Transition, Transitio
 import { SparklesIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { Fragment } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { formatUsageResetDate } from '@/utils/usageGrace';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { UsageResource } from '@/services/usageLimits';
 
@@ -38,8 +38,8 @@ const metricLabelKey: Record<UsageResource, string> = {
  * warning mark, and the verse is part of the message rather than a footnote to it.
  */
 export default function UsageCapDialog({ open, resource, resetsAt, verse, onClose }: UsageCapDialogProps) {
-  const { t, i18n } = useTranslation();
-  const locale = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  const { t, language: interfaceLanguage, resolvedLanguage: resolvedInterfaceLanguage } = useTranslation();
+  const locale = resolvedInterfaceLanguage ?? interfaceLanguage ?? 'en';
 
   return (
     <Transition show={open} as={Fragment}>

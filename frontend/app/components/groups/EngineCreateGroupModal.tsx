@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument } from '@/data-engine/react.client';
@@ -10,6 +9,7 @@ import { fillRequiredFieldError, refusalWords, sayFailure, type FailureWords } f
 import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { editFirstGroupMeeting, isReadyGroupMeetingDate } from '@/utils/groupMeeting';
+import { useTranslation } from '@locales/useTranslation';
 
 import { createGroupDraft, CreateGroupView } from './CreateGroupModal';
 

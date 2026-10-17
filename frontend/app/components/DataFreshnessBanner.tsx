@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { FreshnessDiagnostics, FreshnessReason } from '@/hooks/useDocumentFreshness';
 
@@ -163,10 +162,10 @@ export function DataFreshnessBanner({
 function FreshnessHistory({ diagnostics, unknown, deleted }: {
   diagnostics: FreshnessDiagnostics; unknown: boolean; deleted: boolean;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t, resolvedLanguage: resolvedInterfaceLanguage } = useTranslation();
   const incident = diagnostics.incident;
   const latest = incident?.events.at(-1);
-  const formatTime = (at: number) => new Intl.DateTimeFormat(i18n?.resolvedLanguage || 'en', {
+  const formatTime = (at: number) => new Intl.DateTimeFormat(resolvedInterfaceLanguage || 'en', {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
   }).format(new Date(at));
   const time = (at: number) => <time dateTime={new Date(at).toISOString()}>{formatTime(at)}</time>;

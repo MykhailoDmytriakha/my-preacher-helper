@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import {
@@ -7,6 +6,7 @@ import {
   subscribeToTerminalMutationFailures,
   writeFailureTranslationKey,
 } from '@/utils/writeRecovery';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Mutation, MutationCache, QueryClient } from '@tanstack/react-query';
 

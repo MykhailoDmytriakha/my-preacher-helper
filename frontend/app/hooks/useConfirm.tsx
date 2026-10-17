@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * "ARE YOU SURE?" AS AN AWAITABLE QUESTION, in the app's own window.

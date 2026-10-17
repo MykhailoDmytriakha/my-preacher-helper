@@ -1,9 +1,9 @@
-import { useTranslation } from "react-i18next";
 
 import SermonCard from "@/components/dashboard/SermonCard";
 import { SermonCardSkeleton } from "@/components/skeletons/SermonCardSkeleton";
 import { Sermon, Series } from "@/models/models";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
+import { useTranslation } from "@locales/useTranslation";
 
 interface DashboardContentProps {
     loading: boolean;

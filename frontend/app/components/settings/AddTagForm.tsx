@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import ColorPickerModal from '@components/ColorPickerModal';
+import { useTranslation } from '@locales/useTranslation';
 
 interface AddTagFormProps {
   /**

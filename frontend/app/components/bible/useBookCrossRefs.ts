@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { verseWords, type BookText } from '@/utils/bibleText';
 import { countCrossReferences, loadCrossRefs, type CrossRefsBook } from '@/utils/crossReferences';
+import { useTranslation } from '@locales/useTranslation';
 
 import { useCrossReferencePrefs } from './crossReferencePrefs';
 

@@ -1,8 +1,8 @@
 import { BookOpen, ChevronDown, ScrollText } from "lucide-react";
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "@locales/useTranslation";
 
 import PlanSectionDialog, { type PlanSection } from './PlanSectionDialog';
 

@@ -2,12 +2,12 @@
 
 import { User } from 'firebase/auth';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitSettingsWrite } from '@/utils/settingsWrite';
 import { FirstDayOfWeek, normalizeFirstDayOfWeek } from '@/utils/weekStart';
+import { useTranslation } from '@locales/useTranslation';
 
 interface UserSettingsSectionProps {
   user: User | null;

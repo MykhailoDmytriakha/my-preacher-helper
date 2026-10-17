@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import Select from '@/components/ui/Select';
@@ -10,6 +9,7 @@ import { composePlanFromScratch } from '@/services/scratch.service';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { scratchComposeSource } from '@/utils/scratchComposeSource';
 import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { useTranslation } from '@locales/useTranslation';
 
 import { appendScratchPlacementToOutline, cloneSermonOutline, collectComposedScratchNoteIds, stripScratchMetadata } from './scratchBoardModel';
 

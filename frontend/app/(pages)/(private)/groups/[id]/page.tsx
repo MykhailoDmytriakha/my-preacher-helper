@@ -29,7 +29,6 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
@@ -62,6 +61,7 @@ import {
   removeFlowItem,
 } from '@/utils/groupFlow';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupPageEditor } from '@/hooks/groupPageEditor';
 

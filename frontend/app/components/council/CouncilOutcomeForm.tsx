@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { applyOutcome, type TopicOutcome } from '@/utils/council';
+import { useTranslation } from '@locales/useTranslation';
 
 import { CouncilOutcomePanel } from './CouncilOutcomePanel';
 

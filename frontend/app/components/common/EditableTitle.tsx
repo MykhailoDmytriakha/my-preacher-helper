@@ -2,9 +2,9 @@
 
 import { PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import React, { useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ManualTextBinding } from './manualTextBinding';
 

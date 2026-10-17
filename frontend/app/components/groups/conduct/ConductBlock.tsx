@@ -3,7 +3,6 @@
 import { Bars3Icon, PauseIcon, PlayIcon } from '@heroicons/react/24/outline';
 import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { ScriptureLinks, ScriptureText } from '@/components/bible/ScriptureLinks';
 import { VerseSheet, type SheetReference } from '@/components/bible/VerseSheet';
@@ -15,6 +14,7 @@ import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { namesAPlace, referenceFromText } from '@/utils/bibleLink';
 import { referenceBibleFor, sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
+import { useTranslation } from '@locales/useTranslation';
 
 type BlockReference = { key: string; label: string; reference: SheetReference | null };
 
@@ -77,7 +77,7 @@ export default function ConductBlock({
   onPeek,
   onCompleteAll,
 }: ConductBlockProps) {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const [notesOpen, setNotesOpen] = useState(false);
   // A reference of the block opens over the meeting: the block, its timer and the meeting's clock
   // stay as they are. The bar above and the timer below stay in sight.
@@ -85,7 +85,7 @@ export default function ConductBlock({
   const headerRef = useRef<HTMLDivElement | null>(null);
   const timerRef = useRef<HTMLDivElement | null>(null);
   const keepVisible = useMemo(() => ({ top: headerRef, bottom: timerRef }), []);
-  const locale = resolveAppLocale(i18n?.language);
+  const locale = resolveAppLocale(interfaceLanguage);
   const title = flowItem.instanceTitle || template.title;
   const references = useMemo(
     () => blockReferences(template.scriptureRefs ?? [], locale),

@@ -6,9 +6,10 @@ import {
     PlusIcon,
 } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { GroupBlockTemplateType } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
+
 
 const TEMPLATE_OPTIONS: Array<{ type: GroupBlockTemplateType; labelKey: string; fallback: string }> = [
     { type: 'topic', labelKey: 'groupFlow.types.topic', fallback: 'Main topic' },

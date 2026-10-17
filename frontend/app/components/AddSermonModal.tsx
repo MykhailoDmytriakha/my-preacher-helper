@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { PlusIcon } from "@components/Icons";
+import { useTranslation } from '@locales/useTranslation';
 
 interface AddSermonModalProps {
   onCancel?: () => void;

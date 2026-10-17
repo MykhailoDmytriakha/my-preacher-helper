@@ -1,10 +1,10 @@
 'use client';
 
 import { Check, PauseCircle, XCircle } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
 
 import { LiveTextInput } from '@/components/ui/LiveTextInput';
 import { isInfoTopic, outcomeText, topicState, type TopicOutcome } from '@/utils/council';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { CouncilTopic } from '@/models/models';
 import '@locales/i18n';

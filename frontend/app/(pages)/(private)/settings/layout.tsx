@@ -2,7 +2,6 @@
 
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
@@ -15,6 +14,7 @@ import { apiClient } from '@/utils/apiClient';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { sectionFromPathname } from '@/utils/settingsSections';
 import SettingsNav from '@components/settings/SettingsNav';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
 /**

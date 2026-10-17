@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { createPortal } from "react-dom";
-import { useTranslation } from "react-i18next";
 
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -13,6 +12,7 @@ import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTodayDateOnlyKey, isDateOnlyKey, isMissingDay, parseDateOnlyAsLocalDate, shownDayOf } from "@/utils/dateOnly";
 import { getWeekStartsOn } from "@/utils/weekStart";
+import { useTranslation } from "@locales/useTranslation";
 
 import "react-day-picker/dist/style.css";
 

@@ -16,7 +16,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
@@ -41,6 +41,7 @@ import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { TFunction } from 'i18next';
 
@@ -221,7 +222,7 @@ const quickActionToneClasses = {
 } as const;
 
 export default function DashboardPage() {
-  const { t, i18n } = useTranslation();
+  const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
   const { sermons, state: sermonState } = useDashboardSermons();
@@ -234,8 +235,8 @@ export default function DashboardPage() {
   const [showPrayerModal, setShowPrayerModal] = useState(false);
 
   const dashboardData = useMemo(
-    () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, councils, t, locale: i18n.language }),
-    [councils, groups, i18n.language, notes, prayerRequests, sermons, series, t]
+    () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, councils, t, locale: interfaceLanguage }),
+    [councils, groups, interfaceLanguage, notes, prayerRequests, sermons, series, t]
   );
 
   const handleCreatePrayer = async (

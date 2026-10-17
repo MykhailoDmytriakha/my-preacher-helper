@@ -3,11 +3,11 @@
 import { RectangleStackIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { buildChipClasses } from '@/utils/chipClasses';
 import { getNavItemTheme } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Sermon } from '@/models/models';
 

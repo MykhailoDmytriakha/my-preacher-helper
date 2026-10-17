@@ -2,10 +2,10 @@
 
 import { X, CornerDownRight, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import React, { useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
 import { useBufferedText } from '@/components/ui/useBufferedText';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { TreeNodeProps } from './types';
 

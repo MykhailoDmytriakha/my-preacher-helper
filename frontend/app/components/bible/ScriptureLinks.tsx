@@ -1,10 +1,10 @@
 'use client';
 
 import { createContext, useContext, useMemo, type MouseEvent, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { referencesInText, type ReferenceInText } from '@/utils/bibleLink';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { SheetReference } from './verseSheetGeometry';
 import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
@@ -27,9 +27,9 @@ const ScriptureLinksContext = createContext<ScriptureLinksValue | null>(null);
 
 /** References in the text inside are links; `onOpen` gets the one pressed, its words as `label`. */
 export function ScriptureLinks({ onOpen, children }: { onOpen: (reference: SheetReference) => void; children: ReactNode }) {
-  const { i18n } = useTranslation();
+  const { language: interfaceLanguage } = useTranslation();
   // Typed as the person reads: in the Bible of the interface's language.
-  const locale = resolveAppLocale(i18n?.language);
+  const locale = resolveAppLocale(interfaceLanguage);
   const value = useMemo(() => ({ locale, onOpen }), [locale, onOpen]);
   return <ScriptureLinksContext.Provider value={value}>{children}</ScriptureLinksContext.Provider>;
 }

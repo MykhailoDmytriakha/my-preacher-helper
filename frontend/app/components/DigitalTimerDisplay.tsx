@@ -1,7 +1,8 @@
 "use client";
 
 import React from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 interface DigitalTimerDisplayProps {
   time: string; // formatted as "MM:SS" or "-MM:SS"

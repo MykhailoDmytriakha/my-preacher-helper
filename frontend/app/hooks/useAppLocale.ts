@@ -2,9 +2,9 @@
 
 import { useMemo } from 'react';
 import { enUS as dayPickerEnUS, ru as dayPickerRu, uk as dayPickerUk } from 'react-day-picker/locale';
-import { useTranslation } from 'react-i18next';
 
 import { dateFnsLocaleFor, resolveAppLocale, type AppLocale } from '@/utils/appLocale';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Locale } from 'date-fns';
 import type { DayPickerProps } from 'react-day-picker';
@@ -24,8 +24,7 @@ const DAY_PICKER_LOCALES: Record<AppLocale, DayPickerLocale> = { en: dayPickerEn
  * its labels. One hook, so a screen cannot pick one from the language and another from elsewhere.
  */
 export function useAppLocale(): { locale: AppLocale; dateLocale: Locale; dayPickerLocale: DayPickerLocale } {
-  const { i18n } = useTranslation();
-  const language = i18n?.language;
+  const { language } = useTranslation();
   return useMemo(
     () => {
       const locale = resolveAppLocale(language);

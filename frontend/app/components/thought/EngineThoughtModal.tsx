@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -14,6 +13,7 @@ import { newClientId } from '@/utils/clientId';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { addSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
 import { normalizeStructureTag } from '@/utils/tagUtils';
+import { useTranslation } from '@locales/useTranslation';
 
 import FormDialog, { FormActions } from '../ui/FormDialog';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';

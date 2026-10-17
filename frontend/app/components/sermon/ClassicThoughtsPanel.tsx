@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Rows3 } from "lucide-react";
 import React, { useMemo } from "react";
-import { useTranslation } from "react-i18next";
 
 import BrainstormModule from "@/components/sermon/BrainstormModule";
 import SourceNoteSection, { atomsOwnedByNotes } from "@/components/sermon/SourceNoteSection";
@@ -13,6 +12,7 @@ import ThoughtsEmptyState from "@/components/sermon/ThoughtsEmptyState";
 import { Chip } from "@/components/ui/Chip";
 import { useSourceNotes } from "@/hooks/useSermonNoteLinks";
 import { getSectionLabel } from "@/lib/sections";
+import { useTranslation } from "@locales/useTranslation";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
 

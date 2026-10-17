@@ -1,7 +1,7 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
 
 import ThoughtCard from '@components/ThoughtCard';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Thought, SermonOutline } from '@/models/models';
 

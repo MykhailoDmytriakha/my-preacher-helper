@@ -1,6 +1,5 @@
-import { useTranslation } from 'react-i18next';
-
 import FormDialog from '@/components/ui/FormDialog';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ReactNode } from 'react';
 

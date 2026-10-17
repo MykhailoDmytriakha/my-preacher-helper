@@ -1,11 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { noteEntries, type CalendarEntry } from '@/utils/calendarEntries';
+import { useTranslation } from '@locales/useTranslation';
 
 /**
  * THE STUDY NOTES, AS THE CALENDAR NEEDS THEM.

@@ -3,11 +3,11 @@
 import { CalendarDaysIcon, MapPinIcon, UserIcon } from '@heroicons/react/24/outline';
 import { format, parseISO } from 'date-fns';
 import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
 
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
 import { Chip } from '@/components/ui/Chip';
 import { getContrastColor } from '@/utils/color';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { Series } from '@/models/models';
 import type { CalendarEntry, CalendarEntryStatus } from '@/utils/calendarEntries';

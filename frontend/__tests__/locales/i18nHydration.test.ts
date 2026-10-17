@@ -6,7 +6,9 @@
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
-import { I18nextProvider, useTranslation } from 'react-i18next';
+import { I18nextProvider } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
 import i18n from '@locales/i18n';
@@ -46,7 +48,7 @@ describe('the switch to the device language after hydration', () => {
   ])('reaches components mounted after the initializer %s', async (_label, loading) => {
     mockAuthState = { user: null, loading };
     // The initializer sits before the page in the root layout; its effect runs before later siblings
-    // subscribe to language changes, and a switch they did not hear left them in English for good.
+    // subscribe to language changes; the common hook must catch that already-applied switch.
     await i18n.changeLanguage('en');
     document.cookie = 'lang=ru; path=/';
     function Label() {

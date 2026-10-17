@@ -2,9 +2,10 @@
 
 import { ComputerDesktopIcon, MoonIcon, SunIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState, type ComponentType, type SVGProps } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useThemePreference, type ThemePreference } from '@/hooks/useThemePreference';
+import { useTranslation } from '@locales/useTranslation';
+
 import '@locales/i18n';
 
 type ThemeIcon = ComponentType<SVGProps<SVGSVGElement>>;

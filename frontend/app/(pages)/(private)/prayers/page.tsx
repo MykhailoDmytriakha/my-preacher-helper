@@ -13,7 +13,6 @@ import {
 import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
@@ -46,6 +45,7 @@ import {
   refusedWrite,
   skippedWrite,
 } from '@/utils/recoverableWrite';
+import { useTranslation } from '@locales/useTranslation';
 import '@locales/i18n';
 
 /** Named once: four active-filter chips reach for the same label. */

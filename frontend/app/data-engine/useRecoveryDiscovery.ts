@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { failureWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
+import { useTranslation } from '@locales/useTranslation';
+
 
 export interface RecoveryDiscoveryOptions<T> {
   identity: object;

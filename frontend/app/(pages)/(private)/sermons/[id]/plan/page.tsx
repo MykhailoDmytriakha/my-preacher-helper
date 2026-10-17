@@ -3,7 +3,6 @@
 import { useIsRestoring } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { ScriptureLinks, WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
@@ -29,6 +28,7 @@ import { hasPlan } from "@/utils/sermonPlanAccess";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from "@locales/useTranslation";
 
 import { useEngineSermonSource } from "../hooks/useEngineSermonSource";
 

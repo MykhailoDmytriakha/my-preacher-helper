@@ -2,7 +2,6 @@
 
 import { ChevronRightIcon, LightBulbIcon } from '@heroicons/react/24/outline';
 import { createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import PlanGenerationButton from '@/components/plan/PlanGenerationButton';
@@ -11,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
 import { SCRATCH_REMINDER_COLORS, SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import { planNodesForPoint } from '../planNodes';
 

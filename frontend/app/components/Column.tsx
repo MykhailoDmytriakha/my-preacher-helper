@@ -5,7 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+
 import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -20,6 +20,7 @@ import { debugLog } from "@/utils/debugMode";
 import { structureBodyPaddingClass } from "@/utils/structureBoardLayout";
 import { sortSubPointsByPosition } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
+import { useTranslation } from "@locales/useTranslation";
 
 import { AudioRecorder } from "./AudioRecorder";
 import { recordAudioThought, outlineRecordingContextId } from "./column/audio";

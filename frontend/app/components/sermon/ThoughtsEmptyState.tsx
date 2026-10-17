@@ -2,7 +2,8 @@
 
 import { ArrowRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
-import { useTranslation } from 'react-i18next';
+
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ScratchNote } from '@/models/models';
 

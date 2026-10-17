@@ -3,11 +3,11 @@
 import { BookOpenIcon, PlusIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React, { useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { NOTE_TO_SERMON_COLORS, SOURCE_NOTE_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import CreateSermonFromNoteModal from './CreateSermonFromNoteModal';
 

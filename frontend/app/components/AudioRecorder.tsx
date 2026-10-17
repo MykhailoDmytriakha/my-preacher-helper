@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useTranslation } from "react-i18next";
+
 import "@locales/i18n";
 
 import { useRecordingDiscard } from '@/hooks/useRecordingDiscard';
 import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
+import { useTranslation } from "@locales/useTranslation";
 
 import {
   AudioLevelIndicator,

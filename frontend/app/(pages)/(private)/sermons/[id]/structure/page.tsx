@@ -4,7 +4,6 @@ import { DndContext, DragOverlay, type DragEndEvent, type Over } from "@dnd-kit/
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import Column from "@/components/Column";
@@ -34,6 +33,7 @@ import {
 } from "@/utils/recoverableWrite";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
+import { useTranslation } from '@locales/useTranslation';
 import { getSermonPlanData, planEditorRoute } from "@utils/sermonPlanAccess";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/thoughtOrdering";
 

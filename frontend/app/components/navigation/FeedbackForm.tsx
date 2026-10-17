@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 
 import "@locales/i18n";
 import Select from '@/components/ui/Select';
@@ -18,6 +17,7 @@ import {
   MAX_FEEDBACK_TEXT_BYTES,
 } from '@/utils/feedbackPayload';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+import { useTranslation } from "@locales/useTranslation";
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 

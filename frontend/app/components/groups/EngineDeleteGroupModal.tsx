@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import FormDialog from '@/components/ui/FormDialog';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
+import { useTranslation } from '@locales/useTranslation';
 
 /** The delete confirmation opens the same protected document editor as the detail screen. */
 export function EngineDeleteGroupModal({ groupId, onClose }: { groupId: string; onClose: () => void }) {

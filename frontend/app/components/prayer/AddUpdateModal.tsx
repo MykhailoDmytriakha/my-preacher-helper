@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -12,6 +11,7 @@ import { useTextDictation } from '@/hooks/useTextDictation';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
+import { useTranslation } from '@locales/useTranslation';
 
 interface Props {
   prayerId?: string;

@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 import type { ReactNode } from 'react';

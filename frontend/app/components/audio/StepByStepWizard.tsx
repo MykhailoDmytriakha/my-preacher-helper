@@ -26,7 +26,6 @@ import {
     AlertTriangle, Check, Download, AudioLines, Pencil, Mic, Cpu, Clock, Eye, Layers,
 } from 'lucide-react';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
@@ -55,6 +54,7 @@ import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { useTranslation } from '@locales/useTranslation';
 
 import ChunkEditorModal from './ChunkEditorModal';
 
@@ -226,7 +226,7 @@ export default function StepByStepWizard({
     onStepChange,
     isEnabled: _isEnabled = true,
 }: StepByStepWizardProps) {
-    const { t, i18n } = useTranslation();
+    const { t, language: interfaceLanguage } = useTranslation();
     const { user } = useAuth();
     const charsLabel = t('audioExport.chars', { defaultValue: 'симв.' });
     const aiSourceLabel = t('audioExport.sourceAi', { defaultValue: 'AI-optimized' });
@@ -345,7 +345,7 @@ export default function StepByStepWizard({
         }
         if (audioRef.current) audioRef.current.pause();
 
-        const lang = resolveAppLocale(i18n.language);
+        const lang = resolveAppLocale(interfaceLanguage);
         const fileLang = ['en', 'ru', 'uk'].includes(lang) ? lang : 'en';
         const url = ttsProvider === 'google'
             ? `/samples/${voiceId}-${googleModelShort(googleModel)}-${fileLang}.wav`
@@ -362,7 +362,7 @@ export default function StepByStepWizard({
         audio.play().catch(e => console.error('Playback failed', e));
         audioRef.current = audio;
         setPlayingPreview(voiceId);
-    }, [playingPreview, ttsProvider, googleModel, t, i18n.language]);
+    }, [playingPreview, ttsProvider, googleModel, t, interfaceLanguage]);
 
     useEffect(() => () => { audioRef.current?.pause(); }, []);
     // Stop any preview when provider/model/voice changes (the sample URL changes).

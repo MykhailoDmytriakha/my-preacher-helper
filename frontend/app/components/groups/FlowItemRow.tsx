@@ -11,10 +11,10 @@ import {
     ArrowDownIcon,
 } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 
 import { FlowItemSummary } from '@/components/groups/FlowItemSummary';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
 
 const STATUS_DOT: Record<string, string> = {
     empty: 'bg-gray-300 dark:bg-gray-600',

@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
-
 import { Chip } from '@/components/ui/Chip';
 import { PrayerStatus } from '@/models/models';
+import { useTranslation } from '@locales/useTranslation';
 
 import type { ChipTone } from '@/utils/chipClasses';
 
