@@ -1,9 +1,10 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
 import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
 import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
+import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
 import { verseCount } from '@/utils/versification';
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
@@ -60,6 +61,164 @@ describe('BibleBookReader', () => {
     const window_ = screen.getByRole('dialog', { name: 'bible.chooseChapter' });
     expect(within(window_).getAllByRole('button', { name: 'bible.chapter' }).map((cell) => cell.textContent)).toEqual(['1', '2', '3', '4']);
     expect(screen.getByText('Павел, Апостол')).toHaveAttribute('lang', 'ru');
+  });
+
+  it.each(['one change', 'replacement during reflow', 'cancel then deliberately scroll', 'publish restored place before native scroll'])('restores the same verse after the new text size has reflowed the page: %s', async (mode) => {
+    const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
+    let topRow = '1:2';
+    let reflowed = false;
+    let replaceDuringReflow = mode === 'replacement during reflow';
+    const jumpedAfterReflow: boolean[] = [];
+    const realRect = Element.prototype.getBoundingClientRect;
+    const style = document.documentElement.style;
+    const oldScale = style.getPropertyValue('--text-scale');
+    const realProperty = style.setProperty.bind(style);
+    const movePage = () => {
+      Object.defineProperty(window, 'scrollY', { value: window.scrollY + 120, configurable: true });
+      window.dispatchEvent(new Event('scroll'));
+    };
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      if (!verse) return realRect.call(this);
+      const top = 16 + (order.indexOf(verse) - order.indexOf(topRow)) * 40;
+      return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    const write = jest.spyOn(style, 'setProperty').mockImplementation((name, value, priority) => {
+      const before = style.getPropertyValue(name);
+      realProperty(name, value, priority);
+      if (name !== '--text-scale' || value === before || value === '1') return;
+      // Native reflow may move the scroll anchor before React publishes the applied size.
+      reflowed = true;
+      topRow = '2:1';
+      movePage();
+      if (replaceDuringReflow) {
+        replaceDuringReflow = false;
+        fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
+      }
+    });
+    scrollIntoView.mockImplementation(function (this: HTMLElement) {
+      const verse = this.dataset?.verse ?? (this.dataset?.chapter ? `${this.dataset.chapter}:1` : null);
+      if (verse) topRow = verse;
+      jumpedAfterReflow.push(reflowed);
+      Object.defineProperty(window, 'scrollY', { value: window.scrollY + 120, configurable: true });
+      if (mode !== 'publish restored place before native scroll') window.setTimeout(() => window.dispatchEvent(new Event('scroll')), 0);
+    });
+    function SizeChoice() {
+      const { setScale, scale, appliedScale } = useTextScale();
+      return <><output data-testid="qa-text-size">{scale}:{appliedScale}</output><button onClick={() => setScale(1.6)}>Set text size</button><button onClick={() => setScale(1.8)}>Next text size</button></>;
+    }
+    jest.useFakeTimers();
+    try {
+      render(<TextScaleProvider><SizeChoice /><BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} /></TextScaleProvider>);
+      await screen.findByText('Итак прежде всего');
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      jumpedAfterReflow.length = 0;
+      fireEvent.click(screen.getByRole('button', { name: 'Set text size' }));
+      act(() => { jest.advanceTimersByTime(30); });
+      act(() => { jest.advanceTimersByTime(30); });
+      act(() => { jest.advanceTimersByTime(30); });
+      expect(reflowed).toBe(true);
+      expect(screen.getByTestId('qa-text-size')).toHaveTextContent(mode === 'replacement during reflow' ? '1.8:1.8' : '1.6:1.6');
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      expect(jumpedAfterReflow.at(-1)).toBe(true);
+      if (mode === 'cancel then deliberately scroll') {
+        fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Set text size' }));
+        expect(screen.getByTestId('qa-text-size')).toHaveTextContent('1.6:1.6');
+        topRow = '3:1';
+        act(() => { movePage(); });
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+        fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
+        act(() => { jest.advanceTimersByTime(30); });
+        act(() => { jest.advanceTimersByTime(30); });
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      }
+    } finally {
+      write.mockRestore();
+      realProperty('--text-scale', oldScale);
+      Element.prototype.getBoundingClientRect = realRect;
+      scrollIntoView.mockReset();
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps the visible verse while text size changes in an iOS pinned page and after the size window closes', async () => {
+    const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
+    const descriptors = {
+      userAgent: Object.getOwnPropertyDescriptor(navigator, 'userAgent'),
+      maxTouchPoints: Object.getOwnPropertyDescriptor(navigator, 'maxTouchPoints'),
+      scrollY: Object.getOwnPropertyDescriptor(window, 'scrollY'),
+    };
+    const realRect = Element.prototype.getBoundingClientRect;
+    const style = document.documentElement.style;
+    const oldScale = style.getPropertyValue('--text-scale');
+    const realProperty = style.setProperty.bind(style);
+    let offset = 0;
+    const pinned = () => document.body.style.position === 'fixed';
+    const documentTop = (element: HTMLElement) => {
+      const verse = element.dataset?.verse ?? (element.dataset?.chapter ? `${element.dataset.chapter}:1` : null);
+      return verse ? 16 + order.indexOf(verse) * 40 * Number(style.getPropertyValue('--text-scale') || 1) : null;
+    };
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone' });
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => pinned() ? 0 : offset });
+    window.scrollTo = jest.fn((_x: number, y: number) => {
+      offset = y;
+      window.setTimeout(() => window.dispatchEvent(new Event('scroll')), 0);
+    }) as unknown as typeof window.scrollTo;
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const topInDocument = documentTop(this);
+      if (topInDocument === null) return realRect.call(this);
+      const scale = Number(style.getPropertyValue('--text-scale') || 1);
+      const top = topInDocument + (pinned() ? Number.parseFloat(document.body.style.top) : -offset);
+      return { top, bottom: top + 40 * scale, left: 0, right: 100, width: 100, height: 40 * scale, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    scrollIntoView.mockImplementation(function (this: HTMLElement) {
+      // A fixed body cannot be moved by scrolling its document.
+      const top = documentTop(this);
+      if (!pinned() && top !== null) offset = top - 16;
+      window.setTimeout(() => window.dispatchEvent(new Event('scroll')), 0);
+    });
+    const write = jest.spyOn(style, 'setProperty').mockImplementation((name, value, priority) => {
+      realProperty(name, value, priority);
+      if (name === '--text-scale' && value !== '1') window.dispatchEvent(new Event('scroll'));
+    });
+    let view: ReturnType<typeof render> | undefined;
+    jest.useFakeTimers();
+    try {
+      view = render(<TextScaleProvider><BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} /></TextScaleProvider>);
+      await screen.findByText('Итак прежде всего');
+      const verse = document.querySelector<HTMLElement>('[data-verse="1:2"]')!;
+      expect(verse.getBoundingClientRect().top).toBe(16);
+      fireEvent.click(screen.getByRole('button', { name: 'Text size' }));
+      expect(document.body.style.position).toBe('fixed');
+      fireEvent.keyDown(screen.getByRole('slider', { name: 'Text size slider' }), { key: 'End' });
+      act(() => { jest.advanceTimersByTime(30); });
+      act(() => { jest.advanceTimersByTime(30); });
+      expect(style.getPropertyValue('--text-scale')).toBe('2');
+      expect(verse.getBoundingClientRect().top).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      fireEvent.keyDown(document, { key: 'Escape' });
+      act(() => { jest.advanceTimersByTime(30); });
+      expect(document.body.style.position).toBe('');
+      expect(verse.getBoundingClientRect().top).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+    } finally {
+      view?.unmount();
+      write.mockRestore();
+      realProperty('--text-scale', oldScale);
+      Element.prototype.getBoundingClientRect = realRect;
+      scrollIntoView.mockReset();
+      for (const key of ['userAgent', 'maxTouchPoints'] as const) {
+        const descriptor = descriptors[key];
+        if (descriptor) Object.defineProperty(navigator, key, descriptor);
+        else Reflect.deleteProperty(navigator, key);
+      }
+      if (descriptors.scrollY) Object.defineProperty(window, 'scrollY', descriptors.scrollY);
+      else Reflect.deleteProperty(window, 'scrollY');
+      jest.useRealTimers();
+    }
   });
 
   it('opens at the verse it was asked for', async () => {

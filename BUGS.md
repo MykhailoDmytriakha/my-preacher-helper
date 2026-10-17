@@ -14,6 +14,58 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261016-text-scale-lag-big-book · Размер шрифта через «T» в большой книге (Исаия) меняется с задержкой, как желе
+**Severity.** P2 — каждое изменение размера в большой книге стоит перерисовки стиля всей книги; протягивание по шкале было «желе».
+**Найден.** 2026-10-16 · владелец, iPad, Исаия · воспроизведено агентом: Playwright WebKit, боевая сборка HEAD 93efc109, 820×1180.
+**Якоря.** `frontend/app/providers/TextScaleProvider.tsx` (размер в `--text-scale` на `<html>`), `frontend/app/components/TextScaleControls.tsx` (шкала), `BibleBookReader.tsx` `useKeepPlaceOnTextScale`.
+**Ожидалось.** Шкала и кнопки отвечают под пальцем; текст меняет размер без «желе». **Получилось.** Каждый шаг шкалы — полный пересчёт стиля: одно изменение 330–370 мс в Исаии, 680–720 в Псалтири (Mac WebKit); протягивание через шкалу — 24 длинных кадра, ~8 с потерь.
+**Как эта фича должна работать — с точки зрения пользователя.** Двигаю ползунок — ручка и число идут за пальцем сразу; буквы принимают размер, когда я остановился или отпустил; место чтения остаётся. Кнопка A+ — число меняется сразу, буквы следом.
+**Класс (механизмом).** Изменение, которое браузер применяет ко всему тексту книги на каждый шаг ввода.
+| место | вердикт | почему |
+|---|---|---|
+| шкала «T», протягивание | поражено → починено | применяла размер на каждом пересечённом шаге |
+| кнопки A−/A+, касание шкалы | частично | один пересчёт на нажатие неустраним; теперь число и ручка рисуются раньше пересчёта |
+| инструмент пометок (стиль на статье) | починено раньше | 21fe3b30 |
+| переключатели ссылок в «T» (показ, главные/все) | не поражено | одно действие — одна перерисовка, без протягивания |
+| миникарта (протягивание) | не поражено | двигает прокрутку, стиль текста не меняет |
+**Корень.** Смена `--text-scale` на корне: WebKit пересобирает стиль каждого элемента (~25 мкс на элемент); 2/3 цены — правило Tailwind `*, ::before, ::after` с 51 переменной `--tw-*` на каждом элементе (без него 241 мс вместо 355 в Исаии, 468 вместо 679 в Псалтири); раскладка текста — лишь 33–51 мс.
+**Фикс (направление).** Сделано: шкала показывает предпросмотр и применяет размер при остановке пальца (180 мс) или отпускании; провайдер применяет изменение человека кадром позже, чтобы число нарисовалось первым; чтение держит место по применённому размеру (`appliedScale`). Отвергнуто: `content-visibility` для глав (стих на экране уезжает на тысячи пикселей, ломается миникарта). Остаток: одно изменение по-прежнему 330 мс в Исаии на Mac — путь `experimental.optimizeUniversalDefaults` в Tailwind (−31% на каждый полный пересчёт) требует сверки вычисленных стилей по всем экранам, отдельный заход.
+**Regression proof.** `__tests__/components/TextScaleControls.test.tsx` «a drag moves the handle and the number at once…» — красный и при применении на каждом шаге, и при применении сразу. Замер «после» (боевая сборка): протягивание 2 длинных кадра, 728–736 мс потерь вместо 24 и ~8 с.
+**Стадия.** починено частично локально → после push ждёт проверки на iPad; остаток — одно нажатие = один пересчёт.
+
+### BUG-20261016-pencil-hover-tools · Apple Pencil при наведении подсвечивает ссылки, но не кружки маркера, карандаша и ластика
+**Severity.** P2 — инструменты молчат на наведение Pencil, хотя соседние кнопки отвечают; выглядит как неработающие кнопки.
+**Найден.** 2026-10-16 · владелец, iPad с Pencil (наведение без касания) · со слов владельца; Pencil в Playwright не изобразить.
+**Якоря.** `frontend/app/components/bible/marks/MarkToolbar.tsx` (класс `TOOL`), `frontend/app/utils/pointerHover.ts`.
+**Ожидалось.** Pencil и мышь подсвечивают кружок при наведении; палец после касания подсветку не оставляет. **Получилось.** Pencil не подсвечивал.
+**Как эта фича должна работать — с точки зрения пользователя.** Подсветка — ответ на наведение: мышь, трекпад, Pencil над экраном. Пальцу наводить нечем: подсветки нет, и после нажатия ничего не залипает.
+**Класс (механизмом).** Подсветка, решённая медиа-признаком устройства (`hover: hover`), а не тем, чем человек наводит сейчас.
+| место | вердикт | почему |
+|---|---|---|
+| `MarkToolbar.tsx` TOOL | поражено → починено | единственное место с `(hover:hover)` в приложении (grep `hover:hover`, `hover: none`, `pointer: fine/coarse`, `any-hover` — пусто) |
+| остальные `hover:` приложения | не поражено этим классом | обычный `:hover` Pencil зажигает (ссылки у владельца светятся); залипание после пальца — свойство iOS, отдельный вопрос |
+**Корень.** `(hover: hover)` описывает основной ввод устройства (касание): на iPad он «нет» и при Pencil.
+**Фикс (направление).** `utils/pointerHover.ts`: `data-hover` ставится на `pointerenter`, если указатель не палец, снимается на `pointerleave`; стиль `data-[hover]:`. Отвергнуто: обычный `hover:` (залипает после пальца), `any-hover` (тоже не различает палец и Pencil).
+**Regression proof.** `__tests__/components/bible/marks.test.tsx` «a tool lights up under a mouse or a Pencil held over it, never under a finger» — красный, если палец тоже подсвечивает. WebKit живьём: мышь — фон `gray-100`, увёл — снят, тап пальцем — нет.
+**Стадия.** починено локально → после push ждёт проверки Pencil на iPad.
+
+### BUG-20261016-xref-switch-flicker · Переключатель «Стихи» в окне ссылок на iPad моргает туда-сюда с первого касания и включается со второго; после поворота экрана оказывается выключенным
+**Severity.** P2 — настройка, которую человек только что включил, ведёт себя ненадёжно; ощущение, что приложение «лагает» и спорит с ним.
+**Найден.** 2026-10-16 · владелец, iPad, Исаия 26:20, касание пальцем; поворот вертикально → горизонтально · со слов владельца. Не воспроизведено агентом: настольный WebKit с касанием — один `click`, настройка держится и через смену ширины 820↔1180; симулятор iPad (Safari iPadOS 26.1) — касания WebDriver не порождают `click`, щелчки System Events по окну симулятора заблокированы разрешением macOS.
+**Якоря.** `frontend/app/components/bible/CrossReferenceSheet.tsx` (строка «Остальные»), `frontend/app/components/ui/Switch.tsx`, `frontend/app/components/bible/crossReferencePrefs.ts` (запись на устройстве, `localStorage`, сервера нет).
+**Ожидалось.** Одно касание — переключатель включён и остаётся включённым, в том числе после поворота. **Получилось.** Моргает, включается со второго раза, после поворота выключен.
+**Как эта фича должна работать — с точки зрения пользователя.** Касание переключает сразу и один раз; промах на пару пикселей не делает чужого действия; выбор помнит устройство, поворот и повторное открытие окна его не меняют.
+**Класс (механизмом).** Маленький элемент управления, положенный поверх другой нажимаемой области: промах пальца нажимает подложку; и вообще цели меньше 44 px, требующие второго касания.
+| место | вердикт | почему |
+|---|---|---|
+| строка «Остальные» в окне ссылок | поражено → починено | переключатель 24 px лежал абсолютным слоем над кнопкой строки 44 px: промах сворачивал раздел («туда-сюда») |
+| переключатели «T»: показ, в окне, остальные стихами | не поражено наложением; цель расширена | строки — `div`, промах ничего не нажимает, но требовал второго касания |
+| `SettingsToggleRow`, окно экспорта | то же | то же |
+**Корень (доказанный по коду, не на устройстве).** Наложение областей касания в строке «Остальные»; поворот — не воспроизведён: в коде нет ни сервера, ни второго писателя этой настройки, окно при смене ширины не пересоздаётся; молчаливая потеря возможна только при отказе `localStorage.setItem` (выбор держится в памяти страницы до перезагрузки).
+**Фикс (направление).** Кнопка строки, переключатель с подписью «Стихи» внутри одной кнопки 44 px и шеврон стоят рядом, ни один не поверх другого; у всех переключателей область касания 44 px (невидимое продолжение); тексты книг приходят пачкой раз в кадр; каждая смена настройки пишется в технические данные отзыва (`setting`: откуда — окно, меню, другая вкладка; во что; сохранено ли на устройстве), чтобы следующий отзыв показал, кто «выключил» после поворота.
+**Regression proof.** `__tests__/components/bible/crossReferencesInReader.test.tsx` «the rest's switch stands beside the row's button, never over or inside it…» — красный при переключателе в абсолютном слое; там же проверка записи в технические данные.
+**Стадия.** починено локально → после push ждёт проверки на iPad; поворот — ждёт технических данных из отзыва, если повторится.
+
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
@@ -109,6 +161,42 @@
 ---
 
 ## 🔵 P3 — открыто
+
+### BUG-20261016-reader-cross-reference-load-drifts-place · Late reference chips change the saved reading verse
+**Severity.** P3 — reading/navigation position changes without an action; the Bible text remains.
+**Found.** Controlled guarded Chromium at390 on build9GY0DizlFWhE4qkE4BVSo. Open Isaiah26:20 at saved130%, hold the real cross-reference response, then release it: exact visible verse and chapter change26:20→26:19. No size change is made. A normal reload reproduces the same result twice; the trace retains26:20 through pagehide and initial opening, then stores26:19 after later layout. No errors/unexpected writes; child context closed.
+**Anchors.** `frontend/app/components/bible/useBookCrossRefs.ts:33-60`; `frontend/app/components/bible/BookRibbon.tsx:114-131`; `frontend/app/components/bible/BibleBookReader.tsx:535-551`.
+**Expected/observed.** Loading link counts changes the ribbon geometry, but must preserve the person's verse. Instead native anchoring can expose the previous verse's new chip; the scroll listener adopts and saves that previous verse.
+**Steps.** Bible → Isaiah26:20 with cross references shown and130% text → reload. Or hold `/bible-crossrefs/` until the original verse is visible, then release the real response.
+**User contract.** Adding or changing reference decorations is presentation, not navigation. Preserve the current verse on late load and show/main/all preference changes. Normal later user scrolling must still update the place; loading links must not restore an obsolete initial route after the person has moved.
+**Class.** A reading-position keeper must respond to all known ribbon layout inputs, not only text scale.
+| place | verdict | reason |
+|---|---|---|
+| BibleBookReader phone page | affected;390 reproduced | exact late-load control changes and saves the previous verse |
+| BibleBookReader wide pane | shared keeper; native controls preserved place at820/1280 | same async ribbon; maintain compatibility and recheck after the common fix |
+| useBookCrossRefs / BookRibbon | layout producer | counts/visibility/mode change inline chips and row heights; keep the text-first load |
+| VerseSheet | different position contract | highlights a requested passage; no visible-verse persistence or last-place writer; centering is independent of the saved-reader bug |
+| Server/offline | no server presentation keeper | cached or network link sets reach the same local ribbon |
+**Fix direction.** Extend the existing reader presentation keeper using canonical ribbon counts/visibility/mode. Preserve text-first loading and a single place owner; do not add a network queue, second scroll observer or guessed timer.
+
+
+### BUG-20261016-reader-text-scale-drifts-place · Changing text size moves reading into another verse
+**Severity.** P3 — a presentation change loses the person's reading place; text remains.
+**Found.** Local guarded Chromium, candidate build dIwgZ0MsNOywUT948gTcj, Isaiah26:20. First sequence reached27:1; three measured repeats ended26:19. Exact pane-aware checks before correction also show1280→26:19,820→26:17,390→14:30 from26:20. Native images and raw scripts/results are retained in the local case; synthetic engine IO, no errors or unexpected writes.
+**Anchors.** `frontend/app/components/bible/BibleBookReader.tsx:175-185`; `frontend/app/providers/TextScaleProvider.tsx:67-86`.
+**Expected/observed.** The same verse stays selected after changing size. Instead the CSS reflows the page before the reader captures its return anchor.
+**Steps.** Bible → Isaiah26:20 → T → drag/rest1.6 → release1.9 → Home → three Right keys → close. The original wide screenshot shows27:1 before close. The first loose geometry check missed smaller drift; exact chapter-button observations show26:20→26:19 in3/3 repeats.
+**User contract.** Size changes presentation only. Preserve the same verse after rest, release and quick subsequent choices, after closing T and reload. Do not restore an earlier anchor after a cancelled unapplied choice or a later deliberate scroll.
+**Class.** Capturing reading position after the presentation change has already moved it; on a pinned phone page, restoring by scrolling cannot move the fixed body and unlock restores obsolete pixels.
+| place | verdict | reason |
+|---|---|---|
+| BibleBookReader size hook, wide pane and phone page | affected | one shared hook captures place from the applied-size notification |
+| useScrollLock pinned phone page | affected | fixed-body offset and the offset restored on unlock must move together when content reflows; inner wide panes retain their own scrolling |
+| TextScaleProvider | timing owner | selected size is available before CSS; applied size is published after CSS; preserve these two meanings |
+| VerseSheet and other screens | no matching keeper | no consumer of useTextScaleValue; no independent size/anchor restoration algorithm |
+| Server and offline | no server keeper; same local rendering path | size and place stay on device; network delivery cannot order CSS and capture |
+**Root.** A behavioral regression simulates native reflow's scroll before appliedScale publication and displays2:1 instead of the original1:2. The earlier no-test run was a harness setup mistake and is not RED evidence.
+**Fix direction.** Capture before reflow from the selected size; restore after CSS from the applied size. Do not remove the responsive preview or use extra guessed frame delays. Keep one reader lifecycle and the existing provider API by default. Publish the restored logical place together with the jump: on the wide pane, waiting for the later native scroll event briefly leaves the chapter control on the preceding verse even though geometry is already correct. The delayed-scroll behavior test is RED before that correction.
 
 ### BUG-20261016-reader-has-rules-restyle-document · В Chrome любой элемент, появившийся на экране чтения, пересчитывает стиль всей книги: открытие окна связей, статус синхронизации — около 150 мс в Псалтири
 **Severity.** P3 — Chrome (Android, компьютер), большая книга: каждое появление или исчезновение элемента на экране чтения подвешивает его на ~150 мс (Псалтирь, 69 тыс. узлов, боевая сборка, Mac; на телефоне больше). WebKit (iPad) этого не делает. Палитра пометок, где это било на каждом нажатии, уже обойдена.
@@ -322,6 +410,13 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261016-bible-deeplink-lands-early-verse · По ссылке на стих (Исаия 26:20) Safari iPadOS показал вверху стих 8 той же главы
+**Severity.** P3 — человек открывает место по ссылке и видит не тот стих наверху; ищет глазами.
+**Найден.** 2026-10-16 · попутно, симулятор iPad Air 11" (Safari iPadOS 26.1, не установленное приложение), `localhost:3000/bible?book=isaiah&at=26:20`, снимок через ~15 с после открытия. Один снимок; не проверено, не шла ли ещё загрузка или переход.
+**Якоря.** `frontend/app/components/bible/BibleBookReader.tsx` (`jumpTo`, переход к месту при открытии).
+**Шаги.** Открыть ссылку на стих в середине длинной главы в Safari на iPad; снять экран через несколько секунд.
+**Как должно работать для пользователя.** Стих из ссылки стоит у верхнего края чтения.
 
 ### BUG-20261016-marks-form-error-in-hidden-tab · Книга, открытая в скрытой вкладке: пометки показывают «С этой записью что-то пошло не так» и не поднимаются сами, когда вкладку открыли
 **Severity.** P3 — нужен заход в книгу, пока вкладка скрыта (ссылка открыта в фоне на компьютере; возможно, восстановление приложения iPad из фона). Пометки и инструменты не видны до «Повторить».

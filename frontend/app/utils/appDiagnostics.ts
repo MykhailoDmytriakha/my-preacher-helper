@@ -29,6 +29,9 @@ const EVENTS = [
   'edit', 'dictation', 'sync-trouble',
   // A stroke of the Bible marks: what drew it, and how it ended (`components/bible/marks`).
   'mark',
+  // A reading setting of this device changed: which, from where, to what, and whether the device kept it
+  // (`components/bible/crossReferencePrefs.ts`).
+  'setting',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData {

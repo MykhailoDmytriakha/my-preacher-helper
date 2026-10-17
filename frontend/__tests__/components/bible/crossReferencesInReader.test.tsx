@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -8,7 +8,8 @@ import { CrossReferenceSettings } from '@/components/bible/CrossReferenceSetting
 import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
-import { TextScaleProvider } from '@/providers/TextScaleProvider';
+import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
+import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
 import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
@@ -78,6 +79,81 @@ const openLinksOfSubject = async () => {
 };
 
 describe('cross references in the Bible reader', () => {
+  it.each([{ size: 1, pendingSize: false }, { size: 1.3, pendingSize: false }, { size: 1.3, pendingSize: true }])('keeps the current verse when late reference chips change the ribbon at size $size, pending size $pendingSize', async ({ size, pendingSize }) => {
+    window.localStorage.setItem('text-scale-preference', String(size));
+    const order = ruthText.chapters.flatMap((verses, chapter) => verses.map((_, verse) => `${chapter + 1}:${verse + 1}`));
+    const targetIndex = order.indexOf('2:3');
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, 'scrollY');
+    const originalFetch = global.fetch;
+    let correction = 0;
+    let deliver!: (response: ReturnType<typeof answer>) => void;
+    const pending = new Promise<ReturnType<typeof answer>>((resolve) => { deliver = resolve; });
+    global.fetch = jest.fn(async (url: string) => url.startsWith('/bible-crossrefs/') ? pending : originalFetch(url)) as unknown as typeof fetch;
+    const chipsPresent = () => Boolean(document.querySelector('[data-testid^="cross-refs-"]'));
+    const layoutOffset = () => chipsPresent() ? (readCrossReferencePrefs().mode === 'all' ? 80 : 40) : 0;
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      if (!verse) return originalRect.call(this);
+      const top = 16 + (order.indexOf(verse) - targetIndex) * 40 + layoutOffset() - correction;
+      return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    Element.prototype.scrollIntoView = function (this: HTMLElement) {
+      const index = order.indexOf(this.dataset.verse ?? '2:3');
+      correction = layoutOffset() + (index - targetIndex) * 40;
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: window.scrollY + 120 });
+    };
+    function SizeChoice() {
+      const { scale, appliedScale, setScale } = useTextScale();
+      return <><output data-testid="qa-pending-size">{scale}:{appliedScale}</output><button onClick={() => setScale(1.6)}>Choose pending size</button></>;
+    }
+    if (pendingSize) jest.useFakeTimers();
+    try {
+      render(<TextScaleProvider>{pendingSize ? <SizeChoice /> : null}<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 2, verse: 3 }} onOpenBook={jest.fn()} /></TextScaleProvider>);
+      await screen.findByRole('button', { name: 'bible.changeChapter' });
+      const target = document.querySelector<HTMLElement>('[data-verse="2:3"]')!;
+      expect(target.getBoundingClientRect().top).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:3');
+      if (pendingSize) {
+        fireEvent.click(screen.getByRole('button', { name: 'Choose pending size' }));
+        expect(screen.getByTestId('qa-pending-size')).toHaveTextContent('1.6:1.3');
+      }
+      await act(async () => { deliver(answer(ruthSet)); });
+      await screen.findByTestId(`cross-refs-${key}`);
+      act(() => {
+        Object.defineProperty(window, 'scrollY', { configurable: true, value: window.scrollY + 120 });
+        window.dispatchEvent(new Event('scroll'));
+      });
+      expect(target.getBoundingClientRect().top).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:3');
+      if (pendingSize) {
+        act(() => { jest.advanceTimersByTime(30); });
+        act(() => { jest.advanceTimersByTime(30); });
+        expect(screen.getByTestId('qa-pending-size')).toHaveTextContent('1.6:1.6');
+        expect(target.getBoundingClientRect().top).toBe(16);
+      }
+      // An ordinary later scroll owns the new place; a render must not restore the old route.
+      act(() => {
+        correction += 80;
+        Object.defineProperty(window, 'scrollY', { configurable: true, value: window.scrollY + 80 });
+        window.dispatchEvent(new Event('scroll'));
+      });
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:5');
+      const current = document.querySelector<HTMLElement>('[data-verse="2:5"]')!;
+      for (const change of [{ mode: 'all' as const }, { show: false }, { show: true }]) {
+        act(() => { saveCrossReferencePrefs(change); });
+        expect(current.getBoundingClientRect().top).toBe(16);
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('2:5');
+      }
+    } finally {
+      deliver(answer(ruthSet));
+      Element.prototype.getBoundingClientRect = originalRect;
+      if (originalScrollY) Object.defineProperty(window, 'scrollY', originalScrollY);
+      else Reflect.deleteProperty(window, 'scrollY');
+      if (pendingSize) jest.useRealTimers();
+    }
+  });
+
   it('puts beside a verse the number of its main links, and the chip opens them', async () => {
     renderRuth();
     expect(await screen.findByTestId(`cross-refs-${key}`)).toHaveTextContent(String(subject.main.length));
@@ -115,6 +191,52 @@ describe('cross references in the Bible reader', () => {
     const start = verseWords(verses[others[0].fromVerse - 1]).split(' ').slice(0, 4).join(' ');
     expect(await within(dialog).findByText((text) => text.startsWith(start))).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: label(first) })).not.toBeInTheDocument();
+  });
+
+  // The owner's iPad, 2026-10-16: a small switch laid over the row's own button; a finger a few pixels
+  // off it folded the rest instead ("it blinks back and forth, then switches on the second time").
+  it('the rest\'s switch stands beside the row\'s button, never over or inside it, and a tap on it never folds the rest', async () => {
+    renderRuth();
+    const dialog = await openLinksOfSubject();
+    const row = within(dialog).getByRole('button', { name: 'bible.crossRefs.othersSection' });
+    await userEvent.click(row);
+    const asVerses = within(dialog).getByRole('switch', { name: 'bible.crossRefs.othersAsVerses' });
+    expect(row.contains(asVerses)).toBe(false);
+    expect(asVerses.contains(row)).toBe(false);
+    expect(asVerses.parentElement).toBe(row.parentElement);
+    expect(getComputedStyle(asVerses).position).not.toBe('absolute');
+    await userEvent.click(asVerses);
+    expect(row).toHaveAttribute('aria-expanded', 'true');
+    expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
+    // The change and where it came from reach the technical details a feedback report sends.
+    expect(diagnosticEvents().some((event) => event.name === 'setting' && event.data.source === 'window'
+      && event.data.code === 'crossRefs-othersAsVerses' && event.data.result === 'on')).toBe(true);
+  });
+
+  // The owner's iPad, 2026-10-16: a link opened in place of the list, and going back the list started over.
+  it('a link opens over the list as a cascade; closed, the list is found exactly as it was', async () => {
+    renderRuth();
+    const list = await openLinksOfSubject();
+    await userEvent.click(within(list).getByRole('button', { name: 'bible.crossRefs.othersSection' }));
+    list.scrollTop = 240;
+    await userEvent.click(within(list).getByText(label(subject.outside)));
+    const windows = screen.getAllByRole('dialog');
+    expect(windows).toHaveLength(2);
+    const link = screen.getByRole('dialog', { name: label(subject.outside) });
+    expect(link).not.toBe(list);
+    expect(list).toBeInTheDocument();
+    // Escape closes the window on top only.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: label(subject.outside) })).not.toBeInTheDocument();
+    const same = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+    expect(same).toBe(list);
+    expect(same.scrollTop).toBe(240);
+    expect(within(same).getByRole('button', { name: 'bible.crossRefs.othersSection' })).toHaveAttribute('aria-expanded', 'true');
+    // Its own ✕ too.
+    await userEvent.click(within(same).getByText(label(subject.outside)));
+    const again = screen.getByRole('dialog', { name: label(subject.outside) });
+    await userEvent.click(within(again).getByRole('button', { name: 'common.close' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
   });
 
   it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {

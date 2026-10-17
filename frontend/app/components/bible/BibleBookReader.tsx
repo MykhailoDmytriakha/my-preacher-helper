@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { scrollPinnedPageBy } from '@/hooks/useScrollLock';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { useTextScaleValue } from '@/providers/TextScaleProvider';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -19,7 +20,7 @@ import { placeIn } from '@/utils/versification';
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
 import { bookSequence, booksOf } from './bookOrder';
-import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
+import { ARRIVAL_ATTRIBUTE, BookRibbon, type RibbonCrossRefs } from './BookRibbon';
 import { CrossReferenceSettings } from './CrossReferenceSettings';
 import { CrossReferenceSheet } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryFrom, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
@@ -168,21 +169,32 @@ function PhoneBar({ wayBack, onWayBack, showPill, bookId, bible, currentChapter,
 }
 
 /**
- * A new text size (the "T" button) reflows the whole book: the verse being read is taken before the
- * page moves and put back at the reading top once the size is on the page — the provider writes it
- * in its own effect, after this one, so the jump waits a frame.
+ * Capture the verse before a selected size reflows the book; restore it once the page has taken that
+ * size. Reading the anchor only after CSS changes can mistake native scroll anchoring for the person's
+ * next reading place. Pending choices share the original anchor; an unapplied choice cancelled back to
+ * the current size drops it, so a later deliberate scroll is never undone. Late reference chips and
+ * their visibility/mode use the same keeper, before scroll events can adopt a newly exposed verse.
  */
-function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (place: Place) => void) {
-  const scale = useTextScaleValue();
-  const seenRef = useRef(scale);
-  useEffect(() => {
-    if (seenRef.current === scale) return undefined;
-    seenRef.current = scale;
-    const place = placeRef.current;
-    if (!place) return undefined;
-    const frame = window.requestAnimationFrame(() => jumpTo(place));
-    return () => window.cancelAnimationFrame(frame);
-  }, [jumpTo, placeRef, scale]);
+function useKeepPlaceOnPresentation(placeRef: { current: Place | null }, jumpTo: (place: Place) => void, ribbon: RibbonCrossRefs | undefined) {
+  const selected = useTextScaleValue('selected');
+  const applied = useTextScaleValue();
+  const counts = ribbon?.counts;
+  const mode = ribbon?.mode;
+  const seenRef = useRef({ selected, applied, counts, mode });
+  const heldRef = useRef<Place | null>(null);
+  useLayoutEffect(() => {
+    const previous = seenRef.current;
+    if (selected !== previous.selected) {
+      if (selected !== applied) heldRef.current ??= placeRef.current;
+      else if (previous.applied === applied) heldRef.current = null;
+    }
+    if (applied !== previous.applied || counts !== previous.counts || mode !== previous.mode) {
+      const place = heldRef.current ?? placeRef.current;
+      if (place) jumpTo(place);
+      if (selected === applied) heldRef.current = null;
+    }
+    seenRef.current = { selected, applied, counts, mode };
+  }, [applied, counts, jumpTo, mode, placeRef, selected]);
 }
 
 /**
@@ -358,8 +370,15 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
     const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
     if (!target) return;
-    target.scrollIntoView({ block: 'start' });
-    broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
+    const place = { chapter, verse: row ? verse : 1 };
+    const movedPinnedPage = surfaceRef.current.target === window
+      && scrollPinnedPageBy(target.getBoundingClientRect().top - readingInsetRef.current);
+    if (!movedPinnedPage) target.scrollIntoView({ block: 'start' });
+    broughtRef.current = { place, scrollY: surfaceRef.current.top() };
+    // The geometry has moved now; a native scroll event can arrive after the next paint.
+    placeRef.current = place;
+    setCurrentChapter(place.chapter);
+    setCurrentVerse(place.verse);
   }, []);
 
   // ROOM UNDER THE BOOK: the text scrolls on until the last verse stands at the reading top, and no
@@ -563,7 +582,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
   // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
   // verse. Either way the passage is lit on arrival.
-  useKeepPlaceOnTextScale(placeRef, jumpTo);
+  useKeepPlaceOnPresentation(placeRef, jumpTo, crossRefs.ribbon);
 
   const lightReference = useCallback((reference: CrossReference) => {
     lightArrival(passageRows(textRef.current, reference, bible), ARRIVAL_LIT_MS);

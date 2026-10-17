@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
+import { pointerHover } from '@/utils/pointerHover';
 
 import { EraserIcon, MARK_SWATCH, MarkerIcon, PENCIL_SWATCH, PencilIcon } from './MarkToolIcons';
 
@@ -25,10 +26,10 @@ const PEN_TOOL = 'ring-2 ring-gray-300 ring-offset-2 ring-offset-white dark:ring
 const PALETTE_LEFT = 'right-[calc(100%+0.375rem)] top-1/2 -translate-y-1/2 px-2 py-1.5';
 const PALETTE_UP = 'bottom-[calc(100%+0.375rem)] left-1/2 -translate-x-1/2 flex-col px-1.5 py-2';
 /**
- * A tool lights up under a mouse or a trackpad only: on a touch screen a hover stays on the circle after
- * the tap, and a tool put away would still look pressed (the owner, 2026-10-16).
+ * A tool lights up under a mouse, a trackpad or an Apple Pencil held over it, never after a finger's tap:
+ * a hover left on the circle made a tool put away look pressed (`utils/pointerHover.ts`, the owner, 2026-10-16).
  */
-const TOOL = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [@media(hover:hover)]:hover:bg-gray-100 dark:[@media(hover:hover)]:hover:bg-gray-800';
+const TOOL = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 data-[hover]:bg-gray-100 dark:data-[hover]:bg-gray-800';
 
 type Swatch = { id: string; color: string; label: string; chosen: boolean; pick: () => void };
 
@@ -95,6 +96,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
           aria-label={markerLabel}
           title={markerLabel}
           className={`${TOOL} ${ring('marker')}`}
+          {...pointerHover}
         >
           <MarkerIcon nib={color} />
         </button>
@@ -109,6 +111,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
           aria-label={pencilLabel}
           title={pencilLabel}
           className={`${TOOL} ${ring('pencil')}`}
+          {...pointerHover}
         >
           <PencilIcon line={pencilColor} />
         </button>
@@ -120,6 +123,7 @@ export function MarkToolbar({ tool, vertical = false, className = '' }: { tool: 
         aria-label={t('bible.marks.eraser')}
         title={t('bible.marks.eraser')}
         className={`${TOOL} ${ring('eraser')}`}
+        {...pointerHover}
       >
         <EraserIcon />
       </button>

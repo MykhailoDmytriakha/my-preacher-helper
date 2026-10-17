@@ -207,6 +207,7 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
                   onClose={crossRefs.close}
                   onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
                   layerClassName="z-[260]"
+                  linkLayerClassName="z-[270]"
                 />
               </>
             ) : state.status === 'loading' ? (

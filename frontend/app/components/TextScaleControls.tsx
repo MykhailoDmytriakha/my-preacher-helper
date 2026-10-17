@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useTextScale } from '@/providers/TextScaleProvider';
@@ -11,6 +11,8 @@ interface TextScaleControlsProps {
 }
 
 const EPSILON = 0.01; // Tolerance for floating-point comparison
+/** How long a finger rests on the rail before the page takes the size under it. */
+const DRAG_REST_MS = 180;
 
 /**
  * A− · rail · percentage · A+ — and the row NEVER changes shape.
@@ -26,6 +28,11 @@ const EPSILON = 0.01; // Tolerance for floating-point comparison
  * The rail is what makes it fast. Twelve presses to cross the range is a chore
  * during a service; one tap on a tick is not. The tick at 100% is drawn taller
  * and green — home is recognised by shape, without reading the number.
+ *
+ * A drag moves the handle and the number at once, and the page takes the size
+ * when the finger rests or lets go: every new size restyles every word on the
+ * page, and in a big book a drag across the rail redrew the text a dozen times —
+ * eight seconds of stiff frames in Isaiah on WebKit (the owner's iPad, 2026-10-16).
  */
 export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
   className = '',
@@ -34,24 +41,27 @@ export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
   const { t } = useTranslation();
   const {
     scale,
-    increaseScale,
-    decreaseScale,
-    resetScale,
     setScale,
     scalePercentage,
     availableScales
   } = useTextScale();
 
   const railRef = useRef<HTMLDivElement>(null);
+  // The size under a dragging finger, shown at once; the page takes it when the drag rests or ends.
+  const [preview, setPreview] = useState<number | null>(null);
+  const restTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(restTimer.current), []);
+  const shown = preview ?? scale;
+  const shownPercentage = preview === null ? scalePercentage : Math.round(preview * 100);
 
   // Use tolerance-based comparison for floating-point values
   const minScale = availableScales[0];
   const maxScale = availableScales[availableScales.length - 1];
-  const isAtMinScale = scale <= minScale + EPSILON;
-  const isAtMaxScale = scale >= maxScale - EPSILON;
-  const isAtDefault = Math.abs(scale - 1) < EPSILON;
+  const isAtMinScale = shown <= minScale + EPSILON;
+  const isAtMaxScale = shown >= maxScale - EPSILON;
+  const isAtDefault = Math.abs(shown - 1) < EPSILON;
 
-  const stepIndex = availableScales.findIndex((s) => Math.abs(s - scale) < EPSILON);
+  const stepIndex = availableScales.findIndex((s) => Math.abs(s - shown) < EPSILON);
   const knobIndex = stepIndex === -1 ? availableScales.indexOf(1) : stepIndex;
   const knobPercent = (knobIndex / (availableScales.length - 1)) * 100;
 
@@ -68,31 +78,62 @@ export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
     [availableScales]
   );
 
+  /** A size picked by a button or a key: the page takes it now, and a drag's pending size is dropped. */
+  const pick = (next: number) => {
+    clearTimeout(restTimer.current);
+    setPreview(null);
+    setScale(next);
+  };
+  /** One step from the size shown — a drag's preview included — along the rail's own steps. */
+  const step = (delta: 1 | -1) => {
+    const index = availableScales.findIndex((value) => Math.abs(value - shown) < EPSILON);
+    const from = index === -1 ? availableScales.indexOf(1) : index;
+    pick(availableScales[Math.min(availableScales.length - 1, Math.max(0, from + delta))]);
+  };
+  /** The page takes `picked` once the finger has rested on it. */
+  const restOn = (picked: number) => {
+    clearTimeout(restTimer.current);
+    restTimer.current = setTimeout(() => setScale(picked), DRAG_REST_MS);
+  };
+
   const handleRailPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     const picked = scaleFromPointer(event.clientX);
-    if (picked !== null && picked !== undefined) setScale(picked);
+    if (picked !== null && picked !== undefined) {
+      setPreview(picked);
+      restOn(picked);
+    }
     // Dragging keeps following the finger; jsdom has no pointer capture, hence the guard.
     railRef.current?.setPointerCapture?.(event.pointerId);
   };
 
   const handleRailPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.buttons !== 1) return;
+    if (event.buttons !== 1 || preview === null) return;
     const picked = scaleFromPointer(event.clientX);
-    if (picked !== null && picked !== undefined) setScale(picked);
+    if (picked === null || picked === undefined || Math.abs(picked - preview) < EPSILON) return;
+    setPreview(picked);
+    restOn(picked);
+  };
+
+  /** The finger let go (or the browser took the pointer): the page takes the size it left. */
+  const handleRailPointerEnd = () => {
+    clearTimeout(restTimer.current);
+    if (preview === null) return;
+    if (Math.abs(preview - scale) >= EPSILON) setScale(preview);
+    setPreview(null);
   };
 
   const handleRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-      increaseScale();
+      step(1);
       event.preventDefault();
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-      decreaseScale();
+      step(-1);
       event.preventDefault();
     } else if (event.key === 'Home') {
-      resetScale();
+      pick(1);
       event.preventDefault();
     } else if (event.key === 'End') {
-      setScale(maxScale);
+      pick(maxScale);
       event.preventDefault();
     }
   };
@@ -101,7 +142,7 @@ export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
     <div className={`flex items-center gap-1.5 ${className}`}>
       {/* Decrease */}
       <button
-        onClick={decreaseScale}
+        onClick={() => step(-1)}
         disabled={isAtMinScale}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-gray-700 transition-colors duration-200 enabled:hover:bg-gray-200/80 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-100 dark:enabled:hover:bg-white/10"
         title={t('textScale.decrease')}
@@ -118,10 +159,13 @@ export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
         aria-label={t('textScale.slider')}
         aria-valuemin={Math.round(minScale * 100)}
         aria-valuemax={Math.round(maxScale * 100)}
-        aria-valuenow={scalePercentage}
-        aria-valuetext={`${scalePercentage}%`}
+        aria-valuenow={shownPercentage}
+        aria-valuetext={`${shownPercentage}%`}
         onPointerDown={handleRailPointerDown}
         onPointerMove={handleRailPointerMove}
+        onPointerUp={handleRailPointerEnd}
+        onPointerCancel={handleRailPointerEnd}
+        onLostPointerCapture={handleRailPointerEnd}
         onKeyDown={handleRailKeyDown}
         className="relative h-11 w-24 shrink-0 cursor-pointer touch-none rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 sm:w-32"
       >
@@ -163,19 +207,19 @@ export const TextScaleControls: React.FC<TextScaleControlsProps> = ({
       {/* Percentage — and the reset control, so the row never changes shape */}
       {showPercentage && (
         <button
-          onClick={resetScale}
+          onClick={() => pick(1)}
           disabled={isAtDefault}
           className="h-11 w-14 shrink-0 rounded-full text-sm font-medium tabular-nums text-gray-700 transition-colors duration-200 enabled:hover:bg-gray-200/80 disabled:cursor-default dark:text-gray-200 dark:enabled:hover:bg-white/10"
           title={t('textScale.reset')}
           aria-label={t('textScale.reset')}
         >
-          {scalePercentage}%
+          {shownPercentage}%
         </button>
       )}
 
       {/* Increase */}
       <button
-        onClick={increaseScale}
+        onClick={() => step(1)}
         disabled={isAtMaxScale}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-gray-700 transition-colors duration-200 enabled:hover:bg-gray-200/80 disabled:opacity-40 disabled:cursor-not-allowed dark:text-gray-100 dark:enabled:hover:bg-white/10"
         title={t('textScale.increase')}

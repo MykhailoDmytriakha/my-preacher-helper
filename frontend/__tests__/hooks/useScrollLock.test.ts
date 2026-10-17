@@ -1,5 +1,5 @@
 import { renderHook } from '@testing-library/react';
-import { useScrollLock } from '@/hooks/useScrollLock';
+import { scrollPinnedPageBy, useScrollLock } from '@/hooks/useScrollLock';
 
 describe('useScrollLock', () => {
     beforeEach(() => {
@@ -18,6 +18,14 @@ describe('useScrollLock', () => {
     it('does not lock scroll when isLocked is false', () => {
         renderHook(() => useScrollLock(false));
         expect(document.documentElement.style.overflow).toBe('auto');
+    });
+
+    it('does not reposition an unlocked or normally locked page', () => {
+        expect(scrollPinnedPageBy(80)).toBe(false);
+        const { unmount } = renderHook(() => useScrollLock(true));
+        expect(scrollPinnedPageBy(80)).toBe(false);
+        expect(document.body.style.position).not.toBe('fixed');
+        unmount();
     });
 
     it('unlocks scroll on unmount', () => {
@@ -106,6 +114,28 @@ describe('useScrollLock — more than one lock, and more than one platform', () 
 
             expect(document.body.style.position).toBe('fixed');
             expect(document.body.style.top).toBe('-240px');
+        });
+
+        it('keeps a corrected reading anchor until the last nested dialog closes', () => {
+            const first = renderHook(() => useScrollLock(true));
+            const second = renderHook(() => useScrollLock(true));
+            expect(scrollPinnedPageBy(60)).toBe(true);
+            expect(document.body.style.top).toBe('-300px');
+            first.unmount();
+            expect(document.body.style.position).toBe('fixed');
+            expect(window.scrollTo).not.toHaveBeenCalled();
+            second.unmount();
+            expect(window.scrollTo).toHaveBeenCalledWith(0, 300);
+        });
+
+        it('bounds a corrected anchor at the page start and ignores invalid offsets', () => {
+            const { unmount } = renderHook(() => useScrollLock(true));
+            expect(scrollPinnedPageBy(-400)).toBe(true);
+            expect(Math.abs(Number.parseFloat(document.body.style.top))).toBe(0);
+            expect(scrollPinnedPageBy(Number.NaN)).toBe(false);
+            expect(scrollPinnedPageBy(Number.POSITIVE_INFINITY)).toBe(false);
+            unmount();
+            expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
         });
 
         it('puts the person back where they were reading', () => {

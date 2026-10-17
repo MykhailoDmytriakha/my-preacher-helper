@@ -99,6 +99,14 @@ function acquire(): void {
   }
 }
 
+/** Move the pinned reading anchor after content reflows; release uses this same offset. */
+export function scrollPinnedPageBy(deltaY: number): boolean {
+  if (!page?.pinned || !Number.isFinite(deltaY)) return false;
+  page.scrollY = Math.max(0, page.scrollY + deltaY);
+  document.body.style.top = `-${page.scrollY}px`;
+  return true;
+}
+
 function release(): void {
   if (!page) return;
   page.holders -= 1;

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -35,22 +35,47 @@ type CrossReferenceSheetProps = {
   onOpenReference: (reference: CrossReference, from: CrossReferencePlace) => void;
   /** The window's layer: over the reader, or over the passage window, which stands at z-[250]. */
   layerClassName?: string;
+  /** The layer of one link's window, opened over this one: a step above `layerClassName`. */
+  linkLayerClassName?: string;
 };
 
-/** The texts of the books the links point into, fetched as they are needed (kept on the device by the worker). */
+/**
+ * The texts of the books the links point into, fetched as they are needed (kept on the device by the
+ * worker). Books that arrive together are drawn together, once a frame: the rest of a verse's links as
+ * verses ask for twenty books at once, and a list drawn again for each one flickered on an iPad.
+ */
 function useBookTexts(books: readonly string[], bible: BibleId): ReadonlyMap<string, BookText> {
   const [texts, setTexts] = useState<ReadonlyMap<string, BookText>>(new Map());
   const wanted = books.join('|');
   useEffect(() => {
     let alive = true;
+    let frame = 0;
+    const arrived = new Map<string, BookText>();
+    const draw = () => {
+      frame = 0;
+      const batch = new Map(arrived);
+      arrived.clear();
+      setTexts((known) => {
+        const next = new Map(known);
+        batch.forEach((text, book) => next.set(book, text));
+        return next;
+      });
+    };
     for (const book of new Set(wanted ? wanted.split('|') : [])) {
       if (texts.has(book)) continue;
       fetchBookText(book, bible).then(
-        (text) => { if (alive) setTexts((known) => new Map(known).set(book, text)); },
+        (text) => {
+          if (!alive) return;
+          arrived.set(book, text);
+          if (!frame) frame = window.requestAnimationFrame(draw);
+        },
         () => undefined,
       );
     }
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+      if (frame) window.cancelAnimationFrame(frame);
+    };
     // `texts` is read to skip books already here; refetching on its change would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bible, wanted]);
@@ -66,22 +91,18 @@ function passageText(text: BookText | undefined, reference: CrossReference, bibl
   return held.length > PASSAGE_VERSES_SHOWN ? `${words} …` : words;
 }
 
-/** One link: its text, how many independent sources give it, and "Open". */
-function ReferenceDetail({ reference, label, text, place, titleId, onBack, onClose, onOpen }: {
-  reference: CrossReference; label: string; text: string | null; place: string; titleId: string;
-  onBack: () => void; onClose: () => void; onOpen: () => void;
+/** One link: its text, how many independent sources give it, and "Open". Closed, the links are under it. */
+function ReferenceDetail({ reference, label, text, titleId, onClose, onOpen }: {
+  reference: CrossReference; label: string; text: string | null; titleId: string;
+  onClose: () => void; onOpen: () => void;
 }) {
   const { t } = useTranslation();
   return (
     <>
-      <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={onBack} className="-ml-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800">
-          <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
-          {t('bible.crossRefs.backToList', { place })}
-        </button>
+      <div className="flex items-start justify-between gap-2">
+        <h3 id={titleId} className="pt-1 font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
         <SheetCloseButton onClose={onClose} />
       </div>
-      <h3 id={titleId} className="font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
       <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</p>
       <p className="mt-3 font-serif text-lg leading-relaxed text-gray-800 dark:text-gray-100">{text ?? t('common.loading')}</p>
       <button
@@ -168,7 +189,6 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
 }) {
   const { t } = useTranslation();
   const { othersAsVerses } = useCrossReferencePrefs();
-  const switchLabelId = useId();
   const main = references.filter(isMainReference);
   const others = references.filter((reference) => !isMainReference(reference));
   const label = (reference: CrossReference) => crossReferenceLabel(reference, bible, locale);
@@ -195,23 +215,37 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
       ) : null}
       {others.length > 0 ? (
         <section className="mt-1">
-          {/* The switch lies over the row's right end, beside its button, never inside it. */}
-          <div className="relative">
+          {/*
+            The row's own button, the switch and the chevron stand side by side, never one over another:
+            a finger a few pixels off a small switch laid over the row folded the rest instead (the
+            owner's iPad, 2026-10-16: "it blinks back and forth, then switches on the second time").
+          */}
+          <div className="flex items-center gap-1">
             <button
               type="button"
               aria-expanded={othersOpen}
               onClick={onToggleOthers}
-              className="flex min-h-11 w-full items-center justify-between text-sm font-semibold text-gray-700 dark:text-gray-200"
+              className="flex min-h-11 min-w-0 flex-1 items-center text-left text-sm font-semibold text-gray-700 dark:text-gray-200"
             >
               {main.length > 0 ? t('bible.crossRefs.othersSection', { number: others.length }) : t('bible.crossRefs.allSection', { number: others.length })}
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${othersOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>
             {othersOpen ? (
-              <span className="absolute right-7 top-1/2 flex -translate-y-1/2 items-center gap-2">
-                <span id={switchLabelId} className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('bible.crossRefs.othersAsVerses')}</span>
-                <Switch checked={othersAsVerses} aria-labelledby={switchLabelId} onClick={() => saveCrossReferencePrefs({ othersAsVerses: !othersAsVerses })} />
-              </span>
+              <Switch
+                checked={othersAsVerses}
+                label={t('bible.crossRefs.othersAsVerses')}
+                onClick={() => saveCrossReferencePrefs({ othersAsVerses: !othersAsVerses }, 'window')}
+              />
             ) : null}
+            {/* The chevron is the row's button again for a finger; the keyboard has the row's own. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden="true"
+              onClick={onToggleOthers}
+              className="-mr-2 inline-flex h-11 w-10 shrink-0 items-center justify-center text-gray-700 dark:text-gray-200"
+            >
+              <ChevronDownIcon className={`h-4 w-4 transition-transform ${othersOpen ? 'rotate-180' : ''}`} />
+            </button>
           </div>
           {othersOpen && othersAsVerses ? (
             <ul className="border-t border-gray-100 dark:border-gray-800">
@@ -232,8 +266,9 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
  * only "Open" moves the reader. A phone gets it from the bottom edge, a tablet in the middle, a wide
  * screen as a card on the right.
  */
-export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText, onClose, onOpenReference, layerClassName = 'z-[120]' }: CrossReferenceSheetProps) {
+export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText, onClose, onOpenReference, layerClassName = 'z-[120]', linkLayerClassName = 'z-[130]' }: CrossReferenceSheetProps) {
   const titleId = useId();
+  const linkTitleId = useId();
   const [picked, setPicked] = useState<CrossReference | null>(null);
   const [showOthers, setShowOthers] = useState(false);
   const { othersAsVerses } = useCrossReferencePrefs();
@@ -263,35 +298,37 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
   const place = `${getLocalizedAbbrev(bookId, locale)} ${at.chapter}:${at.verse}`;
 
   return (
-    <ReaderSheet titleId={titleId} onClose={onClose} layerClassName={layerClassName}>
+    <>
+      <ReaderSheet titleId={titleId} onClose={onClose} layerClassName={layerClassName}>
+        <ReferenceList
+          key={placeKey}
+          references={references}
+          loading={!set}
+          place={place}
+          verseText={verseText}
+          titleId={titleId}
+          bible={bible}
+          locale={locale}
+          texts={texts}
+          othersOpen={othersOpen}
+          onToggleOthers={() => setShowOthers((value) => !value)}
+          onPick={setPicked}
+          onClose={onClose}
+        />
+      </ReaderSheet>
+      {/* One link over the list, as a cascade: closed, the list is found exactly as it was. */}
       {picked ? (
+        <ReaderSheet titleId={linkTitleId} onClose={() => setPicked(null)} layerClassName={linkLayerClassName} depth={2}>
           <ReferenceDetail
             reference={picked}
             label={crossReferenceLabel(picked, bible, locale)}
             text={passageText(texts.get(picked.book), picked, bible)}
-            place={place}
-            titleId={titleId}
-            onBack={() => setPicked(null)}
-            onClose={onClose}
+            titleId={linkTitleId}
+            onClose={() => setPicked(null)}
             onOpen={() => onOpenReference(picked, at)}
           />
-        ) : (
-          <ReferenceList
-            key={placeKey}
-            references={references}
-            loading={!set}
-            place={place}
-            verseText={verseText}
-            titleId={titleId}
-            bible={bible}
-            locale={locale}
-            texts={texts}
-            othersOpen={othersOpen}
-            onToggleOthers={() => setShowOthers((value) => !value)}
-            onPick={setPicked}
-            onClose={onClose}
-          />
-      )}
-    </ReaderSheet>
+        </ReaderSheet>
+      ) : null}
+    </>
   );
 }

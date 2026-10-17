@@ -30,7 +30,7 @@ export function CrossReferenceSettings() {
           checked={prefs.show}
           aria-labelledby={`${id}-show`}
           aria-describedby={`${id}-show-hint`}
-          onClick={() => saveCrossReferencePrefs({ show: !prefs.show })}
+          onClick={() => saveCrossReferencePrefs({ show: !prefs.show }, 'menu')}
         />
       </div>
 
@@ -45,7 +45,7 @@ export function CrossReferenceSettings() {
             disabled={!prefs.show}
             aria-labelledby={`${id}-window`}
             aria-describedby={`${id}-window-hint`}
-            onClick={() => saveCrossReferencePrefs({ inWindow: !prefs.inWindow })}
+            onClick={() => saveCrossReferencePrefs({ inWindow: !prefs.inWindow }, 'menu')}
           />
         </div>
         <div className="flex items-center justify-between gap-4 py-2">
@@ -57,7 +57,7 @@ export function CrossReferenceSettings() {
                 type="button"
                 disabled={!prefs.show}
                 aria-pressed={prefs.mode === mode}
-                onClick={() => saveCrossReferencePrefs({ mode })}
+                onClick={() => saveCrossReferencePrefs({ mode }, 'menu')}
                 className={`min-h-9 rounded-[10px] px-3 text-sm font-semibold transition-colors ${
                   prefs.mode === mode
                     ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white'
@@ -79,7 +79,7 @@ export function CrossReferenceSettings() {
             disabled={!prefs.show}
             aria-labelledby={`${id}-others`}
             aria-describedby={`${id}-others-hint`}
-            onClick={() => saveCrossReferencePrefs({ othersAsVerses: !prefs.othersAsVerses })}
+            onClick={() => saveCrossReferencePrefs({ othersAsVerses: !prefs.othersAsVerses }, 'menu')}
           />
         </div>
       </div>
