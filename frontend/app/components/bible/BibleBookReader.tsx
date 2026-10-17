@@ -647,8 +647,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       <div className={`flex items-start gap-5 ${frame.row}`}>
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>
           {text && layout ? (
-            // A tool in hand: the text answers a pull along the line and still scrolls up and down, and
-            // the page's own swipe back keeps off it (`data-gesture-ignore`, navigation/gestures).
+            // Where marks can be made the text answers a pull along the line and still scrolls up and down
+            // (`marks.textClass`, set once); a tool in hand keeps the page's own swipe back off it
+            // (`data-gesture-ignore`, navigation/gestures).
             <article
               ref={textRef}
               data-gesture-ignore={marks.gestureIgnore}

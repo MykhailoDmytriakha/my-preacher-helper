@@ -214,6 +214,15 @@ export function encodeBookMarks(book: BookMarks): StoredVerses {
   return stored;
 }
 
+/**
+ * The marks as one string, the same for the same marks whichever order their verses were made in: what
+ * a page shows is compared by it, and a copy that changed nothing is not drawn again.
+ */
+export function marksKey(book: BookMarks): string {
+  const stored = encodeBookMarks(book);
+  return Object.keys(stored).sort().map((field) => `${field}=${stored[field].m ?? ''}/${stored[field].p ?? ''}`).join(';');
+}
+
 /** The stored verses read back; anything malformed is left out (`readBookMarks`). */
 export function decodeBookMarks(stored: unknown): BookMarks {
   if (!stored || typeof stored !== 'object') return {};

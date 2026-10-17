@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
-import { decodeBookMarks, encodeBookMarks, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
+import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { isBibleId } from '@/utils/bibles';
 import { bookSlug } from '@/utils/bibleText';
 
@@ -52,8 +52,8 @@ const formLeft = (error: unknown) => error instanceof Error
 
 export type BookMarksStore = {
   marks: BookMarks;
-  /** A stroke: how it changes the book's marks; laid over the form's newest draft. */
-  save: (change: MarksChange) => void;
+  /** A stroke: how it changes the book's marks; laid over the form's newest draft. `lost` runs if it is not kept. */
+  save: (change: MarksChange, lost?: () => void) => void;
   /** The person's marks are read and the book's form is open: the marks can be shown and judged. */
   ready: boolean;
   /** The form can write: a stroke is kept on the device the moment it is made. */
@@ -88,7 +88,12 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
   // While the device's storage is silent the form shows a copy for reading: the marks stay on the page.
   const form = useDataDocument(resource, { slot: MARKS_SLOT, create, readOnlyCopy: true });
   const stored = (form.data ?? null) as StoredDocument | null;
-  const formMarks = useMemo(() => decodeBookMarks(stored?.verses), [stored]);
+  const decoded = useMemo(() => decodeBookMarks(stored?.verses), [stored]);
+  // The same marks stay the same object: the form hands a new copy at every step of a save (kept on the
+  // device, queued, sent, answered), and the page draws the marks again only when they change.
+  const same = useRef(decoded);
+  if (marksKey(same.current) !== marksKey(decoded)) same.current = decoded;
+  const formMarks = same.current;
 
   // Keyed by value, not by the list's array: the list comes anew with every stroke here, and what reads
   // these (the ribbon's signs) is redrawn only when the other Bibles' marks change.
@@ -101,15 +106,19 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
 
   const latest = useRef({ form, owner, bible, bookId, t });
   latest.current = { form, owner, bible, bookId, t };
-  const save = useCallback((change: MarksChange) => {
+  const save = useCallback((change: MarksChange, lost?: () => void) => {
     const { form: current, owner: person, bible: bibleId, bookId: book, t: say } = latest.current;
-    if (!person || !id) return;
+    if (!person || !id) {
+      lost?.();
+      return;
+    }
     const now = new Date().toISOString();
     current.commit((value): DocumentData => (value
       ? { ...value, verses: encodeBookMarks(change(decodeBookMarks(value.verses))), updatedAt: now }
       : { userId: person, bible: bibleId, book, verses: encodeBookMarks(change({})), createdAt: now, updatedAt: now }))
       .catch((error: unknown) => {
         if (formLeft(error)) return;
+        lost?.();
         recordDiagnostic('mark', { result: 'refused', code: diagnosticErrorCode(error) });
         toast.error(refusalMessage(error, say, 'bible.marks.notKept'));
       });

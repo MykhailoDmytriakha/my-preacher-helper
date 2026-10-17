@@ -7,9 +7,10 @@ import { toast } from 'sonner';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { countVerseWords, markedElsewhere, signsHere, verseOrder, versesElsewhere, type MarkedElsewhere } from '@/utils/bibleMarks';
+import { usePageZoomed } from '@/utils/pageZoom';
 
 import { MarkLegend } from './MarkLegend';
-import { useBookMarks } from './markStore';
+import { useBookMarks, type MarksChange } from './markStore';
 import { useMarkTool } from './markTool';
 import { MarkToolbar } from './MarkToolbar';
 import { MARK_SWATCH, PENCIL_SWATCH } from './MarkToolIcons';
@@ -23,8 +24,8 @@ import type { BookText } from '@/utils/bibleText';
 /*
  * THE MARKS IN THE READER — one call for the reader (`BibleBookReader.tsx`): the tool in hand, this
  * book's marks on every device of the person, the stroke being drawn, all painted over the ribbon. The reader places
- * what it gets — the tools in its line, the legend in its "T" menu, the text's attributes while a tool
- * is in hand — and knows nothing of how marks work. Only a signed-in reader in a browser that can
+ * what it gets — the tools in its line, the legend in its "T" menu, the text's attributes — and knows
+ * nothing of how marks work. Only a signed-in reader in a browser that can
  * paint them gets any of it.
  */
 type ReaderMarks = {
@@ -43,7 +44,12 @@ type ReaderMarks = {
   gestureIgnore: '' | undefined;
   /** A text the Apple Pencil writes on: a Pencil there never starts the page's swipe back. */
   penSurface: '' | undefined;
-  /** While a tool is in hand: the text answers a pull along the line and still scrolls up and down. */
+  /**
+   * The text's manner wherever marks can be made, never switched with the tool: a pull along the line is
+   * the page's to take (a stroke), up and down and a pinch stay the browser's. Switched with the tool it
+   * restyled every word of the book on each tap: half a second in the iPad's Psalms (2026-10-16). Pinched
+   * bigger with no tool in hand, the sideways pull is the browser's again, to pan to the clipped side.
+   */
   textClass: string;
   /** Verses marked in the person's other Bibles: a sign beside each, for the ribbon (2.9.3). */
   signs: RibbonSigns | undefined;
@@ -69,6 +75,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
   // Whether the browser can paint marks does not change while the page is open.
   const canMark = useSyncExternalStore(subscribeNever, marksSupported, () => false);
   const tool = useMarkTool();
+  const zoomed = usePageZoomed();
   const { marks: stored, save, ready: storeReady, writable, others, sync } = useBookMarks(owner, bible, bookId);
   // A stroke starts only when it can be kept: while the book's form cannot write (the device's storage
   // silent for seconds after an iPad wakes) the reader says to wait instead of showing a stroke it would lose.
@@ -92,23 +99,27 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
     sayWhy();
     return null;
   }, [beginStroke, sayWhy]);
-  // A stroke begun before a choice and let go while it runs is checked again when it would be kept.
-  const keep = useCallback((change: Parameters<typeof save>[0]) => {
-    if (writableRef.current) { save(change); return; }
-    sayWhy();
-  }, [save, sayWhy]);
   const marking = canMark && Boolean(owner) && storeReady;
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
-  const preview = useMarkHighlights(textRef, ready && marking, stored, text);
+  const painter = useMarkHighlights(textRef, ready && marking, stored, text);
+  // A stroke begun before a choice and let go while it runs is checked again when it would be kept;
+  // one whose save fails is no longer shown.
+  const keep = useCallback((change: MarksChange) => {
+    if (writableRef.current) {
+      save(change, () => painter.drop(change));
+      return true;
+    }
+    sayWhy();
+    return false;
+  }, [painter, save, sayWhy]);
   useMarkStrokes({
     rootRef: textRef,
     ready,
     order,
-    marks: stored,
     save: keep,
     armed: tool.inHand !== null,
     begin,
-    preview,
+    painter,
     enabled: marking,
   });
 
@@ -143,7 +154,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
     translationClass: showTools ? 'ml-auto md:ml-3' : 'ml-auto',
     gestureIgnore: armed ? '' : undefined,
     penSurface: marking ? '' : undefined,
-    textClass: armed ? 'cursor-crosshair touch-pan-y [-webkit-touch-callout:none]' : '',
+    textClass: canMark && owner ? `${armed || !zoomed ? '[touch-action:pan-y_pinch-zoom] ' : ''}[-webkit-touch-callout:none]` : '',
     signs,
     // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
     syncStatus: sync ? (

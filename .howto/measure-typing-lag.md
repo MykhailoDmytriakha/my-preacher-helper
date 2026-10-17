@@ -1,4 +1,4 @@
-when: typing lags · search is slow · input freezes · field lags on first letters · keystroke latency · measure UI responsiveness · many notes · long list re-render · useDeferredValue · rAF does not fire · hidden tab · Event Timing empty · seed test data without writing · поиск тормозит · поле ввода подвисает · задержка при наборе · замер отзывчивости · много заметок
+when: typing lags · search is slow · input freezes · field lags on first letters · keystroke latency · measure UI responsiveness · many notes · long list re-render · useDeferredValue · rAF does not fire · hidden tab · Event Timing empty · seed test data without writing · поиск тормозит · поле ввода подвисает · задержка при наборе · замер отзывчивости · много заметок · tap lags · tool tap slow · stroke lags · iPad sluggish · animation feels stiff · style recalculation · UpdateLayoutTree · :has invalidation · WebKit performance · Playwright frames · задержка нажатия · тугая анимация · кнопка отвечает с задержкой · iPad тормозит
 
 # Measure typing lag on a real screen
 
@@ -29,3 +29,14 @@ A dev build is several times slower than production: compare before and after in
 ## Guard it in a test
 
 `fireEvent` runs inside `act()`, which flushes deferred renders too, so it cannot tell a responsive field from a frozen one. Dispatch the event without `act` (`IS_REACT_ACT_ENVIRONMENT = false`, native value setter, `dispatchEvent(new Event('input', { bubbles: true }))`), then assert that the field shows the letter while the list has not been drawn for it yet — see `app/(pages)/(private)/studies/__tests__/searchResponsiveness.test.tsx`.
+
+## Taps and strokes: frames on both engines, production build
+
+Found while fixing the Bible marks (2026-10-16: the owner's iPad felt every tool tap and stroke stiff). The automation tab cannot show it: hidden, it draws no frames, and its numbers can be invented by the hidden state itself (a highlight change "cost" 130–290 ms there and 0 ms in a real Chrome).
+
+- **Stand:** `tools/webkit-lab/marks-responsiveness.js` — Playwright WebKit (the iPad's engine) or the installed Google Chrome (`ENGINE=chrome`, `chromium.launch({ channel: 'chrome' })`), signed in as the test user, a 1180×820 window; it times a tap from `click()` to the second `requestAnimationFrame`, and counts frames during and after a stroke. Copy its pattern for another screen.
+- **Production build, not the dev server.** The dev server handling each request took up to 466 % CPU on this Mac and made WebKit's frames 100–150 ms — a regression that was not there. Build a copy (`project_build_gate_isolated_copy` in memory: `git ls-files -co --exclude-standard -z frontend | rsync --from0 --files-from=-`, copy `.env.local`, symlink `node_modules`), with `NEXT_PUBLIC_ENABLE_TEST_LOGIN=true` (the test sign-in, `utils/testLogin.ts`) and `NEXT_PUBLIC_API_BASE=`, and `next start -p 3100`. Keep the "before" build running beside the "after" one and measure them back to back.
+- **Split a slow tap into parts before changing code:** apply one change at a time in the page (`classList.add`, an attribute, a highlight) and time to the second frame — the marks' 529 ms was `touch-action` on the text, 316 ms its `cursor`, the rest free.
+- **Find what restyles the page in Chrome:** `browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'disabled-by-default-devtools.timeline.invalidationTracking'] })` around one tap; a long `UpdateLayoutTree` with `elementCount` near the whole document and `StyleRecalcInvalidationTracking … Affected by :has()` up to `HTML` means an element put into or taken out of the page under `#app-shell` (the shell's `:has([data-reader-panes])` rules, `globals.css`): toggle `hidden` instead of mounting.
+- **A probe that repeats strokes changes its own stand:** a stroke over words already that colour erases them, so a second run over the same words leaves nothing to paint. Give each run its own chapter.
+
