@@ -122,9 +122,18 @@
 |---|---|---|
 | `frontend/app/layout.tsx:34`, `/icons/favicon.svg` | поражено, воспроизведено | Прямой отказ в охраняемом и обычном браузерном контексте; в precache нет. |
 | `frontend/app/layout.tsx:35`, `/favicon.ico` из app metadata | поражено, воспроизведено | Браузерная загрузка после офлайн-навигации также отказывает; путь отличается от public SVG. |
-| `frontend/public/icons/`, `frontend/app/manifest.ts` | не проверено | Остальные PWA/Apple-значки требуют описи и отдельной проверки; не считать все публичные файлы обязательными для precache. |
+| `frontend/public/icons/`, `frontend/app/manifest.ts` | поражено, подтверждено 2026-10-17 | Все четыре оставшихся Apple/PWA-значка отсутствуют в холодном кэше и не читаются без сети; полная опись и проверка manifest приведены ниже. |
 | `frontend/app/sw.ts:124`, код/документ оболочки | не поражено текущим симптомом | Оба перехода действительно обслужены worker; карточка и локали корректны, ошибки JS отсутствуют. |
 **Доказательства.** `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/late-language-offline-after.json`, `late-language-offline-diagnostic.json`, `late-language-offline-natural.json`. Это отдельная очередь после языкового исправления и подключения новых committed main; запись не закрыта и обход в UI не добавлен.
+
+**Class verification, 2026-10-17.** On build `OFl5J7AGSEMsnPtQXWrga`, a fresh unauthenticated browser context with no request interception confirms all six linked icon files and `/manifest.webmanifest` are absent from Cache Storage after cold shell activation. All six explicit icon requests fail offline before and after reload; the manifest request also fails. The offline shell and both document navigations are served by the real worker, with no JavaScript errors. The manifest was not observed loading before disconnection, so this does not claim a previously read manifest was lost. Its build-generated identity metadata belongs with the bounded shell resources. Evidence: case artifacts `offline-icons-browser-before-final.json` and `offline-icons-served-inventory.json`.
+| additional linked resource | verdict | reason |
+|---|---|---|
+| `/icons/apple-touch-icon.png` | affected, browser-reproduced | No cold-worker copy; explicit offline fetch fails. |
+| `/icons/icon-192.png`, `/icons/icon-512.png`, `/icons/icon-maskable-512.png` | affected, browser-reproduced | Same failure for all linked installation icons, including after reload. |
+| `/manifest.webmanifest` | affected in cold shell resource set | No copy after activation and offline fetch fails; default NetworkFirst only retains a response received through the active worker. |
+| `public/icons/app-icon.svg` | not affected in runtime resource class | Generator input only; not linked by shell/manifest and not required offline. |
+The local fix will keep an explicit eight-URL shell list, avoiding an unbounded public/Bible/audio scan. Static icons follow content revisions; the generated manifest follows the existing shell build revision. The tracker entry remains open until the authorized local acceptance/commit cycle completes; production acceptance stays separate.
 
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.

@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+
 import withSerwistInit from "@serwist/next";
 
 // PWA / offline service worker is built by Serwist (successor to next-pwa).
 // Enabled in production always; in dev only when NEXT_PUBLIC_ENABLE_SERVICE_WORKER
-// is set (so `npm run dev` stays SW-free, `npm run dev:pwa` opts in). Verify the
+// is set (`dev` and `dev:pwa` opt in; `dev:no-pwa` keeps it off). Verify the
 // offline app-shell with `npm run preview:pwa` (next build && next start) — the SW
 // is disabled in `next dev` by default.
 const swDisabled =
@@ -12,6 +15,27 @@ const swDisabled =
 // Bust the precached offline shell per build so a deploy never serves a stale
 // shell (the git SHA changes every prod build; falls back to a constant in dev).
 const swRevision = process.env.VERCEL_GIT_COMMIT_SHA || "dev";
+
+// Keep the linked identity resources with the shell from the first worker
+// activation. Leaving additionalPrecacheEntries unset would scan every public
+// Bible/audio asset; keep this list explicit instead. Static icon revisions
+// follow their bytes, while the generated manifest follows the shell build.
+const appIconSources = [
+  ["/favicon.ico", "app/favicon.ico"],
+  ["/icons/favicon.svg", "public/icons/favicon.svg"],
+  ["/icons/apple-touch-icon.png", "public/icons/apple-touch-icon.png"],
+  ["/icons/icon-192.png", "public/icons/icon-192.png"],
+  ["/icons/icon-512.png", "public/icons/icon-512.png"],
+  ["/icons/icon-maskable-512.png", "public/icons/icon-maskable-512.png"],
+];
+const appShellPrecacheEntries = [
+  { url: "/~offline", revision: swRevision },
+  { url: "/manifest.webmanifest", revision: swRevision },
+  ...appIconSources.map(([url, source]) => ({
+    url,
+    revision: createHash("sha256").update(readFileSync(new URL(source, import.meta.url))).digest("hex"),
+  })),
+];
 
 // The production build wrapper runs route type generation in an isolated
 // directory before starting Next.js and the strict TypeScript check in
@@ -27,7 +51,7 @@ const withSerwist = withSerwistInit({
   // Do NOT reload on reconnect: it would call location.reload() on the window
   // 'online' event and blow away unsaved form/autosave state.
   reloadOnOnline: false,
-  additionalPrecacheEntries: [{ url: "/~offline", revision: swRevision }],
+  additionalPrecacheEntries: appShellPrecacheEntries,
   disable: swDisabled,
 });
 

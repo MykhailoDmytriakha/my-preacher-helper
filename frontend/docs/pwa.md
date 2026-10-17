@@ -52,7 +52,7 @@ Merely receiving an update must not discard the text currently being typed.
   icons must stay full-bleed squares because Android applies its own mask and iOS turns
   transparency black, so the generator rounds only the browser-tab pair to the same
   third of a side that the header tile uses.
-- `app/sw.ts` and `next.config.mjs`: existing Serwist registration/caching owners.
+- `app/sw.ts` and `next.config.mjs`: existing Serwist registration/caching owners. The bounded shell precache includes the manifest and six linked icons after worker activation. Icons follow their content hashes; the generated manifest follows the shell build revision. It does not scan or download all public Bible/audio files.
 
 Use a production build for offline QA, not hot-reloading development assets:
 
