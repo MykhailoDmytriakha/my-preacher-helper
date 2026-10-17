@@ -1240,7 +1240,7 @@ Evidence: local case main-intake-54-* and main-54-verification.json. After separ
 
 ## BUG-20261017-offline-favicon-miss — retain linked app identity offline
 
-Stage: local fix with primary source/test/build/browser acceptance; independent clean-context acceptance and the local commit identity are recorded in the case evidence. Publication remains deferred.
+Stage: independently accepted and committed locally as8e05f7aa40feca49c8ea957ad3b6198f1a4411ec; exact accepted tree f487c520bcb4bd7f5fc58705d45bdaa0a5476f11 and all source/build/evidence hashes verified after commit. This tracker-only closure follows that accepted source commit. Publication remains deferred.
 
 The existing Serwist shell precache now includes the generated installation manifest and all six linked browser, Apple and PWA icons, alongside the offline shell. Static icons use SHA-256 content revisions; the manifest uses the existing shell build revision. The eight-URL list remains explicit, so Bible and audio resources do not enter this cache. Existing runtime cache/API/Firestore rules, reload/update behavior and icon bytes are unchanged; the existing next.config owner defines the rule once.
 
