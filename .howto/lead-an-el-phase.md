@@ -8,3 +8,9 @@ Three walls met in a long case and sent as reports to the el maintainer (2026-10
 - **Taking a later item into a new phase — the whole way at once:** `el phase plan N "<English, 1–3 words>" --goal "…"` → `el todo move L1 N` → `el phase open N` → work. The first refusal names only `--goal`; the English-name rule comes as a second refusal.
 - **Acceptance by the same session is recorded, but not where people read.** The collapsed phase line in TODO.md shows only the summary you type at `el phase close`; el's own count (`acceptance: … same session N`) sits inside `phases/<n>-<name>.md`. Write the count into the close summary yourself, e.g. «… · accepted: same session 5/5» — never «by a second hand» when it was the same session.
 - `el phase close N` without a summary prints an example with another phase number — ignore the number, give the summary.
+
+## Current close and note-edit forms
+
+- A phase with work also records its lesson, next direction and recipe: `el phase close N "Local outcome" --reflect "What changed in the method" --align "The next bounded step" --howto ".howto/write-a-document-field.md"`. Use the recipe that actually answers the phase's recurring problem; if none repeats, use the explicitly reasoned `none:` form printed by the refusal.
+- Replace a note as `el todo note N.M "Replacement text" --edit 1`. Putting the replacement text after `--edit 1` was rejected as an unrecognized argument in the observed CLI version. The privacy-safe local feedback records that argument-order ambiguity; no case content was sent.
+- `el todo accept --by` accepts the checker categories printed by the refusal, such as `subagent`, rather than an arbitrary agent task name. Keep that task identity and its report in the evidence; set `EL_MODEL` to the actual reviewer's model when recording that review.
