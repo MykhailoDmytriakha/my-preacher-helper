@@ -15,7 +15,7 @@ import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHr
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
 
-import type { EditorRecord } from '@/data-engine/controller';
+import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
 /** Bookkeeping the person never typed: never shown as "your change". */
@@ -151,13 +151,15 @@ function kindOf(drafts: EditorRecord[], refused: Set<string>): Kind {
  * decided, the draft stops waiting (`reconcileRecoveryRecord`) and the entry goes
  * (BUG-20260813-late-refusal-silent-after-navigation).
  */
-function waitingDocuments(records: readonly { record: EditorRecord }[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue): Waiting[] {
+function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: readonly JournalEntry[], name: (field: string) => string, display: DisplayValue): Waiting[] {
   const refused = new Set(journal.filter(entry => entry.state === 'refused').map(entry => entry.command.operationId));
+  for (const { record, answer } of records) if (answer === 'refused') Object.keys(record.checkpoint.pending).forEach(id => refused.add(id));
   const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
-  // A screen's draft is listed for an ANSWER the server gave; one waiting only on a conflict seen
-  // while it was open has no request to take back here.
-  const decided = records.map(entry => entry.record).filter(record => isCollectionOnEngine(record.checkpoint.confirmed.resource.collection)
-    && waitsForDecision(record, journal) && (isOneShotRecord(record) || Object.keys(record.checkpoint.pending).some(id => answered.has(id))));
+  // A screen is listed for an answered saved request, including a local policy refusal.
+  // A conflict in an unsent screen draft has no submitted request to settle here.
+  const decided = records.filter(({ record, answer }) => isCollectionOnEngine(record.checkpoint.confirmed.resource.collection)
+    && waitsForDecision(record, journal, answer) && (isOneShotRecord(record) || Boolean(answer)
+      || Object.keys(record.checkpoint.pending).some(id => answered.has(id)))).map(entry => entry.record);
   const documents: Waiting[] = [];
   for (const screen of [false, true]) {
     for (const record of decided.filter(entry => isOneShotRecord(entry) !== screen)) {

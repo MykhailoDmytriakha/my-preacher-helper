@@ -315,17 +315,6 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261016-ack-conflict-notice-missing · После ухода с экрана конфликт оставшихся полей после ACK связи может не показываться в общем уведомлении
-**Severity.** Предварительно P3 — возможное отсутствие напоминания о сохранённой правке, которая требует решения; экранный отказ не проверен.
-**Найден.** 2026-10-16 · source-only вывод из класса Phase43.
-**Якоря.** `frontend/app/components/EngineConflictBanner.tsx:waitingDocuments`, `frontend/app/data-engine/engine.ts:answeredEditorResources`.
-**Ожидалось.** Известный конфликт сохранённого запроса доступен для решения после ухода со страницы; на открытой странице его не спрашивают дважды.
-**Подозрение.** Эти потребители ищут conflict/refused в журнале команды, тогда как реальный relation ACK + request-level conflict подтверждён Phase43. Запрос и journal entry различаются состоянием и иногда id.
-**Проверить.** С синтетическим сохранённым запросом Phase43 уйти с серии в Settings, проверить уведомление, возврат и решение без потери связи. Также terminal обычная команда, unknown, manual form и atomic action.
-**Эффект.** Возможное незаметное ожидание решения после навигации.
-**Как должно работать для пользователя.** Когда моё отправленное изменение требует ответа, могу найти его с любого экрана; открытая запись уже показывает нужный выбор, обычная доставка молчит.
-
-
 ### BUG-20261016-recovery-discard-scope-can-expand · A late recovery decision may include work that was not shown
 **Candidate, not reproduced.** Independent source review of BUG-20261003-one-click-delete-other-screens found a separate engine settlement boundary: EngineConflictBanner.tsx:310-315 rechecks the shown fingerprints, then engine.ts:612-623 awaits a fresh commit list and cancels all answered requests for that resource; atomicCommits.ts:130-139 can include dependent requests.
 **Expected.** A decision to discard the shown copy must not discard a different copy that arrived afterward.

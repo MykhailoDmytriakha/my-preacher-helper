@@ -226,7 +226,7 @@
       "sending": "Sending changes…",
       "unknown": "Delivery result unknown. Your draft is retained.",
       "blocked": "Delivery is waiting for an earlier operation.",
-      "refused": "The server refused these changes. Your draft is retained.",
+      "refused": "The changes were not accepted. Your draft is retained.",
       "conflict": "These changes conflict with the server version. Your draft is retained.",
       "remoteChanged": "A newer version is available. Your draft is retained.",
       "deleted": "Deleted on the server. Any local draft remains here.",

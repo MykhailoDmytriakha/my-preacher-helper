@@ -160,8 +160,11 @@ missing provider (`ready` is false), because such menus render in both deploymen
 
 Such an action is accepted once the engine holds it on this device. If the server then answers
 with a conflict or a refusal, the list shows the stored version while this device's words wait
-in closed checkpoints (`waitsForDecision`: a conflict, or a request the journal marks refused or
-conflicted). Until the person decides, further one-shot changes to that document are refused
+in closed checkpoints. `listRecoverable` derives an optional `answer` through `savedDocumentAnswer`
+from the existing request state: a relation command ACK can leave a request conflict, and local
+policy refusal can have no journal entry. The same query publishes open answering resources.
+Legacy direct-command checkpoints retain owned journal answers; no checkpoint schema changes.
+`waitsForDecision` consumes this query view alongside checkpoint conflicts and legacy answers. Until the person decides, further one-shot changes to that document are refused
 with `decision-required`, so nothing piles up behind the answer. `resolve(resource, choice)`
 never chooses for the person: "mine" is allowed only when exactly one checkpoint waits and the
 document still exists — the engine gives no order between several closed checkpoints of one

@@ -1,3 +1,4 @@
+import { relationRebaseHarness } from '@test-utils/relationRebaseHarness';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React, { useEffect } from 'react';
 
@@ -572,5 +573,60 @@ describe('a group\'s refused screen draft shows every word the person changed', 
     const shown = await refusedGroupDraft({ flow: [{ ...step, instanceNotes: undefined, durationMin: 12 }] });
     expect(shown).toMatch(/12/);
     expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
+  });
+});
+
+
+describe('a screen request conflict after an acknowledged relation', () => {
+  beforeEach(() => { process.env[ON_ENGINE] = 'series,sermons'; actions = null; mockPathname = '/settings/user'; });
+  afterEach(() => { delete process.env[ON_ENGINE]; });
+
+  it.each(['open', 'take'] as const)('finds the preserved title after leaving and can %s the request', async choice => {
+    const h = await relationRebaseHarness();
+    h.editor.close({ flush: true }); await settleEngine();
+    jest.mocked(createBrowserDataEngine).mockImplementation(() => h.browser);
+    render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+    const link = await screen.findByRole('link', { name: 'dataSync.openToDecide' });
+    expect(link).toHaveAttribute('href', '/series/primary');
+    expect(screen.getByText(/My title/)).toBeInTheDocument();
+    if (choice === 'take') {
+      await confirmTextAction('dataSync.acceptRemote');
+      await waitFor(() => expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument());
+      expect((await h.commits.list('owner'))[0].state).toBe('cancelled');
+      expect(h.transport.send).toHaveBeenCalledTimes(1);
+    } else {
+      mockPathname = '/series/primary';
+      await act(async () => { await h.engine.openEditor(h.primary.resource, h.browser.editorId(h.primary.resource)); await settleEngine(); });
+      await waitFor(() => expect(screen.queryByText('dataSync.screenDraftBody')).not.toBeInTheDocument());
+    }
+    expect(h.server.get(JSON.stringify(h.primary.resource))?.value).toMatchObject({ title: 'Remote title', sermonIds: ['member'] });
+  });
+});
+
+describe('a request refused locally before transport preparation', () => {
+  beforeEach(() => { process.env[ON_ENGINE] = 'studyNotes'; actions = null; mockPathname = '/settings/user'; });
+  afterEach(() => { delete process.env[ON_ENGINE]; });
+  const refusedWithoutReceipt = async () => {
+    const h = setup();
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    await act(async () => { await actions!.commit(resource, current => ({ ...current!, materialIds: ['material'] })); await settleEngine(); });
+    expect((await h.commits.list('owner'))[0]).toMatchObject({ state: 'refused', result: { kind: 'refused', code: 'relation-owner-required' } });
+    expect(await h.engine.listPending()).toEqual([]);
+    expect(h.transport.send).not.toHaveBeenCalled();
+    return h;
+  };
+
+  it('names the saved refusal without claiming that another device changed the text', async () => {
+    await refusedWithoutReceipt();
+    await screen.findByText('dataSync.phase.refused');
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+    await confirmTextAction('dataSync.acceptRemote');
+    await waitFor(() => expect(screen.queryByText('dataSync.phase.refused')).not.toBeInTheDocument());
+  });
+
+  it('requires deciding the refused request before capturing a further one-shot edit', async () => {
+    const h = await refusedWithoutReceipt();
+    await expect(actions!.commit(resource, current => ({ ...current!, content: 'Next words' }))).rejects.toMatchObject({ code: 'decision-required' });
+    expect(await h.commits.list('owner')).toHaveLength(1);
   });
 });

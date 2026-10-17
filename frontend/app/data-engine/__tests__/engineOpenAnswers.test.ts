@@ -1,3 +1,4 @@
+import { relationRebaseHarness } from '@test-utils/relationRebaseHarness';
 import { editorIdentity } from '../editorIdentity';
 
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
@@ -62,5 +63,21 @@ describe('open editors holding answered requests', () => {
     expect(() => editor.getState()).toThrow();
     expect(() => second.getState()).toThrow();
     stop(); expect(() => browser.dispose()).not.toThrow();
+  });
+});
+
+
+describe('open editors holding a request conflict after its relation ACK', () => {
+  it.each(['series', 'studyMaterials'] as const)('publishes the answering %s editor without a failed transport receipt', async collection => {
+    const h = await relationRebaseHarness(collection);
+    try {
+      expect((await h.commits.list('owner'))[0].state).toBe('conflict');
+      expect([...h.journal.values()].map(entry => entry.state)).toEqual(['acknowledged']);
+      expect(h.editor.getState().checkpoint.conflicts.length).toBeGreaterThan(0);
+      expect(h.engine.getOpenAnswers()).toEqual([h.primary.resource]);
+      expect(await h.engine.answerHeldOpen(h.primary.resource)).toBe(true);
+      h.editor.close({ flush: false });
+      expect(h.engine.getOpenAnswers()).toEqual([]);
+    } finally { h.browser.dispose(); }
   });
 });

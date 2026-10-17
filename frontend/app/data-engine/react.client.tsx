@@ -10,6 +10,7 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+import { savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
@@ -225,13 +226,12 @@ export function useOpenDocumentAnswers(): readonly ResourceRef[] {
  * with the engine like any save. A screen that shows the document keeps its own editor instead.
  */
 /**
- * Whether a closed editor's checkpoint waits for the person: the server answered one of its
- * requests with a conflict or a refusal. Work that is queued, or an edit still on its way into a
+ * Whether a closed checkpoint holds a conflict or a saved request/legacy command answer. Work that is queued, or an edit still on its way into a
  * request (possibly another tab's), does not.
  */
-export function waitsForDecision(record: EditorRecord, journal: readonly JournalEntry[]): boolean {
-  const failed = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
-  return record.checkpoint.conflicts.length > 0 || Object.keys(record.checkpoint.pending).some(id => failed.has(id));
+export function waitsForDecision(record: EditorRecord, journal: readonly JournalEntry[], answer?: DocumentAnswer): boolean {
+  return record.checkpoint.conflicts.length > 0 || Boolean(answer) || Boolean(savedDocumentAnswer(record.owner,
+    record.checkpoint.confirmed.resource, Object.keys(record.checkpoint.pending), [], journal));
 }
 
 /** The slot one-shot actions open their editor under. */
@@ -293,7 +293,7 @@ export function useDocumentActions() {
   const waitingFor = useCallback(async (resource: ResourceRef) => {
     if (!browser) return [];
     const [records, journal] = await untilStorageSilent(Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]), () => undefined, readOnlyReason(true));
-    return records.filter(({ record }) => waitsForDecision(record, journal));
+    return records.filter(({ record, answer }) => waitsForDecision(record, journal, answer));
   }, [browser, readOnlyReason]);
   const withEditor = useCallback(async (resource: ResourceRef, action: (editor: ManagedEditor) => Promise<void>, creating = false) => {
     if (!browser || !owner) throw new Error(ENGINE_NOT_READY);

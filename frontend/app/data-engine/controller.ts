@@ -5,6 +5,7 @@ import { equalValues, mergeDocumentFields } from './protocol';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 
 import type { CommitQueue, CommitRequest } from './commits';
+import type { DocumentAnswer } from './documentDelivery';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
@@ -32,6 +33,8 @@ export interface RecoveryCheckpoint {
   /** Stable persisted identity, independent of the current browser factory. */
   id: string;
   record: EditorRecord;
+  /** Derived by engine discovery; never stored in the checkpoint. */
+  answer?: DocumentAnswer;
 }
 
 export interface CheckpointRecoveryStore extends CheckpointStore {

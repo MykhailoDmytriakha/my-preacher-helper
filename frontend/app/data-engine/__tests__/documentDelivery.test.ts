@@ -1,4 +1,4 @@
-import { canReplaceDocumentIntent } from '../documentDelivery';
+import { canReplaceDocumentIntent, savedDocumentAnswer } from '../documentDelivery';
 
 import type { CommitRequest } from '../commits';
 import type { JournalEntry } from '../types';
@@ -45,4 +45,33 @@ it('leaves complete and incomplete atomic scopes to their action owner', () => {
   expect(canReplace([request(), dependent])).toBe(false);
   const unrelated = { ...request('unrelated'), editorId: 'unrelated', atomic: { id: 'unrelated', participants: ['unrelated', 'other'] } };
   expect(canReplace([request(), unrelated, { ...unrelated, id: 'other', editorId: 'other' }])).toBe(true);
+});
+
+
+describe('the answer to a saved document request', () => {
+  const answer = (requests: CommitRequest[], journal: JournalEntry[] = [], ids = ['request']) =>
+    savedDocumentAnswer('owner', baseline.resource, ids, requests, journal);
+
+  it.each(['queued', 'prepared', 'acknowledged', 'cancelled'] as const)('does not turn a %s request into a question because its old command failed', state => {
+    const oldReceipt = { ...receipt('conflict'), command: { ...command, operationId: 'request' } };
+    expect(answer([{ ...request(), state, result: null }], [oldReceipt])).toBeNull();
+  });
+  it('recognizes a request-only refusal and a conflict after a relation ACK', () => {
+    expect(answer([request()], [receipt('acknowledged')])).toBe('conflict');
+    expect(answer([{ ...request(), state: 'refused', result: { kind: 'refused', operationId: 'request', code: 'derived-field' } }])).toBe('refused');
+  });
+  it('keeps legacy direct-command answers, but stays silent while delivery is unresolved', () => {
+    expect(answer([], [receipt('conflict')], ['relation'])).toBe('conflict');
+    expect(answer([], [receipt('refused')], ['relation'])).toBe('refused');
+    for (const state of ['queued', 'sending', 'unknown', 'blocked', 'acknowledged'] as const) {
+      expect(answer([], [receipt(state)], ['relation'])).toBeNull();
+    }
+  });
+  it('uses only held identities belonging to this owner and document', () => {
+    expect(answer([request()], [], [])).toBeNull();
+    expect(answer([{ ...request(), owner: 'another' }])).toBeNull();
+    expect(answer([{ ...request(), baseline: { ...baseline, resource: { ...baseline.resource, id: 'another' } } }])).toBeNull();
+    expect(answer([], [{ ...receipt('refused'), command: { ...command, owner: 'another' } }], ['relation'])).toBeNull();
+    expect(answer([], [{ ...receipt('refused'), command: { ...command, resource: { ...baseline.resource, id: 'another' } } }], ['relation'])).toBeNull();
+  });
 });

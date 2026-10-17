@@ -2,7 +2,7 @@ import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
-import { canReplaceDocumentIntent } from './documentDelivery';
+import { canReplaceDocumentIntent, savedDocumentAnswer } from './documentDelivery';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -547,7 +547,12 @@ export class DataEngine {
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     return records.filter(({ record }) => !this.editors.has(record.editorId))
-      .map(({ id, record }) => ({ id, record: reconcileRecoveryRecord(record, requests) }))
+      .map(({ id, record }) => {
+        const reconciled = reconcileRecoveryRecord(record, requests);
+        const answer = savedDocumentAnswer(owner, reconciled.checkpoint.confirmed.resource,
+          Object.keys(reconciled.checkpoint.pending), requests, this.pending);
+        return { id, record: reconciled, ...(answer ? { answer } : {}) };
+      })
       .filter(({ record }) => isRecoverableCheckpoint(record));
   }
 
@@ -566,8 +571,7 @@ export class DataEngine {
   }
 
   /**
-   * Whether an editor open in this tab holds a request of this document that the server refused or
-   * conflicted on — its screen then says the answer itself. A screen opened before the request existed
+   * Whether an editor open in this tab holds an answered saved request of this document — its screen then says the answer itself. A screen opened before the request existed
    * holds nothing, and the answer must be said elsewhere.
    */
   async answerHeldOpen(resource: ResourceRef): Promise<boolean> {
@@ -584,11 +588,12 @@ export class DataEngine {
   }
 
   private answeredEditorResources(journal: readonly JournalEntry[]): ResourceRef[] {
-    const answered = new Set(journal.filter(entry => entry.state === 'refused' || entry.state === 'conflict').map(entry => entry.command.operationId));
+    const requests = [...this.commitRecords.values()];
     const resources = new Map<string, ResourceRef>();
     for (const entry of this.editors.values()) {
       const checkpoint = !entry.closed ? entry.controller?.getState().checkpoint : null;
-      if (checkpoint && Object.keys(checkpoint.pending).some(id => answered.has(id))) {
+      if (checkpoint && savedDocumentAnswer(this.owner ?? '', checkpoint.confirmed.resource,
+        Object.keys(checkpoint.pending), requests, journal)) {
         const resource = checkpoint.confirmed.resource;
         resources.set(cacheKey(this.owner ?? '', resource), resource);
       }
