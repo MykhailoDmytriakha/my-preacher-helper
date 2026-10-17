@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { showCouncilFinishUndo } from '@/components/council/councilActionNotice';
+import { useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -18,15 +18,14 @@ import {
   applyOutcome,
   councilProgress,
   firstOpenTopicIndex,
-  holdCouncil,
   isInfoTopic,
   outcomeText,
-  reopenCouncil,
   topicState,
   type TopicOutcome,
 } from '@/utils/council';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
 
@@ -69,6 +68,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
     <CouncilConductContent councilId={councilId} source={{
       council: document.council, loading: document.loading,
       updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
+      finishCouncil: document.finishCouncil,
       readOnly: document.readOnly,
     }} />
   </>;
@@ -78,6 +78,7 @@ interface CouncilConductSource {
   council: Council | null | undefined;
   loading: boolean;
   updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+  finishCouncil: () => Promise<CouncilFinishUndo>;
   /**
    * A copy shown while device storage is silent (BUG-20260927-engine-open-hangs-on-silent-device-storage):
    * every section, question and prepared answer is here to read, but nothing is marked or finished —
@@ -90,6 +91,10 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
   const { t } = useTranslation();
   const router = useRouter();
   const { council, loading, updateCouncil, readOnly = false } = source;
+  const { finish, finishing, showHeld } = useCouncilFinishAction(t, source.finishCouncil, {
+    held: council?.status === 'held',
+    onCaptured: () => router.push(`/care/council/${councilId}`),
+  });
   const outcomeLine = useOutcomeLine();
 
   // `null` until the person moves: the first open section is where the meeting resumes.
@@ -119,7 +124,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
     );
   }
 
-  if (council.status === 'held') {
+  if (showHeld) {
     return (
       <Shell>
         <Centered message={t('council.conduct.alreadyHeld')} onBack={backToCouncil} backLabel={t('council.conduct.back')} />
@@ -150,18 +155,6 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
       ),
     }));
 
-  /**
-   * ONE PRESS, AND A WAY BACK. A second "are you sure?" read as the same button twice; the
-   * undo on the toast is the safety net instead, and it costs nothing when it is not needed.
-   */
-  const finish = () => {
-    if (readOnly) return;
-    const at = new Date().toISOString();
-    updateCouncil(council.id, (current) => holdCouncil(current, at));
-    router.push(`/care/council/${council.id}`);
-    showCouncilFinishUndo(t, () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())));
-  };
-
   const goTo = (next: number) => {
     setChosenIndex(Math.max(0, Math.min(next, topics.length - 1)));
     setShowQuestions(false);
@@ -169,7 +162,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
   };
 
   const sectionList = (
-    <SectionList council={council} currentIndex={index} onSelect={goTo} onFinish={readOnly ? undefined : finish} />
+    <SectionList council={council} currentIndex={index} onSelect={goTo} onFinish={readOnly ? undefined : finish} finishing={finishing} />
   );
 
   return (
@@ -333,7 +326,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
           {t('council.discussedCount', { done: progress.done, total: progress.total })}
         </span>
         {isLast ? (!readOnly && (
-          <button type="button" onClick={finish} className={buttonPrimary} data-testid="council-finish">
+          <button type="button" onClick={finish} disabled={finishing} className={buttonPrimary} data-testid="council-finish">
             <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
             {t('council.conduct.finish')}
           </button>
@@ -367,12 +360,14 @@ function SectionList({
   currentIndex,
   onSelect,
   onFinish,
+  finishing,
 }: {
   council: Council;
   currentIndex: number;
   onSelect: (index: number) => void;
   /** Absent while the council is a copy for reading: ending it could not be kept. */
   onFinish?: () => void;
+  finishing: boolean;
 }) {
   const { t } = useTranslation();
   const outcomeLine = useOutcomeLine();
@@ -419,7 +414,7 @@ function SectionList({
         in the toast is the second one, and neither should have to be used.
       */}
       {onFinish && <div className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
-        <button type="button" onClick={onFinish} className={`${buttonPrimary} w-full justify-center`}>
+        <button type="button" onClick={onFinish} disabled={finishing} className={`${buttonPrimary} w-full justify-center`}>
           <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
           {t('council.conduct.finish')}
         </button>

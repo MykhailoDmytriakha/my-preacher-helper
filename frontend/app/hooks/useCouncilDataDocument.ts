@@ -2,11 +2,14 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { useDataDocument, useDocumentActions, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { hydrateCouncil } from '@/services/councils.client';
+import { holdCouncil, reopenCouncil } from '@/utils/council';
 
 import type { DocumentData } from '@/data-engine/types';
 import type { Council, CouncilTopic } from '@/models/models';
+
+export type CouncilFinishUndo = () => Promise<void>;
 
 const missing = () => new Error('The council is not available for editing');
 
@@ -24,13 +27,14 @@ const missing = () => new Error('The council is not available for editing');
 export function useCouncilDataDocument(councilId: string) {
   // Both council screens render read-only when handed a copy (BUG-20260927-engine-open-hangs-on-silent-device-storage).
   const document = useDataDocument({ collection: 'councils', id: councilId }, { slot: 'council', readOnlyCopy: true });
+  const actions = useDocumentActions();
   const data = document.data;
   const council = useMemo<Council | null>(
     () => (data ? hydrateCouncil(data as Record<string, unknown>, councilId) : null),
     [data, councilId]
   );
 
-  const apply = useCallback((mutate: (current: Council) => Council) => (current: DocumentData | null): DocumentData => {
+  const apply = useCallback((mutate: (current: Council) => Council, at?: string) => (current: DocumentData | null): DocumentData => {
     if (!current) throw missing();
     // The id addresses the document; it never travels inside the stored fields.
     const { id: _id, rev: _rev, ...next } = mutate(hydrateCouncil(current as Record<string, unknown>, councilId));
@@ -41,7 +45,7 @@ export function useCouncilDataDocument(councilId: string) {
      * (BUG-20261004-council-without-rev-refuses-title). The server gives it a counter on its first write.
      */
     const kept = 'rev' in current ? { rev: current.rev } : {};
-    return { ...next, ...kept, updatedAt: new Date().toISOString() } as unknown as DocumentData;
+    return { ...next, ...kept, updatedAt: at ?? new Date().toISOString() } as unknown as DocumentData;
   }, [councilId]);
 
   /** Typing: persisted locally at once, delivered by the shared autosave. */
@@ -53,6 +57,19 @@ export function useCouncilDataDocument(councilId: string) {
     if (!council) throw missing();
     await write(updater);
   }, [council, write]);
+
+  /** Capture before leaving; Undo belongs to the entity, never to the departed screen editor. */
+  const finishCouncil = useCallback(async (): Promise<CouncilFinishUndo> => {
+    if (!council) throw missing();
+    const at = new Date().toISOString();
+    // A failed local capture already left this intent in the draft. Retry its capture unchanged.
+    if (council.status === 'held') await document.save();
+    else await document.commit(apply(current => holdCouncil(current, at), at));
+    return async () => {
+      const undoneAt = new Date().toISOString();
+      await actions.commit({ collection: 'councils', id: councilId }, apply(current => reopenCouncil(current, undoneAt), undoneAt));
+    };
+  }, [council, document, apply, actions, councilId]);
 
   const carryTopicToNext = useCallback(async (_id: string, topic: CouncilTopic, targetCouncilId?: string, fallbackTitle?: string) => {
     if (!council) throw missing();
@@ -115,6 +132,7 @@ export function useCouncilDataDocument(councilId: string) {
     acceptRemote: document.acceptRemote,
     keepLocal: document.keepLocal,
     updateCouncil,
+    finishCouncil,
     deleteCouncil,
     carryTopicToNext,
     actions: document.actions,

@@ -33,7 +33,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
-import { showCouncilCarryPrepared, showCouncilFinishUndo } from '@/components/council/councilActionNotice';
+import { showCouncilCarryPrepared, useCouncilFinishAction } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -51,11 +51,12 @@ import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useRouteId } from '@/hooks/useRouteId';
 import { actionFailureMessage } from '@/utils/actionFailureMessage';
-import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
+import { applyOutcome, hasProgress, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
+import type { CouncilFinishUndo } from '@/hooks/useCouncilDataDocument';
 import type { Council, CouncilTopic } from '@/models/models';
 import '@locales/i18n';
 
@@ -145,6 +146,7 @@ function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
     // Resolves whether the delete is held; a refusal is reported here and the page stays.
     deleteCouncil: (id: string) => document.deleteCouncil(id).then(() => true, (error: unknown) => { report(error); return false; }),
     carryTopicToNext,
+    finishCouncil: document.finishCouncil,
   };
   return <>
     <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} className="mb-4"
@@ -165,6 +167,7 @@ interface CouncilDetailSource {
   refresh: () => unknown;
   updateCouncil: (id: string, updater: (current: Council) => Council) => void;
   deleteCouncil: (id: string) => Promise<boolean>;
+  finishCouncil: () => Promise<CouncilFinishUndo>;
   carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Promise<Council | undefined>;
   /** The council is a copy for reading: nothing on the page offers a change it could not keep. */
   readOnly?: boolean;
@@ -174,6 +177,8 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   const { t } = useTranslation();
   const router = useRouter();
   const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, readOnly = false } = source;
+
+  const { finish: finishCouncil, finishing } = useCouncilFinishAction(t, source.finishCouncil);
 
   const pendingCarries = useRef(new Set<string>());
   const [carrying, setCarrying] = useState<ReadonlySet<string>>(new Set());
@@ -268,12 +273,6 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   };
 
   const progressStarted = hasProgress(council);
-
-  /** One press closes the council; the toast carries the way back instead of a second question. */
-  const finishCouncil = () => {
-    updateCouncil(council.id, (current) => holdCouncil(current, new Date().toISOString()));
-    showCouncilFinishUndo(t, () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())));
-  };
 
   const moveTopic = (topicId: string, toIndex: number) => {
     const fromIndex = council.topics.findIndex((topic) => topic.id === topicId);
@@ -376,7 +375,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
                   </button>
                 )}
                 {!held && progressStarted && (
-                  <button type="button" onClick={finishCouncil} className={buttonQuiet} data-testid="council-finish-here">
+                  <button type="button" onClick={finishCouncil} disabled={finishing} className={buttonQuiet} data-testid="council-finish-here">
                     <Check className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                     {t('council.detail.finish')}
                   </button>

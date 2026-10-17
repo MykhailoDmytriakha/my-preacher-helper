@@ -5,6 +5,7 @@ import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
+import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CommitQueue, CommitRequest } from './commits';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
@@ -377,9 +378,23 @@ export class EditorController {
   }
 
   private onCommit(request: CommitRequest): void {
+    const resource = this.options.snapshot.resource;
     if (request.owner !== this.options.owner || this.disposed
-      || (request.editorId !== this.options.editorId && !this.session.checkpoint().pending[request.id])) return;
-    void this.enqueue(() => this.applyCommit(request)).catch(() => undefined);
+      || request.baseline.resource.collection !== resource.collection || request.baseline.resource.id !== resource.id) return;
+    void this.enqueue(async () => {
+      const held = request.editorId === this.options.editorId || this.session.checkpoint().pending[request.id];
+      if (!held && !await this.adoptSubmittedSuccessor(request)) return;
+      await this.applyCommit(request);
+    }).catch(() => undefined);
+  }
+
+  private async adoptSubmittedSuccessor(request: CommitRequest): Promise<boolean> {
+    if (this.prepared || this.atomicPending.size || !this.options.commits
+      || !request.predecessor || !this.session.checkpoint().pending[request.predecessor]) return false;
+    // The existing submitted-chain owner refuses known competing branches before any event can pick one.
+    const chain = submittedWorkCheckpoint(this.options.owner, this.options.snapshot.resource, await this.options.commits.list());
+    this.assertCurrent();
+    return Boolean(chain?.pending[request.id]) && this.session.adoptSubmittedSuccessor(request);
   }
 
   private async applyCommit(request: CommitRequest): Promise<void> {

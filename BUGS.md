@@ -116,6 +116,23 @@
 **Reproduce.** Finish is accepted; click Undo after route change. No second command is sent; the page reports a save failure and the stored status remains held. The callback belongs to the editor that the route change closed.
 **Direction.** Preserve a valid entity writer across the route or use the canonical action lifecycle with its pending predecessor. Never revive a closed editor or overwrite a stale whole council. Check detail-page Undo after leaving its entity too.
 **Class extension.** Finish navigation can also close the editor before its acknowledged write continuation: the real planner stores held status while the old screen reports InactiveEditorError and a save-error toast. Check both ACK and refusal timing, not only Undo.
+**Offline class extension (live, 2026-10-17).** The route-safe Undo captures a second request with Finish as its predecessor, but the already-open summary ignores the foreign action editor and still displays held. Reload shows preparing; reconnect acknowledges both. Fix the shared submitted-successor projection without absorbing unsent words or treating local intent as server confirmation. Original offline browser failure and diagnostic request/checkpoint proof are retained.
+**Candidate refusal control.** A projected Undo refused after delivery must remain independently visible when the screen has extra unsent words. Taking the stored version must retire its status delta while preserving those words; the new control exposed a candidate cancellation projection that kept the rejected status together with the words. Reuse the existing field merge for exact decided work, not whole-draft replacement. The candidate RED is retained.
+**Candidate branch controls.** Two known sibling request branches in both event orders and tied pending generations must not choose a local winner. Three RED controls are retained. Reuse submittedWorkCheckpoint before projection and require a unique known pending tip; future unseen work is not predicted, and independent request identities stay recoverable.
+
+**Class (mechanism).** A global toast outlives the route editor captured by its callback.
+| Site | Verdict | Reason |
+|---|---|---|
+| Conduct Finish then route | affected | A void update is still completing when the route closes its editor. |
+| Conduct Undo after route | affected | The toast retains the closed conduct writer. |
+| Detail Undo after leaving council | affected | The same callback becomes inactive after its page closes. |
+| Shared editor close/owner guards | retain | They prevent a departed editor from changing another scope. |
+| Server command protocol | unaffected | It receives field changes and has no route-bound callback. |
+| Offline submitted chain | retain and verify | Canonical commits preserve the predecessor; no separate queue is needed. |
+| Scratch delete Undo | separate investigation | Another domain needs exact note restoration; see BUG-20261017-scratch-undo-closed-editor. |
+**Fix direction.** Commit Finish through the current public editor before its own navigation. Return an entity-bound Undo using useDocumentActions over the latest stored/submitted copy; share UI orchestration at both sites. Never hold a stale whole council or reopen a closed editor. Awaiting server acceptance would disable offline use; weakening editor guards or adding a separate queue would affect unrelated documents.
+**Regression proof before product change.** EngineCouncilFinishUndo.test.tsx uses the actual pages and local engine:2failed/1same-screen control. Both failures leave held status after Undo. The first archived attempt had one wrong held-title selector; corrected v2 RED is the behavior proof. Current-build browser also ACKs Finish, then Undo sends no second command and leaves held.
+
 
 
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
@@ -324,6 +341,14 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261017-scratch-undo-closed-editor · Check scratch delete Undo after leaving its editor
+**Severity.** P3 candidate — an offered Undo may fail to restore the explicitly deleted thought after navigation.
+**Found.** 2026-10-17, source review of the council callback class; browser reproduction is not yet run.
+**Anchors.** `frontend/app/components/sermon/ScratchPanel.tsx:395` retains restoreScratchNote in a global toast; `frontend/app/(pages)/(private)/sermons/[id]/hooks/useScratchDataDocument.ts:26` routes it to the page-bound document.update and catches rejection.
+**User contract.** Sermon → thoughts/scratch → confirm deletion → leave the screen → Undo while offered: restore only that note to the same sermon, preserving later notes/words. Without Undo, keep the explicit deletion.
+**Check.** Delete a disposable thought, navigate away, click its toast Undo and reopen the sermon. Compare exact note identity/words and later content. Expected restored; suspected actual no request because the captured editor is closed. Do not count source reasoning as a live failure.
+**Direction if confirmed.** Use the canonical entity action lifecycle for this specific restore, preserving exact note identity and later content; no stale scratch array or revived editor. Separate domain repair from council Finish.
 
 ### BUG-20261016-bible-deeplink-lands-early-verse · По ссылке на стих (Исаия 26:20) Safari iPadOS показал вверху стих 8 той же главы
 **Severity.** P3 — человек открывает место по ссылке и видит не тот стих наверху; ищет глазами.

@@ -5,6 +5,8 @@ import { toast, type Action } from 'sonner';
 import CouncilDetailPage from '../[id]/page';
 import CouncilConductPage from '../[id]/conduct/page';
 
+import { holdCouncil, reopenCouncil } from '@/utils/council';
+
 import type { Council, CouncilTopic } from '@/models/models';
 import '@testing-library/jest-dom';
 
@@ -47,7 +49,12 @@ jest.mock('@/hooks/useCouncilDataDocument', () => ({
   useCouncilDataDocument: () => ({
     council: state.council, loading: false, error: null, status: null, confirmed: null, remote: null,
     refresh: jest.fn(), acceptRemote: jest.fn(), keepLocal: jest.fn(),
-    updateCouncil: mockUpdateCouncil, deleteCouncil: jest.fn().mockResolvedValue(undefined),
+    updateCouncil: mockUpdateCouncil,
+    finishCouncil: async () => {
+      await mockUpdateCouncil('source', (current: Council) => holdCouncil(current, new Date().toISOString()));
+      return async () => { await mockUpdateCouncil('source', (current: Council) => reopenCouncil(current, new Date().toISOString())); };
+    },
+    deleteCouncil: jest.fn().mockResolvedValue(undefined),
     carryTopicToNext: mockCarry, listRecoverable: jest.fn().mockResolvedValue([]), recover: jest.fn(),
     recovery: { choices: [], loading: false, error: null, refresh: jest.fn(), recover: jest.fn() },
   }),
@@ -189,17 +196,17 @@ describe('council action notices do not claim server acceptance', () => {
   it.each([
     ['detail', CouncilDetailPage, 'council-finish-here'],
     ['conduct', CouncilConductPage, 'council-finish'],
-  ] as const)('keeps an immediate neutral undo on the %s screen while delivery is pending', (_name, Page, button) => {
+  ] as const)('keeps a neutral undo after local capture on the %s screen while delivery is pending', async (_name, Page, button) => {
     state.council = council('source', 'preparing', [{ ...topic, discussed: true }]);
     state.councils = [state.council];
     render(<Page />);
-    fireEvent.click(screen.getByTestId(button));
+    await act(async () => { fireEvent.click(screen.getByTestId(button)); });
     expect(mockUpdateCouncil).toHaveBeenCalledTimes(1);
     expect(toast.success).not.toHaveBeenCalled();
     expect(toast.message).toHaveBeenCalledWith('council.detail.finishUndoAvailable', { duration: 8000, action: { label: 'council.detail.undo', onClick: expect.any(Function) } });
     const options = jest.mocked(toast.message).mock.calls[0][1];
     render(<button onClick={(options?.action as Action).onClick}>Undo council finish</button>);
-    fireEvent.click(screen.getByRole('button', { name: 'Undo council finish' }));
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Undo council finish' })); });
     expect(mockUpdateCouncil).toHaveBeenCalledTimes(2);
     const held = mockUpdateCouncil.mock.calls[0][1](state.council);
     expect(mockUpdateCouncil.mock.calls[1][1](held)).toMatchObject({ status: 'preparing', topics: state.council.topics });

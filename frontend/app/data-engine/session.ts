@@ -75,6 +75,25 @@ export class DataSession {
     if (preparedId && preparedId !== operationId && !pending.operations?.includes(preparedId)) pending.operations = [...(pending.operations ?? []), preparedId];
   }
 
+  /** Follow only an ordinary saved descendant of this editor's known pending tip. */
+  adoptSubmittedSuccessor(request: CommitRequest): boolean {
+    const parent = request.predecessor ? this.state.pending[request.predecessor] : undefined;
+    const resource = this.state.confirmed.resource;
+    if (!parent || this.state.pending[request.id] || request.atomic || !['queued', 'prepared'].includes(request.state)
+      || request.baseline.resource.collection !== resource.collection || request.baseline.resource.id !== resource.id
+      || this.state.conflicts.length || this.state.remoteCandidate
+      || Object.entries(this.state.pending).some(([id, item]) => id !== request.predecessor && item.generation >= parent.generation)) return false;
+    const merged = mergeDocumentFields(parent.value, this.state.draft, request.value);
+    // Two private local branches are not a server answer. Keep them separate until delivery or recovery.
+    if (merged.conflicts.length) return false;
+    const draft = merged.value.exists ? merged.value.value as DocumentData : null;
+    this.edit(draft);
+    this.registerCommit(request.id, this.state.editGeneration, request.value, request.command?.operationId);
+    // Unsent sibling words still need their own autosave; the adopted action never captures them.
+    if (!equalValues(draft, request.value)) this.edit(draft);
+    return true;
+  }
+
   /** One projection rule for mounted editors and recovery of editors that already closed. */
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
@@ -215,13 +234,10 @@ export class DataSession {
    * projection of closed ones, so one cannot settle while the other keeps waiting.
    */
   private settleDecided(decided: DocumentData | null): void {
-    this.state.conflicts = [];
-    if (!equalValues(this.state.draft, decided)) return;
     if (this.state.remoteCandidate) this.state.confirmed = copy(this.state.remoteCandidate);
-    this.state.draft = copy(this.state.confirmed.value);
     this.state.remoteCandidate = null;
-    this.state.dirty = false;
-    this.state.editGeneration += 1;
+    // Retire only the submitted value the person decided about; later unsent sibling words stay.
+    this.dropRefused(decided);
   }
 
   /**
