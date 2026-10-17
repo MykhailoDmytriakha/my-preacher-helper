@@ -63,7 +63,7 @@ describe('BibleBookReader', () => {
     expect(screen.getByText('Павел, Апостол')).toHaveAttribute('lang', 'ru');
   });
 
-  it.each(['one change', 'replacement during reflow', 'cancel then deliberately scroll', 'publish restored place before native scroll'])('restores the same verse after the new text size has reflowed the page: %s', async (mode) => {
+  it.each(['one change', 'replacement during reflow', 'cancel then deliberately scroll', 'publish restored place before native scroll', 'choose another chapter before reflow'])('restores the same verse after the new text size has reflowed the page: %s', async (mode) => {
     const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
     let topRow = '1:2';
     let reflowed = false;
@@ -114,12 +114,17 @@ describe('BibleBookReader', () => {
       expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
       jumpedAfterReflow.length = 0;
       fireEvent.click(screen.getByRole('button', { name: 'Set text size' }));
+      if (mode === 'choose another chapter before reflow') {
+        fireEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+        expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      }
       act(() => { jest.advanceTimersByTime(30); });
       act(() => { jest.advanceTimersByTime(30); });
       act(() => { jest.advanceTimersByTime(30); });
       expect(reflowed).toBe(true);
       expect(screen.getByTestId('qa-text-size')).toHaveTextContent(mode === 'replacement during reflow' ? '1.8:1.8' : '1.6:1.6');
-      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('1:2');
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(mode === 'choose another chapter before reflow' ? '3:1' : '1:2');
       expect(jumpedAfterReflow.at(-1)).toBe(true);
       if (mode === 'cancel then deliberately scroll') {
         fireEvent.click(screen.getByRole('button', { name: 'Next text size' }));
@@ -140,6 +145,62 @@ describe('BibleBookReader', () => {
       scrollIntoView.mockReset();
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
       jest.useRealTimers();
+    }
+  });
+
+  it.each([false, true])('keeps the last deliberate reading verse when native scroll arrives before width recalibration: new input %s', async (newInput) => {
+    const order = ['1:1', '1:2', '2:1', '3:1', '4:1'];
+    let width = 100;
+    let offset = 0;
+    const callbacks = new Set<() => void>();
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const originalObserver = globalThis.ResizeObserver;
+    Object.defineProperty(window, 'scrollY', { configurable: true, get: () => offset });
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      const top = verse ? 16 + order.indexOf(verse) * 40 - offset : 0;
+      if (verse || this.matches('article')) return { top, bottom: top + 40, height: 40, left: 0, right: width, width, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+      return originalRect.call(this);
+    };
+    scrollIntoView.mockImplementation(function (this: HTMLElement) {
+      const verse = this.dataset.verse ?? `${this.dataset.chapter}:1`;
+      offset = order.indexOf(verse) * 40;
+    });
+    globalThis.ResizeObserver = class {
+      private readonly run: () => void;
+      constructor(callback: ResizeObserverCallback) { this.run = () => callback([], this as unknown as ResizeObserver); }
+      observe() { callbacks.add(this.run); }
+      unobserve() { callbacks.delete(this.run); }
+      disconnect() { callbacks.delete(this.run); }
+    } as unknown as typeof ResizeObserver;
+    const view = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
+    try {
+      await screen.findByText('Итак прежде всего');
+      const reading = (key: string) => document.querySelector<HTMLElement>(`[data-verse="${key}"]`)!.getBoundingClientRect().top;
+      const scroll = (top: number) => act(() => { offset = top; window.dispatchEvent(new Event('scroll')); });
+      scroll(120);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent('3:1');
+      width = 200;
+      if (newInput) fireEvent.wheel(window, { deltaY: 40 });
+      scroll(newInput ? 160 : 80);
+      act(() => { for (const callback of [...callbacks]) callback(); });
+      expect(reading(newInput ? '4:1' : '3:1')).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '4:1' : '3:1');
+      // A later deliberate scroll owns the next restored place, rather than the initial link.
+      scroll(newInput ? 120 : 160);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '3:1' : '4:1');
+      width = 100;
+      scroll(80);
+      act(() => { for (const callback of [...callbacks]) callback(); });
+      expect(reading(newInput ? '3:1' : '4:1')).toBe(16);
+      expect(screen.getByRole('button', { name: 'bible.changeChapter' })).toHaveTextContent(newInput ? '3:1' : '4:1');
+    } finally {
+      view.unmount();
+      Element.prototype.getBoundingClientRect = originalRect;
+      scrollIntoView.mockReset();
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+      if (originalObserver) globalThis.ResizeObserver = originalObserver;
+      else Reflect.deleteProperty(globalThis, 'ResizeObserver');
     }
   });
 
@@ -682,6 +743,98 @@ describe('BibleBookReader', () => {
         render(<BibleBookReader bible="kjv" initialBible="rst" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 50, verse: 3 }} onOpenBook={jest.fn()} />);
         await screen.findByText('Psalm 51:1');
         expect(JSON.parse(window.sessionStorage.getItem('bible:entry:entry-link') ?? 'null')).toEqual({ chapter: 50, verse: 3, bible: 'rst' });
+      } finally {
+        window.history.replaceState(null, '');
+      }
+    });
+  });
+
+  // A link opened on a phone landed hundreds to thousands of pixels above its verse: the links' chips and
+  // a late font arrive after the jump and grow the text above it, and Safari before 27 does not keep the
+  // verse in place (2026-10-16, measured). Until the person scrolls, the verse jumped to is kept at the top.
+  describe('the verse a jump came to, while the text above it grows', () => {
+    let fire: () => void = () => undefined;
+    beforeEach(() => {
+      const callbacks = new Set<() => void>();
+      fire = () => callbacks.forEach((callback) => callback());
+      (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+        constructor(private callback: () => void) { callbacks.add(() => this.callback()); }
+        observe() { return undefined; }
+        disconnect() { return undefined; }
+      };
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, 'ResizeObserver');
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    });
+
+    it('is jumped to again until the person scrolls, and then left where the person put it', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      const target = document.querySelector('[data-chapter="3"]');
+      expect(scrollIntoView.mock.contexts).toEqual([target]);
+      // The chips arrive: the text above grows.
+      act(() => { fire(); });
+      expect(scrollIntoView.mock.contexts).toEqual([target, target]);
+      // The person scrolls; what grows after that moves nothing back.
+      Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      scrollIntoView.mockClear();
+      act(() => { fire(); });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  // The owner's iPad, 2026-10-16: a new text size or a turn of the iPad restyled every element of the
+  // Psalter. A big book is drawn around the place read; the other chapters stand as boxes.
+  describe('a big book', () => {
+    const kjvPsalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `¶Psalm ${index + 1}:${verse + 1}`)) };
+    const servePsalms = () => {
+      global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => kjvPsalms, clone() { return this; } })) as unknown as typeof fetch;
+    };
+
+    it('draws only the psalms around the place read; the others stand as boxes with their heading', async () => {
+      servePsalms();
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 100, verse: 3 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 100:3');
+      expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-verse="100:3"]')]);
+      expect(document.querySelector('[data-verse="1:1"]')).toBeNull();
+      expect(document.querySelector('[data-verse="150:1"]')).toBeNull();
+      expect(document.querySelector('section[data-chapter="1"]')).toHaveAttribute('data-box');
+      expect(document.querySelector('section[data-chapter="100"]')).not.toHaveAttribute('data-box');
+      // Every psalm keeps its place in the book, a box or drawn.
+      expect(document.querySelectorAll('section[data-chapter]')).toHaveLength(150);
+      expect(document.querySelectorAll('[data-verse]').length).toBeLessThan(250);
+    });
+
+    it('draws a psalm far from the place before it jumps there', async () => {
+      servePsalms();
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 100, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 100:1');
+      scrollIntoView.mockClear();
+      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+      expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
+      expect(document.querySelector('section[data-chapter="3"]')).not.toHaveAttribute('data-box');
+      expect(screen.getByText('Psalm 3:1')).toBeInTheDocument();
+      expect(document.querySelector('[data-verse="100:1"]')).toBeNull();
+    });
+
+    it('lights the passage a link named in a psalm far from the start', async () => {
+      servePsalms();
+      window.history.replaceState({ bibleEntry: 'entry-lit' }, '');
+      try {
+        render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 120, verse: 2 }} passageEnd={3} onOpenBook={jest.fn()} />);
+        await screen.findByText('Psalm 120:2');
+        expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
+        expect(document.querySelector('[data-verse="120:3"]')).toHaveAttribute('data-arrival', 'on');
+        // The psalm leaves the page and comes back within the light's time: lit as it was (Codex, 2026-10-16).
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+        expect(document.querySelector('[data-verse="120:2"]')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('120'));
+        expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
       } finally {
         window.history.replaceState(null, '');
       }

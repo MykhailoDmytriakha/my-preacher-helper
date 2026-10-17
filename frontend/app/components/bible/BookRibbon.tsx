@@ -6,6 +6,7 @@ import { Fragment, memo } from 'react';
 import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
 
+import type { ChapterBoxes } from './useChapterWindow';
 import type { CrossReferenceCount } from '@/utils/crossReferences';
 
 /*
@@ -70,6 +71,9 @@ export type RibbonSigns = {
 
 const VERSE_NUMBER_CLASSES = 'w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500';
 
+/** Where a verse or a chapter jumped to stands: the reading top, where "the verse I am at" is measured from. */
+const READING_TOP = 'var(--reading-top)';
+
 /** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
 const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
 
@@ -80,7 +84,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs }: { chapter: nu
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
-    <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: 'var(--reading-top)' }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
+    <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: READING_TOP }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
       {signs && sign ? (
         <button
           type="button"
@@ -136,23 +140,36 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs }: { chapter: nu
   );
 }
 
-/** The whole book as one ribbon: chapters follow each other with only a thin line between them. */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs }: {
-  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns;
+/**
+ * The whole book as one ribbon: chapters follow each other with only a thin line between them. With
+ * `boxes` (a big book in the reader, `useChapterWindow`) only the chapters around the place read are
+ * drawn; every other one is a box of its height with its heading (`data-box`), so the scroll still spans
+ * the whole book and a fast scroll shows the chapters it passes.
+ */
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, boxes }: {
+  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; boxes?: ChapterBoxes | null;
 }) {
   return (
     <>
       {text.chapters.map((verses, chapterIndex) => {
         const chapter = chapterIndex + 1;
+        const box = boxes ? chapter < boxes.span.first || chapter > boxes.span.last : false;
         return (
           // The room above a chapter is a margin, outside the section: a jump puts the heading at the
           // reading top and the last verse of the chapter before stays above it, not counted as the place.
-          <section key={chapter} aria-label={chapterWord(chapter)} data-chapter={chapter} style={{ scrollMarginTop: 'var(--reading-top)' }} className={chapterIndex === 0 ? '' : 'mt-6'}>
+          <section
+            key={chapter}
+            aria-label={chapterWord(chapter)}
+            data-chapter={chapter}
+            data-box={box ? '' : undefined}
+            style={box && boxes ? { scrollMarginTop: READING_TOP, height: `${boxes.height(chapter)}px` } : { scrollMarginTop: READING_TOP }}
+            className={chapterIndex === 0 ? '' : 'mt-6'}
+          >
             <div className="flex items-center gap-3 pb-2 pl-10">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">{chapterWord(chapter)}</h2>
               <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
             </div>
-            {verses.map((raw, verseIndex) => (
+            {box ? null : verses.map((raw, verseIndex) => (
               <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} />
             ))}
           </section>

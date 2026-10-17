@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -54,6 +54,78 @@ describe('VerseSheet — the passage over the screen', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Пс 50:12' });
     await waitFor(() => expect(lit(dialog)).toEqual(['51:10']));
     expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'kjv');
+  });
+
+  // A big book is drawn around the passage, as in the reader: a psalm in a meeting does not build the
+  // whole Psalter (the owner's iPad, 2026-10-16).
+  it('draws only the psalms around the passage of a big book; the others stand as boxes', async () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
+    const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `Psalm ${index + 1}:${verse + 1}`)) };
+    jest.mocked(fetchBookText).mockResolvedValue(psalms as never);
+    render(<VerseSheet reference={{ bible: 'kjv', book: 'Psalms', chapter: 120, fromVerse: 2, toVerse: 3, label: 'Ps 120:2-3' }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ps 120:2-3' });
+    await waitFor(() => expect(lit(dialog)).toEqual(['120:2', '120:3']));
+    expect(dialog.querySelector('[data-verse="1:1"]')).toBeNull();
+    expect(dialog.querySelector('section[data-chapter="1"]')).toHaveAttribute('data-box');
+    expect(dialog.querySelectorAll('section[data-chapter]')).toHaveLength(150);
+  });
+
+  it.each([[8, false], [15, false], [8, true]] as const)('keeps the last deliberate reading verse when native scroll arrives before width recalibration: offset %i, new input %s', async (heldOffset, newInput) => {
+    const order = ['1:1', '1:2', '1:3', '2:1', '3:1', '4:1'];
+    let width = 100;
+    let pane: HTMLElement | null = null;
+    const callbacks = new Set<() => void>();
+    const originalRect = Element.prototype.getBoundingClientRect;
+    const originalObserver = globalThis.ResizeObserver;
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      if (this === pane) return { top: 0, bottom: 600, height: 600, left: 0, right: width, width, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+      const verse = this.dataset?.verse;
+      const top = verse ? 8 + order.indexOf(verse) * 40 - (pane?.scrollTop ?? 0) : 0;
+      if (verse || this.matches('article')) return { top, bottom: top + 40, height: 40, left: 0, right: width, width, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+      return originalRect.call(this);
+    };
+    globalThis.ResizeObserver = class {
+      private readonly run: () => void;
+      constructor(callback: ResizeObserverCallback) { this.run = () => callback([], this as unknown as ResizeObserver); }
+      observe() { callbacks.add(this.run); }
+      unobserve() { callbacks.delete(this.run); }
+      disconnect() { callbacks.delete(this.run); }
+    } as unknown as typeof ResizeObserver;
+    const view = render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1 }} onClose={jest.fn()} />);
+    try {
+      const dialog = await screen.findByRole('dialog');
+      await waitFor(() => expect(lit(dialog)).toEqual(['1:1']));
+      pane = dialog.querySelector('div[tabindex="0"]');
+      expect(pane).not.toBeNull();
+      Object.defineProperty(pane, 'clientHeight', { configurable: true, value: 600 });
+      Object.defineProperty(pane, 'scrollHeight', { configurable: true, value: 1000 });
+      const reading = (key: string) => dialog.querySelector<HTMLElement>(`[data-verse="${key}"]`)!.getBoundingClientRect().top;
+      // The person reads chapter 3. Reflow then makes native anchoring expose chapter 2,
+      // and its scroll event arrives before ResizeObserver's recalibration callback.
+      pane!.scrollTop = 168 - heldOffset;
+      fireEvent.scroll(pane!);
+      expect(reading('3:1')).toBe(heldOffset);
+      width = 200;
+      if (newInput) fireEvent.wheel(pane!, { deltaY: 40 });
+      pane!.scrollTop = newInput ? 200 : 120;
+      fireEvent.scroll(pane!);
+      act(() => { for (const callback of [...callbacks]) callback(); });
+      expect(reading(newInput ? '4:1' : '3:1')).toBe(heldOffset);
+      // After restoration, a real later scroll owns the place for the next resize.
+      pane!.scrollTop = (newInput ? 168 : 208) - heldOffset;
+      fireEvent.scroll(pane!);
+      expect(reading(newInput ? '3:1' : '4:1')).toBe(heldOffset);
+      width = 100;
+      pane!.scrollTop = 120;
+      fireEvent.scroll(pane!);
+      act(() => { for (const callback of [...callbacks]) callback(); });
+      expect(reading(newInput ? '3:1' : '4:1')).toBe(heldOffset);
+    } finally {
+      view.unmount();
+      Element.prototype.getBoundingClientRect = originalRect;
+      if (originalObserver) globalThis.ResizeObserver = originalObserver;
+      else Reflect.deleteProperty(globalThis, 'ResizeObserver');
+    }
   });
 
   it('closes by its button, by Escape and by a press beside it', async () => {

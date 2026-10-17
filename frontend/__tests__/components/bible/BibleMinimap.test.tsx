@@ -68,9 +68,10 @@ describe('BibleMinimap — the map leafs on its own, the text moves only on a pr
     jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(fakeContext as never);
     article = bookArticle();
     document.body.appendChild(article);
-    // The reader puts the verse pressed at the reading top.
-    onJump = jest.fn((place) => {
+    // The reader puts the verse pressed at the reading top, then says the jump is made.
+    onJump = jest.fn((place, then?: () => void) => {
       pageY = rowOf(place) * ROW;
+      then?.();
     });
   });
 
@@ -102,7 +103,7 @@ describe('BibleMinimap — the map leafs on its own, the text moves only on a pr
     expect(onJump).not.toHaveBeenCalled();
     pointer(map, 'pointerup', 300);
     expect(onJump).toHaveBeenCalledTimes(1);
-    expect(onJump).toHaveBeenCalledWith(verseAtY(layout, 300));
+    expect(onJump).toHaveBeenCalledWith(verseAtY(layout, 300), expect.any(Function));
   });
 
   it('a drag leafs through the map and moves no text', () => {
@@ -137,7 +138,7 @@ describe('BibleMinimap — the map leafs on its own, the text moves only on a pr
     const pressedAt = map.scrollTop;
     pointer(map, 'pointerdown', 20);
     pointer(map, 'pointerup', 20);
-    expect(onJump).toHaveBeenCalledWith(verseAtY(layout, pressedAt + 20));
+    expect(onJump).toHaveBeenCalledWith(verseAtY(layout, pressedAt + 20), expect.any(Function));
     fireEvent.scroll(window);
     expect(map.scrollTop).toBe(pressedAt);
 

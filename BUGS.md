@@ -31,7 +31,8 @@
 **Корень.** Смена `--text-scale` на корне: WebKit пересобирает стиль каждого элемента (~25 мкс на элемент); 2/3 цены — правило Tailwind `*, ::before, ::after` с 51 переменной `--tw-*` на каждом элементе (без него 241 мс вместо 355 в Исаии, 468 вместо 679 в Псалтири); раскладка текста — лишь 33–51 мс.
 **Фикс (направление).** Сделано: шкала показывает предпросмотр и применяет размер при остановке пальца (180 мс) или отпускании; провайдер применяет изменение человека кадром позже, чтобы число нарисовалось первым; чтение держит место по применённому размеру (`appliedScale`). Отвергнуто: `content-visibility` для глав (стих на экране уезжает на тысячи пикселей, ломается миникарта). Остаток: одно изменение по-прежнему 330 мс в Исаии на Mac — путь `experimental.optimizeUniversalDefaults` в Tailwind (−31% на каждый полный пересчёт) требует сверки вычисленных стилей по всем экранам, отдельный заход.
 **Regression proof.** `__tests__/components/TextScaleControls.test.tsx` «a drag moves the handle and the number at once…» — красный и при применении на каждом шаге, и при применении сразу. Замер «после» (боевая сборка): протягивание 2 длинных кадра, 728–736 мс потерь вместо 24 и ~8 с.
-**Стадия.** починено частично локально → после push ждёт проверки на iPad; остаток — одно нажатие = один пересчёт.
+**Остаток снят (2026-10-16, вечер): большая книга рисует только главы вокруг места чтения** (`components/bible/chapterWindow.ts`, `useChapterWindow.ts`; остальные главы — коробки своей высоты с заголовком). Цена пересчёта пропорциональна числу элементов, и `content-visibility` её в WebKit не снимает (Псалтирь 682 → 583 мс), а окно снимает. Боевая сборка, Mac WebKit, одно изменение размера: Псалтирь 682 → 98 мс, Бытие 368 → 100, Иеремия 350 → 100, Исаия 350 → 83; поворот iPad 835 → 109 мс; открытие Псалтири 2,08 → 1,45 с. Стенд — `tools/webkit-lab/big-book-cost.js` и `big-book-scroll.js` (замер прокрутки: строка на экране не сдвигается ни вниз, ни вверх, в покое ±0,8 px).
+**Стадия.** починено локально, не выкачено → ждёт проверки на iPad (Исаия и Псалтирь: «T», поворот, прокрутка вверх-вниз, переход по оглавлению).
 
 ### BUG-20261016-pencil-hover-tools · Apple Pencil при наведении подсвечивает ссылки, но не кружки маркера, карандаша и ластика
 **Severity.** P2 — инструменты молчат на наведение Pencil, хотя соседние кнопки отвечают; выглядит как неработающие кнопки.
@@ -161,6 +162,37 @@
 ---
 
 ## 🔵 P3 — открыто
+
+### BUG-20261017-verse-window-width-reflow-shifts-reading · Resizing a passage window adopts a verse moved by reflow
+**Severity.** P3 — changing window width moves the reading place; no text is lost.
+**Found.** Guarded Chromium, build HBRw6efVnDa29EgXJdoYL after incoming main69ff6871 integration. Preaching plan → Isaiah52:13-53:12 at150% →1280→390→820. Before narrowing,52:12 has no visible text (only4.46px of its empty row edge); after narrowing, its full text is376px high above the intended52:13. Widening moves back to52:13. All15 selected rows remain lit;0 errors/writes, child context closed.
+**Anchors.** `frontend/app/components/bible/VerseSheet.tsx:161-187,230-244`; `frontend/app/components/bible/useChapterWindow.ts:119-126,250-269`; `frontend/app/components/bible/BibleBookReader.tsx:617-620`.
+**Expected/observed.** Resizing preserves the verse being read. Native layout scroll events can replace the remembered verse before chapter-height recalibration restores it; the later restore then preserves the wrong verse.
+**User contract.** A width or size change is presentation, not a reading action. Keep the passage initially shown and the later deliberate reading place; ordinary scrolling and the explicit return button must still work.
+**Class.** Accepting a visible reading place from a presentation layout that has changed before restoration settles.
+| place | verdict | reason |
+|---|---|---|
+| VerseSheet width/reflow and onScroll | affected; native/component RED→GREEN | original narrowing adopts52:12; final readable52:13 and later53:2 are preserved |
+| BibleBookReader width/reflow | affected; component RED16px→56px, final native GREEN | same lifecycle; final three-width large-book scrolling/resize/size/reload preserves the selected place |
+| useChapterWindow | presentation owner | owns width/scale and calibration; scroll observers need its stable layout boundary |
+| Server/offline | no server layout owner | already-loaded local text changes geometry with or without network |
+**Direction.** Reuse the chapter window calibration owner: accept reading evidence only from its settled text/width, and prepare changed width before the browser performs a new input scroll. Keep a passage verse and its pane-relative offset together. A second page-wide anchor observer introduces another restoration owner; ignoring every scroll during reflow would also discard the later deliberate user action. Actual component REDs cover both consumers and a later wheel input; isolated controls confirm input preparation and exact passage-offset coverage. Final415 focused tests and845-suite/9133-test build pass;21 guarded native browser cases and visual review pass. Exact fresh acceptance and source commit remain pending.
+
+### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
+**Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
+**Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.
+**Как должно работать для пользователя.** Открыл ссылку — на верху стоит этот стих, что бы ни догрузилось следом, пока я сам не прокрутил.
+**Класс (механизмом).** Высота текста над стихом перехода меняется в момент, когда читалка уже не считает себя «после перехода» или не видит изменения.
+| место | вердикт | почему |
+|---|---|---|
+| окно поверх страницы (`useScrollLock`) открыто в первые доли секунды после перехода, значки приходят под ним | поражено | закрепление тела страницы ставит прокрутку в 0 → `note()` снимает `broughtRef`; после закрытия возвращается старый пиксель, а текст над стихом уже вырос |
+| плашка конфликта или памяти вне корня читалки (`PrivateWorkspace.tsx`) появляется над текстом | поражено | ResizeObserver видит размер, а не положение: сдвинутый блок без изменения размера не замечен |
+| переход к последнему стиху книги, затем выключены значки ссылок | поражено | браузер поджимает прокрутку, и событие прокрутки приходит раньше уведомления о размере → `broughtRef` снят как прокрутка человека |
+| поворот посреди плавного «назад к отрывку» в окне стиха | поражено | возврат места при повороте ставит прокрутку напрямую и обрывает анимацию |
+| затухание подсветки прихода, если глава ушла и вернулась за 3,6 с | косметика | новая строка получает «off» без перехода и сразу гаснет |
+**Направление.** Не общий держатель строки: такой был и убран после второго круга Codex (8 пробоин). Каждое место — свой узкий ход. Окно поверх страницы помнит стих, а не пиксель, и возвращает к нему при закрытии. Плашки над текстом либо внутри наблюдаемого корня, либо вне потока. Поджатие у конца — проверять «стих на линии», а не пиксель прокрутки.
+**Стадия.** открыто, записано.
+
 
 ### BUG-20261016-reader-has-rules-restyle-document · В Chrome любой элемент, появившийся на экране чтения, пересчитывает стиль всей книги: открытие окна связей, статус синхронизации — около 150 мс в Псалтири
 **Severity.** P3 — Chrome (Android, компьютер), большая книга: каждое появление или исчезновение элемента на экране чтения подвешивает его на ~150 мс (Псалтирь, 69 тыс. узлов, боевая сборка, Mac; на телефоне больше). WebKit (iPad) этого не делает. Палитра пометок, где это било на каждом нажатии, уже обойдена.

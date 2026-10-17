@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { MARK_COLORS, PENCIL_COLORS, type PencilColor } from '@/utils/bibleMarks';
@@ -28,8 +28,17 @@ const PALETTE_UP = 'bottom-[calc(100%+0.375rem)] left-1/2 -translate-x-1/2 flex-
 /**
  * A tool lights up under a mouse, a trackpad or an Apple Pencil held over it, never after a finger's tap:
  * a hover left on the circle made a tool put away look pressed (`utils/pointerHover.ts`, the owner, 2026-10-16).
+ * Lit, it grows a little, wears an indigo halo and its disc brightens (`MarkToolIcons`), plainly enough to
+ * see under a Pencil, as Apple Notes' colours do. Only the growth moves; a tool taken shows its ring at once.
  */
-const TOOL = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 data-[hover]:bg-gray-100 dark:data-[hover]:bg-gray-800';
+const TOOL = 'group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-transform duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 data-[hover]:scale-110 data-[hover]:shadow-[0_0_0_4px_rgba(99,102,241,0.45),0_0_16px_rgba(99,102,241,0.35)] dark:data-[hover]:shadow-[0_0_0_4px_rgba(129,140,248,0.55),0_0_16px_rgba(129,140,248,0.35)]';
+/**
+ * A colour of the palette under a mouse or a Pencil: it grows and glows in its own colour (`--glow`, the
+ * swatch's colour half seen through), so the colour about to be taken is the one that lights up.
+ */
+const SWATCH = 'h-[30px] w-[30px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(17,24,39,0.18)] transition-transform duration-150 ease-out data-[hover]:scale-125 data-[hover]:shadow-[inset_0_0_0_1px_rgba(17,24,39,0.18),0_0_0_5px_var(--glow),0_0_16px_var(--glow)]';
+/** The swatch's colour at about half strength, as an eight-digit hex: the glow around it. */
+const glow = (color: string) => `${color}80`;
 
 type Swatch = { id: string; color: string; label: string; chosen: boolean; pick: () => void };
 
@@ -54,8 +63,9 @@ function Palette({ swatches, label, vertical, open }: { swatches: Swatch[]; labe
           aria-pressed={swatch.chosen}
           aria-label={swatch.label}
           title={swatch.label}
-          style={{ backgroundColor: swatch.color }}
-          className={`h-[30px] w-[30px] shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(17,24,39,0.18)] ${swatch.chosen ? TAKEN : ''}`}
+          style={{ backgroundColor: swatch.color, '--glow': glow(swatch.color) } as CSSProperties}
+          className={`${SWATCH} ${swatch.chosen ? TAKEN : ''}`}
+          {...pointerHover}
         />
       ))}
     </div>

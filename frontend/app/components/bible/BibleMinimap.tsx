@@ -27,12 +27,18 @@ type BibleMinimapProps = {
   /** The words on the mark that brings a map leafed away back to the verse being read. */
   readingLabel: (place: VersePlace) => string;
   title: string;
-  onJump: (place: VersePlace) => void;
+  /** A jump; `then` runs once it is made (a chapter of a big book not drawn yet is drawn first). */
+  onJump: (place: VersePlace, then?: () => void) => void;
   /** What the text scrolls in: the page, or its own pane beside the minimap (`readingSurface.ts`). */
   surface: ReadingSurface;
   /** Where reading starts below the surface's top edge: "the verse I am at" is measured from here. */
   readingInset: number;
+  /** The chapters drawn of a big book (`useChapterWindow`): its rows change as the place moves. */
+  drawn?: unknown;
 };
+
+/** The verse rows in the text: a big book draws some chapters only, and they change as the place moves. */
+const versesIn = (root: HTMLElement | null): HTMLElement[] => Array.from(root?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
 
 const MAP_WIDTH = 132;
 const BOTTOM_MARGIN = 24;
@@ -140,7 +146,7 @@ function edgePassed(frame: MinimapFrame, offset: number, boxHeight: number): Edg
  * the map follows it; one leafed away comes back as soon as the text moves, and a frame gone past the
  * edge leaves a mark at that edge that brings the map back.
  */
-function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset }: BibleMinimapProps) {
+function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset, drawn }: BibleMinimapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLElement[]>([]);
@@ -324,11 +330,17 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
 
   // A new book, surface or reading top: its rows, a map that follows the text, the box measured again.
   useEffect(() => {
-    rowsRef.current = Array.from(textRef.current?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
+    rowsRef.current = versesIn(textRef.current);
     freeRef.current = false;
     previousRef.current = null;
     handlersRef.current?.measure();
   }, [layout, readingInset, surface, textRef]);
+
+  // Other chapters of a big book drawn: the rows the reading frame is read from, and the frame drawn from them.
+  useEffect(() => {
+    rowsRef.current = versesIn(textRef.current);
+    handlersRef.current?.follow();
+  }, [drawn, textRef]);
 
   useEffect(() => {
     handlersRef.current?.follow();
@@ -416,13 +428,16 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
     if (!place) return;
     stopGlide();
     freeRef.current = true;
-    onJump(place);
-    expectedPageYRef.current = surface.top();
-    remember();
-    const now = reading();
-    const fit = now ? fitPressedFrame(now.frame, map.scrollTop, boxHeight) : null;
-    if (fit !== null) glide(FIT_MS, () => fit, remember);
-    scheduleDraw();
+    onJump(place, () => {
+      // The chapters drawn may be others now: the rows the frame is read from, read again first.
+      rowsRef.current = versesIn(textRef.current);
+      expectedPageYRef.current = surface.top();
+      remember();
+      const now = reading();
+      const fit = now ? fitPressedFrame(now.frame, map.scrollTop, boxHeight) : null;
+      if (fit !== null) glide(FIT_MS, () => fit, remember);
+      scheduleDraw();
+    });
   };
 
   const stopPress = (event: ReactPointerEvent<HTMLDivElement>) => {

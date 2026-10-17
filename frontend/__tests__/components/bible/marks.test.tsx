@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useBookMarks } from '@/components/bible/marks/markStore';
 import { useMarkStrokes } from '@/components/bible/marks/useMarkStrokes';
 import { useMarkTool } from '@/components/bible/marks/markTool';
+import { MARK_SWATCH } from '@/components/bible/marks/MarkToolIcons';
 import { MarkToolbar } from '@/components/bible/marks/MarkToolbar';
 import { mapVerseText, wordIndexAt, wordsRange } from '@/components/bible/marks/verseWordDom';
 import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
@@ -313,8 +314,29 @@ describe('the three tools', () => {
     point('pointerout', 'mouse');
     point('pointerover', 'touch');
     expect(eraser).not.toHaveAttribute('data-hover');
-    expect(eraser.className).toContain('data-[hover]:bg-gray-100');
+    expect(eraser.className).toContain('data-[hover]:scale-110');
     expect(eraser.className).not.toMatch(/(^|\s)hover:/);
+  });
+
+  // The owner, 2026-10-16: as Apple Notes' colours do under a Pencil, a colour of the palette grows.
+  it('a colour of the palette lights up under a Pencil held over it, never under a finger', () => {
+    render(<Toolbar />);
+    fireEvent.click(screen.getByRole('button', { name: /bible\.marks\.marker/ }));
+    const blue = screen.getByRole('button', { name: 'bible.marks.meaning.blue' });
+    const point = (type: 'pointerover' | 'pointerout', pointerType: string) => {
+      const event = new MouseEvent(type, { bubbles: true, relatedTarget: document.body });
+      Object.defineProperties(event, { pointerType: { value: pointerType }, pointerId: { value: 1 } });
+      act(() => { blue.dispatchEvent(event); });
+    };
+    point('pointerover', 'pen');
+    expect(blue).toHaveAttribute('data-hover');
+    expect(blue.className).toContain('data-[hover]:scale-125');
+    // It glows in its own colour, not in one shared tint.
+    expect(blue.style.getPropertyValue('--glow')).toBe(`${MARK_SWATCH.blue}80`);
+    point('pointerout', 'pen');
+    expect(blue).not.toHaveAttribute('data-hover');
+    point('pointerover', 'touch');
+    expect(blue).not.toHaveAttribute('data-hover');
   });
 
   it('the pencil and the eraser are taken and put away by their own buttons', () => {
