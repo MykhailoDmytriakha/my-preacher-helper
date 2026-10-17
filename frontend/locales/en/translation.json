@@ -3763,7 +3763,7 @@
       "conduct": "Hold the council",
       "continueConduct": "Continue the council",
       "finish": "Finish the council",
-      "finished": "Council finished",
+      "finishUndoAvailable": "You can undo finishing this council",
       "undo": "Undo",
       "reorder": "Order",
       "reorderDone": "Done",
@@ -3834,7 +3834,7 @@
       "toNextCouncil": "To the next council",
       "carryWhere": "Carry to which council?",
       "carriedTo": "carried to \"{{title}}\"",
-      "movedToNext": "Section added to \"{{title}}\"",
+      "carryPrepared": "Carry prepared for \"{{title}}\"",
       "carryGone": "The section is no longer in this council.",
       "carryAlreadyCarried": "This section was already carried to another council.",
       "carryTargetDeleted": "The council you chose was deleted — pick another one or prepare a new council."

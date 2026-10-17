@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { showCouncilFinishUndo } from '@/components/council/councilActionNotice';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -158,14 +159,7 @@ function CouncilConductContent({ councilId, source }: { councilId: string; sourc
     const at = new Date().toISOString();
     updateCouncil(council.id, (current) => holdCouncil(current, at));
     router.push(`/care/council/${council.id}`);
-    toast.success(t('council.detail.finished'), {
-      // Eight seconds, not four: an undo a person cannot reach in time is not an undo.
-      duration: 8000,
-      action: {
-        label: t('council.detail.undo'),
-        onClick: () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())),
-      },
-    });
+    showCouncilFinishUndo(t, () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())));
   };
 
   const goTo = (next: number) => {

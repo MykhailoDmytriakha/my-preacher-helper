@@ -33,6 +33,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
+import { showCouncilCarryPrepared, showCouncilFinishUndo } from '@/components/council/councilActionNotice';
 import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -260,9 +261,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
     try {
       const target = await carryTopicToNext(council.id, topic, t('council.nextCouncilTitle'), targetId);
       if (!target) return;
-      toast.success(t('council.topic.movedToNext', { title: target.title }), {
-        action: { label: target.title, onClick: () => router.push(`/care/council/${target.id}`) },
-      });
+      showCouncilCarryPrepared(t, target.title, () => router.push(`/care/council/${target.id}`));
     } finally {
       pendingCarries.current.delete(topic.id); setCarrying(new Set(pendingCarries.current));
     }
@@ -273,14 +272,7 @@ function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDeta
   /** One press closes the council; the toast carries the way back instead of a second question. */
   const finishCouncil = () => {
     updateCouncil(council.id, (current) => holdCouncil(current, new Date().toISOString()));
-    toast.success(t('council.detail.finished'), {
-      // Eight seconds, not four: an undo a person cannot reach in time is not an undo.
-      duration: 8000,
-      action: {
-        label: t('council.detail.undo'),
-        onClick: () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())),
-      },
-    });
+    showCouncilFinishUndo(t, () => updateCouncil(council.id, (current) => reopenCouncil(current, new Date().toISOString())));
   };
 
   const moveTopic = (topicId: string, toIndex: number) => {

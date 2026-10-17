@@ -3837,7 +3837,7 @@
       "conduct": "Провести раду",
       "continueConduct": "Продовжити раду",
       "finish": "Завершити раду",
-      "finished": "Раду завершено",
+      "finishUndoAvailable": "Завершення ради можна скасувати",
       "undo": "Скасувати",
       "reorder": "Порядок",
       "reorderDone": "Готово",
@@ -3908,7 +3908,7 @@
       "toNextCouncil": "До наступної ради",
       "carryWhere": "Куди перенести?",
       "carriedTo": "перенесено до «{{title}}»",
-      "movedToNext": "Секцію додано до «{{title}}»",
+      "carryPrepared": "Перенесення підготовлено для «{{title}}»",
       "carryGone": "Цього розділу більше немає в раді.",
       "carryAlreadyCarried": "Цей розділ уже перенесено до іншої ради.",
       "carryTargetDeleted": "Обрану раду видалено — оберіть іншу або підготуйте нову раду."
