@@ -1,4 +1,5 @@
 import { describeMembershipDelivery } from '../membershipDelivery';
+import { UNANSWERED_SAID_AFTER_ATTEMPTS } from '../unanswered';
 import type { CommitRequest } from '../commits';
 import type { MembershipScopeRecord } from '../membershipScope';
 import type { JournalEntry } from '../types';
@@ -9,8 +10,8 @@ const request = (id: string): CommitRequest => ({ id, owner: 'owner', editorId: 
   atomic: { id: 'a', participants: ['a', 'b'] } });
 const record: MembershipScopeRecord = { owner: 'owner', scopeId: 'scope', kind: 'membership', version: 1, revision: 0,
   pins: [], action: null, generation: 1, phase: 'submitted', requestIds: ['a', 'b'] };
-const delivery = (state: JournalEntry['state']): JournalEntry => ({ state, command: { protocol: 1, owner: 'owner', operationId: 'a',
-  resource: baseline.resource, generation: 'g', kind: 'delete', dependsOn: [], baseline: baseline.value }, attempts: 1, createdAt: 1 });
+const delivery = (state: JournalEntry['state'], attempts = state === 'unknown' ? UNANSWERED_SAID_AFTER_ATTEMPTS : 1): JournalEntry => ({ state, command: { protocol: 1, owner: 'owner', operationId: 'a',
+  resource: baseline.resource, generation: 'g', kind: 'delete', dependsOn: [], baseline: baseline.value }, attempts, createdAt: 1 });
 
 it.each(['editing', 'saving', 'cancelled'] as const)('does not turn stage %s into server confirmation', phase => {
   expect(describeMembershipDelivery({ ...record, phase, requestIds: [] }, [], [])).toEqual({ phase, canDiscard: false, code: null });
@@ -27,6 +28,11 @@ it('requires all participant evidence and isolates both request and journal owne
 });
 it.each(['queued', 'sending', 'unknown', 'blocked', 'conflict', 'refused'] as const)('describes %s delivery without allowing premature discard', phase => {
   expect(describeMembershipDelivery(record, [request('a'), request('b')], [delivery(phase)])).toMatchObject({ phase, canDiscard: false });
+});
+// The owner, 2026-10-17: an unanswered delivery is still on its way while the engine sends it again.
+it('describes an unanswered delivery as sending until its retries are spent, never discardable', () => {
+  expect(describeMembershipDelivery(record, [request('a'), request('b')], [delivery('unknown', 1)])).toMatchObject({ phase: 'sending', canDiscard: false });
+  expect(describeMembershipDelivery(record, [request('a'), request('b')], [delivery('unknown', UNANSWERED_SAID_AFTER_ATTEMPTS)])).toMatchObject({ phase: 'unknown', canDiscard: false });
 });
 it('permits proven failure only when the entire dependent chain has no unknown delivery', () => {
   const failed = ['a', 'b'].map(id => ({ ...request(id), state: 'refused' as const, result: { kind: 'refused' as const, operationId: id, code: 'target-deleted' } }));

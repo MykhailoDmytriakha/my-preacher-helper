@@ -4,16 +4,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
+import { useLasting } from '@/hooks/useLasting';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { useTranslation } from '@locales/useTranslation';
 
 import { isSyncTrouble } from './status';
-import { useLasting } from './useLasting';
 
 import type { SyncStatus } from './status';
 
-export { STATUS_SETTLE_MS } from './useLasting';
+export { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 
 export interface RecoveryChoice {
   id: string;

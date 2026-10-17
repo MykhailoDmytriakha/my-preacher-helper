@@ -32,6 +32,12 @@ import { debugLog } from '@/utils/debugMode';
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
+/**
+ * Told when the phone's own flag changes, whether or not the answer moves: what reads `isKnownOffline`
+ * needs it. Kept apart because `listeners` hear only a CHANGE of the answer — the knock times its
+ * first ask from the moment "no" began (`connectivityKnock.ts`), and a repeated "no" would move it.
+ */
+const phoneListeners = new Set<Listener>();
 
 /**
  * HAS THE BROWSER SAID, RIGHT NOW, THAT THERE IS NO NETWORK?
@@ -84,19 +90,24 @@ export const reportServerUnreachable = (requestId = beginConnectivityRequest()) 
   set(false, 'not reached');
 };
 
+/** The phone's flag as heard now; a change is told to `phoneListeners`. Returns whether it changed. */
+const hearPhone = (now: boolean): boolean => {
+  if (phoneOnline === now) return false;
+  phoneOnline = now;
+  phoneListeners.forEach((listener) => listener());
+  return true;
+};
+
 /** Read the phone's flag; only a change is news, and only a change to "no network" moves the answer. */
 const readPhone = () => {
-  const now = !isBrowserOffline();
-  const was = phoneOnline;
-  phoneOnline = now;
-  if (was && !now) set(false, 'phone offline');
+  if (hearPhone(!isBrowserOffline()) && !phoneOnline) set(false, 'phone offline');
 };
 
 const handlePhoneOffline = () => {
-  phoneOnline = false;
+  hearPhone(false);
   set(false, 'phone offline');
 };
-const handlePhoneOnline = () => { phoneOnline = true; };
+const handlePhoneOnline = () => { hearPhone(true); };
 /**
  * A page frozen in the background may have slept through the `offline` event; the flag is re-read on
  * the way back in. (Coming back the other way is the knock's business: it asks the server.)
@@ -143,9 +154,11 @@ export const getConnectivityStatus = (): boolean => {
  */
 export const isKnownOffline = (): boolean => isBrowserOffline() && !getConnectivityStatus();
 
-export const subscribeToConnectivity = (listener: Listener): (() => void) => {
-  const first = listeners.size === 0;
-  listeners.add(listener);
+const nobodyListens = () => listeners.size === 0 && phoneListeners.size === 0;
+
+const subscribe = (to: Set<Listener>, listener: Listener): (() => void) => {
+  const first = nobodyListens();
+  to.add(listener);
   if (first) {
     anchor();
     attach();
@@ -153,14 +166,21 @@ export const subscribeToConnectivity = (listener: Listener): (() => void) => {
     readPhone();
   }
   return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) detach();
+    to.delete(listener);
+    if (nobodyListens()) detach();
   };
 };
+
+/** Told when the answer changes. */
+export const subscribeToConnectivity = (listener: Listener): (() => void) => subscribe(listeners, listener);
+
+/** Told when the phone's own flag changes, the answer moving or not — for what reads `isKnownOffline`. */
+export const subscribeToPhoneFlag = (listener: Listener): (() => void) => subscribe(phoneListeners, listener);
 
 /** Test seam: drop every listener and return to a pristine, unread state. */
 export const __resetConnectivityForTests = () => {
   listeners.clear();
+  phoneListeners.clear();
   detach();
   online = true;
   anchored = false;

@@ -5,7 +5,10 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 
 const mockIsOnline = jest.fn();
 jest.mock('@/providers/ConnectionProvider', () => ({
-  useConnection: () => ({ isOnline: mockIsOnline() }),
+  useConnection: () => {
+    const isOnline = mockIsOnline();
+    return { isOnline, offlineShown: !isOnline };
+  },
 }));
 
 jest.mock('react-i18next', () => ({

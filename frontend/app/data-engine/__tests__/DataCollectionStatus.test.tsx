@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { DataCollectionStatus } from '../DataCollectionStatus';
-import { STATUS_SETTLE_MS } from '../useLasting';
+import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 import type { CollectionState } from '../collections';
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));

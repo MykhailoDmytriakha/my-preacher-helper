@@ -1,8 +1,7 @@
 'use client';
 
+import { useLasting } from '@/hooks/useLasting';
 import { useTranslation } from '@locales/useTranslation';
-
-import { useLasting } from './useLasting';
 
 import type { CollectionState } from './collections';
 

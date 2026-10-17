@@ -3,6 +3,7 @@ import React from 'react';
 
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { OfflineIndicator } from '@/components/navigation/OfflineIndicator';
+import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 import { ConnectionProvider } from '@/providers/ConnectionProvider';
 import {
   __resetConnectivityForTests,
@@ -99,32 +100,121 @@ describe('the app tells the person it is offline', () => {
      * would clear the icon over a connection that reaches nothing. Only a request that comes
      * back may say we are online (the event makes the app knock; it does not answer for it).
      */
-    renderOfflineUi();
+    jest.useFakeTimers();
+    try {
+      renderOfflineUi();
 
-    act(() => {
-      reportServerUnreachable();
-    });
-    expect(offlineUi().icon).toBeInTheDocument();
+      act(() => {
+        reportServerUnreachable();
+      });
+      // A request that did not reach is said once "no connection" has lasted (the owner, 2026-10-17).
+      act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+      expect(offlineUi().icon).toBeInTheDocument();
 
-    act(() => {
-      window.dispatchEvent(new Event('online'));
-    });
+      act(() => {
+        window.dispatchEvent(new Event('online'));
+      });
 
-    expect(offlineUi().icon).toBeInTheDocument();
-    expect(offlineUi().strip).toBeInTheDocument();
+      expect(offlineUi().icon).toBeInTheDocument();
+      expect(offlineUi().strip).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('clears as soon as a request gets through', () => {
     // Owner's rule 2: the request reached our server, so there is a connection — no settling wait.
-    renderOfflineUi();
+    jest.useFakeTimers();
+    try {
+      renderOfflineUi();
 
-    act(() => { reportServerUnreachable(); });
-    expect(offlineUi().icon).toBeInTheDocument();
+      act(() => { reportServerUnreachable(); });
+      act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+      expect(offlineUi().icon).toBeInTheDocument();
 
-    act(() => { reportServerReachable(); });
+      act(() => { reportServerReachable(); });
 
-    expect(offlineUi().icon).not.toBeInTheDocument();
-    expect(offlineUi().strip).not.toBeInTheDocument();
+      expect(offlineUi().icon).not.toBeInTheDocument();
+      expect(offlineUi().strip).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // The owner, 2026-10-17: on a weak signal one write ran out of time and "Working offline" flashed for
+  // seconds after a mark, while the server answered the knock. A request that did not reach is said only
+  // once "no connection" has lasted; the phone saying it has no network is said at once (above).
+  it('says nothing when one request did not reach and the next one did within the settle time', () => {
+    jest.useFakeTimers();
+    try {
+      renderOfflineUi();
+
+      act(() => { reportServerUnreachable(); });
+      act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS - 1); });
+      expect(offlineUi().icon).not.toBeInTheDocument();
+      expect(offlineUi().strip).not.toBeInTheDocument();
+
+      act(() => { reportServerReachable(); });
+      act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+      expect(offlineUi().icon).not.toBeInTheDocument();
+      expect(offlineUi().strip).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Codex review 2026-10-17: a request did not reach (nothing said yet), and a second later the Wi-Fi
+  // went. The answer was "no" already, so the phone's event changed nothing the screen listened to,
+  // and the line waited out the rest of the settle time while the phone said plainly: no network.
+  it('says it at once when the network goes while a request that did not reach is still settling', () => {
+    jest.useFakeTimers();
+    try {
+      renderOfflineUi();
+
+      act(() => { reportServerUnreachable(); });
+      act(() => { jest.advanceTimersByTime(1_000); });
+      expect(offlineUi().icon).not.toBeInTheDocument();
+
+      act(() => {
+        setOnLine(false);
+        window.dispatchEvent(new Event('offline'));
+      });
+
+      expect(offlineUi().icon).toBeInTheDocument();
+      expect(offlineUi().strip).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Said once, it stays said until a request gets through: a joined Wi-Fi without internet must not
+  // hide the line and bring it back when the settle time runs out.
+  it('keeps saying it when the phone has a network again but nothing has reached the server yet', () => {
+    jest.useFakeTimers();
+    try {
+      setOnLine(false);
+      const { rerender } = renderOfflineUi();
+      expect(offlineUi().icon).toBeInTheDocument();
+
+      act(() => {
+        setOnLine(true);
+        window.dispatchEvent(new Event('online'));
+      });
+      rerender(
+        <ConnectionProvider>
+          <OfflineIndicator />
+          <OfflineBanner />
+        </ConnectionProvider>
+      );
+
+      expect(offlineUi().icon).toBeInTheDocument();
+      expect(offlineUi().strip).toBeInTheDocument();
+
+      act(() => { reportServerReachable(); });
+      expect(offlineUi().icon).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('notices a network lost while the app was frozen in the background', () => {
