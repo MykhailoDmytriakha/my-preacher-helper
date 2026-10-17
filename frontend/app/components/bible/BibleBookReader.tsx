@@ -327,13 +327,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // the verse read, as the boxes are measured anew.
   const keepPlaceRef = useRef<() => void>(() => undefined);
   const notePlaceRef = useRef<() => void>(() => undefined);
+  const holdBroughtRef = useRef<(moved: number) => boolean>(() => false);
   const chapterWindow = useChapterWindow({
     text,
     textRef,
     surfaceRef,
     readingLine: () => surfaceRef.current.edge() + readingInsetRef.current,
     onReflow: () => keepPlaceRef.current(),
-    onDrawn: () => notePlaceRef.current(),
+    onDrawn: (moved) => {
+      if (!holdBroughtRef.current(moved)) notePlaceRef.current();
+    },
   });
   const showChapter = chapterWindow.show;
   const followChapter = chapterWindow.follow;
@@ -399,6 +402,23 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   useEffect(() => {
     keepPlaceRef.current = () => {
       if (placeRef.current) jumpTo(placeRef.current);
+    };
+  }, [jumpTo]);
+
+  // The chapters drawn around the place changed, and the window moved the page by `moved` to keep what
+  // stood on the line (`useChapterWindow`). While the verse a jump came to holds and the page stood where
+  // the jump left it before that move, the move is the window's, not the person's: the verse is jumped to
+  // again. The window's correction can miss it, and taken for a scroll it let the place go
+  // (BUG-20261016-bible-deeplink-lands-early-verse: a link to Synodal Ps 22:1 read in the King James stood
+  // at 23:1, then at 22:27). A scroll of the person's whose event has not come yet leaves the page
+  // elsewhere than the jump left it, and is not undone.
+  useEffect(() => {
+    holdBroughtRef.current = (moved) => {
+      const brought = broughtRef.current;
+      if (!brought || leavingRef.current || Math.abs(moved) < 1) return false;
+      if (Math.abs(surfaceRef.current.top() - moved - brought.scrollY) >= 1) return false;
+      jumpTo(brought.place);
+      return true;
     };
   }, [jumpTo]);
 

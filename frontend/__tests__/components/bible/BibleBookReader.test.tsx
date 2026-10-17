@@ -25,6 +25,19 @@ const book = {
 
 const okResponse = () => ({ ok: true, status: 200, json: async () => book, clone() { return this; } });
 
+// The chapter window as it is, its options kept: a test can say what the window says after it moved the page.
+let mockWindowOptions: { onDrawn?: (moved: number) => void } | null = null;
+jest.mock('@/components/bible/useChapterWindow', () => {
+  const actual = jest.requireActual('@/components/bible/useChapterWindow');
+  return {
+    ...actual,
+    useChapterWindow: (options: { onDrawn?: (moved: number) => void }) => {
+      mockWindowOptions = options;
+      return actual.useChapterWindow(options);
+    },
+  };
+});
+
 const scrollIntoView = jest.fn();
 /** A computer (768 px and wider) or a phone: what `matchMedia` answers the reader. */
 let wideScreen = false;
@@ -552,6 +565,45 @@ describe('BibleBookReader', () => {
       Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
       act(() => { window.dispatchEvent(new Event('scroll')); });
       scrollIntoView.mockClear();
+      act(() => { fire(); });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    // BUG-20261016-bible-deeplink-lands-early-verse, traced live 2026-10-17: a link to Synodal Ps 22:1 read
+    // in the King James stood at 23:1; the chapters drawn above it moved the page by the window's own
+    // correction, which missed by four verses, and the move was taken for the person's scroll — the place
+    // was let go at 22:27. A move of the window's while the verse holds is not the person's.
+    it('is jumped to again when the chapters drawn around it moved the page, and let go once the person scrolls', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      const target = document.querySelector('[data-chapter="3"]');
+      scrollIntoView.mockClear();
+      // The window drew chapters above and moved the page by 120 to keep what was on the line.
+      Object.defineProperty(window, 'scrollY', { value: 120, configurable: true });
+      act(() => { mockWindowOptions?.onDrawn?.(120); });
+      expect(scrollIntoView.mock.contexts).toEqual([target]);
+      // Its own scroll event comes after: the verse still holds, nothing is let go.
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      act(() => { fire(); });
+      expect(scrollIntoView.mock.contexts).toEqual([target, target]);
+      // The person scrolls: from here the window's moves bring nothing back.
+      Object.defineProperty(window, 'scrollY', { value: 400, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      scrollIntoView.mockClear();
+      act(() => { mockWindowOptions?.onDrawn?.(80); });
+      act(() => { fire(); });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+
+    // Codex, 2026-10-17: the person scrolled, and the window's rest came before the scroll's own event.
+    // Taking the whole distance for the window's undid the person's scroll.
+    it('is let go, not jumped to, when the person scrolled before the window moved the page', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      scrollIntoView.mockClear();
+      // The person scrolled by 300; before its event the window moved the page by 40 more.
+      Object.defineProperty(window, 'scrollY', { value: 340, configurable: true });
+      act(() => { mockWindowOptions?.onDrawn?.(40); });
       act(() => { fire(); });
       expect(scrollIntoView).not.toHaveBeenCalled();
     });
