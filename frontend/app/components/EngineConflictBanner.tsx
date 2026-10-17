@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
-import { isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswers, waitsForDecision } from '@/data-engine/react.client';
+import { captureRecoveryChoice, isCollectionOnEngine, isDataEngineEnabled, isOneShotRecord, useDataEngine, useDocumentActions, useOpenDocumentAnswers, waitsForDecision, type RecoveryChoiceScope } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
@@ -35,7 +35,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; fingerprint: string; operationIds: string[]; decidable?: boolean; formWork?: boolean }
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; formWork?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -167,25 +167,12 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       if (documents.some(entry => entry.screen === screen && sameResource(entry.resource, resource))) continue;
       const drafts = decided.filter(entry => isOneShotRecord(entry) !== screen && sameResource(entry.checkpoint.confirmed.resource, resource));
       const { checkpoint } = drafts[0];
-      const operationIds = [...new Set(drafts.flatMap(({ checkpoint: item, prepared, unfinalized, completedCommits }) => [
-        ...Object.keys(item.pending), prepared?.operationId, ...unfinalized, ...(completedCommits ?? []),
-      ].filter((id): id is string => Boolean(id))))].sort();
-      const fingerprint = JSON.stringify(drafts.map(({ owner, editorId, checkpoint: item, prepared, unfinalized, completedCommits }) => ({
-        owner,
-        editorId,
-        confirmed: { resource: item.confirmed.resource, value: item.confirmed.value, metadata: item.confirmed.metadata },
-        draft: item.draft,
-        remoteCandidate: item.remoteCandidate,
-        pending: Object.fromEntries(Object.entries(item.pending).sort(([a], [b]) => a.localeCompare(b))),
-        preparedOperationId: prepared?.operationId ?? null,
-        unfinalized: [...unfinalized].sort(),
-        completedCommits: [...(completedCommits ?? [])].sort(),
-      })).sort((a, b) => a.editorId.localeCompare(b.editorId)));
+      const scope = captureRecoveryChoice(drafts);
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
       documents.push({ resource, kind: kindOf(drafts, refused), screen,
         mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
-        fingerprint, operationIds });
+        ...scope });
     }
   }
   return documents;
@@ -314,7 +301,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
         const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
         if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
           || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
-        await settle(choice, targetBrowser);
+        await settle(choice, targetBrowser, target);
       }, isCurrent);
     } finally {
       if (pendingChoice.current === pending) pendingChoice.current = null;
@@ -339,18 +326,18 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
       const currentEntry = fresh?.find(candidate => !candidate.screen || !openAnswers.some(resource => sameResource(resource, candidate.resource)) || !isOnDocumentScreen(pathname, candidate.resource));
       if (!sameWaitingChoice(currentEntry, target) || !isCurrent()) return;
-      await settle('mine', targetBrowser);
+      await settle('mine', targetBrowser, target);
     } finally {
       if (pendingChoice.current === pending) pendingChoice.current = null;
     }
   };
 
-  const settle = async (choice: 'mine' | 'theirs', targetBrowser = browser) => {
+  const settle = async (choice: 'mine' | 'theirs', targetBrowser = browser, target = entry) => {
     if (busy) return;
     setBusy(true);
     try {
-      if (entry.screen) await targetBrowser?.engine.takeStoredVersion(entry.resource);
-      else await actions.resolve(entry.resource, choice);
+      if (target.screen) await targetBrowser?.engine.takeStoredVersion(target.resource, target.operationIds);
+      else await actions.resolve(target.resource, choice, target);
     }
     catch (error) {
       console.error('Engine conflict could not be settled', error);

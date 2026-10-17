@@ -2,7 +2,7 @@ import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, InactiveEditorError, type CheckpointRecoveryStore, type CheckpointStore, type EditorRecord, type EditorState, type RecoveryCheckpoint } from './controller';
 import { captureCouncilCarry, pinCouncilDestination } from './councilCarry';
-import { canReplaceDocumentIntent, savedDocumentAnswer } from './documentDelivery';
+import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from './documentDelivery';
 import { editorSlot } from './editorIdentity';
 import { AddressedFailures, eachFailure } from './failures';
 import { collectionHeadRef } from './feed';
@@ -80,8 +80,8 @@ export interface ManagedEditor {
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
-  acceptRemote(): Promise<void>;
-  keepLocal(): Promise<void>;
+  acceptRemote(expected?: EditorRecord): Promise<void>;
+  keepLocal(expected?: EditorRecord): Promise<void>;
   dispose(): void;
   /**
    * Leave the editor. With `flush`, a draft that could be saved — typed inside the autosave
@@ -614,18 +614,21 @@ export class DataEngine {
    * "Use the server's version" for every request of a document the server refused or conflicted on,
    * for a document no screen can decide (`screenDecides`). Each is cancelled as the person's choice, so
    * the checkpoints holding it settle (`DataSession.applyCommit`) without opening any editor — one of
-   * them may still be open in another tab. Resolves to the number of requests taken back.
+   * them may still be open in another tab. Optional IDs pin the reviewed roots; an empty selection
+   * cancels nothing. Omitted IDs retain the resource-wide API. Resolves to the requests taken back.
    */
-  async takeStoredVersion(resource: ResourceRef): Promise<number> {
+  async takeStoredVersion(resource: ResourceRef, operationIds?: readonly string[]): Promise<number> {
     const owner = this.requireOwner();
     this.validateResource(resource, owner);
     const generation = this.generation;
+    const selected = operationIds && new Set(operationIds);
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     // A form's work is resolved by its form: cancelling it here breaks that form's next save.
     if (hasFormWork(owner, resource, requests)) return 0;
     const answered = requests.filter(request => request.owner === owner
-      && sameResource(request.baseline.resource, resource) && (request.state === 'refused' || request.state === 'conflict'));
+      && sameResource(request.baseline.resource, resource) && (!selected || selected.has(request.id))
+      && (request.state === 'refused' || request.state === 'conflict'));
     if (answered.length) {
       const ids = answered.map(request => request.id);
       await this.commits.cancel('', ids); this.assertCurrent(owner, generation);
@@ -937,7 +940,7 @@ export class DataEngine {
           const state = controller.getState();
           const pendingIds = Object.keys(state.checkpoint.pending);
           // Directly owned legacy commands keep their existing terminal-journal proof.
-          const legacy = pendingIds.length === 1 && pendingIds[0] === state.preparedOperationId;
+          const legacy = isDirectLegacyDocumentIntent(pendingIds, state.preparedOperationId);
           return { ...state, savedIntentReplaceable: legacy ? undefined : canReplaceDocumentIntent(owner, editorId,
             pendingIds, [...this.commitRecords.values()], this.pending) };
         },
@@ -981,8 +984,8 @@ export class DataEngine {
         },
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: async () => { active(); await controller.remove(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
-        acceptRemote: async () => { active(); await controller.acceptRemote(); },
-        keepLocal: async () => { active(); await controller.keepLocal(); },
+        acceptRemote: async expected => { active(); await controller.acceptRemote(undefined, expected); },
+        keepLocal: async expected => { active(); await controller.keepLocal(undefined, undefined, expected); },
         dispose: () => {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);

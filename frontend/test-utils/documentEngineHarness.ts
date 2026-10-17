@@ -37,12 +37,14 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
   };
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
   let engine!: DataEngine;
+  let activeRuntime!: DataEngineRuntime;
   const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void }): BrowserDataEngine => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => [...journal.values()].filter(item => item.command.owner === owner).map(copy),
       put: async entry => { journal.set(entry.command.operationId, copy(entry)); },
       remove: async (_owner, id) => { journal.delete(id); },
     } });
+    activeRuntime = runtime;
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const snapshots = {
       read: async () => (cached ? copy(cached) : undefined), put: async (_owner: string, value: ResourceSnapshot) => { cached = copy(value); },
@@ -61,7 +63,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
     engine = instance;
     return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
-  return { createBrowser, transport, commits, checkpoints, get engine() { return engine; }, get server() { return copy(server); },
+  return { createBrowser, transport, commits, checkpoints, get runtime() { return activeRuntime; }, get engine() { return engine; }, get server() { return copy(server); },
     /** Another device's deletion the engine has not heard about yet. */
     silentRemoteDelete: () => {
       server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1, deleted: true }, value: null };

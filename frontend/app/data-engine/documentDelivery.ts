@@ -3,6 +3,11 @@ import { cancellationScope, canCancelSavedIntent } from './atomicCommits';
 import type { CommitRequest } from './commits';
 import type { JournalEntry, ResourceRef } from './types';
 
+/** Only an explicitly prepared, solely held command has the older direct-command ownership. */
+export function isDirectLegacyDocumentIntent(pendingIds: readonly string[], preparedOperationId: string | undefined): boolean {
+  return pendingIds.length === 1 && pendingIds[0] === preparedOperationId;
+}
+
 /** A field choice must satisfy the same complete-scope proof as the deciding queue. */
 export function canReplaceDocumentIntent(owner: string, editorId: string, pendingIds: readonly string[],
   requests: readonly CommitRequest[], journal: readonly JournalEntry[]): boolean {

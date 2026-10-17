@@ -1,11 +1,12 @@
+import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
+import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 
 import type { CommitQueue, CommitRequest } from './commits';
-import type { DocumentAnswer } from './documentDelivery';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { CommandResult, DataCommand, DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
@@ -244,17 +245,18 @@ export class EditorController {
   }
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
-  acceptRemote(selection?: readonly ManualPath[]): Promise<void> {
+  acceptRemote(selection?: readonly ManualPath[], expected?: EditorRecord): Promise<void> {
     // The draft as the person chose; typing that lands before this queued choice runs is kept.
     const atChoice = this.session.checkpoint().draft;
     return this.enqueue(async () => {
+      this.assertRecoveryChoice(expected);
       this.assertManualResolution(selection);
       const before = this.session.checkpoint();
       // A refusal has no other version to take: "use the server's version" drops the refused change.
       const refusedWork = !selection && Object.keys(before.pending).length > 0 && !before.remoteCandidate
         && !Object.keys(before.pending).some(id => this.manualRequests.has(id));
       const cancelled = Object.keys(this.session.checkpoint().pending);
-      if (this.options.commits && cancelled.length) await this.cancelCommits();
+      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) await this.cancelCommits(expected ? Object.keys(expected.checkpoint.pending) : undefined);
       if (this.prepared) {
         await this.options.runtime.discard(this.prepared.operationId);
         this.session.release(this.prepared.operationId);
@@ -270,15 +272,16 @@ export class EditorController {
   }
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
-  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }): Promise<void> {
+  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord): Promise<void> {
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueue(async () => {
+      this.assertRecoveryChoice(expected);
       if (correction && (!selection || !equalValues(correction.value, projectManualSelection(correction.base, correction.value, selection)))) {
         throw new Error('Manual resolution changed an unselected field');
       }
       this.assertManualResolution(selection);
       const cancelled = Object.keys(this.session.checkpoint().pending);
-      if (this.options.commits && cancelled.length) await this.cancelCommits();
+      if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) await this.cancelCommits(expected ? Object.keys(expected.checkpoint.pending) : undefined);
       const checkpoint = this.session.checkpoint();
       if (this.result?.kind === 'refused' && this.result.code === 'generation-mismatch'
         && (!checkpoint.remoteCandidate?.metadata
@@ -395,8 +398,14 @@ export class EditorController {
     await this.persist();
   }
 
-  private async cancelCommits(): Promise<void> {
-    await this.options.commits!.cancel(this.options.editorId, Object.keys(this.session.checkpoint().pending));
+  private assertRecoveryChoice(expected?: EditorRecord): void {
+    if (expected && recoveryChoiceFingerprint([this.record()]) !== recoveryChoiceFingerprint([expected])) {
+      throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
+    }
+  }
+
+  private async cancelCommits(selected?: readonly string[]): Promise<void> {
+    await this.options.commits!.cancel(selected ? '' : this.options.editorId, selected ?? Object.keys(this.session.checkpoint().pending));
     this.assertCurrent();
     for (const id of Object.keys(this.session.checkpoint().pending)) {
       this.session.release(id);

@@ -323,3 +323,27 @@ it('rejects an unselected manual amendment before retiring the failed command', 
   expect(Object.keys(editor.getState().checkpoint.pending)).toEqual(['op-1']);
   expect(editor.getState().checkpoint.draft?.content).toBe('mine'); editor.dispose();
 });
+
+
+describe('a reviewed legacy recovery choice', () => {
+  it.each(['unchanged', 'newer typing', 'another editor'] as const)('guards a legacy discard with %s', async change => {
+    const s = setup(); const editor = await EditorController.open(s.options);
+    await editor.edit({ ...initial().value, content: 'shown' }); await editor.save();
+    const remote = { ...initial(), value: { ...initial().value, content: 'stored' } };
+    jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'conflict', operationId: 'op-1', snapshot: remote, conflicts: [] });
+    await s.runtime.drain(); await editor.settled();
+    const shown = clone([...s.records.values()][0]);
+    if (change === 'newer typing') await editor.edit({ ...editor.getState().checkpoint.draft, content: 'later words' });
+    if (change === 'another editor') shown.editorId = 'unreviewed-editor';
+    if (change === 'unchanged') {
+      await editor.acceptRemote(undefined, shown);
+      expect(editor.getState().checkpoint.draft?.content).toBe('stored');
+      expect(s.entries.size).toBe(0);
+    } else {
+      await expect(editor.acceptRemote(undefined, shown)).rejects.toMatchObject({ code: 'decision-changed' });
+      expect(editor.getState().checkpoint.draft?.content).toBe(change === 'newer typing' ? 'later words' : 'shown');
+      expect(s.entries.get('op-1')?.state).toBe('conflict');
+    }
+    editor.dispose();
+  });
+});

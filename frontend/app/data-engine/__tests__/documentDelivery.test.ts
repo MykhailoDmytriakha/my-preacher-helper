@@ -1,4 +1,4 @@
-import { canReplaceDocumentIntent, savedDocumentAnswer } from '../documentDelivery';
+import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, savedDocumentAnswer } from '../documentDelivery';
 
 import type { CommitRequest } from '../commits';
 import type { JournalEntry } from '../types';
@@ -74,4 +74,13 @@ describe('the answer to a saved document request', () => {
     expect(answer([], [{ ...receipt('refused'), command: { ...command, owner: 'another' } }], ['relation'])).toBeNull();
     expect(answer([], [{ ...receipt('refused'), command: { ...command, resource: { ...baseline.resource, id: 'another' } } }], ['relation'])).toBeNull();
   });
+});
+
+
+it('recognizes only a sole directly prepared legacy command, never missing modern work', () => {
+  expect(isDirectLegacyDocumentIntent(['old-command'], 'old-command')).toBe(true);
+  expect(isDirectLegacyDocumentIntent([], undefined)).toBe(false);
+  expect(isDirectLegacyDocumentIntent(['modern-request'], undefined)).toBe(false);
+  expect(isDirectLegacyDocumentIntent(['modern-request'], 'old-command')).toBe(false);
+  expect(isDirectLegacyDocumentIntent(['old-command', 'modern-request'], 'old-command')).toBe(false);
 });

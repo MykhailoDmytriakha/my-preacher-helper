@@ -10,13 +10,14 @@ import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent,
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
-import { savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
+import { isDirectLegacyDocumentIntent, savedDocumentAnswer, type DocumentAnswer } from './documentDelivery';
 import { editorSlot } from './editorIdentity';
 import { needsConnection } from './engine';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals } from './legacyRecovery.client';
 import { mergeFields } from './protocol';
+import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -31,6 +32,10 @@ import type { MembershipScope } from './membershipScope';
 import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
+
+export type { RecoveryChoiceScope } from './recoveryChoice';
+/** Capture shown recovery work through the public engine facade. */
+export function captureRecoveryChoice(records: readonly EditorRecord[]): RecoveryChoiceScope { return captureChoice(records); }
 
 /** A refusal only because this device holds no copy and the server cannot be asked now (offline, hidden tab). */
 export const needsConnectionFailure = (error: unknown): boolean => needsConnection(error);
@@ -318,27 +323,41 @@ export function useDocumentActions() {
      * so among several only "theirs" is possible, after the banner has shown every draft for
      * copying. "Theirs" retires exactly the waiting checkpoints; a refusal, which has no stored
      * version to accept, returns its draft to the confirmed copy. Queued work is never touched.
-     * Each editor is reopened under its own identity so a settled checkpoint stops being
-     * recoverable. Resolves to the number of settled checkpoints.
+     * A reviewed scope pins modern request roots; their canonical cancellation projection needs no
+     * reopened editor. Legacy direct commands still open only the exact shown checkpoint and check
+     * it inside the controller queue. Omitted scope retains existing callers. Returns settled work.
      */
-    resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs'): Promise<number> => {
+    resolve: async (resource: ResourceRef, choice: 'mine' | 'theirs', scope?: RecoveryChoiceScope): Promise<number> => {
       if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
       // One-shot drafts only: a screen editor's draft of the same document is that screen's to settle.
-      const waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
-      if (!waiting.length) return 0;
+      let waiting = (await waitingFor(resource)).filter(({ record }) => isOneShotRecord(record));
+      const shown = (record: EditorRecord) => scope?.records.find(expected => expected.owner === owner && expected.editorId === record.editorId
+        && recoveryChoiceFingerprint([expected]) === recoveryChoiceFingerprint([record]));
+      let taken = 0;
+      if (scope && choice === 'theirs') {
+        // Modern copies settle through the same request-scoped projection as screen drafts.
+        taken = await browser.engine.takeStoredVersion(resource, scope.operationIds);
+        // Only directly owned legacy commands still need an editor; never reopen cancelled modern work.
+        waiting = waiting.filter(({ record }) => shown(record) && record.prepared
+          && isDirectLegacyDocumentIntent(Object.keys(record.checkpoint.pending), record.prepared.operationId)
+          && scope.operationIds.includes(record.prepared.operationId));
+      }
+      if (scope && choice === 'mine' && waiting.some(({ record }) => !shown(record))) throw Object.assign(
+        new Error('The shown saved copy changed'), { code: 'decision-changed' });
+      if (!waiting.length) return taken;
       if (choice === 'mine' && (waiting.length !== 1 || remoteDeleted(waiting[0].record))) {
         throw Object.assign(new Error('Only the stored version can be taken here'), { code: 'ambiguous-choice' });
       }
       for (const { record } of waiting) {
         const editor = await openFor(resource, record.editorId);
         try {
-          if (choice === 'mine') { await editor.keepLocal(); await editor.save(); continue; }
-          await editor.acceptRemote();
+          if (choice === 'mine') { await editor.keepLocal(scope ? shown(record) : undefined); await editor.save(); continue; }
+          await editor.acceptRemote(scope ? shown(record) : undefined);
           const { checkpoint } = editor.getState();
           if (checkpoint.dirty) await editor.edit(checkpoint.confirmed.value);
         } finally { editor.close({ flush: false }); }
       }
-      return waiting.length;
+      return taken + waiting.length;
     },
   }), [browser, owner, withEditor, waitingFor, openFor]);
 }
