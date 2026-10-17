@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { requestLanguage } from '@/utils/appLocale';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
 import { studiesRepository } from '@repositories/studies.repository';
 
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
     // fire-and-forget) is therefore allowed. When a study DOES exist and belongs to
     // someone else, we still refuse (defense-in-depth: don't act on a foreign resource).
     if (studyId && typeof studyId === 'string' && studyId !== 'new') {
-      const study = await studiesRepository.getNote(studyId);
+      const study = await studiesRepository.getNote(studyId, requestLanguage(request));
       if (study && study.userId !== uid) {
         return NextResponse.json(
           { success: false, error: 'Forbidden: you do not own this study note' },

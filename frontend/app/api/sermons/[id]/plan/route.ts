@@ -9,6 +9,7 @@ import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { requestLanguage } from '@/utils/appLocale';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
@@ -173,6 +174,8 @@ async function generateSermonPointContent(
 /** Generate a note-backed proposal. Only the editor can accept and save the text. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const uid = await getRequiredAuthenticatedUid(request);
+  // The author's interface language: the source notes' old references are read in their Bible.
+  const language = requestLanguage(request);
   if (!uid) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
   try {
     const parsed = NotePlanRequestSchema.safeParse(await request.json());
@@ -199,7 +202,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
     const sourceIds = [...new Set(sermon.sourceNoteIds ?? [])];
     if (!sourceIds.length) return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
-    const notes = await Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId)));
+    const notes = await Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId, language)));
     if (notes.some((note) => !note || note.userId !== uid || !note.content?.trim())) {
       return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
     }
@@ -225,7 +228,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const result = await generateNotePlanPoint(input, style, uid);
     const [latestSermon, latestNotes] = await Promise.all([
       sermonsRepository.fetchSermonById(id),
-      Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId))),
+      Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId, language))),
     ]);
     const sourceChanged = latestNotes.some((note, index) => !note || note.userId !== uid
       || note.content !== notes[index]!.content

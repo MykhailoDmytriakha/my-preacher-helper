@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { isOwnersTombstone } from '@/data-engine/legacyBoundary.server';
+import { requestLanguage } from '@/utils/appLocale';
 import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_ID_REQUIRED }, { status: 400 });
     }
 
-    const note = await studiesRepository.getNote(noteId);
+    const note = await studiesRepository.getNote(noteId, requestLanguage(request));
     if (!note || isOwnersTombstone(note as unknown as Record<string, unknown>, uid)) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_NOT_FOUND }, { status: 404 });
     }
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     }
 
     const token = randomUUID();
-    const created = await studyNoteShareLinksRepository.createLink({ ownerId: uid, noteId, token });
+    const created = await studyNoteShareLinksRepository.createLink({ ownerId: uid, noteId, token, authorLanguage: requestLanguage(request) });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('POST /api/studies/share-links error', error);

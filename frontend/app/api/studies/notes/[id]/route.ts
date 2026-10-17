@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { isOwnersTombstone, legacyBoundaryResponse, refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { requestLanguage } from '@/utils/appLocale';
 import { studiesRepository } from '@repositories/studies.repository';
 
 // Error messages
@@ -17,7 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   try {
-    const note = await studiesRepository.getNote(id);
+    const note = await studiesRepository.getNote(id, requestLanguage(request));
     // A note deleted through the engine is a tombstone that names its owner only in
     // `_dataEngineOwner`: for that owner it is simply gone, not someone else's note.
     if (!note || isOwnersTombstone(note as unknown as Record<string, unknown>, uid)) return NextResponse.json({ error: 'Not found' }, { status: 404 });

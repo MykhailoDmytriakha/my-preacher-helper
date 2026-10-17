@@ -41,7 +41,8 @@ export async function readSharedNotePreview(token: string): Promise<SharedNotePr
       return studyNoteShareLinksRepository.readSharedNote(token);
     });
     if (!shared) return null;
-    const locale = detectTextLocale(`${shared.title ?? ''}\n${shared.content}`);
+    // The author's language when the link kept it; a link made before reads it off the note's words.
+    const locale = shared.shareLink.authorLanguage ?? detectTextLocale(`${shared.title ?? ''}\n${shared.content}`);
     return { ...buildSharedNotePreview(shared, locale, previewWords(locale)), locale };
   } catch (error) {
     console.error('readSharedNotePreview failed', error);

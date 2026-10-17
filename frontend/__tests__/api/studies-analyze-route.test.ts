@@ -26,8 +26,9 @@ jest.mock('next/server', () => ({
 
 const mockGetUid = getRequiredAuthenticatedUid as jest.Mock;
 
-const request = (body: unknown) => ({
+const request = (body: unknown, headers: Record<string, string> = {}) => ({
   json: jest.fn().mockResolvedValue(body),
+  headers: new Headers(headers),
 } as unknown as Request);
 
 describe('POST /api/studies/analyze', () => {
@@ -45,6 +46,14 @@ describe('POST /api/studies/analyze', () => {
     });
   });
 
+  // The owner, 2026-10-17: a note's old references are read in the Bible of its author's interface. The
+  // author's request says it; the stored note is read in it.
+  it('reads the note in the language the author’s interface sent', async () => {
+    const response = await POST(request({ studyId: 'study-1', content: 'Study content', existingTags: [], analysisType: 'all' }, { 'x-app-language': 'uk' }));
+    expect(response.status).toBe(200);
+    expect(studiesRepository.getNote).toHaveBeenCalledWith('study-1', 'uk');
+  });
+
   it('meters analysis against the authenticated owner (the caller), not a body-supplied identity', async () => {
     const response = await POST(request({
       studyId: 'study-1',
@@ -54,7 +63,7 @@ describe('POST /api/studies/analyze', () => {
     }));
 
     expect(response.status).toBe(200);
-    expect(studiesRepository.getNote).toHaveBeenCalledWith('study-1');
+    expect(studiesRepository.getNote).toHaveBeenCalledWith('study-1', undefined);
     expect(analyzeStudyNote).toHaveBeenCalledWith(
       'Study content',
       ['Grace'],

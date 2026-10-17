@@ -1,6 +1,8 @@
 import { format } from 'date-fns';
 import { enUS, ru, uk } from 'date-fns/locale';
 
+import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@locales/constants';
+
 import type { Locale } from 'date-fns';
 
 /**
@@ -26,6 +28,32 @@ export function resolveAppLocale(language?: string | null): AppLocale {
   if (lang.startsWith('ru')) return 'ru';
   if (lang.startsWith('uk')) return 'uk';
   return 'en';
+}
+
+/**
+ * THE INTERFACE'S LANGUAGE, CARRIED TO THE SERVER. A request says the language its sender's
+ * interface speaks, so the server reads a note's old Scripture references in the Bible of the
+ * person who wrote them (`scriptureReferenceNumbering.ts`, `noteLanguage`) — the owner, 2026-10-17:
+ * "a Ukrainian interface — the Ukrainian Bible". The browser keeps it in its cookie (written on every
+ * change of the language); where it is not known, nothing is said and the server reads as before.
+ */
+export const APP_LANGUAGE_HEADER = 'x-app-language';
+
+/**
+ * The interface's language in this browser: its cookie, and English without one — the interface starts
+ * in the language the cookie names and in English when there is none (`locales/i18n.ts`,
+ * `LanguageInitializer`), so the server reads as the screen does. Nothing outside a browser.
+ */
+export function browserInterfaceLanguage(): AppLocale | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const value = document.cookie.match(new RegExp(`(?:^|;\\s*)${COOKIE_LANG_KEY}=([^;]+)`))?.[1];
+  return resolveAppLocale(value ?? DEFAULT_LANGUAGE);
+}
+
+/** The interface's language a request carried, or nothing when it carried none. */
+export function requestLanguage(request: { headers?: Pick<Headers, 'get'> }): AppLocale | undefined {
+  const value = request.headers?.get?.(APP_LANGUAGE_HEADER);
+  return value ? resolveAppLocale(value) : undefined;
 }
 
 /**
