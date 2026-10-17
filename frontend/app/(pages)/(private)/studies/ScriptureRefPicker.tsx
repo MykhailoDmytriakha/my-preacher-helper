@@ -81,6 +81,10 @@ export default function ScriptureRefPicker({
   const [toChapter, setToChapter] = useState(shown?.toChapter || 1);
   const [fromVerse, setFromVerse] = useState(shown?.fromVerse || 1);
   const [toVerse, setToVerse] = useState<number | ''>(shown?.toVerse || '');
+  // Whether the person changed anything. Only their own choices count: the effects below also set
+  // these fields (a chapter range below its start, a verse past the chapter's end), and that is not
+  // a change of theirs.
+  const [touched, setTouched] = useState(false);
 
   // Get max chapters for current book
   const maxChapters = useMemo(() => chapterCount(bible, book), [bible, book]);
@@ -151,6 +155,17 @@ export default function ScriptureRefPicker({
   const layer = useModalLayer({ onClose: onCancel });
 
   const handleConfirm = () => {
+    // Nothing changed: the reference goes back as it was written, in its own Bible. What the picker
+    // shows is the person's Bible, and there a range can only be the chapters around it — Synodal
+    // "Пс 9:20-25" in English is Ps 9-10 — so saving what was shown widened 6 verses to 38
+    // (BUG-20261017-reference-across-chapters-in-other-bible). An old reference with a chapter range
+    // left beside its verses opens as that range, and goes back with its verses too.
+    if (initialRef && !touched) {
+      const { id: _id, ...asWritten } = initialRef;
+      onConfirm(asWritten);
+      return;
+    }
+
     const ref: Omit<ScriptureReference, 'id'> = { bible, book };
 
     if (scope === REFERENCE_SCOPE_BOOK) {
@@ -244,7 +259,7 @@ export default function ScriptureRefPicker({
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setScope(s)}
+                  onClick={() => { if (s !== scope) { setTouched(true); setScope(s); } }}
                   className={`px-2 py-1 text-xs rounded-md transition-colors ${scope === s
                     ? 'bg-emerald-600 text-white'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
@@ -265,7 +280,7 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
               value={book}
-              onChange={(e) => setBook(e.target.value)}
+              onChange={(e) => { setTouched(true); setBook(e.target.value); }}
               onKeyDown={handleKeyDown}
             >
               {bookList.map((b) => (
@@ -290,7 +305,7 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
                   value={chapter}
-                  onChange={(e) => setChapter(Number(e.target.value))}
+                  onChange={(e) => { setTouched(true); setChapter(Number(e.target.value)); }}
                   onKeyDown={handleKeyDown}
                 >
                   {chapterOptions.map((ch) => (
@@ -311,7 +326,7 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
                     value={toChapter}
-                    onChange={(e) => setToChapter(Number(e.target.value))}
+                    onChange={(e) => { setTouched(true); setToChapter(Number(e.target.value)); }}
                     onKeyDown={handleKeyDown}
                   >
                     {chapterOptions.filter((ch) => ch >= chapter).map((ch) => (
@@ -336,7 +351,7 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
                   value={fromVerse}
-                  onChange={(e) => setFromVerse(Number(e.target.value))}
+                  onChange={(e) => { setTouched(true); setFromVerse(Number(e.target.value)); }}
                   onKeyDown={handleKeyDown}
                 >
                   {verseOptions.map((v) => (
@@ -354,7 +369,7 @@ export default function ScriptureRefPicker({
               size="sm"
               accent="emerald"
                   value={toVerse === '' ? '' : toVerse}
-                  onChange={(e) => setToVerse(e.target.value === '' ? '' : Number(e.target.value))}
+                  onChange={(e) => { setTouched(true); setToVerse(e.target.value === '' ? '' : Number(e.target.value)); }}
                   onKeyDown={handleKeyDown}
                 >
                   <option value="">—</option>

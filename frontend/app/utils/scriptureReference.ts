@@ -1,5 +1,5 @@
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
-import { CANONICAL_BIBLE, referenceBibleFor, referenceIn, withStoredBible } from '@/utils/scriptureReferenceNumbering';
+import { CANONICAL_BIBLE, passagesIn, referenceBibleFor, withStoredBible, type Passage } from '@/utils/scriptureReferenceNumbering';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -54,37 +54,30 @@ function bookFor(book: string, { locale, style = 'short' }: ScriptureRefFormat):
 /**
  * The reference in the Bible it is read in: the canonical face in the King James, the others in
  * the Bible of the interface's language, and with no language as it was written. A reference that
- * does not name its Bible is read the way the interface typed it before Bibles were kept.
+ * does not name its Bible is read the way the interface typed it before Bibles were kept. A verse
+ * wins over a chapter range left beside it — old data carries both.
  */
-function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short' }: ScriptureRefFormat): ScriptureRefShape {
-  if (style === 'canonical') return referenceIn(ref, CANONICAL_BIBLE);
-  if (!locale) return ref;
-  return referenceIn(withStoredBible(ref, locale), referenceBibleFor(locale));
+function inReadersBible(ref: ScriptureRefShape, { locale, style = 'short' }: ScriptureRefFormat): Passage[] {
+  if (style === 'canonical') return passagesIn(ref, CANONICAL_BIBLE);
+  if (!locale) return passagesIn(ref, undefined);
+  return passagesIn(withStoredBible(ref, locale), referenceBibleFor(locale));
+}
+
+/** "5", "9-10", "5:17", "5:17-26", "9:19-10:4". */
+function passageText({ chapter, toChapter, fromVerse, toVerse }: Passage): string {
+  if (fromVerse === undefined) return toChapter !== chapter ? `${chapter}-${toChapter}` : String(chapter);
+  if (toChapter !== chapter) return `${chapter}:${fromVerse}-${toChapter}:${toVerse}`;
+  return toVerse !== undefined && toVerse !== fromVerse ? `${chapter}:${fromVerse}-${toVerse}` : `${chapter}:${fromVerse}`;
 }
 
 export function formatScriptureReference(stored: ScriptureRefShape, format: ScriptureRefFormat = {}): string {
   const book = bookFor(stored.book, format);
   if (stored.chapter === undefined) return book;
 
-  const ref = inReadersBible(stored, format);
-  // The short face glues the book to the chapter ("Лк.5"); the other two read as prose.
+  // The short face glues the book to the chapter ("Лк.5"); the other two read as prose. A reference
+  // a gap parts in the reader's Bible names every piece: "К Римлянам 14:24-26, 16:24".
   const joint = (format.style ?? 'short') === 'short' ? '.' : ' ';
-  const chapter = ref.chapter;
-
-  // A verse wins even when a chapter range is also present — old data carries both.
-  if (ref.fromVerse !== undefined) {
-    const verses =
-      ref.toVerse !== undefined && ref.toVerse !== ref.fromVerse
-        ? `${ref.fromVerse}-${ref.toVerse}`
-        : String(ref.fromVerse);
-    return `${book}${joint}${chapter}:${verses}`;
-  }
-
-  if (ref.toChapter !== undefined && ref.toChapter !== ref.chapter) {
-    return `${book}${joint}${chapter}-${ref.toChapter}`;
-  }
-
-  return `${book}${joint}${chapter}`;
+  return `${book}${joint}${inReadersBible(stored, format).map(passageText).join(', ')}`;
 }
 
 /**
