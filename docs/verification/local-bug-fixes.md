@@ -1300,7 +1300,7 @@ Fresh independent acceptance repeats the675focused tests, types and lint, plus f
 
 ## BUG-20261017-council-carry-success-before-ack — truthful council action notices
 
-Stage: local verification complete; independent final acceptance and source commit pending. Publication remains deferred.
+Stage: independently accepted locally as sourcecb12ae3585e28622566064b8decaacfa6ced995e; publication remains deferred.
 
 A carry promise resolves after local atomic capture; detail/conduct finish also showed success before server delivery. One councilActionNotice module now presents neutral prepared-carry and Undo-capability messages at all three sites. The existing destination action, Undo callback and eight-second duration are retained. Shared DataMembershipStatus/DataSyncStatus owns delivery/refusal; no new acknowledgement watcher, queue or writer is introduced. All three locale catalogs use the replacement keys.
 

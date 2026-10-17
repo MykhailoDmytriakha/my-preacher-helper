@@ -118,18 +118,6 @@
 **Class extension.** Finish navigation can also close the editor before its acknowledged write continuation: the real planner stores held status while the old screen reports InactiveEditorError and a save-error toast. Check both ACK and refusal timing, not only Undo.
 
 
-### BUG-20261017-council-carry-success-before-ack · Council actions report completion before delivery is accepted
-**P3** — misleading confirmation; the shared refusal banner preserves the draft. Anchors: `frontend/app/(pages)/(private)/care/council/[id]/page.tsx:263,276` and `conduct/page.tsx:161`.
-**User contract.** Care → Council → carry or finish: pending local work must not claim server acceptance; Undo remains available without waiting for the network.
-**Reproduce.** Carry from a held council into a destination deleted before delivery: the real planner refuses with no writes while a green “section added” toast appears.
-**Class.** Local durability and delivery are separate; present prepared intent/Undo neutrally and let shared status own delivery.
-| Site | Verdict | Mechanism |
-|---|---|---|
-| Detail carry | affected | Local atomic capture resolves before server acceptance. |
-| Detail finish | affected | Success follows a void update; Undo must stay immediate. |
-| Conduct finish | affected | Same completion claim/Undo before delivery and route change. |
-| Council document facade, shared sync/action status | retain | They correctly separate local capture from delivery. |
-
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
 **Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.
