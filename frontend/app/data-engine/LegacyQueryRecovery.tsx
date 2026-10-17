@@ -118,7 +118,7 @@ const CHOICES = new Set(['providerId', 'modelId', 'preferredProviderId', 'prefer
 const isReference = (key: string) => !CHOICES.has(key)
   && (key === 'id' || key === 'userId' || key === 'uid' || key === 'ownerId' || /[a-z]Ids?$/.test(key));
 /** Parts of a list item that say where or when it sits, not what it says. */
-const ITEM_PLACEMENT = new Set(['position', 'isLocked']);
+const ITEM_PLACEMENT = new Map([['position', 'number'], ['order', 'number'], ['isLocked', 'boolean']]);
 /** A value with no words in it: a mark, a number, a flag — or a list of those. */
 const isToken = (value: unknown): boolean => value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean'
   || (typeof value === 'string' && !/\s/.test(value)) || (Array.isArray(value) && value.every(isToken));
@@ -126,9 +126,10 @@ const isToken = (value: unknown): boolean => value === null || value === undefin
  * The one rule for what a copy's lines leave out: a reference, or a list item's placement, that holds
  * no words. Words are shown under any key; whatever this leaves out is what `unseen` reports.
  */
-const leftOut = (key: string, value: unknown, inItem: boolean) => (isReference(key) || (inItem && ITEM_PLACEMENT.has(key))) && isToken(value);
+const leftOut = (key: string, value: unknown, inItem: boolean) => (isReference(key) && isToken(value))
+  || (inItem && ITEM_PLACEMENT.get(key) === typeof value);
 /** The parts a list item is named by, in the order they are tried. */
-const ITEM_NAMES = ['text', 'title', 'name', 'question', 'decision', 'answerText'];
+const ITEM_NAMES = ['text', 'title', 'instanceTitle', 'name', 'question', 'decision', 'answerText'];
 
 const ACTION_FAILED = 'legacyRecovery.actionFailed';
 const BUTTON = 'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 disabled:opacity-60 dark:focus-visible:ring-offset-gray-900';
@@ -489,7 +490,7 @@ function useCopyFormatting() {
       forField: field => ({
         item, label: fieldName, unseen: value => unseen(value),
         entry: value => entry(storedFieldValue(t, collection, field, value) as Record<string, unknown>),
-        value: (key, value) => lines(key, storedFieldValue(t, collection, `${field}.${key}`, value)),
+        value: (key, value) => leftOut(key, value, true) ? [] : lines(key, storedFieldValue(t, collection, `${field}.${key}`, value)),
       }),
     });
     /** What a copy holds, readable: what an operation would have written, else the whole copy. */

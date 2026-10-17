@@ -226,7 +226,7 @@ function changedItem(device: Row, server: Row, read: ChangeReader): ChangedSide 
     const lines = side[key] === undefined || side[key] === null ? [] : read.value(key, side[key]);
     return lines.length ? [`${read.label(key)}: ${lines[0]}`, ...lines.slice(1)] : [];
   });
-  const unseen = fields.some(key => !same(read.unseen(device[key]), read.unseen(server[key])));
+  const unseen = !same(read.unseen(device), read.unseen(server));
   return { subject: read.item(device), device: labelled(device), server: labelled(server), unseen };
 }
 

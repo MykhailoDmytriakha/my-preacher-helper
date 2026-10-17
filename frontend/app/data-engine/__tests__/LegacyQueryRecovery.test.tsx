@@ -46,6 +46,17 @@ const rowCopy = (id: string, value: Record<string, unknown>) => ({
 /** Waits for the strip and opens the review from it. */
 const openReview = async () => fireEvent.click(await screen.findByRole('button', { name: /legacyRecovery.review/ }));
 
+/** Opens the real archive reader over a pair of synthetic keyed lists. */
+const reviewItems = async (collection: string, field: string, device: Record<string, unknown>[], server: Record<string, unknown>[]) => {
+  const current = { id: 'items-1', userId: 'owner', title: 'Item copy', [field]: server };
+  const raw = JSON.stringify({ ...current, [field]: device });
+  mockServerCopies.set(`${collection}/items-1`, current);
+  jest.mocked(listLegacyQueryCopies).mockResolvedValue([{ ...record, collection, documentId: 'items-1', title: 'Item copy', raw }]);
+  render(<LegacyQueryCopies owner="owner" />);
+  await openReview();
+  return { article: screen.getByRole('heading', { name: 'Item copy' }).closest('article')!, raw };
+};
+
 describe('legacy cache preservation UI', () => {
   beforeEach(() => {
     jest.resetAllMocks();
@@ -634,6 +645,79 @@ describe('legacy cache preservation UI', () => {
     expect(screen.getByRole('heading', { name: record.title })).toBeInTheDocument();
     error.mockRestore();
   });
+  it('uses the authored flow title alone as a changed step subject, keeping labelled changes below', async () => {
+    const step = { id: 'flow-1', templateId: 'template-1', order: 1, durationMin: 5, instanceTitle: 'Stored step', instanceNotes: 'Stored note.' };
+    const local = { ...step, instanceTitle: 'My saved step', instanceNotes: 'My saved note.' };
+    const { article, raw } = await reviewItems('groups', 'flow', [local], [step]);
+    const change = within(article).getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(change.querySelectorAll(':scope > p')[1]?.textContent).toBe(local.instanceTitle);
+    expect(change).not.toHaveTextContent(/\border:/);
+    fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringMatching(/^My saved step\n/));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('My saved note.'));
+    expect(within(article).getByText(raw)).toBeInTheDocument();
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
+  it.each(['removed', 'added'] as const)('reads a %s flow step by its title without numeric placement', async kind => {
+    const step = { id: 'flow-1', templateId: 'template-1', order: 1, durationMin: 5, instanceTitle: 'My saved step', instanceNotes: 'My saved note.' };
+    const { article } = await reviewItems('groups', 'flow', kind === 'removed' ? [step] : [], kind === 'added' ? [step] : []);
+    const change = within(article).getByRole('group', { name: `legacyRecovery.kind${kind === 'removed' ? 'Removed' : 'Added'}` });
+    expect(change).toHaveTextContent('My saved step');
+    expect(change).toHaveTextContent('My saved note.');
+    expect(change).not.toHaveTextContent(/\border:/);
+    if (kind === 'removed') {
+      fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+      expect(mockCopy).toHaveBeenCalledWith(expect.stringMatching(/^My saved step\n/));
+      expect(mockCopy.mock.calls[0][0]).not.toMatch(/\border:/);
+    }
+  });
+
+  it('discloses a numeric-only flow placement difference and retains exact raw evidence', async () => {
+    const step = { id: 'flow-1', templateId: 'template-1', order: 1, instanceTitle: 'Same step', instanceNotes: 'Same words.' };
+    const { article, raw } = await reviewItems('groups', 'flow', [step], [{ ...step, order: 2 }]);
+    expect(within(article).getByText('legacyRecovery.noVisibleDifference')).toBeInTheDocument();
+    expect(within(article).queryByRole('group', { name: 'legacyRecovery.kindReplaced' })).not.toBeInTheDocument();
+    expect(within(article).getByText(raw)).toBeInTheDocument();
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
+  it('discloses hidden flow placement beside changed words and keeps only the words in the copy', async () => {
+    const step = { id: 'flow-1', templateId: 'template-1', order: 1, instanceTitle: 'Same step', instanceNotes: 'My saved note.' };
+    const { article } = await reviewItems('groups', 'flow', [step], [{ ...step, order: 2, instanceNotes: 'Stored note.' }]);
+    const change = within(article).getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(change).toHaveTextContent('My saved note.');
+    expect(change).toHaveTextContent('Stored note.');
+    expect(within(article).getByText('legacyRecovery.partlyHidden')).toBeInTheDocument();
+    expect(change).not.toHaveTextContent(/\border:/);
+    fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('My saved note.'));
+    expect(mockCopy.mock.calls[0][0]).not.toMatch(/\border:/);
+  });
+
+  it.each([['position', 1, 2], ['isLocked', false, true]] as const)('uses the same omission and disclosure rule for changed %s', async (field, mine, stored) => {
+    const thought = { id: 'thought-1', text: 'My saved thought', [field]: mine };
+    const { article } = await reviewItems('sermons', 'thoughts', [thought], [{ ...thought, text: 'Stored thought', [field]: stored }]);
+    const change = within(article).getByRole('group', { name: 'legacyRecovery.kindReplaced' });
+    expect(change).toHaveTextContent('My saved thought');
+    expect(within(article).getByText('legacyRecovery.partlyHidden')).toBeInTheDocument();
+    expect(change.textContent).not.toContain(`${field}:`);
+  });
+
+  it.each(['order', 'position', 'isLocked'])('preserves single-word prose under an unexpected %s property', async field => {
+    const item = { id: 'flow-1', instanceTitle: 'My step', [field]: 'SingleWord', extensionEvidence: 'Keep all my unknown words.', extensionCount: 42 };
+    const { article, raw } = await reviewItems('groups', 'flow', [item], []);
+    const change = within(article).getByRole('group', { name: 'legacyRecovery.kindRemoved' });
+    expect(change).toHaveTextContent('SingleWord');
+    expect(change).toHaveTextContent(item.extensionEvidence);
+    expect(change).toHaveTextContent('extensionCount: 42');
+    fireEvent.click(within(change).getByRole('button', { name: 'legacyRecovery.copyChange' }));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining('SingleWord'));
+    expect(mockCopy).toHaveBeenCalledWith(expect.stringContaining(item.extensionEvidence));
+    expect(within(article).getByText(raw)).toBeInTheDocument();
+    expect(removeLegacyCopies).not.toHaveBeenCalled();
+  });
+
   it('labels and copies a saved group step title and leader note without rewriting its words', async () => {
     const step = { id: 'flow-1', templateId: 'template-1', order: 1, durationMin: 5, instanceTitle: 'Stored step', instanceNotes: 'Stored leader note.' };
     const value = { id: 'group-1', userId: 'owner', title: 'Group', description: '', status: 'active', templates: [], flow: [step], meetingDates: [] };

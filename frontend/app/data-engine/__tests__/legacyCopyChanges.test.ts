@@ -25,6 +25,17 @@ describe('a copy read as a review of changes', () => {
   const women = { id: 't2', text: 'The women came asking who would roll the stone.' };
   const tomb = { id: 't3', text: 'The empty tomb is where the sermon begins.' };
 
+  it.each([true, false])('preserves complete-item hidden evidence beside changed words: changed reference %s', changed => {
+    const reader: ChangeReader = { ...read, value: (field, value) => isRef(field) ? [] : read.value(field, value) };
+    const mine = [{ id: 'thought-1', text: 'My saved words', placeRef: 'place-a' }];
+    const stored = [{ id: 'thought-1', text: 'Stored words', placeRef: changed ? 'place-b' : 'place-a' }];
+    const review = reviewOf('sermons', {}, {}, [{ field: 'thoughts', device: mine, server: stored }], reader);
+    expect(JSON.stringify(review.fields)).toContain('My saved words');
+    expect(JSON.stringify(review.fields)).toContain('Stored words');
+    expect(JSON.stringify(review.fields)).not.toContain('placeRef:');
+    expect(review.hidden).toEqual(changed ? ['thoughts'] : []);
+  });
+
   it('lays a list of thoughts out item by item: removed where the device had it, added, unchanged between', () => {
     const device = { thoughts: [stone, women] }, server = { thoughts: [women, tomb] };
     const { fields: [field], hidden } = reviewOf('sermons', device, server, [{ field: 'thoughts', device: device.thoughts, server: server.thoughts }], read);
