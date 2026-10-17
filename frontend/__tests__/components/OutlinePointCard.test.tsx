@@ -30,7 +30,10 @@ const mockDropNodes = new Map<string, HTMLElement | null>();
 jest.mock('@dnd-kit/core', () => ({ useDroppable: ({ id }: { id: string }) => ({ setNodeRef: (node: HTMLElement | null) => { mockDropNodes.set(id, node); }, isOver: false }) }));
 jest.mock('@dnd-kit/sortable', () => ({ SortableContext: ({ children }: React.PropsWithChildren) => <>{children}</>, verticalListSortingStrategy: jest.fn() }));
 jest.mock('@/services/thought.service', () => ({ createAudioThought: jest.fn() }));
-jest.mock('@/components/column/SubPointList', () => ({ SubPointList: () => <div data-testid="subpoint-editor" /> }));
+jest.mock('@/components/column/SubPointList', () => ({
+  SubPointList: ({ renderHeader, hideList }: { renderHeader?: (button: React.ReactNode) => React.ReactNode; hideList?: boolean }) =>
+    <>{renderHeader?.(null)}{!hideList && <div data-testid="subpoint-editor" />}</>,
+}));
 jest.mock('@/components/SermonGuidanceTooltips', () => ({ OutlinePointGuidanceTooltip: () => <span>Point help</span> }));
 jest.mock('@/components/PointNote', () => ({ __esModule: true, default: ({ note, onChange, isReadOnly }: { note?: string; onChange: (note: string) => void; isReadOnly: boolean }) =>
   <input aria-label="Note" value={note ?? ''} onChange={event => onChange(event.target.value)} readOnly={isReadOnly} /> }));

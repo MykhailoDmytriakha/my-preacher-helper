@@ -13,7 +13,9 @@ jest.mock('@dnd-kit/sortable', () => ({
   useSortable: () => ({ attributes: {}, listeners: {}, setNodeRef: () => undefined, transform: null, transition: null, isDragging: false }),
 }));
 jest.mock('@/services/thought.service', () => ({ createAudioThought: jest.fn() }));
-jest.mock('@/components/column/SubPointList', () => ({ SubPointList: () => null }));
+jest.mock('@/components/column/SubPointList', () => ({
+  SubPointList: ({ renderHeader }: { renderHeader?: (button: React.ReactNode) => React.ReactNode }) => <>{renderHeader?.(null)}</>,
+}));
 jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: () => null }));
 jest.mock('@/components/FlatRecorderButton', () => ({ FlatRecorderButton: () => null }));
 

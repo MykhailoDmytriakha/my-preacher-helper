@@ -250,6 +250,100 @@ export const OutlinePointCard: React.FC<{
     }
   })();
 
+  const titleControl = (
+    isEditingLocally ? (
+      <div className="flex-1 flex items-center gap-1 min-w-[9rem]">
+        <input
+          ref={localEditRef}
+          type="text"
+          value={localEditText}
+          onChange={(e) => setLocalEditText(capitalizeFirstLetter(e.target.value))}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
+          className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+        />
+        <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleLocalSave} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-green-600 hover:text-green-700 dark:text-green-400`}>
+          <CheckIcon className="h-4 w-4" />
+        </button>
+        <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleLocalCancel} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200`}>
+          <XMarkIcon className="h-4 w-4" />
+        </button>
+      </div>
+    ) : (
+      <div className="flex items-center gap-1.5 grow min-w-0">
+        {point.subPoints && point.subPoints.length > 0 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsCollapsed(prev => !prev);
+            }}
+            className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
+            title={isCollapsed ? t('common.expand') : t('common.collapse')}
+            aria-label={isCollapsed ? t('common.expand') : t('common.collapse')}
+          aria-expanded={!isCollapsed}
+          >
+            <ChevronDownIcon
+              className={`h-3.5 w-3.5 transform transition-transform duration-200 ${
+                isCollapsed ? '-rotate-90' : ''
+              }`}
+            />
+          </button>
+        )}
+        <h4
+          onClick={() => openPointEditor({
+            point,
+            isLocked: isPointLocked,
+            isFocusMode,
+            setLocalEditText,
+            setIsEditingLocally,
+            onEditPoint,
+          })}
+          className={`font-medium text-sm min-w-0 truncate select-none ${isPointLocked ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
+          title={!isPointLocked ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
+        >
+          {point.text}
+        </h4>
+        {isFocusMode && onAiSortPoint && (
+          <button
+            type="button"
+            onClick={() => onAiSortPoint(point.id)}
+            disabled={aiSortState.disabledReason !== null}
+            title={aiSortTooltip}
+            aria-label={aiSortTooltip}
+            data-testid={`outline-point-ai-sort-${point.id}`}
+            className={`p-1 rounded-full border transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
+              isSortingThisPoint
+                ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-700"
+                : aiSortState.disabledReason
+                  ? "bg-white/10 text-gray-400 dark:text-gray-500 border-white/10 cursor-not-allowed opacity-60"
+                  : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-200 dark:border-amber-700"
+            }`}
+          >
+            {isSortingThisPoint ? (
+              <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <SparklesIcon className="h-4 w-4" />
+            )}
+          </button>
+        )}
+        {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
+        {!isFocusMode && onDeletePoint && !isPointLocked && (
+          <button
+            aria-label={t(TRANSLATION_COMMON_DELETE)}
+            onClick={() => onDeletePoint(point.id)}
+            className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0"
+            title={t(TRANSLATION_COMMON_DELETE)}
+          >
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+    )
+  );
+
+
   return (
     <>
       <div
@@ -258,226 +352,136 @@ export const OutlinePointCard: React.FC<{
           }`}
         style={headerColor ? { borderColor: headerColor } : {}}
       >
-        {/* SermonOutline point header */}
-        <div
-          className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
-          style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
-        >
-          {/* The title group starts at its full width (grow, not flex-1), so when a narrow column
-              cannot hold the whole title beside the actions, the actions move to a second line
-              instead of squeezing the title to a few letters. */}
-          <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 w-full">
-            {/* Drag handle for normal mode reordering */}
-            {dragHandleProps && (
-              <div
-                {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)}
-                className={isPointLocked ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
-                title={!isPointLocked ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
-              >
-                {!isPointLocked && <Bars3Icon className="h-4 w-4" />}
-              </div>
-            )}
-
-            {/* Inline edit form or click-to-edit title */}
-            {isEditingLocally ? (
-              <div className="flex-1 flex items-center gap-1 min-w-[9rem]">
-                <input
-                  ref={localEditRef}
-                  type="text"
-                  value={localEditText}
-                  onChange={(e) => setLocalEditText(capitalizeFirstLetter(e.target.value))}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
-                  className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
-                />
-                <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleLocalSave} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-green-600 hover:text-green-700 dark:text-green-400`}>
-                  <CheckIcon className="h-4 w-4" />
-                </button>
-                <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleLocalCancel} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200`}>
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 grow min-w-0">
-                {point.subPoints && point.subPoints.length > 0 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsCollapsed(prev => !prev);
-                    }}
-                    className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
-                    title={isCollapsed ? t('common.expand') : t('common.collapse')}
-                    aria-label={isCollapsed ? t('common.expand') : t('common.collapse')}
-                  aria-expanded={!isCollapsed}
+        <SubPointList
+          subPoints={point.subPoints ?? []}
+          outlinePointId={point.id}
+          isPointLocked={isPointLocked}
+          onAdd={onAddSubPoint ?? (() => undefined)}
+          onEdit={onEditSubPoint ?? (() => undefined)}
+          onDelete={onDeleteSubPoint ?? (() => undefined)}
+          onReorder={onReorderSubPoints}
+          getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
+          t={t}
+          hideList={Boolean(isFocusMode || isEditingLocally || isCollapsed) || !((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint))}
+          renderHeader={(addSubPointButton) => (
+            <div
+              className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
+              style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
+            >
+              {/* The title group starts at its full width (grow, not flex-1), so when a narrow column
+                  cannot hold the whole title beside the actions, the actions move to a second line
+                  instead of squeezing the title to a few letters. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 w-full">
+                {/* Drag handle for normal mode reordering */}
+                {dragHandleProps && (
+                  <div
+                    {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)}
+                    className={isPointLocked ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
+                    title={!isPointLocked ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
                   >
-                    <ChevronDownIcon
-                      className={`h-3.5 w-3.5 transform transition-transform duration-200 ${
-                        isCollapsed ? '-rotate-90' : ''
-                      }`}
+                    {!isPointLocked && <Bars3Icon className="h-4 w-4" />}
+                  </div>
+                )}
+
+                {titleControl}
+
+                {/* Right-side actions and info */}
+                <div className="ml-auto flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
+                  {addSubPointButton}
+
+                  {/* Locks every thought of the point: the same toggle a thought card draws for one thought */}
+                  {pointToggleHandler && hasItems && (
+                    <LockToggleButton
+                      isLocked={isPointLocked}
+                      label={pointLockToggleLabel}
+                      unlockedIconClassName={getSectionIconClasses(containerId)}
+                      onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
                     />
-                  </button>
-                )}
-                <h4
-                  onClick={() => openPointEditor({
-                    point,
-                    isLocked: isPointLocked,
-                    isFocusMode,
-                    setLocalEditText,
-                    setIsEditingLocally,
-                    onEditPoint,
-                  })}
-                  className={`font-medium text-sm min-w-0 truncate select-none ${isPointLocked ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
-                  title={!isPointLocked ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
-                >
-                  {point.text}
-                </h4>
-                {isFocusMode && onAiSortPoint && (
-                  <button
-                    type="button"
-                    onClick={() => onAiSortPoint(point.id)}
-                    disabled={aiSortState.disabledReason !== null}
-                    title={aiSortTooltip}
-                    aria-label={aiSortTooltip}
-                    data-testid={`outline-point-ai-sort-${point.id}`}
-                    className={`p-1 rounded-full border transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
-                      isSortingThisPoint
-                        ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-700"
-                        : aiSortState.disabledReason
-                          ? "bg-white/10 text-gray-400 dark:text-gray-500 border-white/10 cursor-not-allowed opacity-60"
-                          : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-200 dark:border-amber-700"
-                    }`}
-                  >
-                    {isSortingThisPoint ? (
-                      <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    ) : (
-                      <SparklesIcon className="h-4 w-4" />
-                    )}
-                  </button>
-                )}
-                {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
-                {!isFocusMode && onDeletePoint && !isPointLocked && (
-                  <button
-                    aria-label={t(TRANSLATION_COMMON_DELETE)}
-                    onClick={() => onDeletePoint(point.id)}
-                    className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0"
-                    title={t(TRANSLATION_COMMON_DELETE)}
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            )}
+                  )}
 
-            {/* Right-side actions and info */}
-            <div className="ml-auto flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
+                  {/* Quick help for outline point */}
+                  {containerId === 'main' && (
+                    <div className="flex-shrink-0">
+                      <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />
+                    </div>
+                  )}
 
-              {/* Locks every thought of the point: the same toggle a thought card draws for one thought */}
-              {pointToggleHandler && hasItems && (
-                <LockToggleButton
-                  isLocked={isPointLocked}
-                  label={pointLockToggleLabel}
-                  unlockedIconClassName={getSectionIconClasses(containerId)}
-                  onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
-                />
-              )}
+                  <span className={`text-xs whitespace-nowrap flex-shrink-0 ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
+                    {pointItems.length} {t('structure.thoughts', { count: pointItems.length })}
+                  </span>
 
-              {/* Quick help for outline point */}
-              {containerId === 'main' && (
-                <div className="flex-shrink-0">
-                  <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />
+                  {/* Manual entry of a thought into this point, on any board (one column or several) */}
+                  {onAddThought && (
+                    <button
+                      onClick={() => {
+                        debugLog('Structure: focus outline add clicked', {
+                          sectionId: containerId,
+                          outlinePointId: point.id,
+                          isFocusMode,
+                          sermonId,
+                        });
+                      onAddThought?.(containerId, point.id);
+                    }}
+                      disabled={isPointLocked}
+                      className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
+                      title={addThoughtLabel}
+                      aria-label={addThoughtLabel}
+                    >
+                      <PlusIcon className="h-4 w-4 text-white" />
+                    </button>
+                  )}
+
+                  {canUseInlineRecorder && (
+                    <>
+                      <FocusRecorderButton
+                        key={recordingOwner.key}
+                        onDiscardRecording={() => recordingOwner.discard('point')}
+                        size="small"
+                        disabled={isPointLocked || transcriptionBlocked}
+                        title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
+                        transcriptionError={audioError ?? null}
+                        onClearError={onClearAudioError}
+                        onRecordingComplete={(audioBlob) => {
+                          if (transcriptionBlocked) return;
+                          if (!sermonId) return;
+                          void recordAudioThought({
+                            audioBlob,
+                            sectionId: containerId,
+                            sermonId,
+                    ownerId: recordingOwner.ownerId,
+                    isCurrent: recordingOwner.isCurrent,
+                    onDraftCaptured: draftId => recordingOwner.remember('point', draftId),
+                            pointId: point.id,
+                            setIsRecordingAudio,
+                            setAudioError,
+                            onAudioThoughtCreated,
+                            t,
+                            errorContext: "Error recording audio for outline point:",
+                          });
+                        }}
+                        isProcessing={isRecordingAudio}
+                        onError={(err) => {
+                          setAudioError(err);
+                          setIsRecordingAudio(false);
+                        }}
+                      />
+                    </>
+                  )}
                 </div>
-              )}
+              </div>
 
-              <span className={`text-xs whitespace-nowrap flex-shrink-0 ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
-                {pointItems.length} {t('structure.thoughts', { count: pointItems.length })}
-              </span>
-
-              {/* Manual entry of a thought into this point, on any board (one column or several) */}
-              {onAddThought && (
-                <button
-                  onClick={() => {
-                    debugLog('Structure: focus outline add clicked', {
-                      sectionId: containerId,
-                      outlinePointId: point.id,
-                      isFocusMode,
-                      sermonId,
-                    });
-                  onAddThought?.(containerId, point.id);
-                }}
-                  disabled={isPointLocked}
-                  className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                  title={addThoughtLabel}
-                  aria-label={addThoughtLabel}
-                >
-                  <PlusIcon className="h-4 w-4 text-white" />
-                </button>
-              )}
-
-              {canUseInlineRecorder && (
-                <>
-                  <FocusRecorderButton
-                    key={recordingOwner.key}
-                    onDiscardRecording={() => recordingOwner.discard('point')}
-                    size="small"
-                    disabled={isPointLocked || transcriptionBlocked}
-                    title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
-                    transcriptionError={audioError ?? null}
-                    onClearError={onClearAudioError}
-                    onRecordingComplete={(audioBlob) => {
-                      if (transcriptionBlocked) return;
-                      if (!sermonId) return;
-                      void recordAudioThought({
-                        audioBlob,
-                        sectionId: containerId,
-                        sermonId,
-                ownerId: recordingOwner.ownerId,
-                isCurrent: recordingOwner.isCurrent,
-                onDraftCaptured: draftId => recordingOwner.remember('point', draftId),
-                        pointId: point.id,
-                        setIsRecordingAudio,
-                        setAudioError,
-                        onAudioThoughtCreated,
-                        t,
-                        errorContext: "Error recording audio for outline point:",
-                      });
-                    }}
-                    isProcessing={isRecordingAudio}
-                    onError={(err) => {
-                      setAudioError(err);
-                      setIsRecordingAudio(false);
-                    }}
-                  />
-                </>
+              {showNotes && !isEditingLocally && (
+                <PointNote
+                  note={point.note}
+                  onChange={(note) => onSetPointNote?.(point.id, note)}
+                  isReadOnly={isPointLocked}
+                  indentClass="ml-6"
+                  addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                />
               )}
             </div>
-          </div>
-
-          {showNotes && !isEditingLocally && (
-            <PointNote
-              note={point.note}
-              onChange={(note) => onSetPointNote?.(point.id, note)}
-              isReadOnly={isPointLocked}
-              indentClass="ml-6"
-              addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-            />
           )}
-        </div>
-
-        {!isFocusMode && !isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
-          <SubPointList
-            subPoints={point.subPoints ?? []}
-            outlinePointId={point.id}
-            isPointLocked={isPointLocked}
-            onAdd={onAddSubPoint ?? (() => undefined)}
-            onEdit={onEditSubPoint ?? (() => undefined)}
-            onDelete={onDeleteSubPoint ?? (() => undefined)}
-            onReorder={onReorderSubPoints}
-            getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
-            t={t}
-          />
-        )}
+        />
 
         {/* Drop zone for thoughts — grouped by sub-point */}
         {!isCollapsed && <PointThoughtLane

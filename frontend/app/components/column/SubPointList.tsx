@@ -32,6 +32,9 @@ interface SubPointListProps {
   showNotes?: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
   isSidebar?: boolean;
+  /** Compose the parent header with the same add state; no hover-sized empty row. */
+  renderHeader?: (addButton: React.ReactNode) => React.ReactNode;
+  hideList?: boolean;
 }
 
 const SUB_POINT_LABEL_CLASS = "text-slate-600 dark:text-blue-50/90";
@@ -42,6 +45,8 @@ const SIDEBAR_CANCEL_ICON_BTN_CLASS = "p-0.5 text-blue-200/70 hover:text-white";
 const COMMON_CANCEL_KEY = "common.cancel";
 const COMMON_DELETE_KEY = "common.delete";
 const COMMON_SAVE_KEY = "common.save";
+const SUB_POINT_ADD_KEY = "structure.addSubPoint";
+const SUB_POINT_ADD_LABEL = "Add sub-point";
 
 const getSubPointStyles = (isSidebar: boolean) => ({
   labelColorClass: isSidebar ? "text-blue-50/90 dark:text-blue-50/90" : SUB_POINT_LABEL_CLASS,
@@ -94,6 +99,8 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   showNotes = false,
   t,
   isSidebar = false,
+  renderHeader,
+  hideList = false,
 }) => {
   // The drag hint and announcements in the interface language (BUG-20261006-library-screen-reader-words-english).
   const dragWords = usePangeaAnnouncements();
@@ -106,17 +113,17 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const editInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isAdding && addInputRef.current) {
+    if (!hideList && isAdding && addInputRef.current) {
       addInputRef.current.focus();
     }
-  }, [isAdding]);
+  }, [isAdding, hideList]);
 
   useEffect(() => {
-    if (editingId && editInputRef.current) {
+    if (!hideList && editingId && editInputRef.current) {
       editInputRef.current.focus();
       editInputRef.current.select();
     }
-  }, [editingId]);
+  }, [editingId, hideList]);
 
   const handleAdd = () => {
     const textToSave = normalizeCapitalizedTitle(addText);
@@ -175,8 +182,6 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const sorted = sortSubPointsByPosition(subPoints);
   const confirmThoughtCount = confirmDeleteId ? getAffectedThoughtCount?.(confirmDeleteId) ?? 0 : 0;
-
-  if (sorted.length === 0 && isPointLocked) return null;
 
   const canReorder = !isPointLocked && onReorder && sorted.length > 1;
 
@@ -294,11 +299,28 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     ? "ml-7 mt-1 space-y-1 border-l border-white/35 pl-3 dark:border-blue-100/35"
     : (showWrapper
         ? "ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07] transition-all duration-150"
-        : "ml-7 mr-4 h-auto opacity-100 lg:h-0 lg:overflow-hidden lg:opacity-0 lg:group-hover:h-auto lg:group-hover:opacity-100 lg:group-hover/point:h-auto lg:group-hover/point:opacity-100 lg:focus-within:h-auto lg:focus-within:opacity-100 transition-all duration-150");
+        : "ml-7 mr-4");
 
   const ListTag = isSidebar ? "ul" : "div";
 
-  return (
+  const renderFirstAddButton = () => {
+    if (hideList || showWrapper || isPointLocked) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setIsAdding(true)}
+        aria-label={t(SUB_POINT_ADD_KEY, { defaultValue: SUB_POINT_ADD_LABEL })}
+        title={t(SUB_POINT_ADD_KEY, { defaultValue: SUB_POINT_ADD_LABEL })}
+        className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:text-indigo-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 dark:text-slate-400 dark:hover:text-indigo-300"
+      >
+        <PlusIcon className="h-4 w-4" />
+      </button>
+    );
+  };
+  const shouldShowList = () => !hideList && (showWrapper || !renderHeader)
+    && !(sorted.length === 0 && isPointLocked);
+
+  const list = shouldShowList() ? (
     <ListTag className={containerClass}>
       {sorted.length > 0 && (
         canReorder ? (
@@ -398,11 +420,14 @@ export const SubPointList: React.FC<SubPointListProps> = ({
               className={styles.addButtonClass}
             >
               <PlusIcon className="h-3.5 w-3.5 mr-0.5" />
-              <span>{t("structure.addSubPoint", { defaultValue: "Add sub-point" })}</span>
+              <span>{t(SUB_POINT_ADD_KEY, { defaultValue: SUB_POINT_ADD_LABEL })}</span>
             </button>
           )}
         </div>
       )}
     </ListTag>
-  );
-};;
+  ) : null;
+
+  return <>{renderHeader?.(renderFirstAddButton())}{list}</>;
+
+};

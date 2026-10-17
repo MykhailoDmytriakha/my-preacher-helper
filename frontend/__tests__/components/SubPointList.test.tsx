@@ -339,3 +339,30 @@ describe('SubPointList', () => {
   });
 });
 
+
+
+// Collapsing only hides the shared editor; returning to it must restore its keyboard target.
+describe('SubPointList header composition visibility', () => {
+  it.each(['add', 'edit'] as const)('restores the %s input and its retained text after the parent is reopened', (mode) => {
+    const props = {
+      subPoints: mode === 'edit' ? [{ id: 'sub-1', text: 'Original', position: 1000 }] : [],
+      outlinePointId: 'point-1', isPointLocked: false,
+      onAdd: jest.fn(), onEdit: jest.fn(), onDelete: jest.fn(), t,
+      renderHeader: (button: React.ReactNode) => <header>{button}</header>,
+    };
+    const view = (hideList: boolean) => <><button type="button">Outside</button><SubPointList {...props} hideList={hideList} /></>;
+    const { rerender } = render(view(false));
+    fireEvent.click(screen.getByRole('button', { name: mode === 'add' ? 'Add sub-point' : 'common.edit' }));
+    const input = screen.getByRole('textbox');
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: 'Retained words' } });
+    rerender(view(true));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    screen.getByRole('button', { name: 'Outside' }).focus();
+    rerender(view(false));
+    expect(screen.getByRole('textbox')).toHaveValue('Retained words');
+    expect(screen.getByRole('textbox')).toHaveFocus();
+    expect(props.onAdd).not.toHaveBeenCalled();
+    expect(props.onEdit).not.toHaveBeenCalled();
+  });
+});

@@ -518,7 +518,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     </div>
   );
 
-  const renderPointViewMode = (point: SermonPoint) => {
+  const renderPointViewMode = (point: SermonPoint, addSubPointButton: React.ReactNode = null) => {
     const isCollapsed = collapsedPoints[point.id];
     const collapseLabel = isCollapsed ? t(COMMON_EXPAND_KEY) : t(COMMON_COLLAPSE_KEY);
     const hasSubPoints = (point.subPoints?.length ?? 0) > 0;
@@ -543,7 +543,8 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
             {point.text}
           </span>
         </div>
-        <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 transition-opacity">
+          {addSubPointButton}
           <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
             <PencilIcon className="h-4 w-4" />
           </button>
@@ -662,33 +663,33 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
                           className={`group mb-2 rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : ''}`}
                           style={providedDraggable.draggableProps.style}
                         >
-                          <div className={`flex items-center group p-2 rounded ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>
-                            {/* Drag Handle */}
-                            <div
-                              {...providedDraggable.dragHandleProps}
-                              className={`mr-2 text-gray-400 dark:text-gray-500 ${isReadOnly
-                                ? 'cursor-not-allowed opacity-50'
-                                : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'
-                                }`}
-                            >
-                              <Bars3Icon className="h-5 w-5" />
-                            </div>
-                            {editingPointId === point.id ? renderPointEditMode() : renderPointViewMode(point)}
-                          </div>
-                          {/* Sub-points — inside Draggable so they move with parent */}
-                          {editingPointId !== point.id && ((point.subPoints && point.subPoints.length > 0) || !isReadOnly) && !collapsedPoints[point.id] && (
-                            <SubPointList
-                              subPoints={point.subPoints ?? []}
-                              outlinePointId={point.id}
-                              isPointLocked={isReadOnly}
-                              onAdd={handleAddSubPoint}
-                              onEdit={handleEditSubPoint}
-                              onDelete={handleDeleteSubPoint}
-                              onReorder={handleReorderSubPoints}
-                              getAffectedThoughtCount={(spId) => sermon.thoughts.filter((th) => th.subPointId === spId).length}
-                              t={t}
-                            />
-                          )}
+                          <SubPointList
+                            subPoints={point.subPoints ?? []}
+                            outlinePointId={point.id}
+                            isPointLocked={isReadOnly}
+                            onAdd={handleAddSubPoint}
+                            onEdit={handleEditSubPoint}
+                            onDelete={handleDeleteSubPoint}
+                            onReorder={handleReorderSubPoints}
+                            getAffectedThoughtCount={(spId) => sermon.thoughts.filter((th) => th.subPointId === spId).length}
+                            t={t}
+                            hideList={editingPointId === point.id || Boolean(collapsedPoints[point.id])}
+                            renderHeader={(addSubPointButton) => (
+                              <div className={`flex items-center group p-2 rounded ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>
+                                {/* Drag Handle */}
+                                <div
+                                  {...providedDraggable.dragHandleProps}
+                                  className={`mr-2 text-gray-400 dark:text-gray-500 ${isReadOnly
+                                    ? 'cursor-not-allowed opacity-50'
+                                    : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'
+                                    }`}
+                                >
+                                  <Bars3Icon className="h-5 w-5" />
+                                </div>
+                                {editingPointId === point.id ? renderPointEditMode() : renderPointViewMode(point, addSubPointButton)}
+                              </div>
+                            )}
+                          />
                         </li>
                       )}
                     </Draggable>
@@ -773,4 +774,4 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   );
 };
 
-export default SermonOutline; 
+export default SermonOutline;

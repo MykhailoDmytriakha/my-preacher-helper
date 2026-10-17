@@ -1128,7 +1128,7 @@ describe('Column Component', () => {
         />
       );
 
-      fireEvent.click(screen.getByText('Add sub-point'));
+      fireEvent.click(screen.getByRole('button', { name: 'Add sub-point' }));
       const input = screen.getByPlaceholderText('Sub-point name...');
       fireEvent.change(input, { target: { value: 'sub-point b' } });
       expect(input).toHaveValue('Sub-point b');

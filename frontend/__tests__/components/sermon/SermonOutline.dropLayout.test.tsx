@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import type { Sermon } from '@/models/models';
@@ -31,6 +31,7 @@ jest.mock('@/services/outline.service', () => ({
 }));
 
 import SermonOutline from '@/components/sermon/SermonOutline';
+import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 
 const sermon: Sermon = {
   id: 'sermon-1', title: 'Sermon', userId: 'user-1', verse: 'John 1:1', date: '2026-10-01T00:00:00.000Z', thoughts: [],
@@ -51,5 +52,56 @@ describe('SermonOutline drop layout', () => {
     expect(lists).toHaveLength(3);
     lists.forEach((list) => expect(list.className).not.toMatch(/space-y-/));
     ['intro1', 'main1', 'main2', 'concl1'].forEach((id) => expect(pointRow(container, id)).toHaveClass('mb-2'));
+  });
+});
+
+
+// Browser frame sampling is the layout proof. These cases protect the useful compact action
+// that replaces the hover-height row (BUG-20261004-outline-hover-row-jerk).
+describe('SermonOutline compact sub-point creation', () => {
+  const makeWriter = (): StructureWriter => ({
+    updateStructure: jest.fn(), updateThought: jest.fn(), deleteThought: jest.fn(),
+    createManualThought: jest.fn(),
+    updateSermonOutline: jest.fn(async (_id, outline) => outline),
+  });
+
+  it('creates a sub-point from the point header without reserving a second action row', async () => {
+    const writer = makeWriter();
+    const { container } = render(<StructureWriterContext.Provider value={writer}><SermonOutline sermon={sermon} /></StructureWriterContext.Provider>);
+    const row = pointRow(container, 'main1');
+    const header = row.firstElementChild as HTMLElement;
+    fireEvent.click(within(header).getByRole('button', { name: 'structure.addSubPoint' }));
+    const input = within(row).getByRole('textbox');
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: 'new useful words' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(within(row).getByText('New useful words')).toBeVisible();
+    await waitFor(() => expect(writer.updateSermonOutline).toHaveBeenCalledTimes(1));
+    const call = (writer.updateSermonOutline as jest.Mock).mock.calls[0];
+    expect(call[1].main[0].subPoints).toEqual([expect.objectContaining({ text: 'New useful words' })]);
+    expect(call[1].main[1]).toEqual(sermon.outline!.main[1]);
+    expect(call[1].introduction).toEqual(sermon.outline!.introduction);
+  });
+
+  it('cancels and reopens the header add action without saving or carrying cancelled words', () => {
+    const writer = makeWriter();
+    const { container } = render(<StructureWriterContext.Provider value={writer}><SermonOutline sermon={sermon} /></StructureWriterContext.Provider>);
+    const row = pointRow(container, 'intro1');
+    const header = row.firstElementChild as HTMLElement;
+    fireEvent.click(within(header).getByRole('button', { name: 'structure.addSubPoint' }));
+    fireEvent.change(within(row).getByRole('textbox'), { target: { value: 'cancelled words' } });
+    fireEvent.keyDown(within(row).getByRole('textbox'), { key: 'Escape' });
+    expect(within(row).queryByRole('textbox')).not.toBeInTheDocument();
+    fireEvent.click(within(header).getByRole('button', { name: 'structure.addSubPoint' }));
+    expect(within(row).getByRole('textbox')).toHaveValue('');
+    expect(within(row).getByRole('textbox')).toHaveFocus();
+    expect(writer.updateSermonOutline).not.toHaveBeenCalled();
+  });
+
+  it('keeps a read-only point visible without exposing an add action', () => {
+    const { container } = render(<SermonOutline sermon={sermon} isReadOnly />);
+    const row = pointRow(container, 'main1');
+    expect(within(row).getByText('First point')).toBeVisible();
+    expect(within(row).queryByRole('button', { name: 'structure.addSubPoint' })).not.toBeInTheDocument();
   });
 });
