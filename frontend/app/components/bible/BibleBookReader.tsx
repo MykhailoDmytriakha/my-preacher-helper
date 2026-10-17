@@ -694,16 +694,18 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       {/* THE BOOK'S LINE, from the start: the book and the chapter at the text's left edge, the
           translation at its right one. On a computer it stands above the text's pane, so both buttons
           are at hand anywhere in the book; on a phone it stays at the top and a pill at the bottom
-          takes over while reading. A long name wraps. */}
+          takes over while reading. On a phone a long name wraps; on a wide screen the line stays one row —
+          a tool's colours open in it (`MarkToolbar`), and a second row would move the whole text down — so
+          short of room the translation's name is cut, never the book's. */}
       <header
         ref={setRowRef}
-        className={`${frame.line} relative mb-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 backdrop-blur-md dark:bg-gray-900/90`}
+        className={`${frame.line} relative mb-3 flex flex-wrap items-center gap-x-1 gap-y-0.5 bg-white/90 backdrop-blur-md md:flex-nowrap dark:bg-gray-900/90`}
       >
         {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
         <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} text={text} locale={locale} wide={wide} onOpen={openPlace} />
         {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onPick={(chapter) => jumpTo({ chapter, verse: 1 })} /> : null}
         {marks.tools}
-        <span className={marks.translationClass}>
+        <span className={`flex min-w-0 ${marks.translationClass}`}>
           <TranslationPicker bible={bible} wide={wide} onPick={changeBible} />
         </span>
         {/* The gap under the stuck line shows a strip of the verse above the one read: it fades out

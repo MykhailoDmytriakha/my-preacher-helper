@@ -219,11 +219,11 @@ describe('marks kept through the data engine', () => {
 describe('the three tools', () => {
   beforeEach(() => window.localStorage.clear());
 
-  function Toolbar() {
+  function Toolbar({ vertical = false }: { vertical?: boolean }) {
     const tool = useMarkTool();
     return (
       <>
-        <MarkToolbar tool={tool} />
+        <MarkToolbar tool={tool} vertical={vertical} />
         <output data-testid="in-hand">{tool.inHand ?? 'none'}</output>
       </>
     );
@@ -314,8 +314,10 @@ describe('the three tools', () => {
     point('pointerout', 'mouse');
     point('pointerover', 'touch');
     expect(eraser).not.toHaveAttribute('data-hover');
-    expect(eraser.className).toContain('data-[hover]:scale-110');
+    expect(eraser.className).toContain('data-[hover]:scale-[1.08]');
     expect(eraser.className).not.toMatch(/(^|\s)hover:/);
+    // Lit, its drawing tilts as a tool picked up (the owner's choice on the canvas, 2026-10-17).
+    expect(eraser.querySelector('svg > g')?.getAttribute('class')).toContain('group-data-[hover]:-rotate-[16deg]');
   });
 
   // The owner, 2026-10-16: as Apple Notes' colours do under a Pencil, a colour of the palette grows.
@@ -330,13 +332,31 @@ describe('the three tools', () => {
     };
     point('pointerover', 'pen');
     expect(blue).toHaveAttribute('data-hover');
-    expect(blue.className).toContain('data-[hover]:scale-125');
-    // It glows in its own colour, not in one shared tint.
-    expect(blue.style.getPropertyValue('--glow')).toBe(`${MARK_SWATCH.blue}80`);
+    expect(blue.className).toContain('data-[hover]:scale-[1.06]');
+    // A crisp ring of its own colour, not one shared tint (the owner's choice on the canvas, 2026-10-17).
+    expect(blue.className).toContain('0_0_0_5px_var(--ring)');
+    expect(blue.style.getPropertyValue('--ring')).toBe(MARK_SWATCH.blue);
     point('pointerout', 'pen');
     expect(blue).not.toHaveAttribute('data-hover');
     point('pointerover', 'touch');
     expect(blue).not.toHaveAttribute('data-hover');
+  });
+
+  // The owner, 2026-10-17: with the pencil taken its colours covered the marker — a second tap was needed
+  // to reach it. The row makes room instead: the colours stand right before the tool in hand.
+  it.each([false, true])('the colours stand in the row right before the tool in hand, so no tool is covered (column: %s)', (vertical) => {
+    render(<Toolbar vertical={vertical} />);
+    const marker = screen.getByRole('button', { name: /bible\.marks\.marker/ });
+    const pencil = screen.getByRole('button', { name: /bible\.marks\.pencil:/ });
+    fireEvent.click(pencil);
+    const colours = screen.getByRole('group', { name: 'bible.marks.pencilColors' });
+    expect(colours.className).not.toMatch(/(^|\s)absolute(\s|$)/);
+    expect(colours.nextElementSibling).toBe(pencil);
+    expect(marker.compareDocumentPosition(colours) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The marker is reached in one tap, its colours before it in turn.
+    fireEvent.click(marker);
+    expect(screen.getByTestId('in-hand')).toHaveTextContent('marker');
+    expect(screen.getByRole('group', { name: 'bible.marks.colors' }).nextElementSibling).toBe(marker);
   });
 
   it('the pencil and the eraser are taken and put away by their own buttons', () => {

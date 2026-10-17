@@ -456,7 +456,8 @@ export function BookPicker({ bookId, bible, currentChapter, text, locale, wide, 
     <>
       {/* The pull to the left sits on the heading, not on the button: on the button it made the heading
           eight pixels narrower than its button, and the last word wrapped with room to spare. */}
-      <h1 className="m-0 -ml-2 min-w-0 max-w-full">
+      {/* On a wide line the name keeps its width whole; the line gives way elsewhere (`BibleBookReader`). */}
+      <h1 className="m-0 -ml-2 min-w-0 max-w-full md:shrink-0">
         <button
           ref={triggerRef}
           type="button"
@@ -562,10 +563,12 @@ export function TranslationPicker({ bible, wide, onPick }: { bible: BibleId; wid
         aria-expanded={open}
         aria-label={t('bible.changeTranslation', { translation: name(bible) })}
         onClick={() => setOpen((value) => !value)}
-        className={`inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${triggerBorder(open)}`}
+        className={`inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-2.5 text-sm text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white ${triggerBorder(open)}`}
       >
-        <span lang={BIBLES[bible].language}>{name(bible)}</span>
-        <ChevronDownIcon className="h-4 w-4" aria-hidden="true" />
+        {/* Short of room, the name is cut, never the line broken: the colours of a tool in hand need the
+            room in the reader's line (`MarkToolbar`), and a line broken in two moved the whole text down. */}
+        <span lang={BIBLES[bible].language} className="truncate">{name(bible)}</span>
+        <ChevronDownIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
       </button>
       <PickerWindow open={open} onClose={close} anchorRef={triggerRef} align="end" width={320} wide={wide} label={t('bible.chooseTranslation')}>
         <ul className="flex flex-col gap-1">
