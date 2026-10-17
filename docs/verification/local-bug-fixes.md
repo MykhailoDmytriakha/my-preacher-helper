@@ -1189,7 +1189,7 @@ Real Chromium rendering/input/IndexedDB/reload and local Bible assets are exerci
 
 ## BUG-20261003-late-suspense-hydration-language-switch
 
-Stage: local implementation and proof recorded; independent acceptance is a separate gate. Production and physical-device acceptance pending. The active tracker record remains until the accepted source and audited local closure are committed.
+Stage: locally closed after accepted source commit 9da100b1b89fb8548f58391eb1ff88d723f05209 (tree ee7e65c0c49fe1283c859c823b3010b864a065ae). Clean-context acceptance reran30 focused tests, compile/lint and25 native browser cases, reviewed47 fresh captures, and verified all2203 parent-build source hashes; it did not rebuild. The fresh report and JSON are late-language-fresh-acceptance-report.md and late-language-fresh-acceptance.json in the local case. The lost CLI session was replaced before reruns; all earlier failures remain recorded. The separate favicon bug stays open. Production and physical-device acceptance remain pending.
 
 The shared app hook `@locales/useTranslation` gives React a stable server/hydration language and rechecks the live language after subscription. The installed library continues to own namespaces, provider selection, readiness, Suspense and translation options. All268 production hook imports use this seam;34 render consumers use its language/resolvedLanguage snapshots. The other233 non-import bodies match the starting HEAD exactly, with one separately identified initializer cleanup removing obsolete timers. The i18n instance and settings writer remain live and unchanged; no new language writer, queue, schema, dependency upgrade or dynamic root layout is added.
 
