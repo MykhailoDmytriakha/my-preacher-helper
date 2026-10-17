@@ -163,21 +163,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-verse-window-width-reflow-shifts-reading · Resizing a passage window adopts a verse moved by reflow
-**Severity.** P3 — changing window width moves the reading place; no text is lost.
-**Found.** Guarded Chromium, build HBRw6efVnDa29EgXJdoYL after incoming main69ff6871 integration. Preaching plan → Isaiah52:13-53:12 at150% →1280→390→820. Before narrowing,52:12 has no visible text (only4.46px of its empty row edge); after narrowing, its full text is376px high above the intended52:13. Widening moves back to52:13. All15 selected rows remain lit;0 errors/writes, child context closed.
-**Anchors.** `frontend/app/components/bible/VerseSheet.tsx:161-187,230-244`; `frontend/app/components/bible/useChapterWindow.ts:119-126,250-269`; `frontend/app/components/bible/BibleBookReader.tsx:617-620`.
-**Expected/observed.** Resizing preserves the verse being read. Native layout scroll events can replace the remembered verse before chapter-height recalibration restores it; the later restore then preserves the wrong verse.
-**User contract.** A width or size change is presentation, not a reading action. Keep the passage initially shown and the later deliberate reading place; ordinary scrolling and the explicit return button must still work.
-**Class.** Accepting a visible reading place from a presentation layout that has changed before restoration settles.
-| place | verdict | reason |
-|---|---|---|
-| VerseSheet width/reflow and onScroll | affected; native/component RED→GREEN | original narrowing adopts52:12; final readable52:13 and later53:2 are preserved |
-| BibleBookReader width/reflow | affected; component RED16px→56px, final native GREEN | same lifecycle; final three-width large-book scrolling/resize/size/reload preserves the selected place |
-| useChapterWindow | presentation owner | owns width/scale and calibration; scroll observers need its stable layout boundary |
-| Server/offline | no server layout owner | already-loaded local text changes geometry with or without network |
-**Direction.** Reuse the chapter window calibration owner: accept reading evidence only from its settled text/width, and prepare changed width before the browser performs a new input scroll. Keep a passage verse and its pane-relative offset together. A second page-wide anchor observer introduces another restoration owner; ignoring every scroll during reflow would also discard the later deliberate user action. Actual component REDs cover both consumers and a later wheel input; isolated controls confirm input preparation and exact passage-offset coverage. Final415 focused tests and845-suite/9133-test build pass;21 guarded native browser cases and visual review pass. Exact fresh acceptance and source commit remain pending.
-
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
 **Найден.** 2026-10-17 · Codex (`gpt-6.1-sol`), `.claude/codex-logs/2026-10-17_00-*_refute-chapter-window-3.final.txt`; пробы — модель раскладки в jsdom.

@@ -1172,7 +1172,7 @@ Initial engine snapshots, backend replies, settings heartbeats and delayed respo
 
 ## Committed main intake69ff6871 and passage width preservation
 
-Stage: locally verified; exact fresh acceptance and the authorized local source commit remain pending in the case. The width bug record remains in BUGS.md. Production pending.
+Stage: independently accepted locally and committed as `a18b9018`. Fresh acceptance repeats415 tests and21 browser cases with new native inspection. This tracker-only closure follows the accepted source commit; the width-position BUGS.md record is locally closed. The first mobile replay was obscured by an unexpected Menu; a preserved exact repeat and diagnostic passed, with cause unknown. Incoming rare-order bugs remain active. Production and physical-device acceptance pending.
 
 Two committed main updates after1f6c5df5 are integrated over localcffc4849: brighter Pencil/tool/palette hover and bounded chapter rendering for large Bible books. Reader/VerseSheet conflicts preserve the canonical cross-chapter keys, shared modal layer, accepted pane wrapper, selected-before-CSS size anchor and canonical pinned-page restoration. One chapter-window owner calibrates boxes before restoring presentation; a later explicit chapter landing retargets the queued size anchor. No primary drafts are imported.
 
