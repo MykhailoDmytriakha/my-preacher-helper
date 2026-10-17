@@ -1155,7 +1155,7 @@ Real engine-generated synthetic fixtures and real Chromium storage/DOM/navigatio
 
 ## Committed main intake1f6c5df5 and reader position fixes
 
-Stage: locally verified; exact fresh acceptance and local merge commit are recorded separately in the case. Both new bug records remain through that acceptance and source commit. Production pending.
+Stage: independently accepted locally and committed as `711e90a4`. Fresh acceptance repeats 369 tests and 17 browser cases, inspecting 84 new captures with representative full-resolution originals. This tracker-only closure follows the accepted source commit; both reader-position BUGS.md entries are locally closed. Production and physical-device acceptance pending.
 
 Five committed main updates after93ef are integrated over locald5c00604: link-list/detail cascade, reference switch touch areas, input-specific tool hover, deferred page text size and feedback recipes/tracker. Four conflicts retain canonical cross-chapter numbering, the accepted VerseSheet anchor wrapper and shared focus modules while taking the incoming cascade. Primary drafts are not imported; incoming partial/physical-device and unverified bug records stay active.
 

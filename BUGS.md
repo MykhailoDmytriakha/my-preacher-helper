@@ -162,42 +162,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261016-reader-cross-reference-load-drifts-place · Late reference chips change the saved reading verse
-**Severity.** P3 — reading/navigation position changes without an action; the Bible text remains.
-**Found.** Controlled guarded Chromium at390 on build9GY0DizlFWhE4qkE4BVSo. Open Isaiah26:20 at saved130%, hold the real cross-reference response, then release it: exact visible verse and chapter change26:20→26:19. No size change is made. A normal reload reproduces the same result twice; the trace retains26:20 through pagehide and initial opening, then stores26:19 after later layout. No errors/unexpected writes; child context closed.
-**Anchors.** `frontend/app/components/bible/useBookCrossRefs.ts:33-60`; `frontend/app/components/bible/BookRibbon.tsx:114-131`; `frontend/app/components/bible/BibleBookReader.tsx:535-551`.
-**Expected/observed.** Loading link counts changes the ribbon geometry, but must preserve the person's verse. Instead native anchoring can expose the previous verse's new chip; the scroll listener adopts and saves that previous verse.
-**Steps.** Bible → Isaiah26:20 with cross references shown and130% text → reload. Or hold `/bible-crossrefs/` until the original verse is visible, then release the real response.
-**User contract.** Adding or changing reference decorations is presentation, not navigation. Preserve the current verse on late load and show/main/all preference changes. Normal later user scrolling must still update the place; loading links must not restore an obsolete initial route after the person has moved.
-**Class.** A reading-position keeper must respond to all known ribbon layout inputs, not only text scale.
-| place | verdict | reason |
-|---|---|---|
-| BibleBookReader phone page | affected;390 reproduced | exact late-load control changes and saves the previous verse |
-| BibleBookReader wide pane | shared keeper; native controls preserved place at820/1280 | same async ribbon; maintain compatibility and recheck after the common fix |
-| useBookCrossRefs / BookRibbon | layout producer | counts/visibility/mode change inline chips and row heights; keep the text-first load |
-| VerseSheet | different position contract | highlights a requested passage; no visible-verse persistence or last-place writer; centering is independent of the saved-reader bug |
-| Server/offline | no server presentation keeper | cached or network link sets reach the same local ribbon |
-**Fix direction.** Extend the existing reader presentation keeper using canonical ribbon counts/visibility/mode. Preserve text-first loading and a single place owner; do not add a network queue, second scroll observer or guessed timer.
-
-
-### BUG-20261016-reader-text-scale-drifts-place · Changing text size moves reading into another verse
-**Severity.** P3 — a presentation change loses the person's reading place; text remains.
-**Found.** Local guarded Chromium, candidate build dIwgZ0MsNOywUT948gTcj, Isaiah26:20. First sequence reached27:1; three measured repeats ended26:19. Exact pane-aware checks before correction also show1280→26:19,820→26:17,390→14:30 from26:20. Native images and raw scripts/results are retained in the local case; synthetic engine IO, no errors or unexpected writes.
-**Anchors.** `frontend/app/components/bible/BibleBookReader.tsx:175-185`; `frontend/app/providers/TextScaleProvider.tsx:67-86`.
-**Expected/observed.** The same verse stays selected after changing size. Instead the CSS reflows the page before the reader captures its return anchor.
-**Steps.** Bible → Isaiah26:20 → T → drag/rest1.6 → release1.9 → Home → three Right keys → close. The original wide screenshot shows27:1 before close. The first loose geometry check missed smaller drift; exact chapter-button observations show26:20→26:19 in3/3 repeats.
-**User contract.** Size changes presentation only. Preserve the same verse after rest, release and quick subsequent choices, after closing T and reload. Do not restore an earlier anchor after a cancelled unapplied choice or a later deliberate scroll.
-**Class.** Capturing reading position after the presentation change has already moved it; on a pinned phone page, restoring by scrolling cannot move the fixed body and unlock restores obsolete pixels.
-| place | verdict | reason |
-|---|---|---|
-| BibleBookReader size hook, wide pane and phone page | affected | one shared hook captures place from the applied-size notification |
-| useScrollLock pinned phone page | affected | fixed-body offset and the offset restored on unlock must move together when content reflows; inner wide panes retain their own scrolling |
-| TextScaleProvider | timing owner | selected size is available before CSS; applied size is published after CSS; preserve these two meanings |
-| VerseSheet and other screens | no matching keeper | no consumer of useTextScaleValue; no independent size/anchor restoration algorithm |
-| Server and offline | no server keeper; same local rendering path | size and place stay on device; network delivery cannot order CSS and capture |
-**Root.** A behavioral regression simulates native reflow's scroll before appliedScale publication and displays2:1 instead of the original1:2. The earlier no-test run was a harness setup mistake and is not RED evidence.
-**Fix direction.** Capture before reflow from the selected size; restore after CSS from the applied size. Do not remove the responsive preview or use extra guessed frame delays. Keep one reader lifecycle and the existing provider API by default. Publish the restored logical place together with the jump: on the wide pane, waiting for the later native scroll event briefly leaves the chapter control on the preceding verse even though geometry is already correct. The delayed-scroll behavior test is RED before that correction.
-
 ### BUG-20261016-reader-has-rules-restyle-document · В Chrome любой элемент, появившийся на экране чтения, пересчитывает стиль всей книги: открытие окна связей, статус синхронизации — около 150 мс в Псалтири
 **Severity.** P3 — Chrome (Android, компьютер), большая книга: каждое появление или исчезновение элемента на экране чтения подвешивает его на ~150 мс (Псалтирь, 69 тыс. узлов, боевая сборка, Mac; на телефоне больше). WebKit (iPad) этого не делает. Палитра пометок, где это било на каждом нажатии, уже обойдена.
 **Найден.** 2026-10-16 · трасса Chrome при нажатии на инструмент пометок: `UpdateLayoutTree` 144–170 мс, `elementCount` 68 959; инвалидация `StyleRecalcInvalidationTracking … Affected by :has()` вверх до `HTML` и `Invalidation set invalidates subtree` по селекторам `#app-shell:has([data-reader-panes]) > *`, `#app-shell > :has([data-reader-panes]) > :not(main)`. Стенд — `tools/webkit-lab/marks-responsiveness.js`, рецепт — `.howto/measure-typing-lag.md` «Taps and strokes».
