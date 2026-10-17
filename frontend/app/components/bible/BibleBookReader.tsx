@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
-import { useTextScaleValue } from '@/providers/TextScaleProvider';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
@@ -27,6 +26,7 @@ import { useReaderMarks } from './marks/useReaderMarks';
 import { buildMinimapLayout } from './minimapLayout';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
+import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { CrossReference } from '@/utils/crossReferences';
@@ -166,24 +166,6 @@ function PhoneBar({ wayBack, onWayBack, showPill, bookId, bible, currentChapter,
 }
 
 /**
- * A new text size (the "T" button) reflows the whole book: the verse being read is put back at the
- * reading top once the size is on the page — `useTextScaleValue` is the size the page has taken (the
- * provider applies a person's change a frame after the control shows it), and the jump waits a frame more.
- */
-function useKeepPlaceOnTextScale(placeRef: { current: Place | null }, jumpTo: (place: Place) => void) {
-  const scale = useTextScaleValue();
-  const seenRef = useRef(scale);
-  useEffect(() => {
-    if (seenRef.current === scale) return undefined;
-    seenRef.current = scale;
-    const place = placeRef.current;
-    if (!place) return undefined;
-    const frame = window.requestAnimationFrame(() => jumpTo(place));
-    return () => window.cancelAnimationFrame(frame);
-  }, [jumpTo, placeRef, scale]);
-}
-
-/**
  * An action from a window over the reader — "Open" in the window of links, "Open in this translation"
  * in the window of a verse marked in another Bible: the window closes first and the reader acts a frame
  * later. On iOS the window pins the page (`useScrollLock`) and, released, puts it back where it was — a
@@ -208,14 +190,9 @@ function useFollowAfterClose<Args extends unknown[]>(open: boolean, close: () =>
   }, [close]);
 }
 
-/** The rows of a passage in the ribbon, for the light of an arrival. */
-function passageRows(root: HTMLElement | null, chapter: number, fromVerse: number, toVerse: number): HTMLElement[] {
-  const rows: HTMLElement[] = [];
-  for (let verse = fromVerse; verse <= toVerse; verse += 1) {
-    const row = root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`);
-    if (row) rows.push(row);
-  }
-  return rows;
+/** The verses of a passage (`"chapter:verse"`), for the light of an arrival. */
+function passageKeys(chapter: number, fromVerse: number, toVerse: number): string[] {
+  return Array.from({ length: Math.max(0, toVerse - fromVerse + 1) }, (_, index) => `${chapter}:${fromVerse + index}`);
 }
 
 /**
@@ -227,7 +204,7 @@ function passageRows(root: HTMLElement | null, chapter: number, fromVerse: numbe
 function useCrossReferenceTravel({ bookId, abbrev, jumpTo, light, openElsewhere }: {
   bookId: string;
   abbrev: string;
-  jumpTo: (place: Place) => void;
+  jumpTo: (place: Place, then?: () => void) => void;
   light: (reference: CrossReference) => void;
   openElsewhere: (reference: CrossReference, origin: Place) => void;
 }) {
@@ -238,8 +215,7 @@ function useCrossReferenceTravel({ bookId, abbrev, jumpTo, light, openElsewhere 
       return;
     }
     setReturnTo(origin);
-    jumpTo({ chapter: reference.chapter, verse: reference.fromVerse });
-    light(reference);
+    jumpTo({ chapter: reference.chapter, verse: reference.fromVerse }, () => light(reference));
   }, [bookId, jumpTo, light, openElsewhere]);
   const back = (otherwise: () => void) => {
     if (!returnTo) {
@@ -346,22 +322,33 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const closeCrossRefs = crossRefs.close;
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
-  // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
-  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId });
+  // A BIG BOOK IS DRAWN AROUND THE PLACE READ (`useChapterWindow`): the chapters near it are in the
+  // page, the others stand as boxes of their height. A new width or text size brings the person back to
+  // the verse read, as the boxes are measured anew.
+  const keepPlaceRef = useRef<() => void>(() => undefined);
+  const notePlaceRef = useRef<() => void>(() => undefined);
+  const chapterWindow = useChapterWindow({
+    text,
+    textRef,
+    surfaceRef,
+    readingLine: () => surfaceRef.current.edge() + readingInsetRef.current,
+    onReflow: () => keepPlaceRef.current(),
+    onDrawn: () => notePlaceRef.current(),
+  });
+  const showChapter = chapterWindow.show;
+  const followChapter = chapterWindow.follow;
+  const jumping = chapterWindow.jumping;
+  const drawnSpan = chapterWindow.boxes?.span;
+  const drawnRef = useRef(drawnSpan);
+  drawnRef.current = drawnSpan;
 
-  // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
-  // at the verse itself. A verse the chapter does not have opens the chapter.
-  // The verse jumped to is the place until the page moves from where the jump left it: a verse near
-  // the end of a book cannot reach the top, and the verse that does is not where the person is.
-  const broughtRef = useRef<{ place: Place; scrollY: number } | null>(null);
-  const jumpTo = useCallback(({ chapter, verse }: Place) => {
-    const root = textRef.current;
-    const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
-    const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
-    if (!target) return;
-    target.scrollIntoView({ block: 'start' });
-    broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
-  }, []);
+  // MARKS IN THE TEXT: the tools, the legend and the text's manner while a tool is in hand (`marks/`).
+  const marks = useReaderMarks({ textRef, text, ready: Boolean(text && layout), bible, bookId, drawn: drawnSpan });
+  // The links' chips and the signs of marks shape a chapter's height: those measured before are doubted.
+  const doubtHeights = chapterWindow.doubt;
+  useEffect(() => {
+    doubtHeights();
+  }, [crossRefs.ribbon, doubtHeights, marks.signs]);
 
   // ROOM UNDER THE BOOK: the text scrolls on until the last verse stands at the reading top, and no
   // further — so a verse near the end (Rom 16:21) comes to the top like any other (the owner, 2026-10-15).
@@ -373,6 +360,12 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     const last = rows?.[rows.length - 1];
     if (!article || !last) return;
     const surface = surfaceRef.current;
+    // The book's end is a box (a big book read far from it): a screen of room is enough until its
+    // chapters are drawn, and then the room is measured.
+    if (article.querySelector('section[data-chapter]:last-of-type')?.hasAttribute('data-box')) {
+      article.style.marginBottom = `${Math.max(parseFloat(article.style.marginBottom) || 0, surface.height())}px`;
+      return;
+    }
     // The text's own height, without the room: a text shorter than what shows it measures as that
     // (`scrollHeight` never goes below it), so it is measured with a room of a screen at least, and
     // that room taken off. Never less than the room there is, so a book read at its end does not
@@ -384,26 +377,86 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     article.style.marginBottom = `${roomBelow(lastTop, readingInsetRef.current, surface.height(), pageHeight)}px`;
   }, []);
 
+  // A chapter opens at its heading, so "Chapter 12" shows above its first verse; any other verse
+  // at the verse itself. A verse the chapter does not have opens the chapter.
+  // The verse jumped to is the place until the page moves from where the jump left it: a verse near
+  // the end of a book cannot reach the top, and the verse that does is not where the person is.
+  // A chapter of a big book not drawn yet is drawn first; `then` runs once the jump is made.
+  const broughtRef = useRef<{ place: Place; scrollY: number } | null>(null);
+  const jumpTo = useCallback(({ chapter, verse }: Place, then?: () => void) => {
+    showChapter({ chapter }, () => {
+      const root = textRef.current;
+      const row = verse > 1 ? root?.querySelector<HTMLElement>(`[data-verse="${chapter}:${verse}"]`) : null;
+      const target = row ?? root?.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
+      if (!target) return;
+      // The room first: without it a verse near the end of the book cannot come to the top.
+      fitRoom();
+      target.scrollIntoView({ block: 'start' });
+      broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
+      then?.();
+    });
+  }, [fitRoom, showChapter]);
+  useEffect(() => {
+    keepPlaceRef.current = () => {
+      if (placeRef.current) jumpTo(placeRef.current);
+    };
+  }, [jumpTo]);
+
+  // THE VERSE A JUMP CAME TO STAYS AT THE TOP until the person scrolls: what arrives after the jump —
+  // the links' chips on every verse above it, a late font, the book's line wrapping — grows the page
+  // above it, and Safari before 27 does not keep the verse in place (no scroll anchoring). A link opened
+  // on a phone landed hundreds to thousands of pixels above its verse (2026-10-16, measured, the old
+  // ribbon too). The page and the text are watched; while the jump's place holds, it is jumped to again.
+  const readerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!text || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => {
+      const brought = broughtRef.current;
+      if (brought && !leavingRef.current) jumpTo(brought.place);
+    });
+    if (readerRef.current) observer.observe(readerRef.current);
+    if (textRef.current) observer.observe(textRef.current);
+    return () => observer.disconnect();
+  }, [jumpTo, text]);
+
   // THE VERSE A LINK CAME TO: lit at once, then fading back on its own — near the end of a book it
   // cannot be told by where it stands. The light belongs to the arrival, not to the text it was put
   // on, and lasts its own time: the passage drawn again within it — in another Bible, as on a new
   // device, where the interface's language, and the Bible with it, arrives a moment after the first
   // text; or by Back or a reload in those seconds — is lit for the time left (the arrival is kept
   // with the history entry: `saveEntryArrival`). After it, Back and a reload bring the place unlit.
+  // The light is kept by the verses (`"chapter:verse"`), not by their elements: a chapter of a big book
+  // that leaves the page and comes back within the light's time is lit as it was.
   const arrivalTimersRef = useRef<number[]>([]);
-  const litRowsRef = useRef<HTMLElement[]>([]);
-  const lightArrival = useCallback((rows: HTMLElement[], litMs: number) => {
-    arrivalTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-    // A new passage takes the light from the one before: that one's timers are gone, so its light goes too.
-    litRowsRef.current.forEach((row) => { if (!rows.includes(row)) row.removeAttribute(ARRIVAL_ATTRIBUTE); });
-    litRowsRef.current = rows;
-    rows.forEach((row) => row.setAttribute(ARRIVAL_ATTRIBUTE, 'on'));
-    arrivalTimersRef.current = [
-      window.setTimeout(() => rows.forEach((row) => row.setAttribute(ARRIVAL_ATTRIBUTE, 'off')), litMs),
-      window.setTimeout(() => rows.forEach((row) => row.removeAttribute(ARRIVAL_ATTRIBUTE)), litMs + ARRIVAL_FADE_MS),
-    ];
+  const arrivalRef = useRef<{ keys: string[]; phase: 'on' | 'off' } | null>(null);
+  const paintArrival = useCallback(() => {
+    const root = textRef.current;
+    const lit = arrivalRef.current;
+    // A new passage takes the light from the one before.
+    root?.querySelectorAll<HTMLElement>(`[${ARRIVAL_ATTRIBUTE}]`).forEach((row) => {
+      if (!lit || !lit.keys.includes(row.dataset.verse ?? '')) row.removeAttribute(ARRIVAL_ATTRIBUTE);
+    });
+    lit?.keys.forEach((key) => root?.querySelector(`[data-verse="${key}"]`)?.setAttribute(ARRIVAL_ATTRIBUTE, lit.phase));
   }, []);
+  const lightArrival = useCallback((keys: string[], litMs: number) => {
+    arrivalTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    arrivalRef.current = { keys, phase: 'on' };
+    paintArrival();
+    arrivalTimersRef.current = [
+      window.setTimeout(() => {
+        arrivalRef.current = { keys, phase: 'off' };
+        paintArrival();
+      }, litMs),
+      window.setTimeout(() => {
+        arrivalRef.current = null;
+        paintArrival();
+      }, litMs + ARRIVAL_FADE_MS),
+    ];
+  }, [paintArrival]);
   useEffect(() => () => arrivalTimersRef.current.forEach((timer) => window.clearTimeout(timer)), []);
+  useLayoutEffect(() => {
+    paintArrival();
+  }, [drawnSpan, paintArrival]);
 
   // Where to open: where this history entry was read (Back, Forward, a reload, another Bible chosen),
   // else the verse the link asked for — or its chapter, when the chapter has no such verse — else the
@@ -433,23 +486,27 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     }
     setCurrentChapter(target?.chapter ?? 1);
     setCurrentVerse(target?.verse ?? 1);
-    // The room first: without it a verse near the end of the book cannot come to the top.
-    fitRoom();
-    if (target) jumpTo(target);
-    else surfaceRef.current.scrollTo(0);
-    // The passage the link named, each verse found in this Bible: "Rom 12:1-2" lights both.
+    // The passage the link named, each verse found in this Bible: "Rom 12:1-2" lights both — once its
+    // chapter is in the page.
     const link = `${bookId} ${initialBible} ${startChapter}:${startVerse}-${passageEnd}`;
     if (linked && passageEnd) saveEntryArrival({ link, litUntil: Date.now() + ARRIVAL_LIT_MS });
     const arrival = passageEnd ? readEntryArrival() : null;
     const litMs = arrival?.link === link ? arrival.litUntil - Date.now() : 0;
-    if (litMs > 0 && passageEnd && startChapter && startVerse) {
+    const lightPassage = () => {
+      if (!(litMs > 0 && passageEnd && startChapter && startVerse)) return;
       const last = Math.min(Math.max(passageEnd, startVerse), startVerse + 200);
       const keys = new Set<string>();
       for (let verse = startVerse; verse <= last; verse += 1) {
         placesIn(bible, initialBible, { book: bookId, chapter: startChapter, verse }).forEach((found) => keys.add(`${found.chapter}:${found.verse}`));
       }
-      const rows = Array.from(keys, (key) => textRef.current?.querySelector<HTMLElement>(`[data-verse="${key}"]`)).filter((row): row is HTMLElement => Boolean(row));
-      lightArrival(rows, litMs);
+      lightArrival(Array.from(keys), litMs);
+    };
+    if (target) {
+      jumpTo(target, lightPassage);
+    } else {
+      fitRoom();
+      surfaceRef.current.scrollTo(0);
+      lightPassage();
     }
   }, [bible, bookId, fitRoom, initialBible, jumpTo, lightArrival, passageEnd, startChapter, startVerse, text]);
 
@@ -501,7 +558,11 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   useEffect(() => {
     if (!text) return;
     leavingRef.current = false;
-    const rows = Array.from(textRef.current?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
+    // The rows drawn: a big book draws the chapters around the place, and they change as it moves —
+    // read again when the chapters drawn are others.
+    const drawnRows = () => Array.from(textRef.current?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
+    let rows = drawnRows();
+    let rowsOf = drawnRef.current;
     let timer: number | null = null;
     const store = () => {
       if (timer !== null) window.clearTimeout(timer);
@@ -518,26 +579,38 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       if (entryRef.current) saveEntryPlace(entryRef.current, place);
     };
     const note = () => {
-      if (leavingRef.current) return;
+      // Leaving, or a jump waiting for its chapter: the page is not where the person reads.
+      if (leavingRef.current || jumping()) return;
       // Moved from where a jump left the page: from here the place is what the top shows.
       if (broughtRef.current && Math.abs(surface.top() - broughtRef.current.scrollY) >= 1) broughtRef.current = null;
-      const here = broughtRef.current?.place ?? visibleVerseRange(rows, surface.edge() + readingInsetRef.current, surface.bottom())?.[0];
+      // A fast scroll can bring a chapter's box to the reading line before its verses are drawn: the
+      // place is that chapter, and the chapters drawn follow it.
+      const line = surface.edge() + readingInsetRef.current;
+      if (rowsOf !== drawnRef.current) {
+        rows = drawnRows();
+        rowsOf = drawnRef.current;
+      }
+      const box = textRef.current ? chapterAtLine(textRef.current, line) : null;
+      const here = broughtRef.current?.place ?? (box?.box ? { chapter: box.chapter, verse: 1 } : visibleVerseRange(rows, line, surface.bottom())?.[0]);
       if (here) {
         placeRef.current = here;
         setCurrentChapter(here.chapter);
         setCurrentVerse(here.verse);
       }
+      followChapter();
       if (timer === null) timer = window.setTimeout(store, 400);
     };
     flushPlaceRef.current = store;
+    notePlaceRef.current = note;
     note();
     surface.target.addEventListener('scroll', note, { passive: true });
     return () => {
       surface.target.removeEventListener('scroll', note);
       if (timer !== null) store();
       flushPlaceRef.current = () => undefined;
+      notePlaceRef.current = () => undefined;
     };
-  }, [bible, bookId, surface, text]);
+  }, [bible, bookId, followChapter, jumping, surface, text]);
 
   // A phone: once the book's line has scrolled away, a pill at the bottom holds the book and chapter.
   useEffect(() => {
@@ -566,10 +639,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // A cross reference opened. In this book: a jump that leaves the way back to the verse it was opened
   // from ("← Ис 19:1"). In another: a new history entry, as any other book, whose way back is that
   // verse. Either way the passage is lit on arrival.
-  useKeepPlaceOnTextScale(placeRef, jumpTo);
-
   const lightReference = useCallback((reference: CrossReference) => {
-    lightArrival(passageRows(textRef.current, reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
+    lightArrival(passageKeys(reference.chapter, reference.fromVerse, reference.toVerse), ARRIVAL_LIT_MS);
   }, [lightArrival]);
   const openElsewhere = useCallback((reference: CrossReference, origin: Place) => {
     flushPlaceRef.current();
@@ -615,6 +686,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   return (
     // With the minimap the reader holds its panes and the page itself stands still (`data-reader-panes`, globals.css).
     <div
+      ref={readerRef}
       data-reader-panes={wide ? '' : undefined}
       className={`mx-auto w-full max-w-7xl ${frame.root}`}
       style={{ '--reading-top': `${readingInset}px` } as CSSProperties}
@@ -656,7 +728,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               data-pen-surface={marks.penSurface}
               className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} />
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
             </article>
           ) : null}
@@ -672,6 +744,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               title={t('bible.minimap')}
               surface={surface}
               readingInset={readingInset}
+              drawn={drawnSpan}
               onJump={jumpTo}
             />
           </aside>

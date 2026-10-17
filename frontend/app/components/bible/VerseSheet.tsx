@@ -13,10 +13,14 @@ import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 
+import { visibleVerseRange } from './BibleMinimap';
 import { ARRIVAL_ATTRIBUTE, BookRibbon } from './BookRibbon';
+import { inSpan } from './chapterWindow';
 import { CrossReferenceSheet } from './CrossReferenceSheet';
+import { readingSurface } from './readingSurface';
 import { readTranslation } from './translation';
 import { useBookCrossRefs } from './useBookCrossRefs';
+import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { passageAway, passageKeys, restingScrollTop, type PassageBox, type SheetReference } from './verseSheetGeometry';
 
 export type { SheetReference } from './verseSheetGeometry';
@@ -64,6 +68,12 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [away, setAway] = useState<'up' | 'down' | null>(null);
   const paneRef = useRef<HTMLDivElement | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
+  // What the text scrolls in: the window's own pane.
+  const surfaceRef = useRef(readingSurface(null));
+  useLayoutEffect(() => {
+    if (paneRef.current) surfaceRef.current = readingSurface(paneRef.current);
+  }, []);
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   // A window like every other: the page under it holds still, Escape closes the topmost window only.
@@ -151,26 +161,97 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
     restedAtRef.current = top;
   }, [passageBox]);
 
-  // The passage lit for as long as the window is open, and brought to the middle once the text is in.
+  // A BIG BOOK IS DRAWN AROUND THE PASSAGE (`useChapterWindow`, as in the reader): the chapters near the
+  // place read are in the window, the others stand as boxes of their height. A new width or text size
+  // brings the passage back to the middle if the person never scrolled away from it, else the verse they
+  // were reading back to the top.
+  const text = state.status === 'ready' ? state.text : null;
+  const passageChapter = Number(firstKey?.split(':')[0] ?? reference.chapter ?? 1);
+  const readingLine = () => surfaceRef.current.edge() + 8;
+  /** The verse at the top of the window, noted as the person scrolls. */
+  const readRef = useRef<string | null>(null);
+  const noteAwayRef = useRef<() => void>(() => undefined);
+  const noteReadRef = useRef<() => void>(() => undefined);
+  const chapterWindow = useChapterWindow({
+    text,
+    textRef: articleRef,
+    surfaceRef,
+    readingLine,
+    onReflow: () => {
+      const pane = paneRef.current;
+      if (!pane) return;
+      if (pane.scrollTop === restedAtRef.current) {
+        rest(false);
+        return;
+      }
+      const row = readRef.current ? pane.querySelector<HTMLElement>(`[data-verse="${readRef.current}"]`) : null;
+      if (row) pane.scrollTop += row.getBoundingClientRect().top - readingLine();
+    },
+    // Other chapters drawn with no scroll can put another verse at the top, and bring the passage into the
+    // window: both are read again. A landing on the passage (`rest`) has settled the arrow already.
+    onDrawn: () => {
+      noteReadRef.current();
+      if (paneRef.current && paneRef.current.scrollTop !== restedAtRef.current) noteAwayRef.current();
+    },
+  });
+  const showChapter = chapterWindow.show;
+  const drawnSpan = chapterWindow.boxes?.span;
+  // The links' chips shape a chapter's height: those measured before are doubted.
+  const doubtHeights = chapterWindow.doubt;
+  useEffect(() => {
+    doubtHeights();
+  }, [crossRefs.ribbon, doubtHeights]);
+
+  // The passage lit for as long as the window is open — its verses lit again whenever they come back
+  // into the page — and brought to the middle once the text is in.
+  const lightPassage = useCallback(() => {
+    for (const key of keys) paneRef.current?.querySelector(`[data-verse="${key}"]`)?.setAttribute(ARRIVAL_ATTRIBUTE, 'on');
+  }, [keys]);
   useLayoutEffect(() => {
-    const pane = paneRef.current;
-    if (state.status !== 'ready' || !pane) return undefined;
-    for (const key of keys) pane.querySelector(`[data-verse="${key}"]`)?.setAttribute(ARRIVAL_ATTRIBUTE, 'on');
-    rest(false);
-    setAway(null);
+    lightPassage();
+  }, [drawnSpan, lightPassage]);
+  useLayoutEffect(() => {
+    if (state.status !== 'ready' || !paneRef.current) return undefined;
+    showChapter({ chapter: passageChapter }, () => {
+      lightPassage();
+      rest(false);
+      setAway(null);
+    });
     // The serif can arrive after the first layout and move every line: rest again, unless the person has scrolled.
     let alive = true;
     void document.fonts?.ready.then(() => {
       if (alive && paneRef.current && paneRef.current.scrollTop === restedAtRef.current) rest(false);
     });
     return () => { alive = false; };
-  }, [state, keys, rest]);
+  }, [state, keys, rest, lightPassage, passageChapter, showChapter]);
 
-  const onScroll = () => {
+  // Where the passage is from what shows: above, below, or in sight.
+  const noteAway = () => {
     const pane = paneRef.current;
     const box = passageBox();
-    if (!pane || !box) return;
+    if (!pane) return;
+    // The passage's chapter not drawn (scrolled far from it): it is above or below by its number.
+    if (!box) {
+      const at = articleRef.current ? chapterAtLine(articleRef.current, readingLine()) : null;
+      if (at && at.chapter !== passageChapter) setAway(at.chapter > passageChapter ? 'up' : 'down');
+      return;
+    }
     setAway(passageAway(box, pane.scrollTop, pane.clientHeight));
+  };
+  noteAwayRef.current = noteAway;
+
+  // The verse at the top of the window.
+  const noteRead = () => {
+    const rows = Array.from(articleRef.current?.querySelectorAll<HTMLElement>('[data-verse]') ?? []);
+    const read = visibleVerseRange(rows, readingLine(), surfaceRef.current.bottom())?.[0];
+    readRef.current = read ? `${read.chapter}:${read.verse}` : null;
+  };
+  noteReadRef.current = noteRead;
+
+  const onScroll = () => {
+    chapterWindow.follow();
+    noteRead();
+    noteAway();
   };
 
   const notFound = state.status === 'ready' && !firstKey;
@@ -208,8 +289,8 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
             <>
               {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
               {/* `isolate`: the light of a passage lies under the text and over this card. */}
-              <article className="isolate">
-                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} />
+              <article ref={articleRef} className="isolate">
+                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} boxes={chapterWindow.boxes} />
               </article>
               <CrossReferenceSheet
                 at={crossRefs.openAt}
@@ -243,7 +324,12 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
           // Where the passage went, the button sits: at the top for a passage scrolled off the top, at the bottom otherwise.
           <button
             type="button"
-            onClick={() => rest(true)}
+            onClick={() => {
+              // Gliding back across chapters not drawn would end where their guessed heights said: a
+              // passage out of the page is brought at once instead.
+              if (drawnSpan && !inSpan(drawnSpan, passageChapter)) showChapter({ chapter: passageChapter }, () => rest(false));
+              else rest(true);
+            }}
             className={`absolute left-1/2 z-10 inline-flex min-h-12 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-indigo-600 py-2 pl-4 pr-5 text-[0.9375rem] font-semibold text-white shadow-lg transition hover:bg-indigo-700 ${away === 'up' ? 'top-[5.25rem] sm:top-[4.75rem]' : 'bottom-5'}`}
           >
             {away === 'up' ? <ArrowUpIcon className="h-5 w-5" aria-hidden="true" /> : <ArrowDownIcon className="h-5 w-5" aria-hidden="true" />}

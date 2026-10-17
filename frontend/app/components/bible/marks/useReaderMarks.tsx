@@ -61,13 +61,15 @@ type ReaderMarks = {
 
 const subscribeNever = () => () => undefined;
 
-export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
+export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
   textRef: RefObject<HTMLElement | null>;
   text: BookText | null;
   /** The ribbon is on the page. */
   ready: boolean;
   bible: BibleId;
   bookId: string;
+  /** The chapters drawn of a big book (`useChapterWindow`): verses come into the page and leave it. */
+  drawn?: unknown;
 }): ReaderMarks {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -101,7 +103,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId }: {
   }, [beginStroke, sayWhy]);
   const marking = canMark && Boolean(owner) && storeReady;
   const order = useMemo(() => (text ? verseOrder(text.chapters, countVerseWords) : null), [text]);
-  const painter = useMarkHighlights(textRef, ready && marking, stored, text);
+  const painter = useMarkHighlights(textRef, ready && marking, stored, text, drawn);
   // A stroke begun before a choice and let go while it runs is checked again when it would be kept;
   // one whose save fails is no longer shown.
   const keep = useCallback((change: MarksChange) => {

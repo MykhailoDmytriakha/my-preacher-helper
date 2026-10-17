@@ -52,8 +52,12 @@ function verseIndex(root: HTMLElement): Map<string, Element> {
   return index;
 }
 
-/** The marks as drawn on this page: one highlight per colour, and each verse's ranges in them. */
-type Canvas = { layers: Map<Layer, HighlightSet> | null; verses: Map<string, { key: string; ranges: [Layer, Range][] }> };
+/**
+ * The marks as drawn on this page: one highlight per colour, and each verse's ranges in them with the
+ * words they were drawn over — a big book draws its chapters around the place read, and a verse that
+ * left the page or came back is drawn again over its new words.
+ */
+type Canvas = { layers: Map<Layer, HighlightSet> | null; verses: Map<string, { key: string; words: Element | undefined; ranges: [Layer, Range][] }> };
 
 function rangesOf(container: Element, verseMarks: BookMarks[string]): [Layer, Range][] {
   const map = mapVerseText(container);
@@ -87,12 +91,13 @@ function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Elemen
   for (const [verse, verseMarks] of Object.entries(marks)) {
     const key = JSON.stringify(verseMarks);
     const drawn = canvas.verses.get(verse);
-    if (drawn?.key === key) continue;
+    const found = index.get(verse);
+    const words = found && root.contains(found) ? found : undefined;
+    if (drawn?.key === key && drawn.words === words) continue;
     if (drawn) takeOut(drawn.ranges);
-    const container = index.get(verse);
-    const ranges = container && root.contains(container) ? rangesOf(container, verseMarks) : [];
+    const ranges = words ? rangesOf(words, verseMarks) : [];
     ranges.forEach(([layer, range]) => layers.get(layer)?.add(range));
-    canvas.verses.set(verse, { key, ranges });
+    canvas.verses.set(verse, { key, words, ranges });
   }
   for (const [verse, drawn] of canvas.verses) {
     if (marks[verse]) continue;
@@ -127,9 +132,10 @@ export type MarkPainter = {
 
 /**
  * Paints `marks` over the verses drawn inside the ribbon (`rootRef`, on the page once `ready`), again
- * whenever the shown marks or the drawn text (`textKey`) change, and gives a stroke its painter.
+ * whenever the shown marks, the drawn text (`textKey`) or its chapters drawn (`drawnKey`) change, and
+ * gives a stroke its painter.
  */
-export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready: boolean, marks: BookMarks, textKey: unknown): MarkPainter {
+export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready: boolean, marks: BookMarks, textKey: unknown, drawnKey?: unknown): MarkPainter {
   const state = useRef({
     marks,
     ready,
@@ -219,6 +225,17 @@ export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready:
     if (ready) painter.settle();
     else clearMarks(state.current);
   }, [marks, ready, textKey, painter]);
+
+  // Other chapters of a big book came into the page and some left it (`drawnKey`): the words are looked
+  // up again, and only the verses whose words changed are drawn anew — a stroke held stays shown.
+  const drawnRef = useRef(drawnKey);
+  useLayoutEffect(() => {
+    if (drawnRef.current === drawnKey) return;
+    drawnRef.current = drawnKey;
+    state.current.index = null;
+    state.current.painted = null;
+    if (state.current.ready) painter.show(painter.shown());
+  }, [drawnKey, painter]);
 
   // The reader left: nothing painted stays, and no held stroke's timer runs after it.
   useLayoutEffect(() => {

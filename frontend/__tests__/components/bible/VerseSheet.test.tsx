@@ -50,6 +50,20 @@ describe('VerseSheet — the passage over the screen', () => {
     expect(fetchBookText).toHaveBeenCalledWith('Psalms', 'kjv');
   });
 
+  // A big book is drawn around the passage, as in the reader: a psalm in a meeting does not build the
+  // whole Psalter (the owner's iPad, 2026-10-16).
+  it('draws only the psalms around the passage of a big book; the others stand as boxes', async () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
+    const psalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `Psalm ${index + 1}:${verse + 1}`)) };
+    jest.mocked(fetchBookText).mockResolvedValue(psalms as never);
+    render(<VerseSheet reference={{ bible: 'kjv', book: 'Psalms', chapter: 120, fromVerse: 2, toVerse: 3, label: 'Ps 120:2-3' }} onClose={jest.fn()} />);
+    const dialog = await screen.findByRole('dialog', { name: 'Ps 120:2-3' });
+    await waitFor(() => expect(lit(dialog)).toEqual(['120:2', '120:3']));
+    expect(dialog.querySelector('[data-verse="1:1"]')).toBeNull();
+    expect(dialog.querySelector('section[data-chapter="1"]')).toHaveAttribute('data-box');
+    expect(dialog.querySelectorAll('section[data-chapter]')).toHaveLength(150);
+  });
+
   it('closes by its button, by Escape and by a press beside it', async () => {
     const onClose = jest.fn();
     render(<VerseSheet reference={{ bible: 'rst', book: 'Ruth', chapter: 1, fromVerse: 1, label: 'Руфь 1:1' }} onClose={onClose} />);

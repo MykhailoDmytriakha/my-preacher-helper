@@ -521,6 +521,98 @@ describe('BibleBookReader', () => {
     });
   });
 
+  // A link opened on a phone landed hundreds to thousands of pixels above its verse: the links' chips and
+  // a late font arrive after the jump and grow the text above it, and Safari before 27 does not keep the
+  // verse in place (2026-10-16, measured). Until the person scrolls, the verse jumped to is kept at the top.
+  describe('the verse a jump came to, while the text above it grows', () => {
+    let fire: () => void = () => undefined;
+    beforeEach(() => {
+      const callbacks = new Set<() => void>();
+      fire = () => callbacks.forEach((callback) => callback());
+      (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+        constructor(private callback: () => void) { callbacks.add(() => this.callback()); }
+        observe() { return undefined; }
+        disconnect() { return undefined; }
+      };
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(globalThis, 'ResizeObserver');
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    });
+
+    it('is jumped to again until the person scrolls, and then left where the person put it', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      const target = document.querySelector('[data-chapter="3"]');
+      expect(scrollIntoView.mock.contexts).toEqual([target]);
+      // The chips arrive: the text above grows.
+      act(() => { fire(); });
+      expect(scrollIntoView.mock.contexts).toEqual([target, target]);
+      // The person scrolls; what grows after that moves nothing back.
+      Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      scrollIntoView.mockClear();
+      act(() => { fire(); });
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    });
+  });
+
+  // The owner's iPad, 2026-10-16: a new text size or a turn of the iPad restyled every element of the
+  // Psalter. A big book is drawn around the place read; the other chapters stand as boxes.
+  describe('a big book', () => {
+    const kjvPsalms = { id: 'Psalms', chapters: Array.from({ length: 150 }, (_, index) => Array.from({ length: verseCount('kjv', 'Psalms', index + 1) }, (__, verse) => `¶Psalm ${index + 1}:${verse + 1}`)) };
+    const servePsalms = () => {
+      global.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => kjvPsalms, clone() { return this; } })) as unknown as typeof fetch;
+    };
+
+    it('draws only the psalms around the place read; the others stand as boxes with their heading', async () => {
+      servePsalms();
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 100, verse: 3 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 100:3');
+      expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-verse="100:3"]')]);
+      expect(document.querySelector('[data-verse="1:1"]')).toBeNull();
+      expect(document.querySelector('[data-verse="150:1"]')).toBeNull();
+      expect(document.querySelector('section[data-chapter="1"]')).toHaveAttribute('data-box');
+      expect(document.querySelector('section[data-chapter="100"]')).not.toHaveAttribute('data-box');
+      // Every psalm keeps its place in the book, a box or drawn.
+      expect(document.querySelectorAll('section[data-chapter]')).toHaveLength(150);
+      expect(document.querySelectorAll('[data-verse]').length).toBeLessThan(250);
+    });
+
+    it('draws a psalm far from the place before it jumps there', async () => {
+      servePsalms();
+      render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 100, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Psalm 100:1');
+      scrollIntoView.mockClear();
+      await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+      await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+      expect(scrollIntoView.mock.contexts).toEqual([document.querySelector('[data-chapter="3"]')]);
+      expect(document.querySelector('section[data-chapter="3"]')).not.toHaveAttribute('data-box');
+      expect(screen.getByText('Psalm 3:1')).toBeInTheDocument();
+      expect(document.querySelector('[data-verse="100:1"]')).toBeNull();
+    });
+
+    it('lights the passage a link named in a psalm far from the start', async () => {
+      servePsalms();
+      window.history.replaceState({ bibleEntry: 'entry-lit' }, '');
+      try {
+        render(<BibleBookReader bible="kjv" initialBible="kjv" onChangeBible={jest.fn()} bookId="Psalms" initialPlace={{ chapter: 120, verse: 2 }} passageEnd={3} onOpenBook={jest.fn()} />);
+        await screen.findByText('Psalm 120:2');
+        expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
+        expect(document.querySelector('[data-verse="120:3"]')).toHaveAttribute('data-arrival', 'on');
+        // The psalm leaves the page and comes back within the light's time: lit as it was (Codex, 2026-10-16).
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('3'));
+        expect(document.querySelector('[data-verse="120:2"]')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'bible.changeChapter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'bible.chooseChapter' })).getByText('120'));
+        expect(document.querySelector('[data-verse="120:2"]')).toHaveAttribute('data-arrival', 'on');
+      } finally {
+        window.history.replaceState(null, '');
+      }
+    });
+  });
+
   describe('choosing a chapter and a book in a window', () => {
     it('shows every chapter ten to a row, jumps to the one chosen and closes', async () => {
       render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={jest.fn()} />);

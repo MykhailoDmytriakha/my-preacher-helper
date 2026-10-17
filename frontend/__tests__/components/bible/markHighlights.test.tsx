@@ -223,3 +223,29 @@ describe('marks drawn over the text', () => {
     }
   });
 });
+
+// A big book draws only the chapters around the place read (`useChapterWindow`): a verse leaves the page
+// and comes back as new elements, and its marks must be drawn over its new words (2026-10-16).
+describe('marks of a big book drawn around the place read', () => {
+  function Window({ marks, chapters }: { marks: BookMarks; chapters: number[] }) {
+    const rootRef = useRef<HTMLElement | null>(null);
+    useMarkHighlights(rootRef, true, marks, 'book', chapters.join(','));
+    return (
+      <article ref={rootRef}>
+        {chapters.map((chapter) => (
+          <div key={chapter} data-verse={`${chapter}:1`}><span data-verse-text="">{`psalm${chapter} words`}</span></div>
+        ))}
+      </article>
+    );
+  }
+
+  it('draws a verse\'s marks when its chapter comes into the page, and takes them out when it leaves', () => {
+    const marks = { ...red('3:1'), ...red('100:1') };
+    const view = render(<Window marks={marks} chapters={[99, 100]} />);
+    expect(words('red')).toEqual(['psalm100']);
+    view.rerender(<Window marks={marks} chapters={[2, 3, 4]} />);
+    expect(words('red')).toEqual(['psalm3']);
+    view.rerender(<Window marks={marks} chapters={[99, 100]} />);
+    expect(words('red')).toEqual(['psalm100']);
+  });
+});
