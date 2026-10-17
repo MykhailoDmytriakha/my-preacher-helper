@@ -14,38 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261016-legacy-engine-choice-requires-missing-request · A saved direct-command copy cannot accept the stored version
-**Severity.** P2 — a recoverable saved conflict from the older engine remains stuck after an explicit choice.
-**Found.** Actual legacy controller/runtime/checkpoint fixture fails on unchanged production HEAD6450cf31; new scope path also exposes it.
-**Anchors.** `frontend/app/data-engine/controller.ts:257` and `:282` call CommitQueue cancellation for a legacy prepared command; `atomicCommits.ts:142` correctly rejects an empty request scope.
-**Expected/observed.** The legacy command has a terminal journal receipt and can be explicitly settled; instead cancellation expects a modern request which never existed. The old saved words remain waiting.
-**Reproduction.** Persist a direct-command editor conflict without any CommitRequest, close it, then use the global notice to accept the stored version. The actual resolver rejects pending-delivery-first.
-**User contract.** App updates preserve the ability to decide older saved work. Unknown delivery stays protected; a missing modern request never gains the legacy exception.
-**Class.** Both controller choices, acceptRemote and keepLocal, must distinguish the exact directly owned prepared command from modern requests; modern queue guards must remain strict.
-
-
-### BUG-20261016-recovery-discard-scope-can-expand · Confirming one saved copy also discards an unseen late copy
-**Severity.** P2 — a later copy's words stop being offered in normal recovery although the person confirmed only the shown copy; requires a narrow local-delivery window.
-**Found.** Source candidate2026-10-16, now reproduced2/2 in guarded local Chromium1280, HEAD6450cf31, buildKd8iFYdeLUfuo_yd28IJ6. Real engine-generated independent requests; native IndexedDB late write and controlled server IO. Ordinary UI creation of this two-editor timing is not proved.
-**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:310-319` rechecks shown fingerprints then passes only the resource; `frontend/app/data-engine/engine.ts:619-635` freshly lists all answered requests of that resource; `frontend/app/data-engine/commits.ts:338-354` marks every supplied ID `cancelledByChoice`; `frontend/app/data-engine/session.ts:88`/`:218` then settles those captured words.
-**Expected.** Discarding the shown saved copy covers that reviewed copy; different unseen work remains available. A change detected before the final shown-copy check must still withdraw the old confirmation.
-**Observed.** Both operation1 and late independent operation2 become cancelledByChoice=true. The second text is absent after Settings reload and normal series opening; no restore-selected-draft control is offered. Raw retained data/bytes are not claimed erased.
-**Reproduction.** Generate two independent conflicting saves with editors opened before the first request. Seed the first closed request/checkpoint/receipt; Settings shows only Shown earlier words. Confirm Use server version. At the last shown-scope query, queue a real IndexedDB transaction adding the second valid request/checkpoint/receipt before the engine's fresh settlement read. Both are marked explicitly chosen. Reload Settings and open the series: Stored title, no Unseen later words or recovery control.
-**Evidence.** Local case artifacts/recovery-choice-scope-generated-fixture.json, read-trace, browser-before-1/2 JSON/logs and native screenshots.2/2 failures,0 page errors/unexpected writes; one-copy control succeeds. No production fix made.
-**User contract.** One person may leave a screen and later receive a delayed local save. A confirmation about the text actually displayed does not silently authorize dropping another copy. A dependency swept with a decision stays an ordinary draft as the existing canonical rule intends.
-**Class (mechanism).** A reviewed recovery scope is re-expanded by a later asynchronous read before settlement.
-| place | verdict | reason |
-|---|---|---|
-| EngineConflictBanner -> DataEngine.takeStoredVersion | affected, reproduced | reviewed IDs are lost and every newly answered same-resource request becomes an explicit discard root |
-| useDocumentActions.resolve (`react.client.tsx:324`) | affected, behavior RED | a fresh resource-wide waiting list includes unseen independent one-shot B after final UI checks |
-| CommitQueue.cancelOwned/cancellationScope (`commits.ts:338`, `atomicCommits.ts:129`) | canonical, preserve | supplied explicit roots get chosen; swept dependencies retain ordinary words; scope discovery is upstream |
-| DataSession.applyCommit/settleDecided | applies the supplied choice | it correctly treats chosen bits as authoritative; discovery must not assign them to unseen work |
-| Controller.acceptRemote/keepLocal; DataSyncStatus; manual-form resolve | separate owned scope | current editor/selection, no resource-wide enumeration of other closed editors; own late text needs regression controls |
-| Legacy OutboxConflictBanner; study/plan/prayer recovery | not affected by this expansion | retained entry ID, note/owner snapshot, held template or explicit cell IDs; no fresh all-resource cancellation roots |
-| server/transport | not affected | cancellation is local; no command sent in reproduced browser case |
-| offline | same local mechanism | IndexedDB recovery and cancellation are shared; dedicated offline check still pending |
-**Root/fix direction.** Scope information is lost before the authoritative local cancellation read. Behavioral RED now covers both affected collectors. Pass reviewed operation identities through final settlement; reuse canonical queue/retention/CAS and preserve legacy direct-command compatibility, no parallel writer. Green and acceptance pending.
-
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.

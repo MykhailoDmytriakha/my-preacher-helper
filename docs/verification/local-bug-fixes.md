@@ -1114,7 +1114,7 @@ Synthetic initial snapshots and intercepted IO are used; browser capture, Indexe
 
 ## BUG-20261016-recovery-discard-scope-can-expand / BUG-20261016-legacy-engine-choice-requires-missing-request
 
-Stage: locally verified; exact fresh acceptance and source commit are retained separately in the case. Tracker records remain until that gate; a later tracker-only closure follows it. Production pending.
+Stage: independently accepted locally and committed as34bca81c. Fresh acceptance repeats207 tests and14 browser cases, inspecting20 new native images. This tracker-only closure follows that accepted source commit. Production pending.
 
 Settings -> saved-answer notice -> accept the stored version now retires only shown request identities. Shared recoveryChoice capture moves the existing fingerprint/operation rule behind the public engine facade. Screen and one-shot discard share canonical ID-scoped cancellation and dependent-retention projection. An unseen independent save never becomes an explicit discard root; later ordinary words remain recoverable. Empty/unknown/cross-resource scopes cancel nothing; omitted-scope callers remain compatible. Legacy choices check the captured checkpoint inside the controller queue. The existing single-held-prepared-command proof is shared by presentation and cancellation: old commands use the terminal runtime guard; missing modern requests and unknown results stay protected.
 
