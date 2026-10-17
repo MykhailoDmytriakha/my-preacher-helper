@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { hasOpenLayer } from '@/hooks/useModalLayer';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { isPageZoomed } from '@/utils/pageZoom';
 import { isIPadStandalonePwa } from '@/utils/pwaEnv';
 
 import { NESTED_UP_AND_DOWN, gestureBlockReason, pageAtTop } from './touchTargets';
@@ -176,7 +177,7 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       const top = pageAtTop() && !reloading;
       if (!top && !canGoBack) return;
       const blocked = gestureBlockReason(event.target)
-        ?? (window.visualViewport && window.visualViewport.scale !== 1 ? 'zoomed' : null);
+        ?? (isPageZoomed() ? 'zoomed' : null);
       // In a pane that scrolls only up and down, a swipe across is still the way back; the pull is the pane's.
       const backOnly = blocked === NESTED_UP_AND_DOWN && canGoBack;
       if (blocked && !backOnly) {
