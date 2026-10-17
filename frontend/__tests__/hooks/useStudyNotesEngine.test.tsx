@@ -12,7 +12,9 @@ jest.mock('@/data-engine/react.client', () => ({
   useDocumentActions: jest.fn(),
 }));
 jest.mock('@/hooks/useResolvedUid', () => ({ useResolvedUid: () => ({ uid: 'u', isAuthLoading: false }) }));
-jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+let mockLanguage = 'en';
+jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { language: mockLanguage } }) }));
+afterEach(() => { mockLanguage = 'en'; });
 
 type Row = Record<string, unknown>;
 let store: Map<string, Row>;
@@ -78,7 +80,9 @@ describe('study notes on the engine', () => {
   // BUG-20261012-psalm-verse-numbering-not-mapped: "Пс 50:12" typed in Russian was stored as
   // Psalms 51:12 — the chapter moved, the verse not. The note is read with its Bible named, so an
   // English screen and the AI get Ps 51:10, and editing it is not mistaken for a change elsewhere.
-  it('reads an old reference in the language of the note, and an edit of it is not a change made elsewhere', async () => {
+  it('reads an old reference in the language of its author’s interface, and an edit of it is not a change made elsewhere', async () => {
+    // A note is read in the app by its author alone: the interface's language is theirs (Russian here).
+    mockLanguage = 'ru';
     store.set('n1', note({ title: 'Покаяние', content: 'Сердце чистое', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] }));
     const { result } = render();
     const read = result.current.notes[0];
@@ -94,6 +98,136 @@ describe('study notes on the engine', () => {
     });
     expect(error).toBeNull();
     expect(store.get('n1')!.scriptureRefs).toEqual(added);
+  });
+
+  // Codex, 2026-10-17: the editor keeps the note as it read it; switching the interface's language reads
+  // an old reference in another Bible, and the save took that for another device's change.
+  it('does not take a language switch for a change made elsewhere', async () => {
+    mockLanguage = 'ru';
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] }));
+    const { result, rerender } = render();
+    const read = result.current.notes[0];
+    expect(read.scriptureRefs).toEqual([{ id: 'r1', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 }]);
+    mockLanguage = 'en';
+    rerender();
+    const added = [...read.scriptureRefs, { id: 'r2', bible: 'rst' as const, book: 'Psalms', chapter: 22 }];
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: added }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeNull();
+    expect(store.get('n1')!.scriptureRefs).toEqual(added);
+  });
+
+  // Codex, 2026-10-17: an older app on another device still writes a reference without its Bible. Read in
+  // a language this editor never showed, it matched the editor's baseline, and the other device's verse
+  // was overwritten without a word.
+  it('still sees a change elsewhere written in the old form, read in the language the editor shows', async () => {
+    mockLanguage = 'ru';
+    // Quick input puts the Bible last, as the old form read in a language gets it.
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12, bible: 'kjv' }] }));
+    const { result } = render();
+    const read = result.current.notes[0];
+    // Another device, on an older app, wrote Russian 50:12 the old way.
+    store.set('n1', { ...store.get('n1')!, scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] });
+    const added = [...read.scriptureRefs, { id: 'r2', bible: 'rst' as const, book: 'Psalms', chapter: 22 }];
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: added }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(store.get('n1')!.scriptureRefs).toEqual([{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }]);
+  });
+
+  // Codex, 2026-10-17, round 3: after a language switch the old form was read in every language shown, and
+  // the English reading of another device's old-form write passed for the baseline read in Russian.
+  it('sees another device’s old-form write after a language switch', async () => {
+    mockLanguage = 'ru';
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12, bible: 'kjv' }] }));
+    const { result, rerender } = render();
+    const read = result.current.notes[0];
+    mockLanguage = 'en';
+    rerender();
+    store.set('n1', { ...store.get('n1')!, scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] });
+    const added = [...read.scriptureRefs, { id: 'r2', bible: 'rst' as const, book: 'Psalms', chapter: 22 }];
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: added }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(store.get('n1')!.scriptureRefs).toEqual([{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }]);
+  });
+
+  // Codex, 2026-10-17, round 4: after its own save the editor's baseline is the list it sent — one the
+  // engine never handed out. Read in the interface's language by then, another device's old-form write
+  // matched it and was overwritten.
+  it('compares the stored list as it is with a baseline the editor wrote itself', async () => {
+    mockLanguage = 'ru';
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [] }));
+    const { result, rerender } = render();
+    // What the editor saved before: its own list, with the Bible named.
+    const savedByEditor = [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12, bible: 'kjv' as const }];
+    store.set('n1', { ...store.get('n1')!, scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] });
+    mockLanguage = 'en';
+    rerender();
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: [...savedByEditor, { id: 'r2', bible: 'rst', book: 'Psalms', chapter: 22 }] }, expectedRevision: 4,
+        expectedBaseline: { title: 'Мы любим', content: '', tags: [], scriptureRefs: savedByEditor, type: 'note' },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(store.get('n1')!.scriptureRefs).toEqual([{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }]);
+  });
+
+  // Codex, 2026-10-17, round 5: undoing the old Psalm shift reads the old "9" and "10" both as Synodal 9.
+  // An older app changing 9 to 10 on another device read the same as the baseline, and was overwritten.
+  it('sees a change elsewhere that reading would hide: old Psalm 9 changed to 10', async () => {
+    mockLanguage = 'ru';
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 9, fromVerse: 1 }] }));
+    const { result } = render();
+    const read = result.current.notes[0];
+    store.set('n1', { ...store.get('n1')!, scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 10, fromVerse: 1 }] });
+    let error: unknown = null;
+    await act(async () => {
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: [...read.scriptureRefs, { id: 'r2', bible: 'rst', book: 'John', chapter: 3 }] }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(store.get('n1')!.scriptureRefs).toEqual([{ id: 'r1', book: 'Psalms', chapter: 10, fromVerse: 1 }]);
+  });
+
+  // Codex, 2026-10-17, round 6: "the stored note already is what I write" was judged on a reading — the
+  // old "10:1" read as Synodal 9:1, the very list being written, and another device's 9→10 was overwritten.
+  it('lets a save through as already done only when the stored list is that very list', async () => {
+    mockLanguage = 'ru';
+    store.set('n1', note({ title: 'Мы любим', content: '', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 9, fromVerse: 1 }, { id: 'r2', bible: 'kjv', book: 'John', chapter: 3, fromVerse: 16 }] }));
+    const { result } = render();
+    const read = result.current.notes[0];
+    // Another device, on an older app: Psalm 9 → 10, and John removed.
+    store.set('n1', { ...store.get('n1')!, scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 10, fromVerse: 1 }] });
+    let error: unknown = null;
+    await act(async () => {
+      // This editor removes John: its list reads as the other device's does.
+      error = await awaitAcceptance(result.current.updateNote({
+        id: 'n1', updates: { scriptureRefs: [read.scriptureRefs[0]] }, expectedRevision: 4,
+        expectedBaseline: { title: read.title, content: read.content, tags: read.tags, scriptureRefs: read.scriptureRefs, type: read.type },
+      }), () => undefined).then(() => null, caught => caught);
+    });
+    expect(error).toBeInstanceOf(Error);
+    expect(store.get('n1')!.scriptureRefs).toEqual([{ id: 'r1', book: 'Psalms', chapter: 10, fromVerse: 1 }]);
   });
 
   it('never writes relations or unknown fields from an edit, and recomputes the draft flag', async () => {

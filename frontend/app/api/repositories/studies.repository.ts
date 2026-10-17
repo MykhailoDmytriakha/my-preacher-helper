@@ -3,6 +3,8 @@ import { StudyMaterial, StudyNote } from '@/models/models';
 import { isEngineTombstone } from '@/utils/engineTombstone';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 
+import type { AppLocale } from '@/utils/appLocale';
+
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
 
@@ -16,12 +18,13 @@ function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean 
  * carries userId — so every read here treats it as absent rather than as a blank live record.
  */
 export class StudiesRepository {
-  async getNote(id: string): Promise<StudyNote | null> {
+  /** `author`: the language the author's interface speaks, from their request — their old references are read in it. */
+  async getNote(id: string, author?: AppLocale): Promise<StudyNote | null> {
     const doc = await adminDb.collection(NOTES_COLLECTION).doc(id).get();
     if (!doc.exists || isEngineTombstone(doc.data())) return null;
-    // References stored before they kept their Bible are read in the language of the note's words;
-    // a note with no words keeps them as stored, read as the King James — what the server always did.
-    const data = withNoteReferenceBibles(doc.data() as StudyNote, 'en');
+    // References stored before they kept their Bible are read in the author's language; where the
+    // request did not say it, in the language of the note's words, and a note with none as English.
+    const data = withNoteReferenceBibles(doc.data() as StudyNote, author);
     return { ...data, id: doc.id, scriptureRefs: data.scriptureRefs || [], tags: data.tags || [],
       materialIds: data.materialIds || [], isDraft: computeDraft(data) };
   }

@@ -80,7 +80,8 @@ describe('studies notes [id] route', () => {
 
       expect(response.status).toBe(200);
       expect(data.id).toBe('note-1');
-      expect(mockRepo.getNote).toHaveBeenCalledWith('note-1');
+      // The request said no interface language: the note's old references are read by its words.
+      expect(mockRepo.getNote).toHaveBeenCalledWith('note-1', undefined);
     });
 
     it('returns 500 when repository throws', async () => {

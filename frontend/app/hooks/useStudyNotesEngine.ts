@@ -40,13 +40,23 @@ const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
 
 /**
  * A stored note as the screens read it. Its references each name their Bible: one stored before
- * references kept it is read in the language of the note's words (`withNoteReferenceBibles`), and
- * `locale` — the reader's — only decides for a note with no words.
+ * references kept it is read in `locale`, the interface's language — in the app a note is read by its
+ * author alone, so it is the language they write in (`withNoteReferenceBibles`).
  */
 export function engineNote(value: DocumentData, id: string, locale: AppLocale): StudyNote {
+  const stored = (value as unknown as StudyNote).scriptureRefs;
   const note = withNoteReferenceBibles(value as unknown as StudyNote, locale);
-  return { ...note, id, scriptureRefs: note.scriptureRefs || [], tags: note.tags || [], materialIds: note.materialIds || [], isDraft: isDraft(note) };
+  const scriptureRefs = note.scriptureRefs || [];
+  // Old references given their Bible here: the list remembers the stored list it was read from.
+  if (stored !== undefined && scriptureRefs !== stored) readFrom.set(scriptureRefs, stored);
+  return { ...note, id, scriptureRefs, tags: note.tags || [], materialIds: note.materialIds || [], isDraft: isDraft(note) };
 }
+
+/**
+ * The stored list a list of references was read from, by the list itself, when old references in it
+ * were given their Bible on reading — the editor keeps that very list in its baseline.
+ */
+const readFrom = new WeakMap<object, unknown>();
 
 type SavedNote = StudyNote & { revision?: number };
 type NoteUpdate = {
@@ -125,11 +135,23 @@ export function useStudyNotesEngine(enabled: boolean) {
             stale = null;
             if (!current) throw new Error('Study note not found');
             const stored = (current.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE] ?? 0;
-            // The baseline is the note as the editor read it, so the stored note is compared read the
-            // same way: an old reference given its Bible on reading is not a change made elsewhere.
+            // The baseline is the note as the editor read it. Its references are compared as stored —
+            // the guard compares stored data, never a reading of it:
+            // the stored list against the one the editor's list was read from — or, when the editor's list
+            // is not a reading (as stored, or written by the editor itself), against that list. Reading
+            // cannot be compared: it changes with the interface's language, a switch of which is not another
+            // device's edit, and it hides changes — the old Psalm "9" and "10" both read as Synodal 9 — that
+            // an older app on another device may still write without the Bible.
             const read = engineNote(current, id, locale) as unknown as Record<string, unknown>;
-            const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field =>
-              field in expectedBaseline && !same(read[field], expectedBaseline[field]) && !same(read[field], patch[field])) : [];
+            const baselineRefs = expectedBaseline?.scriptureRefs;
+            const readSource = baselineRefs !== null && typeof baselineRefs === 'object' ? readFrom.get(baselineRefs) : undefined;
+            // "Already what I write" is judged on the stored list too, never on a reading of it.
+            const storedAs = (field: string, value: unknown) => (field === 'scriptureRefs'
+              ? same(current.scriptureRefs ?? [], value)
+              : same(read[field], value));
+            const changedElsewhere = expectedBaseline ? Object.keys(patch).filter(field => field in expectedBaseline
+              && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
+              && !storedAs(field, patch[field])) : [];
             if (changedElsewhere.length) {
               stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));

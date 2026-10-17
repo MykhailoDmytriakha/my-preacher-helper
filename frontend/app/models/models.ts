@@ -1,4 +1,5 @@
 import type { ProviderId } from '@/api/clients/ai/providerId';
+import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 
 export interface Thought {
@@ -606,6 +607,8 @@ export interface StudyNoteShareLink {
   token: string;
   createdAt: string;
   viewCount: number;
+  /** The language the author's interface spoke when the link was made: the note's old references are read in it. */
+  authorLanguage?: AppLocale;
 }
 
 export type StudyMaterialType = 'sermon' | 'study' | 'group' | 'guide';

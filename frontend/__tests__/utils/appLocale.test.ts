@@ -1,4 +1,4 @@
-import { detectTextLocale, resolveAppLocale } from '@/utils/appLocale';
+import { APP_LANGUAGE_HEADER, browserInterfaceLanguage, detectTextLocale, requestLanguage, resolveAppLocale } from '@/utils/appLocale';
 
 describe('resolveAppLocale', () => {
   it.each([
@@ -34,3 +34,23 @@ describe('detectTextLocale', () => {
     expect(detectTextLocale('# Заметка\n\nСлово "їжа" тут одно.')).toBe('uk');
   });
 });
+
+// The owner, 2026-10-17: a note's old references are read in the Bible of its author's interface — the
+// browser keeps that language in its cookie and says it to the server with each request.
+describe('the interface language carried to the server', () => {
+  afterEach(() => { document.cookie = 'lang=; max-age=0; path=/'; });
+
+  it('is read off the browser’s language cookie, and is English without it — as the interface starts', () => {
+    expect(browserInterfaceLanguage()).toBe('en');
+    document.cookie = 'theme=dark; path=/';
+    document.cookie = 'lang=uk; path=/';
+    expect(browserInterfaceLanguage()).toBe('uk');
+  });
+
+  it('is what a request carried, or nothing when it carried none', () => {
+    expect(requestLanguage({ headers: new Headers({ [APP_LANGUAGE_HEADER]: 'ru' }) })).toBe('ru');
+    expect(requestLanguage({ headers: new Headers() })).toBeUndefined();
+    expect(requestLanguage({})).toBeUndefined();
+  });
+});
+

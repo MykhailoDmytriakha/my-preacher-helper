@@ -49,20 +49,20 @@ export function withStoredBible<T extends ScriptureRefShape>(ref: T, typedIn: Ap
 type NoteText = { title?: string; content?: string; scriptureRefs?: readonly ScriptureRefShape[] };
 
 /**
- * The language a note's old references were typed in: the language of its own words — stable,
- * and known on the server too — or, for a note that has no words, the reader's. Cyrillic with no
- * letter only one of the two languages has — "Любов понад усе" — could be either, and is read in
- * the reader's language when that is one of them (BUG-20261017-old-uk-note-read-as-russian: it was
- * read as Russian, and its author's old "Йоїл 3:1" showed as Ohienko 4:1). In the app a note is read
- * by its author alone, so that is the language they write in, the one their new references follow.
- * The server does not know it and still reads such a note as Russian
- * (BUG-20261017-server-reads-note-without-author-language).
+ * The language a note's old references were typed in: the language its author's interface speaks
+ * (the owner, 2026-10-17: "a Ukrainian interface — the Ukrainian Bible"). The old picker and quick
+ * input moved a Psalm by it, and it names the Bible a person uses — the one their new references
+ * are numbered by. In the app a note is read by its author alone, so the screen's language is theirs;
+ * the server gets it with the author's request (`APP_LANGUAGE_HEADER`), a public link from when it was
+ * made. Where it is not known (a link made before, a request without it), the language of the note's
+ * words, and English for a note with none. A note whose old references the AI took from Russian words
+ * under an English interface reads one Psalm off: the AI moved them by the words, the picker by the
+ * interface.
  */
-export function noteLanguage(note: Pick<NoteText, 'title' | 'content'>, fallback: AppLocale): AppLocale {
+export function noteLanguage(note: Pick<NoteText, 'title' | 'content'>, author?: AppLocale): AppLocale {
+  if (author) return author;
   const text = `${note.title ?? ''} ${note.content ?? ''}`;
-  if (!/\p{L}/u.test(text)) return fallback;
-  const language = detectTextLocale(text);
-  return language === 'ru' && fallback === 'uk' && !/[ыэъё]/iu.test(text) ? 'uk' : language;
+  return /\p{L}/u.test(text) ? detectTextLocale(text) : 'en';
 }
 
 /**
@@ -70,10 +70,10 @@ export function noteLanguage(note: Pick<NoteText, 'title' | 'content'>, fallback
  * storage — the screens, the server routes and the public link all read through it — so no
  * screen meets a reference without one. The note is returned unchanged when nothing is old.
  */
-export function withNoteReferenceBibles<T extends NoteText>(note: T, fallback: AppLocale): T {
+export function withNoteReferenceBibles<T extends NoteText>(note: T, author?: AppLocale): T {
   const refs = note.scriptureRefs;
   if (!refs?.length || refs.every((ref) => isBibleId(ref.bible))) return note;
-  const typedIn = noteLanguage(note, fallback);
+  const typedIn = noteLanguage(note, author);
   return { ...note, scriptureRefs: refs.map((ref) => withStoredBible(ref, typedIn)) };
 }
 

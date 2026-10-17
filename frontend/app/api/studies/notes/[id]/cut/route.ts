@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { requestLanguage } from '@/utils/appLocale';
 import { createFenceTracker } from '@/utils/markdownFence';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
@@ -135,7 +136,7 @@ async function loadOwnedNote(
     };
   }
 
-  const note = await studiesRepository.getNote(id);
+  const note = await studiesRepository.getNote(id, requestLanguage(request));
   if (!note) {
     return { refusal: NextResponse.json({ success: false, error: 'Study note not found' }, { status: 404 }) };
   }

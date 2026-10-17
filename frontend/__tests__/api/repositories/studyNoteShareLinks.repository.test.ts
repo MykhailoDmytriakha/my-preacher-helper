@@ -316,6 +316,24 @@ describe('StudyNoteShareLinksRepository', () => {
     ]);
   });
 
+  // The owner, 2026-10-17: an old reference is read in the Bible of its author's interface. A link keeps
+  // the author's language from when it was made; a link made before reads by the note's words (above).
+  it('reads an old reference in the language the author’s interface spoke when the link was made', async () => {
+    mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token', authorLanguage: 'uk' }) }] });
+    // A Ukrainian title with none of і, ї, є, ґ, and its old "Йоїл 3:1".
+    mockTransactionGet.mockResolvedValueOnce({ data: () => ({ userId: 'owner', title: 'Любов понад усе', content: 'Любов понад усе', scriptureRefs: [{ id: 'old', book: 'Joel', chapter: 3, fromVerse: 1 }] }) });
+    const shared = await repository.readSharedNote('token');
+    expect(shared?.shareLink.authorLanguage).toBe('uk');
+    expect(shared?.scriptureRefs).toEqual([{ id: 'old', bible: 'ubio', book: 'Joel', chapter: 3, fromVerse: 1 }]);
+  });
+
+  it('keeps the author’s language on a link it makes', async () => {
+    mockTransactionGet.mockResolvedValue({ data: () => ({ userId: 'user-1', content: 'Owned' }) });
+    const result = await repository.createLink({ ownerId: 'user-1', noteId: 'note-1', token: 'token-2', authorLanguage: 'uk' });
+    expect(mockTransactionSet).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ authorLanguage: 'uk' }));
+    expect(result.authorLanguage).toBe('uk');
+  });
+
   it.each([undefined, { userId: 'foreign', content: 'Private' }, { userId: 'owner', content: 'Deleted', _dataEngine: { deleted: true } }, { userId: 'owner' }])('does not publicly expose an unavailable or foreign note: %j', async data => {
     mockTransactionGet.mockResolvedValueOnce({ empty: false, docs: [{ id: 'link', data: () => ({ ownerId: 'owner', noteId: 'note', token: 'token' }) }] });
     mockTransactionGet.mockResolvedValueOnce({ data: () => data });

@@ -37,6 +37,7 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
@@ -251,6 +252,7 @@ function useNoteAIAssistant({
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    ...interfaceLanguageHeaders(),
                 },
                 body: JSON.stringify({
                     content,

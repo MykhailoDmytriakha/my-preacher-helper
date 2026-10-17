@@ -534,7 +534,8 @@ export async function analyzeStudyNote(
     // The numbers are as the note writes them, so they belong to the Bible of the note's language
     // ("Пс 50:12" of a Russian note is the Synodal 50:12) — stored with it and shown in the
     // reader's Bible by `utils/scriptureReferenceNumbering.ts`.
-    const bible = referenceBibleFor(noteLanguage({ content: noteContent }, 'en'));
+    // These are numbers written in the text, not the author's old references: the text's language decides.
+    const bible = referenceBibleFor(noteLanguage({ content: noteContent }));
     const uniqueRefs = Array.from(uniqueRefsMap.values()).map((ref) => ({ ...ref, bible }));
 
     // Deduplicate tags (case-sensitive, exact match)

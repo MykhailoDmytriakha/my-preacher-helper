@@ -1,5 +1,6 @@
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { ScriptureReference, StudyNote, StudyNoteShareLink } from '@/models/models';
+import { APP_LOCALES, type AppLocale } from '@/utils/appLocale';
 import { isBibleId } from '@/utils/bibles';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 
@@ -45,8 +46,9 @@ function toSharedNote(shareLink: StudyNoteShareLink, data: Record<string, unknow
   const stored = Array.isArray(data.scriptureRefs)
     ? data.scriptureRefs.map(publicReference).filter((reference): reference is ScriptureReference => reference !== null)
     : [];
-  // An old reference is read in the language of the note's words, as everywhere a note is read.
-  const { scriptureRefs } = withNoteReferenceBibles({ title, content, scriptureRefs: stored }, 'en');
+  // An old reference is read in the language the author's interface spoke when the link was made; a
+  // link made before that was kept reads it in the language of the note's words.
+  const { scriptureRefs } = withNoteReferenceBibles({ title, content, scriptureRefs: stored }, shareLink.authorLanguage);
   return {
     shareLink,
     content,
@@ -74,6 +76,7 @@ function normalizeShareLink(docId: string, data: Partial<StudyNoteShareLink>): S
     token: data.token || '',
     createdAt: data.createdAt || new Date(0).toISOString(),
     viewCount: typeof data.viewCount === 'number' ? data.viewCount : 0,
+    ...(APP_LOCALES.includes(data.authorLanguage as AppLocale) ? { authorLanguage: data.authorLanguage } : {}),
   };
 }
 
@@ -137,7 +140,7 @@ export class StudyNoteShareLinksRepository {
     });
   }
 
-  async createLink(params: { ownerId: string; noteId: string; token: string }): Promise<StudyNoteShareLink> {
+  async createLink(params: { ownerId: string; noteId: string; token: string; authorLanguage?: AppLocale }): Promise<StudyNoteShareLink> {
     const now = new Date().toISOString();
     const payload: Omit<StudyNoteShareLink, 'id'> = {
       ownerId: params.ownerId,
@@ -145,6 +148,7 @@ export class StudyNoteShareLinksRepository {
       token: params.token,
       createdAt: now,
       viewCount: 0,
+      ...(params.authorLanguage ? { authorLanguage: params.authorLanguage } : {}),
     };
 
     const docRef = adminDb.collection(SHARE_LINKS_COLLECTION).doc();

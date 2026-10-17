@@ -147,31 +147,35 @@ describe('a reference written before references knew their Bible', () => {
   });
 });
 
-describe('the language a note was written in', () => {
-  // BUG-20261017-old-uk-note-read-as-russian: a Ukrainian title with none of і, ї, є, ґ read as Russian,
-  // and the note's old "Йоїл 3:1" became Synodal 3:1 — Ohienko 4:1, another verse, for its own author.
-  it('reads Cyrillic that either language could have written in the language its author writes in', () => {
+describe('the language a note’s old references were typed in', () => {
+  // The owner, 2026-10-17: "a Ukrainian interface — the Ukrainian Bible". The old picker moved a Psalm by
+  // the interface's language, and it names the Bible a person uses — the one their new references follow.
+  it('is the language the author’s interface speaks, whatever the note’s words look like', () => {
     expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'uk')).toBe('uk');
-    expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'ru')).toBe('ru');
-    expect(noteLanguage({ title: 'Любов понад усе', content: '' }, 'en')).toBe('ru');
-    expect(noteLanguage({ title: 'Мы любим', content: '' }, 'uk')).toBe('ru');
+    expect(noteLanguage({ title: 'Иисус любит', content: '' }, 'uk')).toBe('uk');
+    expect(noteLanguage({ title: 'Покаяние', content: '' }, 'en')).toBe('en');
+    expect(noteLanguage({ content: 'Серце чисте створи мені, Боже' }, 'ru')).toBe('ru');
+    // BUG-20261017-old-uk-note-read-as-russian: a Ukrainian title with none of і, ї, є, ґ read as Russian,
+    // and the note's old "Йоїл 3:1" became Synodal 3:1 — Ohienko 4:1, another verse, for its own author.
     const [ref] = withNoteReferenceBibles({ title: 'Любов понад усе', content: '', scriptureRefs: [{ book: 'Joel', chapter: 3, fromVerse: 1 }] }, 'uk').scriptureRefs;
     expect(ref).toEqual({ book: 'Joel', bible: 'ubio', chapter: 3, fromVerse: 1 });
   });
 
-  it('is the language of its words, and the reader’s when it has none', () => {
-    expect(noteLanguage({ title: 'Покаяние', content: '' }, 'en')).toBe('ru');
-    expect(noteLanguage({ content: 'Серце чисте створи мені, Боже' }, 'ru')).toBe('uk');
-    expect(noteLanguage({ content: 'A clean heart' }, 'ru')).toBe('en');
-    expect(noteLanguage({ title: '', content: '  12 ' }, 'uk')).toBe('uk');
+  it('is the language of the note’s words where the author’s is not known, and English for a note with none', () => {
+    expect(noteLanguage({ title: 'Покаяние', content: '' })).toBe('ru');
+    expect(noteLanguage({ content: 'Серце чисте створи мені, Боже' })).toBe('uk');
+    expect(noteLanguage({ content: 'A clean heart' })).toBe('en');
+    expect(noteLanguage({ title: '', content: '  12 ' })).toBe('en');
   });
 
   it('names the Bible of every old reference of a note, and leaves a note with nothing old as it is', () => {
     const note = { title: 'Покаяние', content: 'Пс 50:12', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }, { ...ps('kjv', 23), id: 'r2' }] };
-    expect(withNoteReferenceBibles(note, 'en').scriptureRefs).toEqual([
+    expect(withNoteReferenceBibles(note, 'ru').scriptureRefs).toEqual([
       { id: 'r1', bible: 'rst', book: 'Psalms', chapter: 50, fromVerse: 12 },
       { ...ps('kjv', 23), id: 'r2' },
     ]);
+    // An English interface did not move the Psalm: the number stands as the King James's.
+    expect(withNoteReferenceBibles(note, 'en').scriptureRefs[0]).toEqual({ id: 'r1', bible: 'kjv', book: 'Psalms', chapter: 51, fromVerse: 12 });
     const current = { title: 'x', scriptureRefs: [{ ...ps('rst', 50), id: 'r3' }] };
     expect(withNoteReferenceBibles(current, 'en')).toBe(current);
     const none = { title: 'x', scriptureRefs: [] };
@@ -199,9 +203,10 @@ describe('a reference on the screen — BUG-20261012-psalm-verse-numbering-not-m
   });
 
   it('an old one, read through its note: unchanged for its author, the right verse for everyone else', () => {
-    // "Пс 50:12" typed in Russian before references kept their Bible: stored as Psalms 51:12.
+    // "Пс 50:12" typed in a Russian interface before references kept their Bible: stored as Psalms 51:12.
+    // Its author's screen is Russian; read there, it names the Synodal, and every other Bible follows.
     const stored = { userId: 'u', title: 'Покаяние', content: 'Сердце чистое', scriptureRefs: [{ id: 'r1', book: 'Psalms', chapter: 51, fromVerse: 12 }] };
-    const [ref] = engineNote(stored, 'n1', 'en').scriptureRefs;
+    const [ref] = engineNote(stored, 'n1', 'ru').scriptureRefs;
     expect(formatScriptureReference(ref, { locale: 'ru' })).toBe('Пс.50:12');
     expect(formatScriptureReference(ref, { locale: 'en', style: 'long' })).toBe('Psalms 51:10');
     expect(formatScriptureReference(ref, { style: 'canonical' })).toBe('Psalms 51:10');
