@@ -3,7 +3,8 @@ import { useSyncExternalStore } from 'react';
 /*
  * HOW CROSS REFERENCES SHOW ON THIS DEVICE (the owner, 2026-10-15): shown while reading the Bible,
  * as a count beside a verse; in a passage window opened from a sermon, a note or a group only when
- * asked for; the main links or all of them. One record per device, like the Bible chosen
+ * asked for; the main links or all of them; the rest of a verse's links in its window as verses with
+ * their text, or only as references (the owner, 2026-10-16). One record per device, like the Bible chosen
  * (`translation.ts`): the reader and the settings in the "T" menu read and write the same one, and a
  * change shows at once in both. Browser storage can be missing or refuse: the choice then lasts for
  * the visit.
@@ -16,9 +17,11 @@ export type CrossReferencePrefs = {
   /** The same in a passage window opened from another screen. */
   inWindow: boolean;
   mode: CrossReferenceMode;
+  /** The window's "others" as verses with their text, like the main links; off — only their references. */
+  othersAsVerses: boolean;
 };
 
-export const DEFAULT_CROSS_REFERENCE_PREFS: CrossReferencePrefs = { show: true, inWindow: false, mode: 'main' };
+export const DEFAULT_CROSS_REFERENCE_PREFS: CrossReferencePrefs = { show: true, inWindow: false, mode: 'main', othersAsVerses: false };
 
 const STORAGE_KEY = 'bible:cross-references';
 
@@ -34,6 +37,7 @@ function parse(raw: string | null): CrossReferencePrefs {
       show: typeof value.show === 'boolean' ? value.show : DEFAULT_CROSS_REFERENCE_PREFS.show,
       inWindow: typeof value.inWindow === 'boolean' ? value.inWindow : DEFAULT_CROSS_REFERENCE_PREFS.inWindow,
       mode: value.mode === 'all' || value.mode === 'main' ? value.mode : DEFAULT_CROSS_REFERENCE_PREFS.mode,
+      othersAsVerses: typeof value.othersAsVerses === 'boolean' ? value.othersAsVerses : DEFAULT_CROSS_REFERENCE_PREFS.othersAsVerses,
     };
   } catch {
     return DEFAULT_CROSS_REFERENCE_PREFS;

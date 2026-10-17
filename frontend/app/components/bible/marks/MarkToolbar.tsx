@@ -24,7 +24,11 @@ const PEN_TOOL = 'ring-2 ring-gray-300 ring-offset-2 ring-offset-white dark:ring
 /** Beside the tools in a line the colours open to the left; over a column (a phone) they open upwards. */
 const PALETTE_LEFT = 'right-[calc(100%+0.375rem)] top-1/2 -translate-y-1/2 px-2 py-1.5';
 const PALETTE_UP = 'bottom-[calc(100%+0.375rem)] left-1/2 -translate-x-1/2 flex-col px-1.5 py-2';
-const TOOL = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500';
+/**
+ * A tool lights up under a mouse or a trackpad only: on a touch screen a hover stays on the circle after
+ * the tap, and a tool put away would still look pressed (the owner, 2026-10-16).
+ */
+const TOOL = 'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 [@media(hover:hover)]:hover:bg-gray-100 dark:[@media(hover:hover)]:hover:bg-gray-800';
 
 type Swatch = { id: string; color: string; label: string; chosen: boolean; pick: () => void };
 

@@ -9,8 +9,9 @@ import { saveCrossReferencePrefs, useCrossReferencePrefs, type CrossReferenceMod
 
 /**
  * The cross-reference section of the reader's "T" menu, under the text size: shown or not, also in a
- * passage window or not, the main links or all. The two sub-rows hang under the first and rest while
- * it is off.
+ * passage window or not, the main links or all, and a verse's other links as verses or only references —
+ * the same choice as the switch in the window's "others" row. The sub-rows hang under the first and rest
+ * while it is off.
  */
 export function CrossReferenceSettings() {
   const { t } = useTranslation();
@@ -67,6 +68,19 @@ export function CrossReferenceSettings() {
               </button>
             ))}
           </div>
+        </div>
+        <div className="flex items-center justify-between gap-4 py-2">
+          <div className="min-w-0">
+            <p id={`${id}-others`} className="text-sm font-medium text-gray-900 dark:text-white">{t('bible.crossRefs.othersAsVersesSetting')}</p>
+            <p id={`${id}-others-hint`} className="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.othersAsVersesHint')}</p>
+          </div>
+          <Switch
+            checked={prefs.othersAsVerses}
+            disabled={!prefs.show}
+            aria-labelledby={`${id}-others`}
+            aria-describedby={`${id}-others-hint`}
+            onClick={() => saveCrossReferencePrefs({ othersAsVerses: !prefs.othersAsVerses })}
+          />
         </div>
       </div>
     </div>
