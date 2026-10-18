@@ -14,6 +14,18 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261018-editor-open-retired-request · Opening an editor can fail after its loaded request is accepted and collected
+
+**Severity.** P2 — opening the person's saved note can fail during ordinary delivery; the accepted words remain stored, but the next editor is unavailable.
+**Found.** 2026-10-18, deterministic real engine/IndexedDB-contract test during request-revision QA; actual application-screen duration and production frequency remain unverified.
+**Anchors.** `frontend/app/data-engine/engine.ts:887-904`; `frontend/app/data-engine/controller.ts:120-137`; `frontend/app/data-engine/storage.client.ts:34-40`.
+**Expected / observed.** If an earlier request is accepted while a new editor is loading it, opening must use the accepted copy. A delayed initial list still yields the old pending request after its durable identity has been collected; the restored checkpoint fails with `commit-reference-changed`.
+**Reproduction.** Capture a note-title write offline; hold the first commit-list result for another opening; accept the real command and finish the earlier checkpoint; release the old list. The opening rejects with `Saved request reference changed` although the server holds the saved title. Controlled one-person delivery order; no two-person editing required.
+**Evidence.** Phase83 `artifacts/request-revision-red-class.json`, case `editor initial restore`, one deterministic reproduction. The neighboring manual-load cases instead complete and regress list presentation; their map fix does not resolve this separate stale submitted-checkpoint lifetime.
+**User behavior.** Opening their note should show saved words and preserve any unsent remainder. It must neither recreate a collected request nor call that accepted action unsaved. A genuinely unresolved request must still resume with its original identity. No owner decision is needed.
+**Next.** Reproduce at the screen boundary, then reconcile opening evidence with canonical durable request retention before persisting its checkpoint; keep owner/generation and existing compaction rules. Separate from BUG-20261017-commit-map-stale-manual-load.
+
+
 ### BUG-20261018-new-note-drafts-share-placeholder-slot · Вторая новая заметка занимает место несохранённой первой
 **Severity.** P2 — до захвата создания разные новые заметки делят одну резервную копию; предыдущий текст может остаться без копии.
 **Найден.** 2026-10-18 · независимый разбор и воспроизведение на реальном useDurableDraft; полный экранный сценарий ещё не проверен.
@@ -336,11 +348,15 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261018-collection-result-stale-request · A delayed direct collection result may show an accepted action as still pending
 
-### BUG-20261017-commit-map-stale-manual-load · A delayed manual-scope load can replace an accepted in-memory request with its older queued copy
-**P3 recheck** — source interleaving found during note-delivery review; no dedicated runtime reproduction yet. `frontend/app/data-engine/engine.ts:170-173,907-910`; compare guarded assignment at`:361-366`.
-**Expected / risk.** Accepted request evidence must not move backward. A manual-scope load can read queued R, pause, then overwrite the map after an ACK event has stored a newer revision. A subsequent map-only observer could wait despite accepted storage. Existing user-visible symptom is not established.
-**User contract.** One person's accepted action stays accepted when another screen finishes opening. Reproduce the delayed list/ACK interleaving before changing the canonical map; preserve owner/generation, request identity and retention boundaries. Note-delivery receipts must observe their own request from capture and must not depend on a later map-only read.
+**Severity.** P3 recheck — source-only transient presentation risk; no dedicated runtime or visible screen failure yet.
+**Found / anchors.** 2026-10-18 class review; `frontend/app/data-engine/engine.ts:340-345,376-381`, `frontend/app/data-engine/react.client.tsx:953-964`.
+**Expected / risk.** A request list read can begin before an ACK and return afterward. `readCollection` and `refreshCollection` compose their returned documents from that old list rather than the newer event record. A returned row may briefly say pending after acceptance. These methods do not overwrite the live request map; no evidence yet that a UI retains their returned value.
+**Recheck.** Hold each direct method's store-list result, accept the actual command, release the earlier result and inspect its pending/value fields and the real consumer. Establish whether the hook applies it before choosing a fix. Preserve account and retained-request boundaries.
+**User behavior.** Once a person's save is known accepted, finishing an earlier load should not tell them it is still waiting. New unsaved actions still need their normal pending state. No owner decision is needed.
+**Relation.** Separate transient return value from the retained-map overwrite in BUG-20261017-commit-map-stale-manual-load. Source facts alone do not prove a screen defect.
+
 
 
 ### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view

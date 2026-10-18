@@ -173,7 +173,7 @@ export class DataEngine {
       readCommitted: (resource, proof) => this.readCommittedSnapshot(resource, proof), canDeliver: () => this.canSend() });
     this.stopCommits = this.commits.subscribe(({ request }) => {
       if (request.owner !== this.owner || this.disposed) return;
-      this.commitRecords.set(request.id, request);
+      this.rememberCommit(request);
       const manual = [...this.manualForms.values()].find(item => item.scopeId === request.editorId && !item.parent.closed);
       if (manual?.parent.controller && request.state !== 'cancelled') {
         try { this.background(manual.parent.controller.adoptManualCommit(request, manual.selection), request.owner, this.generation, request.baseline.resource); }
@@ -332,6 +332,12 @@ export class DataEngine {
     return this.peekedCollection(owner, collection, { snapshots, complete: true, freshness: 'server', version });
   }
 
+  /** A delayed list may finish after delivery has already advanced the same request. */
+  private rememberCommit(request: CommitRequest): void {
+    const current = this.commitRecords.get(request.id);
+    if (!current || current.revision < request.revision) this.commitRecords.set(request.id, request);
+  }
+
   private peekedCollection(owner: string, collection: string, view: Pick<CollectionState, 'snapshots' | 'complete' | 'freshness' | 'version'>): CollectionState {
     return { ...view, checking: false, error: null,
       documents: collectionDocumentViews(owner, collection, view.snapshots, [...this.commitRecords.values()]) };
@@ -364,10 +370,7 @@ export class DataEngine {
     });
     this.background(this.commits.list().then(requests => {
       if (!active || !this.current(owner, generation)) return;
-      for (const request of requests) {
-        const newer = this.commitRecords.get(request.id);
-        if (!newer || newer.revision < request.revision) this.commitRecords.set(request.id, request);
-      }
+      requests.forEach(request => this.rememberCommit(request));
       emit();
     }), owner, generation);
     return () => { active = false; stopRead(); stopCommits(); };
@@ -886,10 +889,7 @@ export class DataEngine {
     try {
       const requests = creating ? [] : await this.commits.list();
       assertOpening();
-      for (const request of requests) {
-        const current = this.commitRecords.get(request.id);
-        if (!current || current.revision < request.revision) this.commitRecords.set(request.id, request);
-      }
+      requests.forEach(request => this.rememberCommit(request));
       const submittedCheckpoint = submittedWorkCheckpoint(owner, frozen, requests);
       const resumingCreation = Boolean(submittedCheckpoint && submittedCheckpoint.confirmed.value === null && !submittedCheckpoint.confirmed.metadata);
       const snapshot: ResourceSnapshot = creating
@@ -911,7 +911,7 @@ export class DataEngine {
       if (this.options.manualScopes) {
         const scopes = await this.options.manualScopes.list(owner, frozen); assertOpening();
         const requests = await this.commits.list(); assertOpening();
-        requests.forEach(request => this.commitRecords.set(request.id, request));
+        requests.forEach(request => this.rememberCommit(request));
         for (const scope of scopes.filter(item => item.parentEditorId === editorId)) {
           for (const request of requests.filter(item => item.editorId === scope.scopeId && item.state !== 'cancelled').sort((a, b) => a.editGeneration - b.editGeneration)) {
             await controller.adoptManualCommit(request, scope.record.selection); assertOpening();
@@ -1167,7 +1167,7 @@ export class DataEngine {
       const pinned = copy(parent.controller!.getState().checkpoint);
       const run = async () => {
         const records = await this.commits.list(); active();
-        records.forEach(request => this.commitRecords.set(request.id, request));
+        records.forEach(request => this.rememberCommit(request));
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
         if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
         if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
