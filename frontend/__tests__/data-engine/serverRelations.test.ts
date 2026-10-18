@@ -19,9 +19,10 @@ const reader: RelationReader = {
     reads.push(key(resource.collection, resource.id));
     return records.get(key(resource.collection, resource.id)) ?? { resource, value: null, metadata: null };
   },
-  list: async (collection, limit, filter) => [...records.values()]
+  list: async (collection, limit, filter, select?: (snapshot: ResourceSnapshot) => boolean) => [...records.values()]
     .filter(snapshot => snapshot.resource.collection === collection && snapshot.value?.[collection === 'studyNoteShareLinks' ? 'ownerId' : 'userId'] === owner)
     .filter(snapshot => !filter || (filter.operator === 'array-contains' ? Array.isArray(snapshot.value?.[filter.field]) && (snapshot.value![filter.field] as string[]).includes(filter.value) : snapshot.value?.[filter.field] === filter.value))
+    .filter(snapshot => !select || select(snapshot))
     .slice(0, limit),
 };
 const commandBase = (snapshot: ResourceSnapshot) => ({ protocol: 1 as const, owner, operationId: 'operation', resource: snapshot.resource, generation: snapshot.metadata?.generation ?? null, dependsOn: [] });
@@ -468,11 +469,11 @@ describe('exclusive series membership across documents', () => {
     } };
     expect(await planDataCommand(command, target, reader)).toMatchObject({ result: { kind: 'refused', code: 'membership-already-assigned' }, writes: [] });
   });
-  it('rejects incomplete owner scans even when the prefix contains already-read participants', async () => {
+  it('ignores unrelated series while retaining already-read participants', async () => {
     put('groups', 'group', {});
     const target = series('first', []);
     for (let index = 0; index < 101; index++) series(`later-${index}`, []);
-    expect(await planDataCommand(attach(target), target, reader)).toMatchObject({ result: { code: 'relation-scope-too-large' }, writes: [] });
+    expect(await planDataCommand(attach(target), target, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
   });
   it('distinguishes group and sermon identity and tolerates unrelated historical duplicates', async () => {
     put('groups', 'group', {});

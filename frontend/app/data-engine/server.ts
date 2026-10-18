@@ -313,18 +313,33 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
           rawDocuments.set(resourceKey(resource), data);
           return snapshotFromRaw(resource, data);
         },
-        list: async (collection, limit, filter) => {
+        list: async (collection, limit, filter, select) => {
           const ownerField = getResourcePolicy(collection).ownerField;
-          let query = adminDb.collection(collection).where(ownerField, '==', owner).limit(limit);
-          if (filter) query = query.where(filter.field, filter.operator, filter.value);
-          const documents = await transaction.get(query);
-          return documents.docs.map(document => {
-            const resource = { collection, id: document.id };
-            const data = document.data();
-            if (data[ownerField] !== owner) throw new DataEngineServerError(PERMISSION_DENIED, 403);
-            rawDocuments.set(resourceKey(resource), data);
-            return snapshotFromRaw(resource, data);
-          });
+          const pageSize = select ? 100 : limit;
+          const matches: ResourceSnapshot[] = [];
+          let cursor: string | undefined;
+          // Every page belongs to this transaction. Unrelated rows are read, but
+          // do not consume the selected participant/effect budget or raw cache.
+          while (matches.length < limit) {
+            let query = adminDb.collection(collection).where(ownerField, '==', owner)
+              .orderBy(FieldPath.documentId()).limit(pageSize);
+            if (filter) query = query.where(filter.field, filter.operator, filter.value);
+            if (cursor !== undefined) query = query.startAfter(cursor);
+            const documents = await transaction.get(query);
+            for (const document of documents.docs) {
+              const resource = { collection, id: document.id };
+              const data = document.data();
+              if (data[ownerField] !== owner) throw new DataEngineServerError(PERMISSION_DENIED, 403);
+              const snapshot = snapshotFromRaw(resource, data);
+              if (select && !select(snapshot)) continue;
+              rawDocuments.set(resourceKey(resource), data);
+              matches.push(snapshot);
+              if (matches.length === limit) return matches;
+            }
+            if (!select || documents.docs.length < pageSize) return matches;
+            cursor = documents.docs[documents.docs.length - 1].id;
+          }
+          return matches;
         },
       });
       const acceptedAt = new Date().toISOString();

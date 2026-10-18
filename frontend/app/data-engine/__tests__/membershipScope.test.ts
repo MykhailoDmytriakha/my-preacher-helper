@@ -79,6 +79,37 @@ describe('membership intent projection', () => {
 });
 
 describe('durable pinned membership stage', () => {
+  it('opens and restores a large complete catalog while saving only the two changed series', async () => {
+    const t = fixture(), captured = [...pins(), ...Array.from({ length: 305 }, (_, index) => ({ baseline: snapshot(`unrelated-${index}`), predecessor: null }))];
+    const scope = t.begin('large-catalog', captured); await scope.settled();
+    const stored = (await t.scopes.read('owner', 'large-catalog'))!;
+    const restored = MembershipScope.restore(stored, t.port);
+    expect(restored.getState().values).toHaveLength(307);
+    await restored.update(move); expect(await restored.save()).toHaveLength(2);
+    const requests = await t.commits.list('owner');
+    expect(requests.map(request => request.baseline.resource.id).sort()).toEqual(['a', 'b']);
+    expect(restored.getState().record.pins.slice(2)).toEqual(captured.slice(2));
+    expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('allows a large optional catalog when creating one member in one series', async () => {
+    const t = fixture(), scope = MembershipScope.beginCreation('owner', 'creation:large', { collection: 'sermons', id: 'new-sermon' },
+      { userId: 'owner', title: 'New sermon', verse: 'Romans 1', date: 'now', thoughts: [] }, t.port);
+    await scope.settled();
+    await scope.pinCreationSeries([...pins(), ...Array.from({ length: 305 }, (_, index) => ({ baseline: snapshot(`unrelated-${index}`), predecessor: null }))]);
+    await scope.update({ kind: 'assign', targetId: 'b', refs: [{ type: 'sermon', refId: 'new-sermon' }] });
+    expect(await scope.save()).toHaveLength(2);
+    expect((await t.commits.list('owner')).map(request => request.baseline.resource.collection).sort()).toEqual(['series', 'sermons']);
+  });
+
+  it('still refuses an oversized actual relation capture without submitting any participant', async () => {
+    const t = fixture(), captured = Array.from({ length: 101 }, (_, index) => ({ baseline: snapshot(`related-${index}`, true), predecessor: null }));
+    const scope = t.begin('large-effect', captured); await scope.settled();
+    await scope.update({ kind: 'remove', refs: [ref] });
+    await expect(scope.save()).rejects.toThrow('Invalid atomic relation capture');
+    expect(await t.commits.list('owner')).toEqual([]);expect(t.send).not.toHaveBeenCalled();
+  });
+
   const creationResource = { collection: 'sermons', id: 'new-sermon' };
   const creationValue = { userId: 'owner', title: '', verse: '', date: 'now', thoughts: [] };
   const create = (t: ReturnType<typeof fixture>) => MembershipScope.beginCreation('owner', 'creation:scope', creationResource, creationValue, t.port);

@@ -11,6 +11,14 @@ For engine-owned collections, use the relation owner through the public engine f
 - For sermon source notes, `useSourceNoteLink` takes the engine `useDocumentActions().commit` path when sermons are enabled; `sourceNoteIds` remains the stored owner and `useSermonsBuiltOnNote` derives the other view.
 - No mirrored copy on the other side. `sermon.seriesId`, `group.seriesId` and `seriesPosition` are deprecated and ignored by readers; nothing sets them any more except cleanup to `null`. The engine refuses them in an ordinary create or update with `relation-command-required` (`frontend/app/data-engine/serverRelations.ts`), and likewise `series.items`, `sermonIds`, `seriesKind`.
 
+## Search the complete atomic relation scope
+
+- `serverRelations.ts` owns semantic selection. The server reader in `server.ts` applies it before the selected-participant quota, reading owner-scoped pages ordered by document ID inside the same Firestore transaction. Continue past pages with no matches; stop only at exhaustion or the requested matching limit (including the planner sentinel).
+- Keep `currentItems` legacy fallback for series, root and section-only note membership, typed member identity, and the final staged-series overlay. Existing `sermonIds` or root `noteIds` indexes alone do not cover all historical references.
+- The membership selector pins the complete catalog for an immutable opening view, recovery and source discovery. Do not limit this catalog by the command participant quota. `MembershipScope.captures()` includes only changed series and an explicit target/creation; `CommitQueue.saveAtomic`, atomic identity, domain commands and server scope retain their actual participant limits. Cover large restored catalogs and optional creation selectors as well as oversized real effects.
+- Preserve overlap plus sentinel and the 100-resource total scope: a simple delete allows 99 related series plus the primary; 100 related refuses with no partial effects. The quota bounds selected participants, not read work: discovery remains O(N) reads and is subject to Firestore transaction deadlines and contention. A complete flat index needs a separate migration before it can replace discovery.
+- Regressions: `__tests__/data-engine/server.test.ts` (305 unrelated rows, late matches/duplicates, 99/100 boundary) and `serverRelations.test.ts` (legacy identities, staged moves, ownership and atomic refusal). `app/data-engine/__tests__/membershipScope.test.ts` covers large restored/creation catalogs and real oversized capture refusal. Recipe changes must retain both successful ordinary actions and genuine refusal cases.
+
 ## Legacy paths (unconverted collections only)
 
 These compatibility paths are not templates for new features. `frontend/app/services/seriesMembership.client.ts` remains a compatibility writer.

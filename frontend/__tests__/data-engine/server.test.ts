@@ -75,6 +75,91 @@ beforeEach(() => {
   });
 });
 
+describe('relation scope with unrelated owner documents', () => {
+  const owner = 'owner-1';
+  const member = (id: string, type = 'sermon') => ({ id: `item-${id}`, type, refId: id, position: 1 });
+  const putSeries = (id: string, items: Raw[] = []) => documents.set(`series/${id}`, {
+    userId: owner, title: 'Keep series', items, sermonIds: items.filter(item => item.type === 'sermon').map(item => item.refId),
+  });
+  const unrelated = (collection: string, count = 305) => {
+    for (let index = 0; index < count; index++) {
+      const id = `a-${String(index).padStart(4, '0')}`;
+      if (collection === 'series') putSeries(id);
+      else documents.set(`${collection}/${id}`, { userId: owner, title: 'Unrelated', noteIds: [], sections: [] });
+    }
+  };
+  const remove = (collection: string, id: string, baseline: Raw): DataCommand => ({
+    protocol: 1, owner, operationId: `remove-${collection}`, resource: { collection, id }, generation: null,
+    dependsOn: [], kind: 'delete', baseline: baseline as never,
+  });
+  const attach = (): DataCommand => ({
+    protocol: 1, owner, operationId: 'attach-after-unrelated', resource: { collection: 'series', id: 'z-target' },
+    generation: null, dependsOn: [], kind: 'relation', relation: 'series-membership', edits: [
+      { resource: { collection: 'series', id: 'z-target' }, generation: null, beforeItems: [], afterItems: [member('g', 'group') as never] },
+    ],
+  });
+
+  it.each(['sermons', 'groups'])('deletes %s and cleans a late related series beyond three unrelated pages', async collection => {
+    unrelated('series');
+    const baseline = { userId: owner, title: 'Delete target' };
+    documents.set(`${collection}/target`, baseline);
+    putSeries('z-related', [member('target', collection === 'groups' ? 'group' : 'sermon'), { ...member('keep'), position: 2 }]);
+    documents.set('series/z-foreign', { userId: 'victim', items: [member('target')] });
+    const untouched = structuredClone(documents.get('series/a-0000'));
+    expect(await processCommand(owner, remove(collection, 'target', baseline))).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get(`${collection}/target`)?._dataEngine).toMatchObject({ deleted: true });
+    expect(documents.get('series/z-related')).toMatchObject({ items: [{ refId: 'keep', position: 1 }], sermonIds: ['keep'] });
+    expect(documents.get('series/a-0000')).toEqual(untouched);
+    expect(documents.get('series/z-foreign')?.userId).toBe('victim');
+  });
+
+  it('deletes a note and a late legacy section-only link without rewriting unrelated materials', async () => {
+    unrelated('studyMaterials');
+    const baseline = { userId: owner, content: 'Delete target', materialIds: [] };
+    documents.set('studyNotes/n', baseline);
+    documents.set('studyMaterials/z-related', { userId: owner, title: 'Keep title', noteIds: [],
+      sections: [{ id: 'section', title: 'Keep section', connector: 'Keep words', noteIds: ['n'] }] });
+    const untouched = structuredClone(documents.get('studyMaterials/a-0000'));
+    expect(await processCommand(owner, remove('studyNotes', 'n', baseline))).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('studyMaterials/z-related')).toMatchObject({ title: 'Keep title', noteIds: [],
+      sections: [{ title: 'Keep section', connector: 'Keep words', noteIds: [] }] });
+    expect(documents.get('studyMaterials/a-0000')).toEqual(untouched);
+  });
+
+  it('attaches a group after unrelated series without weakening exclusive membership', async () => {
+    unrelated('series'); documents.set('groups/g', { userId: owner, title: 'Group' }); putSeries('z-target');
+    expect(await processCommand(owner, attach())).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('series/z-target')).toMatchObject({ items: [member('g', 'group')], sermonIds: [] });
+  });
+
+  it('finds a real duplicate beyond the unrelated prefix and refuses every proposed write', async () => {
+    unrelated('series'); documents.set('groups/g', { userId: owner }); putSeries('z-target');
+    putSeries('z-assigned', [member('g', 'group')]);
+    expect(await processCommand(owner, attach())).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+    expect(documents.get('series/z-target')?.items).toEqual([]);
+    expect(documents.get('series/z-assigned')?.items).toEqual([member('g', 'group')]);
+  });
+
+  it.each([99, 100])('enforces the exact participant boundary for %s related series', async count => {
+    const baseline = { userId: owner, title: 'Target' };
+    documents.set('groups/g', baseline);
+    for (let index = 0; index < count; index++) putSeries(`related-${index}`, [member('g', 'group')]);
+    const result = await processCommand(owner, remove('groups', 'g', baseline));
+    expect(result.kind).toBe(count === 99 ? 'acknowledged' : 'refused');
+    if (count === 100) expect(documents.get('groups/g')).toEqual(baseline);
+    else expect(documents.get('series/related-98')?.items).toEqual([]);
+  });
+
+  it('keeps the atomic refusal for too many genuinely related records', async () => {
+    const baseline = { userId: owner, title: 'Keep target' };
+    documents.set('groups/g', baseline);
+    for (let index = 0; index < 101; index++) putSeries(`related-${index}`, [member('g', 'group')]);
+    expect(await processCommand(owner, remove('groups', 'g', baseline))).toMatchObject({ kind: 'refused', code: 'relation-scope-too-large' });
+    expect(documents.get('groups/g')).toEqual(baseline);
+    expect(documents.get('series/related-100')?.items).toEqual([member('g', 'group')]);
+  });
+});
+
 describe('accepted resource recency', () => {
   const first = '2026-10-15T10:00:00.000Z';
   const later = '2026-10-15T11:00:00.000Z';

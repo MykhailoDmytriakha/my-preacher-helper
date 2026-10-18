@@ -1,6 +1,6 @@
 import { prepareDomainCommand } from './domainPolicy';
 import { projectMembershipAction, type MembershipAction } from './membershipIntent';
-import { equalValues, isValidIdentifier, MAX_RELATION_RESOURCES } from './protocol';
+import { equalValues, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { AtomicCapture } from './commits';
@@ -39,7 +39,7 @@ export function validateMembershipScope(record: MembershipScopeRecord): void {
   if (record?.kind !== 'membership' || record.version !== 1 || !isValidIdentifier(record.owner) || !record.scopeId
     || !Number.isSafeInteger(record.revision) || record.revision < 0 || !Number.isSafeInteger(record.generation) || record.generation < 0
     || !['editing', 'saving', 'submitted', 'cancelled'].includes(record.phase) || !Array.isArray(record.pins)
-    || record.pins.length > MAX_RELATION_RESOURCES || new Set(record.pins.map(pin => pin.baseline?.resource.id)).size !== record.pins.length
+    || new Set(record.pins.map(pin => pin.baseline?.resource.id)).size !== record.pins.length
     || !Array.isArray(record.requestIds) || record.requestIds.some(id => !isValidIdentifier(id)) || new Set(record.requestIds).size !== record.requestIds.length
     || (record.phase !== 'submitted' && record.requestIds.length > 0)) throw new Error('Invalid membership scope');
   for (const pin of record.pins) validatePin(pin, record.owner);

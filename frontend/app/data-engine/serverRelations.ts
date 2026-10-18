@@ -15,7 +15,7 @@ export interface RelationFilter { field: 'materialIds' | 'seriesId' | 'noteId' |
 export interface RelationReader {
   get(resource: ResourceRef): Promise<ResourceSnapshot>;
   /** Implementations always add authenticated owner scope; callers cannot choose it. */
-  list(collection: string, limit: number, filter?: RelationFilter): Promise<ResourceSnapshot[]>;
+  list(collection: string, limit: number, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]>;
 }
 export interface CommandPlan { result: CommandResult; writes: ResourceSnapshot[] }
 
@@ -83,6 +83,11 @@ function materialSections(value: DocumentData, noteIds: string[]): void {
   }
 }
 
+function materialHasNote(value: DocumentData, noteId: string): boolean {
+  return ids(value.noteIds).includes(noteId) || (Array.isArray(value.sections)
+    && value.sections.some(section => ownObject(section) && ids(section.noteIds).includes(noteId)));
+}
+
 function scratchSources(value: DocumentData | null): Map<string, string> {
   const sources = new Map<string, string>();
   if (!Array.isArray(value?.scratch)) return sources;
@@ -117,11 +122,11 @@ class RelationPlanner {
     return this.cached.get(key(resource)) ?? this.remember(await this.reader.get(resource));
   }
 
-  private async list(collection: string, filter?: RelationFilter): Promise<ResourceSnapshot[]> {
+  private async list(collection: string, filter?: RelationFilter, select?: (snapshot: ResourceSnapshot) => boolean): Promise<ResourceSnapshot[]> {
     // Returned rows may include documents already read individually. Reserve room
     // for those duplicates plus one new row to prove a truncated scope cannot pass.
     const overlap = [...this.cached.values()].filter(snapshot => snapshot.resource.collection === collection).length;
-    const values = await this.reader.list(collection, MAX_RELATION_RESOURCES - this.cached.size + overlap + 1, filter);
+    const values = await this.reader.list(collection, MAX_RELATION_RESOURCES - this.cached.size + overlap + 1, filter, select);
     return values.map(snapshot => this.remember(snapshot));
   }
 
@@ -203,7 +208,8 @@ class RelationPlanner {
   /** Validate the final transaction view, including documents absent from the client's edits. */
   private async exclusiveSeriesMembers(added: Set<string>): Promise<void> {
     if (!added.size) return;
-    const series = new Map((await this.list('series')).map(snapshot => [key(snapshot.resource), snapshot]));
+    const series = new Map((await this.list('series', undefined, snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted
+      && currentItems(snapshot.value).some(member => added.has(`${member.type}:${member.refId}`))))).map(snapshot => [key(snapshot.resource), snapshot]));
     for (const snapshot of this.writes.values()) {
       if (snapshot.resource.collection === 'series') series.set(key(snapshot.resource), snapshot);
     }
@@ -316,8 +322,10 @@ class RelationPlanner {
 
   private async detachSeriesMember(): Promise<void> {
     const type = this.primary.resource.collection === 'sermons' ? 'sermon' : 'group';
-    // Group refs are nested in items; a bounded owner scan avoids inventing an index.
-    for (const series of await this.list('series')) {
+    // Nested and historical memberships have no complete flat index. Only matching
+    // participants consume the atomic scope; the reader still checks every owner page.
+    for (const series of await this.list('series', undefined, snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted
+      && currentItems(snapshot.value).some(item => item.type === type && item.refId === this.primary.resource.id)))) {
       if (!series.value || series.metadata?.deleted) continue;
       const before = currentItems(series.value);
       const after = before.filter(item => !(item.type === type && item.refId === this.primary.resource.id));
@@ -345,15 +353,15 @@ class RelationPlanner {
     for (const link of links) {
       if (link.value && !link.metadata?.deleted) this.writes.set(key(link.resource), advanceResourceSnapshot(link, null, this.command.operationId, []));
     }
-    // A bounded scan covers legacy section-only references omitted from root membership.
-    for (const material of await this.list('studyMaterials')) this.removeMaterialNote(material, id);
+    // Selection includes legacy section-only references omitted from root membership.
+    for (const material of await this.list('studyMaterials', undefined, snapshot => Boolean(snapshot.value && !snapshot.metadata?.deleted
+      && materialHasNote(snapshot.value, id)))) this.removeMaterialNote(material, id);
   }
 
   private removeMaterialNote(material: ResourceSnapshot, id: string): void {
     if (!material.value || material.metadata?.deleted) return;
     const sections = material.value.sections;
-    const hasSection = Array.isArray(sections) && sections.some(section => ownObject(section) && ids(section.noteIds).includes(id));
-    if (!ids(material.value.noteIds).includes(id) && !hasSection) return;
+    if (!materialHasNote(material.value, id)) return;
     const patch: DocumentData = { noteIds: ids(material.value.noteIds).filter(value => value !== id) };
     if (Array.isArray(sections)) {
       patch.sections = sections.map(section => ownObject(section) ? { ...section, noteIds: ids(section.noteIds).filter(value => value !== id) } : section);
