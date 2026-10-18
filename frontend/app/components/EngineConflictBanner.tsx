@@ -298,10 +298,10 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   useEffect(() => {
     void refresh();
     if (!browser) return undefined;
-    // A late answer arrives as a delivery result: every journal change is a reason to look again.
-    const stop = browser.engine.subscribePending(() => { void refresh(); });
-    // The result is written into the checkpoint after the journal moves, so a local re-read on a
-    // short clock catches it too. It reads this device's IndexedDB only — no database reads.
+    // A request answer can follow its journal result; both local streams refresh the shown choice.
+    const stop = browser.engine.subscribeSavedWork(() => { void refresh(); });
+    // Another tab can also update device storage. The visible-page fallback reads this device's
+    // IndexedDB only, without database reads.
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void refresh(); }, pollMs);
     return () => { stop(); window.clearInterval(timer); sequence.current += 1; withdraw(); };
   }, [browser, refresh, pollMs, interfaceLanguage, withdraw]);

@@ -512,6 +512,42 @@ describe('DataEngine composition', () => {
     } finally { s.engine.dispose(); }
   });
 
+  it('notifies saved-work readers after a durable request answer and stops after unsubscribe', async () => {
+    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'Retained words' }); await editor.save();
+    const reads: ReturnType<typeof s.commits.list>[] = [];
+    const listener = jest.fn(() => { reads.push(s.commits.list('owner')); });
+    const stop = s.engine.subscribeSavedWork(listener);
+    s.engine.subscribeSavedWork(() => { throw new Error('Rendering failed'); });
+    s.server.set(keyOf('owner', resource), initial(2, 'Stored words'));
+    s.engine.setOnline(true); await s.engine.retry(); await drainMicrotasks();
+    expect((await Promise.all(reads)).some(requests => requests.some(request => request.state === 'conflict'
+      && request.result?.kind === 'conflict' && request.result.snapshot.value?.content === 'Stored words'))).toBe(true);
+    expect(editor.getState().checkpoint.draft?.content).toBe('Retained words');
+    expect(s.onError).not.toHaveBeenCalled();
+    stop(); listener.mockClear();
+    await editor.acceptRemote(); await drainMicrotasks();
+    expect(listener).not.toHaveBeenCalled();
+    s.engine.dispose();
+    expect(() => s.engine.subscribeSavedWork(jest.fn())).toThrow('disposed');
+  });
+
+  it('does not publish another account\'s late request answer to saved-work readers', async () => {
+    const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'tab');
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'Owned words' }); await editor.save();
+    const answer = deferred<Awaited<ReturnType<EngineTransport['send']>>>();
+    jest.mocked(s.transport.send).mockReturnValue(answer.promise);
+    const listener = jest.fn(); const stop = s.engine.subscribeSavedWork(listener);
+    s.engine.setOnline(true); await drainMicrotasks();
+    const command = jest.mocked(s.transport.send).mock.calls[0][0];
+    expect(command.owner).toBe('owner');
+    s.engine.setOwner('other'); await drainMicrotasks(); listener.mockClear();
+    answer.resolve(applyCommand(command, initial())); await drainMicrotasks(); await drainMicrotasks();
+    expect(listener).not.toHaveBeenCalled();
+    expect(s.engine.getPending()).toEqual([]);
+    stop(); s.engine.dispose();
+  });
+
   it('publishes queued delivery only to its owning editor and not to another editor of the same resource', async () => {
     const s = setup({ online: false });
     const first = await s.engine.openEditor(resource, 'first');

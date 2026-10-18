@@ -53,10 +53,10 @@ const waitForRemoteCandidate = async (harness: ReturnType<typeof documentEngineH
 let actions: ReturnType<typeof useDocumentActions> | null = null;
 function Actions() { const current = useDocumentActions(); useEffect(() => { actions = current; }); return null; }
 
-function setup() {
+function setup(pollMs = 50) {
   const harness = documentEngineHarness({ resource, value: stored, metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={50} /></DataEngineProvider>);
+  render(<DataEngineProvider><Actions /><EngineConflictBanner pollMs={pollMs} /></DataEngineProvider>);
   return harness;
 }
 
@@ -71,6 +71,37 @@ describe('a late conflict on a document no screen has open', () => {
     await act(async () => { await settleEngine(); await settleEngine(); });
     await waitForRemoteCandidate(harness, 'Written on the phone');
   };
+
+  it.each(['mine', 'stored'] as const)('refreshes a newly answered request before the first %s choice without waiting for the poll', async choice => {
+    const harness = setup(60_000);
+    await waitFor(() => expect(actions?.ready).toBe(true));
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const compareAndSet = harness.commits.compareAndSet.bind(harness.commits);
+    let held = false;
+    const transition = jest.spyOn(harness.commits, 'compareAndSet').mockImplementation(async (previous, next) => {
+      if (!held && next.state === 'conflict') { held = true; await blocked; }
+      return compareAndSet(previous, next);
+    });
+    try {
+      harness.silentRemote({ content: 'Written on the phone' });
+      await act(async () => { await actions!.commit(resource, current => ({ ...current!, content: 'Written on the laptop' })); await settleEngine(); });
+      await waitFor(() => expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument());
+      expect(held).toBe(true);
+      await act(async () => { release(); await settleEngine(); await settleEngine(); });
+      expect((await harness.commits.list('owner'))[0].state).toBe('conflict');
+      if (choice === 'mine') {
+        await act(async () => { fireEvent.click(screen.getByText('freshness.conflictKeepMine')); await settleEngine(); await settleEngine(); });
+        await waitFor(() => expect(harness.server.value?.content).toBe('Written on the laptop'));
+      } else {
+        await confirmTextAction('freshness.conflictTakeTheirs');
+        expect(harness.server.value?.content).toBe('Written on the phone');
+      }
+      await waitFor(() => expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument());
+      expect(await harness.engine.listRecoverable(resource)).toHaveLength(0);
+      expect(await harness.engine.listPending()).toHaveLength(0);
+    } finally { release(); transition.mockRestore(); }
+  });
 
   it('shows the words this device kept and saves them when kept', async () => {
     const harness = setup();

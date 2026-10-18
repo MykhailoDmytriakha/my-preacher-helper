@@ -511,8 +511,8 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     const notify = () => { if (this.current(owner, generation)) listener(); };
     this.membershipListeners.add(notify);
-    const stopCommits = this.commits.subscribe(notify), stopPending = this.subscribePending(notify);
-    return () => { this.membershipListeners.delete(notify); stopCommits(); stopPending(); };
+    const stopSavedWork = this.subscribeSavedWork(notify);
+    return () => { this.membershipListeners.delete(notify); stopSavedWork(); };
   }
 
   /** Resume frozen capture or replay its existing identity; never rebase on retry. */
@@ -788,6 +788,15 @@ export class DataEngine {
     const subscription = () => listener();
     this.pendingListeners.add(subscription);
     return () => { this.pendingListeners.delete(subscription); };
+  }
+
+  /** Recovery and whole-action delivery depend on both journal rows and durable request answers. */
+  subscribeSavedWork(listener: () => void): () => void {
+    const stopPending = this.subscribePending(listener);
+    const stopCommits = this.commits.subscribe(({ request }) => {
+      if (!this.disposed && request.owner === this.owner) listener();
+    });
+    return () => { stopPending(); stopCommits(); };
   }
 
   dispose(): void {
