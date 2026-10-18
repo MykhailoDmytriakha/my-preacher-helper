@@ -4,6 +4,7 @@ import { CacheFirst, NetworkOnly, Serwist } from "serwist";
 import { BIBLE_CROSSREFS_CACHE, isBibleCrossRefsPath, isCrossRefsShaped } from "./utils/bibleCrossRefsCache";
 import { BIBLE_TEXT_CACHE, isBibleTextAnswer, isBibleTextPath, isBookShaped } from "./utils/bibleTextCache";
 import { NAVIGATION_DEADLINE_MS, OFFLINE_PAGE_SEEN, answerWithinDeadline, createOfflineRscNavigation, isRememberedPage, isRscNavigation } from "./utils/offlineRscNavigation";
+import { resolveOfflineShellRoute } from "./utils/offlineShellRoutes";
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from "serwist";
 
@@ -28,15 +29,10 @@ const offlineNavigation = createOfflineRscNavigation({
 });
 
 /**
- * THE START OF THE APP ON A WEAK SIGNAL (BUG-20261004-weak-network-delays-offline-navigation). The
- * installed app opens at `/`; on a signal that neither answered nor failed the page waited for it — on
- * the owner's phone 20–30 s with nothing on screen. The precached offline shell holds the dashboard
- * itself, built with this worker, so past a short wait it answers instead. Only these addresses: other
- * pages need their own code, which a device may not hold yet after a release, so they wait for the
- * network as before rather than open on a "no connection" card while the page is on its way.
+ * A stalled document must not hold a page already available on this device hostage. The same-build
+ * shell renders the supported private routes; pending page code stays visible and can finish loading.
+ * Public/auth/unknown routes keep their normal document routing (BUG-20261004-weak-network-delays-offline-navigation).
  */
-const START_PAGES = new Set(["/", "/dashboard"]);
-
 const runtimeCaching: RuntimeCaching[] = [
   /**
    * ONLY REAL ANSWERS FROM OUR API (owner's rule 1, BUG-20260908-cached-response-counts-as-live-connection).
@@ -100,7 +96,7 @@ const runtimeCaching: RuntimeCaching[] = [
     handler: ({ request }) => offlineNavigation.respond(request),
   },
   {
-    matcher: ({ request, url }) => request?.mode === "navigate" && url.origin === self.origin && START_PAGES.has(url.pathname),
+    matcher: ({ request, url }) => request?.mode === "navigate" && url.origin === self.origin && resolveOfflineShellRoute(url.pathname) !== null,
     handler: ({ request, event }) => answerWithinDeadline(
       // A refused navigation preload is no answer: the network is asked directly, as Serwist does.
       Promise.resolve((event as FetchEvent).preloadResponse).catch(() => undefined).then(preloaded => preloaded ?? fetch(request)),

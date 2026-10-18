@@ -223,11 +223,36 @@ describe('service worker transport boundary', () => {
       } finally { globalThis.fetch = original; }
     });
 
-    it('applies only to the start pages opened as documents', () => {
+    it.each(['/settings/user', '/sermons/example', '/groups/example/conduct', '/sermons/example/plan/manual'])(
+      'opens the saved shell by the deadline for a pending document at %s', async path => {
+        jest.useFakeTimers();
+        const original = globalThis.fetch;
+        globalThis.fetch = jest.fn(() => new Promise<Response>(() => undefined)) as typeof fetch;
+        const href = `https://my-preacher-helper.com${path}`;
+        let finished = false;
+        try {
+          const rule = mockOptions.runtimeCaching.find(rule => rule.matcher(opened(href)));
+          const handler = rule?.handler as undefined | ((options: { request: Request; event: unknown; url: URL }) => Promise<Response>);
+          // A document outside the bounded rule follows the ordinary pending network request.
+          const response = handler
+            ? handler({ request: new Request(href), event: { preloadResponse: Promise.resolve(undefined) }, url: new URL(href) })
+            : fetch(href);
+          const observed = response.then(answer => { finished = true; return answer; });
+          await jest.advanceTimersByTimeAsync(3001);
+          expect(finished).toBe(true);
+          expect(await (await observed).text()).toBe('precached /~offline');
+        } finally { globalThis.fetch = original; jest.useRealTimers(); }
+      }
+    );
+
+    it('applies only to supported shell pages opened as same-origin documents', () => {
       const rule = startRule();
       expect(rule.matcher(opened('https://my-preacher-helper.com/dashboard'))).toBe(true);
       expect(rule.matcher(opened(START, 'cors'))).toBe(false);
-      expect(rule.matcher(opened('https://my-preacher-helper.com/sermons/a'))).toBe(false);
+      expect(rule.matcher(opened('https://my-preacher-helper.com/sermons/a'))).toBe(true);
+      for (const path of ['/login', '/share/notes/token', '/api/me/settings', '/admin', '/unknown', '/settings/new-section']) {
+        expect(rule.matcher(opened(`https://my-preacher-helper.com${path}`))).toBe(false);
+      }
       expect(rule.matcher(opened('https://elsewhere.example/'))).toBe(false);
     });
   });

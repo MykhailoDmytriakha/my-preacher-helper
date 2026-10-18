@@ -3711,6 +3711,8 @@
     "probeBackOnline": "Connection is back. AI and transcription are ready.",
     "probeServerUnhealthy": "The connection is back, but the service is not responding properly. Try again in a few minutes.",
     "offlinePage": {
+      "opening": "Opening the page",
+      "waiting": "This page is taking longer to open. You can keep waiting, return to the home page, or try again.",
       "title": "No connection",
       "fromCache": "The app started from this device's cache — your data is here.",
       "requested": "Requested page: {{path}}",
