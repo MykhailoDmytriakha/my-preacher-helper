@@ -46,6 +46,7 @@
 | `scriptureReferenceParser.ts` `buildReferenceFromNumbers` | поражено | четвёртое число теряется, третье становится стихом |
 | `scriptureReference.ts:83` `formatScriptureReference` | поражено | `toChapter` печатается как диапазон глав, стихи теряются |
 | `bibleLink.ts` `bibleHref` | поражено | `to` — стих той же главы; конец в другой главе не выразить |
+| окно правки ссылки заметки (`studies/ScriptureRefPicker.tsx`, `referenceIn`) | поражено, честно ограничено | «Пс 9:20-25» в английском интерфейсе: чип «Ps.9:19-10:4», а окно правки показывает «Chapter Range 9–10». «Save» без изменений сохраняет как было (симулятор iPad, 2026-10-17). Любая правка начинается с двух глав целиком |
 | `components/bible/verseSheetGeometry.ts` `passageKeys` | не поражено | форму `{chapter, fromVerse, toChapter, toVerse}` уже понимает (тест «runs a passage across a chapter end») |
 | `scriptureReferenceNumbering.ts:127` | не поражено | сам строит такую форму при переводе между Библиями |
 | сохранённые ссылки заметок (`studyNotes.scriptureRefs`) | не проверено | уже сохранённые обрезанные ссылки исходного текста не помнят |
