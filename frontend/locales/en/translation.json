@@ -3233,6 +3233,11 @@
     }
   },
   "studiesWorkspace": {
+    "unfinished": {
+      "title": "Unfinished notes on this device",
+      "description": "These notes have not been created yet. Open one to continue.",
+      "continue": "Continue this note"
+    },
     "createError": "Error creating study note.",
     "browseTags": "Browse tags",
     "tabs": {

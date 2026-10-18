@@ -1,7 +1,7 @@
 /**
  * Autosave for the study-note editor, extracted so its ORDER can be tested.
  *
- * The order is not cosmetic. A new note is drafted under the placeholder id "new";
+ * The order is not cosmetic. A new note is drafted at its reserved address;
  * the moment the create returns a real id the durable record has to be CARRIED to
  * that id before the save is reported, because reporting it retires the draft under
  * the key the draft hook still holds — leaving nothing to carry and no safety net
@@ -24,11 +24,13 @@ import type { ScriptureReference, StudyNote } from '@/models/models';
 const EMPTY_SOURCE_IDS: string[] = [];
 
 export function useNoteAutoSave({
-    noteId, isNew, creationId, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
     creationId?: string;
+    /** Durable precreate address; legacy callers still use the shared placeholder. */
+    draftDocId?: string;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
     updateNote: (args: {
@@ -104,7 +106,7 @@ export function useNoteAutoSave({
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // CARRY THE DRAFT FIRST, THEN report the save.
             //
-            // The note was drafted under the placeholder id "new" and now has a
+            // The note was drafted at its reserved (or legacy placeholder) address and now has a
             // real id. The record is carried, not deleted: the id arrived before
             // the server may have confirmed anything, and a plain clear would leave
             // the text with no durable home until the next keystroke. Reporting the
@@ -112,7 +114,7 @@ export function useNoteAutoSave({
             // `markSaved` retires the draft under the key the hook still holds
             // ("new"), so the move found nothing left to carry and the safety net
             // was gone while the write was still in flight.
-            if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'), creationId);
+            if (uid) moveDraft(draftKey(uid, draftDocId, 'note'), draftKey(uid, newNote.id, 'note'), creationId);
             window.history.replaceState(null, '', `/studies/${newNote.id}`);
             setCreatedNoteId(newNote.id);
 
@@ -128,7 +130,7 @@ export function useNoteAutoSave({
                 // retire it from the old hook's moving key; remove only this exact,
                 // server-confirmed payload at its stable destination.
                 if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
-                if (uid && creationId === newNote.id) clearCreationDraft(draftKey(uid, 'new', 'note'), creationId);
+                if (uid && creationId === newNote.id) clearCreationDraft(draftKey(uid, draftDocId, 'note'), creationId);
             };
             if (acceptance.kind === 'persisted') {
                 retirePersistedCreateDraft();
@@ -159,7 +161,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;

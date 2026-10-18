@@ -125,6 +125,36 @@ describe('StudiesPage', () => {
     });
   });
 
+  it('shows each unfinished note with its own continue link after the list opens', () => {
+    localStorage.clear();
+    const put = (owner: string, id: string) => localStorage.setItem(`draft:v1:${owner}:new~${id}:note`, JSON.stringify({ savedAt: 1, creationTargetId: id,
+      value: { title: `Title ${id}`, content: `Words ${id}`, tags: [], scriptureRefs: [], type: 'note' } }));
+    put('mock-user', 'A'); put('mock-user', 'B'); put('other-owner', 'private');
+    const view = render(<StudiesPage />);
+    try {
+      expect(screen.getByRole('link', { name: /Title A/ })).toHaveAttribute('href', '/studies/new?draft=new~A&draftOwner=mock-user');
+      expect(screen.getByRole('link', { name: /Title B/ })).toHaveAttribute('href', '/studies/new?draft=new~B&draftOwner=mock-user');
+      expect(screen.queryByText('Words private')).not.toBeInTheDocument();
+      expect(screen.getByText('Words A')).toBeInTheDocument();
+      expect(screen.getByText('Words B')).toBeInTheDocument();
+    } finally { view.unmount(); localStorage.clear(); }
+  });
+
+  it('hides the local draft when its captured note row is shown and keeps its backup until canonical acceptance', () => {
+    localStorage.clear();
+    const key = 'draft:v1:mock-user:new~A:note';
+    localStorage.setItem(key, JSON.stringify({ savedAt: 1, creationTargetId: 'A', value: { title: 'Uncreated title', content: 'Kept words', tags: [], scriptureRefs: [], type: 'note' } }));
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'A', title: 'Captured title' })] });
+    const view = render(<StudiesPage />);
+    try {
+      expect(screen.queryByRole('link', { name: /Uncreated title/ })).not.toBeInTheDocument();
+      expect(localStorage.getItem(key)).not.toBeNull();
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'A', title: 'Captured title' })], confirmedCreationIds: new Set(['A']) });
+      view.rerender(<StudiesPage />);
+      expect(localStorage.getItem(key)).toBeNull();
+    } finally { view.unmount(); localStorage.clear(); }
+  });
+
   describe('a list that failed to load, with the phone flag saying offline', () => {
     const setPhoneFlag = (value: boolean) =>
       Object.defineProperty(navigator, 'onLine', { configurable: true, value });

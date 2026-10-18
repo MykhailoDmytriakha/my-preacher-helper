@@ -30,6 +30,7 @@ import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scrip
 import { useTranslation } from '@locales/useTranslation';
 
 import ShareNoteModal from './components/ShareNoteModal';
+import UnfinishedNoteDrafts from './components/UnfinishedNoteDrafts';
 import StudyNoteCard from './StudyNoteCard';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -40,6 +41,7 @@ export default function StudiesPage() {
   const {
     uid,
     notes,
+    confirmedCreationIds,
     loading: notesLoading,
     error: notesError,
   } = useStudyNotes();
@@ -316,6 +318,8 @@ export default function StudiesPage() {
             </button>
           </div>
         </div>
+
+        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} />
 
         {/* Stats bar */}
         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">

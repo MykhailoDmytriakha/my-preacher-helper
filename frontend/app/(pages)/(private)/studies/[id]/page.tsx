@@ -21,6 +21,7 @@ import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
+import { useNewNoteOpening, useNewStudyNoteDraft } from '@/hooks/useNewStudyNoteDraft';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { useStickyOffsets } from '@/hooks/useStickyOffsets';
@@ -36,7 +37,6 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { bibleHref } from '@/utils/bibleLink';
-import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { findSectionById } from '@/utils/markdownSections';
@@ -596,16 +596,19 @@ function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number,
 }
 
 export default function StudyNoteEditorPage() {
+    const opening = useNewNoteOpening();
+    return <NoteEditor key={opening.key} openingDraftId={opening.draftDocId} />;
+}
+
+function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     const { t } = useTranslation();
     const router = useRouter();
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
-    const noteId = createdNoteId || routeId;
-    const isNew = noteId === 'new';
-
     const { uid, notes, noteDelivery, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
-
-    const creation = useMemo(() => ({ uid, id: newClientId() }), [uid]);
+    const { creationId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
+        uid, routeId, createdNoteId, openingDraftId, notes, confirmedCreationIds,
+    });
 
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
@@ -716,19 +719,21 @@ export default function StudyNoteEditorPage() {
 
     const { recovered, acceptRecovered, discardRecovered, markSaved } = useDurableDraft<NoteDraftPayload>({
         uid,
-        docId: noteId,
-        creationTargetId: isNew ? creation.id : undefined,
+        docId: draftDocId,
+        creationTargetId,
         confirmedCreationIds,
         aggregate: 'note',
         value: draftPayload,
         enabled: isInitialized,
-        confirmedValue: confirmedDraft,
+        // The empty opening is a baseline, not a server acceptance or Saved claim.
+        confirmedValue: isNew ? undefined : confirmedDraft,
     });
 
     const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
-        creationId: creation.id,
+        creationId,
+        draftDocId,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,
@@ -900,7 +905,10 @@ export default function StudyNoteEditorPage() {
     // ─── HANDLERS ─────────────────────────────────────────────────────────
 
     const handleBack = () => {
-        const queryParams = searchParams.toString();
+        const query = new URLSearchParams(searchParams.toString());
+        query.delete('draft');
+        query.delete('draftOwner');
+        const queryParams = query.toString();
         router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
