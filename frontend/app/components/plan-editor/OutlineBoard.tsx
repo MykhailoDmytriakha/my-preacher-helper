@@ -145,7 +145,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onSubPointDeleted,
   onOutlinePointMoved,
   onSubPointMoved,
-  className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 h-full',
+  className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 min-h-min md:h-full',
   showNotes = false,
   directText = false,
   scratch,
@@ -769,7 +769,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       <section
         key={section}
         data-testid={`outline-board-column-${section}`}
-        className={`flex flex-col min-h-0 rounded-xl border ${colors.border} bg-white dark:bg-gray-800`}
+        className={`flex flex-col min-h-min rounded-xl border ${colors.border} bg-white dark:bg-gray-800`}
       >
         <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl ${colors.headerBg}`}>
           <h3 className="font-semibold text-gray-700 dark:text-gray-100">{getSectionLabel(t, styleKey)}</h3>

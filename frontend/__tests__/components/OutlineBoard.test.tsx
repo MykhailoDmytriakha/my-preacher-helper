@@ -39,6 +39,26 @@ describe('OutlineBoard', () => {
     expect(next.conclusion).toHaveLength(0);
   });
 
+  it.each(['introduction', 'main', 'conclusion'] as const)(
+    'cancels an uncommitted point in %s and restores the add control',
+    (section) => {
+      const onChange = jest.fn();
+      render(<OutlineBoard value={empty()} onChange={onChange} />);
+      const column = screen.getByTestId(`outline-board-column-${section}`);
+      fireEvent.click(within(column).getByRole('button', { name: 'structure.addPointButton' }));
+      fireEvent.change(within(column).getByPlaceholderText('structure.addPointPlaceholder'), {
+        target: { value: 'Uncommitted point' },
+      });
+      fireEvent.click(within(column).getByRole('button', { name: 'common.cancel' }));
+
+      expect(onChange).not.toHaveBeenCalled();
+      expect(within(column).queryByPlaceholderText('structure.addPointPlaceholder')).not.toBeInTheDocument();
+      fireEvent.click(within(column).getByRole('button', { name: 'structure.addPointButton' }));
+      expect(within(column).getByPlaceholderText('structure.addPointPlaceholder')).toHaveValue('');
+      expect(onChange).not.toHaveBeenCalled();
+    }
+  );
+
   it('edits an existing point text', () => {
     const value: SermonOutline = {
       introduction: [{ id: 'p1', text: 'Old text' }],
