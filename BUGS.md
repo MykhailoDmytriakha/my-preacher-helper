@@ -305,6 +305,11 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261018-section-picker-fast-tabs · Быстрые переключения частей могут изменить выбранные пресеты
+**Якоря.** `frontend/app/components/SectionTimePicker.tsx:112`, `frontend/app/components/CustomTimePicker.tsx:111` (родственный обработчик требует проверки).
+В локальном Chromium быстрый выбор 2m → основная 15m → заключение 5m → подтвердить дал 2/2/2. Ожидалось: 2/15/5. Предположение: отложенный обработчик плавной прокрутки перечитывает уже другую позицию колеса. Проверить обычный темп и оба picker; сервер не участвует. Воспроизведено пока один раз при автоматизации, вне исправления отображения времени.
+**Как должно работать для пользователя.** Пресеты каждой части сохраняют явный выбор, переключение вкладки не меняет время соседней части.
+
 ### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
 **P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
 **Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.

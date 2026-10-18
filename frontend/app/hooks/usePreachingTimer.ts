@@ -654,6 +654,11 @@ export const usePreachingTimer = (
     mainRatio: settings.mainRatio,
     conclusionRatio: settings.conclusionRatio,
     mode: timerMode,
+    phaseDurations: {
+      introduction: timerState.introductionDuration,
+      main: timerState.mainDuration,
+      conclusion: timerState.conclusionDuration,
+    },
     updateSettings: () => {
       // This would update settings and recalculate durations
       // TODO: Implement settings persistence

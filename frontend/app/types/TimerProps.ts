@@ -100,6 +100,7 @@ export interface UsePreachingTimerReturn {
     mainRatio: number;
     conclusionRatio: number;
     mode: TimerMode;
+    phaseDurations: TimerPhaseDurations;
     updateSettings: (settings: Partial<{
       totalDuration: number;
       introductionRatio: number;

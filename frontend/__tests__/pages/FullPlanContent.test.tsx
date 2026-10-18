@@ -24,6 +24,26 @@ const basePlan = {
 };
 
 describe("FullPlanContent", () => {
+  it("shows exact section budgets, including a skipped section, only while preaching", () => {
+    const timerState = {
+      currentPhase: "introduction" as const,
+      phaseProgress: 0,
+      totalProgress: 0,
+      phaseProgressByPhase: { introduction: 0, main: 0, conclusion: 0 },
+      timeRemaining: 900,
+      isFinished: false,
+      phaseDurations: { introduction: 0, main: 750, conclusion: 150 },
+    };
+    const props = { combinedPlan: basePlan, t, noContentText: "No content", timerState };
+    const { rerender } = render(<FullPlanContent {...props} isPreachingMode />);
+    expect(screen.getByRole('heading', { name: 'Introduction 00:00' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Main 12:30' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Conclusion 02:30' })).toBeInTheDocument();
+    rerender(<FullPlanContent {...props} isPreachingMode={false} />);
+    expect(screen.getByRole('heading', { name: 'Main' })).toBeInTheDocument();
+    expect(screen.queryByText('12:30')).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     jest.useFakeTimers();
   });

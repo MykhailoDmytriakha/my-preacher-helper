@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
@@ -111,8 +111,26 @@ const markerFor = (pointText: string) =>
 describe('the fullness map on the hand-written plan', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     mockSearchParams = new URLSearchParams();
     mockSermon = sermonWithPlan({ p1: 'Warriors, marksmen, craftsmen' });
+  });
+
+  it.each(['', 'source=note&'])('shows section times and live progress in preaching mode (%s)', async (source) => {
+    localStorage.setItem('preaching-timer-mode', 'sections');
+    localStorage.setItem('preaching-timer-phase-durations', JSON.stringify({ introduction: 120, main: 900, conclusion: 300 }));
+    mockSearchParams = new URLSearchParams(`${source}planView=preaching`);
+    await renderPage();
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /sections.introduction.*02:00/ })).toBeInTheDocument());
+    expect(screen.getByRole('heading', { name: /sections.main.*15:00/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /sections.conclusion.*05:00/ })).toBeInTheDocument();
+    const timer = screen.getByRole('region', { name: 'plan.timer.regionLabel' });
+    expect(within(timer).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    fireEvent.click(screen.getAllByRole('button', { name: 'actions.start' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'plan.timer.skip' })[0]);
+    await waitFor(() => expect(within(timer).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '9'));
+    expect(screen.getByRole('progressbar', { name: 'plan.progress.introduction' })).toHaveAttribute('aria-valuenow', '100');
   });
 
   it('shows one marker per outline point', async () => {

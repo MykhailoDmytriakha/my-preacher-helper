@@ -419,7 +419,10 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         prevState.phaseProgressByPhase.main === timerState.phaseProgressByPhase.main &&
         prevState.phaseProgressByPhase.conclusion === timerState.phaseProgressByPhase.conclusion &&
         prevState.timeRemaining === timerState.timeRemaining &&
-        prevState.isFinished === timerState.isFinished
+        prevState.isFinished === timerState.isFinished &&
+        prevState.phaseDurations?.introduction === timerState.phaseDurations?.introduction &&
+        prevState.phaseDurations?.main === timerState.phaseDurations?.main &&
+        prevState.phaseDurations?.conclusion === timerState.phaseDurations?.conclusion
       ) {
         return prevState; // No change, return previous state
       }
