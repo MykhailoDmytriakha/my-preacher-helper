@@ -301,6 +301,19 @@ export async function awaitAcceptance(
   return acceptance;
 }
 
+/** A public engine promise proves local capture; legacy writers expose their own acceptance. */
+export type WriteOperation = Promise<void> | WriteSubmission;
+
+/** Await the actual owner. Local capture deliberately provides no server-delivery receipt. */
+export async function awaitWriteOperation(
+  write: WriteOperation,
+  onLateFailure: (error: unknown) => void
+): Promise<WriteAcceptance | null> {
+  if ('acceptance' in write) return awaitAcceptance(write, onLateFailure);
+  await write;
+  return null;
+}
+
 /**
  * Announce success ONLY for a write the server actually has. Offline (`queued`) and
  * no-op (`skipped`) stay silent by construction — there is no code path here that

@@ -125,15 +125,13 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     loading: Boolean(userId) && collection.loading,
     error: collection.error ? new Error(collection.error) : null,
     refreshPrayers: async () => { await collection.refresh(); },
-    createPrayer: (payload: CreatePrayerPayload): WriteSubmission & { prayerId: string } => {
+    createPrayer: (payload: CreatePrayerPayload): Promise<void> & { prayerId: string } => {
       const id = newClientId();
       const at = now();
-      return {
-        ...queuedMutation(`prayer:create:${id}`, reportLate(actions.create(resource(id), JSON.parse(JSON.stringify({
-          ...payload, status: 'active', updates: [], createdAt: at, updatedAt: at,
-        })) as DocumentData))),
-        prayerId: id,
-      };
+      const capture = reportLate(actions.create(resource(id), JSON.parse(JSON.stringify({
+        ...payload, status: 'active', updates: [], createdAt: at, updatedAt: at,
+      })) as DocumentData));
+      return Object.assign(capture, { prayerId: id });
     },
     updatePrayer,
     setStatus,

@@ -37,7 +37,7 @@ describe('plan templates on the engine', () => {
   it('lists, creates, renames at the current revision and deletes through engine actions only', async () => {
     const { result } = render();
     expect(result.current.templates).toEqual([expect.objectContaining({ id: 'tpl', name: 'Advent' })]);
-    await act(async () => { await result.current.createTemplate({ id: 'new', userId: 'u', name: 'Lent', structure: outline }).persistence; });
+    await act(async () => { await result.current.createTemplate({ id: 'new', userId: 'u', name: 'Lent', structure: outline }); });
     expect(actions.create).toHaveBeenCalledWith({ collection: 'planTemplates', id: 'new' }, expect.objectContaining({ userId: 'u', name: 'Lent' }));
     await act(async () => { await result.current.updateTemplate('tpl', { name: 'Advent 2026' }, 3).persistence; });
     expect(current).toEqual(expect.objectContaining({ name: 'Advent 2026' }));

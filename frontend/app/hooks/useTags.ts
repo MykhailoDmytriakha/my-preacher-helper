@@ -9,6 +9,7 @@ import {
   refusedWrite,
   skippedWrite,
   type WriteSubmission,
+  type WriteOperation,
 } from '@/utils/recoverableWrite';
 import { isStructureTag } from '@/utils/structureTags';
 import { useTranslation } from '@locales/useTranslation';
@@ -50,14 +51,14 @@ export function useTags(userId: string | null | undefined) {
     tags, requiredTags: NO_TAGS, customTags, allTags: customTags,
     loading: Boolean(userId) && engineTags.loading, error: engineTags.error ? new Error(engineTags.error) : null,
     refreshTags: engineTags.refresh,
-    addCustomTag: (tag: Tag): WriteSubmission => {
+    addCustomTag: (tag: Tag): WriteOperation => {
       if (!userId) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
       const id = tag.id || newClientId();
       // The form's own messages explain these two refusals next to the field.
       if (isStructureTag(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Reserved tag name')));
       if (byName(tag.name)) return queuedMutation(`tag:add:${id}`, Promise.reject(new Error('Tag with same name and userId already exists')));
-      return queuedMutation(`tag:add:${id}`, documentActions.create({ collection: 'tags', id },
-        { userId, name: tag.name, color: tag.color, required: false, createdAt: new Date().toISOString() }));
+      return documentActions.create({ collection: 'tags', id },
+        { userId, name: tag.name, color: tag.color, required: false, createdAt: new Date().toISOString() });
     },
     removeCustomTag: (tagName: string): WriteSubmission => {
       const existing = byName(tagName);

@@ -38,7 +38,7 @@ import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
-import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -247,10 +247,10 @@ export default function DashboardPage() {
       throw new Error('User is not authenticated');
     }
 
-    // Navigate only once the write is ACCEPTED, and to the id the hook minted — the
+    // Navigate only after durable local capture, and to the id the hook minted — the
     // previous code awaited the submission OBJECT and pushed `/prayers/[object Object]`.
     const submission = createPrayer({ userId: user.uid, ...payload });
-    await awaitAcceptance(submission, () => undefined);
+    await awaitWriteOperation(submission, () => undefined);
     router.push(`/prayers/${submission.prayerId}`);
   };
 
@@ -380,7 +380,7 @@ export default function DashboardPage() {
       {showPrayerModal && (
         <CreatePrayerModal
           onClose={() => setShowPrayerModal(false)}
-          onSubmit={(payload) => persistedWrite(handleCreatePrayer(payload))}
+          onSubmit={handleCreatePrayer}
           closeOnSuccess={false}
         />
       )}

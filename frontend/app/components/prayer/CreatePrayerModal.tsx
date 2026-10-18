@@ -11,8 +11,8 @@ import { PrayerRequest } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   announceIfPersisted,
-  awaitAcceptance,
-  type WriteSubmission,
+  awaitWriteOperation,
+  type WriteOperation,
 } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -20,7 +20,7 @@ export type PrayerFormPayload = Pick<PrayerRequest, 'title'> & Partial<Pick<Pray
 
 interface Props {
   onClose: () => void;
-  onSubmit: (payload: PrayerFormPayload) => WriteSubmission;
+  onSubmit: (payload: PrayerFormPayload) => WriteOperation;
   initialValues?: Partial<PrayerRequest>;
   mode?: 'create' | 'edit';
   closeOnSuccess?: boolean;
@@ -47,25 +47,25 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || saving) return;
     setSaving(true);
     try {
       const tags = tagsInput
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean);
-      const acceptance = await awaitAcceptance(
+      const acceptance = await awaitWriteOperation(
         onSubmit({
           title: title.trim(),
           description: description.trim() || undefined,
           tags: tags.length > 0 ? tags : undefined,
         }),
-        // usePrayerRequests' create/update recovery descriptor reports a late refusal while this screen is mounted.
+        // Engine creates await local capture; legacy edit submissions retain their late reporter.
         () => undefined
       );
       // A server-persisted edit retains the pre-contract confirmation. Creates are
       // queue-owned, so they intentionally stay silent even when accepted.
-      if (isEdit) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.updated')));
+      if (isEdit && acceptance) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.updated')));
       if (closeOnSuccess) {
         onClose();
         setSaving(false);

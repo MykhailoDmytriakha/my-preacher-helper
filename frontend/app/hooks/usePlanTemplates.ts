@@ -29,9 +29,9 @@ export function usePlanTemplates(userId: string | null | undefined) {
     loading: Boolean(userId) && engineTemplates.loading,
     error: engineTemplates.error ? new Error(engineTemplates.error) : null,
     refresh: engineTemplates.refresh,
-    createTemplate: (payload: CreatePlanTemplatePayload): WriteSubmission => queuedMutation(`plan-template:create:${payload.id}`,
+    createTemplate: (payload: CreatePlanTemplatePayload): Promise<void> =>
       documentActions.create({ collection: 'planTemplates', id: payload.id },
-        { userId: payload.userId, name: payload.name, structure: payload.structure as never, createdAt: now(), updatedAt: now() })),
+        { userId: payload.userId, name: payload.name, structure: payload.structure as never, createdAt: now(), updatedAt: now() }),
     updateTemplate: (id: string, updates: UpdatePlanTemplatePayload, expectedRevision?: number | null): WriteSubmission => {
       // An edit built from an older template is refused with the revision the template holds
       // now, and the screen offers the choice.

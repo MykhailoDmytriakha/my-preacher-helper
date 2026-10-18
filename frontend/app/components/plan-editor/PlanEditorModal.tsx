@@ -14,7 +14,7 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -131,6 +131,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     closeDisabled: Boolean(pendingApply) || saveAsOpen || clearConfirmOpen,
   });
   const [saveAsName, setSaveAsName] = useState('');
+  const saveAsNameRef = useRef(saveAsName);
+  saveAsNameRef.current = saveAsName;
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const savingTemplateRef = useRef(false);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -383,22 +387,29 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   };
 
   const saveAsTemplate = async () => {
-    const name = saveAsName.trim();
-    if (!name) return;
+    const submittedName = saveAsName;
+    const name = submittedName.trim();
+    if (!name || savingTemplateRef.current) return;
+    savingTemplateRef.current = true;
+    setSavingTemplate(true);
+    const reportFailure = (error: unknown) => {
+      console.error('PlanEditorModal: failed to save template', error);
+      toast.error(t('planTemplates.createError'));
+    };
     try {
-      await awaitAcceptance(
+      await awaitWriteOperation(
         createTemplate({ id: newClientId(), userId: sermon.userId, name, structure: stripNotesFromOutline(outline) }),
-        // usePlanTemplates' create recovery descriptor reports a late refusal while this screen is mounted.
-        () => undefined
+        reportFailure
       );
-      setSaveAsOpen(false);
-      setSaveAsName('');
-    } catch (err) {
-      /**
-       * NO message here — the entity's recovery descriptor reports this refusal and
-       * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
-       */
-      console.error('PlanEditorModal: failed to save template', err);
+      if (saveAsNameRef.current === submittedName) {
+        setSaveAsOpen(false);
+        setSaveAsName('');
+      }
+    } catch (error) {
+      reportFailure(error);
+    } finally {
+      savingTemplateRef.current = false;
+      setSavingTemplate(false);
     }
   };
 
@@ -659,7 +670,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 onChange={(e) => setSaveAsName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') saveAsTemplate();
-                  if (e.key === 'Escape') setSaveAsOpen(false);
+                  if (e.key === 'Escape' && !savingTemplate) setSaveAsOpen(false);
                 }}
                 placeholder={t('planEditor.saveAs.namePlaceholder')}
                 className="mt-3 w-full p-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
@@ -668,13 +679,15 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               <div className="mt-4 flex justify-end gap-2">
                 <button
                   onClick={() => setSaveAsOpen(false)}
+                  disabled={savingTemplate}
                   className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
                 >
                   {t(CANCEL_KEY)}
                 </button>
                 <button
                   onClick={saveAsTemplate}
-                  disabled={!saveAsName.trim()}
+                  disabled={savingTemplate || !saveAsName.trim()}
+                  aria-busy={savingTemplate}
                   className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {t('planEditor.saveAs.save')}

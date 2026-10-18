@@ -15,7 +15,7 @@ import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
 import { findDraftDocIds } from '@/utils/durableDraft';
-import { awaitAcceptance } from '@/utils/recoverableWrite';
+import { awaitAcceptance, awaitWriteOperation } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
@@ -63,6 +63,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -121,23 +123,27 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   };
 
   const handleCreate = async () => {
-    const name = newName.trim();
-    if (!name || !user?.uid) return;
+    const submittedName = newName;
+    const name = submittedName.trim();
+    const ownerId = user?.uid;
+    if (!name || !ownerId || creatingRef.current) return;
+    creatingRef.current = true;
+    setCreating(true);
+    const reportFailure = (error: unknown) => {
+      console.error('Error creating plan template:', error);
+      if (userIdRef.current === ownerId) toast.error(t('planTemplates.createError'));
+    };
     try {
-      await awaitAcceptance(
-        createTemplate({ id: newClientId(), userId: user.uid, name, structure: emptyOutline() }),
-        // usePlanTemplates' create recovery descriptor reports a late refusal while this screen is mounted.
-        () => undefined
+      await awaitWriteOperation(
+        createTemplate({ id: newClientId(), userId: ownerId, name, structure: emptyOutline() }),
+        reportFailure
       );
-      setNewName('');
-    } catch (err) {
-      /**
-       * NO message here. `usePlanTemplates` declares a recovery descriptor for this
-       * write, and it reports the same refusal — with the template name and a copy
-       * action, from wherever the person has navigated to. Announcing here as well
-       * showed one refused action as two failures.
-       */
-      console.error('Error creating plan template:', err);
+      if (userIdRef.current === ownerId) setNewName(current => current === submittedName ? '' : current);
+    } catch (error) {
+      reportFailure(error);
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
     }
   };
 
@@ -375,7 +381,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         />
         <button
           onClick={handleCreate}
-          disabled={!newName.trim()}
+          disabled={creating || !newName.trim()}
+          aria-busy={creating}
           className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <PlusIcon className="h-4 w-4" />

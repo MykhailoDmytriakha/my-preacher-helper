@@ -14,6 +14,18 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261017-offline-settings-and-prayer-route-missing · Seen settings pages and prayer detail open No connection after offline reload
+**P2** — locally captured work cannot be reopened without the network. `frontend/app/~offline/page.tsx:45` omits settings routes and prayer detail from LAZY_ROUTES.
+**Expected / observed / reproduce.** Open Settings→Templates/Tags or Dashboard→Add Prayer online, capture a QA create offline, then reload: its durable request survives, but its screen becomes No connection. Reconnect/reopen shows the content; this is a route gap, not demonstrated data loss.
+**User contract.** A page already seen on this device opens with its local data without internet. Keep normal settings navigation and the canonical page identity.
+**Class.**
+| place | verdict | why |
+|---|---|---|
+| settings/templates and settings/tags | affected, runtime confirmed | actual worker reload reaches generic card |
+| other settings routes/layout | inspect with fix | same missing route family; preserve layout/provider ownership |
+| prayers/[id] | affected, runtime confirmed | dashboard-created prayer reaches generic card on worker reload |
+| registered sermon/studies/care routes | controls | existing lazy route entries and useRouteId |
+**Direction.** Extend the existing lazy offline dispatcher and reuse actual URL identity/shared layouts. Evidence and limits: creator-capture verification ledger; no production/device claim. Separate next fix cycle.
 
 
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
@@ -111,6 +123,14 @@
 ---
 
 ## 🔵 P3 — открыто
+
+### BUG-20261017-plan-template-menu-offscreen · Structure template menu is clipped on a narrow screen
+**P3** — menu actions remain clickable but names and instructions lose their beginning. `frontend/app/components/plan-editor/PlanEditorModal.tsx:496` anchors a fixed-width menu to the button's right edge.
+**Expected / observed.** Sermon→Structure editor→Templates at390px: the complete menu should fit inside the screen; its left side extends beyond the modal and is clipped. At1280px it fits.
+**User contract.** Template names and the save/manage actions stay readable at supported mobile widths; opening a menu must not require horizontal scrolling.
+**Evidence.** Local creator-capture acceptance, buildaQZOZ0Tw26vx4N5yVrLrg: `reference-provenance-template-create-after-v2-editor-capture-failure-390-reloaded.png`; same wide-screen control in the matching1280px image. Synthetic QA content, actual visible page; no device/production claim.
+**Class.** Recheck fixed-width right-aligned menus in this editor, preserve existing styling and actions. Separate layout fix after the frozen creator-capture candidate.
+
 
 ### BUG-20261017-xref-switch-does-not-stay-on · На iPad переключатель «Стихи» у остальных ссылок стиха не остаётся включённым: пять нажатий подряд, каждое записано как «включить»
 **Severity.** P3 — данные не теряются, но остальные ссылки стиха нельзя увидеть стихами: человек жмёт снова и снова.
@@ -349,6 +369,16 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261017-engine-edit-before-durable-capture · Some engine edit adapters still accept a timer before local capture
+**Severity.** P2 preliminary — an editor may close or clear before its action is durably held; current visible consequence outside whole-document creation is not yet established.
+**Found.** Oct17 source class audit while fixing BUG-20261012-plan-template-create-dropped-silently; QA required, no new runtime failure claim.
+**Anchors.** `usePlanTemplates.ts:35,49` update/delete; `useTags.ts:62` remove/recolor; `usePrayerRequestsEngine.ts:89,179` update/status/delete/add-update; structure `useSermonActions.ts:350,477,524`, `useAiSortingDiff.ts:578`, `useStructureDnd.ts:979,1076`, structure/page.tsx:615.
+**Expected/observed.** Awaiting local engine capture must retain the input until ownership is durable; these wrappers still call queuedMutation/queuedWrite, whose timer can resolve first. Several have rollback/conflict or late handlers, so code shape alone does not prove lost words in each UI.
+**Recheck.** For each writer-backed consumer, hold/reject canonical local capture; inspect editor state, recovery and server commands, then retry. Distinguish legacy network writers, local draft ownership and actual server delivery. Do not globally change queuedWrite: React Query/offline legacy consumers rely on another ownership contract.
+**User contract.** Edit/delete affects only the explicit action; failed capture leaves the person's current work available and explains the next step. No new product decision is needed.
+**Relation.** Earlier BUG-20261016-engine-draft-before-request concerns a draft already on disk before a request; this is acceptance before durable capture. Note delivery labeling remains a separate open record.
+
+
 
 ### BUG-20261017-stored-choice-list-projection - Immediate list cards can show the opening copy after taking the saved version
 **Status.** Requires recheck: immediate visible mismatch and seven-second DOM residue reproduced under isolated collection-head Listen; source/product cause is not established.
@@ -408,40 +438,6 @@
 **Получилось (вероятный путь по коду, не проверено).** Ответ 200 с оборванным телом SDK, по-видимому, отдаёт как ошибку соединения; `classifyError` (`api/clients/ai/providerAdapters.ts:78`) видит в ней «connection error» и даёт `retrySameProvider`, `runWithFallback` (`api/clients/structuredOutput.ts`) идёт к следующей модели или повторяет ту же — второй вызов провайдера, а приложение считает один.
 **Шаги.** Не воспроизводилось живьём (нужен обрывающийся провайдер); путь виден по коду.
 **Сначала техническая перепроверка.** Воспроизвести обрыв после принятия запроса провайдером, установить поведение SDK и наличие второго платного вызова. Уточнить, можно ли распознать исход или безопасно повторить ту же операцию. До этого не спрашивать владельца о своей реализации `withResponse` и не считать двойное списание доказанным. Если дополнительный расход окажется неизбежным, принести отдельный выбор с воспроизведением, ценой и последствиями; такого решения владелец пока не давал.
-
-### BUG-20261012-plan-template-create-dropped-silently · Новый шаблон структуры: поле очищается, а шаблон не создаётся и экран молчит
-**Severity.** P2 (предварительно) — теряется введённое название шаблона; человек думает, что шаблон создан.
-**Найден.** 2026-10-12 · ручная проверка «до» в деле `2026-10-12-snos-starogo-puti-zapisi` (пилот сноса старого пути), стенд — вкладка Claude-in-Chrome.
-**Якоря.** `frontend/app/components/settings/PlanTemplatesSection.tsx:115-120` (поле очищается после принятия, поздняя неудача — `() => undefined`) · `frontend/app/data-engine/engine.ts:718` (отказ `NEEDS_CONNECTION` «The document is not available in the local cache», когда движок считает себя без связи или скрытым) · `frontend/app/data-engine/browser.client.ts:69-94` (откуда движок берёт видимость).
-**Стенд.** main `8683423c`, `next dev` с боевыми списками коллекций; адреса `localhost:3000` и чистый `[::1]:3000`; тестовый пользователь.
-
-**Ожидалось.** Нажал «Создать» — шаблон появился в списке и сохранён на сервере; если сохранить нельзя — экран это говорит и название остаётся.
-**Получилось.** Из 6 попыток (клик и Enter, на двух адресах) до сервера дошла одна (`POST /api/data-engine/commands 200`); в остальных поле очистилось, в списке пусто, в IndexedDB движка записи нет, в консоли — `The document is not available in the local cache` из `engine.ts`.
-
-**Воспроизведение.** (вкладка автоматизации; видимость подменялась по рецепту `use-data-engine-in-a-screen.md:39`)
-1. `/settings/templates`, ввести имя, «Создать».
-2. Поле пустое, шаблона нет; dev-лог без `POST /api/data-engine/commands`.
-
-**Доказательство.** dev-лог стенда (одна команда 200 за все попытки); снимок IndexedDB `preacher-data-engine-state-v1` — только первый шаблон; консоль — ошибка `readSnapshot`. Позже в той же сессии, после перекомпиляции маршрутов dev, создание и удаление кликом дошли (`POST …/commands 200` дважды) — вероятно, раньше движок считал себя без связи (проверка связи не успевала в dev); тогда молчаливая потеря имени ждёт человека при создании шаблона без связи.
-**Эффект.** Молчаливая потеря названия шаблона. Что из этого — стенд (скрытая вкладка автоматизации, проверка связи с другого адреса), а что увидит живой человек, не доказано.
-
-**Как эта фича должна работать — с точки зрения пользователя.**
-- *Зачем:* сохранить каркас структуры, чтобы применять его к проповедям.
-- *Когда срабатывать:* «Создать» с непустым именем — шаблон появляется сразу и сохраняется; без связи — ждёт отправки и не теряется.
-- *Когда молчать:* пустое имя — кнопка неактивна.
-- *Что видит человек:* шаблон в списке; если движок отказал позже — сообщение и введённое имя назад в поле.
-- *Как различается технически:* поздняя неудача записи (`awaitAcceptance`, второй аргумент) должна дойти до экрана, а не глушиться.
-
-**Класс (механизмом).** Экран очищает ввод по «принято», а позднюю неудачу движка глушит пустым обработчиком.
-| место (`file:line`) | вердикт | почему |
-|---|---|---|
-| `frontend/app/components/settings/PlanTemplatesSection.tsx:118` | поражено | поздняя неудача создания — `() => undefined`; на ветке движка нет другого показа |
-| `frontend/app/components/settings/TagsSection.tsx:26` (форма добавления метки) | поражено | 2026-10-12: «QA after tag» через 10 с после загрузки — поле очистилось, команды на сервер нет; через минуту та же форма дошла (`POST …/commands 200`) |
-| остальные вызовы `awaitAcceptance(…, () => undefined)` | не проверено | прочесать при фиксе: `git grep -n "awaitAcceptance" -- frontend/app` |
-
-**Корень.** _не исследован — проверить в обычной видимой вкладке (без связи и со связью), отделить стенд от кода_
-**Фикс (направление).** Поздняя неудача на экране шаблонов показывает сообщение и возвращает имя; при фиксе — тот же разбор для остальных экранов с `awaitAcceptance`.
-**Regression proof.** _заполняется в FIX_
 
 ### BUG-20261004-startup-feedback-without-current-events · Отзыв о зависшей загрузке не содержит событий текущей сессии
 **Severity.** P2 (предварительно) — человек сообщает о зависании, но приложенный журнал не позволяет определить, на каком этапе оно случилось; причина остановки и длительность не доказаны.

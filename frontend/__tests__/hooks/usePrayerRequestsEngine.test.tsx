@@ -118,8 +118,8 @@ describe('prayers on the engine', () => {
     expect(current.updates).toEqual([expect.objectContaining({ text: 'Doctor visit went well' })]);
     await act(async () => { await result.current.setStatus('p1', 'answered', 'Healed').persistence; });
     expect(current).toEqual(expect.objectContaining({ status: 'answered', answerText: 'Healed', answeredAt: expect.any(String) }));
-    let created!: { prayerId: string };
-    await act(async () => { created = result.current.createPrayer({ userId: 'u', title: 'New request' }); await (created as never as { persistence: Promise<void> }).persistence; });
+    let created!: ReturnType<typeof result.current.createPrayer>;
+    await act(async () => { created = result.current.createPrayer({ userId: 'u', title: 'New request' }); await created; });
     expect(actions.create).toHaveBeenCalledWith({ collection: 'prayerRequests', id: created.prayerId },
       expect.objectContaining({ userId: 'u', title: 'New request', status: 'active', updates: [] }));
   });

@@ -1,6 +1,7 @@
 import {
   announceIfPersisted,
   awaitAcceptance,
+  awaitWriteOperation,
   refusedWrite,
   persistedWrite,
   queuedWrite,
@@ -245,5 +246,22 @@ describe('mutationOutcomeWrite — saved or queued by what happened, not by the 
     const submission = mutationOutcomeWrite(client.getMutationCache(), 'receipt-1', () =>
       client.getMutationCache().build(client, { mutationFn: async () => { throw refused; }, retry: false }).execute(undefined));
     await expect(submission.acceptance).rejects.toBe(refused);
+  });
+});
+
+
+describe('engine capture operation', () => {
+  it('waits for durable local capture without producing a server delivery receipt', async () => {
+    let resolve!: () => void;
+    const captured = new Promise<void>(done => { resolve = done; });
+    let completed = false;
+    const late = jest.fn();
+    const operation = awaitWriteOperation(captured, late).then(receipt => { completed = true; return receipt; });
+    await Promise.resolve();
+    expect(completed).toBe(false);
+    resolve();
+    expect(await operation).toBeNull();
+    expect(completed).toBe(true);
+    expect(late).not.toHaveBeenCalled();
   });
 });

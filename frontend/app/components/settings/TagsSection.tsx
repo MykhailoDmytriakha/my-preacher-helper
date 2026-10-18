@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
-import { awaitAcceptance, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitAcceptance, awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
 import ColorPickerModal from '@components/ColorPickerModal';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -29,7 +29,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const customTagsRef = useRef(tags.customTags);
   customTagsRef.current = tags.customTags;
 
-  const handleAddTag = (name: string, color: string): WriteSubmission => {
+  const handleAddTag = (name: string, color: string): WriteOperation => {
     // No signed-in user means nothing holds this tag name — refuse, so the form keeps it
     // instead of clearing over a write that never existed.
     if (!user?.uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
@@ -42,24 +42,15 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       required: false,
     };
     
-    /**
-     * Only the case this form alone can explain. A reserved name is not a write that
-     * failed — it is input this app will not accept, and the person needs to know THAT
-     * rather than "could not save". Everything else is reported by the recovery
-     * descriptor in `useTags`, which carries the tag name and follows the person off
-     * this page; announcing both showed one failed write as two failures.
-     */
+    // This owner explains a failed capture; the form retains the name and colour.
     const reportFailure = (error: unknown) => {
       console.error('Error adding tag:', error);
-      if ((error as { message?: string } | null)?.message === 'Reserved tag name') {
-        toast.error(t('errors.reservedTagName'));
-      }
+      const key = (error as { message?: string } | null)?.message === 'Reserved tag name'
+        ? 'errors.reservedTagName' : 'common.saveError';
+      toast.error(t(key));
     };
-
     const submission = addCustomTag(newTagObj);
-    // The form awaits ACCEPTANCE itself and keeps the draft when it rejects; this only
-    // adds the one explanation the form alone can give.
-    void submission.acceptance.catch(reportFailure);
+    void awaitWriteOperation(submission, reportFailure).catch(reportFailure);
     return submission;
   };
 

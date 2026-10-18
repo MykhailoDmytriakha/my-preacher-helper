@@ -10,7 +10,7 @@ Measured live on 2026-08-12 with emulator rules that reject every write: the per
 
 ## The contract
 
-A write returns a **`WriteSubmission`**, not `Promise<void>`. This is not style: only `WriteSubmission` lets the call site distinguish “the write started” from “the write was accepted.” `Promise<void>` cannot, so it is forbidden in write props.
+A write must expose its actual ownership boundary. The public data-engine action promise resolves after durable local capture, not server delivery. Keep that `Promise<void>` intact. Legacy network/mutation writers return `WriteSubmission` to distinguish acceptance from eventual persistence. `WriteOperation` accepts either; `awaitWriteOperation` awaits the real owner and returns `null` for local engine capture, so it cannot be mistaken for a server-persisted receipt.
 
 Acceptance has three distinct outcomes:
 
@@ -26,24 +26,26 @@ A refusal is **not** an outcome. It **rejects** `acceptance`, so the editor catc
 
 There are two, and a collection is on exactly one of them.
 
-- **The data engine** — the ten collections in `app/data-engine/engineOwnedCollections.ts` (sermons, series, groups, prayer requests, study notes and materials, tags, councils, orders of service, plan templates). Write only through `app/data-engine/react.client.tsx` (`useDataDocument`, `useDataForm`, `useDocumentActions`, `useDataMembership`). Delivery, the offline queue, conflicts and refusals belong to the engine: `DataSyncStatus` beside the editor says a refusal while the screen is open, and `EngineConflictBanner` says it after the editor has closed. A hook still returns a `WriteSubmission` (usually `queuedMutation` around the engine's promise) so the editor closes only on acceptance. Do not declare `useWriteRecovery` for these collections, and do not add a legacy writer: the browser rules and the server refuse it (`refuseLegacyWriteRoute`).
-- **React Query mutations** — what is not on the engine: the user's settings (`users`) and study-note share links. Their hooks declare `useWriteRecovery` descriptors, as described below.
+- **The data engine** — the ten collections in `app/data-engine/engineOwnedCollections.ts` (sermons, series, groups, prayer requests, study notes and materials, tags, councils, orders of service, plan templates). Write only through `app/data-engine/react.client.tsx` (`useDataDocument`, `useDataForm`, `useDocumentActions`, `useDataMembership`). Delivery, the offline queue, conflicts and refusals belong to the engine: `DataSyncStatus` beside the editor says a refusal while the screen is open, and `EngineConflictBanner` says it after the editor has closed. Whole-document creators return the actual public engine promise. Do not wrap it in `queuedMutation`/`queuedWrite`: their launch-time timer can clear the form before capture, and a later disk failure then loses the input. Older non-create adapters still need the separate audit recorded in BUGS.md. Do not declare `useWriteRecovery` for these collections, and do not add a legacy writer: the browser rules and the server refuse it (`refuseLegacyWriteRoute`).
+- **React Query mutations** — what is not on the engine: the user's settings (`users`) and study-note share links. Their legacy hooks declare `useWriteRecovery` descriptors, as described below; users settings select the engine path when enabled.
 
 ## Canonical example: creating a prayer
 
 Read these three files in order (the group example that stood here left with the legacy group hook on 2026-10-12):
 
-- **Hook** — `app/hooks/usePrayerRequestsEngine.ts`: `createPrayer` returns `queuedMutation(...)` around the data engine's create; a late refusal is reported by the hook.
-- **Editor** — `app/components/prayer/CreatePrayerModal.tsx`: the prop is typed as `WriteSubmission`; submit awaits `awaitAcceptance`, and on refusal keeps the form and its text open.
+- **Hook** — `app/hooks/usePrayerRequestsEngine.ts`: `createPrayer` returns the actual capture promise with its stable `prayerId` attached. A failed capture is reported by the hook while the form keeps its words; server answers after capture belong to the engine.
+- **Editor** — `app/components/prayer/CreatePrayerModal.tsx`: the prop is typed as `WriteOperation`; submit awaits `awaitWriteOperation`, and on capture failure keeps the form and all its text open. Legacy edit submissions retain their acceptance and late reporting.
 - **Page** — `app/(pages)/(private)/prayers/page.tsx`: passes the submission to the editor and **does not announce success**.
 
 The core is `app/utils/recoverableWrite.ts`; its tests are in `__tests__/utils/recoverableWrite.test.ts`.
 
 ## What to do in new code
 
-**When writing a hook.** Return `WriteSubmission`: use `persistedWrite(promise)` when awaiting a real write (`mutateAsync` or an awaited service); use `queuedMutation(receipt, promise)` when the operation is offline-first and a queue takes ownership; use `skippedWrite()` when an identical write is already running (or `skippedWrite('awaiting-confirmation')` when the action asks a question first); use `refusedWrite(code, message, announce)` when nothing holds the person's text — no signed-in user, or the document is gone. The third argument is the translated sentence the person reads: such a write never becomes a mutation, so no descriptor can speak for it, and it announces itself. The editor just keeps the draft. Nearby, declare `useWriteRecovery` with a descriptor that has the mutation key, fallback title key, **all entered text** in `recoveryText`, a stable `toastId`, an ownership check (`owns`, plus `ownershipEpoch` when that check depends on a list that loads later), and `retry`.
+**When writing an engine hook.** Return the public facade capture promise unchanged. Do not label it persisted from connection state or start a second queue. Templates, tags and prayer creators are examples; `settingsWrite.ts` delegates to the same await boundary.
 
-**When writing an editor.** Type the prop as `WriteSubmission`. In submit, `await awaitAcceptance(submission, onLateFailure)` and close only afterward. In `catch`, keep the form and everything typed in it — and say NOTHING. The refusal message belongs to the hook's recovery descriptor: it carries the text, offers “copy my text”, and keeps reporting after the editor closes. An editor that also speaks turns one refused action into two failures, which is the single most repeated defect in this migration.
+**When writing a legacy hook.** Return `WriteSubmission`: use `persistedWrite(promise)` when awaiting a real write (`mutateAsync` or an awaited service); use `queuedMutation(receipt, promise)` when the operation is offline-first and a queue takes ownership; use `skippedWrite()` when an identical write is already running (or `skippedWrite('awaiting-confirmation')` when the action asks a question first); use `refusedWrite(code, message, announce)` when nothing holds the person's text — no signed-in user, or the document is gone. The third argument is the translated sentence the person reads: such a write never becomes a mutation, so no descriptor can speak for it, and it announces itself. The editor just keeps the draft. Nearby, declare `useWriteRecovery` with a descriptor that has the mutation key, fallback title key, **all entered text** in `recoveryText`, a stable `toastId`, an ownership check (`owns`, plus `ownershipEpoch` when that check depends on a list that loads later), and `retry`.
+
+**When writing an editor.** Type mixed ownership props as `WriteOperation`. In submit, `await awaitWriteOperation(write, onLateFailure)` and close only afterward. A capture failure keeps the input and is explained once by its creator/form owner; after durable capture the engine owns server refusal and recovery. For legacy submissions only, the following descriptor rules apply. In `catch`, keep the form and everything typed in it — and say NOTHING. The refusal message belongs to the hook's recovery descriptor: it carries the text, offers “copy my text”, and keeps reporting after the editor closes. An editor that also speaks turns one refused action into two failures, which is the single most repeated defect in this migration.
 
 Two exceptions, and only these two: input the app will not accept (a reserved tag name) is explained by the FORM, next to the field, and the descriptor skips it via `ignore`; and a stale-revision conflict offers a CHOICE, so the screen owning that choice shows it and the descriptor `ignore`s stale errors.
 
@@ -51,7 +53,7 @@ Two exceptions, and only these two: input the app will not accept (a reserved ta
 
 ## What not to do
 
-Do not use `Promise<void>` in write props, call `toast.success` after an unfinished mutation, create a custom refusal subscription instead of `useWriteRecovery`, announce success for an offline queue, invent refusal wording instead of `writeRecovery.refused`, or add a second reporter for a write that already has a descriptor.
+Do not use a launch-only promise as proof of ownership, wrap an engine capture in a timer receipt, call `toast.success` after local capture or an unfinished mutation, create a custom refusal subscription instead of `useWriteRecovery`, announce success for an offline queue, invent refusal wording instead of `writeRecovery.refused`, or add a second reporter for a write that already has a descriptor.
 
 ## The limits of the `queued` promise
 
@@ -63,9 +65,11 @@ Do not use `Promise<void>` in write props, call `toast.success` after an unfinis
 | `queuedMutation` — online, in-flight request | The request itself | Nothing: an unexpected tab close during this window loses the write. |
 | `replicaAcceptedWrite` / offline outbox | Firestore SDK queue or an outbox in IndexedDB | A reload; the edit is in storage. |
 
-The middle row is an **accepted residual risk**, not an oversight. Acceptance yields one tick (see `queuedWrite` in `recoverableWrite.ts`), and a slow asynchronous `onMutate` can start the mutation later. A resulting refusal arrives on the **late** path: the contract still holds — the person is told the truth, their text returns in a recovery message with “Copy my text,” and the write is not presented as saved. The only weakened claim is “owns” during those milliseconds. For expensive text, close that gap with a durable draft (`durableDraft.ts`), not a mutation-start signal.
+This table describes the legacy mutation/SDK paths, not the public engine capture promise. The middle row is an **accepted residual risk**, not an oversight. Acceptance yields one tick (see `queuedWrite` in `recoverableWrite.ts`), and a slow asynchronous `onMutate` can start the mutation later. A resulting refusal arrives on the **late** path: the contract still holds — the person is told the truth, their text returns in a recovery message with “Copy my text,” and the write is not presented as saved. The only weakened claim is “owns” during those milliseconds. For expensive text, close that gap with a durable draft (`durableDraft.ts`), not a mutation-start signal.
 
 ## Who reports a late refusal
+
+The descriptor rules in this section apply to legacy mutations. Engine-owned writes use their canonical durable requests and `EngineConflictBanner`; they must not add a React Query descriptor. A failure before capture still belongs to the creator/form that holds the input.
 
 The **entity hook** (`useWriteRecovery`) owns the message: the right wording, the person's exact text, and a
 retry that works. Its descriptor MUST declare `owns` — failed mutations persist in a shared IndexedDB cache
@@ -115,4 +119,4 @@ A failed share-link revoke remains important after restart even though it carrie
 
 ## What has not moved yet
 
-The settings (`users`) and study-note share links are still on the React Query road. A screen that writes them follows the descriptor contract above; moving such a collection to the engine is a migration of its own (`docs/architecture/data-engine-migration-log.md`), not a copy of a neighbouring hook.
+Study-note share links and the settings (`users`) fallback use the React Query road. Settings use their shared engine promise when the collection is enabled. A screen on the legacy path follows the descriptor contract above; moving such a collection to the engine is a migration of its own (`docs/architecture/data-engine-migration-log.md`), not a copy of a neighbouring hook.

@@ -4,6 +4,7 @@ import React from 'react';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useTags } from '@/hooks/useTags';
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
 
 jest.mock('@/data-engine/react.client', () => ({
   ...jest.requireActual('@/data-engine/react.client'),
@@ -38,7 +39,7 @@ describe('custom tags on the engine', () => {
 
   it('creates, recolors and removes through engine actions', async () => {
     const { result } = render();
-    await act(async () => { await result.current.addCustomTag({ id: 'new', userId: 'u', name: 'Faith', color: '#333', required: false }).persistence; });
+    await act(async () => { await awaitWriteOperation(result.current.addCustomTag({ id: 'new', userId: 'u', name: 'Faith', color: '#333', required: false }), jest.fn()); });
     expect(actions.create).toHaveBeenCalledWith({ collection: 'tags', id: 'new' }, expect.objectContaining({ userId: 'u', name: 'Faith', color: '#333', required: false }));
     await act(async () => { await result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false }).persistence; });
     const recolor = actions.commit.mock.calls[0][1] as (current: Record<string, unknown>) => Record<string, unknown>;
@@ -49,8 +50,8 @@ describe('custom tags on the engine', () => {
 
   it('refuses a duplicate or reserved name before any engine write', async () => {
     const { result } = render();
-    await expect(result.current.addCustomTag({ id: 'x', userId: 'u', name: 'Hope', color: '#1', required: false }).persistence).rejects.toThrow('already exists');
-    await expect(result.current.addCustomTag({ id: 'y', userId: 'u', name: 'intro', color: '#1', required: false }).persistence).rejects.toThrow('Reserved');
+    await expect(awaitWriteOperation(result.current.addCustomTag({ id: 'x', userId: 'u', name: 'Hope', color: '#1', required: false }), jest.fn())).rejects.toThrow('already exists');
+    await expect(awaitWriteOperation(result.current.addCustomTag({ id: 'y', userId: 'u', name: 'intro', color: '#1', required: false }), jest.fn())).rejects.toThrow('Reserved');
     expect(actions.create).not.toHaveBeenCalled();
   });
 });

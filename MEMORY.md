@@ -14,6 +14,7 @@
 *   **Resource Admission:** merged document validation lives in `data-engine/resourceSchemas.ts`; existing child-identity allowances live in `legacyChildIdentity.ts`. Boundary rules and regressions: `.howto/validate-input-with-zod.md`.
 *   **Pane Layout:** `frontend/app/hooks/useWorkspacePanes.ts` owns the shell/workspace reader and study flags; view lifecycle declares layout, CSS never searches the shell subtree. See `.howto/keep-a-pane-scrolling-on-ipad.md`.
 *   **Data Flow:** UI → DataEngine public facade → durable local intent → authenticated command processor → Firestore/feed → the same facade. Read-only fallback can show server/memory content while device storage is unavailable.
+*   **Write Ownership:** Public engine action promises prove durable local capture, not server delivery. Whole-document create forms await the actual promise through `awaitWriteOperation` (`utils/recoverableWrite.ts`) before clearing or closing; legacy WriteSubmission keeps its own acceptance. Never wrap engine capture in a launch-time timer receipt. See `.howto/use-data-engine-in-a-screen.md`.
 *   **AI Stack:** structured calls through `callWithStructuredOutput` with Zod schemas; providers and models come from the tier catalog, not from this line — `.howto/call-ai-with-structured-output.md`, `.howto/gate-and-meter-an-ai-call.md`.
 
 ### 🧭 Canonical Mechanisms — LOOK HERE BEFORE WRITING YOUR OWN
