@@ -90,6 +90,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   notes: [],
   noteDelivery: new Map(),
   confirmedDictationSources: new Map(),
+  confirmedCreationIds: new Set(),
   loading: false,
   error: null,
   refetch: jest.fn(),

@@ -44,6 +44,12 @@ The note editor (and the plan's cells, `usePlanTextDraft`) keeps unsaved typing 
 - Never clear a draft because the key changed, the text equals what the screen opened with, or the slot looks empty. A draft leaves only by exact match (`clearDraftIfMatches`): `markSaved` when the server confirmed that text, the person's "reject" of the offered text, and the editor itself when the person types back to the confirmed text — then only the draft this editor wrote.
 - Open limit: a draft and the engine write live in two stores that cannot change together, so a draft can outlive its confirmed write (seen live: a reload while the autosave was in flight); deciding that needs the engine's write identity, not equal text. A "server copy" is no proof yet either: in the installed app the engine's GET can be answered from the service worker's `apis` cache (NetworkFirst), so `useRemotePeek` may return an old copy — retiring a draft on it was tried and refused in review (BUG-20260908-cached-response-counts-as-live-connection).
 
+### Precreate note ownership
+
+A new note reserves its canonical `newClientId` before typing. Its temporary draft and any refused storage debt carry `creationTargetId`; `createNote(input, { id })` submits that same resource. After adoption the hook writes under the stable note key without a precreate tag. The existing `moveDraft` checks the expected creation identity before carrying the shared source; exact creation acceptance retires only that precreate lineage. A later new screen can also retire a tagged source when canonical confirmed collection snapshots prove that unique creation, including its known tombstone. Optimistic documents, connectivity, equal words and legacy targetless drafts are not creation proof. Do not apply this rule to post-create stable-ID drafts: their later generations have a separate lifetime contract.
+
+The shared placeholder writer can still replace an earlier independent new editor before either creates (BUG-20261018-new-note-drafts-share-placeholder-slot). Identity-guarded transfer/cleanup does not solve that separate storage-address mechanism. Keep it open for its own independent per-note storage/discovery cycle, and retain ambiguous pre-identity drafts for explicit recovery/discard.
+
 ## Why
 
 - 2026-03-16: optimistic records were persisted but retries lived in component refs; a reload, redirect or auth bounce stranded local edits for good.

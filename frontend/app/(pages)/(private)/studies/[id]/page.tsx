@@ -36,6 +36,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { bibleHref } from '@/utils/bibleLink';
+import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { findSectionById } from '@/utils/markdownSections';
@@ -602,7 +603,9 @@ export default function StudyNoteEditorPage() {
     const noteId = createdNoteId || routeId;
     const isNew = noteId === 'new';
 
-    const { uid, notes, noteDelivery, confirmedDictationSources, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+
+    const creation = useMemo(() => ({ uid, id: newClientId() }), [uid]);
 
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
@@ -714,6 +717,8 @@ export default function StudyNoteEditorPage() {
     const { recovered, acceptRecovered, discardRecovered, markSaved } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: noteId,
+        creationTargetId: isNew ? creation.id : undefined,
+        confirmedCreationIds,
         aggregate: 'note',
         value: draftPayload,
         enabled: isInitialized,
@@ -723,6 +728,7 @@ export default function StudyNoteEditorPage() {
     const voiceHandoffRef = useRef<(() => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination: () => boolean }) | null>(null);
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         captureRecordingHandoff: () => voiceHandoffRef.current?.(),
+        creationId: creation.id,
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,

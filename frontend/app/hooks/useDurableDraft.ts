@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { serializeContent } from '@/utils/contentFingerprint';
 import {
   clearDraftIfMatches,
+  clearCreationDraft,
   draftKey,
   readDraft,
   saveDraft,
@@ -27,6 +28,10 @@ export interface UseDurableDraftOptions<T> {
   /** Explicit editor baseline; null means no confirmed value yet. Used when a
    * temporary document id changes before its create has been acknowledged. */
   confirmedValue?: T | null;
+  /** Only precreate typing carries the future resource identity. */
+  creationTargetId?: string;
+  /** Canonical confirmed snapshots, never optimistic rows or connectivity. */
+  confirmedCreationIds?: ReadonlySet<string>;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -71,6 +76,8 @@ export function useDurableDraft<T>({
   value,
   enabled,
   confirmedValue,
+  creationTargetId,
+  confirmedCreationIds,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate) : null;
 
@@ -138,20 +145,29 @@ export function useDurableDraft<T>({
       }
       return;
     }
-    saveDraft(targetKey, next);
+    saveDraft(targetKey, next, creationTargetId);
     ourDraftRef.current = serialised;
-  }, []);
+  }, [creationTargetId]);
   /** The last unconfirmed value THIS hook instance stored, so it can retire it. */
   const ourDraftRef = useRef<string | null>(null);
   const persistRef = useRef(persist);
   persistRef.current = persist;
 
+  const recoveredCreationRef = useRef<string | undefined>(undefined);
+
   // Look for unconfirmed text exactly once per document.
   useEffect(() => {
-    if (!key || inspectedKeyRef.current === key) return;
-    inspectedKeyRef.current = key;
+    if (!key) return;
     const stored = readDraft<T>(key);
-    setRecovered(stored ? stored.value : null);
+    const confirmedSource = creationTargetId && stored?.creationTargetId && confirmedCreationIds?.has(stored.creationTargetId);
+    if (confirmedSource) clearCreationDraft(key, stored.creationTargetId!);
+    if (inspectedKeyRef.current === key) {
+      if (creationTargetId && recoveredCreationRef.current && confirmedCreationIds?.has(recoveredCreationRef.current)) setRecovered(null);
+      return;
+    }
+    inspectedKeyRef.current = key;
+    recoveredCreationRef.current = stored?.creationTargetId;
+    setRecovered(stored && !confirmedSource ? stored.value : null);
     // NOTE: deliberately NOT clearing the previous key here. The previous key may
     // hold the only copy of text never confirmed, so clearing it would destroy the
     // exact thing this module exists to keep. While this hook stays mounted the key
@@ -160,7 +176,7 @@ export function useDurableDraft<T>({
     // changes under a mounted editor (open: BUG-20261003-account-change-under-open-note).
     // Moving to another document is not one of these: it is an unmount (see the
     // flush below).
-  }, [key]);
+  }, [key, creationTargetId, confirmedCreationIds]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
   // every keystroke.

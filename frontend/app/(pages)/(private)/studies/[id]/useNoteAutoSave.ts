@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
-import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
+import { draftKey, clearDraftIfMatches, clearCreationDraft, moveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
@@ -24,10 +24,11 @@ import type { ScriptureReference, StudyNote } from '@/models/models';
 const EMPTY_SOURCE_IDS: string[] = [];
 
 export function useNoteAutoSave({
-    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
+    creationId?: string;
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
     updateNote: (args: {
@@ -36,7 +37,7 @@ export function useNoteAutoSave({
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
     }) => WriteSubmission & { result: Promise<StudyNote & { revision?: number }> };
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) =>
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string }) =>
         WriteSubmission & { note: StudyNote };
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
@@ -92,11 +93,12 @@ export function useNoteAutoSave({
         setSaveError(null);
         setLastSaved(null);
         try {
-            const submission = createNote({
+            const input = {
                 title, content, tags, scriptureRefs, type,
                 ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
                 userId: uid ?? '', materialIds: [], relatedSermonIds: []
-            });
+            };
+            const submission = creationId ? createNote(input, { id: creationId }) : createNote(input);
             const newNote = submission.note;
             void recording?.carryTo(newNote.id).catch(() => undefined);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
@@ -110,7 +112,7 @@ export function useNoteAutoSave({
             // `markSaved` retires the draft under the key the hook still holds
             // ("new"), so the move found nothing left to carry and the safety net
             // was gone while the write was still in flight.
-            if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'));
+            if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'), creationId);
             window.history.replaceState(null, '', `/studies/${newNote.id}`);
             setCreatedNoteId(newNote.id);
 
@@ -126,6 +128,7 @@ export function useNoteAutoSave({
                 // retire it from the old hook's moving key; remove only this exact,
                 // server-confirmed payload at its stable destination.
                 if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
+                if (uid && creationId === newNote.id) clearCreationDraft(draftKey(uid, 'new', 'note'), creationId);
             };
             if (acceptance.kind === 'persisted') {
                 retirePersistedCreateDraft();
@@ -156,7 +159,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;

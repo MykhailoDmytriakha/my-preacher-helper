@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
+import { draftKey, readDraft } from '@/utils/durableDraft';
 import { toast } from 'sonner';
 
 const mockRecordingRows = new Map<string, unknown>();
@@ -539,7 +540,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
     it('defers new-note creation until its completed recording has a durable source', async () => {
         window.localStorage.clear();
-        const createNote = jest.fn((_note: Partial<StudyNote>) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'parked-note' }), persistence: new Promise<void>(() => undefined), note: { id: 'parked-note' } as StudyNote }));
+        const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'parked-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'parked-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
@@ -554,14 +555,16 @@ describe('StudyNoteEditorPage Pagination', () => {
             expect(createNote).not.toHaveBeenCalled();
             jest.mocked(idb.update).mockRejectedValueOnce(new Error('Carry refused after park'));
             await act(async () => { finishPark(); await parked; });
-            await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [expect.any(String)] })), { timeout: 4000 });
+            await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [expect.any(String)] }), { id: expect.any(String) }), { timeout: 4000 });
+            const reserved = createNote.mock.calls[0][1]!.id;
+            expect(readDraft(draftKey('user-1', reserved, 'note'))?.creationTargetId).toBe(reserved);
             expect(await screen.findByRole('button', { name: 'audio.draft.resend' })).toBeVisible();
         } finally { await act(async () => { finishPark(); await parked; }); view.unmount(); window.localStorage.clear(); }
     });
 
     it('keeps the new-note destination while its microphone capture is active', async () => {
         window.localStorage.clear();
-        const createNote = jest.fn((_note: Partial<StudyNote>) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'active-note' }), persistence: new Promise<void>(() => undefined), note: { id: 'active-note' } as StudyNote }));
+        const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'active-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'active-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
@@ -572,13 +575,13 @@ describe('StudyNoteEditorPage Pagination', () => {
             await act(async () => { await new Promise(resolve => setTimeout(resolve, 1900)); });
             expect(createNote).not.toHaveBeenCalled();
             fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
-            await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [expect.any(String)] })), { timeout: 4000 });
+            await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [expect.any(String)] }), { id: expect.any(String) }), { timeout: 4000 });
         } finally { view.unmount(); window.localStorage.clear(); }
     });
 
     it('carries an unrecognized recording link separately from inserted-text receipts when the raw move fails', async () => {
         window.localStorage.clear();
-        const createNote = jest.fn((_note: Partial<StudyNote>) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'new-raw-note' }), persistence: new Promise<void>(() => undefined), note: { id: 'created-raw-note' } as StudyNote }));
+        const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'new-raw-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'created-raw-note' } as StudyNote }));
         (useParams as jest.Mock).mockReturnValue({ id: 'new' });
         (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'raw-words' }), persistence: new Promise<void>(() => undefined), result: new Promise(() => undefined) })), deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA transcription refused', retryable: false }) });
@@ -589,7 +592,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(source).toBeDefined();
         const idb = await import('idb-keyval'); jest.mocked(idb.update).mockRejectedValueOnce(new Error('Raw move refused'));
         fireEvent.change(screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder'), { target: { value: 'Typed after failed dictation' } });
-        await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [source.id] })), { timeout: 4000 });
+        await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [source.id] }), { id: expect.any(String) }), { timeout: 4000 });
         expect(createNote.mock.calls[0][0]).not.toHaveProperty('dictationSourceIds');
         await waitFor(() => expect(screen.getByRole('button', { name: 'audio.draft.resend' })).toBeVisible());
         expect((mockRecordingRows.get(source.id) as { contextId: string }).contextId).toBe('new');

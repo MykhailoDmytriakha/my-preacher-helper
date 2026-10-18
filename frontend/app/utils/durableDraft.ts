@@ -40,6 +40,8 @@ const PREFIX = 'draft:v1:';
 export interface DurableDraft<T> {
   value: T;
   savedAt: number;
+  /** Unique future note resource; present only while typing before its create. */
+  creationTargetId?: string;
 }
 
 /**
@@ -73,14 +75,14 @@ function storage(): Storage | null {
  * draft is retired, or the very text that was refused is confirmed by the server — a small draft
  * that saves never hides another that did not, and a saved one never keeps the notice up.
  */
-const refusedDraftKeys = new Map<string, string>();
+const refusedDraftKeys = new Map<string, { value: string; creationTargetId?: string }>();
 const draftStorageListeners = new Set<() => void>();
 
 function recordDraftStorage(key: string, refused: false): void;
-function recordDraftStorage(key: string, refused: true, value: unknown): void;
-function recordDraftStorage(key: string, refused: boolean, value?: unknown): void {
+function recordDraftStorage(key: string, refused: true, value: unknown, creationTargetId?: string): void;
+function recordDraftStorage(key: string, refused: boolean, value?: unknown, creationTargetId?: string): void {
   const before = refusedDraftKeys.has(key);
-  if (refused) refusedDraftKeys.set(key, serializeContent(value)); else refusedDraftKeys.delete(key);
+  if (refused) refusedDraftKeys.set(key, { value: serializeContent(value), creationTargetId }); else refusedDraftKeys.delete(key);
   // Told on every change of WHICH keys are owed, not only when the whole set empties or fills: a
   // listener asking for one owner sees its answer change while other owners' debts stay.
   if (before === refusedDraftKeys.has(key)) return;
@@ -118,20 +120,20 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * it traded an original for a backup, silently. So a refused copy is reported instead: the
  * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T): boolean {
+export function saveDraft<T>(key: string, value: T, creationTargetId?: string): boolean {
   const store = storage();
   if (!store) {
-    recordDraftStorage(key, true, value);
+    recordDraftStorage(key, true, value, creationTargetId);
     return false;
   }
 
-  const payload = JSON.stringify({ value, savedAt: Date.now() } satisfies DurableDraft<T>);
+  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(creationTargetId ? { creationTargetId } : {}) } satisfies DurableDraft<T>);
 
   try {
     store.setItem(key, payload);
   } catch {
     console.error('durableDraft: no room to persist', key);
-    recordDraftStorage(key, true, value);
+    recordDraftStorage(key, true, value, creationTargetId);
     return false;
   }
   recordDraftStorage(key, false);
@@ -183,13 +185,20 @@ export function clearDraft(key: string): void {
  */
 export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
   // The text whose copy was refused is on the server now: that copy is no longer owed.
-  if (refusedDraftKeys.get(key) === serializeContent(confirmed)) recordDraftStorage(key, false);
+  if (refusedDraftKeys.get(key)?.value === serializeContent(confirmed)) recordDraftStorage(key, false);
   const stored = readDraft<T>(key);
   if (!stored) return;
   if (serializeContent(stored.value) !== serializeContent(confirmed)) return;
   // Only the confirmed copy goes. A newer text whose copy was refused is still owed one, and its
   // warning stays up until that very text is confirmed or discarded.
   removeStoredDraft(key);
+}
+
+/** Retire only a precreate lineage whose exact resource creation was confirmed. */
+export function clearCreationDraft(key: string, creationTargetId: string): void {
+  if (refusedDraftKeys.get(key)?.creationTargetId === creationTargetId) recordDraftStorage(key, false);
+  const stored = readDraft<unknown>(key);
+  if (stored?.creationTargetId === creationTargetId) removeStoredDraft(key);
 }
 
 /**
@@ -207,12 +216,18 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
  * Copy FIRST, delete after, and never delete when there is nothing to carry — an
  * unconditional clear here would destroy a draft the destination already owns.
  */
-export function moveDraft(fromKey: string, toKey: string): void {
+export function moveDraft(fromKey: string, toKey: string, expectedCreationTargetId?: string): void {
   if (fromKey === toKey) return;
   // What the document is owed moves with it whether or not its stored copy can: the refused text
   // will be stored or confirmed under the new key, and only there can it settle the debt.
-  carryRefusal(fromKey, toKey);
   const stored = readDraft<unknown>(fromKey);
+  if (expectedCreationTargetId) {
+    // The shared placeholder can already belong to the person's next new note.
+    if (refusedDraftKeys.get(fromKey)?.creationTargetId === expectedCreationTargetId) carryRefusal(fromKey, toKey);
+    if (stored?.creationTargetId !== expectedCreationTargetId) return;
+  } else {
+    carryRefusal(fromKey, toKey);
+  }
   if (!stored) return;
   // Copied as it is, without settling anything: an older stored text landing under the new key
   // proves nothing about a newer text the browser refused there.
@@ -223,7 +238,7 @@ export function moveDraft(fromKey: string, toKey: string): void {
   if (!carried || serializeContent(carried.value) !== serializeContent(stored.value)) return;
   removeStoredDraft(fromKey);
   // The carried text itself is now kept under the new key: a debt for exactly that text is settled.
-  if (refusedDraftKeys.get(toKey) === serializeContent(stored.value)) recordDraftStorage(toKey, false);
+  if (refusedDraftKeys.get(toKey)?.value === serializeContent(stored.value)) recordDraftStorage(toKey, false);
 }
 
 /** Write a stored record unchanged; says whether the browser kept it. Debts are not touched. */

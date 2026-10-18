@@ -101,6 +101,11 @@ export function useStudyNotesEngine(enabled: boolean) {
       ? [[snapshot.resource.id, (snapshot.value.dictationSourceIds ?? []) as string[]] as const] : [])),
     [collection.state?.snapshots]);
 
+  // A unique future resource can prove its creation even if its precreate backup is older.
+  const confirmedCreationIds = useMemo<ReadonlySet<string>>(
+    () => new Set((collection.state?.snapshots ?? []).filter(snapshot => Boolean(snapshot.metadata))
+      .map(snapshot => snapshot.resource.id)), [collection.state?.snapshots]);
+
   const refusal = () => refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
 
   return {
@@ -108,11 +113,12 @@ export function useStudyNotesEngine(enabled: boolean) {
     notes,
     noteDelivery,
     confirmedDictationSources,
+    confirmedCreationIds,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): WriteSubmission & { note: StudyNote } => {
-      const id = newClientId();
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string }): WriteSubmission & { note: StudyNote } => {
+      const id = options?.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
       const value = deepCleanUndefined({

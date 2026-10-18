@@ -19,8 +19,8 @@ const resource = { collection: 'studyNotes', id: 'note' };
 const initialValue = { userId: 'owner', title: 'Title', content: 'Original words', tags: [], scriptureRefs: [], type: 'note',
   isDraft: true, createdAt: '2026-10-17T00:00:00.000Z', updatedAt: '2026-10-17T00:00:00.000Z', rev: { note: 4 } };
 
-function setup(creating = false) {
-  const harness = documentEngineHarness({ resource, value: creating ? null : initialValue,
+function setup(creating = false, id = resource.id) {
+  const harness = documentEngineHarness({ resource: { ...resource, id }, value: creating ? null : initialValue,
     metadata: creating ? null : { protocol: 1, generation: 'g1', revision: 7, deleted: false } });
   jest.mocked(createBrowserDataEngine).mockImplementation(options => harness.createBrowser({ ...options, withCollections: true }));
   const wrapper = ({ children }: { children: React.ReactNode }) => <DataEngineProvider>{children}</DataEngineProvider>;
@@ -34,6 +34,27 @@ function setup(creating = false) {
 }
 
 describe('study-note exact server acceptance', () => {
+  it('uses the reserved creation resource and confirms only its actual snapshot', async () => {
+    const id = 'preallocated-note';
+    const { result, harness, release, unmount } = setup(true, id);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    try {
+      let submission!: ReturnType<typeof result.current.createNote>;
+      const create: (value: Parameters<typeof result.current.createNote>[0], options?: { id: string }) => ReturnType<typeof result.current.createNote> = result.current.createNote;
+      await act(async () => { submission = create({ userId: 'owner', title: 'Reserved', content: 'Authored words', tags: [], scriptureRefs: [], type: 'note', materialIds: [], relatedSermonIds: [] }, { id }); });
+      await settleEngine();
+      expect(submission.note.id).toBe(id);
+      expect((await harness.commits.list('owner'))[0].baseline.resource.id).toBe(id);
+      expect(result.current.confirmedCreationIds.has(id)).toBe(false);
+      await act(async () => { release(); await harness.engine.retry(); await submission.persistence; await settleEngine(); });
+      // The next opening reads canonical collection membership; local capture alone cannot mint it.
+      await act(async () => { await result.current.refetch(); await settleEngine(); });
+      await waitFor(() => expect(result.current.confirmedCreationIds.has(id)).toBe(true));
+      expect(harness.server.resource.id).toBe(id);
+      expect(harness.server.value?.content).toBe('Authored words');
+    } finally { release(); await harness.engine.retry().catch(() => undefined); unmount(); }
+  });
+
   it.each(['create', 'update', 'delete'] as const)('keeps %s persistence pending after local capture until this request is acknowledged', async kind => {
     const { result, harness, release, unmount } = setup(kind === 'create');
     await waitFor(() => expect(result.current.loading).toBe(false));
