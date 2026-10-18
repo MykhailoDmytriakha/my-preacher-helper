@@ -30,6 +30,51 @@ describe('useDurableDraft', () => {
     jest.useRealTimers();
   });
 
+  it('does not let a late capture from the previous owner replace the current handoff proof', () => {
+    const view = renderHook(({ uid, value }) => useDurableDraft({ uid, docId: 'note-1', aggregate: 'note',
+      value, enabled: true, confirmedValue: 'Confirmed original' }),
+      { initialProps: { uid: 'uid-1', value: 'First owner words' } });
+    act(() => { jest.advanceTimersByTime(300); });
+    const oldCapture = view.result.current.markCaptured;
+    view.rerender({ uid: 'uid-2', value: 'Second owner words' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { view.result.current.markCaptured('Second owner words', 'note-1'); });
+    const secondKey = draftKey('uid-2', 'note-1', 'note');
+    expect(readDraft(secondKey)).toBeNull();
+    act(() => { oldCapture('First owner words', 'note-1'); });
+    act(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect(readDraft(secondKey)).toBeNull();
+    expect(readDraft(KEY)).toBeNull();
+    view.unmount();
+  });
+
+  it('keeps later words when the older payload is transferred to a canonical request', () => {
+    const view = render('Confirmed original');
+    view.rerender({ value: 'Submitted first' });
+    act(() => { jest.advanceTimersByTime(300); });
+    view.rerender({ value: 'Later unsent words' });
+    act(() => { jest.advanceTimersByTime(300); });
+    act(() => { view.result.current.markCaptured('Submitted first', 'note-1'); });
+    expect(readDraft(KEY)?.value).toBe('Later unsent words');
+    act(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect(readDraft(KEY)?.value).toBe('Later unsent words');
+    view.unmount();
+    expect(readDraft(KEY)?.value).toBe('Later unsent words');
+  });
+
+  it.each([undefined, 'another-creation'])('keeps a source tagged %s when a different reserved destination takes ownership', tag => {
+    const source = draftKey('uid-1', 'new', 'note');
+    const target = draftKey('uid-1', 'reserved-note', 'note');
+    saveDraft(source, 'Same words', tag); saveDraft(target, 'Same words');
+    const original = localStorage.getItem(source);
+    const view = render('Same words', { docId: 'new', creationTargetId: 'reserved-note', confirmedValue: null });
+    act(() => { view.result.current.markCaptured('Same words', 'reserved-note'); });
+    expect(readDraft(target)).toBeNull();
+    act(() => { jest.advanceTimersByTime(300); window.dispatchEvent(new Event('pagehide')); });
+    view.unmount();
+    expect(localStorage.getItem(source)).toBe(original);
+  });
+
   it('persists an edit once typing settles', () => {
     const { rerender } = render('server text');
     rerender({ value: 'server text + typed' });

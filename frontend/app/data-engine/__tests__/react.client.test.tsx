@@ -81,6 +81,8 @@ function makeEditor() {
 function makeBrowser(editor = makeEditor().editor) {
   const collectionWatches: { collection: string; next: (state: CollectionState) => void; stop: jest.Mock }[] = [];
   const engine = {
+    listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined),
     setOwner: jest.fn(), openEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(async () => editor),
     createEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(async () => editor), retry: jest.fn(async () => undefined),
     recoverEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, string, { signal?: AbortSignal }?]>(async () => editor),

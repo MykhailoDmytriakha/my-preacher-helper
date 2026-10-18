@@ -16,7 +16,8 @@ function fixture() {
   const scope = MembershipScope.begin('owner', 'scope', [{ baseline: { resource: { collection: 'series', id: 's' }, metadata: null,
     value: { userId: 'owner', title: 'Series', items: [{ id: 'group-g', type: 'group', refId: 'g', position: 1 }], sermonIds: [], seriesKind: 'group' } }, predecessor: null }],
   { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), save });
-  const engine = { setOwner: jest.fn(), beginMembership: jest.fn(async () => scope), recoverMembership: jest.fn(async () => scope),
+  const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), beginMembership: jest.fn(async () => scope), recoverMembership: jest.fn(async () => scope),
     releaseMembership: jest.fn(), listMembershipRecovery: jest.fn(async () => [scope.getState().record]),
     membershipDelivery: jest.fn(async (): Promise<MembershipDelivery> => ({ phase: 'queued', canDiscard: false, code: null })),
     subscribeMembership: jest.fn((listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); }),

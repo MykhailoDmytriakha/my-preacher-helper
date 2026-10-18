@@ -352,8 +352,8 @@
     "confirmTakeTheirs": "Keep the server's version"
   },
   "unsavedDraft": {
-    "title": "Unsaved text found",
-    "description": "Edits from an earlier session were never saved.",
+    "title": "Text from last time",
+    "description": "This device kept text from an earlier session. It may differ from the current note.",
     "restore": "Restore",
     "discard": "Discard"
   },
@@ -2135,8 +2135,8 @@
     "modeSwitchFailed": "Could not switch the editor. Your plan is untouched — try again.",
     "saveRefusedByOtherDevice": "This point was edited somewhere else. Nothing was overwritten — your text is still here.",
     "saveRefusedKeepMine": "Keep mine",
-    "draftRecoveryTitle": "Unsaved plan text from last time",
-    "draftRecoveryDescription": "Cards whose text never reached the server: {{count}}. Below is what would come back and what the plan holds now.",
+    "draftRecoveryTitle": "Plan text from last time",
+    "draftRecoveryDescription": "Cards with text kept on this device: {{count}}. Compare it with the current plan below.",
     "draftRecoveryRestore": "Bring it back",
     "draftRecoveryDiscard": "Discard it",
     "sectionSaved": "{{section}} section saved",

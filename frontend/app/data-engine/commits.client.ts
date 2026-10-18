@@ -89,6 +89,27 @@ export function createIndexedDbCommitStore(): CommitStore {
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),
     createBatch,
     compareAndSetBatch,
+    listCaptures: (owner, prefix) => transaction('readonly', (store, read, done) => {
+      readCommitRows(store, read, owner, requests => {
+        const candidates = requests.filter(request => request.retentionScope?.startsWith(prefix));
+        if (!candidates.length) { done([]); return; }
+        const held: CommitRequest[] = []; let remaining = candidates.length;
+        for (const request of candidates) read(store.get(commitCaptureKey(owner, request.retentionScope!, request.id)), reference => {
+          if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === request.id) held.push(request);
+          if (!--remaining) done(held);
+        });
+      });
+    }),
+    releaseCapture: (owner, scope, id) => transaction('readwrite', (store, read, done) => {
+      readCommitRows(store, read, owner, requests => {
+        if (!requests.some(request => request.id === id && request.retentionScope === scope)) { done(undefined); return; }
+        const key = commitCaptureKey(owner, scope, id);
+        read(store.get(key), reference => {
+          if (reference?.commitReferences?.length === 1 && reference.commitReferences[0] === id) store.delete(key);
+          collectCommitRows(store, read, owner, () => done(undefined));
+        });
+      });
+    }),
     releaseProjection: (owner, ids) => transaction('readwrite', (store, read, done) => {
       readCommitRows(store, read, owner, requests => {
         for (const id of ids) {

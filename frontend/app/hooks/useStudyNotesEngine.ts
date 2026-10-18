@@ -19,16 +19,21 @@ const now = () => new Date().toISOString();
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
 const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds'];
+export type StudyNoteSubmission = WriteSubmission & {
+  /** Exact canonical capture; absent on refused/skipped compatibility results. */
+  capture?: Promise<DocumentWriteReceipt>;
+};
+
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
-/** Local capture permits continued editing; exact whole-request ACK alone permits cleanup. */
-const accepted = (key: string, request: Promise<DocumentWriteReceipt>): WriteSubmission & { snapshot: Promise<ResourceSnapshot> } => {
+/** Local capture owns the submitted backup; server status and raw audio still require exact ACK. */
+const accepted = (key: string, request: Promise<DocumentWriteReceipt>): StudyNoteSubmission & { snapshot: Promise<ResourceSnapshot> } => {
   const snapshot = request.then(receipt => receipt.persistence);
   const persistence = snapshot.then(() => undefined);
   const acceptance = request.then((receipt): WriteAcceptance => ({ kind: 'queued', receipt: receipt.requestId ?? key }));
   void snapshot.catch(() => undefined);
   void persistence.catch(() => undefined);
   void acceptance.catch(() => undefined);
-  return { acceptance, persistence, snapshot };
+  return { acceptance, persistence, snapshot, capture: request };
 };
 
 /**
@@ -55,6 +60,7 @@ type SavedNote = StudyNote & { revision?: number };
 type NoteUpdate = {
   id: string;
   updates: Partial<StudyNote>;
+  captureScope?: string;
   expectedRevision?: number | null;
   expectedBaseline?: Record<string, unknown> | null;
 };
@@ -88,7 +94,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       { pending: row.pending, needsAttention: row.needsAttention }] as const] : [])),
     [collection.state?.documents]);
 
-  const once = (key: string, run: () => Promise<DocumentWriteReceipt>): (WriteSubmission & { snapshot: Promise<ResourceSnapshot> }) | null => {
+  const once = (key: string, run: () => Promise<DocumentWriteReceipt>): (StudyNoteSubmission & { snapshot: Promise<ResourceSnapshot> }) | null => {
     if (inFlight.current.has(key)) return null;
     inFlight.current.add(key);
     const request = run().finally(() => inFlight.current.delete(key));
@@ -117,7 +123,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string }): WriteSubmission & { note: StudyNote } => {
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }): StudyNoteSubmission & { note: StudyNote } => {
       const id = options?.id ?? newClientId();
       const at = now();
       const optimistic: StudyNote = { ...note, id, createdAt: at, updatedAt: at, isDraft: isDraft(note), materialIds: [], relatedSermonIds: note.relatedSermonIds || [] };
@@ -127,12 +133,12 @@ export function useStudyNotesEngine(enabled: boolean) {
         ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
         ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
       }) as unknown as DocumentData;
-      const request = actions.submit(resource(id), { kind: 'create', value });
+      const request = actions.submit(resource(id), { kind: 'create', value }, options?.captureScope ? { captureScope: options.captureScope } : undefined);
       void request.catch(() => undefined);
       return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
     },
     updating: updating > 0,
-    updateNote: ({ id, updates, expectedRevision, expectedBaseline }: NoteUpdate): WriteSubmission & { result: Promise<SavedNote> } => {
+    updateNote: ({ id, updates, expectedRevision, expectedBaseline, captureScope }: NoteUpdate): StudyNoteSubmission & { result: Promise<SavedNote> } => {
       if (!uid) {
         const refused = refusal();
         const result = refused.acceptance.then(() => undefined as never) as Promise<SavedNote>;
@@ -174,7 +180,7 @@ export function useStudyNotesEngine(enabled: boolean) {
             const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), ...receipts, updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
             return next;
-          } });
+          } }, captureScope ? { captureScope } : undefined);
         } finally {
           setUpdating(count => count - 1);
         }

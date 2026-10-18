@@ -38,6 +38,23 @@ describe('one action on a document no screen has open', () => {
     expect(harness.server.value).toBeNull();
   });
 
+  it.each(['update', 'delete'] as const)('retains the exact public %s capture until its caller releases it', async kind => {
+    const { harness, result, unmount } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    harness.engine.setOnline(false);
+    try {
+      const scope = `public-capture:${kind}`;
+      const action = kind === 'delete' ? { kind } : { kind, update: (current: typeof stored | null) => ({ ...current!, title: 'Captured words' }) };
+      const receipt = await result.current.submit(resource, action as Parameters<typeof result.current.submit>[1], { captureScope: scope });
+      const request = (await harness.commits.list('owner')).find(row => row.id === receipt.requestId);
+      expect(request?.retentionScope).toBe(scope);
+      expect((await harness.engine.listWriteCaptures('public-capture:')).map(row => row.requestId)).toEqual([receipt.requestId]);
+      await harness.engine.releaseWriteCapture(scope, receipt.requestId!);
+      expect(await harness.engine.listWriteCaptures('public-capture:')).toEqual([]);
+      expect((await harness.commits.list('owner')).some(row => row.id === receipt.requestId)).toBe(true);
+    } finally { unmount(); }
+  });
+
   it('accepts the exact captured write delivered by another worker through the shared durable queue', async () => {
     const { harness, result, unmount } = setup();
     await waitFor(() => expect(result.current.ready).toBe(true));

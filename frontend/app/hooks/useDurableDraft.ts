@@ -9,6 +9,7 @@ import {
   draftKey,
   readDraft,
   saveDraft,
+  subscribeDraftCapture,
 } from '@/utils/durableDraft';
 
 /** How long to coalesce keystrokes before touching storage. */
@@ -44,6 +45,8 @@ export interface UseDurableDraftResult<T> {
   acceptRecovered: () => void;
   /** The user chose to keep the server version — forget the draft. */
   discardRecovered: () => void;
+  /** Transfer this exact payload to a durably captured canonical request. */
+  markCaptured: (captured: T, targetDocId: string) => void;
   /** Call after the server accepted `confirmed`; retires that draft only. */
   markSaved: (confirmed: T) => void;
 }
@@ -52,8 +55,9 @@ export interface UseDurableDraftResult<T> {
  * Keeps the editor's text in storage that survives a closed tab, crash or reload.
  *
  * The contract with the rest of the app is the invariant from `durableDraft.ts`:
- * a stored draft means "this text was never confirmed saved". So the editor
- * writes on every change, and only a successful write clears it.
+ * unsent text has a safe copy. An exact canonical request may take ownership of
+ * its captured payload; otherwise only server acceptance retires that copy.
+ * Historical copies with no transfer evidence keep their unknown outcome.
  *
  * WHY A `pagehide` LISTENER AND NOT `beforeunload`. The debounce means the last
  * few hundred milliseconds of typing are not in storage yet, and closing a tab
@@ -106,6 +110,7 @@ export function useDurableDraft<T>({
    * exactly the failure mode of the preparation backup this module replaces.
    * Found by using the feature, not by unit tests.
    */
+  const capturedRef = useRef<{ keys: readonly string[]; value: string } | null>(null);
   const confirmedRef = useRef<string | null>(null);
   const confirmedKeyRef = useRef<string | null>(null);
 
@@ -135,6 +140,8 @@ export function useDurableDraft<T>({
    */
   const persist = useCallback((targetKey: string, next: T) => {
     const serialised = serializeContent(next);
+    // The canonical queue already owns these words, including after this page leaves.
+    if (capturedRef.current?.keys.includes(targetKey) && capturedRef.current.value === serialised) return;
     if (serialised === confirmedRef.current) {
       // Back to the server's value by hand. Retire OUR draft so it stops being
       // offered — but only if the stored one is still the one we wrote. If another
@@ -240,6 +247,32 @@ export function useDurableDraft<T>({
     if (keyRef.current && rejected !== null) clearDraftIfMatches(keyRef.current, rejected);
   }, []);
 
+  const markCaptured = useCallback((captured: T, targetDocId: string) => {
+    if (!uid || !targetDocId) return;
+    const targetKey = draftKey(uid, targetDocId, aggregate);
+    // A precreate address and its reserved document are one opening. This is not
+    // permission to claim an untagged legacy source or another creation's copy.
+    const sourceKey = creationTargetId === targetDocId ? key : null;
+    const keys = sourceKey && sourceKey !== targetKey ? [targetKey, sourceKey] : [targetKey];
+    const serialised = serializeContent(captured);
+    if (keyRef.current && keys.includes(keyRef.current)) capturedRef.current = { keys, value: serialised };
+    clearDraftIfMatches(targetKey, captured);
+    const ownsSource = sourceKey && readDraft(sourceKey)?.creationTargetId === targetDocId;
+    if (ownsSource) clearDraftIfMatches(sourceKey, captured);
+    if (keyRef.current === targetKey || (ownsSource && keyRef.current === sourceKey)) {
+      setRecovered(current => current !== null && serializeContent(current) === serialised ? null : current);
+      if (ourDraftRef.current === serialised) ourDraftRef.current = null;
+    }
+  }, [uid, key, aggregate, creationTargetId]);
+
+  useEffect(() => subscribeDraftCapture(event => {
+    if (event.key !== keyRef.current) return;
+    const serialised = serializeContent(event.value);
+    capturedRef.current = { keys: [event.key], value: serialised };
+    setRecovered(current => current !== null && serializeContent(current) === serialised ? null : current);
+    if (ourDraftRef.current === serialised) ourDraftRef.current = null;
+  }), []);
+
   const markSaved = useCallback((confirmed: T) => {
     // Record it even without a key so a later flush cannot re-store saved text.
     confirmedRef.current = serializeContent(confirmed);
@@ -248,5 +281,5 @@ export function useDurableDraft<T>({
     clearDraftIfMatches(keyRef.current, confirmed);
   }, []);
 
-  return { recovered, acceptRecovered, discardRecovered, markSaved };
+  return { recovered, acceptRecovered, discardRecovered, markCaptured, markSaved };
 }

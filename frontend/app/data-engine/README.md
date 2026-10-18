@@ -119,6 +119,16 @@ function NoteContent({ id }: { id: string }) {
   store, transport or polling. A page may leave while delivery continues; after restart
   the queue still owns the request, while the page's promise must be replaced by durable
   accepted evidence. A later checkpoint projection failure does not erase a captured receipt.
+- **Restart-safe backup handoff:** `submit(resource, action, { captureScope })` can retain
+  its exact captured request through the existing atomic capture-reference row. The
+  note adapter derives this scope by reading an identity minted in its ordinary
+  local backup write; it does not rewrite text to attach metadata. The workspace
+  connector uses owner-fenced `listWriteCaptures(prefix)` and `releaseWriteCapture(scope,
+  requestId)` to reconcile the exact local identity/address and release only that
+  hold through the shared collector. Missing request or incomplete local reads are
+  never acceptance. Pending/refused words remain canonical recovery; Saved/audio
+  still wait for the whole-request ACK. Legacy unbound copies remain neutral explicit
+  recovery. This adds no queue, outcome ledger or transport.
 - **Leaving:** a screen that goes away closes its editor with `close({ flush })`; the React
   layer passes the document's autosave setting. A savable draft — typed inside the autosave
   delay, or a deletion not yet queued — becomes a durable request in the engine's queue before

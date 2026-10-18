@@ -80,6 +80,13 @@ export interface EditorState {
 }
 
 /** A single editor owns its checkpoint; the runtime owns delivery for every editor. */
+function captureSaveOptions(predecessorIds: string[], captureScope?: string) {
+  const options: { predecessorIds?: string[]; retentionScope?: string } = {};
+  if (predecessorIds.length) options.predecessorIds = predecessorIds;
+  if (captureScope) options.retentionScope = captureScope;
+  return Object.keys(options).length ? options : undefined;
+}
+
 export class EditorController {
   private session: DataSession;
   private prepared: DataCommand | null = null;
@@ -165,7 +172,7 @@ export class EditorController {
     return this.enqueue(() => this.persist());
   }
 
-  save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void): Promise<void> {
+  save(capturedIntent?: SessionCheckpoint, selection?: readonly ManualPath[], onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string): Promise<void> {
     this.assertCurrent();
     const captured = capturedIntent ?? this.session.checkpoint();
     this.assertManualResolution(selection, captured);
@@ -180,7 +187,7 @@ export class EditorController {
           .filter(([, request]) => request.generation <= captured.editGeneration);
         const newestGeneration = Math.max(...pending.map(([, request]) => request.generation));
         const predecessorIds = pending.filter(([, request]) => request.generation === newestGeneration).map(([id]) => id);
-        const options = predecessorIds.length ? { predecessorIds } : undefined;
+        const options = captureSaveOptions(predecessorIds, captureScope);
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
         if (capture) onCaptured!(capture.receipt);
@@ -233,15 +240,15 @@ export class EditorController {
   }
 
   /** Queue a deletion only when no earlier operation has an unresolved outcome. */
-  remove(onCaptured?: (receipt: DocumentWriteReceipt) => void): Promise<void> {
+  remove(onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string): Promise<void> {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
     if (Object.keys(checkpoint.pending).length || this.prepared || this.preparations) return Promise.reject(Object.assign(new Error('Resolve pending commands before deleting'), { code: 'pending-delivery-first' }));
-    if (!checkpoint.confirmed.value || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured) : Promise.resolve();
+    if (!checkpoint.confirmed.value || checkpoint.confirmed.metadata?.deleted) return onCaptured ? this.save(checkpoint, undefined, onCaptured, captureScope) : Promise.resolve();
     if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
     const persisting = this.edit(null);
     const deletion = this.session.checkpoint();
-    return persisting.then(() => this.save(deletion, undefined, onCaptured));
+    return persisting.then(() => this.save(deletion, undefined, onCaptured, captureScope));
   }
 
   observe(snapshot: ResourceSnapshot, source: 'server' | 'cache'): Promise<void> {

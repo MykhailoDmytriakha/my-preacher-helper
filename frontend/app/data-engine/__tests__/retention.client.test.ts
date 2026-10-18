@@ -126,3 +126,40 @@ it('retains a whole atomic group while another editor still depends on one parti
   await commits.compareAndSet(later, { ...later, initialized: true });
   expect((await commits.list('owner')).map(item => item.id)).toEqual(['later']);
 });
+
+
+it('retains an acknowledged payload across factory restart until its exact backup capture releases it', async () => {
+  const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
+  const scope = 'draft-capture:v1:exact';
+  const created = await commits.create({ ...request('backup-owned'), retentionScope: scope });
+  const accepted = await commits.compareAndSet(created, acknowledge(created));
+  await checkpoints.put(record(accepted, true));
+  const reopened = createIndexedDbCommitStore();
+  expect((await reopened.listCaptures!('owner', 'draft-capture:v1:')).map(row => row.id)).toEqual([created.id]);
+  await reopened.releaseCapture!('another-owner', scope, created.id);
+  await reopened.releaseCapture!('owner', 'membership-scope', created.id);
+  await reopened.releaseCapture!('owner', scope, 'another-request');
+  expect(await reopened.list('owner')).toHaveLength(1);
+  await reopened.releaseCapture!('owner', scope, created.id);
+  expect(await reopened.list('owner')).toEqual([]);
+  expect(await reopened.listCaptures!('owner', 'draft-capture:v1:')).toEqual([]);
+  expect([...storage.rows.keys()].map(key => JSON.parse(key)).filter(key => key[0] === 'reference')).toEqual([]);
+});
+
+it.each(['queued', 'refused'] as const)('releasing a backup capture never discards %s canonical work', async state => {
+  const commits = createIndexedDbCommitStore();
+  const created = await commits.create({ ...request('pending-owned'), retentionScope: 'draft-capture:v1:pending', state });
+  await commits.releaseCapture!('owner', created.retentionScope!, created.id);
+  expect((await commits.list('owner'))[0].value?.content).toBe(created.value?.content);
+  expect(await commits.listCaptures!('owner', 'draft-capture:v1:')).toEqual([]);
+});
+
+it('lists only held capture references, excluding membership and released scopes', async () => {
+  const commits = createIndexedDbCommitStore();
+  const note = await commits.create({ ...request('note', 'note-editor'), retentionScope: 'draft-capture:v1:note' });
+  const membership = await commits.create({ ...request('membership', 'member-editor'), retentionScope: 'membership-scope' });
+  expect((await commits.listCaptures!('owner', 'draft-capture:v1:')).map(row => row.id)).toEqual([note.id]);
+  await commits.releaseCapture!('owner', note.retentionScope!, note.id);
+  expect(await commits.listCaptures!('owner', 'draft-capture:v1:')).toEqual([]);
+  expect((await commits.listCaptures!('owner', 'membership-')).map(row => row.id)).toEqual([membership.id]);
+});

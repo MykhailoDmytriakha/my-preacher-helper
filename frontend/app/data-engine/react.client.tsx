@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { failureWords, logFailureOnce, readOnlyError, refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
 import { LIST_STORAGE, OPENING_STORAGE, getDeviceStorageHealth, isStorageSilent, subscribeDeviceStorage, untilStorageSilent } from '@/utils/deviceStorage';
+import { connectDraftCaptureRecovery } from '@/utils/draftCaptureRecovery.client';
 import { useTranslation } from '@locales/useTranslation';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
@@ -207,9 +208,10 @@ export function DataEngineProvider({ children }: { children: ReactNode }) {
       if (active) setFailure(previous => ({ owner, counts: { ...previous?.counts, [key]: (previous?.counts[key] ?? 0) + 1 } }));
     } });
     instance.engine.setOwner(owner);
+    const stopDraftCapture = owner ? connectDraftCaptureRecovery(owner, instance.engine) : () => undefined;
     setFailure(null);
     setMounted({ owner, browser: instance });
-    return () => { active = false; instance.dispose(); };
+    return () => { active = false; stopDraftCapture(); instance.dispose(); };
   }, [owner]);
   const browser = mounted?.owner === owner ? mounted.browser : null;
   const failures = failure?.owner === owner ? failure.counts : NO_FAILURES;
@@ -334,9 +336,9 @@ export function useDocumentActions() {
       withEditor(resource, editor => editor.commit(updater)),
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
     /** Resolves at local capture; its persistence promise follows only this complete request. */
-    submit: (resource: ResourceRef, action: DocumentAction) => withEditor(resource, editor => action.kind === 'delete'
-      ? editor.removeWithReceipt()
-      : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update), action.kind === 'create'),
+    submit: (resource: ResourceRef, action: DocumentAction, options?: { captureScope?: string }) => withEditor(resource, editor => action.kind === 'delete'
+      ? editor.removeWithReceipt(options)
+      : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update, options), action.kind === 'create'),
     /**
      * Settle the answer the server gave to a document no screen has open — a conflict or a
      * refusal — without ever choosing for the person. "Mine" is allowed only when exactly one

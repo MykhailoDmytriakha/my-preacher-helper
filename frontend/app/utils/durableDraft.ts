@@ -1,3 +1,4 @@
+import { newClientId } from '@/utils/clientId';
 import { serializeContent } from '@/utils/contentFingerprint';
 
 /**
@@ -11,12 +12,10 @@ import { serializeContent } from '@/utils/contentFingerprint';
  * on cleanup (`studies/[id]/page.tsx:225-232`), so typing and navigating away
  * within 1.5s loses the text with no signal at all.
  *
- * A draft is written BEFORE any write is attempted and cleared only once the
- * server has accepted that exact value. Therefore the invariant is precise:
- *
- *     a draft exists  <=>  there is text that was never confirmed as saved
- *
- * which is what makes "offer to restore it" unambiguous rather than noisy.
+ * A draft protects typing before a durable owner has captured it. Legacy writes
+ * retire it after exact server acceptance; engine note writes can transfer that
+ * exact payload to their canonical durable request. Historical unbound copies
+ * have an unknown outcome and remain available for explicit recovery.
  *
  * This generalises the one-off backup the preparation editor already had
  * (`sermons/[id]/page.tsx:307-330`) and closes three holes it has:
@@ -36,12 +35,16 @@ import { serializeContent } from '@/utils/contentFingerprint';
 /** Bump when the stored shape changes; old entries are then ignored, not parsed. */
 const PREFIX = 'draft:v1:';
 
+let draftIdentitySequence = 0;
+
 /** A single stored draft. `savedAt` orders drafts newest first when a screen looks for them. */
 export interface DurableDraft<T> {
   value: T;
   savedAt: number;
   /** Unique future note resource; present only while typing before its create. */
   creationTargetId?: string;
+  /** Exact payload ownership; a different value always drops this binding. */
+  captureToken?: string;
 }
 
 /**
@@ -120,14 +123,25 @@ export function subscribeDraftStorage(listener: () => void): () => void {
  * it traded an original for a backup, silently. So a refused copy is reported instead: the
  * app-wide DraftStorageNotice tells the person before any text can be lost.
  */
-export function saveDraft<T>(key: string, value: T, creationTargetId?: string): boolean {
+export function saveDraft<T>(key: string, value: T, creationTargetId?: string, captureIdentity = false): boolean {
   const store = storage();
   if (!store) {
     recordDraftStorage(key, true, value, creationTargetId);
     return false;
   }
 
-  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(creationTargetId ? { creationTargetId } : {}) } satisfies DurableDraft<T>);
+  const previous = readDraft<T>(key);
+  // An identity is minted as part of the ordinary value write, never by a later
+  // metadata-only read/modify/write that could overwrite another tab's words.
+  const sameLineage = previous?.creationTargetId === creationTargetId
+    || (creationTargetId === undefined && Boolean(previous?.creationTargetId)
+      && key.endsWith(`:${previous?.creationTargetId}:note`));
+  const sameValue = previous && serializeContent(previous.value) === serializeContent(value);
+  const previousToken = typeof previous?.captureToken === 'string' && previous.captureToken ? previous.captureToken : undefined;
+  const captureToken = sameLineage && sameValue && previousToken ? previousToken
+    : captureIdentity ? `${newClientId()}:${++draftIdentitySequence}` : undefined;
+  const payload = JSON.stringify({ value, savedAt: Date.now(), ...(creationTargetId ? { creationTargetId } : {}),
+    ...(captureToken ? { captureToken } : {}) } satisfies DurableDraft<T>);
 
   try {
     store.setItem(key, payload);
@@ -154,6 +168,49 @@ export function readDraft<T>(key: string): DurableDraft<T> | null {
   } catch {
     return null;
   }
+}
+
+export interface DraftCaptureEvent { key: string; value: unknown }
+const captureListeners = new Set<(event: DraftCaptureEvent) => void>();
+
+export function subscribeDraftCapture(listener: (event: DraftCaptureEvent) => void): () => void {
+  captureListeners.add(listener);
+  return () => { captureListeners.delete(listener); };
+}
+
+/** Strict reads distinguish absent copies from malformed or unavailable storage. */
+export function readDraftsStrict(keys: readonly string[]): Map<string, DurableDraft<unknown>> | null {
+  const store = storage();
+  if (!store) return null;
+  const records = new Map<string, DurableDraft<unknown>>();
+  try {
+    for (const key of new Set(keys)) {
+      const raw = store.getItem(key);
+      if (raw === null) continue;
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || !('value' in parsed)) return null;
+      records.set(key, parsed as DurableDraft<unknown>);
+    }
+    return records;
+  } catch { return null; }
+}
+
+/** Compare immediately before removal; a later payload never belongs to this capture. */
+export function retireDraftCapture(key: string, captureToken: string, value: unknown): boolean {
+  const store = storage();
+  if (!store) return false;
+  try {
+    const raw = store.getItem(key);
+    if (!raw) return true;
+    const current = JSON.parse(raw) as DurableDraft<unknown>;
+    if (current.captureToken !== captureToken
+      || serializeContent(current.value) !== serializeContent(value)) return false;
+    store.removeItem(key);
+    if (store.getItem(key) !== null) return false;
+    if (refusedDraftKeys.get(key)?.value === serializeContent(value)) recordDraftStorage(key, false);
+    for (const listener of captureListeners) { try { listener({ key, value }); } catch { /* Typing stays independent. */ } }
+    return true;
+  } catch { return false; }
 }
 
 /** Remove the stored copy only; what the key is owed is decided by the caller. */

@@ -51,6 +51,8 @@ function makeEditor(title: string): ManagedEditor {
 
 function makeBrowser() {
   const engine = {
+    listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined),
     setOwner: jest.fn(),
     openEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(() => never()),
     createEditor: jest.fn<Promise<ManagedEditor>, [ResourceRef, string, { signal?: AbortSignal }?]>(() => never()),

@@ -69,7 +69,8 @@ function Screen({ id }: { id: string }) {
 describe('a failure is said in words where it is caught', () => {
   it('a document the device does not have, opened offline, says the screen line, re-says it in a new language, and logs once', async () => {
     const opening = new Error(ENGINE_SENTENCE);
-    const engine = { setOwner: jest.fn(), openEditor: jest.fn(async () => { throw opening; }) };
+    const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), openEditor: jest.fn(async () => { throw opening; }) };
     jest.mocked(createBrowserDataEngine).mockReturnValue({ engine, dispose: jest.fn(), editorId: () => 'editor' } as unknown as BrowserDataEngine);
     const view = render(<Screen id="sermon-elsewhere" />, { wrapper });
     expect(await screen.findByRole('alert')).toHaveTextContent('ru:dataSync.documentFailed');
@@ -125,7 +126,8 @@ describe('a failure is said in words where it is caught', () => {
     const resource = { collection: 'sermons', id: 'sermon-1' };
     const gone = new Error('Recovery checkpoint no longer exists');
     const { editor } = fakeEditor(resource);
-    const engine = { setOwner: jest.fn(), openEditor: jest.fn(async () => editor), recoverEditor: jest.fn(async () => { throw gone; }) };
+    const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), openEditor: jest.fn(async () => editor), recoverEditor: jest.fn(async () => { throw gone; }) };
     jest.mocked(createBrowserDataEngine).mockReturnValue({ engine, dispose: jest.fn(), editorId: () => 'editor' } as unknown as BrowserDataEngine);
     const { result, unmount } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper });
     await waitFor(() => expect(result.current.status).not.toBeNull());
@@ -141,7 +143,8 @@ describe('a failure is said in words where it is caught', () => {
     const resource = { collection: 'sermons', id: 'sermon-1' };
     const instruction = 'Read the current document before resolving a generation mismatch';
     const fake = fakeEditor(resource);
-    const engine = { setOwner: jest.fn(), openEditor: jest.fn(async () => fake.editor) };
+    const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), openEditor: jest.fn(async () => fake.editor) };
     jest.mocked(createBrowserDataEngine).mockReturnValue({ engine, dispose: jest.fn(), editorId: () => 'editor' } as unknown as BrowserDataEngine);
     const { result, unmount } = renderHook(() => useDataDocument(resource, { autoSave: false }), { wrapper });
     await waitFor(() => expect(result.current.status).not.toBeNull());
@@ -173,7 +176,8 @@ describe('a failure is said in words where it is caught', () => {
   it('a list failure the engine also reported in the background reaches the console once', async () => {
     const failure = new Error('Data engine unavailable');
     let report: ((error: unknown) => void) | undefined;
-    const engine = { setOwner: jest.fn(), watchCollection: jest.fn(() => () => undefined),
+    const engine = { listWriteCaptures: jest.fn(async () => []), releaseWriteCapture: jest.fn(async () => undefined),
+    subscribeSavedWork: jest.fn(() => () => undefined), setOwner: jest.fn(), watchCollection: jest.fn(() => () => undefined),
       refreshCollection: jest.fn(async () => { report?.(failure); throw failure; }) };
     jest.mocked(createBrowserDataEngine).mockImplementation(options => {
       report = options?.onError;

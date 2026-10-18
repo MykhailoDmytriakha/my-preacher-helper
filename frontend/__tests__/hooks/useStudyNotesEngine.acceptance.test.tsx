@@ -40,11 +40,15 @@ describe('study-note exact server acceptance', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     try {
       let submission!: ReturnType<typeof result.current.createNote>;
-      const create: (value: Parameters<typeof result.current.createNote>[0], options?: { id: string }) => ReturnType<typeof result.current.createNote> = result.current.createNote;
-      await act(async () => { submission = create({ userId: 'owner', title: 'Reserved', content: 'Authored words', tags: [], scriptureRefs: [], type: 'note', materialIds: [], relatedSermonIds: [] }, { id }); });
+      const create: (value: Parameters<typeof result.current.createNote>[0], options?: { id: string; captureScope?: string }) => ReturnType<typeof result.current.createNote> = result.current.createNote;
+      await act(async () => { submission = create({ userId: 'owner', title: 'Reserved', content: 'Authored words', tags: [], scriptureRefs: [], type: 'note', materialIds: [], relatedSermonIds: [] }, { id, captureScope: 'draft-capture:v1:reserved' }); });
       await settleEngine();
       expect(submission.note.id).toBe(id);
-      expect((await harness.commits.list('owner'))[0].baseline.resource.id).toBe(id);
+      const queued = (await harness.commits.list('owner'))[0];
+      expect(queued.baseline.resource.id).toBe(id);
+      expect(queued.retentionScope).toBe('draft-capture:v1:reserved');
+      expect(queued.value?.content).toBe('Authored words');
+      await expect(submission.capture).resolves.toMatchObject({ kind: 'submitted', requestId: queued.id });
       expect(result.current.confirmedCreationIds.has(id)).toBe(false);
       await act(async () => { release(); await harness.engine.retry(); await submission.persistence; await settleEngine(); });
       // The next opening reads canonical collection membership; local capture alone cannot mint it.
@@ -52,6 +56,21 @@ describe('study-note exact server acceptance', () => {
       await waitFor(() => expect(result.current.confirmedCreationIds.has(id)).toBe(true));
       expect(harness.server.resource.id).toBe(id);
       expect(harness.server.value?.content).toBe('Authored words');
+    } finally { release(); await harness.engine.retry().catch(() => undefined); unmount(); }
+  });
+
+  it('carries update backup ownership into its durable request before server acceptance', async () => {
+    const { result, harness, release, unmount } = setup();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    try {
+      const update = result.current.updateNote as (input: Parameters<typeof result.current.updateNote>[0] & { captureScope: string }) => ReturnType<typeof result.current.updateNote>;
+      let submission!: ReturnType<typeof update>;
+      await act(async () => { submission = update({ id: 'note', updates: { content: 'Captured words' }, captureScope: 'draft-capture:v1:update' }); });
+      await awaitAcceptance(submission, () => undefined);
+      const [queued] = await harness.commits.list('owner');
+      expect(queued.value?.content).toBe('Captured words');
+      expect(queued.retentionScope).toBe('draft-capture:v1:update');
+      expect(harness.server.value?.content).toBe('Original words');
     } finally { release(); await harness.engine.retry().catch(() => undefined); unmount(); }
   });
 

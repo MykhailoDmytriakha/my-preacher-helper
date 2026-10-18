@@ -719,7 +719,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds]
     );
 
-    const { recovered, acceptRecovered, discardRecovered, markSaved } = useDurableDraft<NoteDraftPayload>({
+    const { recovered, acceptRecovered, discardRecovered, markCaptured, markSaved } = useDurableDraft<NoteDraftPayload>({
         uid,
         docId: draftDocId,
         creationTargetId,
@@ -744,6 +744,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         saveAtOnceRef,
         saveBlocked: saveConflict,
         onConflict: () => setSaveConflict(true),
+        onCaptured: markCaptured,
         onSaved: (saved) => {
             markSaved(saved);
             // This text IS the server's now, so the tick may come back.

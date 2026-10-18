@@ -52,6 +52,10 @@ export interface CommitStore {
   createBatch?(requests: readonly CommitRequest[]): Promise<CommitRequest[]>;
   /** Release a completed participant projection after its confirmed copy is durable elsewhere. */
   releaseProjection?(owner: string, ids: readonly string[]): Promise<void>;
+  /** Requests still held by their exact durable capture references. */
+  listCaptures?(owner: string, scopePrefix: string): Promise<CommitRequest[]>;
+  /** Release only this owner/scope/request hold, then use the shared collector. */
+  releaseCapture?(owner: string, scope: string, requestId: string): Promise<void>;
   /** All revisions win together, or no participant changes. */
   compareAndSetBatch?(changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]>;
 }
@@ -480,12 +484,19 @@ export class CommitQueue {
 /** Test/custom in-memory port; production supplies IndexedDB. */
 export function createMemoryCommitStore(): CommitStore {
   const records = new Map<string, CommitRequest>();
+  const captures = new Set<string>();
+  const captureKey = (owner: string, scope: string, id: string) => JSON.stringify([owner, scope, id]);
   return {
     list: async owner => clone([...records.values()].filter(record => record.owner === owner)),
+    listCaptures: async (owner, prefix) => clone([...records.values()].filter(record => record.owner === owner
+      && record.retentionScope?.startsWith(prefix) && captures.has(captureKey(owner, record.retentionScope, record.id)))),
+    releaseCapture: async (owner, scope, id) => { captures.delete(captureKey(owner, scope, id)); },
     create: async request => {
       const existing = [...records.values()].find(record => record.owner === request.owner && record.editorId === request.editorId && record.editGeneration === request.editGeneration);
       if (existing) { assertCommitCapture(existing, request); return clone(existing); }
-      records.set(request.id, clone(request)); return clone(request);
+      records.set(request.id, clone(request));
+      if (request.retentionScope) captures.add(captureKey(request.owner, request.retentionScope, request.id));
+      return clone(request);
     },
     compareAndSet: async (previous, next) => {
       const current = records.get(previous.id);

@@ -80,8 +80,8 @@ export interface ManagedEditor {
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null): Promise<void>;
   /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
-  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null): Promise<DocumentWriteReceipt>;
-  removeWithReceipt(): Promise<DocumentWriteReceipt>;
+  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null, options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
+  removeWithReceipt(options?: { captureScope?: string }): Promise<DocumentWriteReceipt>;
   /** Resolves when the command is durable; delivery continues independently. */
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
@@ -799,6 +799,25 @@ export class DataEngine {
     return () => { this.pendingListeners.delete(subscription); };
   }
 
+  /** A backup may transfer only to an actual request held by its own capture reference. */
+  async listWriteCaptures(scopePrefix: string): Promise<Array<{ requestId: string; scope: string; owner: string; resource: ResourceRef; value: DocumentData | null }>> {
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
+    const owner = this.owner, generation = this.generation;
+    if (!owner || !this.options.commits.listCaptures) return [];
+    const requests = await this.options.commits.listCaptures(owner, scopePrefix);
+    this.assertCurrent(owner, generation);
+    return requests.map(request => ({ requestId: request.id, scope: request.retentionScope!, owner,
+      resource: copy(request.baseline.resource), value: copy(request.value) }));
+  }
+
+  async releaseWriteCapture(scope: string, requestId: string): Promise<void> {
+    if (this.disposed) throw new Error(ENGINE_DISPOSED);
+    const owner = this.owner, generation = this.generation;
+    if (!owner || !this.options.commits.releaseCapture) return;
+    await this.options.commits.releaseCapture(owner, scope, requestId);
+    this.assertCurrent(owner, generation);
+  }
+
   /** Recovery and whole-action delivery depend on both journal rows and durable request answers. */
   subscribeSavedWork(listener: () => void): () => void {
     const stopPending = this.subscribePending(listener);
@@ -995,14 +1014,14 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
-      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void) => {
+      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
         active();
         const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
-        const saving = controller.save(undefined, undefined, onCaptured);
+        const saving = controller.save(undefined, undefined, onCaptured, captureScope);
         return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
       };
-      const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void) => {
-        active(); await controller.remove(onCaptured); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active();
+      const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string) => {
+        active(); await controller.remove(onCaptured, captureScope); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active();
       };
       const withReceipt = async (run: (captured: (receipt: DocumentWriteReceipt) => void) => Promise<void>) => {
         let receipt: DocumentWriteReceipt | undefined;
@@ -1062,8 +1081,8 @@ export class DataEngine {
         },
         edit: (value, shown) => { active(); return controller.edit(value, shown); },
         commit: updater => commit(updater),
-        commitWithReceipt: updater => withReceipt(captured => commit(updater, captured)),
-        removeWithReceipt: () => withReceipt(remove),
+        commitWithReceipt: (updater, options) => withReceipt(captured => commit(updater, captured, options?.captureScope)),
+        removeWithReceipt: options => withReceipt(captured => remove(captured, options?.captureScope)),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
         remove: () => remove(),
         acceptRemote: async expected => { active(); await controller.acceptRemote(undefined, expected); },

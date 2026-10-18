@@ -13,18 +13,29 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
+import { prepareDraftCapture, prepareNoteDraftCapture } from '@/utils/draftCaptureRecovery.client';
 import { draftKey, clearDraftIfMatches, clearCreationDraft, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
-import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { announceIfPersisted, awaitAcceptance } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { NoteDraftPayload } from './noteDraft';
+import type { StudyNoteSubmission } from '@/hooks/useStudyNotesEngine';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 
 const EMPTY_SOURCE_IDS: string[] = [];
 
+/** A returned canonical request owns the full payload; server/audio proof stays separate. */
+function afterCanonicalCapture(submission: StudyNoteSubmission, payload: NoteDraftPayload, targetId: string,
+    onCaptured?: (captured: NoteDraftPayload, targetId: string) => void) {
+    if (!submission.capture || !onCaptured) return;
+    void submission.capture.then(receipt => {
+        if (receipt.kind === 'submitted' && receipt.requestId) onCaptured(payload, targetId);
+    }).catch(() => undefined);
+}
+
 export function useNoteAutoSave({
-    noteId, isNew, creationId, draftDocId = 'new', isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
+    noteId, isNew, creationId, draftDocId = 'new', isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved, onCaptured, saveAtOnceRef, captureRecordingHandoff, dictationSourceIds = EMPTY_SOURCE_IDS, recordingSourceIds = EMPTY_SOURCE_IDS
 }: {
     dictationSourceIds?: string[];
     recordingSourceIds?: string[];
@@ -36,11 +47,12 @@ export function useNoteAutoSave({
     updateNote: (args: {
         id: string;
         updates: Partial<StudyNote>;
+        captureScope?: string;
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
-    }) => WriteSubmission & { result: Promise<StudyNote & { revision?: number }> };
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string }) =>
-        WriteSubmission & { note: StudyNote };
+    }) => StudyNoteSubmission & { result: Promise<StudyNote & { revision?: number }> };
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>, options?: { id: string; captureScope?: string }) =>
+        StudyNoteSubmission & { note: StudyNote };
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Baseline owned by the page so both autosave and "load newer" can move it. */
@@ -61,11 +73,12 @@ export function useNoteAutoSave({
     /** Raised when the server refused a stale write — the text is NOT lost. */
     onConflict: () => void;
     /**
-     * Called ONLY after the server accepted exactly this payload, so the durable
-     * draft holding the same text can be retired. Never called on failure — a
-     * surviving draft is precisely the signal that text is unconfirmed.
+     * Called ONLY after the server accepted exactly this payload. Canonical local
+     * capture can already own its backup, but never confirms server status.
      */
     onSaved?: (saved: NoteDraftPayload) => void;
+    /** Called only after an exact canonical request durably owns these words. */
+    onCaptured?: (captured: NoteDraftPayload, targetId: string) => void;
     /** Capture source IDs at submission time; later dictation belongs to a later save. */
     captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void>; canChangeDestination?: () => boolean } | undefined;
     /**
@@ -105,9 +118,11 @@ export function useNoteAutoSave({
             const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
             // Do not claim another creation's copy or an untagged legacy source for this ID.
             const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
-            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId) : false;
+            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId, true) : false;
             const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
-            const submission = creationId ? createNote(input, { id: creationId }) : createNote(input);
+            const captureScope = sourceKey && backupReady && creationId
+                ? prepareDraftCapture(sourceKey, confirmedPayload, { collection: 'studyNotes', id: creationId }) : undefined;
+            const submission = creationId ? createNote(input, { id: creationId, ...(captureScope ? { captureScope } : {}) }) : createNote(input);
             const newNote = submission.note;
             void recording?.carryTo(newNote.id).catch(() => undefined);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
@@ -129,6 +144,7 @@ export function useNoteAutoSave({
             // awaiting `persisted` acceptance. On a refusal the editor remains on
             // screen with this same text and with its draft carried to this id.
             // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
+            afterCanonicalCapture(submission, confirmedPayload, newNote.id, onCaptured);
             const acceptance = await awaitAcceptance(submission, () => undefined);
 
             const retirePersistedCreateDraft = () => {
@@ -167,7 +183,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, uid, setCreatedNoteId, baselineRef, onSaved, captureRecordingHandoff]);
+    }, [title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, createNote, creationId, draftDocId, uid, setCreatedNoteId, baselineRef, onSaved, onCaptured, captureRecordingHandoff]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -217,8 +233,10 @@ export function useNoteAutoSave({
         const wasDeliberate = deliberateOverwriteRef.current;
         try {
             const recording = captureRecordingHandoff?.();
+            const captureScope = prepareNoteDraftCapture(uid, noteId, submittedPayload);
             const submission = updateNote({
                 id: noteId,
+                captureScope,
                 updates,
                 expectedRevision: revisionRef.current,
                 // WHAT THIS TEXT WAS BUILT FROM. Not a fresh read: the service used
@@ -235,6 +253,7 @@ export function useNoteAutoSave({
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
             });
+            afterCanonicalCapture(submission, submittedPayload, noteId, onCaptured);
             void submission.persistence.then(() => recording?.accepted()).catch(() => undefined);
             // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
@@ -252,8 +271,8 @@ export function useNoteAutoSave({
                     // A deliberate overwrite is one send; left armed, every later save
                     // would go out unguarded until the next persisted one.
                     if (wasDeliberate) deliberateOverwriteRef.current = false;
-                    // A paused mutation can later become persisted. Retire its exact
-                    // payload then, never merely because the queue accepted it.
+                    // Canonical capture may already own the backup. Confirmed UI
+                    // still waits for the exact whole-write server result.
                     void submission.persistence.then(async () => {
                         const saved = await submission.result;
                         if (!saved) return;
@@ -303,7 +322,7 @@ export function useNoteAutoSave({
             inFlightRef.current = false;
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, atOnceRef, captureRecordingHandoff]);
+    }, [uid, noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, dictationSourceIds, recordingSourceIds, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, onCaptured, atOnceRef, captureRecordingHandoff]);
 
     useEffect(() => {
         if (!isInitialized) return;
