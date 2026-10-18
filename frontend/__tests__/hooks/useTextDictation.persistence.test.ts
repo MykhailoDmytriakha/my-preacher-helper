@@ -5,6 +5,7 @@ import { UsageCapReachedError } from '@/services/usageLimits';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 
 const mockRows = new Map<string, unknown>();
+const mockRefresh = jest.fn();
 let mockWriteError: Error | null = null;
 jest.mock('idb-keyval', () => ({
   createStore: jest.fn(() => ({})),
@@ -17,7 +18,7 @@ jest.mock('idb-keyval', () => ({
 }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'alice' }, loading: false }) }));
 jest.mock('@/hooks/useAiUsage', () => ({
-  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ refresh: jest.fn().mockResolvedValue(undefined) }),
+  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ refresh: mockRefresh }),
 }));
 jest.mock('@/utils/transcriptionRetryClient', () => ({
   ...jest.requireActual('@/utils/transcriptionRetryClient'), transcribeAudioWithRetry: jest.fn(),
@@ -31,6 +32,7 @@ const options = () => Object.assign({
 const kept = () => Array.from(mockRows.values()).filter(value => value && typeof value === 'object' && 'blob' in value);
 beforeEach(() => {
   mockRows.clear(); mockWriteError = null; transcribe.mockReset();
+  mockRefresh.mockReset().mockResolvedValue(undefined);
   Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: {} });
 });
 
@@ -168,4 +170,69 @@ it('recovers only the exact new-study source linked to this created note', async
   expect(callbacks.onText).toHaveBeenCalledWith(draft.transcript, draft.id);
   await act(async () => { await view.result.current.recover({ ...draft, id: 'unrelated-source' }); });
   expect(callbacks.onText).toHaveBeenCalledTimes(1); expect(transcribe).not.toHaveBeenCalled();
+});
+
+
+it.each(['cached', 'fresh'] as const)(
+  'releases published %s words for note creation while usage refresh stays pending', async source => {
+    mockRefresh.mockReturnValue(new Promise<void>(() => undefined));
+    const callbacks = Object.assign(options(), { recordingContext: { context: 'study' as const, contextId: 'new' } });
+    const view = renderHook(() => useTextDictation(callbacks));
+    const draft: import('@/utils/recordingDraftStore').RecordingDraft = {
+      id: 'offline-cached-source', ownerId: 'alice', context: 'study', contextId: 'new',
+      blob, mimeType: blob.type, sizeBytes: blob.size, createdAt: 10, transcript: 'Published words',
+    };
+    if (source === 'cached') {
+      mockRows.set(draft.id, draft);
+      act(() => { void view.result.current.recover(draft); });
+    } else {
+      transcribe.mockResolvedValue({ originalText: 'Published words', polishedText: '' } as never);
+      act(() => view.result.current.complete(blob));
+    }
+    await waitFor(() => expect(callbacks.onText).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+    expect(view.result.current.canChangeDestination()).toBe(true);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(transcribe).toHaveBeenCalledTimes(source === 'cached' ? 0 : 1);
+    expect(kept()).toHaveLength(1);
+    expect(kept()[0]).toMatchObject({ ownerId: 'alice', context: 'study', contextId: 'new', transcript: 'Published words' });
+    const saved = kept()[0] as import('@/utils/recordingDraftStore').RecordingDraft;
+    await act(async () => { await view.result.current.recover(saved); });
+    expect(callbacks.onText).toHaveBeenCalledTimes(1);
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+    expect(view.result.current.error).toBeNull();
+    view.unmount();
+  }
+);
+
+it('keeps destination ownership until the text writer finishes before refreshing usage', async () => {
+  let publish!: () => void;
+  const publication = new Promise<void>(resolve => { publish = resolve; });
+  const callbacks = Object.assign(options(), { onText: jest.fn(() => publication) });
+  transcribe.mockResolvedValue({ originalText: 'Still being published', polishedText: '' } as never);
+  const view = renderHook(() => useTextDictation(callbacks));
+  act(() => view.result.current.complete(blob));
+  await waitFor(() => expect(callbacks.onText).toHaveBeenCalledTimes(1));
+  expect(view.result.current.isProcessing).toBe(true);
+  expect(view.result.current.canChangeDestination()).toBe(false);
+  expect(mockRefresh).not.toHaveBeenCalled();
+  expect(kept()).toHaveLength(1);
+  await act(async () => { publish(); });
+  await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+  expect(mockRefresh).toHaveBeenCalledTimes(1);
+  expect(kept()).toHaveLength(1);
+});
+
+it('keeps published words successful when the auxiliary usage read fails', async () => {
+  mockRefresh.mockRejectedValue(new Error('Usage read unavailable'));
+  transcribe.mockResolvedValue({ originalText: 'Already published', polishedText: '' } as never);
+  const callbacks = options();
+  const view = renderHook(() => useTextDictation(callbacks));
+  act(() => view.result.current.complete(blob));
+  await waitFor(() => expect(callbacks.onText).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+  expect(view.result.current.canChangeDestination()).toBe(true);
+  expect(view.result.current.error).toBeNull();
+  expect(callbacks.onError).not.toHaveBeenCalled();
+  expect(kept()).toHaveLength(1);
 });

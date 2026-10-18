@@ -165,8 +165,8 @@ export function useTextDictation(options: TextDictationOptions) {
       if (!live()) return false;
       ownership.held = null;
       patch({ error: null, retries: 0 });
-      // Meter refresh cannot turn already-published words into a second transcription attempt.
-      await refresh().catch(() => undefined);
+      // The auxiliary usage read must not hold published words or destination ownership.
+      void refresh().catch(() => undefined);
       return false; // The field writer, rather than recognition, owns source retirement.
     } catch (cause) {
       recordDiagnostic('dictation', { source: 'field', result: 'failed', code: diagnosticErrorCode(cause), elapsedMs: Date.now() - startedAt });
