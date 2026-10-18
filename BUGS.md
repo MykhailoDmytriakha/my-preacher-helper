@@ -110,13 +110,11 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-plan-editor-header-actions-clipped · Structure editor header hides controls on a narrow phone
-**P3** — the title/undo group and some header actions are clipped; at320px the close button is outside the visible modal. `frontend/app/components/plan-editor/PlanEditorModal.tsx:442-484` and`:542-562`: one unwrapped header row inside an overflow-hidden dialog.
-**Found / stand.** Root visual QA twice at390px and twice at320px, buildBZkW3askATHDrN7m-NueW on localb5192f08. Actual browser, synthetic read-only sermon; no writes or device/production claim.
-**Expected / observed / reproduce.** Sermon→Structure editor: title, undo/redo and available header actions should stay usable without horizontal scrolling. At390px left header content disappears; at320px Clear is cut and the top Close control is not visible. The footer Done remains available. Opening Templates is not required for this header layout, though the captured QA images have it open.
-**User contract.** Keep existing controls and labels readable/reachable at supported phone widths; preserve their behavior and the editor's scroll area. Adapt the layout rather than remove actions.
-**Evidence.** reference-provenance-template-menu-qa-v2-{320,390}-open-{1,2}.png and1280px control, local Phase75 artifacts.
-**Class / direction.** Inspect the fixed header's no-wrap groups and the same editor's readonly state; menu placement is a separate already tracked mechanism. Establish closed-menu control geometry before choosing responsive row layout. Separate next local cycle.
+### BUG-20261017-outline-board-short-window-add-controls-clipped · Structure section add controls run below their sections in a short phone window
+**P3** — section footer actions can be hidden below a section or behind the modal footer; no data loss observed. `frontend/app/components/plan-editor/OutlineBoard.tsx:768-799,975-1028` and`PlanEditorModal.tsx:613`: three constrained grid rows, a scrollable list with60px minimum, and an add-action footer outside that list inside an overflow-hidden modal body.
+**Found / stand.** Root native visual acceptance at320x568, local buildVgJta_HOAOeFqBV9rgqfs, synthetic read-only HTTP fixture with one main point; no document command. Screenshots reference-provenance-editor-header-actions-en-320-short-window.png and-short-scrolled.png. The header is visible; the board's section add controls run below their coloured section boundary, including the conclusion action below the modal footer. Main list itself scrolls60px viewport/193px content, so that successful list check is not whole-board accessibility acceptance.
+**Expected / observed / reproduce.** Sermon→Structure editor→resize to320x568. Each section's Add structure point action must remain reachable inside an appropriate scroll area. The section contracts while its list minimum and add footer exceed available height; footer controls are visually clipped. Separate QA confirms all3footer buttons exceed section bottoms by48.25px and their centres hit other elements (insideSection:false,hitSelf:false). Main list scroll does not expose those sibling footer actions. Recheck original-layout baseline and shared consumers before choosing a fix.
+**User contract.** A smaller window may require scrolling; it must not remove the ability to add a point or finish editing. Keep the existing section controls and data owner. Investigate the shared board's other consumers as one class.
 
 
 ### BUG-20261017-xref-switch-does-not-stay-on · На iPad переключатель «Стихи» у остальных ссылок стиха не остаётся включённым: пять нажатий подряд, каждое записано как «включить»

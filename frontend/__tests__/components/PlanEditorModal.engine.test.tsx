@@ -50,9 +50,9 @@ const sermonWith = (outline: SermonOutline): Sermon => ({
   id: 's1', userId: OWNER, title: 'Sermon', verse: '', date: '2026-09-29', thoughts: [], outline,
 } as unknown as Sermon);
 
-const openEditor = (sermon: Sermon) => render(
+const openEditor = (sermon: Sermon, isReadOnly = false) => render(
   <StructureWriterContext.Provider value={createEngineStructureWriter(fakeDocument, OWNER)}>
-    <PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} />
+    <PlanEditorModal isOpen sermon={sermon} isReadOnly={isReadOnly} onClose={() => undefined} />
   </StructureWriterContext.Provider>
 );
 
@@ -96,6 +96,17 @@ describe('the structure editor on an engine document', () => {
     await flushSaveDebounce();
     expect(documentCopy.outline!.main).toEqual([{ id: 'p1', text: 'Mercy' }]);
     expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+  });
+
+  it.each([false, true])('retains one title and each permitted header control when read-only is %s', isReadOnly => {
+    documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    openEditor(documentCopy, isReadOnly);
+    expect(screen.getAllByRole('heading', { name: 'planEditor.title' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'common.close' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'common.done' })).toHaveLength(1);
+    for (const name of ['planEditor.undo', 'planEditor.redo', 'planEditor.templates', 'planEditor.clear']) {
+      expect(screen.queryAllByRole('button', { name })).toHaveLength(isReadOnly ? 0 : 1);
+    }
   });
 
   describe('template menu visible area', () => {

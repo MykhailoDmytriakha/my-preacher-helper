@@ -441,8 +441,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         aria-label={t('planEditor.title')}
         className="relative flex flex-col w-full h-full bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden"
       >
-        <header className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-200 dark:border-gray-700">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <header className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto] sm:px-5 py-3 border-b border-slate-200 dark:border-gray-700">
+          <div className="col-start-1 row-start-1 flex items-center gap-2.5 min-w-0">
             <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 dark:bg-gray-800 text-slate-600 dark:text-gray-300 flex-shrink-0">
               <Squares2X2Icon className="w-5 h-5" />
             </span>
@@ -479,11 +479,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             )}
           </div>
 
-          <p className="hidden lg:block flex-1 px-6 text-center text-xs text-slate-400 dark:text-gray-500 truncate">
+          <p className="col-start-2 row-start-1 hidden lg:block px-6 text-center text-xs text-slate-400 dark:text-gray-500 truncate">
             {t('planEditor.hint')}
           </p>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="col-span-2 row-start-2 flex max-w-full flex-wrap items-center gap-2 sm:col-span-1 sm:col-start-3 sm:row-start-1">
             {!isReadOnly && (
               <div className="relative" ref={menuRef}>
                 <button
@@ -548,14 +548,15 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               </button>
             )}
 
-            <button
-              onClick={onClose}
-              aria-label={t('common.close')}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-gray-800 hover:text-slate-600 dark:hover:text-gray-200"
-            >
-              <XMarkIcon className="w-5 h-5" />
-            </button>
           </div>
+
+          <button
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="col-start-2 row-start-1 inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-gray-800 hover:text-slate-600 dark:hover:text-gray-200 sm:col-start-4"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
         </header>
 
         {/* THE SAME POINT WAS REWRITTEN IN TWO PLACES. Nothing was written, nothing
