@@ -9,6 +9,7 @@ For an engine-owned collection, read through `useDataDocument` or `useDataCollec
 - For a document, opt into `{ readOnlyCopy: true }` when the screen can display a copy while its editor waits. Render `data` when available and use `readOnly`, `copySource` and `readOnlyReason` to explain and enforce the read-only state. Never turn that copy into an editable local draft or replay actions later.
 - `useDataCollection` offers a read-only server/device list copy while list storage is silent. Render `state.documents` with `DataCollectionStatus` and disable mutations when `readOnly` is true; a copy is not proof of server completeness or saved intent.
 - `frontend/app/utils/deviceStorage.ts` watches bounded storage reads, records silence diagnostics and lets read gates stop waiting. It does not cancel or falsely fail an indeterminate write. The normal editor replaces the copy when storage answers.
+- Atomic single-key updates use `utils/storageUpdate.ts:updateStoredValue` with the existing custom store. It keeps idb-keyval's read-modify-write and transaction-completion fence, adding an abort listener before the first read starts. A confirmed abort rejects; a genuinely unfinished transaction still waits. Use the same helper for watched engine snapshots/cursors/journal and recording drafts; do not mute storage health, cancel writes on a timer, or replay an unknown outcome. Direct engine state transactions already install failure handlers before reads.
 
 ## Reproduce silent storage on localhost
 

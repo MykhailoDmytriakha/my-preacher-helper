@@ -1,8 +1,10 @@
 'use client';
 
-import { entries, get, update } from 'idb-keyval';
+import { entries, get } from 'idb-keyval';
 
 import { watchedStore } from '@/utils/deviceStorage';
+import { updateStoredValue } from '@/utils/storageUpdate';
+
 
 import { canReplaceSnapshot } from './engine';
 import { equalValues } from './protocol';
@@ -60,7 +62,7 @@ export function createIndexedDbSnapshots(): CollectionSnapshotStore {
     async put(owner, snapshot) {
       const frozen = validate(owner, snapshot.resource, snapshot);
       let changed = false;
-      await update<ResourceSnapshot>(key(owner, frozen.resource), current => {
+      await updateStoredValue<ResourceSnapshot>(key(owner, frozen.resource), current => {
         const stored = current === undefined ? undefined : validate(owner, frozen.resource, current);
         if (!canReplaceSnapshot(stored, frozen)) return stored!;
         changed = !equalValues(stored, frozen);

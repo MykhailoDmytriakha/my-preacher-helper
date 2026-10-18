@@ -1,8 +1,10 @@
 'use client';
 
-import { get, update } from 'idb-keyval';
+import { get } from 'idb-keyval';
 
 import { watchedStore } from '@/utils/deviceStorage';
+import { updateStoredValue } from '@/utils/storageUpdate';
+
 
 import { collectionHeadRef } from './feed';
 
@@ -31,7 +33,7 @@ export function createIndexedDbCollectionCursors(): CollectionCursorStore {
     },
     async put(owner, collection, expected, next) {
       let committed!: CollectionCursor;
-      await update<CollectionCursor>(key(owner, collection), current => {
+      await updateStoredValue<CollectionCursor>(key(owner, collection), current => {
         const stored = current === undefined ? undefined : validate(current);
         if (stored?.revision !== expected?.revision || stored?.version !== expected?.version
           || stored?.initialized !== expected?.initialized) {

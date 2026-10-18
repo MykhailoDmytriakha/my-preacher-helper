@@ -1,8 +1,10 @@
 'use client';
 
-import { del, entries, update } from 'idb-keyval';
+import { del, entries } from 'idb-keyval';
 
 import { watchedStore } from '@/utils/deviceStorage';
+import { updateStoredValue } from '@/utils/storageUpdate';
+
 
 import { commandFingerprint } from './protocol';
 
@@ -16,7 +18,7 @@ export function createIndexedDbJournal(): JournalStore {
   return {
     async put(entry) {
       const frozen = JSON.parse(JSON.stringify(entry)) as JournalEntry;
-      await update<JournalEntry>(key(entry.command.owner, entry.command.operationId), (current) => {
+      await updateStoredValue<JournalEntry>(key(entry.command.owner, entry.command.operationId), (current) => {
         if (current && commandFingerprint(current.command) !== commandFingerprint(frozen.command)) {
           throw new Error('Operation identity cannot be reused for another command');
         }

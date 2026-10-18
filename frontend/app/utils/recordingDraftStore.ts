@@ -1,7 +1,9 @@
-import { createStore, entries, get, update } from 'idb-keyval';
+import { createStore, entries, get } from 'idb-keyval';
+
 
 import { newClientId } from '@/utils/clientId';
 import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
+import { updateStoredValue } from '@/utils/storageUpdate';
 
 /** One durable raw-source store; entries are bound to the account and original destination. */
 export type RecordingDraftContext = 'study' | 'thought' | 'sermon' | 'prayer' | 'outline' | 'scratch';
@@ -87,7 +89,7 @@ export async function saveRecordingDraft(
   const current = requireStore();
   const id = input.id ?? newClientId();
   if (!id.trim()) throw new Error('Recording identity is required');
-  await update<StoredRecording>(id, existing => {
+  await updateStoredValue<StoredRecording>(id, existing => {
     if (existing) {
       if (!isDraft(existing) || !sameDestination(existing, input)) throw new Error('Recording identity cannot be reused');
       // Re-parking is idempotent: a late retry must not replace the source or its action time.
@@ -109,7 +111,7 @@ export async function saveRecordingDraft(
 export async function saveRecordingDraftText(id: string, ownerId: string, transcript: string): Promise<boolean> {
   if (!hasOwner(ownerId)) throw new Error('Recording owner is required');
   let accepted = false;
-  await update<StoredRecording | undefined>(id, existing => {
+  await updateStoredValue<StoredRecording | undefined>(id, existing => {
     if (!existing || existing.ownerId !== ownerId) throw new Error('Recording source is not available');
     if (!isDraft(existing)) return existing;
     accepted = true;
@@ -122,7 +124,7 @@ export async function saveRecordingDraftText(id: string, ownerId: string, transc
 export async function moveRecordingDraft(id: string, ownerId: string,
   from: { context: RecordingDraftContext; contextId: string }, contextId: string): Promise<void> {
   if (!hasOwner(ownerId) || !contextId.trim()) throw new Error('Recording owner and destination are required');
-  await update<StoredRecording | undefined>(id, current => {
+  await updateStoredValue<StoredRecording | undefined>(id, current => {
     if (!current || !isDraft(current)) return current;
     if (current.ownerId !== ownerId || current.context !== from.context || current.contextId !== from.contextId) {
       throw new Error('Recording destination changed');
@@ -144,7 +146,7 @@ export async function adoptLegacyRecordingDrafts(proof: {
   let adopted = 0;
   for (const [id, value] of rows) {
     if (!isDraft(value) || value.ownerId !== undefined || value.context !== proof.context || value.contextId !== proof.contextId) continue;
-    await update<StoredRecording | undefined>(id, latest => {
+    await updateStoredValue<StoredRecording | undefined>(id, latest => {
       if (!isDraft(latest) || latest.ownerId !== undefined || latest.context !== proof.context || latest.contextId !== proof.contextId) return latest;
       adopted += 1;
       return { ...latest, ownerId: proof.ownerId };
@@ -180,7 +182,7 @@ export async function getRecordingDraft(id: string, ownerId: string): Promise<Re
 
 export async function deleteRecordingDraft(id: string, ownerId: string): Promise<void> {
   if (!hasOwner(ownerId)) throw new Error('Recording owner is required');
-  await update<StoredRecording | undefined>(id, existing => {
+  await updateStoredValue<StoredRecording | undefined>(id, existing => {
     if (!existing) return { id, ownerId, discarded: true };
     if (existing.ownerId !== ownerId) throw new Error('Recording belongs to another account');
     if (!isDraft(existing)) return existing;

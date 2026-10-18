@@ -14,16 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261018-storage-update-aborted-read-hangs - Aborting an IndexedDB update's first read leaves the operation pending and falsely locks editing
-**Severity.** P2: server-accepted content survives, but the device can report storage silence and gate later editing after an already-aborted transaction.
-**Found.** 2026-10-18, Phase93 compiled localhost visual/source inspection; deliberate abort in a disposable browser context, not a physical iPad observation.
-**Anchors.** `frontend/app/data-engine/snapshots.client.ts:63` calls idb-keyval.update through watched storage; installed `frontend/node_modules/idb-keyval/dist/index.js:84-99` attaches only get.onsuccess, then installs transaction completion handlers after that success. If the first read aborts, the returned promise never settles. `frontend/app/utils/deviceStorage.ts:114-143` correctly treats an unfinished operation as silent.
-**Expected / actual.** A failed first read must reject the update and preserve its original payload/reference, so storage health can distinguish a completed failure from a still-unknown operation. Instead, the pending update remains tracked after the transaction is gone; a later read can work while the storage-silence banner remains.
-**Reproduce.** In compiled build `cjKDXk5vGd6jBu79-dYRK`, Heart matters > Prayer Journal > disposable prayer, accept the first status change while queueMicrotask aborts the snapshots database's readwrite transaction before its get succeeds. The old cached revision remains1, the accepted request is revision2. Wait more than3250ms: the existing storage-silence banner appears. Local artifact `reference-provenance-accepted-baseline-offline-v2-390-second-action.png` shows this after reconnect; its script/JSON records the exact injection and accepted status. Request metadata alone does not prove a fast rejected put; keep that boundary explicit.
-**How it should work for the user.** A completed storage error should not leave a permanent claim that storage is still not answering. Keep accepted text and queued work. A genuinely unfinished operation must remain protected and the existing read-only fallback/health guard must still operate.
-**Class to inspect before fixing.** Engine snapshots, collection cursors and command journal import the same update helper. Search all idb-keyval update consumers and the project's existing transaction/health contracts before changing a common adapter. No product fix in Phase93; this is a separate promise/transaction-lifecycle mechanism. Physical storage silence and crashes remain separate acceptance.
-
-
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
