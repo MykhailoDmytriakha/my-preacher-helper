@@ -1,9 +1,10 @@
 "use client";
 
 import { X } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { TIME_WHEEL_ITEM_HEIGHT, useTimeWheel } from '@/hooks/useTimeWheel';
 import { TimerPhaseDurations } from '@/types/TimerState';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
@@ -40,54 +41,31 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
     conclusion: initialDurations.conclusion
   });
 
-  const [timeParts, setTimeParts] = useState({
-    hours: Math.floor(initialDurations.introduction / 3600),
-    minutes: Math.floor((initialDurations.introduction % 3600) / 60),
-    seconds: initialDurations.introduction % 60
-  });
+  const selected = phaseDurations[activePhase];
+  const hours = Math.floor(selected / 3600);
+  const minutes = Math.floor((selected % 3600) / 60);
+  const seconds = selected % 60;
 
-  const { hours, minutes, seconds } = timeParts;
-
-  const hoursRef = useRef<HTMLDivElement>(null);
-  const minutesRef = useRef<HTMLDivElement>(null);
-  const secondsRef = useRef<HTMLDivElement>(null);
+  const setTimePart = (part: 'hours' | 'minutes' | 'seconds', value: number) => {
+    setPhaseDurations(previous => {
+      const current = previous[activePhase];
+      const parts = { hours: Math.floor(current / 3600), minutes: Math.floor((current % 3600) / 60), seconds: current % 60 };
+      parts[part] = value;
+      const next = parts.hours * 3600 + parts.minutes * 60 + parts.seconds;
+      return current === next ? previous : { ...previous, [activePhase]: next };
+    });
+  };
+  const hoursWheel = useTimeWheel(hours, 23, value => setTimePart('hours', value), activePhase);
+  const minutesWheel = useTimeWheel(minutes, 59, value => setTimePart('minutes', value), activePhase);
+  const secondsWheel = useTimeWheel(seconds, 59, value => setTimePart('seconds', value), activePhase);
 
   const hoursArray = Array.from({ length: 24 }, (_, i) => i);
   const minutesArray = Array.from({ length: 60 }, (_, i) => i);
   const secondsArray = Array.from({ length: 60 }, (_, i) => i);
 
-  const ITEM_HEIGHT = 32;
+  const ITEM_HEIGHT = TIME_WHEEL_ITEM_HEIGHT;
   const SCROLL_SNAP_TYPE = 'y mandatory';
   const WEBKIT_OVERFLOW_SCROLLING = 'touch';
-
-  const scrollToValue = useCallback((ref: React.RefObject<HTMLDivElement | null>, value: number) => {
-    if (!ref.current) return;
-    ref.current.scrollTo({ top: value * ITEM_HEIGHT, behavior: 'smooth' });
-  }, []);
-
-  useEffect(() => {
-    const phaseSeconds = phaseDurations[activePhase];
-    const nextHours = Math.floor(phaseSeconds / 3600);
-    const nextMinutes = Math.floor((phaseSeconds % 3600) / 60);
-    const nextSeconds = phaseSeconds % 60;
-
-    setTimeParts(prev => {
-      if (
-        prev.hours === nextHours &&
-        prev.minutes === nextMinutes &&
-        prev.seconds === nextSeconds
-      ) {
-        return prev;
-      }
-      return { hours: nextHours, minutes: nextMinutes, seconds: nextSeconds };
-    });
-  }, [activePhase, phaseDurations]);
-
-  useEffect(() => {
-    scrollToValue(hoursRef, hours);
-    scrollToValue(minutesRef, minutes);
-    scrollToValue(secondsRef, seconds);
-  }, [hours, minutes, seconds, scrollToValue]);
 
   useEffect(() => {
     if (confirmButtonRef.current) {
@@ -110,38 +88,6 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
     handleConfirm();
   };
 
-  const createScrollHandler = (
-    ref: React.RefObject<HTMLDivElement | null>,
-    key: 'hours' | 'minutes' | 'seconds'
-  ) => {
-    let timeout: NodeJS.Timeout;
-    return () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        if (!ref.current) return;
-        const scrollTop = ref.current.scrollTop;
-        const index = Math.round(scrollTop / ITEM_HEIGHT);
-        setTimeParts(prev => {
-          if (prev[key] === index) {
-            return prev;
-          }
-          const next = { ...prev, [key]: index };
-          const totalSeconds = next.hours * 3600 + next.minutes * 60 + next.seconds;
-          setPhaseDurations(prevDurations => ({
-            ...prevDurations,
-            [activePhase]: totalSeconds
-          }));
-          return next;
-        });
-        scrollToValue(ref, index);
-      }, 150);
-    };
-  };
-
-  const hoursScrollHandler = createScrollHandler(hoursRef, 'hours');
-  const minutesScrollHandler = createScrollHandler(minutesRef, 'minutes');
-  const secondsScrollHandler = createScrollHandler(secondsRef, 'seconds');
-
   const formatTime = (total: number): string => {
     const h = Math.floor(total / 3600).toString().padStart(2, '0');
     const m = Math.floor((total % 3600) / 60).toString().padStart(2, '0');
@@ -154,11 +100,9 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
     const nextMinutes = Math.floor((totalSeconds % 3600) / 60);
     const nextSeconds = totalSeconds % 60;
 
-    setTimeParts({
-      hours: nextHours,
-      minutes: nextMinutes,
-      seconds: nextSeconds
-    });
+    hoursWheel.align(nextHours);
+    minutesWheel.align(nextMinutes);
+    secondsWheel.align(nextSeconds);
 
     setPhaseDurations(prev => {
       if (prev[activePhase] === totalSeconds) {
@@ -303,9 +247,9 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={hoursRef}
+                  ref={hoursWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={hoursScrollHandler}
+                  onScroll={hoursWheel.onScroll}
                   style={{ scrollSnapType: SCROLL_SNAP_TYPE, WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING }}
                   role="listbox"
                   aria-label={t('common.hours', { defaultValue: 'Hours' })}
@@ -332,9 +276,9 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={minutesRef}
+                  ref={minutesWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={minutesScrollHandler}
+                  onScroll={minutesWheel.onScroll}
                   style={{ scrollSnapType: SCROLL_SNAP_TYPE, WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING }}
                   role="listbox"
                   aria-label={t('common.minutes', { defaultValue: 'Minutes' })}
@@ -361,9 +305,9 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={secondsRef}
+                  ref={secondsWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={secondsScrollHandler}
+                  onScroll={secondsWheel.onScroll}
                   style={{ scrollSnapType: SCROLL_SNAP_TYPE, WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING }}
                   role="listbox"
                   aria-label={t('common.seconds', { defaultValue: 'Seconds' })}

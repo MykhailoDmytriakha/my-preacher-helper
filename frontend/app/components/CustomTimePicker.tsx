@@ -1,9 +1,10 @@
 "use client";
 
 import { X } from 'lucide-react';
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { TIME_WHEEL_ITEM_HEIGHT, useTimeWheel } from '@/hooks/useTimeWheel';
 import { useTranslation } from '@locales/useTranslation';
 
 
@@ -44,77 +45,18 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
   const [minutes, setMinutes] = useState(initialMinutes);
   const [seconds, setSeconds] = useState(initialSeconds);
 
-  const hoursRef = useRef<HTMLDivElement>(null);
-  const minutesRef = useRef<HTMLDivElement>(null);
-  const secondsRef = useRef<HTMLDivElement>(null);
+  const hoursWheel = useTimeWheel(hours, 23, setHours);
+  const minutesWheel = useTimeWheel(minutes, 59, setMinutes);
+  const secondsWheel = useTimeWheel(seconds, 59, setSeconds);
 
   // Generate arrays for scroll wheels
   const hoursArray = Array.from({ length: 24 }, (_, i) => i); // 0-23
   const minutesArray = Array.from({ length: 60 }, (_, i) => i); // 0-59
   const secondsArray = Array.from({ length: 60 }, (_, i) => i); // 0-59
 
-  const ITEM_HEIGHT = 32; // Height of each item in pixels
+  const ITEM_HEIGHT = TIME_WHEEL_ITEM_HEIGHT; // Height of each item in pixels
   const SCROLL_SNAP_TYPE = 'y mandatory';
   const WEBKIT_OVERFLOW_SCROLLING = 'touch';
-
-  // Scroll to center selected value
-  const scrollToValue = useCallback((
-    ref: React.RefObject<HTMLDivElement | null>,
-    value: number
-  ) => {
-    if (!ref.current) return;
-    
-    const scrollContainer = ref.current;
-    const targetScroll = value * ITEM_HEIGHT;
-    
-    scrollContainer.scrollTo({
-      top: targetScroll,
-      behavior: 'smooth'
-    });
-  }, []);
-
-  // Initialize scroll positions
-  useEffect(() => {
-    scrollToValue(hoursRef, hours);
-    scrollToValue(minutesRef, minutes);
-    scrollToValue(secondsRef, seconds);
-  }, [hours, minutes, seconds, scrollToValue]); // Only on mount
-
-  // Handle scroll and update selected value
-  const handleScroll = useCallback((
-    ref: React.RefObject<HTMLDivElement | null>,
-    setter: (value: number) => void
-  ) => {
-    if (!ref.current) return;
-
-    const scrollTop = ref.current.scrollTop;
-    const index = Math.round(scrollTop / ITEM_HEIGHT);
-    setter(index);
-  }, []);
-
-  // Debounced scroll handler
-  const createScrollHandler = (
-    ref: React.RefObject<HTMLDivElement | null>,
-    setter: (value: number) => void
-  ) => {
-    let timeout: NodeJS.Timeout;
-    return () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        handleScroll(ref, setter);
-        // Snap to nearest value
-        if (ref.current) {
-          const scrollTop = ref.current.scrollTop;
-          const snappedIndex = Math.round(scrollTop / ITEM_HEIGHT);
-          scrollToValue(ref, snappedIndex);
-        }
-      }, 150);
-    };
-  };
-
-  const hoursScrollHandler = createScrollHandler(hoursRef, setHours);
-  const minutesScrollHandler = createScrollHandler(minutesRef, setMinutes);
-  const secondsScrollHandler = createScrollHandler(secondsRef, setSeconds);
 
   // Quick preset buttons
   const presets = [
@@ -130,9 +72,9 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     setHours(preset.hours);
     setMinutes(preset.minutes);
     setSeconds(preset.seconds);
-    scrollToValue(hoursRef, preset.hours);
-    scrollToValue(minutesRef, preset.minutes);
-    scrollToValue(secondsRef, preset.seconds);
+    hoursWheel.align(preset.hours);
+    minutesWheel.align(preset.minutes);
+    secondsWheel.align(preset.seconds);
   };
 
   const handleConfirm = () => {
@@ -309,9 +251,9 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={hoursRef}
+                  ref={hoursWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={hoursScrollHandler}
+                  onScroll={hoursWheel.onScroll}
                   style={{ 
                     scrollSnapType: SCROLL_SNAP_TYPE,
                     WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
@@ -334,9 +276,9 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={minutesRef}
+                  ref={minutesWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={minutesScrollHandler}
+                  onScroll={minutesWheel.onScroll}
                   style={{ 
                     scrollSnapType: SCROLL_SNAP_TYPE,
                     WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
@@ -359,9 +301,9 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
               <div className="wheel relative h-32 w-16 overflow-hidden bg-gray-50 dark:bg-gray-700 rounded-lg touch-pan-y">
                 <div className="wheel-selector absolute inset-x-0 top-1/2 h-8 bg-white dark:bg-gray-600 border-y border-gray-200 dark:border-gray-500 transform -translate-y-1/2 pointer-events-none z-10" />
                 <div
-                  ref={secondsRef}
+                  ref={secondsWheel.ref}
                   className="wheel-scroll h-full overflow-y-auto scrollbar-hide scroll-smooth"
-                  onScroll={secondsScrollHandler}
+                  onScroll={secondsWheel.onScroll}
                   style={{ 
                     scrollSnapType: SCROLL_SNAP_TYPE,
                     WebkitOverflowScrolling: WEBKIT_OVERFLOW_SCROLLING
