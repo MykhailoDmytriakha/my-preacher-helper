@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
@@ -138,6 +139,8 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const templatesPanelRef = useRef<HTMLDivElement>(null);
+  usePanelPosition(templatesPanelRef, isOpen && templatesMenuOpen && !isReadOnly);
   const outlineRef = useRef<SermonOutline>(emptyOutline());
 
   /**
@@ -493,7 +496,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 </button>
 
                 {templatesMenuOpen && (
-                  <div className="absolute right-0 mt-1.5 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-200 dark:border-gray-700 py-1.5 z-20 max-h-80 overflow-y-auto">
+                  <div ref={templatesPanelRef} className="absolute right-0 mt-1.5 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-slate-200 dark:border-gray-700 py-1.5 z-20 max-h-80 overflow-y-auto">
                     <p className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-gray-500">
                       {t('planEditor.applyTemplate')}
                     </p>

@@ -110,12 +110,13 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-plan-template-menu-offscreen · Structure template menu is clipped on a narrow screen
-**P3** — menu actions remain clickable but names and instructions lose their beginning. `frontend/app/components/plan-editor/PlanEditorModal.tsx:496` anchors a fixed-width menu to the button's right edge.
-**Expected / observed.** Sermon→Structure editor→Templates at390px: the complete menu should fit inside the screen; its left side extends beyond the modal and is clipped. At1280px it fits.
-**User contract.** Template names and the save/manage actions stay readable at supported mobile widths; opening a menu must not require horizontal scrolling.
-**Evidence.** Local creator-capture acceptance, buildaQZOZ0Tw26vx4N5yVrLrg: `reference-provenance-template-create-after-v2-editor-capture-failure-390-reloaded.png`; same wide-screen control in the matching1280px image. Synthetic QA content, actual visible page; no device/production claim.
-**Class.** Recheck fixed-width right-aligned menus in this editor, preserve existing styling and actions. Separate layout fix after the frozen creator-capture candidate.
+### BUG-20261017-plan-editor-header-actions-clipped · Structure editor header hides controls on a narrow phone
+**P3** — the title/undo group and some header actions are clipped; at320px the close button is outside the visible modal. `frontend/app/components/plan-editor/PlanEditorModal.tsx:442-484` and`:542-562`: one unwrapped header row inside an overflow-hidden dialog.
+**Found / stand.** Root visual QA twice at390px and twice at320px, buildBZkW3askATHDrN7m-NueW on localb5192f08. Actual browser, synthetic read-only sermon; no writes or device/production claim.
+**Expected / observed / reproduce.** Sermon→Structure editor: title, undo/redo and available header actions should stay usable without horizontal scrolling. At390px left header content disappears; at320px Clear is cut and the top Close control is not visible. The footer Done remains available. Opening Templates is not required for this header layout, though the captured QA images have it open.
+**User contract.** Keep existing controls and labels readable/reachable at supported phone widths; preserve their behavior and the editor's scroll area. Adapt the layout rather than remove actions.
+**Evidence.** reference-provenance-template-menu-qa-v2-{320,390}-open-{1,2}.png and1280px control, local Phase75 artifacts.
+**Class / direction.** Inspect the fixed header's no-wrap groups and the same editor's readonly state; menu placement is a separate already tracked mechanism. Establish closed-menu control geometry before choosing responsive row layout. Separate next local cycle.
 
 
 ### BUG-20261017-xref-switch-does-not-stay-on · На iPad переключатель «Стихи» у остальных ссылок стиха не остаётся включённым: пять нажатий подряд, каждое записано как «включить»

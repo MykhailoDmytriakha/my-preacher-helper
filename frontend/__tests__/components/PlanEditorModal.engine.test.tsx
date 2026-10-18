@@ -97,4 +97,61 @@ describe('the structure editor on an engine document', () => {
     expect(documentCopy.outline!.main).toEqual([{ id: 'p1', text: 'Mercy' }]);
     expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
   });
+
+  describe('template menu visible area', () => {
+    const originalWidth = window.innerWidth;
+    const rect = (left: number, width: number): DOMRect => ({
+      left, right: left + width, top: 68, bottom: 224, width, height: 156,
+      x: left, y: 68, toJSON: () => ({}),
+    });
+    const setWidth = (width: number) => Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+    const menuPanel = () => screen.getByRole('link', { name: 'planEditor.manageTemplates' }).parentElement!;
+    const toggleMenu = () => fireEvent.click(screen.getByRole('button', { name: /planEditor\.templates/ }));
+    beforeEach(() => {
+      setWidth(390);
+      jest.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(0);
+      jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+        return this.getAttribute('role') === 'dialog' ? window.innerWidth - 32 : 0;
+      });
+      jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute('role') === 'dialog') return rect(16, window.innerWidth - 32);
+        if (!this.classList.contains('absolute') || !this.querySelector('a[href="/settings/templates"]')) return rect(0, 0);
+        const anchorRight = window.innerWidth === 320 ? 163.8125 : window.innerWidth === 390 ? 170.1875 : 1048.1875;
+        const width = Math.min(288, Number.parseFloat(this.style.maxWidth) || 288);
+        const shift = Number.parseFloat(this.style.translate) || 0;
+        return rect(anchorRight - width + shift, width);
+      });
+    });
+    afterEach(() => { jest.restoreAllMocks(); setWidth(originalWidth); });
+    const open = (width: number) => {
+      setWidth(width);
+      documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+      openEditor(documentCopy);
+      screen.getByRole('dialog', { name: 'planEditor.title' }).style.overflowX = 'hidden';
+      toggleMenu(); return menuPanel();
+    };
+    const expectInsideDialog = (panel: HTMLElement) => {
+      const menu = panel.getBoundingClientRect();
+      const dialog = screen.getByRole('dialog', { name: 'planEditor.title' }).getBoundingClientRect();
+      expect(menu.left).toBeGreaterThanOrEqual(dialog.left);
+      expect(menu.right).toBeLessThanOrEqual(dialog.right);
+    };
+    it.each([390, 320])('keeps template names and actions inside the clipped dialog at %ipx', width => {
+      const panel = open(width); expectInsideDialog(panel);
+      expect(screen.getByRole('button', { name: /Three points/ })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'planEditor.saveAsTemplate' })).toBeEnabled();
+    });
+    it('keeps its existing wide-screen alignment and outside-click dismissal', () => {
+      const panel = open(1280);
+      expect(panel.getBoundingClientRect().left).toBe(760.1875);
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole('link', { name: 'planEditor.manageTemplates' })).not.toBeInTheDocument();
+      toggleMenu(); expectInsideDialog(menuPanel());
+    });
+    it('refits an open menu when the window becomes narrow', () => {
+      const panel = open(1280); expectInsideDialog(panel);
+      setWidth(320); fireEvent(window, new Event('resize')); expectInsideDialog(panel);
+    });
+  });
+
 });
