@@ -34,6 +34,11 @@ describe('new-note placeholder ownership',()=>{
   await act(async()=>{jest.advanceTimersByTime(300);});source('Independent B','reserved-note-B');await act(async()=>{jest.advanceTimersByTime(1300);});
   expect(create).toHaveBeenCalledTimes(1);expect(readDraft(SOURCE)?.value).toEqual(value('Independent B'));expect(readDraft(DEST)?.value).not.toEqual(value('Independent B'));hook.unmount();
  });
+ it('keeps an ambiguous targetless source while a reserved note creates',async()=>{
+  const persistence=new Promise<void>(()=>undefined);const create=jest.fn(()=>({...queuedMutation('create:'+TARGET,persistence),note:{id:TARGET}}));const hook=renderHook(()=>useEditor('Current words',create));
+  await act(async()=>{jest.advanceTimersByTime(300);});source('Unclaimed legacy words',null);await act(async()=>{jest.advanceTimersByTime(1300);});
+  expect(create).toHaveBeenCalledTimes(1);expect(readDraft(SOURCE)?.value).toEqual(value('Unclaimed legacy words'));expect(readDraft(SOURCE)?.creationTargetId).toBeUndefined();expect(readDraft(DEST)?.value).not.toEqual(value('Unclaimed legacy words'));hook.unmount();
+ });
  it('does not offer a precreate source after matching confirmed creation is found on later opening',()=>{source('A');const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toBeNull();expect(readDraft(SOURCE)).toBeNull();hook.unmount();});
  it('keeps unconfirmed creation recoverable',()=>{source('A');const hook=recovery(new Set());expect(hook.result.current.recovered).toEqual(value('A'));expect(readDraft(SOURCE)?.value).toEqual(value('A'));hook.unmount();});
  it('keeps ambiguous legacy source despite another confirmed creation',()=>{source('A',null);const hook=recovery(new Set([TARGET]));expect(hook.result.current.recovered).toEqual(value('A'));expect(readDraft(SOURCE)?.value).toEqual(value('A'));hook.unmount();});

@@ -563,6 +563,40 @@ describe('StudyNoteEditorPage Pagination', () => {
         jest.useRealTimers();
     });
 
+    it('does not offer pre-dictation words again after a new note adopts its created address', async () => {
+        jest.useFakeTimers();
+        window.localStorage.clear();
+        const id = 'adopt-current-words';
+        const original = { title: 'Unfinished thought', content: 'Earlier typed words', tags: [], scriptureRefs: [], type: 'note' };
+        localStorage.setItem(draftKey('user-1', `new~${id}`, 'note'), JSON.stringify({ value: original, savedAt: 1, creationTargetId: id }));
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(`draft=new~${id}&draftOwner=user-1`));
+        window.history.replaceState(null, '', `/studies/new?draft=new~${id}&draftOwner=user-1`);
+        let finish!: () => void;
+        const persistence = new Promise<void>(resolve => { finish = resolve; });
+        const createNote = jest.fn((note: Partial<StudyNote>) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: id }), persistence, note: { ...note, id } }));
+        const delivery = new Map([[id, { pending: true, needsAttention: false }]]);
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], noteDelivery: delivery, loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, polishedText: 'New dictated sentence' }) });
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
+            for (let step = 0; step < 20 && !createNote.mock.calls.length; step += 1) {
+                await act(async () => { await jest.advanceTimersByTimeAsync(10); });
+            }
+            const expected = 'Earlier typed words\n\nNew dictated sentence';
+            expect(createNote).toHaveBeenCalledTimes(1);
+            expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ content: expected }), { id });
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(expected);
+            await act(async () => { delivery.set(id, { pending: false, needsAttention: false }); finish(); await persistence; await jest.advanceTimersByTimeAsync(900); });
+            expect(screen.getByText('common.saved')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'unsavedDraft.restore' })).not.toBeInTheDocument();
+            expect(readDraft(draftKey('user-1', id, 'note'))).toBeNull();
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(expected);
+        } finally { view.unmount(); window.localStorage.clear(); jest.useRealTimers(); }
+    });
+
     it('saves dictated text at once, not after the typing pause', async () => {
         // Seen on screen means on its way: the preacher may lock the phone the moment the text
         // appears, and a locked iPhone freezes the device storage (BUG-20261006-hidden-tab-holds-last-edit).

@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useRef } from 'react';
 
-import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { clearDraft, draftKey, isDraftStorageRefusedFor, readDraft, saveDraft } from '@/utils/durableDraft';
 import { persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 
 import { useNoteAutoSave } from '../useNoteAutoSave';
@@ -30,12 +30,14 @@ const payload: NoteDraftPayload = {
   type: 'note',
 };
 
-function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }) {
+function useHarness(createNote: jest.Mock, onSaved: (saved: NoteDraftPayload) => void, captureRecordingHandoff?: () => { accepted: () => Promise<void>; carryTo: (id: string) => Promise<void> }, creation?: { id: string; draftId: string }) {
   const baselineRef = useRef<NoteDraftPayload | null>(null);
   const revisionRef = useRef<number | null>(null);
   const deliberateOverwriteRef = useRef(false);
   return useNoteAutoSave({
     noteId: 'new',
+    creationId: creation?.id,
+    draftDocId: creation?.draftId,
     isNew: true,
     isInitialized: true,
     title: payload.title,
@@ -70,6 +72,81 @@ describe('creating a note keeps the durable draft at all times', () => {
     window.localStorage.clear();
   });
   afterEach(() => jest.useRealTimers());
+
+  it.each(['new~current-create', 'new'])('backs up the submitted words before create and carries them from %s', async draftId => {
+    const source = draftKey('u1', draftId, 'note');
+    const destination = draftKey('u1', 'current-create', 'note');
+    const independent = draftKey('u1', 'new~independent', 'note');
+    const older = { ...payload, content: 'Before the new dictated sentence' };
+    saveDraft(source, older, 'current-create');
+    saveDraft(independent, older, 'independent');
+    let finish!: () => void;
+    const persistence = new Promise<void>(resolve => { finish = resolve; });
+    let backupAtSubmission: unknown;
+    const createNote = jest.fn(() => {
+      backupAtSubmission = readDraft(source)?.value;
+      return { ...queuedMutation('current-create', persistence), note: { id: 'current-create' } as StudyNote };
+    });
+    const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, { id: 'current-create', draftId }));
+    await act(async () => { jest.advanceTimersByTime(1600); });
+    expect(backupAtSubmission).toEqual(payload);
+    expect(readDraft(destination)?.value).toEqual(payload);
+    expect(readDraft(independent)?.value).toEqual(older);
+    expect(view.result.current.lastSaved).toBeNull();
+    await act(async () => { finish(); await persistence; });
+    expect(readDraft(destination)).toBeNull();
+    expect(readDraft(source)).toBeNull();
+    expect(readDraft(independent)?.value).toEqual(older);
+    view.unmount();
+  });
+
+  it('does not carry an older backup when storage refuses the current create words', async () => {
+    const source = draftKey('u1', 'new~refused-backup', 'note');
+    const destination = draftKey('u1', 'refused-backup', 'note');
+    const older = { ...payload, content: 'Earlier recoverable words' };
+    saveDraft(source, older, 'refused-backup');
+    const realSetItem = Storage.prototype.setItem;
+    const writing = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function(this: Storage, key, value) {
+      if (key === source) throw new DOMException('Full', 'QuotaExceededError');
+      realSetItem.call(this, key, value);
+    });
+    let finish!: () => void;
+    const persistence = new Promise<void>(resolve => { finish = resolve; });
+    const createNote = jest.fn(() => ({ ...queuedMutation('refused-backup', persistence), note: { id: 'refused-backup' } as StudyNote }));
+    const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, { id: 'refused-backup', draftId: 'new~refused-backup' }));
+    try {
+      await act(async () => { jest.advanceTimersByTime(1600); });
+      // The canonical request can still own the current text; the old copy is not that text.
+      expect(createNote).toHaveBeenCalledWith(expect.objectContaining(payload), { id: 'refused-backup' });
+      expect(readDraft(source)?.value).toEqual(older);
+      expect(readDraft(destination)).toBeNull();
+      expect(isDraftStorageRefusedFor('u1')).toBe(true);
+      expect(view.result.current.lastSaved).toBeNull();
+      await act(async () => { finish(); await persistence; });
+      expect(readDraft(source)).toBeNull();
+      expect(isDraftStorageRefusedFor('u1')).toBe(false);
+      expect(view.result.current.lastSaved).toBeInstanceOf(Date);
+    } finally {
+      view.unmount(); writing.mockRestore(); clearDraft(source); clearDraft(destination);
+    }
+  });
+
+  it('keeps later actual-address words when an earlier create is acknowledged', async () => {
+    const source = draftKey('u1', 'new~late-create', 'note');
+    const destination = draftKey('u1', 'late-create', 'note');
+    saveDraft(source, { ...payload, content: 'Before submission' }, 'late-create');
+    let finish!: () => void;
+    const persistence = new Promise<void>(resolve => { finish = resolve; });
+    const createNote = jest.fn(() => ({ ...queuedMutation('late-create', persistence), note: { id: 'late-create' } as StudyNote }));
+    const view = renderHook(() => useHarness(createNote, jest.fn(), undefined, { id: 'late-create', draftId: 'new~late-create' }));
+    await act(async () => { jest.advanceTimersByTime(1600); });
+    const later = { ...payload, content: 'Written after the create was submitted' };
+    saveDraft(destination, later);
+    await act(async () => { finish(); await persistence; });
+    expect(readDraft(destination)?.value).toEqual(later);
+    expect(readDraft(destination)?.creationTargetId).toBeUndefined();
+    view.unmount();
+  });
 
   it('carries the draft to the real id but does not mark it saved until persistence', async () => {
     saveDraft(draftKey('u1', 'new', 'note'), payload);

@@ -13,7 +13,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
-import { draftKey, clearDraftIfMatches, clearCreationDraft, moveDraft } from '@/utils/durableDraft';
+import { draftKey, clearDraftIfMatches, clearCreationDraft, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { useTranslation } from '@locales/useTranslation';
@@ -95,11 +95,18 @@ export function useNoteAutoSave({
         setSaveError(null);
         setLastSaved(null);
         try {
-            const input = {
+            const confirmedPayload: NoteDraftPayload = {
                 title, content, tags, scriptureRefs, type,
                 ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds),
-                userId: uid ?? '', materialIds: [], relatedSermonIds: []
             };
+            // Immediate dictation can beat the backup debounce. Carry the submitted words,
+            // never an older copy; a refused backup keeps its source and existing warning.
+            const sourceKey = uid ? draftKey(uid, draftDocId, 'note') : null;
+            const sourceDraft = sourceKey ? readDraft<NoteDraftPayload>(sourceKey) : null;
+            // Do not claim another creation's copy or an untagged legacy source for this ID.
+            const ownsSource = !sourceDraft || sourceDraft.creationTargetId === creationId;
+            const backupReady = sourceKey && ownsSource ? saveDraft(sourceKey, confirmedPayload, creationId) : false;
+            const input = { ...confirmedPayload, userId: uid ?? '', materialIds: [], relatedSermonIds: [] };
             const submission = creationId ? createNote(input, { id: creationId }) : createNote(input);
             const newNote = submission.note;
             void recording?.carryTo(newNote.id).catch(() => undefined);
@@ -114,7 +121,7 @@ export function useNoteAutoSave({
             // `markSaved` retires the draft under the key the hook still holds
             // ("new"), so the move found nothing left to carry and the safety net
             // was gone while the write was still in flight.
-            if (uid) moveDraft(draftKey(uid, draftDocId, 'note'), draftKey(uid, newNote.id, 'note'), creationId);
+            if (uid && backupReady) moveDraft(draftKey(uid, draftDocId, 'note'), draftKey(uid, newNote.id, 'note'), creationId);
             window.history.replaceState(null, '', `/studies/${newNote.id}`);
             setCreatedNoteId(newNote.id);
 
@@ -124,7 +131,6 @@ export function useNoteAutoSave({
             // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
             const acceptance = await awaitAcceptance(submission, () => undefined);
 
-            const confirmedPayload = { title, content, tags, scriptureRefs, type, ...noteRecordingMetadata(dictationSourceIds, recordingSourceIds) };
             const retirePersistedCreateDraft = () => {
                 // The draft was moved to the real id before the route changed. Never
                 // retire it from the old hook's moving key; remove only this exact,
