@@ -14,6 +14,15 @@
 
 ## 🟠 P2 — открыто
 
+
+### BUG-20261017-dictation-refresh-blocks-new-note-capture · A cached recording restored into a new note stays busy while offline and prevents local note capture
+**P2** — restored words remain visible and locally recoverable, but the new note is not captured into the engine queue while the usage refresh waits for a connection. No text loss was observed. `frontend/app/hooks/useTextDictation.ts:169-172,212`; `frontend/app/hooks/useAiUsage.ts:27-29`; `frontend/app/(pages)/(private)/studies/[id]/useNoteAutoSave.ts:85-90`.
+**Found / reproduce.** Compiled localhost build erp0mTYbONoItafugFf4T, 1280px and390px: open a new note with a disposable saved recording whose transcript is already cached; go offline; choose Send again. The transcript appears, the recording indicator remains busy, and after eight seconds the canonical request store has zero note requests. No transcription/provider call or command transport occurs. Cases reference-provenance-note-receipts-offline-v2-create-{1280,390};2/2. Existing-note controls capture the same text and both source ID arrays offline and retain them through worker reload.
+**Expected / observed.** Publishing cached words must release transcription ownership once the words/source are safely retained; an optional usage-counter refresh must not prevent the note's local save. Currently transcribe awaits refresh before clearing busy; new-note autosave refuses destination adoption while that busy flag remains set. The paused-refetch dependency is established in source; unlimited duration has not been measured. A separate1280px diagnostic reproduces the stall, then reconnect unblocks exactly one acknowledged create with the original words and both IDs intact.
+**User contract.** One person restores an existing recording without needing a new recognition request. The text and original recording identity become locally durable even without internet, and reconnect sends the same action once. Do not retire the recording merely because words are visible; exact server acceptance remains separately tracked.
+**Class / boundary.** The shared dictation hook keeps busy during the meter refresh. New-note creation has the observed capture gate; the existing-note update control is unaffected by that gate. Audit other canChangeDestination consumers before a fix. Keep ownership/source-preservation guards; decouple nonessential refresh instead of bypassing destination safety.
+
+
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
@@ -142,6 +151,20 @@
 **Reproduce.** Open an existing QA note, edit text while online, hold its command transport before server apply, wait for local capture. Observe Saved with unchanged server content; then release and distinguish the later ACK. Root cases `reference-provenance-offline-saved-online-held-before-{1280,390}` and `offline-saved-qa.json` retain evidence. Source-only API promise classification is also traced in `offline-saved-class-facts.md`.
 **Class.** This exact connectivity/persisted wrapper exists only in useStudyNotesEngine. Prayer/tag/template bridges return queued receipts; server acceptance and common queue/status mechanisms have different ownership. Local-commit outcome wording in useSermonNoteLinks is a separate UX contract, not proven affected here. Inspect create/update/delete and both durable-draft/recording acceptance consumers before any fix.
 **Direction / boundary.** Larger delivery-adapter work after the display-only BUG-20261017-note-offline-reload-false-saved. Reuse the canonical engine/facade and exact request identities; no feature queue, invented timestamp priority or false persistence proof. Architecture and full regression/browser/visual acceptance remain required. Not fixed by Phase71 header gating.
+
+**Current QA.** On the current local build, the backup draft exists while typing but is removed after local capture with the HTTP command still held, server content unchanged and zero accepted commands (phone and desktop). Text remains visible and the header gate correctly stays silent. Source recording cleanup also retires the saved audio before the refused command reaches HTTP, reproduced in both recording recovery probes.
+**Class: local action completion presented as server acceptance.**
+| place | verdict | reason |
+|---|---|---|
+| `hooks/useStudyNotesEngine.ts:31-38,115-191` create/update/delete | affected | `persistence` is the local facade promise; global connectivity selects `persisted` |
+| `studies/[id]/useNoteAutoSave.ts:101-143,224-267` create/update cleanup | affected | retires exact draft and recording sources on that promise; current update draft symptom reproduced |
+| `hooks/useTextDictation.ts:87-97`, `studies/[id]/page.tsx:319-324` source cleanup | affected boundary; recording QA pending | captureAcceptance deletes source; duplicate-source branch must distinguish projected pending metadata from acceptance |
+| `studies/[id]/page.tsx:169-202` delete/share cleanup | affected boundary | local deletion acceptance starts a second client cascade; canonical server already owns note/share-link retirement |
+| `hooks/useStudyNotes.ts:7-11`, list/calendar/dashboard/share-link consumers | read-only | only detail takes these write methods; other readers do not consume submission persistence |
+| `data-engine/react.client.tsx:314-329` public one-shot action API | local boundary correct; missing receipt capability | Promise<void> intentionally proves durable capture; it exposes no exact delivery receipt |
+| `data-engine/serverRelations.ts`, `runtime.ts`, `commits.ts` | canonical evidence owners | server cascade and durable request/journal outcomes own acceptance; no feature queue or connectivity inference |
+| prayer/tag/template adapters | different contract | queued adapters are tracked separately; no same persisted-from-connectivity label |
+
 
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги
 **Severity.** P3 — главное починено: стих перехода держится наверху, пока человек не прокрутил (`BibleBookReader.tsx`, ResizeObserver на читалке и тексте при `broughtRef`). Без этого ссылка на телефоне приземлялась на 400–10 000 px выше стиха — значки ссылок приходят после перехода и растят текст над ним, а Safari до 27 строку не держит. Остались редкие порядки событий; найдены третьим кругом слома Codex 2026-10-17 на модели, на устройстве не воспроизведены.
@@ -346,6 +369,13 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+
+### BUG-20261017-commit-map-stale-manual-load · A delayed manual-scope load can replace an accepted in-memory request with its older queued copy
+**P3 recheck** — source interleaving found during note-delivery review; no dedicated runtime reproduction yet. `frontend/app/data-engine/engine.ts:170-173,907-910`; compare guarded assignment at`:361-366`.
+**Expected / risk.** Accepted request evidence must not move backward. A manual-scope load can read queued R, pause, then overwrite the map after an ACK event has stored a newer revision. A subsequent map-only observer could wait despite accepted storage. Existing user-visible symptom is not established.
+**User contract.** One person's accepted action stays accepted when another screen finishes opening. Reproduce the delayed list/ACK interleaving before changing the canonical map; preserve owner/generation, request identity and retention boundaries. Note-delivery receipts must observe their own request from capture and must not depend on a later map-only read.
+
 
 ### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
 **P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
