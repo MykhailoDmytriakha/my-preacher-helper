@@ -348,17 +348,6 @@
 
 ## 🔍 Требует перепроверки
 
-### BUG-20261018-collection-result-stale-request · A delayed direct collection result may show an accepted action as still pending
-
-**Severity.** P3 recheck — source-only transient presentation risk; no dedicated runtime or visible screen failure yet.
-**Found / anchors.** 2026-10-18 class review; `frontend/app/data-engine/engine.ts:340-345,376-381`, `frontend/app/data-engine/react.client.tsx:953-964`.
-**Expected / risk.** A request list read can begin before an ACK and return afterward. `readCollection` and `refreshCollection` compose their returned documents from that old list rather than the newer event record. A returned row may briefly say pending after acceptance. These methods do not overwrite the live request map; no evidence yet that a UI retains their returned value.
-**Recheck.** Hold each direct method's store-list result, accept the actual command, release the earlier result and inspect its pending/value fields and the real consumer. Establish whether the hook applies it before choosing a fix. Preserve account and retained-request boundaries.
-**User behavior.** Once a person's save is known accepted, finishing an earlier load should not tell them it is still waiting. New unsaved actions still need their normal pending state. No owner decision is needed.
-**Relation.** Separate transient return value from the retained-map overwrite in BUG-20261017-commit-map-stale-manual-load. Source facts alone do not prove a screen defect.
-
-
-
 ### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
 **P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
 **Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.

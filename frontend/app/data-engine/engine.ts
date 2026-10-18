@@ -322,14 +322,14 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     const snapshots = await this.collectionReader().peekCached(collection);
     this.assertCurrent(owner, generation);
-    return this.peekedCollection(owner, collection, { snapshots, complete: false, freshness: 'cache', version: 0 });
+    return this.projectCollection(owner, collection, { snapshots, complete: false, freshness: 'cache', version: 0, checking: false, error: null });
   }
 
   async peekCollectionRemote(collection: string): Promise<CollectionState> {
     const owner = this.requireOwner(), generation = this.generation;
     const { snapshots, version } = await this.collectionReader().peekRemote(collection);
     this.assertCurrent(owner, generation);
-    return this.peekedCollection(owner, collection, { snapshots, complete: true, freshness: 'server', version });
+    return this.projectCollection(owner, collection, { snapshots, complete: true, freshness: 'server', version, checking: false, error: null });
   }
 
   /** A delayed list may finish after delivery has already advanced the same request. */
@@ -338,16 +338,17 @@ export class DataEngine {
     if (!current || current.revision < request.revision) this.commitRecords.set(request.id, request);
   }
 
-  private peekedCollection(owner: string, collection: string, view: Pick<CollectionState, 'snapshots' | 'complete' | 'freshness' | 'version'>): CollectionState {
-    return { ...view, checking: false, error: null,
-      documents: collectionDocumentViews(owner, collection, view.snapshots, [...this.commitRecords.values()]) };
+  private projectCollection(owner: string, collection: string, state: CollectionState): CollectionState {
+    return { ...state,
+      documents: collectionDocumentViews(owner, collection, state.snapshots, [...this.commitRecords.values()]) };
   }
 
   readCollection(collection: string): Promise<CollectionState> {
     const owner = this.requireOwner(), generation = this.generation;
     return this.collectionReader().read(collection, { allowIncompleteCache: true }).then(async state => {
       const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-      return { ...state, documents: collectionDocumentViews(owner, collection, state.snapshots, requests) };
+      requests.forEach(request => this.rememberCommit(request));
+      return this.projectCollection(owner, collection, state);
     });
   }
 
@@ -362,7 +363,7 @@ export class DataEngine {
         listener({ snapshots: [], documents: [], complete: false, freshness: 'unknown', checking: false, version: 0, error: null });
         return;
       }
-      listener({ ...latest, documents: collectionDocumentViews(owner, collection, latest.snapshots, [...this.commitRecords.values()]) });
+      listener(this.projectCollection(owner, collection, latest));
     };
     const stopRead = reader.watch(collection, state => { latest = state; emit(); });
     const stopCommits = this.commits.subscribe(({ request }) => {
@@ -380,7 +381,8 @@ export class DataEngine {
     const owner = this.requireOwner(), generation = this.generation;
     return this.collectionReader().refresh(collection).then(async state => {
       const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-      return { ...state, documents: collectionDocumentViews(owner, collection, state.snapshots, requests) };
+      requests.forEach(request => this.rememberCommit(request));
+      return this.projectCollection(owner, collection, state);
     });
   }
 
