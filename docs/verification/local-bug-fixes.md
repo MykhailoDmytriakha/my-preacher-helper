@@ -1894,3 +1894,16 @@ Browser proof uses compiled localhost UI, native localStorage/IndexedDB, and the
 ROOT proof: .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/draft-outcome-v7-verification.json, with104sealed artifact pins, plus draft-outcome-candidate-v7-build.json with2253source hashes. Fresh acceptance and the local commit are separate evidence. The other40whole tracker records are unchanged by this fix.
 
 After separately authorized merge/push, pin the deployed revision and follow draft-outcome-production-recipe.md: actual backend on disposable owned notes, offline capture/reload/reconnect, sequential second-context B, later unsent words and explicit conflict choice, neutral historical recovery, and separate audio/device boundaries. Preserve user data/network state. Mocked production endpoints cannot establish backend acceptance.
+
+
+## BUG-20261016-marks-form-error-in-hidden-tab
+
+Stage: rechecked, not reproduced in the native current path; original extension failure remains open under requires-recheck. No product or test code changed and no RED/fix is claimed.
+
+At4f583bf6/build6qaaPtCVrOsSZ3TYtCLGc, two strengthened cold/cached native Chrome cases mount the Psalms reader while actually hidden, then return to visible without Retry. Both pass10checks: marks reads wait while hidden, tools/highlights appear on return and survive another hide/show; no outside writes or unexpected page/console errors. ROOT views both original foreground frames. Existing facade/marks tests pass2suites43tests. Their division is explicit: the reachable-document suite exercises the actual engine facade; mark tests mock its hook contracts. The unchanged2253source pins retain the prior fullbuild/types/lint proof; this recheck does not change application behavior.
+
+Neither native case observed the original form-error state: cold collection gating can defer form creation until foreground, and cache can avoid the refusal. Toolbar appearance therefore is not direct form-error recovery proof. The separate boundary record is hidden-marks-observation-boundary.json.
+
+The old extension observation is not disproved. Generic needs-connection retry exists since7269aa1f on2026-10-06, before that observation, so it cannot be named as a new fix for the Oct16 failure. First one-second probes had not mounted the reader and are only startup controls. Default Playwright focus emulation and an incognito/noDefaults attempt did not produce native hidden; only a disposable ordinary default Chrome context did. Full proof and limits: .cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/hidden-marks-verification.json; fresh independent evidence is separate.
+
+Production/device recipe after separately authorized publication: open Psalms in a real background desktop tab, wait for loading, foreground it without Retry, and inspect both first-time and already-seen marks; repeat resume on the installed iPad app. Reproduce the original extension failure with its actual refusal code/visibility sequence before choosing a code change. Use disposable owned marks, preserve existing strokes, and do not equate RAM fixtures with backend or physical-device acceptance.
