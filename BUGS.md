@@ -111,14 +111,6 @@
 
 ## 🔵 P3 — открыто
 
-### BUG-20261017-note-conflict-shows-recording-identities · Note conflict displays internal recording IDs beside the person's words
-**Severity.** P3: recovery text exposes implementation fields, obscuring the words the person must choose.
-**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:130-138`; actual localhost `reference-provenance-note-delivery-conflict-qa-v2-390-conflict-retained.png` and `-conflict-reloaded.png` in the current case artifacts.
-**Expected / observed.** After restoring dictation and receiving a real command conflict, the note's recovery notice shows readable authored changes; it currently appends `dictationSourceIds` and raw array syntax. The same notice remains after reload at390px. No source deletion or word loss was observed in this probe.
-**User contract / reproduction.** Open Studies → an existing note → Edit; restore cached dictation. Let a newer accepted copy arrive before this command is delivered. The retained-text choice should explain the person's words and meaningful choices, keeping technical recording identities internal. Repeat after reload; preserve the original audio while the write is refused. Inspect the shared changed-field formatter and all recording-source metadata consumers before fixing.
-
-
-
 ### BUG-20261017-xref-switch-does-not-stay-on · На iPad переключатель «Стихи» у остальных ссылок стиха не остаётся включённым: пять нажатий подряд, каждое записано как «включить»
 **Severity.** P3 — данные не теряются, но остальные ссылки стиха нельзя увидеть стихами: человек жмёт снова и снова.
 **Найден.** 2026-10-17 · отзыв владельца с iPad в 11:36 «были проблемы с переключателем, смотри скриншот». Приложение установлено на экран «Домой», iPadOS 26.6.1, версия `b9ec751`. На снимке окно ссылок к стиху, «Остальные · 60», переключатель «Стихи» выключен и обведён. В технических деталях пять событий `setting crossRefs-othersAsVerses result:on` за 15 с (11:30:08.997 · 10.329 · 13.969 · 22.455 · 23.951 PDT). Нет ни `off`, ни `other-tab`, ни `-memory-only`. Перед этим приложение спало 10 ч: сессия загружена в 01:48, проснулось в 11:27. Агент не воспроизвёл: симулятор iPad Air 11" (iOS 26.1), вкладка Safari, dev, нажатие скриптом — 3 из 3 держится (вкл → выкл → вкл, запись в `localStorage` совпадает). Касание пальцем не повторено: WebDriver не делает из касания `click` (`.howto/measure-typing-lag.md`).

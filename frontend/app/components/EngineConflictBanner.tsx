@@ -22,7 +22,7 @@ import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller'
 import type { DocumentData, JournalEntry, ResourceRef } from '@/data-engine/types';
 
 /** Bookkeeping the person never typed: never shown as "your change". */
-const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft', 'planMode', '_dataEngine', '_dataEngineOwner']);
+const BOOKKEEPING = new Set(['updatedAt', 'createdAt', 'rev', 'userId', 'isDraft', 'planMode', 'dictationSourceIds', 'recordingSourceIds', '_dataEngine', '_dataEngineOwner']);
 
 /**
  * conflict — another device changed the same field, one draft waits · refused — the server will
