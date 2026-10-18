@@ -5,7 +5,8 @@ import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 
-jest.mock('next/navigation', () => ({ useParams: () => ({ id: 'group-1' }), useRouter: () => ({ push: jest.fn() }) }));
+let mockRouteParams: { id?: string } = { id: 'group-1' };
+jest.mock('next/navigation', () => ({ useParams: () => mockRouteParams, useRouter: () => ({ push: jest.fn() }) }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -14,7 +15,8 @@ jest.mock('@/components/groups/conduct/ConductBlock', () => ({ __esModule: true,
 jest.mock('@/components/groups/conduct/ConductOverview', () => ({ __esModule: true, default: () => <div>Overview</div> }));
 
 const flow = (durationMin = 5) => [{ id: 'block', templateId: 'template', order: 1, durationMin }];
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.clearAllMocks(); mockRouteParams = { id: 'group-1' }; });
+afterEach(() => { window.history.replaceState(null, '', '/'); });
 function setup() {
   const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
     metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false }, value: {
@@ -132,4 +134,15 @@ it('conducts the meeting from a copy for reading during silent storage, and keep
   expect(screen.getByText('Conducting now')).toBeInTheDocument();
   expect(harness.transport.send).not.toHaveBeenCalled();
   view.unmount(); resetDeviceStorageForTests(); jest.useRealTimers();
+});
+
+it('opens the stored meeting setup from the actual offline address without router params', async () => {
+  mockRouteParams = {};
+  window.history.replaceState(null, '', '/groups/group-1/conduct');
+  const { harness, view } = setup();
+  try {
+    expect(await screen.findByText('Reading')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('5')).toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  } finally { view.unmount(); }
 });

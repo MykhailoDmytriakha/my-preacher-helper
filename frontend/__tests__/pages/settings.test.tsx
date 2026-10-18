@@ -160,6 +160,17 @@ describe('Settings shell', () => {
   });
 });
 
+describe('Settings shell address fallback', () => {
+  afterEach(() => { window.history.replaceState(null, '', '/'); });
+  it.each(['limits', 'tags', 'templates'])('keeps %s selected when the offline router names the shell', async section => {
+    window.history.replaceState(null, '', `/settings/${section}`);
+    renderShell('/~offline', <p>Retained section content</p>);
+    await waitFor(() => expect(screen.getAllByTestId('settings-nav')[0]).toHaveAttribute('data-active', section));
+    screen.getAllByTestId('settings-nav').forEach(nav => expect(nav).toHaveAttribute('data-active', section));
+    expect(screen.getByText('Retained section content')).toBeInTheDocument();
+  });
+});
+
 describe('Settings sections', () => {
   it('gives the user section the account it is describing', async () => {
     renderShell('/settings/user', <UserPage />);

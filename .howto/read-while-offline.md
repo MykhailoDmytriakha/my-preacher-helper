@@ -42,3 +42,13 @@ Keep imports lazy so a seen screen works from cached chunks without precaching e
 Care covers overview, council/order lists, both detail screens and council conduct.
 A generic fallback card is a grid item: retain min-w-0 so a long requested URL can truncate on a phone.
 Behavior tests: offlineShell.engine.test.tsx and useRouteId.test.tsx; geometry needs a real browser.
+
+A nested section also needs its real layout: offline route metadata carries an optional lazy Layout,
+so settings reuse settings/layout.tsx instead of copying navigation or providers. Use the existing
+useShellPathname for its active section. Import the same layout module already loaded by an online
+visit; an offline-only wrapper chunk may never have been cached. Keep static reserved addresses
+(such as /studies/share-links) before a generic /studies/[id] matcher. Prayer detail and group conduct
+use the same useRouteId owner as other detail pages. A route entry alone does not solve a page whose
+access/data exist only in live API memory (admin); preserve its access boundary and track that domain
+separately. Verify index/legacy redirects and cached lazy chunks with real worker restarts, beyond
+mounted route probes.

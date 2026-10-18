@@ -14,6 +14,7 @@ import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasPersistedSession } from '@/utils/persistedSession';
+import { SETTINGS_SECTIONS, settingsSectionHref, type SettingsSection } from '@/utils/settingsSections';
 import { useTranslation } from '@locales/useTranslation';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
@@ -36,18 +37,39 @@ import { useTranslation } from '@locales/useTranslation';
 // Safe by construction: this file renders ONLY on an offline document-miss (online
 // routes are untouched). Auth and the React Query client live in the ROOT layout; the
 // data engine, the settings and the chrome come from the same PrivateWorkspace the
-// private layout renders its pages in. Only
-// paramless pages are wired; the Suspense boundary covers pages reading
+// private layout renders its pages in. The Suspense boundary covers pages reading
 // useSearchParams (e.g. /sermons). Param detail routes (/sermons/[id] etc.) are
 // wired too: their pages read the id via useRouteId (useParams ?? location.pathname),
 // so they self-resolve the id when rendered in the shell — no body extraction needed.
 
-const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }[] = [
+type OfflineRoute = {
+  test: (path: string) => boolean;
+  Component: ComponentType;
+  Layout?: ComponentType<{ children: ReactNode }>;
+};
+
+// Reuse the layout that a normal settings visit already loaded and cached.
+const SettingsSectionLayout = lazy(() => import('@/(pages)/(private)/settings/layout'));
+const SETTINGS_PAGES: Record<SettingsSection, ComponentType> = {
+  user: lazy(() => import('@/(pages)/(private)/settings/user/page')),
+  limits: lazy(() => import('@/(pages)/(private)/settings/limits/page')),
+  tags: lazy(() => import('@/(pages)/(private)/settings/tags/page')),
+  templates: lazy(() => import('@/(pages)/(private)/settings/templates/page')),
+};
+
+const LAZY_ROUTES: OfflineRoute[] = [
+  { test: (p) => p === '/settings', Component: lazy(() => import('@/(pages)/(private)/settings/page')), Layout: SettingsSectionLayout },
+  ...SETTINGS_SECTIONS.map((section) => ({
+    test: (path: string) => path === settingsSectionHref(section),
+    Component: SETTINGS_PAGES[section], Layout: SettingsSectionLayout,
+  })),
   { test: (p) => p === '/sermons', Component: lazy(() => import('@/(pages)/(private)/sermons/page')) },
   { test: (p) => p === '/series', Component: lazy(() => import('@/(pages)/(private)/series/page')) },
   { test: (p) => p === '/groups', Component: lazy(() => import('@/(pages)/(private)/groups/page')) },
   { test: (p) => p === '/prayers', Component: lazy(() => import('@/(pages)/(private)/prayers/page')) },
   { test: (p) => p === '/studies', Component: lazy(() => import('@/(pages)/(private)/studies/page')) },
+  // Static addresses must precede the generic study-detail matcher below.
+  { test: (p) => p === '/studies/share-links', Component: lazy(() => import('@/(pages)/(private)/studies/share-links/page')) },
   // One address for the whole Bible: the book is a search parameter switched in the page, so a
   // book never opened online still opens offline once /bible itself has been seen.
   { test: (p) => p === '/bible', Component: lazy(() => import('@/(pages)/(private)/bible/page')) },
@@ -58,6 +80,8 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   { test: (p) => /^\/care\/council\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/page')) },
   { test: (p) => /^\/care\/council\/[^/]+\/conduct$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/council/[id]/conduct/page')) },
   { test: (p) => /^\/care\/orders\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/care/orders/[id]/page')) },
+  { test: (p) => /^\/groups\/[^/]+\/conduct$/.test(p), Component: lazy(() => import('@/(pages)/(private)/groups/[id]/conduct/page')) },
+  { test: (p) => /^\/prayers\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/prayers/[id]/page')) },
   // Param detail routes — single-segment match.
   { test: (p) => /^\/sermons\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },
   { test: (p) => /^\/series\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/series/[id]/page')) },
@@ -171,12 +195,14 @@ export default function OfflineShell() {
   const lazyMatch = LAZY_ROUTES.find((route) => route.test(requestedPath));
   if (lazyMatch) {
     const RouteComponent = lazyMatch.Component;
+    const RouteLayout = lazyMatch.Layout;
+    const content = <RouteComponent />;
     // The chrome hides itself for ?planView=preaching, offline as online.
     return (
       <OfflineRouteBoundary fallback={<GenericOfflineCard requestedPath={requestedPath} />}>
         <ShellWorkspace pathname={requestedPath}>
           <Suspense fallback={null}>
-            <RouteComponent />
+            {RouteLayout ? <RouteLayout>{content}</RouteLayout> : content}
           </Suspense>
         </ShellWorkspace>
       </OfflineRouteBoundary>

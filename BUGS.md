@@ -14,20 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261017-offline-settings-and-prayer-route-missing · Seen settings pages and prayer detail open No connection after offline reload
-**P2** — locally captured work cannot be reopened without the network. `frontend/app/~offline/page.tsx:45` omits settings routes and prayer detail from LAZY_ROUTES.
-**Expected / observed / reproduce.** Open Settings→Templates/Tags or Dashboard→Add Prayer online, capture a QA create offline, then reload: its durable request survives, but its screen becomes No connection. Reconnect/reopen shows the content; this is a route gap, not demonstrated data loss.
-**User contract.** A page already seen on this device opens with its local data without internet. Keep normal settings navigation and the canonical page identity.
-**Class.**
-| place | verdict | why |
-|---|---|---|
-| settings/templates and settings/tags | affected, runtime confirmed | actual worker reload reaches generic card |
-| other settings routes/layout | inspect with fix | same missing route family; preserve layout/provider ownership |
-| prayers/[id] | affected, runtime confirmed | dashboard-created prayer reaches generic card on worker reload |
-| registered sermon/studies/care routes | controls | existing lazy route entries and useRouteId |
-**Direction.** Extend the existing lazy offline dispatcher and reuse actual URL identity/shared layouts. Evidence and limits: creator-capture verification ledger; no production/device claim. Separate next fix cycle.
-
-
 ### BUG-20261016-engine-draft-before-request · Закрыть приложение в миллисекунды после правки — черновик формы сохранён, а запрос ещё нет: правка остаётся закрытым черновиком и сама не возвращается
 **Severity.** P2 (напарник Codex оценил P1) — окно между записью черновика и записью запроса не ограничено долями секунды (две отдельные ожидаемые записи); правка не исчезает с устройства, но экран её больше не показывает, а способа вернуть её на экране пометок нет.
 **Найден.** 2026-10-16 · живая проба на localhost: четыре быстрых мазка и перезагрузка через ~0,3 с — черновик формы держал все четыре, запросов два.
@@ -368,6 +354,12 @@
 ---
 
 ## 🔍 Требует перепроверки
+
+### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
+**P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
+**Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.
+**User contract.** Read only authorized retained content; changes always require the normal server check. Reproduce with disposable authorized admin fixtures before selecting a cache/access design. Separate from BUG-20261017-offline-settings-and-prayer-route-missing.
+
 
 ### BUG-20261017-engine-edit-before-durable-capture · Some engine edit adapters still accept a timer before local capture
 **Severity.** P2 preliminary — an editor may close or clear before its action is durably held; current visible consequence outside whole-document creation is not yet established.

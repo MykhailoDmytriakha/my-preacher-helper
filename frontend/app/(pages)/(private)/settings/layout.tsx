@@ -1,6 +1,5 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
@@ -9,6 +8,7 @@ import SettingsLayout from '@/components/settings/SettingsLayout';
 import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
+import { useShellPathname } from '@/hooks/useShellPathname';
 import { useAuth } from '@/providers/AuthProvider';
 import { apiClient } from '@/utils/apiClient';
 import { contentFingerprint } from '@/utils/contentFingerprint';
@@ -29,7 +29,7 @@ import '@locales/i18n';
 export default function SettingsSectionLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { user, loading } = useAuth();
-  const pathname = usePathname();
+  const pathname = useShellPathname();
   const [pageTitle, setPageTitle] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [settingsFreshnessDismissed, setSettingsFreshnessDismissed] = useState(false);

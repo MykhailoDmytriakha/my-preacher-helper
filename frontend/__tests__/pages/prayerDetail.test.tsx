@@ -12,6 +12,7 @@ const mockToastError = jest.fn();
 const mockUsePrayerRequests = jest.fn();
 const mockUsePrayerDetail = jest.fn();
 let mockSearchParams = new URLSearchParams();
+let mockRouteParams: { id?: string } = { id: 'p1' };
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -23,7 +24,7 @@ jest.mock('next/link', () => ({
 }));
 
 jest.mock('next/navigation', () => ({
-  useParams: () => ({ id: 'p1' }),
+  useParams: () => mockRouteParams,
   useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useSearchParams: () => mockSearchParams,
 }));
@@ -50,7 +51,7 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
 }));
 
 jest.mock('@/hooks/usePrayerDetail', () => ({
-  usePrayerDetail: () => mockUsePrayerDetail(),
+  usePrayerDetail: (...args: unknown[]) => mockUsePrayerDetail(...args),
 }));
 
 jest.mock('@/components/prayer/PrayerStatusBadge', () => ({
@@ -159,6 +160,7 @@ describe('PrayerDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams();
+    mockRouteParams = { id: 'p1' };
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
       loading: false,
@@ -168,6 +170,17 @@ describe('PrayerDetailPage', () => {
       setStatus: jest.fn(() => persistedWrite(Promise.resolve())),
     });
     mockUsePrayerDetail.mockReturnValue({ prayer: activePrayer, isLoading: false });
+  });
+
+  it('opens the prayer named by the actual offline address when router params are empty', () => {
+    mockRouteParams = {};
+    window.history.replaceState(null, '', '/prayers/offline-prayer');
+    mockUsePrayerDetail.mockImplementation((id: string) => ({ prayer: id === 'offline-prayer' ? activePrayer : null, isLoading: false }));
+    const view = render(<PrayerDetailPage />);
+    try {
+      expect(screen.getByText('Pray for family')).toBeInTheDocument();
+      expect(screen.getByText('Need wisdom')).toBeInTheDocument();
+    } finally { view.unmount(); window.history.replaceState(null, '', '/'); }
   });
 
   it('renders the single-document result when the cached list is empty', () => {

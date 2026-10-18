@@ -10,7 +10,7 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -23,6 +23,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
+import { useRouteId } from '@/hooks/useRouteId';
 import { PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
@@ -39,7 +40,7 @@ const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
 
 export default function PrayerDetailPage() {
   const { t, language: interfaceLanguage } = useTranslation();
-  const { id } = useParams<{ id: string }>();
+  const id = useRouteId();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();

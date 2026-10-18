@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useCallback, useMemo, useState } from 'react';
 
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
@@ -11,6 +11,7 @@ import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
 import { useGroupConductForm } from '@/hooks/useGroupConductForm';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
+import { useRouteId } from '@/hooks/useRouteId';
 import { GroupFlowItem } from '@/models/models';
 import { normalizeFlow } from '@/utils/groupFlow';
 import { useTranslation } from '@locales/useTranslation';
@@ -21,8 +22,7 @@ import type { ReactNode } from 'react';
 type Phase = 'preflight' | 'conducting' | 'overview';
 
 export default function ConductPage() {
-  const { id } = useParams();
-  const groupId = typeof id === 'string' ? id : '';
+  const groupId = useRouteId();
   return <DataDocumentProvider key={groupId} resource={{ collection: 'groups', id: groupId }} options={{ slot: 'group-conduct', autoSave: false, readOnlyCopy: true }}>
     <EngineConductPage groupId={groupId} />
   </DataDocumentProvider>;
