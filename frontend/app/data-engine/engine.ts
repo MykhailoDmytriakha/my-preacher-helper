@@ -1174,7 +1174,7 @@ export class DataEngine {
       if (!sourceScopeId && state.scope?.getState().record.active) return state.scope.settled();
       // Keep what the user actually saw pinned while IndexedDB/provenance reads await.
       const pinned = copy(parent.controller!.getState().checkpoint);
-      const run = async () => {
+      const run = async (attempt = 0): Promise<void> => {
         const records = await this.commits.list(); active();
         records.forEach(request => this.rememberCommit(request));
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
@@ -1184,18 +1184,23 @@ export class DataEngine {
         const existing = source ?? await store.read(owner, targetId); active();
         if (existing && !source && existing.parentEditorId !== parentEditorId) throw new Error('Manual form storage identity mismatch');
         let creating = !existing || Boolean(source);
-        const frozenCapture = capture(); frozenCapture.checkpoint = pinned;
-        // Derive provenance against the pinned displayed value, not a later render.
+        const accepted = Object.entries(pinned.pending).sort((a, b) => a[1].generation - b[1].generation)
+          .flatMap(([id]) => { const request = this.commitRecords.get(id); return request?.state === 'acknowledged' && request.result?.kind === 'acknowledged' ? [request] : []; });
+        // Reconcile only work held by the original displayed copy, never a later parent render.
+        const openingCheckpoint = reconcileRecoveryRecord({ owner, editorId: parentEditorId, checkpoint: pinned, prepared: null, unfinalized: [] }, accepted).checkpoint;
+        const frozenCapture = capture(); frozenCapture.checkpoint = openingCheckpoint;
         frozenCapture.provenance = selection.flatMap(path => {
-          const pending = Object.entries(pinned.pending).sort((a, b) => b[1].generation - a[1].generation);
+          const pending = Object.entries(openingCheckpoint.pending).sort((a, b) => b[1].generation - a[1].generation);
           const match = pending.find(([id]) => { const request = this.commitRecords.get(id); return request?.value
-            && !sameManualSelection(request.baseline.value, request.value, path) && sameManualSelection(pinned.draft, request.value, path); });
+            && !sameManualSelection(request.baseline.value, request.value, path) && sameManualSelection(openingCheckpoint.draft, request.value, path); });
           return match ? [{ path, requestId: match[0] }] : [];
         });
         state.scopeId = targetId;
+        let initializing = true;
         const port = {
           capture: () => frozenCapture,
-          isCurrent: () => this.current(owner, generation),
+          isCurrent: () => this.current(owner, generation)
+            && (!initializing || (!parent.closed && this.manualForms.get(registryKey) === state)),
           isSettled: (id: string) => ['acknowledged', 'cancelled'].includes(this.commitRecords.get(id)?.state ?? ''),
           persist: async (record: ReturnType<ManualScope['getState']>['record']) => {
             const envelope: StoredManualScope = { owner, scopeId: targetId, parentEditorId, slot, record, commitReferences: record.predecessor ? [record.predecessor.id] : [] };
@@ -1216,15 +1221,24 @@ export class DataEngine {
           },
         };
         const options = { owner, resource, scopeId: targetId, selection, port };
-        state.scope?.dispose();
-        state.scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
-        if (existing?.record) {
-          if (!source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
-            && (!existing.record.predecessor || port.isSettled(existing.record.predecessor.id))) {
-            await state.scope.restart();
-          } else await state.scope.reopen();
-        } else await state.scope.settled();
-        active(); emit();
+        state.scope?.dispose(); state.scope = null;
+        const scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
+        try {
+          if (existing?.record) {
+            const restarting = !source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
+              && (!existing.record.predecessor || port.isSettled(existing.record.predecessor.id));
+            await (restarting ? scope.restart() : scope.reopen());
+          } else await scope.settled();
+          active();
+        } catch (error) {
+          scope.dispose();
+          if (!existing?.record && (error as { code?: string } | null)?.code === 'commit-reference-changed' && attempt < 2) {
+            active(); return run(attempt + 1);
+          }
+          throw error;
+        }
+        initializing = false;
+        state.scope = scope; emit();
       };
       opening = run().finally(() => { opening = null; });
       return opening;

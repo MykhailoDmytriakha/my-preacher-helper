@@ -14,13 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261018-manual-opening-retired-predecessor · A selected-field form can fail after its displayed pending value is accepted
-**Severity.** P2 — opening the edit form is refused although its displayed words were accepted; no loss of those words established. Found Oct18 by deterministic real engine/IndexedDB-contract class probe; application-screen frequency remains unverified.
-**Anchors.** `frontend/app/data-engine/engine.ts:1171-1204`; `manualScope.ts:263-277,351-367`; `storage.client.ts:34-40`.
-**Expected / observed.** A form pins what the person saw before asynchronous reads. If that field's pending predecessor is accepted and collected while its list read waits, form.begin rejects with commit-reference-changed. An unrelated selected field does not reproduce this case.
-**Reproduce / evidence.** Save a note title offline, begin a title form while holding its request-list result, accept the actual command and let its durable identity be collected, then release the list. Phase85 editor-open-retention-red-class.json has this behavioral failure; exact temporary source is editor-open-retention-manual-class-qa.test.ts.txt in the local case.
-**User behavior / boundary.** Open the form with the shown words and their established accepted baseline; retain genuinely pending identity and unsent text. Blindly rereading the parent can change the value the person chose to edit. This pinned-field capture contract requires its own reconciliation/retention solution; the fresh unpublished editor initialization retry in BUG-20261018-editor-open-retired-request does not cover it. No owner decision is needed.
-
 ### BUG-20261018-new-note-drafts-share-placeholder-slot · Вторая новая заметка занимает место несохранённой первой
 **Severity.** P2 — до захвата создания разные новые заметки делят одну резервную копию; предыдущий текст может остаться без копии.
 **Найден.** 2026-10-18 · независимый разбор и воспроизведение на реальном useDurableDraft; полный экранный сценарий ещё не проверен.
