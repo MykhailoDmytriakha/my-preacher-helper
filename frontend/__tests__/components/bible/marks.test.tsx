@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { useBookMarks } from '@/components/bible/marks/markStore';
 import { useMarkStrokes } from '@/components/bible/marks/useMarkStrokes';
-import { useMarkTool } from '@/components/bible/marks/markTool';
+import { resetMarkToolForTests, useMarkTool } from '@/components/bible/marks/markTool';
 import { MARK_SWATCH } from '@/components/bible/marks/MarkToolIcons';
 import { MarkToolbar } from '@/components/bible/marks/MarkToolbar';
 import { mapVerseText, wordIndexAt, wordsRange } from '@/components/bible/marks/verseWordDom';
@@ -217,7 +217,10 @@ describe('marks kept through the data engine', () => {
 });
 
 describe('the three tools', () => {
-  beforeEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetMarkToolForTests();
+  });
 
   function Toolbar({ vertical = false }: { vertical?: boolean }) {
     const tool = useMarkTool();
@@ -378,6 +381,20 @@ describe('the three tools', () => {
     fireEvent.click(within(colors).getByRole('button', { name: 'bible.marks.meaning.green' }));
     expect(screen.getByRole('button', { name: /bible\.marks\.pencil:/ })).toHaveAccessibleName('bible.marks.pencil:bible.marks.meaning.green');
     expect(screen.getByTestId('in-hand')).toHaveTextContent('pencil');
+  });
+
+  // The same storage as the cross-reference switch (the owner's iPad, 2026-10-17): a colour picked stays
+  // the colour in hand even when browser storage reads back the old one.
+  it('keeps a colour picked even when browser storage reads back the old one', () => {
+    const { result, rerender } = renderHook(() => useMarkTool());
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockReturnValue(null);
+    try {
+      act(() => result.current.pickColor('blue'));
+      rerender();
+      expect(result.current.color).toBe('blue');
+    } finally {
+      getItem.mockRestore();
+    }
   });
 
   it('a pen with nothing in hand paints with the last tool and takes nothing, so a finger still only scrolls', () => {

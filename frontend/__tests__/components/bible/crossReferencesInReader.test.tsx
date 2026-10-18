@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { CrossReferenceSettings } from '@/components/bible/CrossReferenceSettings';
-import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
+import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs, useCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { TextScaleProvider } from '@/providers/TextScaleProvider';
@@ -243,6 +243,37 @@ describe('the cross-reference settings', () => {
     window.localStorage.setItem('bible:cross-references', '{not json');
     resetCrossReferencePrefsForTests();
     expect(readCrossReferencePrefs()).toEqual({ show: true, inWindow: false, mode: 'main', othersAsVerses: false });
+  });
+
+  // The owner's iPad, 2026-10-17: "on" was saved three times in a row without an error, never "off",
+  // and each time the switch went back to off a moment later. Storage that reads back an old value
+  // must not take the choice off the screen.
+  it('keeps a choice drawn as saved even when browser storage reads back the old one', () => {
+    const { result, rerender } = renderHook(() => useCrossReferencePrefs());
+    expect(result.current.othersAsVerses).toBe(false);
+    const getItem = jest.spyOn(Storage.prototype, 'getItem').mockReturnValue(null);
+    try {
+      act(() => saveCrossReferencePrefs({ othersAsVerses: true }, 'window'));
+      expect(result.current.othersAsVerses).toBe(true);
+      rerender();
+      expect(result.current.othersAsVerses).toBe(true);
+      expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
+    } finally {
+      getItem.mockRestore();
+    }
+    expect(diagnosticEvents().at(-1)?.data).toEqual({ source: 'window', code: 'crossRefs-othersAsVerses', result: 'on-not-read-back' });
+  });
+
+  it('takes a choice another tab of the app made', () => {
+    const { result } = renderHook(() => useCrossReferencePrefs());
+    act(() => saveCrossReferencePrefs({ othersAsVerses: true }, 'window'));
+    // Another tab's record carries the moment of its action, later than this page's save.
+    const other = JSON.stringify({ show: true, inWindow: false, mode: 'all', othersAsVerses: false, __savedAt: Date.now() + 1000 });
+    act(() => {
+      window.localStorage.setItem('bible:cross-references', other);
+      window.dispatchEvent(new StorageEvent('storage', { key: 'bible:cross-references', newValue: other, storageArea: window.localStorage }));
+    });
+    expect(result.current).toEqual({ show: true, inWindow: false, mode: 'all', othersAsVerses: false });
   });
 
   it('lives under the text size in the "T" menu; off, its two sub-rows rest', async () => {
