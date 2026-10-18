@@ -84,6 +84,7 @@ const createMockNote = (overrides: Partial<StudyNote> = {}): StudyNote => ({
 const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   uid: 'mock-user',
   notes: [],
+  noteDelivery: new Map(),
   loading: false,
   error: null,
   refetch: jest.fn(),

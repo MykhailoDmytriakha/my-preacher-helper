@@ -89,6 +89,12 @@ export function useStudyNotesEngine(enabled: boolean) {
     .flatMap(row => row.value ? [engineNote(row.value, row.resource.id, locale)] : [])
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()), [collection.state?.documents, locale]);
 
+  // A displayed row can include queued words. Keep its canonical delivery evidence beside the domain value.
+  const noteDelivery = useMemo<ReadonlyMap<string, { readonly pending: boolean; readonly needsAttention: boolean }>>(
+    () => new Map((collection.state?.documents ?? []).flatMap(row => row.value ? [[row.resource.id,
+      { pending: row.pending, needsAttention: row.needsAttention }] as const] : [])),
+    [collection.state?.documents]);
+
   const once = (key: string, run: () => Promise<unknown>): WriteSubmission | null => {
     if (inFlight.current.has(key)) return null;
     inFlight.current.add(key);
@@ -102,6 +108,7 @@ export function useStudyNotesEngine(enabled: boolean) {
   return {
     uid,
     notes,
+    noteDelivery,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },

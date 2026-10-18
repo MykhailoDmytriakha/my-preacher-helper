@@ -128,7 +128,7 @@ describe('note editor sync integration', () => {
     (useParams as jest.Mock).mockReturnValue({ id: initialNote.id });
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
     (useStudyNotes as jest.Mock).mockImplementation(() => ({
-      uid: 'user-1', notes: [mockCache], loading: false, createNote, updateNote, deleteNote: jest.fn(),
+      uid: 'user-1', notes: [mockCache], noteDelivery: new Map([[mockCache.id, { pending: false, needsAttention: false }]]), loading: false, createNote, updateNote, deleteNote: jest.fn(),
     }));
     (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
     (useStudyNoteShareLinks as jest.Mock).mockReturnValue({ shareLinks: [], deleteShareLink: jest.fn() });

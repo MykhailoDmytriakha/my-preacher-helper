@@ -149,6 +149,8 @@ const mockNotes: StudyNote[] = [
     { ...createMockNote('note-2', 'Next Note'), updatedAt: '2024-01-01T00:00:00.000Z' },
 ];
 
+const acceptedNoteDelivery = () => new Map(mockNotes.map(note => [note.id, { pending: false, needsAttention: false }]));
+
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -158,7 +160,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
-            notes: mockNotes,
+            notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
             loading: false,
             createNote: jest.fn(),
             updateNote: jest.fn(),
@@ -199,6 +201,69 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getByTestId('sermons-built-on-note-stub')).toHaveTextContent('note-1');
     });
 
+    it.each(['pending', 'needs-attention', 'unknown'] as const)('does not call a restored %s row Saved from its timestamp', async delivery => {
+        const queued = { ...mockNotes[1], content: 'Words retained locally before reload' };
+        const updateNote = jest.fn();
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [queued], loading: false,
+            noteDelivery: delivery === 'unknown' ? new Map() : new Map([[queued.id, { pending: true, needsAttention: delivery === 'needs-attention' }]]),
+            createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(queued.content);
+        expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
+        expect(updateNote).not.toHaveBeenCalled();
+    });
+
+    it('shows Saved after the restored row has no outstanding request without resubmitting its words', async () => {
+        let pending = true;
+        const queued = { ...mockNotes[1], content: 'Restored queued words' };
+        const updateNote = jest.fn();
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [queued], loading: false,
+            noteDelivery: new Map([[queued.id, { pending, needsAttention: false }]]),
+            createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
+        const view = render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
+        pending = false;
+        view.rerender(<StudyNoteEditorPage />);
+        await waitFor(() => expect(screen.getByText('common.saved')).toBeInTheDocument());
+        expect(screen.getByTestId('rich-markdown-editor')).toHaveValue(queued.content);
+        expect(updateNote).not.toHaveBeenCalled();
+    });
+
+    it('keeps an accepted current note Saved while a different note waits', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false,
+            noteDelivery: new Map(mockNotes.map(note => [note.id, { pending: note.id === 'note-2', needsAttention: false }])),
+            createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        expect(screen.getByText('common.saved')).toBeInTheDocument();
+    });
+
+    it('does not let an early local persisted callback claim delivery while the row still waits', async () => {
+        jest.useFakeTimers();
+        let pending = false;
+        let projectedNotes = mockNotes;
+        const updateNote = jest.fn(({ updates }: { updates: Partial<StudyNote> }) => {
+            pending = true;
+            projectedNotes = projectedNotes.map(note => note.id === 'note-1' ? { ...note, ...updates } : note);
+            return { acceptance: Promise.resolve({ kind: 'persisted' }), persistence: Promise.resolve(),
+                result: Promise.resolve({ id: 'note-1', revision: 2 }) };
+        });
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: projectedNotes, loading: false,
+            noteDelivery: new Map(projectedNotes.map(note => [note.id, { pending: note.id === 'note-1' && pending, needsAttention: false }])),
+            createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByTitle('common.edit'));
+            fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Waiting for a real acknowledgement' } });
+            await act(async () => { await jest.advanceTimersByTimeAsync(1600); });
+            expect(updateNote).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Waiting for a real acknowledgement');
+            expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
+        } finally { jest.clearAllTimers(); jest.useRealTimers(); }
+    });
+
     it('drops the "saved" tick as soon as the text differs from what the server has', async () => {
         /**
          * Found in the browser, not by a test: the green "Saved" stayed up while newer
@@ -229,7 +294,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
-            notes: mockNotes,
+            notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
             loading: false,
             createNote: jest.fn(),
             updateNote,
@@ -267,7 +332,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             result: Promise.resolve({ id: 'note-2', revision: 2 }),
         });
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
+            uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote, deleteNote: jest.fn(),
         });
 
         render(<StudyNoteEditorPage />);
@@ -566,7 +631,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             stored = { ...stored, ...updates };
             return persistedWrite(Promise.resolve({ id: stored.id, revision: 5 }));
         });
-        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [stored], loading: false,
+        (useStudyNotes as jest.Mock).mockImplementation(() => ({ uid: 'user-1', notes: [stored], noteDelivery: new Map([[stored.id, { pending: false, needsAttention: false }]]), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() }));
         const view = render(<StudyNoteEditorPage />);
         try {
@@ -590,7 +655,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     it('restores the typed draft and then its cached voice after a refused save without appending twice', async () => {
         window.localStorage.clear();
         const updateNote = jest.fn((_args: { updates: Partial<StudyNote> }) => persistedWrite(Promise.reject(new Error('Local note write refused'))));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: true,
             json: async () => ({ success: true, polishedText: 'One durable voice fragment' }) });
@@ -617,7 +682,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.localStorage.clear();
         const updateNote = jest.fn(() => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'voice-save' }),
             persistence: new Promise<void>(() => undefined), result: new Promise(() => undefined) }));
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote, deleteNote: jest.fn() });
         global.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, polishedText: 'Same words' }) });
         const view = render(<StudyNoteEditorPage />);
@@ -694,7 +759,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             }));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes,
+                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: mockCreateNote,
                 updateNote: jest.fn(),
@@ -729,7 +794,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                 }));
                 (useStudyNotes as jest.Mock).mockReturnValue({
                     uid: 'user-1',
-                    notes: mockNotes,
+                    notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                     loading: false,
                     createNote: mockCreateNote,
                     updateNote: jest.fn(),
@@ -760,7 +825,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             const mockDeleteShareLink = jest.fn(() => persistedWrite(Promise.resolve()));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes,
+                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: jest.fn(),
                 updateNote: jest.fn(),
@@ -853,7 +918,7 @@ describe('StudyNoteEditorPage Pagination', () => {
             });
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
-                notes: mockNotes,
+                notes: mockNotes, noteDelivery: acceptedNoteDelivery(),
                 loading: false,
                 createNote: jest.fn(),
                 updateNote: mockUpdateNote,
@@ -885,7 +950,7 @@ describe('StudyNoteEditorPage Pagination', () => {
                     const result = Promise.reject(refusal);
                     return { ...persistedWrite(result), result };
                 });
-                (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
+                (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
 
                 render(<StudyNoteEditorPage />);
                 fireEvent.click(screen.getByTitle('common.edit'));
@@ -919,7 +984,7 @@ describe('StudyNoteEditorPage — where the outline and properties are reachable
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
         (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1', notes: mockNotes, loading: false,
+            uid: 'user-1', notes: mockNotes, noteDelivery: acceptedNoteDelivery(), loading: false,
             createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
         });
         (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });

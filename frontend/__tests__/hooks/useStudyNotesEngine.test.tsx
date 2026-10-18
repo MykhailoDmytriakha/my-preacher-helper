@@ -18,6 +18,7 @@ afterEach(() => { mockLanguage = 'en'; });
 
 type Row = Record<string, unknown>;
 let store: Map<string, Row>;
+let deliveryState: Map<string, { pending: boolean; needsAttention: boolean }>;
 const note = (extra: Row = {}): Row => ({
   userId: 'u', title: 'Grace', content: 'Laptop paragraph', tags: [], scriptureRefs: [], type: 'note',
   isDraft: true, createdAt: 'c', updatedAt: 'u', rev: { note: 4 }, ...extra,
@@ -35,7 +36,7 @@ const actions = {
 function render() {
   jest.mocked(useDocumentActions).mockReturnValue(actions as never);
   jest.mocked(useDataCollection).mockImplementation(() => ({
-    state: { snapshots: [], documents: [...store].map(([id, value]) => ({ resource: { collection: 'studyNotes', id }, value })),
+    state: { snapshots: [], documents: [...store].map(([id, value]) => ({ resource: { collection: 'studyNotes', id }, value, deleting: false, ...(deliveryState.get(id) ?? { pending: false, needsAttention: false }) })),
       complete: true, freshness: 'server', checking: false, version: 1, error: null },
     loading: false, error: null, refresh: jest.fn(),
   }) as never);
@@ -45,7 +46,27 @@ function render() {
 const opened = { title: 'Grace', content: 'Laptop paragraph', tags: [], scriptureRefs: [], type: 'note' };
 
 describe('study notes on the engine', () => {
-  beforeEach(() => { jest.clearAllMocks(); store = new Map([['n1', note()]]); });
+  beforeEach(() => { jest.clearAllMocks(); store = new Map([['n1', note()]]); deliveryState = new Map(); });
+
+  it('keeps delivery evidence scoped to each displayed note without treating a missing row as accepted', () => {
+    store.set('n2', note({ title: 'Other note' }));
+    store.set('removed', null as never);
+    deliveryState.set('n2', { pending: true, needsAttention: false });
+    const { result, rerender } = render();
+    expect(result.current.noteDelivery.get('n1')).toEqual({ pending: false, needsAttention: false });
+    expect(result.current.noteDelivery.get('n2')).toEqual({ pending: true, needsAttention: false });
+    expect(result.current.noteDelivery.get('missing')).toBeUndefined();
+    expect(result.current.noteDelivery.get('removed')).toBeUndefined();
+    deliveryState.set('n1', { pending: true, needsAttention: true });
+    rerender();
+    expect(result.current.noteDelivery.get('n1')).toEqual({ pending: true, needsAttention: true });
+    expect(result.current.noteDelivery.get('n2')?.pending).toBe(true);
+    deliveryState.set('n1', { pending: false, needsAttention: false });
+    rerender();
+    expect(result.current.noteDelivery.get('n1')?.pending).toBe(false);
+    expect(result.current.notes.map(note => note.id)).toEqual(['n1', 'n2']);
+    expect(actions.commit).not.toHaveBeenCalled();
+  });
 
   it('keeps a tag added on the phone when the laptop saves a paragraph', async () => {
     const { result } = render();

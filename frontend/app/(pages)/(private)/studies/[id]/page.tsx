@@ -618,7 +618,7 @@ export default function StudyNoteEditorPage() {
     const noteId = createdNoteId || routeId;
     const isNew = noteId === 'new';
 
-    const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const { shareLinks, deleteShareLink } = useStudyNoteShareLinks();
 
     const { tags: tagData } = useTags(uid);
@@ -647,6 +647,8 @@ export default function StudyNoteEditorPage() {
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
+    // A projected row or a local capture alone cannot confirm this note on the server.
+    const noteIsAccepted = noteDelivery?.get(noteId)?.pending === false;
 
     const { locale: bibleLocale } = useAppLocale();
 
@@ -1236,7 +1238,7 @@ export default function StudyNoteEditorPage() {
                 handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
-                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
+                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
