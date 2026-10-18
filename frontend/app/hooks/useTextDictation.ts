@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/providers/AuthProvider';
@@ -26,6 +26,8 @@ interface TextDictationOptions {
   /** Stable field destination; isolated legacy callers can omit durable recovery. */
   recordingContext?: { context: RecordingDraftContext; contextId: string };
   linkedSourceIds?: readonly string[];
+  /** Source IDs from a confirmed copy, never from submitted local projection. */
+  acceptedSourceIds?: readonly string[];
   onSourcePersisted?: (sourceId: string) => void;
 }
 class RecordingPreservationError extends Error {
@@ -84,18 +86,32 @@ export function useTextDictation(options: TextDictationOptions) {
     if (context && contextId && ownerId) await deleteRecordingDraft(held.id, ownerId);
     if (ownership.held === held) clear();
   };
+  const retireSources = useCallback(async (included: readonly string[]) => {
+    if (!ownerId) return;
+    for (const id of included) {
+      await deleteRecordingDraft(id, ownerId);
+      ownership.applied.delete(id);
+      ownership.known.delete(id);
+    }
+  }, [ownerId, ownership]);
   const captureAcceptance = () => {
     const included = [...ownership.applied];
-    return async () => {
-      if (!ownerId) return;
-      for (const id of included) {
-        await deleteRecordingDraft(id, ownerId);
-        ownership.applied.delete(id);
-        ownership.known.delete(id);
-      }
-    };
+    return () => retireSources(included);
   };
   const accept = () => captureAcceptance()();
+  const acceptedSourceIds = options.acceptedSourceIds;
+  const linkedSourceIds = options.linkedSourceIds;
+  useEffect(() => {
+    if (!acceptedSourceIds || !ownerId || !context || !contextId) return;
+    // The original can outlive its page and pending delivery. Confirmed identity permits
+    // cleanup after restart too; a source for another owner/destination is never inferred.
+    void (async () => {
+      for (const id of acceptedSourceIds) {
+        const draft = await getRecordingDraft(id, ownerId);
+        if (draft && recordingMatchesDestination(draft, context, contextId, linkedSourceIds)) await retireSources([id]);
+      }
+    })().catch(() => undefined);
+  }, [acceptedSourceIds, linkedSourceIds, ownerId, context, contextId, shown.processing, retireSources]);
   const carryTo = async (destinationId: string) => {
     if (!ownerId || !context || !contextId) return;
     for (const id of [...ownership.known]) {

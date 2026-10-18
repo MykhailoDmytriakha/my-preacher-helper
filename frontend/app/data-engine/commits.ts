@@ -1,9 +1,11 @@
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
+import { CommitReceipts } from './commitReceipt';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
 import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
+import type { DocumentWriteReceipt } from './commitReceipt';
 import type { DataEngineRuntime } from './runtime';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
@@ -140,6 +142,7 @@ export class CommitQueue {
   private owner: string | null = null;
   private generation = 0;
   private listeners = new Set<(event: CommitEvent) => void>();
+  private readonly receipts = new CommitReceipts(assertCommitCapture);
   private running: Promise<void> | null = null;
   private runningGeneration = 0;
   private requested = false;
@@ -155,7 +158,7 @@ export class CommitQueue {
   }) {}
 
   setOwner(owner: string | null): void {
-    if (owner !== this.owner) { this.owner = owner; this.generation += 1; }
+    if (owner !== this.owner) { this.receipts.reset(); this.owner = owner; this.generation += 1; }
   }
 
   subscribe(listener: (event: CommitEvent) => void): () => void {
@@ -166,7 +169,20 @@ export class CommitQueue {
     const owner = this.owner, generation = this.generation;
     if (!owner) return [];
     const records = await this.options.store.list(owner);
-    return this.current(owner, generation) ? orderRequests(records) : [];
+    if (!this.current(owner, generation)) return [];
+    records.forEach(request => this.receipts.observe(request));
+    return orderRequests(records);
+  }
+
+  /** Opt-in acceptance proof; ordinary save keeps its local-capture contract. */
+  saveWithReceipt(editorId: string, captured: SessionCheckpoint, options?: CommitSaveOptions): Promise<{ request: CommitRequest | null; receipt: DocumentWriteReceipt }> {
+    if (!this.owner) return Promise.reject(new Error(AUTHENTICATION_REQUIRED));
+    const owner = this.owner, generation = this.generation;
+    return this.receipts.capture(owner, editorId, captured, () => this.save(editorId, captured, options), async () => {
+      const requests = await this.list(); this.assertCurrent(owner, generation);
+      return !requests.some(request => resourceMatches(request.baseline.resource, captured.confirmed.resource)
+        && !['acknowledged', 'cancelled'].includes(request.state));
+    });
   }
 
   async save(editorId: string, captured: SessionCheckpoint, options?: CommitSaveOptions): Promise<CommitRequest | null> {
@@ -278,6 +294,7 @@ export class CommitQueue {
         this.requested = false;
         const records = await this.options.store.list(owner);
         this.assertCurrent(owner, generation);
+        records.forEach(request => this.receipts.observe(request));
         const batch = await this.advanceBatch(records, owner, generation, failures, races);
         races = batch.races;
         let changed = batch.changed;
@@ -453,6 +470,7 @@ export class CommitQueue {
   }
 
   private emit(request: CommitRequest): void {
+    this.receipts.observe(request);
     for (const listener of this.listeners) { try { listener({ request: clone(request) }); } catch { /* Rendering cannot change delivery. */ } }
   }
   private current(owner: string, generation: number): boolean { return owner === this.owner && generation === this.generation; }

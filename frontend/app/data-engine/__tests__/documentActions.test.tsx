@@ -38,6 +38,49 @@ describe('one action on a document no screen has open', () => {
     expect(harness.server.value).toBeNull();
   });
 
+  it('accepts the exact captured write delivered by another worker through the shared durable queue', async () => {
+    const { harness, result, unmount } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    harness.engine.setOnline(false);
+    const original = harness.engine;
+    const receipt = await result.current.submit(resource, { kind: 'update', update: current => ({ ...current!, title: 'From the first tab' }) });
+    let accepted = false; void receipt.persistence.then(() => { accepted = true; });
+    await settleEngine(); expect(accepted).toBe(false);
+    const other = harness.createBrowser(); other.engine.setOnline(false); other.engine.setOwner('owner'); other.engine.setOnline(true);
+    try {
+      await other.engine.retry(); await settleEngine();
+      expect(harness.server.value?.title).toBe('From the first tab');
+      // Existing queue reads, rather than a render-map snapshot, discover the other worker's ACK.
+      await original.retry();
+      await expect(receipt.persistence).resolves.toMatchObject({ value: { title: 'From the first tab' } });
+    } finally { other.dispose(); unmount(); }
+  });
+
+  it('returns the durable receipt when only the later editor checkpoint projection fails', async () => {
+    const { harness, result, unmount } = setup();
+    await waitFor(() => expect(result.current.ready).toBe(true));
+    const put = harness.checkpoints.put;
+    let failOnce = true;
+    const projection = jest.spyOn(harness.checkpoints, 'put').mockImplementation(async record => {
+      if (failOnce && Object.keys(record.checkpoint.pending).length) { failOnce = false; throw new Error('Checkpoint projection failed'); }
+      return put(record);
+    });
+    const send = jest.mocked(harness.transport.send), deliver = send.getMockImplementation()!;
+    let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+    send.mockImplementation(async command => { await held; return deliver(command); });
+    try {
+      const captured = result.current.submit(resource, { kind: 'update', update: current => ({ ...current!, title: 'Durably submitted words' }) });
+      await expect(captured).resolves.toMatchObject({ requestId: expect.any(String), kind: 'submitted' });
+      const receipt = await captured;
+      expect((await harness.commits.list('owner')).some(row => row.id === receipt.requestId)).toBe(true);
+      expect(harness.server.value?.title).toBe('Grace');
+      let accepted = false; void receipt.persistence.then(() => { accepted = true; });
+      await settleEngine(); expect(accepted).toBe(false);
+      release(); await harness.engine.retry();
+      await expect(receipt.persistence).resolves.toMatchObject({ value: { title: 'Durably submitted words' } });
+    } finally { release(); projection.mockRestore(); await harness.engine.retry(); unmount(); }
+  });
+
   describe('a change the server did not accept as sent', () => {
     const conflicted = async () => {
       const context = setup();

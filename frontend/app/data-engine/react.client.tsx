@@ -35,6 +35,12 @@ import type { DocumentData, EngineReadOptions, FailureAddress, FieldValue, Journ
 export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
 export type { RecoveryChoiceScope } from './recoveryChoice';
+export type { DocumentWriteReceipt } from './commitReceipt';
+
+export type DocumentAction =
+  | { kind: 'create'; value: DocumentData }
+  | { kind: 'update'; update: (current: DocumentData | null) => DocumentData | null }
+  | { kind: 'delete' };
 export type { OpenDocumentAnswer } from './openDocumentAnswers';
 /** Whether the answering document screens hold every shown request and the same words. */
 export function isRecoveryHeldOpen(records: readonly EditorRecord[], answers: readonly OpenDocumentAnswer[]): boolean { return heldOpen(records, answers); }
@@ -312,13 +318,13 @@ export function useDocumentActions() {
     const [records, journal] = await untilStorageSilent(Promise.all([browser.engine.listRecoverable(resource), browser.engine.listPending()]), () => undefined, readOnlyReason(true));
     return records.filter(({ record, answer }) => waitsForDecision(record, journal, answer));
   }, [browser, readOnlyReason]);
-  const withEditor = useCallback(async (resource: ResourceRef, action: (editor: ManagedEditor) => Promise<void>, creating = false) => {
+  const withEditor = useCallback(async <T,>(resource: ResourceRef, action: (editor: ManagedEditor) => Promise<T>, creating = false): Promise<T> => {
     if (!browser || !owner) throw new Error(ENGINE_NOT_READY);
     // A document that waits for a decision takes no further one-shot change: each attempt
     // would only strand another checkpoint behind the answer (EngineConflictBanner asks first).
     if (!creating && (await waitingFor(resource)).length) throw decisionRequired();
     const editor = await openFor(resource, browser.editorId(resource, ACTION_SLOT), creating);
-    try { await action(editor); } finally { editor.close({ flush: false }); }
+    try { return await action(editor); } finally { editor.close({ flush: false }); }
   }, [browser, owner, waitingFor, openFor]);
   return useMemo(() => ({
     ready: Boolean(browser && owner),
@@ -327,6 +333,10 @@ export function useDocumentActions() {
     commit: (resource: ResourceRef, updater: (current: DocumentData | null) => DocumentData | null) =>
       withEditor(resource, editor => editor.commit(updater)),
     remove: (resource: ResourceRef) => withEditor(resource, editor => editor.remove()),
+    /** Resolves at local capture; its persistence promise follows only this complete request. */
+    submit: (resource: ResourceRef, action: DocumentAction) => withEditor(resource, editor => action.kind === 'delete'
+      ? editor.removeWithReceipt()
+      : editor.commitWithReceipt(action.kind === 'create' ? () => action.value : action.update), action.kind === 'create'),
     /**
      * Settle the answer the server gave to a document no screen has open — a conflict or a
      * refusal — without ever choosing for the person. "Mine" is allowed only when exactly one

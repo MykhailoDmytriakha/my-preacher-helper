@@ -107,6 +107,18 @@ function NoteContent({ id }: { id: string }) {
   not server acceptance. Only `status.phase === 'saved'` with the associated confirmed
   state proves the current editor has no outstanding changes. Freshness is separate:
   a cached saved copy is not evidence of a successful current server read.
+- **Exact write receipt:** a compatibility editor that must retire a backup after acceptance
+  uses `useDocumentActions().submit(resource, action)`, where action is `create` with `value`,
+  `update` with `update(current)`, or `delete`. It resolves after canonical local capture and
+  returns `requestId`, `kind` and a separate `persistence: Promise<ResourceSnapshot>`.
+  Only the matching whole request ACK resolves persistence; refusal/conflict/cancellation
+  and owner reset reject it. An unchanged result uses its equal confirmed copy only when
+  no same-resource work remains unresolved; it is not a fresh server read. Ordinary
+  `create/commit/remove` keep `Promise<void>` and their existing local-capture boundary.
+  Observations use the canonical queue's existing events and durable reads, with no extra
+  store, transport or polling. A page may leave while delivery continues; after restart
+  the queue still owns the request, while the page's promise must be replaced by durable
+  accepted evidence. A later checkpoint projection failure does not erase a captured receipt.
 - **Leaving:** a screen that goes away closes its editor with `close({ flush })`; the React
   layer passes the document's autosave setting. A savable draft — typed inside the autosave
   delay, or a deletion not yet queued — becomes a durable request in the engine's queue before

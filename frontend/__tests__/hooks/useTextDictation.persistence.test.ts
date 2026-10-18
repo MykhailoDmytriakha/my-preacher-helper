@@ -236,3 +236,45 @@ it('keeps published words successful when the auxiliary usage read fails', async
   expect(callbacks.onError).not.toHaveBeenCalled();
   expect(kept()).toHaveLength(1);
 });
+
+it('retires only the confirmed take while a later dictated fragment remains recoverable', async () => {
+  const callbacks = options();
+  const view = renderHook(({ accepted }: { accepted: string[] }) => useTextDictation({ ...callbacks, acceptedSourceIds: accepted }),
+    { initialProps: { accepted: [] as string[] } });
+  transcribe.mockResolvedValue({ originalText: 'First accepted words' } as never);
+  act(() => view.result.current.complete(blob));
+  await waitFor(() => expect(callbacks.onText).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+  const first = callbacks.onText.mock.calls[0][1] as string;
+  transcribe.mockResolvedValue({ originalText: 'Later unconfirmed words' } as never);
+  act(() => view.result.current.complete(new Blob(['later voice'])));
+  await waitFor(() => expect(callbacks.onText).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(view.result.current.isProcessing).toBe(false));
+  const second = callbacks.onText.mock.calls[1][1] as string;
+  expect(kept()).toHaveLength(2);
+  view.rerender({ accepted: [first] });
+  await waitFor(() => expect(kept()).toHaveLength(1));
+  expect((kept()[0] as { id: string; transcript: string })).toMatchObject({ id: second, transcript: 'Later unconfirmed words' });
+  view.rerender({ accepted: [first, second] });
+  await waitFor(() => expect(kept()).toHaveLength(0));
+});
+
+it('retires an already confirmed restored source after restart without inserting it again', async () => {
+  mockRows.set('accepted-before-restart', { id: 'accepted-before-restart', ownerId: 'alice', context: 'thought', contextId,
+    blob, mimeType: blob.type, sizeBytes: blob.size, createdAt: 1, transcript: 'Already accepted words' });
+  const callbacks = options();
+  renderHook(() => useTextDictation({ ...callbacks, acceptedSourceIds: ['accepted-before-restart'] }));
+  await waitFor(() => expect(kept()).toHaveLength(0));
+  expect(callbacks.onText).not.toHaveBeenCalled();
+  expect(transcribe).not.toHaveBeenCalled();
+});
+
+it('retains another destination original despite a mismatched confirmed source identity', async () => {
+  mockRows.set('other-destination', { id: 'other-destination', ownerId: 'alice', context: 'thought', contextId: 'other-thought',
+    blob, mimeType: blob.type, sizeBytes: blob.size, createdAt: 1, transcript: 'Other destination words' });
+  const callbacks = options();
+  renderHook(() => useTextDictation({ ...callbacks, acceptedSourceIds: ['other-destination'] }));
+  await act(async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); });
+  expect(kept()).toHaveLength(1);
+  expect(callbacks.onText).not.toHaveBeenCalled();
+});

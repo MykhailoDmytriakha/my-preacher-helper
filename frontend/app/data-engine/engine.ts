@@ -17,6 +17,7 @@ import { submittedWorkCheckpoint } from './submittedWork';
 import { redeliveryDelay } from './unanswered';
 
 import type { CollectionReader, CollectionState } from './collections';
+import type { DocumentWriteReceipt } from './commitReceipt';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { MembershipScopeStore } from './membershipScopes.client';
 import type { Observation, ResourceObserver } from './observer';
@@ -78,6 +79,9 @@ export interface ManagedEditor {
   edit(value: DocumentData | null, shown?: ShownCopy): Promise<void>;
   /** Capture, stage and durably save one invocation without including later typing. */
   commit(updater: (current: DocumentData | null) => DocumentData | null): Promise<void>;
+  /** Same local capture, with separate exact-request server acceptance for backup cleanup. */
+  commitWithReceipt(updater: (current: DocumentData | null) => DocumentData | null): Promise<DocumentWriteReceipt>;
+  removeWithReceipt(): Promise<DocumentWriteReceipt>;
   /** Resolves when the command is durable; delivery continues independently. */
   save(): Promise<void>;
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
@@ -982,6 +986,30 @@ export class DataEngine {
         void pending.finally(() => { if (this.councilCarries.get(key) === pending) this.councilCarries.delete(key); }).catch(() => undefined);
         return pending;
       };
+      const commit = (updater: (current: DocumentData | null) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void) => {
+        active();
+        const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
+        const saving = controller.save(undefined, undefined, onCaptured);
+        return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
+      };
+      const remove = async (onCaptured?: (receipt: DocumentWriteReceipt) => void) => {
+        active(); await controller.remove(onCaptured); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active();
+      };
+      const withReceipt = async (run: (captured: (receipt: DocumentWriteReceipt) => void) => Promise<void>) => {
+        let receipt: DocumentWriteReceipt | undefined;
+        try { await run(captured => { receipt = captured; }); }
+        catch (error) {
+          if (!receipt) throw error;
+          // The canonical request already owns this write. A later checkpoint projection
+          // failure is reported and repaired independently; it must not erase that receipt.
+          if (this.current(owner, generation)) {
+            this.reportFailure(error, frozen);
+            this.backgroundDrain(); this.prepareCommitsInBackground();
+          }
+        }
+        if (!receipt) throw new Error('Write capture did not return its receipt');
+        return receipt;
+      };
       const managed: ManagedEditor = {
         getState: () => {
           active();
@@ -1024,14 +1052,11 @@ export class DataEngine {
           return () => { entry.listeners.delete(subscription); };
         },
         edit: (value, shown) => { active(); return controller.edit(value, shown); },
-        commit: updater => {
-          active();
-          const persistence = controller.edit(updater(controller.getState().checkpoint.draft));
-          const saving = controller.save();
-          return Promise.all([persistence, saving]).then(() => { active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); });
-        },
+        commit: updater => commit(updater),
+        commitWithReceipt: updater => withReceipt(captured => commit(updater, captured)),
+        removeWithReceipt: () => withReceipt(remove),
         save: async () => { active(); await controller.save(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
-        remove: async () => { active(); await controller.remove(); active(); this.backgroundDrain(); this.prepareCommitsInBackground(); active(); },
+        remove: () => remove(),
         acceptRemote: async expected => { active(); await controller.acceptRemote(undefined, expected); },
         keepLocal: async expected => { active(); await controller.keepLocal(undefined, undefined, expected); },
         dispose: () => {

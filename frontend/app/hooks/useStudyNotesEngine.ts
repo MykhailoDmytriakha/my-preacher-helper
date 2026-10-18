@@ -1,18 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { useDataCollection, useDocumentActions, type DocumentWriteReceipt } from '@/data-engine/react.client';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
 import { newClientId } from '@/utils/clientId';
-import { getConnectivityStatus } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { refusedWrite, skippedWrite, type WriteAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
 
-import type { DocumentData } from '@/data-engine/types';
+import type { DocumentData, ResourceSnapshot } from '@/data-engine/types';
 import type { StudyNote } from '@/models/models';
 
 const resource = (id: string) => ({ collection: 'studyNotes', id });
@@ -21,21 +20,15 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 /** The note text a person edits; relations (`materialIds`) move only through their material. */
 const EDITABLE: (keyof StudyNote)[] = ['title', 'content', 'scriptureRefs', 'tags', 'type', 'dictationSourceIds', 'recordingSourceIds'];
 const isDraft = (note: Pick<StudyNote, 'tags' | 'scriptureRefs'>) => (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
-/**
- * What the editor may say about a write the engine holds on this device. Acceptance waits for
- * the engine's local commit — quick, and it works offline — because that is where a stale
- * baseline is refused; only then is the write named. Offline it is a receipt ("queued"), never
- * "Saved": the server has not seen it. Online the engine delivers at once, and a late answer is
- * offered by EngineConflictBanner.
- */
-const accepted = (key: string, request: Promise<unknown>): WriteSubmission => {
-  const persistence = request.then(() => undefined);
+/** Local capture permits continued editing; exact whole-request ACK alone permits cleanup. */
+const accepted = (key: string, request: Promise<DocumentWriteReceipt>): WriteSubmission & { snapshot: Promise<ResourceSnapshot> } => {
+  const snapshot = request.then(receipt => receipt.persistence);
+  const persistence = snapshot.then(() => undefined);
+  const acceptance = request.then((receipt): WriteAcceptance => ({ kind: 'queued', receipt: receipt.requestId ?? key }));
+  void snapshot.catch(() => undefined);
   void persistence.catch(() => undefined);
-  // The engine delivers when the one answer about the connection says yes (`browser.client.ts`), so
-  // the label follows that same answer: a phone flag "online" over café Wi-Fi would call a write
-  // saved while the engine is holding it.
-  const acceptance = persistence.then((): WriteAcceptance => (getConnectivityStatus() ? { kind: 'persisted' } : { kind: 'queued', receipt: key }));
-  return { acceptance, persistence };
+  void acceptance.catch(() => undefined);
+  return { acceptance, persistence, snapshot };
 };
 
 /**
@@ -95,7 +88,7 @@ export function useStudyNotesEngine(enabled: boolean) {
       { pending: row.pending, needsAttention: row.needsAttention }] as const] : [])),
     [collection.state?.documents]);
 
-  const once = (key: string, run: () => Promise<unknown>): WriteSubmission | null => {
+  const once = (key: string, run: () => Promise<DocumentWriteReceipt>): (WriteSubmission & { snapshot: Promise<ResourceSnapshot> }) | null => {
     if (inFlight.current.has(key)) return null;
     inFlight.current.add(key);
     const request = run().finally(() => inFlight.current.delete(key));
@@ -103,12 +96,18 @@ export function useStudyNotesEngine(enabled: boolean) {
     return accepted(key, request);
   };
 
+  const confirmedDictationSources = useMemo<ReadonlyMap<string, readonly string[]>>(
+    () => new Map((collection.state?.snapshots ?? []).flatMap(snapshot => snapshot.value
+      ? [[snapshot.resource.id, (snapshot.value.dictationSourceIds ?? []) as string[]] as const] : [])),
+    [collection.state?.snapshots]);
+
   const refusal = () => refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
 
   return {
     uid,
     notes,
     noteDelivery,
+    confirmedDictationSources,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),
     error: collection.error ? new Error(collection.error) : null,
     refetch: async () => { await collection.refresh(); },
@@ -122,7 +121,7 @@ export function useStudyNotesEngine(enabled: boolean) {
         ...(note.dictationSourceIds?.length ? { dictationSourceIds: [...new Set(note.dictationSourceIds)] } : {}),
         ...(note.recordingSourceIds?.length ? { recordingSourceIds: [...new Set(note.recordingSourceIds)] } : {}),
       }) as unknown as DocumentData;
-      const request = actions.create(resource(id), value);
+      const request = actions.submit(resource(id), { kind: 'create', value });
       void request.catch(() => undefined);
       return { ...accepted(`study-note:create:${id}`, request), note: optimistic };
     },
@@ -135,13 +134,10 @@ export function useStudyNotesEngine(enabled: boolean) {
         return { ...refused, result };
       }
       const patch = Object.fromEntries(EDITABLE.filter(field => updates[field] !== undefined).map(field => [field, updates[field]]));
-      let saved: SavedNote | undefined;
       const submission = once(`study-note:update:${id}:${JSON.stringify(patch)}`, async () => {
         setUpdating(count => count + 1);
         try {
-          let stale: StaleWriteError | null = null;
-          await actions.commit(resource(id), current => {
-            stale = null;
+          return await actions.submit(resource(id), { kind: 'update', update: current => {
             if (!current) throw new Error('Study note not found');
             const stored = (current.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE] ?? 0;
             // The baseline is the note as the editor read it. Its references are compared as stored —
@@ -162,9 +158,8 @@ export function useStudyNotesEngine(enabled: boolean) {
               && !storedAs(field, field === 'scriptureRefs' ? readSource ?? baselineRefs : expectedBaseline[field])
               && !storedAs(field, patch[field])) : [];
             if (changedElsewhere.length) {
-              stale = new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
+              throw new StaleWriteError(NOTE_AGGREGATE, expectedRevision ?? stored, stored,
                 Object.fromEntries(changedElsewhere.map(field => [field, current[field] ?? null])));
-              return current;
             }
             const receipts: DocumentData = {};
             for (const field of ['dictationSourceIds', 'recordingSourceIds'] as const) {
@@ -172,22 +167,23 @@ export function useStudyNotesEngine(enabled: boolean) {
             }
             const merged: DocumentData = { ...current, ...(deepCleanUndefined(patch) as DocumentData), ...receipts, updatedAt: now() };
             const next: DocumentData = { ...merged, isDraft: isDraft(merged as unknown as StudyNote) };
-            // The engine moves the stored counter itself; this is the value it will reach.
-            saved = { ...engineNote(next, id, locale), revision: stored + 1 };
             return next;
-          });
-          if (stale) throw stale;
+          } });
         } finally {
           setUpdating(count => count - 1);
         }
       });
       if (!submission) return { ...skippedWrite(), result: Promise.resolve<SavedNote>(undefined as never) };
-      const result = submission.persistence.then(() => saved as SavedNote);
+      const result = submission.snapshot.then(snapshot => {
+        if (!snapshot.value) throw new Error('Accepted study note is missing');
+        const revision = (snapshot.value.rev as Record<string, number> | undefined)?.[NOTE_AGGREGATE];
+        return { ...engineNote(snapshot.value, id, locale), revision };
+      });
       void result.catch(() => undefined);
       return { ...submission, result };
     },
     // The deletion carries what this device last saw; the server removes the note from its
     // materials in the same transaction (serverRelations.ts).
-    deleteNote: (id: string): WriteSubmission => (!uid ? refusal() : once(`study-note:delete:${id}`, () => actions.remove(resource(id))) ?? skippedWrite()),
+    deleteNote: (id: string): WriteSubmission => (!uid ? refusal() : once(`study-note:delete:${id}`, () => actions.submit(resource(id), { kind: 'delete' })) ?? skippedWrite()),
   };
 }

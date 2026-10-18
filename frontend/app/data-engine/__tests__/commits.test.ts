@@ -63,6 +63,15 @@ describe('Durable commit requests', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('does not confirm an unchanged copy while another editor has pending work for that resource', async () => {
+    const s = setup(); const { queue } = s.makeQueue();
+    const other = new DataSession(initial()); other.edit({ ...initial().value, title: 'Other pending words' });
+    await queue.save('other-editor', other.checkpoint());
+    const unchanged = await queue.saveWithReceipt('clean-editor', new DataSession(initial()).checkpoint());
+    expect(unchanged.request).toBeNull();
+    await expect(unchanged.receipt.persistence).rejects.toMatchObject({ code: 'acceptance-unavailable' });
+  });
+
   it('completes durable local capture while its server acknowledgement is still waiting', async () => {
     const s = setup(), engine = s.makeEngine(), editor = await engine.openEditor(initial().resource, 'page');
     const send = jest.mocked(s.transport.send).getMockImplementation()!;

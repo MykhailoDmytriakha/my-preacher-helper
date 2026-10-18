@@ -25,14 +25,12 @@ import { useRouteId } from '@/hooks/useRouteId';
 import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
 import { useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { useRoomyHeader, useWideViewport } from '@/hooks/useWideViewport';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
-import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
@@ -41,7 +39,6 @@ import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { findSectionById } from '@/utils/markdownSections';
-import { deleteRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
@@ -166,30 +163,17 @@ function useNoteInitialization({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
+function useNoteDeletion({ confirm, noteId, isNew, uid, deleteNote, router }: any) {
     return async () => {
         if (await confirm({ title: { key: 'studiesWorkspace.deleteConfirm' }, confirmText: { key: 'common.delete' } })) {
             if (noteId && !isNew && uid) {
                 try {
                     // useStudyNotes' delete recovery descriptor reports a late refusal while this screen is mounted.
                     await awaitAcceptance(deleteNote(noteId), () => undefined);
-                    // The link removal is a write too, so it must go back through the
-                    // share-link hook and its recovery descriptor — never directly to
-                    // the service. Prefer the live cache; a just-opened detail page
-                    // may not have it yet, so read once before deciding there is none.
-                    let link = shareLinks.find((entry: { noteId: string }) => entry.noteId === noteId);
-                    if (!link) {
-                        try {
-                            link = (await getStudyNoteShareLinks(uid)).find((entry) => entry.noteId === noteId);
-                        } catch (linkLookupError) {
-                            console.error('Error finding share link for deleted note', linkLookupError);
-                        }
-                    }
-                    // useStudyNoteShareLinks' delete recovery descriptor reports a late refusal while this screen is mounted.
-                    if (link) await awaitAcceptance(deleteShareLink(link.id), () => undefined);
+                    // The canonical note deletion retires its share links atomically on the server.
                 } catch (e) {
                     /**
-                     * The note and share-link descriptors report this refusal — one
+                     * The canonical engine reports this refusal — one
                      * refusal, one reporter. Staying on the page is what this handler
                      * owes the person: a refused delete must not navigate away as if it
                      * had succeeded.
@@ -206,12 +190,13 @@ function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLink
 
 
 function useNoteAIAssistant({
-    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds
+    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
 }: {
     noteId: string;
     uid?: string;
     dictationSourceIds: string[];
     linkedRecordingSourceIds: readonly string[];
+    acceptedDictationSourceIds?: readonly string[];
     setRecordingSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     setDictationSourceIds: React.Dispatch<React.SetStateAction<string[]>>;
     content: string; availableTags: string[];
@@ -315,14 +300,13 @@ function useNoteAIAssistant({
     const voice = useTextDictation({
         recordingContext: { context: 'study', contextId: noteId },
         linkedSourceIds: linkedRecordingSourceIds,
+        acceptedSourceIds: acceptedDictationSourceIds,
         onSourcePersisted: sourceId => setRecordingSourceIds(previous => previous.includes(sourceId) ? previous : [...previous, sourceId]),
         endpoint: '/api/studies/transcribe',
         onText: async (text, sourceId) => {
             if (!sourceId || !uid) throw new Error('The note recording owner is not available');
-            if (dictationSourceIds.includes(sourceId)) {
-                await deleteRecordingDraft(sourceId, uid);
-                return;
-            }
+            // Projected IDs prevent duplicate insertion; only confirmed IDs permit source retirement.
+            if (dictationSourceIds.includes(sourceId)) return;
             setDictationSourceIds(previous => [...new Set([...previous, sourceId])]);
             saveAtOnceRef.current = true;
             setContent(previous => previous ? `${previous}\n\n${text}` : text);
@@ -618,8 +602,7 @@ export default function StudyNoteEditorPage() {
     const noteId = createdNoteId || routeId;
     const isNew = noteId === 'new';
 
-    const { uid, notes, noteDelivery, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
-    const { shareLinks, deleteShareLink } = useStudyNoteShareLinks();
+    const { uid, notes, noteDelivery, confirmedDictationSources, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
 
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
@@ -896,7 +879,8 @@ export default function StudyNoteEditorPage() {
         resendVoiceBlob, voiceController,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds
+        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
+        acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
     voiceHandoffRef.current = () => ({ accepted: voiceController.captureAcceptance(), carryTo: voiceController.carryTo,
@@ -936,14 +920,11 @@ export default function StudyNoteEditorPage() {
     }, () => saveConflict && Boolean(rowPayload) && currentConflictChoice.current === conflictChoice);
 
     const handleDelete = useNoteDeletion({
-        t,
         confirm,
         noteId,
         isNew,
         uid,
         deleteNote,
-        shareLinks,
-        deleteShareLink,
         router,
     });
     const handleCopy = useCallback(() => {

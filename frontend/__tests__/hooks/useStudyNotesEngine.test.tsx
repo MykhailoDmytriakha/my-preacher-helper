@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { useDataCollection, useDocumentActions, type DocumentAction } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -25,6 +25,16 @@ const note = (extra: Row = {}): Row => ({
 });
 const actions = {
   ready: true,
+  submit: jest.fn(async (resource: { collection: string; id: string }, action: DocumentAction) => {
+    if (action.kind === 'create') await actions.create(resource, action.value);
+    else if (action.kind === 'delete') await actions.remove(resource);
+    else await actions.commit(resource, action.update as (value: Row | null) => Row | null);
+    const value = store.get(resource.id);
+    return { kind: 'submitted' as const, requestId: `request:${resource.id}`, persistence: Promise.resolve({ resource,
+      value: value ? { ...value, rev: { note: ((value.rev as { note?: number })?.note ?? 0) + 1 } } : null,
+      metadata: { protocol: 1 as const, generation: 'g', revision: 1, deleted: !value },
+    } as import('@/data-engine/types').ResourceSnapshot) };
+  }),
   create: jest.fn(async (resource: { id: string }, value: Row) => { store.set(resource.id, value); }),
   remove: jest.fn(async (resource: { id: string }) => { store.delete(resource.id); }),
   commit: jest.fn(async (resource: { id: string }, updater: (value: Row | null) => Row | null) => {
@@ -302,7 +312,7 @@ describe('study notes on the engine', () => {
     await act(async () => {
       const submission = result.current.createNote({ userId: 'u', title: 'Hope', content: 'Text', tags: [], scriptureRefs: [], type: 'note', materialIds: ['m1'], relatedSermonIds: [], recordingSourceIds: ['unrecognized-source'] });
       id = submission.note.id;
-      expect(await awaitAcceptance(submission, () => undefined)).toEqual({ kind: 'persisted' });
+      expect(await awaitAcceptance(submission, () => undefined)).toEqual({ kind: 'queued', receipt: `request:${id}` });
     });
     expect(store.get(id)).toEqual(expect.objectContaining({ userId: 'u', title: 'Hope', isDraft: true, recordingSourceIds: ['unrecognized-source'] }));
     expect(store.get(id)).not.toHaveProperty('materialIds');

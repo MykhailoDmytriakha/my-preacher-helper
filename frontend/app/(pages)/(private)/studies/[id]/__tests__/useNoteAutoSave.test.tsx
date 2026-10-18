@@ -98,11 +98,25 @@ describe('creating a note keeps the durable draft at all times', () => {
       resolvePersistence();
       await persistence;
     });
-    // This submission was accepted as `queued`, so even its eventual persistence
-    // must not turn the queued outcome into a Saved announcement.
-    expect(result.current.lastSaved).toBeNull();
+    // Local handoff stays queued, but its later actual server acceptance confirms this payload.
+    expect(result.current.lastSaved).toBeInstanceOf(Date);
     expect(readDraft(draftKey('u1', 'real-id', 'note'))).toBeNull();
+    expect(onSaved).toHaveBeenCalledWith(payload);
+  });
+
+  it('keeps the queued create backup and never says Saved when later persistence is refused', async () => {
+    saveDraft(draftKey('u1', 'new', 'note'), payload);
+    let reject!: (error: Error) => void;
+    const persistence = new Promise<void>((_resolve, decline) => { reject = decline; });
+    const createNote = jest.fn(() => ({ ...queuedMutation('held-create', persistence), note: { id: 'real-id' } as StudyNote }));
+    const onSaved = jest.fn();
+    const { result } = renderHook(() => useHarness(createNote, onSaved));
+    await act(async () => { jest.advanceTimersByTime(1600); });
+    expect(result.current.lastSaved).toBeNull();
+    await act(async () => { reject(refusal()); await persistence.catch(() => undefined); });
+    expect(result.current.lastSaved).toBeNull();
     expect(onSaved).not.toHaveBeenCalled();
+    expect(readDraft(draftKey('u1', 'real-id', 'note'))?.value).toEqual(payload);
   });
 
   it('keeps the new-note draft and flags the save as not gone through', async () => {
@@ -282,7 +296,7 @@ describe('creating a note keeps the durable draft at all times', () => {
     const onSaved = jest.fn();
     const revisionRef = { current: 2 as number | null };
     const updateNote = jest.fn(() => ({ ...queuedMutation('q', pending), result: pending.then(() => saved) }));
-    renderHook(() => useNoteAutoSave({
+    const { result } = renderHook(() => useNoteAutoSave({
       noteId: 'n1', isNew: false, isInitialized: true, ...payload, content: saved.content,
       updateNote, createNote: jest.fn(), uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never,
       baselineRef: { current: payload }, revisionRef, deliberateOverwriteRef: { current: false },
@@ -290,9 +304,15 @@ describe('creating a note keeps the durable draft at all times', () => {
     }));
     await act(async () => jest.advanceTimersByTime(1600));
     expect(onSaved).not.toHaveBeenCalled();
+    expect(result.current.lastSaved).toBeNull();
     await act(async () => { finish(); await pending; });
-    if (savedRevision === 2) expect(onSaved).toHaveBeenCalledWith({ ...payload, content: saved.content });
-    else expect(onSaved).not.toHaveBeenCalled();
+    if (savedRevision === 2) {
+      expect(onSaved).toHaveBeenCalledWith({ ...payload, content: saved.content });
+      expect(result.current.lastSaved).toBeInstanceOf(Date);
+    } else {
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(result.current.lastSaved).toBeNull();
+    }
     expect(revisionRef.current).toBe(2);
   });
 

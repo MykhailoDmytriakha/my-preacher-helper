@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { useMemo, useRef } from 'react';
 
 import { useNoteAutoSave } from '@/(pages)/(private)/studies/[id]/useNoteAutoSave';
-import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { useDataCollection, useDocumentActions, type DocumentAction } from '@/data-engine/react.client';
 import { useStudyNotesEngine } from '@/hooks/useStudyNotesEngine';
 import { __resetConnectivityForTests, reportServerUnreachable } from '@/utils/connectivity';
 
@@ -25,6 +25,14 @@ const onConflict = jest.fn();
 const onSaved = jest.fn();
 const actions = {
   ready: true, create: jest.fn(), remove: jest.fn(),
+  submit: jest.fn(async (resource: { collection: string; id: string }, action: DocumentAction) => {
+    if (action.kind !== 'update') throw new Error('Unexpected action in reference-provenance fixture');
+    await actions.commit(resource, action.update as (value: Row) => Row);
+    return { kind: 'submitted' as const, requestId: 'reference-fixture', persistence: Promise.resolve({ resource,
+      value: { ...stored, rev: { note: ((stored.rev as { note?: number })?.note ?? 0) + 1 } },
+      metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false },
+    } as import('@/data-engine/types').ResourceSnapshot) };
+  }),
   commit: jest.fn(async (_resource: unknown, updater: (value: Row) => Row) => { stored = updater(stored); }),
 };
 const added: ScriptureReference = { id: 'added', bible: 'rst', book: 'John', chapter: 3, fromVerse: 16 };

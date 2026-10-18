@@ -111,6 +111,14 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261017-note-conflict-shows-recording-identities · Note conflict displays internal recording IDs beside the person's words
+**Severity.** P3: recovery text exposes implementation fields, obscuring the words the person must choose.
+**Anchors.** `frontend/app/components/EngineConflictBanner.tsx:130-138`; actual localhost `reference-provenance-note-delivery-conflict-qa-v2-390-conflict-retained.png` and `-conflict-reloaded.png` in the current case artifacts.
+**Expected / observed.** After restoring dictation and receiving a real command conflict, the note's recovery notice shows readable authored changes; it currently appends `dictationSourceIds` and raw array syntax. The same notice remains after reload at390px. No source deletion or word loss was observed in this probe.
+**User contract / reproduction.** Open Studies → an existing note → Edit; restore cached dictation. Let a newer accepted copy arrive before this command is delivered. The retained-text choice should explain the person's words and meaningful choices, keeping technical recording identities internal. Repeat after reload; preserve the original audio while the write is refused. Inspect the shared changed-field formatter and all recording-source metadata consumers before fixing.
+
+
+
 ### BUG-20261017-xref-switch-does-not-stay-on · На iPad переключатель «Стихи» у остальных ссылок стиха не остаётся включённым: пять нажатий подряд, каждое записано как «включить»
 **Severity.** P3 — данные не теряются, но остальные ссылки стиха нельзя увидеть стихами: человек жмёт снова и снова.
 **Найден.** 2026-10-17 · отзыв владельца с iPad в 11:36 «были проблемы с переключателем, смотри скриншот». Приложение установлено на экран «Домой», iPadOS 26.6.1, версия `b9ec751`. На снимке окно ссылок к стиху, «Остальные · 60», переключатель «Стихи» выключен и обведён. В технических деталях пять событий `setting crossRefs-othersAsVerses result:on` за 15 с (11:30:08.997 · 10.329 · 13.969 · 22.455 · 23.951 PDT). Нет ни `off`, ни `other-tab`, ни `-memory-only`. Перед этим приложение спало 10 ч: сессия загружена в 01:48, проснулось в 11:27. Агент не воспроизвёл: симулятор iPad Air 11" (iOS 26.1), вкладка Safari, dev, нажатие скриптом — 3 из 3 держится (вкл → выкл → вкл, запись в `localStorage` совпадает). Касание пальцем не повторено: WebDriver не делает из касания `click` (`.howto/measure-typing-lag.md`).
@@ -132,30 +140,6 @@
 **Сопутствующее.** Включённые «Стихи» тянут целиком книги, куда ведут ссылки (до двадцати, по 100–340 КБ): на iPad это заметная пауза при включении. Само по себе не выключает переключатель.
 **Принятые пределы (три круга слома Codex, 2026-10-17).** Перерисовки и прокрутка после сохранения выбор не меняют: так в одной странице, и это случай владельца. Согласование нескольких вкладок слабее, чем у старого кода, который каждый раз читал хранилище. Две вкладки, меняющие разные поля одной настройки, пока событие одной ещё в очереди к другой, теряют чужое поле. Откат часов вместе с запоздалым событием путает порядок. Вкладка ещё на прежней версии не передаёт выбор странице, которая уже выбрала сама. Запоздалая очистка всего хранилища сбрасывает выбор, не дошедший до записи. Для одного проповедника с одним окном приложения это не встречается; пробы — `/tmp/mph-xref-1017/round3-*.test.tsx` (не в репозитории).
 **Стадия.** починено, ждёт проверки владельцем на iPad.
-
-
-### BUG-20261017-note-adapter-claims-server-acceptance - The note writer reports local capture as server persistence
-**Severity.** P3: the bridge promises a stronger outcome than the engine proved, enabling early Saved/confirmation and cleanup callbacks. No text loss was observed; the engine retains the submitted request. Recording/draft cleanup consequences still need a dedicated reproduction.
-**Found.** 2026-10-17, Phase71 actual localhost note-editor QA,1280/390px, build KfcG4SGI5-UEeB_y5KiLt; no other device edit.
-**Anchors.** `frontend/app/hooks/useStudyNotesEngine.ts:24-38,92-98,123-178`; `frontend/app/(pages)/(private)/studies/[id]/useNoteAutoSave.ts:110-145,226-267`; public local-capture contract `data-engine/engine.ts:75-81` and `react.client.tsx:315-328`.
-**Expected / observed.** WriteSubmission.persistence and persisted acceptance require actual operation acceptance. Currently actions.create/commit/remove completion is copied into persistence, and the current connectivity flag turns it into persisted. The public action resolves at durable local capture. With its HTTP delivery held before RAM apply, the editor shows Saved although the server retains the original content and0commands were accepted (2/2). A separate header gate can prevent that visible claim but does not repair the underlying promise/cleanup contract.
-**User contract.** One person may safely continue typing after local capture and sees that work while offline. Confirmation/cleanup belonging to a server-accepted write must follow that exact write's actual outcome; an available connection is not that outcome. Preserve edits, recordings and refusal choices through navigation/reload/account changes. Never block local typing while waiting for the network.
-**Reproduce.** Open an existing QA note, edit text while online, hold its command transport before server apply, wait for local capture. Observe Saved with unchanged server content; then release and distinguish the later ACK. Root cases `reference-provenance-offline-saved-online-held-before-{1280,390}` and `offline-saved-qa.json` retain evidence. Source-only API promise classification is also traced in `offline-saved-class-facts.md`.
-**Class.** This exact connectivity/persisted wrapper exists only in useStudyNotesEngine. Prayer/tag/template bridges return queued receipts; server acceptance and common queue/status mechanisms have different ownership. Local-commit outcome wording in useSermonNoteLinks is a separate UX contract, not proven affected here. Inspect create/update/delete and both durable-draft/recording acceptance consumers before any fix.
-**Direction / boundary.** Larger delivery-adapter work after the display-only BUG-20261017-note-offline-reload-false-saved. Reuse the canonical engine/facade and exact request identities; no feature queue, invented timestamp priority or false persistence proof. Architecture and full regression/browser/visual acceptance remain required. Not fixed by Phase71 header gating.
-
-**Current QA.** On the current local build, the backup draft exists while typing but is removed after local capture with the HTTP command still held, server content unchanged and zero accepted commands (phone and desktop). Text remains visible and the header gate correctly stays silent. Source recording cleanup also retires the saved audio before the refused command reaches HTTP, reproduced in both recording recovery probes.
-**Class: local action completion presented as server acceptance.**
-| place | verdict | reason |
-|---|---|---|
-| `hooks/useStudyNotesEngine.ts:31-38,115-191` create/update/delete | affected | `persistence` is the local facade promise; global connectivity selects `persisted` |
-| `studies/[id]/useNoteAutoSave.ts:101-143,224-267` create/update cleanup | affected | retires exact draft and recording sources on that promise; current update draft symptom reproduced |
-| `hooks/useTextDictation.ts:87-97`, `studies/[id]/page.tsx:319-324` source cleanup | affected boundary; recording QA pending | captureAcceptance deletes source; duplicate-source branch must distinguish projected pending metadata from acceptance |
-| `studies/[id]/page.tsx:169-202` delete/share cleanup | affected boundary | local deletion acceptance starts a second client cascade; canonical server already owns note/share-link retirement |
-| `hooks/useStudyNotes.ts:7-11`, list/calendar/dashboard/share-link consumers | read-only | only detail takes these write methods; other readers do not consume submission persistence |
-| `data-engine/react.client.tsx:314-329` public one-shot action API | local boundary correct; missing receipt capability | Promise<void> intentionally proves durable capture; it exposes no exact delivery receipt |
-| `data-engine/serverRelations.ts`, `runtime.ts`, `commits.ts` | canonical evidence owners | server cascade and durable request/journal outcomes own acceptance; no feature queue or connectivity inference |
-| prayer/tag/template adapters | different contract | queued adapters are tracked separately; no same persisted-from-connectivity label |
 
 
 ### BUG-20261017-jump-landing-rare-orders · Стих перехода может сдвинуться после перехода в редких порядках событий: окно поверх страницы сразу после перехода, плашка вне читалки, поджатие прокрутки у конца книги

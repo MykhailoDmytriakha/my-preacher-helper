@@ -136,10 +136,13 @@ export function useNoteAutoSave({
                 });
             } else if (acceptance.kind === 'queued') {
                 baselineRef.current = confirmedPayload;
-                // A queued write stays silent forever as a *queued* submission.
-                // Once persistence really lands we may retire its exact durable
-                // copy, but still do not set Saved: `queued` is not `persisted`.
-                void submission.persistence.then(retirePersistedCreateDraft).catch(() => undefined);
+                // Local handoff is not acceptance. The later whole-write proof
+                // confirms only this payload; newer typing keeps its own baseline.
+                void submission.persistence.then(() => {
+                    retirePersistedCreateDraft();
+                    onSaved?.(confirmedPayload);
+                    setLastSaved(new Date());
+                }).catch(() => undefined);
             }
         } catch (e) {
             /**
@@ -248,6 +251,7 @@ export function useNoteAutoSave({
                             revisionRef.current = saved.revision;
                         }
                         onSaved?.(submittedPayload);
+                        setLastSaved(new Date());
                     }).catch(() => undefined);
                 }
                 return;

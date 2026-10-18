@@ -603,7 +603,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
     it('does not append a cached recording whose source is already part of the restored note', async () => {
         const note = Object.assign({ ...mockNotes[1], content: 'Already dictated words' }, { dictationSourceIds: ['source-restored'] });
-        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], loading: false,
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], confirmedDictationSources: new Map([['note-1', ['source-restored']]]), loading: false,
             createNote: jest.fn(), updateNote: jest.fn(() => persistedWrite(Promise.resolve())), deleteNote: jest.fn() });
         const blob = new Blob(['original voice'], { type: 'audio/webm' });
         mockRecordingRows.set('source-restored', { id: 'source-restored', ownerId: 'user-1', context: 'study', contextId: 'note-1',
@@ -611,8 +611,27 @@ describe('StudyNoteEditorPage Pagination', () => {
         global.fetch = jest.fn() as jest.Mock;
         render(<StudyNoteEditorPage />);
         fireEvent.click(screen.getByTitle('common.edit'));
-        fireEvent.click(await screen.findByRole('button', { name: 'audio.draft.resend' }));
-        await waitFor(() => expect(screen.queryByRole('button', { name: 'audio.draft.resend' })).not.toBeInTheDocument());
+        await waitFor(() => expect((mockRecordingRows.get('source-restored') as { discarded?: boolean }).discarded).toBe(true));
+        expect(screen.queryByRole('button', { name: 'audio.draft.resend' })).not.toBeInTheDocument();
+        expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue('Already dictated words');
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+
+    it('keeps cached audio when its transcript identity is only projected by a pending note', async () => {
+        const note = Object.assign({ ...mockNotes[1], content: 'Already dictated words' }, { dictationSourceIds: ['source-restored'] });
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [note], noteDelivery: new Map([['note-1', { pending: true, needsAttention: false }]]), confirmedDictationSources: new Map(), loading: false,
+            createNote: jest.fn(), updateNote: jest.fn(() => persistedWrite(Promise.resolve())), deleteNote: jest.fn() });
+        const blob = new Blob(['original voice'], { type: 'audio/webm' });
+        mockRecordingRows.set('source-restored', { id: 'source-restored', ownerId: 'user-1', context: 'study', contextId: 'note-1',
+            blob, mimeType: blob.type, sizeBytes: blob.size, createdAt: 1, transcript: 'Already dictated words' });
+        global.fetch = jest.fn() as jest.Mock;
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const resend = await screen.findByRole('button', { name: 'audio.draft.resend' });
+        await act(async () => { fireEvent.click(resend); for (let i = 0; i < 150; i++) await Promise.resolve(); });
+        expect((mockRecordingRows.get('source-restored') as { blob?: Blob }).blob).toBe(blob);
+        // Applied sources are hidden from the retry list; their raw audio must still remain durable.
         expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue('Already dictated words');
         expect(global.fetch).not.toHaveBeenCalled();
     });
@@ -856,7 +875,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             await waitFor(() => {
                 expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
-                expect(mockDeleteShareLink).toHaveBeenCalledWith('link-1');
+                expect(mockDeleteShareLink).not.toHaveBeenCalled();
                 // replace, not push: the note we are leaving has just been deleted, so it
                 // must not stay one Back away — BUG-20260905.
                 expect(mockRouter.replace).toHaveBeenCalledWith('/studies');
