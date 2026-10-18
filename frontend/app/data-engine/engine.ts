@@ -851,7 +851,7 @@ export class DataEngine {
     return this.persistSnapshot(owner, generation, server);
   }
 
-  private async open(resource: ResourceRef, editorId: string, creating: boolean, options?: EditorOpenOptions): Promise<ManagedEditor> {
+  private async open(resource: ResourceRef, editorId: string, creating: boolean, options?: EditorOpenOptions, attempt = 0): Promise<ManagedEditor> {
     const owner = this.requireOwner();
     this.validateResource(resource, owner);
     if (!editorId) throw new Error('An editor identity is required');
@@ -878,6 +878,13 @@ export class DataEngine {
       const managed = await (cancelled ? Promise.race([opening, cancelled]) : opening);
       if (entry.closed) throw this.abortError();
       return managed;
+    } catch (error) {
+      // Initialization already retired its failed entry; reread before exposing a new editor.
+      if ((error as { code?: string } | null)?.code === 'commit-reference-changed' && attempt < 2
+        && this.current(owner, generation) && !options?.signal?.aborted) {
+        return this.open(frozen, editorId, creating, options, attempt + 1);
+      }
+      throw error;
     } finally {
       if (onAbort) options?.signal?.removeEventListener('abort', onAbort);
     }

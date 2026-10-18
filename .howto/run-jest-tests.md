@@ -14,6 +14,7 @@ Run from `frontend/`. For one or a few files: `npx jest --runTestsByPath <path> 
 - One test inside a file: `-t '<part of its name>'`.
 - `frontend/jest.setup.js` silences `console.*`. Run `JEST_SHOW_LOGS=true npx jest …` to see it.
 - The Vercel build runs `npm run test:build` (the `build` script), which is the same run as `test:fast` with a failure-only reporter.
+- Independent runs in one worktree need distinct output paths for every artifact: Jest `--outputFile`, the final gates JSON, and each log. Check all literal paths before launch; changing only a log prefix leaves hardcoded reports shared. Refuse existing destinations. If one run overwrote another, preserve it as misattributed history and rerun into new disjoint names; never reconstruct a lost report from its counts or mix one run's log with another run's JSON.
 
 ## Why
 

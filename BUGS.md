@@ -14,17 +14,12 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261018-editor-open-retired-request · Opening an editor can fail after its loaded request is accepted and collected
-
-**Severity.** P2 — opening the person's saved note can fail during ordinary delivery; the accepted words remain stored, but the next editor is unavailable.
-**Found.** 2026-10-18, deterministic real engine/IndexedDB-contract test during request-revision QA; actual application-screen duration and production frequency remain unverified.
-**Anchors.** `frontend/app/data-engine/engine.ts:887-904`; `frontend/app/data-engine/controller.ts:120-137`; `frontend/app/data-engine/storage.client.ts:34-40`.
-**Expected / observed.** If an earlier request is accepted while a new editor is loading it, opening must use the accepted copy. A delayed initial list still yields the old pending request after its durable identity has been collected; the restored checkpoint fails with `commit-reference-changed`.
-**Reproduction.** Capture a note-title write offline; hold the first commit-list result for another opening; accept the real command and finish the earlier checkpoint; release the old list. The opening rejects with `Saved request reference changed` although the server holds the saved title. Controlled one-person delivery order; no two-person editing required.
-**Evidence.** Phase83 `artifacts/request-revision-red-class.json`, case `editor initial restore`, one deterministic reproduction. The neighboring manual-load cases instead complete and regress list presentation; their map fix does not resolve this separate stale submitted-checkpoint lifetime.
-**User behavior.** Opening their note should show saved words and preserve any unsent remainder. It must neither recreate a collected request nor call that accepted action unsaved. A genuinely unresolved request must still resume with its original identity. No owner decision is needed.
-**Next.** Reproduce at the screen boundary, then reconcile opening evidence with canonical durable request retention before persisting its checkpoint; keep owner/generation and existing compaction rules. Separate from BUG-20261017-commit-map-stale-manual-load.
-
+### BUG-20261018-manual-opening-retired-predecessor · A selected-field form can fail after its displayed pending value is accepted
+**Severity.** P2 — opening the edit form is refused although its displayed words were accepted; no loss of those words established. Found Oct18 by deterministic real engine/IndexedDB-contract class probe; application-screen frequency remains unverified.
+**Anchors.** `frontend/app/data-engine/engine.ts:1171-1204`; `manualScope.ts:263-277,351-367`; `storage.client.ts:34-40`.
+**Expected / observed.** A form pins what the person saw before asynchronous reads. If that field's pending predecessor is accepted and collected while its list read waits, form.begin rejects with commit-reference-changed. An unrelated selected field does not reproduce this case.
+**Reproduce / evidence.** Save a note title offline, begin a title form while holding its request-list result, accept the actual command and let its durable identity be collected, then release the list. Phase85 editor-open-retention-red-class.json has this behavioral failure; exact temporary source is editor-open-retention-manual-class-qa.test.ts.txt in the local case.
+**User behavior / boundary.** Open the form with the shown words and their established accepted baseline; retain genuinely pending identity and unsent text. Blindly rereading the parent can change the value the person chose to edit. This pinned-field capture contract requires its own reconciliation/retention solution; the fresh unpublished editor initialization retry in BUG-20261018-editor-open-retired-request does not cover it. No owner decision is needed.
 
 ### BUG-20261018-new-note-drafts-share-placeholder-slot · Вторая новая заметка занимает место несохранённой первой
 **Severity.** P2 — до захвата создания разные новые заметки делят одну резервную копию; предыдущий текст может остаться без копии.
