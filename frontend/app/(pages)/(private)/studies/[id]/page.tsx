@@ -44,6 +44,7 @@ import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
 import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
+import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import HighlightedText from '@components/HighlightedText';
@@ -191,9 +192,10 @@ function useNoteDeletion({ confirm, noteId, isNew, uid, deleteNote, router }: an
 
 
 function useNoteAIAssistant({
-    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
+    noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds, acceptedDictationSourceIds
 }: {
     noteId: string;
+    recordingContextId: string;
     uid?: string;
     dictationSourceIds: string[];
     linkedRecordingSourceIds: readonly string[];
@@ -299,7 +301,7 @@ function useNoteAIAssistant({
     };
 
     const voice = useTextDictation({
-        recordingContext: { context: 'study', contextId: noteId },
+        recordingContext: { context: 'study', contextId: recordingContextId },
         linkedSourceIds: linkedRecordingSourceIds,
         acceptedSourceIds: acceptedDictationSourceIds,
         onSourcePersisted: sourceId => setRecordingSourceIds(previous => previous.includes(sourceId) ? previous : [...previous, sourceId]),
@@ -606,7 +608,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
     const { uid, notes, noteDelivery, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
-    const { creationId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
+    const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, notes, confirmedCreationIds,
     });
 
@@ -754,8 +756,15 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     // draft is simply the same thing said twice.
     // A draft kept before references named their Bible is read the way the note itself is.
     const recoveredDraft = useMemo(() => (recovered ? withNoteReferenceBibles(recovered, bibleLocale) : recovered), [recovered, bibleLocale]);
+    // Audio-only metadata contains no authored fields to restore. Its own card already
+    // offers explicit recognition; adopt only the source links and avoid a second prompt.
+    useEffect(() => {
+        if (!recoveredDraft || !isRecordingOnlyNoteDraft(recoveredDraft)) return;
+        setRecordingSourceIds(previous => [...new Set([...previous, ...recoveredDraft.recordingSourceIds!])]);
+        acceptRecovered();
+    }, [recoveredDraft, acceptRecovered]);
     const unsavedRecovery = useMemo(
-        () => (recoveredDraft && !sameNoteDraft(recoveredDraft, draftPayload) ? recoveredDraft : null),
+        () => (recoveredDraft && !isRecordingOnlyNoteDraft(recoveredDraft) && !sameNoteDraft(recoveredDraft, draftPayload) ? recoveredDraft : null),
         [recoveredDraft, draftPayload]
     );
 
@@ -890,7 +899,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         resendVoiceBlob, voiceController,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
+        noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
     });
 
@@ -1166,7 +1175,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                 {isEditing && (
                     <RecordingDraftBanner
                         context="study"
-                        contextId={noteId}
+                        contextId={recordingContextId}
                         sourceOwnerId={existingNote?.userId}
                         linkedSourceIds={linkedRecordingSourceIds}
                         onResend={resendVoiceBlob}

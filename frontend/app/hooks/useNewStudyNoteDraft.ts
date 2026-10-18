@@ -27,7 +27,7 @@ export function useNewStudyNoteDraft({ uid, routeId, createdNoteId, openingDraft
   const representedId = representedNewNoteId(routeId, creationId, notes);
   const noteId = createdNoteId || representedId || routeId;
   const isNew = noteId === 'new';
-  return { creationId, creationTargetId: isNew ? creationId : undefined, noteId, isNew, draftDocId: isNew ? openingDraftId : noteId };
+  return { creationId, recordingContextId: isNew ? creationId : noteId, creationTargetId: isNew ? creationId : undefined, noteId, isNew, draftDocId: isNew ? openingDraftId : noteId };
 }
 
 /** Own the opening, including native URL adoption before Next changes its route tree. */

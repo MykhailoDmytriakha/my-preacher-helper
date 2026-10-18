@@ -782,6 +782,78 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
 
+    it('offers a linked legacy recording only in its own unfinished note after another editor opens', async () => {
+        localStorage.clear();
+        const sourceId = 'only-first-note-audio';
+        const blob = new Blob(['first note voice'], { type: 'audio/webm' });
+        mockRecordingRows.set(sourceId, { id: sourceId, ownerId: 'user-1', context: 'study', contextId: 'new',
+            blob, mimeType: blob.type, sizeBytes: blob.size, createdAt: 1, transcript: 'First note words' });
+        localStorage.setItem(draftKey('user-1', 'new~first-audio-note', 'note'), JSON.stringify({ savedAt: 1, creationTargetId: 'first-audio-note',
+            value: { title: '', content: '', tags: [], scriptureRefs: [], type: 'note', recordingSourceIds: [sourceId] } }));
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        window.history.replaceState(null, '', '/studies/new?draft=new~first-audio-note&draftOwner=user-1');
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
+        const createNote = jest.fn();
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        global.fetch = jest.fn();
+        const first = render(<StudyNoteEditorPage />);
+        try {
+            expect(await screen.findByRole('button', { name: 'audio.draft.resend' })).toBeVisible();
+            expect(screen.queryByRole('button', { name: 'unsavedDraft.restore' })).not.toBeInTheDocument();
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('');
+        } finally { first.unmount(); }
+        window.history.replaceState(null, '', '/studies/new');
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        const second = render(<StudyNoteEditorPage />);
+        try {
+            await act(async () => { for (let i = 0; i < 50; i++) await Promise.resolve(); });
+            expect(screen.queryByRole('button', { name: 'audio.draft.resend' })).not.toBeInTheDocument();
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('');
+            expect((mockRecordingRows.get(sourceId) as { blob: Blob }).blob).toBe(blob);
+            expect(createNote).not.toHaveBeenCalled();
+            expect(global.fetch).not.toHaveBeenCalled();
+        } finally { second.unmount(); localStorage.clear(); }
+    });
+
+    it('keeps a raw-only question draft explicit so restoring preserves its chosen type', async () => {
+        localStorage.clear();
+        localStorage.setItem(draftKey('user-1', 'new~audio-question', 'note'), JSON.stringify({ savedAt: 1, creationTargetId: 'audio-question',
+            value: { title: '', content: '', tags: [], scriptureRefs: [], type: 'question', recordingSourceIds: ['question-source'] } }));
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        window.history.replaceState(null, '', '/studies/new?draft=new~audio-question&draftOwner=user-1');
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(window.location.search));
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            expect(await screen.findByRole('button', { name: 'unsavedDraft.restore' })).toBeVisible();
+            fireEvent.click(screen.getByRole('button', { name: 'unsavedDraft.restore' }));
+            fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Question words' } });
+            view.unmount();
+            const saved = readDraft<{ type: string; content: string }>(draftKey('user-1', 'new~audio-question', 'note'));
+            expect(saved?.value.type).toBe('question');
+            expect(saved?.value.content).toBe('Question words');
+        } finally { view.unmount(); localStorage.clear(); }
+    });
+
+    it('parks fresh new-note audio at its reserved note identity before any create', async () => {
+        localStorage.clear();
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        window.history.replaceState(null, '', '/studies/new');
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        const createNote = jest.fn();
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false, createNote, updateNote: jest.fn(), deleteNote: jest.fn() });
+        global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, statusText: 'Unavailable', json: async () => ({ error: 'QA refusal', retryable: false }) });
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            const reserved = new URLSearchParams(window.location.search).get('draft')!.slice(4);
+            fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
+            await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+            const source = Array.from(mockRecordingRows.values()).find((row: any) => row?.blob) as { contextId: string };
+            expect(source.contextId).toBe(reserved);
+            expect(createNote).not.toHaveBeenCalled();
+        } finally { view.unmount(); localStorage.clear(); }
+    });
+
     it('defers new-note creation until its completed recording has a durable source', async () => {
         window.localStorage.clear();
         const createNote = jest.fn((_note: Partial<StudyNote>, options?: { id: string }) => ({ acceptance: Promise.resolve({ kind: 'queued', receipt: 'parked-note' }), persistence: new Promise<void>(() => undefined), note: { id: options?.id ?? 'parked-note' } as StudyNote }));
@@ -842,7 +914,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         await waitFor(() => expect(createNote).toHaveBeenCalledWith(expect.objectContaining({ recordingSourceIds: [source.id] }), { id: expect.any(String) }), { timeout: 4000 });
         expect(createNote.mock.calls[0][0]).not.toHaveProperty('dictationSourceIds');
         await waitFor(() => expect(screen.getByRole('button', { name: 'audio.draft.resend' })).toBeVisible());
-        expect((mockRecordingRows.get(source.id) as { contextId: string }).contextId).toBe('new');
+        expect((mockRecordingRows.get(source.id) as { contextId: string }).contextId).toBe(createNote.mock.calls[0][1]!.id);
         (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true, polishedText: 'Recovered unrecognized words' }) });
         fireEvent.click(screen.getByRole('button', { name: 'audio.draft.resend' }));
         await waitFor(() => expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue('Recovered unrecognized words'));

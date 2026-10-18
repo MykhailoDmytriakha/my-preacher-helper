@@ -10,6 +10,9 @@ import { __resetConnectivityForTests, getConnectivityStatus, reportServerReachab
 import StudiesPage from '../page';
 import { formatScriptureReference } from '@/utils/scriptureReference';
 
+// The archive has its own real-component tests; this suite owns list/search behavior.
+jest.mock('../components/UnassignedNoteRecordings', () => ({ __esModule: true, default: () => null }));
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: jest.fn(),

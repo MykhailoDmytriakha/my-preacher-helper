@@ -3233,7 +3233,14 @@
     }
   },
   "studiesWorkspace": {
+    "unassignedAudio": {
+      "title": "Saved recordings without a note",
+      "description": "These recordings are saved on this device, but their note is unknown.",
+      "hint": "Use a copy in a new note. The original stays here until you delete it.",
+      "copy": "Use a copy in a new note"
+    },
     "unfinished": {
+      "recording": "Saved recording",
       "title": "Unfinished notes on this device",
       "description": "These notes have not been created yet. Open one to continue.",
       "continue": "Continue this note"

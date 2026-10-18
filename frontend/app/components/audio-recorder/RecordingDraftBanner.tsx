@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordingDrafts } from "@/hooks/useRecordingDrafts";
@@ -19,6 +19,12 @@ export interface RecordingDraftBannerProps {
   excludeDraftIds?: readonly string[];
   isProcessing?: boolean;
   className?: string;
+  /** Optional archive presentation; defaults preserve the editor retry card. */
+  filterDraft?: (draft: RecordingDraft) => boolean;
+  resendLabelKey?: string;
+  hintKey?: string;
+  collapsedLabel?: string;
+  header?: ReactNode;
 }
 
 const EMPTY_DRAFT_IDS: readonly string[] = [];
@@ -42,14 +48,19 @@ export default function RecordingDraftBanner({
   resendDisabled = false,
   excludeDraftIds = EMPTY_DRAFT_IDS,
   className = "",
+  filterDraft,
+  resendLabelKey = 'audio.draft.resend',
+  hintKey = 'audio.draft.hint',
+  collapsedLabel,
+  header,
 }: RecordingDraftBannerProps) {
   const { t } = useTranslation();
   const { drafts: loadedDrafts, loading, error, ownerId, removeDraft, refresh } = useRecordingDrafts(context, contextId, sourceOwnerId, linkedSourceIds);
   const excludedKey = JSON.stringify(excludeDraftIds);
   const drafts = useMemo(() => {
     const excluded = new Set<string>(JSON.parse(excludedKey));
-    return excluded.size ? loadedDrafts.filter(draft => !excluded.has(draft.id)) : loadedDrafts;
-  }, [loadedDrafts, excludedKey]);
+    return loadedDrafts.filter(draft => !excluded.has(draft.id) && (!filterDraft || filterDraft(draft)));
+  }, [loadedDrafts, excludedKey, filterDraft]);
   const { confirm, confirmDialog, withdraw } = useConfirm();
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const currentScope = JSON.stringify([ownerId, context, contextId]);
@@ -153,10 +164,11 @@ export default function RecordingDraftBanner({
   const buttonBase =
     "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
 
-  return (
+  const content = (
     <>
     {failure}
     <div className={`flex flex-col gap-3 ${className}`}>
+      {header}
       {drafts.map((draft) => {
         const busy = isProcessing || Boolean(busyIds[draft.id]);
         return (
@@ -180,7 +192,7 @@ export default function RecordingDraftBanner({
               <div className="min-w-0 flex-1">
                 <div className="mb-1 text-sm font-semibold">{t("audio.draft.title")}</div>
                 <p className="mb-2 text-sm text-amber-700 dark:text-amber-200">
-                  {t("audio.draft.hint")}
+                  {t(hintKey)}
                 </p>
                 {objectUrls[draft.id] && (
                   <audio
@@ -201,7 +213,7 @@ export default function RecordingDraftBanner({
                 disabled={busy || resendDisabled}
                 className={`${buttonBase} border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 focus:ring-amber-500 dark:border-amber-600 dark:bg-gray-900/40 dark:text-amber-200 dark:hover:bg-amber-900/50`}
               >
-                {t("audio.draft.resend")}
+                {t(resendLabelKey)}
               </button>
               <button
                 type="button"
@@ -228,4 +240,10 @@ export default function RecordingDraftBanner({
     {confirmDialog}
     </>
   );
+  return collapsedLabel ? (
+    <details className="my-5 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+      <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200">{collapsedLabel}</summary>
+      <div className="mt-3">{content}</div>
+    </details>
+  ) : content;
 }

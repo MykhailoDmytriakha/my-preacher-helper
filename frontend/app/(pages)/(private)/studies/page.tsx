@@ -319,7 +319,7 @@ export default function StudiesPage() {
           </div>
         </div>
 
-        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} />
+        <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={!notesLoading && !notesError} />
 
         {/* Stats bar */}
         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
