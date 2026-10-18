@@ -1,6 +1,7 @@
-import { useCallback, useState, useSyncExternalStore } from 'react';
+import { useCallback, useState } from 'react';
 
 import { isMarkColor, isPencilColor, type MarkColor, type PencilColor, type StrokeKind } from '@/utils/bibleMarks';
+import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
  * THE TOOL IN HAND — three round buttons in the reader's line (the owner's design, 2026-10-16): the
@@ -24,10 +25,6 @@ const DEFAULT_PREFS: ToolPrefs = { color: 'orange', pencilColor: 'gray', last: '
 const STORAGE_KEY = 'bible:mark-tool';
 const TOOLS: readonly MarkToolName[] = ['marker', 'pencil', 'eraser'];
 
-let memory: ToolPrefs | null = null;
-let snapshot: { raw: string | null; prefs: ToolPrefs } | null = null;
-const listeners = new Set<() => void>();
-
 function parse(raw: string | null): ToolPrefs {
   if (!raw) return DEFAULT_PREFS;
   try {
@@ -42,33 +39,15 @@ function parse(raw: string | null): ToolPrefs {
   }
 }
 
-function readPrefs(): ToolPrefs {
-  if (memory) return memory;
-  let raw: string | null = null;
-  try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    raw = null;
-  }
-  if (!snapshot || snapshot.raw !== raw) snapshot = { raw, prefs: parse(raw) };
-  return snapshot.prefs;
-}
+// Held in memory, storage only written through (`utils/deviceChoice.ts`): a re-read of storage on the
+// owner's iPad gave back an old choice.
+const prefsChoice = deviceChoice({ key: STORAGE_KEY, parse, fallback: DEFAULT_PREFS });
+const savePrefs = (change: Partial<ToolPrefs>) => { prefsChoice.save(change); };
 
-function savePrefs(change: Partial<ToolPrefs>): void {
-  const next = { ...readPrefs(), ...change };
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    memory = null;
-  } catch {
-    memory = next;
-  }
-  listeners.forEach((listener) => listener());
+/** Forgets the tool prefs kept in memory — for tests. */
+export function resetMarkToolForTests(): void {
+  prefsChoice.resetForTests();
 }
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
 
 function strokeOf(tool: MarkToolName, prefs: ToolPrefs): StrokeKind {
   if (tool === 'marker') return { tool: 'marker', color: prefs.color };
@@ -97,7 +76,7 @@ export type MarkToolState = {
 };
 
 export function useMarkTool(): MarkToolState {
-  const prefs = useSyncExternalStore(subscribe, readPrefs, () => DEFAULT_PREFS);
+  const prefs = prefsChoice.useChoice();
   const [inHand, setInHand] = useState<MarkToolName | null>(null);
   const [penSeen, setPenSeen] = useState(false);
 

@@ -1,6 +1,5 @@
-import { useSyncExternalStore } from 'react';
-
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { deviceChoice } from '@/utils/deviceChoice';
 
 /*
  * HOW CROSS REFERENCES SHOW ON THIS DEVICE (the owner, 2026-10-15): shown while reading the Bible,
@@ -8,8 +7,8 @@ import { recordDiagnostic } from '@/utils/appDiagnostics';
  * asked for; the main links or all of them; the rest of a verse's links in its window as verses with
  * their text, or only as references (the owner, 2026-10-16). One record per device, like the Bible chosen
  * (`translation.ts`): the reader and the settings in the "T" menu read and write the same one, and a
- * change shows at once in both. Browser storage can be missing or refuse: the choice then lasts for
- * the visit.
+ * change shows at once in both. The page holds it in memory and storage is only written through
+ * (`utils/deviceChoice.ts`): on the owner's iPad a re-read of storage took "on" back off.
  */
 export type CrossReferenceMode = 'main' | 'all';
 
@@ -24,12 +23,6 @@ export type CrossReferencePrefs = {
 };
 
 export const DEFAULT_CROSS_REFERENCE_PREFS: CrossReferencePrefs = { show: true, inWindow: false, mode: 'main', othersAsVerses: false };
-
-const STORAGE_KEY = 'bible:cross-references';
-
-let memory: CrossReferencePrefs | null = null;
-let snapshot: { raw: string | null; prefs: CrossReferencePrefs } | null = null;
-const listeners = new Set<() => void>();
 
 function parse(raw: string | null): CrossReferencePrefs {
   if (!raw) return DEFAULT_CROSS_REFERENCE_PREFS;
@@ -46,20 +39,16 @@ function parse(raw: string | null): CrossReferencePrefs {
   }
 }
 
-function readRaw(): string | null {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
+const choice = deviceChoice({
+  key: 'bible:cross-references',
+  parse,
+  fallback: DEFAULT_CROSS_REFERENCE_PREFS,
+  onOtherTab: () => recordDiagnostic('setting', { source: 'other-tab', code: 'crossRefs' }),
+});
 
 /** The choice on this device; the same object until it changes, so React re-renders only on a change. */
 export function readCrossReferencePrefs(): CrossReferencePrefs {
-  if (memory) return memory;
-  const raw = readRaw();
-  if (!snapshot || snapshot.raw !== raw) snapshot = { raw, prefs: parse(raw) };
-  return snapshot.prefs;
+  return choice.read();
 }
 
 /** Where a change came from, for the technical details a feedback report sends. */
@@ -68,50 +57,21 @@ export type CrossReferencePrefsSource = 'window' | 'menu';
 const said = (value: unknown) => (typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
 
 export function saveCrossReferencePrefs(change: Partial<CrossReferencePrefs>, from?: CrossReferencePrefsSource): void {
-  const next = { ...readCrossReferencePrefs(), ...change };
-  const raw = JSON.stringify(next);
-  let kept = true;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, raw);
-    memory = null;
-    snapshot = { raw, prefs: next };
-  } catch {
-    // Storage refused: the choice lasts until the page is left.
-    memory = next;
-    kept = false;
-  }
+  const saved = choice.save(change);
   // Each change and where it came from: a setting the person saw flip by itself is then told apart from
-  // their own taps (the owner's iPad, 2026-10-16: "on" in portrait read "off" after turning the screen).
+  // their own taps (the owner's iPad, 2026-10-16: "on" in portrait read "off" after turning the screen),
+  // and storage that refused it or read back something else says so.
   Object.entries(change).forEach(([name, value]) => recordDiagnostic('setting', {
     // Letters and hyphens only: the diagnostics keep nothing else (`appDiagnostics` `safeData`).
-    source: from ?? 'code', code: `crossRefs-${name}`, result: kept ? said(value) : `${said(value)}-memory-only`,
+    source: from ?? 'code', code: `crossRefs-${name}`, result: saved === 'kept' ? said(value) : `${said(value)}-${saved}`,
   }));
-  listeners.forEach((listener) => listener());
 }
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  // Another tab of the app changed it.
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== STORAGE_KEY) return;
-    recordDiagnostic('setting', { source: 'other-tab', code: 'crossRefs' });
-    listener();
-  };
-  window.addEventListener('storage', onStorage);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener('storage', onStorage);
-  };
-}
-
-const serverSnapshot = () => DEFAULT_CROSS_REFERENCE_PREFS;
 
 export function useCrossReferencePrefs(): CrossReferencePrefs {
-  return useSyncExternalStore(subscribe, readCrossReferencePrefs, serverSnapshot);
+  return choice.useChoice();
 }
 
 /** Forgets the copy kept in memory — for tests. */
 export function resetCrossReferencePrefsForTests(): void {
-  memory = null;
-  snapshot = null;
+  choice.resetForTests();
 }
