@@ -82,6 +82,8 @@ it('reports the queued sermon id through onCreated and closes the modal', async 
   fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'John 1' } });
   await act(async () => { await settleEngine(); });
   expect(onCreated).not.toHaveBeenCalled();
+  // This assertion is about local capture, before any server acceptance/collection.
+  harness.engine.setOnline(false);
   fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
   await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1));
   const request = (await harness.commits.list('owner'))[0];

@@ -5,7 +5,8 @@ import { entries, get, update } from 'idb-keyval';
 import { watchedStore } from '@/utils/deviceStorage';
 
 import { canReplaceSnapshot } from './engine';
-import { equalValues, getResourcePolicy } from './protocol';
+import { equalValues } from './protocol';
+import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { snapshotSchema } from './transport.client';
 
 import type { CollectionSnapshotStore } from './collections';
@@ -13,10 +14,8 @@ import type { ResourceRef, ResourceSnapshot } from './types';
 
 function validate(owner: string, resource: ResourceRef, value: unknown): ResourceSnapshot {
   const snapshot = snapshotSchema.parse(value);
-  const policy = getResourcePolicy(resource.collection);
   if (snapshot.resource.collection !== resource.collection || snapshot.resource.id !== resource.id
-    || (policy.ownerField === 'id' && resource.id !== owner)
-    || (snapshot.value && policy.ownerField !== 'id' && snapshot.value[policy.ownerField] !== owner)) {
+    || !snapshotBelongsToOwner(owner, snapshot)) {
     throw new Error('Cached snapshot identity mismatch');
   }
   return snapshot;

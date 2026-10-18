@@ -29,6 +29,7 @@ it('bounds full payloads over a thousand acknowledged autosaves and factory relo
     const created = await commits.create(request(`request-${i}`, `factory-${i}`));
     await commits.compareAndSet(created, acknowledge(created));
     await checkpoints.put(record(created, true));
+    await commits.releaseProjection!('owner', [created.id]); // The shared snapshot cache now owns this ACK.
   }
   expect(await commits.list('owner')).toEqual([]); expect(await checkpoints.listRecoverable('owner')).toEqual([]);
   const keys = [...storage.rows.keys()].map(key => JSON.parse(key));
@@ -43,6 +44,7 @@ it('keeps one generation watermark for thousands of saves in one editor', async 
   for (let i = 1; i <= 1000; i += 1) {
     const created = await commits.create(request(`save-${i}`, 'editor', i));
     await commits.compareAndSet(created, acknowledge(created)); await checkpoints.put(record(created, true));
+    await commits.releaseProjection!('owner', [created.id]);
   }
   expect([...storage.rows]).toEqual([['["generation","owner","editor"]', { through: 1000 }]]);
 }, 15000);
@@ -58,7 +60,7 @@ it('retains an ACK closed before projection, a pending checkpoint, and a staged 
       collectCommitRows(store, read, 'owner', () => done(undefined));
     });
   });
-  await checkpoints.put(record(created, true)); expect(await commits.list('owner')).toEqual([accepted]);
+  await checkpoints.put(record(created, true)); await commits.releaseProjection!('owner', [created.id]); expect(await commits.list('owner')).toEqual([accepted]);
   await transaction<void>('readwrite', (store, read, done) => {
     store.delete(['manual', 'owner', 'scope']); collectCommitRows(store, read, 'owner', () => done(undefined));
   });
@@ -69,7 +71,7 @@ it('retains an uninitialized dependent until it owns its own rebased saved inten
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
   const a = await commits.create(request('A')); await commits.compareAndSet(a, acknowledge(a));
   const b = await commits.create({ ...request('B', 'editor', 2), predecessor: 'A', initialized: false });
-  await checkpoints.put(record(a, true)); expect((await commits.list('owner')).map(item => item.id)).toEqual(['A', 'B']);
+  await checkpoints.put(record(a, true)); await commits.releaseProjection!('owner', [a.id]); expect((await commits.list('owner')).map(item => item.id)).toEqual(['A', 'B']);
   await commits.compareAndSet(b, { ...b, initialized: true });
   expect((await commits.list('owner')).map(item => item.id)).toEqual(['B']);
   await expect(commits.create({ ...request('C', 'later', 1), predecessor: 'A', initialized: false })).rejects.toMatchObject({ code: 'commit-reference-changed' });
@@ -82,7 +84,7 @@ it('rejects a stale recovery reference atomically and rereads the source after p
   const read = jest.spyOn(checkpoints, 'read').mockImplementationOnce(async () => {
     await commits.compareAndSet(a, acknowledge(a));
     const updated = record(a, true); updated.checkpoint.draft!.content = 'later typing'; updated.checkpoint.dirty = true; updated.checkpoint.editGeneration += 1;
-    await checkpoints.put(updated); return source;
+    await checkpoints.put(updated); await commits.releaseProjection!('owner', [a.id]); return source;
   });
   const forked = await forkCheckpoint(checkpoints, 'owner', recoveryCheckpointId('owner', 'editor'), 'fork', snapshot.resource);
   expect(read).toHaveBeenCalledTimes(2);
@@ -112,6 +114,7 @@ it('retains both atomic participants until every projection and delivery referen
   await checkpoints.put(record(captured[1], true));
   expect(await commits.list('owner')).toHaveLength(2);
   await commits.compareAndSetBatch!(accepted.map(previous => ({ previous, next: { ...previous, unfinalized: [] } })));
+  await commits.releaseProjection!('owner', atomic.participants);
   expect(await commits.list('owner')).toEqual([]);
 });
 
@@ -122,6 +125,7 @@ it('retains a whole atomic group while another editor still depends on one parti
   await commits.compareAndSetBatch!(captured.map(previous => ({ previous, next: acknowledge(previous) })));
   const later = await commits.create({ ...request('later', 'third'), predecessor: 'b', initialized: false });
   await checkpoints.put(record(captured[0], true)); await checkpoints.put(record(captured[1], true));
+  await commits.releaseProjection!('owner', atomic.participants);
   expect(await commits.list('owner')).toHaveLength(3);
   await commits.compareAndSet(later, { ...later, initialized: true });
   expect((await commits.list('owner')).map(item => item.id)).toEqual(['later']);
@@ -134,6 +138,7 @@ it('retains an acknowledged payload across factory restart until its exact backu
   const created = await commits.create({ ...request('backup-owned'), retentionScope: scope });
   const accepted = await commits.compareAndSet(created, acknowledge(created));
   await checkpoints.put(record(accepted, true));
+  await commits.releaseProjection!('owner', [created.id]);
   const reopened = createIndexedDbCommitStore();
   expect((await reopened.listCaptures!('owner', 'draft-capture:v1:')).map(row => row.id)).toEqual([created.id]);
   await reopened.releaseCapture!('another-owner', scope, created.id);

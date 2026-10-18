@@ -10,6 +10,8 @@ export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' |
   kind: string = request.atomic?.kind === 'council-carry' ? 'council-carry-request' : request.atomic?.kind === 'create-member' ? 'creation-request' : request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
+/** Separate from editor projection: even older checkpoint writers must retain uncached ACKs. */
+export const commitSnapshotKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'accepted-cache', id];
 export const commitCaptureKey = (owner: string, scopeId: string, id: string): IDBValidKey => ['reference', owner, 'capture', scopeId, id];
 export const commitDependencyKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'dependency', id];
 

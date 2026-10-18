@@ -20,7 +20,7 @@ export const settleEngine = async () => { for (let i = 0; i < 150; i++) await Pr
  * `cached: false` starts with no copy of the document on this device, as a link opened for the first time.
  */
 export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDevice = true }: { cached?: boolean } = {}) {
-  installStorageHarness();
+  const storage = installStorageHarness();
   let server = copy(initial), sequence = 0;
   let cached: ResourceSnapshot | null = onDevice ? copy(initial) : null;
   const journal = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
@@ -38,7 +38,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
   let engine!: DataEngine;
   let activeRuntime!: DataEngineRuntime;
-  const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void }): BrowserDataEngine => {
+  const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void; beforeSnapshotWrite?: (snapshot: ResourceSnapshot) => Promise<void> }): BrowserDataEngine => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => [...journal.values()].filter(item => item.command.owner === owner).map(copy),
       put: async entry => { journal.set(entry.command.operationId, copy(entry)); },
@@ -47,7 +47,7 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
     activeRuntime = runtime;
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const snapshots = {
-      read: async () => (cached ? copy(cached) : undefined), put: async (_owner: string, value: ResourceSnapshot) => { cached = copy(value); },
+      read: async () => (cached ? copy(cached) : undefined), put: async (_owner: string, value: ResourceSnapshot) => { await options?.beforeSnapshotWrite?.(value); cached = copy(value); },
       list: async (owner: string, collection: string) => cached && cached.resource.collection === collection && cached.value?.userId === owner ? [copy(cached)] : [],
     };
     let cursor: CollectionCursor | undefined;
@@ -59,11 +59,11 @@ export function documentEngineHarness(initial: ResourceSnapshot, { cached: onDev
       changes: async () => ({ snapshots: [copy(server)], cursor: 0, version: 0, hasMore: false }),
     } }) : undefined;
     const instance = new DataEngine({ runtime, observer, transport, commits, checkpoints,
-      manualScopes: createIndexedDbManualScopes(), snapshots, collections, operationId: () => `operation-${++sequence}` });
+      manualScopes: createIndexedDbManualScopes(), snapshots, collections, onError: options?.onError, operationId: () => `operation-${++sequence}` });
     engine = instance;
     return { engine: instance, dispose: () => instance.dispose(), editorId: (resource, slot = 'default') => editorIdentity('test-tab', resource, slot, String(++sequence)) };
   };
-  return { createBrowser, transport, commits, checkpoints, get runtime() { return activeRuntime; }, get engine() { return engine; }, get server() { return copy(server); },
+  return { createBrowser, transport, commits, checkpoints, storage, get runtime() { return activeRuntime; }, get engine() { return engine; }, get server() { return copy(server); },
     /** Another device's deletion the engine has not heard about yet. */
     silentRemoteDelete: () => {
       server = { ...server, metadata: { ...server.metadata!, revision: server.metadata!.revision + 1, deleted: true }, value: null };

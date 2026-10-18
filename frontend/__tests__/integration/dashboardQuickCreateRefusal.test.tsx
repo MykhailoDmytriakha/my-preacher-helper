@@ -152,8 +152,10 @@ describe('dashboard quick-create — a refused sermon is reported ON the dashboa
     await quickCreate();
     await act(async () => { await harness.engine.retry(); await settleEngine(); });
 
-    expect(harness.read((await harness.commits.list('user-1'))[0]?.baseline.resource ?? { collection: 'sermons', id: 'none' }).value)
-      .toMatchObject({ title: 'Sermon the server refused' });
+    const creates = jest.mocked(harness.transport.send).mock.calls.filter(([command]) => command.kind === 'create');
+    expect(creates).toHaveLength(1);
+    expect(harness.read(creates[0][0].resource).value).toMatchObject({ title: 'Sermon the server refused' });
+    expect(await harness.commits.list('user-1')).toEqual([]);
     expect(screen.queryByText('dataSync.collectionAttention')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     view.unmount();

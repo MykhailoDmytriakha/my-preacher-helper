@@ -1,7 +1,7 @@
 'use client';
 
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, type CommitRequest, type CommitStore } from './commits';
-import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -75,6 +75,9 @@ export function createIndexedDbCommitStore(): CommitStore {
           assertCommitCapture(current, next);
           const saved = { ...next, revision: previous.revision + 1 };
           retainPredecessor(store, saved);
+          if (saved.state === 'acknowledged' && saved.result?.kind === 'acknowledged') {
+            store.put({ commitReferences: [saved.id] }, commitSnapshotKey(saved.owner, saved.id));
+          }
           store.put(saved, commitRowKey(saved)); result[index] = saved;
           if (!--remaining) collectCommitRows(store, read, saved.owner, () => done(result));
         });
@@ -118,6 +121,7 @@ export function createIndexedDbCommitStore(): CommitStore {
           const participants = request.atomic ? request.atomic.participants.map(participant => requests.find(candidate => candidate.id === participant)) : [request];
           if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) continue;
           store.delete(commitProjectionKey(owner, id));
+          store.delete(commitSnapshotKey(owner, id));
         }
         collectCommitRows(store, read, owner, () => done(undefined));
       });

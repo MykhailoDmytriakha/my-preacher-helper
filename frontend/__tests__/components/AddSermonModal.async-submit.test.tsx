@@ -45,10 +45,10 @@ describe('AddSermonModal async submit flow (data engine)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await act(async () => { await harness.engine.retry(); await settleEngine(); });
     expect(onClose).toHaveBeenCalledTimes(1);
-    const commits = await harness.commits.list('owner');
-    expect(commits).toHaveLength(1);
-    expect(harness.read(commits[0].baseline.resource).value).toMatchObject({ title: 'Async Sermon Title', verse: 'John 3:16' });
-    expect(jest.mocked(harness.transport.send).mock.calls.filter(([command]) => command.kind === 'create')).toHaveLength(1);
+    const creates = jest.mocked(harness.transport.send).mock.calls.filter(([command]) => command.kind === 'create');
+    expect(creates).toHaveLength(1);
+    expect(harness.read(creates[0][0].resource).value).toMatchObject({ title: 'Async Sermon Title', verse: 'John 3:16' });
+    expect(await harness.commits.list('owner')).toEqual([]);
     view.unmount();
   });
 });

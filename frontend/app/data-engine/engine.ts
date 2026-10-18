@@ -13,6 +13,7 @@ import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } fr
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
+import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { redeliveryDelay } from './unanswered';
 
@@ -183,7 +184,7 @@ export class DataEngine {
       if (manual && ['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
         this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation, request.baseline.resource);
       }
-      if (request.result?.kind === 'acknowledged') this.background(this.persistSnapshot(request.owner, this.generation, request.result.snapshot), request.owner, this.generation, request.result.snapshot.resource);
+      if (request.result?.kind === 'acknowledged') this.background(this.completeAcceptedProjection(request.owner, this.generation, request), request.owner, this.generation, request.result.snapshot.resource);
       for (const [editorId, entry] of this.editors) if (!entry.closed && (editorId === request.editorId || (request.atomic?.kind === COUNCIL_CARRY && entry.controller
         && sameResource(entry.controller.getState().checkpoint.confirmed.resource, request.baseline.resource)))) this.emit(entry);
     });
@@ -768,22 +769,39 @@ export class DataEngine {
     await Promise.all([...this.cacheWrites.values()]
       .filter(write => write.owner === owner && write.generation === generation)
       .map(write => about(write.resource, write.operation)));
-    await this.completeCouncilProjections(owner, generation);
+    await this.completeAcceptedProjections(owner, generation);
   }
 
-  private async completeCouncilProjections(owner: string, generation: number): Promise<void> {
-    if (!this.options.commits.releaseProjection) return;
+  private async completeAcceptedProjections(owner: string, generation: number): Promise<void> {
     const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-    for (const primary of requests.filter(request => request.atomic?.kind === COUNCIL_CARRY && request.atomic.id === request.id)) {
-      const participants = primary.atomic!.participants.map(id => requests.find(request => request.id === id));
-      if (participants.some(request => !request || !['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length)) continue;
-      for (const request of participants) if (request!.result?.kind === 'acknowledged') {
-        await this.persistSnapshot(owner, generation, request!.result.snapshot); this.assertCurrent(owner, generation);
-      }
-      // Actual snapshots own successful content now. Checkpoint references still retain
-      // proofs needed to rebase a mounted editor or recover its later unsent words.
-      await this.options.commits.releaseProjection(owner, primary.atomic!.participants); this.assertCurrent(owner, generation);
+    const completed = new Set<string>();
+    for (const request of requests) {
+      const group = request.atomic?.id ?? request.id;
+      if (completed.has(group) || (request.state !== 'acknowledged' && request.atomic?.kind !== COUNCIL_CARRY)) continue;
+      completed.add(group);
+      await this.completeAcceptedProjection(owner, generation, request, requests);
     }
+  }
+
+  /** The request remains the durable accepted copy until every participant is cached. */
+  private async completeAcceptedProjection(owner: string, generation: number, request: CommitRequest, loaded?: CommitRequest[]): Promise<void> {
+    // Preserve the immediate cache projection for document-only custom stores too.
+    if (request.result?.kind === 'acknowledged') {
+      const cached = await about(request.result.snapshot.resource, this.persistSnapshot(owner, generation, request.result.snapshot));
+      if (!canReplaceSnapshot(request.result.snapshot, cached)) return;
+    }
+    this.assertCurrent(owner, generation);
+    if (!this.options.commits.releaseProjection) return;
+    const requests = loaded ?? await this.commits.list(); this.assertCurrent(owner, generation);
+    const ids = request.atomic?.participants ?? [request.id];
+    const participants = ids.map(id => requests.find(candidate => candidate.id === id));
+    if (participants.some(participant => !participant || !['acknowledged', 'cancelled'].includes(participant.state) || participant.unfinalized.length)) return;
+    for (const participant of participants) if (participant!.id !== request.id && participant!.result?.kind === 'acknowledged') {
+      const cached = await about(participant!.result.snapshot.resource, this.persistSnapshot(owner, generation, participant!.result.snapshot)); this.assertCurrent(owner, generation);
+      if (!canReplaceSnapshot(participant!.result.snapshot, cached)) return;
+    }
+    // Checkpoints/manual captures retain any proofs still needed for later unsent words.
+    await about(request.baseline.resource, this.options.commits.releaseProjection(owner, ids)); this.assertCurrent(owner, generation);
   }
 
   listPending(): Promise<JournalEntry[]> {
@@ -847,22 +865,33 @@ export class DataEngine {
   /** A cache copy is sufficient only if it proves the accepted participant revision. */
   private async readCommittedSnapshot(resource: ResourceRef, proof: EngineMetadata): Promise<ResourceSnapshot> {
     const owner = this.requireOwner(), generation = this.generation;
-    const cached = await this.options.snapshots.read(owner, resource); this.assertCurrent(owner, generation);
+    const cached = await this.knownSnapshot(owner, generation, resource);
     if (cached && coversCommittedEffect(cached, resource, proof)) return cached;
     // Part of finishing this tab's own write, not polling: allowed whenever the write could be sent.
     if (!this.canSend()) throw new Error('Participant acknowledgement needs a confirmed read');
     const snapshot = await this.options.transport.read(owner, resource); this.assertCurrent(owner, generation);
-    if (!coversCommittedEffect(snapshot, resource, proof) || (snapshot.value && snapshot.value.userId !== owner)) throw new Error('Participant read does not prove the acknowledgement');
+    if (!coversCommittedEffect(snapshot, resource, proof) || !snapshotBelongsToOwner(owner, snapshot)) throw new Error('Participant read does not prove the acknowledgement');
     return this.persistSnapshot(owner, generation, snapshot);
   }
 
-  private async readSnapshot(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot> {
-    const cached = await this.options.snapshots.read(owner, resource);
-    this.assertCurrent(owner, generation);
-    if (cached) {
-      if (!sameResource(cached.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
-      return cached;
+  /** Read requests first: collected ACKs must already have their durable cache copy. */
+  private async knownSnapshot(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot | undefined> {
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    requests.forEach(request => this.rememberCommit(request));
+    let snapshot = await this.options.snapshots.read(owner, resource); this.assertCurrent(owner, generation);
+    if (snapshot && !sameResource(snapshot.resource, resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
+    for (const request of this.commitRecords.values()) {
+      if (request.owner !== owner || request.state !== 'acknowledged' || request.result?.kind !== 'acknowledged') continue;
+      const accepted = request.result.snapshot;
+      if (sameResource(accepted.resource, resource) && snapshotBelongsToOwner(owner, accepted)
+        && canReplaceSnapshot(snapshot, accepted)) snapshot = accepted;
     }
+    return snapshot && copy(snapshot);
+  }
+
+  private async readSnapshot(owner: string, generation: number, resource: ResourceRef): Promise<ResourceSnapshot> {
+    const cached = await this.knownSnapshot(owner, generation, resource);
+    if (cached) return cached;
     if (!this.online || !this.visible) throw Object.assign(new Error('The document is not available in the local cache'), { code: NEEDS_CONNECTION });
     const server = await this.options.transport.read(owner, resource);
     this.assertCurrent(owner, generation);
@@ -1070,7 +1099,7 @@ export class DataEngine {
           await this.commits.cancelAction(request.atomic!.participants); this.assertCurrent(owner, generation);
           if (!entry.closed) await controller.settled();
           await this.commits.finishCancellation('', request.atomic!.participants); this.assertCurrent(owner, generation);
-          await this.completeCouncilProjections(owner, generation);
+          await this.completeAcceptedProjections(owner, generation);
         },
         form: (slot, selection, recovery = 'same-slot') => { active(); return this.manualForm(owner, generation, frozen, editorId, entry, slot, selection, recovery); },
         subscribe: listener => {
