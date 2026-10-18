@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { newClientId } from '@/utils/clientId';
+
 export interface AudioGenerationProgress {
-  key: string; parts: Uint8Array[]; nextOffset: number; total?: number; filename?: string; mimeType?: string;
+  key: string; exportId: string; parts: Uint8Array[]; nextOffset: number; total?: number; filename?: string; mimeType?: string;
 }
 export interface AudioGenerationRun {
   scope: string; controller: AbortController; progress: AudioGenerationProgress; checkpoint: () => void;
@@ -39,7 +41,7 @@ export function useAudioGenerationSession(owner: string | null, sermonId: string
     active.current?.controller.abort();
     const key = JSON.stringify([scope, body]);
     const progress = cache.current?.scope === scope && cache.current.progress.key === key
-      ? cache.current.progress : { key, parts: [], nextOffset: 0 };
+      ? cache.current.progress : { key, exportId: newClientId(), parts: [], nextOffset: 0 };
     cache.current = { scope, progress };
     const run: AudioGenerationRun = { scope, controller: new AbortController(), progress, checkpoint: () => undefined };
     run.checkpoint = () => { if (!isLive(run)) throw canceled(); };
@@ -72,6 +74,11 @@ export function useAudioGenerationSession(owner: string | null, sermonId: string
     return true;
   }, [isCurrent]);
 
-  return { scope, view: visible.view, genProgress: visible.progress, generatedFile: visible.file,
+  const reset = useCallback(() => { retire(scope); setState(initial(scope)); }, [retire, scope]);
+
+  const canResume = useCallback((body: Record<string, unknown>) => cache.current?.scope === scope &&
+    cache.current.progress.key === JSON.stringify([scope, body]), [scope]);
+
+  return { reset, canResume, scope, view: visible.view, genProgress: visible.progress, generatedFile: visible.file,
     begin, report, complete, fail, finish, cancel, isCurrent };
 }

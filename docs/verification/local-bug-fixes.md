@@ -2025,3 +2025,67 @@ Scope: browser actions used the real compiled UI and relation planner on disposa
 Production acceptance: follow the normal deletion confirmations and series membership selector with approved disposable fixtures; verify exact cleanup and unrelated preservation, loaded reload, offline reconnect, sequential second-device observation and actual-limit refusal. Detailed unexecuted recipe: case artifact `relation-scan-production-recipe.md`. Canonical recipe: `.howto/link-two-entities.md`.
 
 Fresh final acceptance: `relation-scan-fresh-acceptance-v2.json`, SHA-256 `2ab5b23600749403abdcb1df40dfdd1f9a1a81e6e4751046bd1c35a9ae364a80`. The earlier fresh FINDING remains retained as evidence that the client path was corrected before commit.
+
+
+## BUG-20261003-audio-continuation-skips-limit
+
+Stage: locally verified and independently accepted; production verification pending a separately
+authorized merge, push and deployment.
+
+A positive audio batch offset no longer grants work by itself. The server binds a complete admitted
+export to its owner, sermon, saved speech, model/voice and batch shape. The browser sends one stable
+export ID before its first response. An exact retained export can finish after reaching the cap;
+a new export still needs ordinary admission. Repeating a completed batch returns its cached bytes
+and immutable output identity without another paid call or duplicate logical usage.
+
+The server-only semantic facade exposes begin/continue and delivery acknowledgement, never native
+storage handles. Native IO stays in the existing DataEngine adapter through a scoped internal store;
+profile fields and person-edit semantics are preserved. Successful output settlements, admission and
+usage move in one transaction. Two application attempt slots persist across lease recovery; cached
+siblings survive. Known successful superseded work settles without publishing over a newer request.
+Fragment writes and fenced cleanup use four records per transaction. Accepted download ACK retires
+only that final export and clears its bytes; stale/foreign ACKs are harmless and exact cleanup retries
+are idempotent. An explicit terminal restart clears transport state while keeping saved speech.
+
+RED proof before product edits: forged continuation, repeated paid generation and missing pre-response
+identity gave three failures/34 positive controls; wizard identity/capped-resume gave two failures/50
+positive controls. The historical route test sources were recovered exactly from Jest source maps,
+matching the SHAs recorded before editing. Recovery is source identity, not a new historical run.
+Current route test IO was adapted to canonical receipts while retaining the behavioral assertions;
+the hook regression bytes still match their RED version. Further review regressions caught lease
+publication fencing, cache-IO output loss, cross-sermon settlement keys and oversized cleanup before
+those corrections were accepted. The last four review failures became green in the same scenarios.
+
+Final local gates: nine targeted suites/158 tests; full888 suites/9740 tests passed, with3 suites/17
+inherited skips; TypeScript passed; lint0 errors/24 inherited warnings; translation coverage8 tests;
+final architecture6 tests. The canonical production compiler/typegen/external TypeScript passed on
+build `t-JLHII4dNhJ78NRzMWtp`; the full serial Jest gate was executed separately. Frozen legacy SDK
+debt and caller lists were not expanded.
+
+Root acceptance used four real compiled Chromium cases/60 assertions at390 and1280px with24 original
+screenshots personally inspected. Actual Next routes ran against native demo Auth/Firestore emulators
+and a synthetic silent MP3 provider. Lost first/final completion responses, replay offsets[0,0,3],
+cap crossing, native offline/reconnect retention, explicit terminal restart, decoded complete8.3445s
+file and actual final cache cleanup passed. Saved speech and profile stayed unchanged. Independent
+source review reran158 tests plus6 final guard tests, nine scoped-store probes and a12.288MB cleanup
+probe whose peak fragment payload was2.048MB. A fresh separate reviewer reran158 tests and three
+native emulator/browser cases: replay at1024px, fresh start429/forged continuation400 with zero TTS,
+and operational Firestore REST denial for both anonymous/owner callers. It captured88 observed JS
+responses and hashed four actually served assets.
+
+Root proof: `audio-continuation-verification-v1.json`, SHA-256
+`cbd3e7b3c6c1b1a8148c248c610b01569bdc37815eb4d00b544194f207de7e78`.
+Fresh companion: `audio-continuation-fresh-independent-acceptance-v1.json`, SHA-256
+`ce042b19c9fe52022dce1419eee25e68d3dddb1b24da975e9e54dc31c3bde256`.
+The fresh reviewer rehashed186 root artifacts,2268 source files,892 compiled files and both recipe
+updates. Source/review archives, exact recovered RED tests, raw logs, native emulator fixture and
+individual original images remain in the local case. Harness/path/console-classification diagnostics
+are preserved as diagnostics and are not substituted for RED or acceptance.
+
+Only this expanded tracker record is removed; the other36 whole tracker blocks and preface remain
+byte-identical to the parent. Local removal does not mean deployment. Abandoned unfinished binary
+cache has no timed expiry; compact replay/accounting receipts remain. Known output accounting is
+idempotent, but unknown provider outcomes, failed-batch charging policy, real provider invoices,
+production latency/contention, platform deadlines, PWA and physical devices are outside this proof.
+Production recipe `audio-continuation-production-recipe.md` is unexecuted. Canonical recipes:
+`.howto/generate-sermon-audio.md` and `.howto/gate-and-meter-an-ai-call.md`.

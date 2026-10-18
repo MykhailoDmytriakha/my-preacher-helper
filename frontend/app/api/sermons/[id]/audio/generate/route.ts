@@ -15,10 +15,11 @@ import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { generateChunkAudio } from '@/api/clients/tts.client';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { resolveSections } from '@/api/services/sermonTextService';
-import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
+import { GOOGLE_SMALL_CHUNKING, AUDIO_EXPORT_CHUNK_ATTEMPTS } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
+import { AudioExportError, audioExportFingerprint, beginAudioExportBatch } from '@/data-engine/serverOperations.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
@@ -75,7 +76,7 @@ type DownloadCompleteEvent = {
 type ErrorEvent = {
     type: 'error';
     message: string;
-    code?: typeof TTS_CHUNK_FAILED;
+    code?: typeof TTS_CHUNK_FAILED | 'USAGE_CAP_REACHED' | AudioExportError['code'];
     /** 1-based numbers of the chunks, in the whole generation, that stayed silent. */
     chunks?: number[];
 };
@@ -110,7 +111,7 @@ const GOOGLE_TTS_MODEL_31_KEY = 'gemini-3.1-flash-tts-preview';
 const GOOGLE_TTS_MODEL_25_CATALOG = 'gemini-2.5-flash-tts';
 const GOOGLE_TTS_MODEL_31_CATALOG = 'gemini-3.1-flash-tts';
 const OPENAI_TTS_VOICES: readonly TTSVoice[] = ['onyx', 'echo', 'ash'];
-const TTS_CHUNK_ATTEMPTS = 2;
+const TTS_CHUNK_ATTEMPTS = AUDIO_EXPORT_CHUNK_ATTEMPTS;
 
 class TtsChunkFailedError extends Error {
     constructor(readonly chunks: number[]) {
@@ -200,15 +201,17 @@ function insertGoogleSectionPauses(
 
 async function generateChunkAudioWithRetry(
     text: string,
-    options: Parameters<typeof generateChunkAudio>[1]
+    options: Parameters<typeof generateChunkAudio>[1],
+    invoke: () => ReturnType<typeof generateChunkAudio> = () => generateChunkAudio(text, options),
 ): Promise<Awaited<ReturnType<typeof generateChunkAudio>>> {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= TTS_CHUNK_ATTEMPTS; attempt++) {
         try {
-            return await generateChunkAudio(text, options);
+            return await invoke();
         } catch (error) {
             lastError = error;
+            if (isUsageCapReachedError(error) || error instanceof AudioExportError) break;
             if (attempt === TTS_CHUNK_ATTEMPTS) break;
             console.warn(`[TTS] Chunk attempt ${attempt}/${TTS_CHUNK_ATTEMPTS} failed; retrying...`, error);
             await new Promise(resolve => setTimeout(resolve, TTS_CHUNK_RETRY_BACKOFF_MS));
@@ -369,13 +372,16 @@ export async function POST(
             );
         }
 
-        if (batchOffset === 0) {
-            createUsageAdmission(uid, entitlement, ['ai', 'audio'], usageNow);
-        } else {
-            // Accepted residual risk: offset is client supplied. We deliberately let
-            // an already-started multi-batch export finish without signed operation
-            // tokens/replay protection; crafted offset>0 can bypass start admission.
-        }
+        const exportBatch = isBatched ? await beginAudioExportBatch({
+            userId: uid, sermonId, exportId: body.exportId, entitlement,
+            fingerprint: audioExportFingerprint({ provider, voice, catalogModel: requestedTarget.modelId,
+                runtimeModel: selectedModel, source: body.mode ?? storedSource(sermon),
+                sourceVersion: body.source ?? null, sections: sectionList,
+                chunks: baseChunksForGeneration.map(chunk => [chunk.sectionId, chunk.text]),
+            }),
+            offset: batchOffset, limit: batchLimit!, total: baseChunksForGeneration.length,
+        }) : undefined;
+        if (!exportBatch) createUsageAdmission(uid, entitlement, ['ai', 'audio'], usageNow);
 
         logGenerationBatch(provider, chunks, baseChunksForGeneration, chunksForGeneration, batchOffset, batchLimit, isBatched);
 
@@ -407,6 +413,7 @@ export async function POST(
                     } | undefined> = new Array(chunksForGeneration.length);
                     let completed = 0;
                     let cursor = 0;
+                    let blockingError: unknown;
 
                     const worker = async () => {
                         while (cursor < chunksForGeneration.length) {
@@ -417,7 +424,9 @@ export async function POST(
                             console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
 
                             try {
-                                const result = await generateChunkAudioWithRetry(chunk.text, ttsOptions);
+                                const result = await generateChunkAudioWithRetry(chunk.text, ttsOptions, () => exportBatch
+                                    ? exportBatch.chunk(batchOffset + i, chunk.text, () => generateChunkAudio(chunk.text, ttsOptions))
+                                    : generateChunkAudio(chunk.text, ttsOptions));
                                 generatedChunks[i] = {
                                     blob: result.audioBlob,
                                     chunk,
@@ -427,6 +436,7 @@ export async function POST(
                                     ),
                                 };
                             } catch (error) {
+                                if (isBlockingAudioError(error)) blockingError ??= error;
                                 console.error(`[TTS] Chunk ${i + 1}/${total} failed:`, error);
                             }
 
@@ -452,20 +462,13 @@ export async function POST(
                         .map((_, i) => (generatedChunks[i] ? null : batchOffset + i + 1))
                         .filter((chunkNumber): chunkNumber is number => chunkNumber !== null);
                     if (failedChunkNumbers.length > 0) {
-                        throw new TtsChunkFailedError(failedChunkNumbers);
+                        throw blockingError ?? new TtsChunkFailedError(failedChunkNumbers);
                     }
                     const successfulChunks = generatedChunks.filter((result): result is NonNullable<typeof result> =>
                         result !== undefined
                     );
 
-                    const measuredDurations = await Promise.all(successfulChunks.map(({ blob, chunk, mimeType }) =>
-                        getMeteredAudioDurationSeconds(blob, mimeType, chunk.text)
-                    ));
-                    const audioSeconds = measuredDurations.reduce((sum, seconds) => sum + seconds, 0);
-                    await consumeAudioSeconds(uid, audioSeconds, usageNow);
-                    if (!isBatched || batchOffset === 0) {
-                        await consumeAiUsage(uid, usageNow);
-                    }
+                    await settleGeneratedAudio(exportBatch, successfulChunks, uid, usageNow);
 
                     const audioBlobs = successfulChunks.map(({ blob }) => blob);
                     const successfulAudioChunks = successfulChunks.map(({ chunk }) => chunk);
@@ -579,11 +582,12 @@ export async function POST(
 
                     controller.close();
                 } catch (error) {
+                    await exportBatch?.fail().catch(failure => console.error('[TTS] Failed to release export lease:', failure));
                     console.error('[TTS] Generation error:', error);
                     sendEvent(controller, {
                         type: 'error',
                         message: `TTS generation failed with ${provider}/${requestedTarget.modelId}: ${error instanceof Error ? error.message : 'Generation failed'}`,
-                        ...(error instanceof TtsChunkFailedError ? { code: TTS_CHUNK_FAILED, chunks: error.chunks } : {}),
+                        ...streamFailureDetails(error),
                     });
                     controller.close();
                 }
@@ -599,10 +603,7 @@ export async function POST(
         });
     } catch (error) {
         console.error('[TTS] Route error:', error);
-        if (isUsageCapReachedError(error)) {
-            return usageCapResponse(error);
-        }
-        return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
+        return audioRouteFailure(error) ?? legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
             { error: error instanceof Error ? error.message : 'Generation failed' },
             { status: 500 }
         );
@@ -670,4 +671,36 @@ function logGenerationBatch(
         console.log(`[TTS] Batch slice: offset=${batchOffset}, limit=${batchLimit} → ${chunksForGeneration.length}/${baseChunksForGeneration.length} chunks`);
     }
     console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'Google request chunks' : 'chunks'}`);
+}
+
+function isBlockingAudioError(error: unknown): boolean {
+    return isUsageCapReachedError(error) || error instanceof AudioExportError;
+}
+
+function streamFailureDetails(error: unknown): Pick<ErrorEvent, 'code' | 'chunks'> {
+    if (error instanceof TtsChunkFailedError) return { code: TTS_CHUNK_FAILED, chunks: error.chunks };
+    if (isUsageCapReachedError(error)) return { code: 'USAGE_CAP_REACHED' };
+    if (error instanceof AudioExportError) return { code: error.code };
+    return {};
+}
+
+function audioRouteFailure(error: unknown): NextResponse | undefined {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof AudioExportError) return NextResponse.json({ code: error.code, error: error.message }, { status: error.code === 'audio-export-missing' ? 400 : 409 });
+    return undefined;
+}
+
+async function settleGeneratedAudio(
+    batch: Awaited<ReturnType<typeof beginAudioExportBatch>> | undefined,
+    chunks: Array<{ blob: Blob; chunk: AudioChunk; mimeType: string }>,
+    uid: string,
+    now: Date,
+): Promise<void> {
+    if (batch) {
+        if (!await batch.complete()) throw new AudioExportError('audio-export-changed', 'A newer export replaced this result');
+        return;
+    }
+    const durations = await Promise.all(chunks.map(({ blob, chunk, mimeType }) => getMeteredAudioDurationSeconds(blob, mimeType, chunk.text)));
+    await consumeAudioSeconds(uid, durations.reduce((sum, seconds) => sum + seconds, 0), now);
+    await consumeAiUsage(uid, now);
 }

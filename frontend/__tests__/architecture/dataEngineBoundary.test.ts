@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 
@@ -134,6 +135,44 @@ describe('DataEngine SDK boundary', () => {
     expect(accesses.some(item => item.file === 'api/data-engine/commands/route.ts')).toBe(false);
   }, 30_000);
 
+  it('keeps the public server operation surface semantic and marked server-only', () => {
+    const text = fs.readFileSync(path.join(root, 'data-engine/serverOperations.server.ts'), 'utf8');
+    const source = ts.createSourceFile('serverOperations.server.ts', text, ts.ScriptTarget.ES2022, true);
+    const names: string[] = [];
+    const exportedDeclarations = source.statements.filter(node => ts.canHaveModifiers(node)
+      && ts.getModifiers(node)?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword));
+    expect(exportedDeclarations.every(ts.isFunctionDeclaration)).toBe(true);
+    expect(source.statements.filter(ts.isExportDeclaration).every(node => node.exportClause && ts.isNamedExports(node.exportClause))).toBe(true);
+    expect(source.statements.some(ts.isExportAssignment)).toBe(false);
+    for (const node of source.statements) {
+      if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) names.push(...node.exportClause.elements.map(item => item.name.text));
+      if (ts.isFunctionDeclaration(node) && node.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) names.push(node.name!.text);
+    }
+    expect(names.sort()).toEqual(['AudioExportError', 'acknowledgeAudioExport', 'audioExportFingerprint', 'beginAudioExportBatch']);
+    expect(source.statements.some(node => ts.isImportDeclaration(node) && !node.importClause && node.moduleSpecifier.getText(source) === "'server-only'")).toBe(true);
+  });
+
+  it('limits the semantic server operation facade to route entry points and blocks API client wrappers', () => {
+    const sources = {
+      [path.join(root, 'data-engine/serverOperations.server.ts')]: `import 'server-only'; export const beginAudioExportBatch = () => undefined; export { adminDb as hiddenDatabase } from '@/config/firebaseAdminConfig'; export { createAudioExportStore as hiddenStore } from '@/data-engine/server';`,
+      [path.join(root, 'api/leak/route.ts')]: `import { hiddenDatabase as database, hiddenStore as callback } from '@/data-engine/serverOperations.server'; [database, callback].forEach(value => void value);`,
+      [path.join(root, 'api/audio/route.ts')]: `import { beginAudioExportBatch as begin } from '@/data-engine/serverOperations.server'; void begin();`,
+      [path.join(root, 'api/clients/__audio.client.ts')]: `import { beginAudioExportBatch as begin } from '@/data-engine/serverOperations.server'; export const wrapper = () => begin();`,
+      [path.join(root, 'services/__audio.ts')]: `export { beginAudioExportBatch as callback } from '@/data-engine/serverOperations.server';`,
+      [path.join(root, 'components/__audio.ts')]: `import { wrapper } from '@/api/clients/__audio.client'; import { callback } from '@/services/__audio'; [wrapper, callback].forEach(run => run());`,
+      [path.join(root, 'components/__direct.ts')]: `const operations = import('@/data-engine/serverOperations.server'); void operations;`,
+    };
+    const options: ts.CompilerOptions = { module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.NodeJs,
+      target: ts.ScriptTarget.ES2022, skipLibCheck: true, baseUrl: frontend, paths: { '@/*': ['app/*'] } };
+    const accesses = runtimeAccesses(virtualProgram(sources, options), Object.keys(sources), root);
+    expect(accesses.some(access => access.file === 'api/audio/route.ts')).toBe(false);
+    expect(accesses.filter(access => access.file === 'api/leak/route.ts').map(access => access.capability)).toEqual(expect.arrayContaining(['database-runtime:config/firebaseAdminConfig.ts#adminDb', 'engine-internal:data-engine/server.ts']));
+    for (const file of ['api/clients/__audio.client.ts', 'services/__audio.ts', 'components/__direct.ts']) {
+      expect(accesses).toEqual(expect.arrayContaining([expect.objectContaining({ file, capability: 'engine-internal:data-engine/serverOperations.server.ts' })]));
+    }
+    expect(accesses.some(access => access.file === 'components/__audio.ts')).toBe(true);
+  }, 30_000);
+
   it('detects old write endpoints through HTTP aliases, constant options, templates and Request objects without banning reads or AI proposals', () => {
     const sources = {
       [path.join(root, '__boundary-http.ts')]: `
@@ -158,6 +197,8 @@ describe('DataEngine SDK boundary', () => {
         void fetch('/api/studies/notes/' + id, { method: 'HEAD' });
         void fetch('/api/feedback', { method: 'POST' });
         void fetch('/api/sermons/' + id + '/brainstorm', { method: 'POST' });
+        void fetch('/api/sermons/' + id + '/audio/generate/ack', { method: 'POST' });
+        void fetch('/api/sermons/' + id + '/audio/generate/ack/other', { method: 'POST' });
         void fetch('/api/studies/notes/' + id + '/cut', { method: 'POST' });
         void fetch('/api/sermons-other', { method: 'POST' });
         function postRoute(label: string, route: string) { return authenticated(route, { method: 'POST' }); }
@@ -168,6 +209,6 @@ describe('DataEngine SDK boundary', () => {
     const options: ts.CompilerOptions = { module: ts.ModuleKind.CommonJS, moduleResolution: ts.ModuleResolutionKind.NodeJs,
       target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.Preserve, skipLibCheck: true, baseUrl: frontend, paths: { '@/*': ['app/*'] } };
     const accesses = legacyHttpAccesses(virtualProgram(sources, options), Object.keys(sources), root);
-    expect(accesses.map(item => item.capability).sort()).toEqual(['DELETE /api/studies/notes/*', 'PUT /api/sermons/*', 'POST /api/councils', 'DELETE /api/series/*', 'POST /api/data-engine/commands', 'POST /api/insights/topics', 'GET /api/sermons/*/plan?section=*', 'GET /api/sermons/*/plan?section=*'].sort());
+    expect(accesses.map(item => item.capability).sort()).toEqual(['POST /api/sermons/*/audio/generate/ack/other', 'DELETE /api/studies/notes/*', 'PUT /api/sermons/*', 'POST /api/councils', 'DELETE /api/series/*', 'POST /api/data-engine/commands', 'POST /api/insights/topics', 'GET /api/sermons/*/plan?section=*', 'GET /api/sermons/*/plan?section=*'].sort());
   }, 30_000);
 });

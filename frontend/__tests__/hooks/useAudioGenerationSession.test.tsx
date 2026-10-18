@@ -7,6 +7,19 @@ import type { AudioGenerationRun } from '@/hooks/useAudioGenerationSession';
 const body = { provider: 'openai', expected: [{ text: 'Saved words' }] };
 
 describe('audio generation session ownership', () => {
+  it('knows the export identity before the first response and keeps it only for a same-body retry', () => {
+    const { result } = renderHook(() => useAudioGenerationSession('owner', 'sermon'));
+    let first!: AudioGenerationRun, retry!: AudioGenerationRun, changed!: AudioGenerationRun;
+    act(() => { first = result.current.begin(body, 4)!; });
+    const identity = (first.progress as unknown as { exportId: string }).exportId;
+    expect(identity).toEqual(expect.any(String));
+    expect(identity.length).toBeGreaterThan(0);
+    act(() => { result.current.fail(first); result.current.finish(first); retry = result.current.begin(body, 4)!; });
+    expect((retry.progress as unknown as { exportId: string }).exportId).toBe(identity);
+    act(() => { changed = result.current.begin({ ...body, voice: 'echo' }, 4)!; });
+    expect((changed.progress as unknown as { exportId: string }).exportId).not.toBe(identity);
+  });
+
   it('keeps a newer run when old progress, completion, failure and finally arrive', () => {
     const { result } = renderHook(() => useAudioGenerationSession('owner', 'sermon'));
     let older!: AudioGenerationRun, newer!: AudioGenerationRun;

@@ -1,7 +1,11 @@
 /**
  * @jest-environment node
  */
+jest.mock('server-only', () => ({}), { virtual: true });
+
 import { ReadableStream } from 'node:stream/web';
+
+import { audioExportFirestore } from '../../../../../../test-utils/audioExportFirestore';
 import { TextDecoder, TextEncoder } from 'util';
 
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
@@ -78,6 +82,7 @@ jest.mock('next/server', () => {
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    getAll: jest.fn(),
     runTransaction: jest.fn(async callback => {
       const writes: Promise<unknown>[] = [];
       const result = await callback({ get: (ref: any) => ref.get(), update: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.update(data))); } });
@@ -116,11 +121,14 @@ jest.mock('@/utils/server/audioDurationMetering.server', () => ({
 
 jest.mock('@/services/userEntitlement.server', () => ({
   getUserEntitlementServerSide: jest.fn(),
+  normalizeEntitlementUsage: jest.requireActual('@/services/userEntitlement.server').normalizeEntitlementUsage,
+  getUsagePeriodStart: jest.requireActual('@/services/userEntitlement.server').getUsagePeriodStart,
   resolveEffectiveTier: jest.fn((entitlement: { paidTier?: string } | null | undefined) => entitlement?.paidTier ?? 'free'),
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
   createUsageAdmission: jest.fn(),
+  usageAfterConsumption: jest.requireActual('@/services/usageLimits.server').usageAfterConsumption,
   consumeAiUsage: jest.fn(),
   consumeAudioSeconds: jest.fn(),
 }));
@@ -141,6 +149,7 @@ const { POST } = require('@/api/sermons/[id]/audio/generate/route') as {
 
 const mockDoc = jest.fn();
 const mockGet = jest.fn();
+let mockOperationalIO: ReturnType<typeof audioExportFirestore>;
 
 const createRequest = (
   body: Record<string, unknown>,
@@ -218,9 +227,10 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     });
     (getMeteredAudioDurationSeconds as jest.Mock).mockResolvedValue(1);
 
-    (adminDb.collection as jest.Mock).mockReturnValue({
-      doc: mockDoc,
-    });
+    mockOperationalIO = audioExportFirestore();
+    (adminDb.collection as jest.Mock).mockImplementation(name => name === 'sermons' ? { doc: mockDoc } : mockOperationalIO.db.collection(name));
+    (adminDb.runTransaction as jest.Mock).mockImplementation(callback => mockOperationalIO.db.runTransaction(callback));
+    (adminDb.getAll as jest.Mock).mockImplementation((...references) => mockOperationalIO.db.getAll(...references));
 
     mockDoc.mockReturnValue({
       get: mockGet,
@@ -919,7 +929,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(batchEvents.flat()).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'download_complete', totalChunks: 3 }),
     ]));
-    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+    expect(mockOperationalIO.documents.get('users/user-1')!.usage.aiUsed).toBe(1);
   });
 
   it.each([
@@ -1114,6 +1124,45 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(consumeAiUsage).not.toHaveBeenCalled();
   });
 
+  it('refuses an unadmitted continuation before TTS', async () => {
+    (createUsageAdmission as jest.Mock).mockImplementation(() => {
+      throw new UsageCapReachedError('audio', 1_320, 1_200, 1_320, '2026-08-01T00:00:00.000Z');
+    });
+    (generateChunkAudio as jest.Mock).mockResolvedValue({
+      audioBlob: new Blob(['forged-continuation'], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1,
+    });
+    const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', sections: 'all', offset: 1, limit: 1 }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) });
+    if (response.status === 200) await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(generateChunkAudio).not.toHaveBeenCalled();
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
+  });
+
+  it('replays a completed continuation without another paid provider call or usage charge', async () => {
+    (generateChunkAudio as jest.Mock).mockResolvedValue({
+      audioBlob: new Blob(['retained-audio'], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1,
+    });
+    const body = { userId: 'user-1', voice: 'onyx', sections: 'all', limit: 1, exportId: 'qa-audio-export-1' };
+    const call = async (offset: number) => {
+      const response = await POST(createRequest({ ...body, offset }) as never,
+        { params: Promise.resolve({ id: 'sermon-1' }) });
+      expect(response.status).toBe(200);
+      return readStreamEvents(response.body as ReadableStream<Uint8Array>);
+    };
+    await call(0);
+    (createUsageAdmission as jest.Mock).mockImplementation(() => {
+      throw new UsageCapReachedError('audio', 1_320, 1_200, 1_320, '2026-08-01T00:00:00.000Z');
+    });
+    const original = await call(1);
+    const replay = await call(1);
+    expect(original.some(event => event.type === 'download_complete')).toBe(true);
+    expect(replay.filter(event => event.type === 'audio_chunk')).toEqual(original.filter(event => event.type === 'audio_chunk'));
+    expect(generateChunkAudio).toHaveBeenCalledTimes(2);
+    expect(mockOperationalIO.documents.get('users/user-1')!.usage).toMatchObject({ audioSecondsUsed: 2, aiUsed: 1 });
+    expect(createUsageAdmission).toHaveBeenCalledTimes(1);
+  });
+
   it('admits only offset zero and lets later batches finish after crossing the cap', async () => {
     (generateChunkAudio as jest.Mock).mockResolvedValue({
       audioBlob: new Blob(['batch-chunk'], { type: 'audio/mpeg' }),
@@ -1156,11 +1205,10 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
     await readStreamEvents(secondResponse.body as ReadableStream<Uint8Array>);
 
-    expect(consumeAudioSeconds).toHaveBeenNthCalledWith(1, 'user-1', 1.25, expect.any(Date));
-    expect(consumeAudioSeconds).toHaveBeenNthCalledWith(2, 'user-1', 2.5, expect.any(Date));
+    expect(mockOperationalIO.documents.get('users/user-1')!.usage).toMatchObject({ audioSecondsUsed: 3.75, aiUsed: 1 });
     expect(createUsageAdmission).toHaveBeenCalledTimes(1);
-    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
-    expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
+    expect(consumeAiUsage).not.toHaveBeenCalled();
   });
 
   it('sends an error event when generation fails inside the stream', async () => {

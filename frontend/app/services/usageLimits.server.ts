@@ -181,7 +181,31 @@ export const isUsageAdmitted = (
   resource: UsageResource
 ): boolean => admission?.userId === userId && admission.resources.includes(resource);
 
-type UsageCounter = 'aiUsed' | 'transcriptionSecondsUsed' | 'audioSecondsUsed';
+export type UsageCounter = 'aiUsed' | 'transcriptionSecondsUsed' | 'audioSecondsUsed';
+
+/** The same calendar reset and arithmetic for ordinary usage and an atomic result receipt. */
+export function usageAfterConsumption(
+  storedUsage: UserEntitlement['usage'] | undefined,
+  amounts: Partial<Record<UsageCounter, number>>,
+  now: Date,
+): NonNullable<UserEntitlement['usage']> {
+  const usage = normalizeEntitlementUsage(storedUsage, now);
+  const periodResets = isPriorCalendarMonth(usage.periodStart, now);
+  const next = {
+    ...usage,
+    ...(periodResets ? {
+      aiUsed: 0,
+      transcriptionSecondsUsed: 0,
+      audioSecondsUsed: 0,
+      periodStart: getUsagePeriodStart(now),
+    } : {}),
+  };
+  for (const counter of Object.keys(amounts) as UsageCounter[]) {
+    const amount = amounts[counter];
+    if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) next[counter] += amount;
+  }
+  return next;
+}
 
 async function consumeUsage(
   userId: string,
@@ -193,21 +217,8 @@ async function consumeUsage(
   await adminDb.runTransaction(async (transaction) => {
     const snapshot = await transaction.get(userRef);
     const data = snapshot.exists ? snapshot.data() : undefined;
-    const usage = normalizeEntitlementUsage(data?.usage, now);
-    const periodResets = isPriorCalendarMonth(usage.periodStart, now);
-    const current = periodResets ? 0 : usage[counter];
-
     transaction.set(userRef, {
-      usage: {
-        ...usage,
-        ...(periodResets ? {
-          aiUsed: 0,
-          transcriptionSecondsUsed: 0,
-          audioSecondsUsed: 0,
-          periodStart: getUsagePeriodStart(now),
-        } : {}),
-        [counter]: current + amount,
-      },
+      usage: usageAfterConsumption(data?.usage, { [counter]: amount }, now),
     }, { merge: true });
   });
 }

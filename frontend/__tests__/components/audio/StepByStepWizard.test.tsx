@@ -27,6 +27,7 @@ if (typeof TextEncoder === 'undefined') {
 }
 
 // --- Mocks --- //
+let mockGenerationBlocked = false;
 let mockLanguage = 'en';
 let mockOwner = 'user-123';
 let mockRealChunkEditor = false;
@@ -54,7 +55,7 @@ jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: mockOwner }
 jest.mock('@/hooks/useSermonRead', () => ({ useSermonRead: jest.fn() }));
 jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }));
 jest.mock('@/hooks/useAiUsage', () => ({
-    useAiUsage: () => ({ aiBlocked: false, blocked: () => false, blockedLabelKey: () => '', refresh: mockRefreshAiUsage }),
+    useAiUsage: () => ({ aiBlocked: mockGenerationBlocked, blocked: () => mockGenerationBlocked, blockedLabelKey: () => mockGenerationBlocked ? 'settings.usage.audioUsageExhausted' : '', refresh: mockRefreshAiUsage }),
 }));
 jest.mock('@/utils/authenticatedRequest', () => ({
     getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
@@ -178,6 +179,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         mockLanguage = 'en';
         mockOwner = 'user-123';
         mockRealChunkEditor = false;
+        mockGenerationBlocked = false;
         mockRefreshAiUsage = jest.fn().mockResolvedValue(undefined);
         mockConcatenateAudioBlobs = jest.fn((blobs: Blob[]) =>
             jest.requireActual('@/utils/audioConcat').concatenateAudioBlobs(blobs));
@@ -346,7 +348,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
                 await new Promise(resolve => setTimeout(resolve, 20));
             });
 
-            const requests = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+            const requests = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/generate'));
             expect(requests).toHaveLength(0);
         });
 
@@ -378,7 +380,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             await screen.findByRole('link', { name: /Download Again/ });
 
             const bodies = (global.fetch as jest.Mock).mock.calls
-                .filter(([url]) => String(url).includes('/audio/generate'))
+                .filter(([url]) => String(url).endsWith('/audio/generate'))
                 .map(([, init]) => JSON.parse(init.body));
             expect(bodies.map(body => body.offset)).toEqual([0, 3, 0, 3]);
             const finalBlob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
@@ -461,7 +463,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             await screen.findByRole('link', { name: /Download Again/ });
 
             const calls = (global.fetch as jest.Mock).mock.calls
-                .filter(([url]) => String(url).includes('/audio/generate'));
+                .filter(([url]) => String(url).endsWith('/audio/generate'));
             const bodies = calls.map(([, init]) => JSON.parse(init.body));
             expect(bodies.map(body => body.offset)).toEqual([0, 3, 3]);
             expect(bodies[1]).toEqual(bodies[2]);
@@ -824,7 +826,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             await goToPreview();
             fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
             await screen.findByRole('link', { name: /Download Again/ });
-            const call = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+            const call = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/audio/generate'));
             expect(JSON.parse(call[1].body)).toMatchObject({ mode: 'raw', source: { id: 'raw-source', revision: 5 }, expected: sameWords });
         });
 
@@ -954,7 +956,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
 
         await waitFor(() => expect(screen.getByText('audioExport.chunksChangedBeforeAudio')).toBeInTheDocument());
-        const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+        const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/audio/generate'));
         expect(JSON.parse(generateCall[1].body)).toMatchObject({ mode: 'ai', source: { id: 'ai-source', revision: 3 }, expected: aiChunks });
         expect(global.URL.createObjectURL).not.toHaveBeenCalled();
     });
@@ -1055,7 +1057,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
             );
         });
 
-        const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).includes('/audio/generate'));
+        const generateCall = (global.fetch as jest.Mock).mock.calls.find(([url]) => String(url).endsWith('/audio/generate'));
         expect(JSON.parse(generateCall[1].body)).not.toHaveProperty('quality');
         expect(JSON.parse(generateCall[1].body)).toMatchObject({
             provider: 'google',
@@ -1121,7 +1123,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         await screen.findByRole('link', { name: /Download Again/ });
 
-        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/generate'));
         expect(generateCalls).toHaveLength(2);
         expect(JSON.parse(generateCalls[0][1].body)).toMatchObject({
             provider: 'openai',
@@ -1178,7 +1180,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         await screen.findByRole('link', { name: /Download Again/ });
 
         const bodies = (global.fetch as jest.Mock).mock.calls
-            .filter(([url]) => String(url).includes('/audio/generate'))
+            .filter(([url]) => String(url).endsWith('/audio/generate'))
             .map(([, init]) => JSON.parse(init.body));
         expect(bodies.map(body => body.offset)).toEqual([0, 3, 3]);
         const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
@@ -1215,7 +1217,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         await screen.findByRole('link', { name: /Download Again/ });
 
         const offsets = (global.fetch as jest.Mock).mock.calls
-            .filter(([url]) => String(url).includes('/audio/generate'))
+            .filter(([url]) => String(url).endsWith('/audio/generate'))
             .map(([, init]) => JSON.parse(init.body).offset);
         expect(offsets).toEqual([0, 1, 1]);
     });
@@ -1245,7 +1247,47 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
         await screen.findByRole('link', { name: /Download Again/ });
         const offsets = (global.fetch as jest.Mock).mock.calls
-            .filter(([url]) => String(url).includes('/audio/generate'))
+            .filter(([url]) => String(url).endsWith('/audio/generate'))
+            .map(([, init]) => JSON.parse(init.body).offset);
+        expect(offsets).toEqual([0, 0]);
+        const bodies = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/generate')).map(([, init]) => JSON.parse(init.body));
+        expect(bodies[0].exportId).toEqual(expect.any(String));
+        expect(bodies[1].exportId).toBe(bodies[0].exportId);
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        expect(blob.size).toBe(3);
+    });
+
+    // BUG-20261011-stream-and-clone-reads-unbounded: a stream that fails mid-way is the same broken
+    // connection as one that stops short — said in the person's words, and only that batch repeats.
+    it('lets matching retained work resume after allowance refresh reaches the cap', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks([0, 1].map(i => ({ index: i, text: `Intro ${i}`, sectionId: 'introduction' }))));
+        const encoder = new TextEncoder();
+        const streamOf = (...events: object[]) => ({
+            ok: true,
+            body: { getReader: () => ({ read: jest.fn()
+                .mockResolvedValueOnce({ done: false, value: encoder.encode(events.map(e => JSON.stringify(e)).join('\n') + '\n') })
+                .mockResolvedValueOnce({ done: true, value: undefined }) }) },
+        });
+        (global.fetch as jest.Mock)
+            // The connection drops after part of the audio: no completion event.
+            .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'AAAA' }))
+            .mockResolvedValueOnce(streamOf({ type: 'audio_chunk', data: 'BBBB' }, { type: 'download_complete', filename: 'sermon-audio.mp3', mimeType: 'audio/mpeg' }));
+
+        const { rerender } = render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        expect(await screen.findByText('audioExport.streamInterrupted')).toBeInTheDocument();
+        expect(screen.queryByRole('link', { name: /Download Again/ })).not.toBeInTheDocument();
+
+        mockGenerationBlocked = true;
+        rerender(<StepByStepWizard {...defaultProps} />);
+        expect(await screen.findByRole('button', { name: /Generate Audio/ })).toBeEnabled();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+        const offsets = (global.fetch as jest.Mock).mock.calls
+            .filter(([url]) => String(url).endsWith('/audio/generate'))
             .map(([, init]) => JSON.parse(init.body).offset);
         expect(offsets).toEqual([0, 0]);
         const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
@@ -1278,7 +1320,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
         await screen.findByRole('link', { name: /Download Again/ });
         const offsets = (global.fetch as jest.Mock).mock.calls
-            .filter(([url]) => String(url).includes('/audio/generate'))
+            .filter(([url]) => String(url).endsWith('/audio/generate'))
             .map(([, init]) => JSON.parse(init.body).offset);
         expect(offsets).toEqual([0, 0]);
     });
@@ -1316,7 +1358,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
         await screen.findByRole('link', { name: /Download Again/ });
 
-        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).endsWith('/audio/generate'));
         expect(generateCalls).toHaveLength(4);
         expect(generateCalls.map(([, init]) => JSON.parse(init.body))).toEqual([
             expect.objectContaining({ provider: 'google', offset: 0, limit: 1 }),

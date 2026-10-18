@@ -20,7 +20,7 @@ A route that spends AI verifies the caller's Firebase bearer token first, admits
 
 ## Traps
 
-- TTS export admits only on the first batch (`offset === 0`); a crafted `offset > 0` skips admission — an accepted, documented risk in the route.
+- A positive TTS offset is not proof of admission. Batched audio uses the server-only `data-engine/serverOperations.server.ts` facade: an owner/sermon/plan-bound durable admission, exact cursor, bounded attempts and cached output receipts. New exports need current allowance; an admitted export can finish after the cap. Replaying a completed batch returns its stored bytes and never repeats the paid call. Usage, immutable successful-output settlements and admission commit together through the canonical adapter. See `.howto/generate-sermon-audio.md`; unbatched generation retains ordinary fresh admission.
 
 ## Why
 

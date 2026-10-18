@@ -911,6 +911,10 @@
     "noPlanAvailable": "No plan available for export"
   },
   "audioExport": {
+    "continuationBusy": "The previous audio request is still finishing. Wait a moment, then try again. Your text is saved.",
+    "continuationLimit": "The audio could not be completed within its attempts. Your text is saved. You can retry when the allowance is available again.",
+    "continuationUnavailable": "This audio attempt can no longer be continued. Your text is saved. Start the audio again.",
+    "startAudioAgain": "Start audio again",
     "title": "Audio Generation",
     "providerLabel": "Provider",
     "providerOpenai": "OpenAI",

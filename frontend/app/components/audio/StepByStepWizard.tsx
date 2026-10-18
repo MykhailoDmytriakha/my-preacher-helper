@@ -29,7 +29,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { toast } from 'sonner';
 
 import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
-import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
+import { AUDIO_EXPORT_BATCH_LIMIT, GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAudioGenerationSession, type AudioGenerationRun } from '@/hooks/useAudioGenerationSession';
 import { useAuth } from '@/hooks/useAuth';
@@ -76,11 +76,29 @@ class StreamInterruptedError extends Error {
     }
 }
 
-/** A batch the server refused because some of its chunks stayed silent: the file would miss that text. */
+/** A terminal or retryable server decision about the retained export. */
+class AudioExportRequestError extends Error {
+    constructor(readonly code: string) { super(code); }
+}
+
+/** A refused incomplete batch must never be downloaded with a missing paragraph. */
 class ChunkFailedError extends Error {
     constructor(readonly chunks: number[]) {
         super(TTS_CHUNK_FAILED);
     }
+}
+
+function generationFailure(error: unknown): { words: FailureWords; needsNewExport: boolean } {
+    if (error instanceof ChunksChangedError) return { words: { key: 'audioExport.chunksChangedBeforeAudio' }, needsNewExport: false };
+    if (error instanceof AudioExportRequestError) {
+        const keys: Record<string, string> = { USAGE_CAP_REACHED: 'continuationLimit', 'audio-export-busy': 'continuationBusy' };
+        const key = keys[error.code] ?? 'continuationUnavailable';
+        return { words: { key: `audioExport.${key}` }, needsNewExport: key === 'continuationUnavailable' };
+    }
+    if (error instanceof ChunkFailedError) return { words: { key: 'audioExport.chunkFailed', values: { chunks: error.chunks.join(', ') } }, needsNewExport: false };
+    if (error instanceof StreamInterruptedError) return { words: { key: 'audioExport.streamInterrupted' }, needsNewExport: false };
+    if (error instanceof Error && error.name === 'AbortError') return { words: { key: 'audioExport.generationCancelled' }, needsNewExport: false };
+    return { words: { said: error instanceof Error ? error.message : 'Unknown error' }, needsNewExport: false };
 }
 
 interface StreamEvent {
@@ -155,7 +173,7 @@ const googleModelShort = (model: GoogleTTSModel): string =>
  * 3 chunks run in parallel server-side (~one chunk's wall time + margin) — safely
  * under 60s — and the browser stitches the batches into one file.
  */
-const GENERATION_BATCH_SIZE = 3;
+const GENERATION_BATCH_SIZE = AUDIO_EXPORT_BATCH_LIMIT;
 const GOOGLE_GENERATION_BATCH_SIZE = 1;
 
 /**
@@ -209,6 +227,7 @@ function applyBatchEvent(
         acc.totalChunks = event.totalChunks;
         acc.completed = true;
     } else if (event.type === 'error') {
+        if (event.code === 'USAGE_CAP_REACHED' || event.code?.startsWith('audio-export-')) throw new AudioExportRequestError(event.code);
         if (event.code === TTS_CHUNK_FAILED && Array.isArray(event.chunks)) throw new ChunkFailedError(event.chunks);
         throw new Error(event.message || 'Generation failed');
     }
@@ -241,11 +260,12 @@ export default function StepByStepWizard({
     // Wizard + view state
     const [step, setStep] = useState<WizardStep>(1);
     const [error, setError] = useState<FailureWords | null>(null);
+    const [needsNewExport, setNeedsNewExport] = useState(false);
 
     // The session owns run identity, completed batches and context-scoped visible results.
     const generation = useAudioGenerationSession(user?.uid ?? null, sermonId);
-    const { view, genProgress, generatedFile, begin, report, complete, fail, finish, cancel, isCurrent } = generation;
-    useEffect(() => { setError(null); }, [user?.uid, sermonId]);
+    const { view, genProgress, generatedFile, begin, report, complete, fail, finish, cancel, isCurrent, canResume, reset: resetGeneration } = generation;
+    useEffect(() => { setError(null); setNeedsNewExport(false); }, [user?.uid, sermonId]);
 
     // Voice preview
     const [playingPreview, setPlayingPreview] = useState<string | null>(null);
@@ -384,7 +404,7 @@ export default function StepByStepWizard({
         const response = await apiClient(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
-            body: JSON.stringify(body),
+            body: JSON.stringify({ ...body, exportId: run.progress.exportId }),
             signal: run.controller.signal,
             category: 'audio',
         });
@@ -393,6 +413,7 @@ export default function StepByStepWizard({
             const data = await response.json().catch(() => ({}));
             run.checkpoint();
             if (response.status === 409 && data.code === CHUNKS_CHANGED) throw new ChunksChangedError(data);
+            if (data.code === 'USAGE_CAP_REACHED' || typeof data.code === 'string' && data.code.startsWith('audio-export-')) throw new AudioExportRequestError(data.code);
             throw new Error(data.error || 'Generation failed');
         }
 
@@ -517,21 +538,23 @@ export default function StepByStepWizard({
         return { parts: progress.parts, filename: progress.filename, mimeType: progress.mimeType };
     }, [fetchBatchBytes, report]);
 
+    const generationBody = useMemo<Record<string, unknown>>(() => ({
+        provider: ttsProvider,
+        voice: ttsProvider === 'google' ? googleVoice : voice,
+        model: ttsProvider === 'google' ? googleModel : OPENAI_TTS_MODEL,
+        sections, mode, source: speech.generationSource,
+        expected: chunks.filter(chunk => sections.includes(chunk.sectionId)),
+    }), [ttsProvider, googleVoice, voice, googleModel, sections, mode, speech.generationSource, chunks]);
+    const mayResumeGeneration = canResume(generationBody);
+    const canGenerateAudio = speech.ready && (!audioGenerationBlocked || mayResumeGeneration) && !needsNewExport;
+
     const handleGenerate = useCallback(async () => {
-        if (aiBlocked || !speech.ready) return;
+        if (!canGenerateAudio) return;
         const isGoogle = ttsProvider === 'google';
         const totalChunks = chunks.filter(c => sections.includes(c.sectionId)).length;
-
         setError(null);
-        const baseBody: Record<string, unknown> = {
-            provider: ttsProvider,
-            voice: isGoogle ? googleVoice : voice,
-            model: isGoogle ? googleModel : OPENAI_TTS_MODEL,
-            sections, mode, source: speech.generationSource,
-            // The text on screen for these sections: generation reads the database and makes audio
-            // only while it holds exactly this (BUG-20260810-audio-chunks-whole-array).
-            expected: chunks.filter(c => sections.includes(c.sectionId)),
-        };
+        setNeedsNewExport(false);
+        const baseBody = generationBody;
 
         const run = begin(baseBody, totalChunks);
         if (!run) return;
@@ -554,26 +577,27 @@ export default function StepByStepWizard({
             link.click();
             document.body.removeChild(link);
 
+            // Cleanup is independent of the accepted download. Never revoke a file because this request failed.
+            void (async () => {
+                const headers = await getAuthenticatedRequestHeaders();
+                const response = await apiClient(`/api/sermons/${sermonId}/audio/generate/ack`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+                    body: JSON.stringify({ exportId: run.progress.exportId }), category: 'crud',
+                });
+                if (!response.ok) throw new Error('Audio cache acknowledgement failed');
+            })().catch(() => console.warn('Audio cache cleanup can be retried later'));
             void refreshAiUsage().catch(error => console.warn('Audio usage refresh failed', error));
         } catch (err) {
             if (!isCurrent(run)) return;
-            if (err instanceof ChunksChangedError) {
-                showStoredSet(err.data);
-                setError({ key: 'audioExport.chunksChangedBeforeAudio' });
-            } else if (err instanceof ChunkFailedError) {
-                setError({ key: 'audioExport.chunkFailed', values: { chunks: err.chunks.join(', ') } });
-            } else if (err instanceof StreamInterruptedError) {
-                setError({ key: 'audioExport.streamInterrupted' });
-            } else if (err instanceof Error && err.name === 'AbortError') {
-                setError({ key: 'audioExport.generationCancelled' });
-            } else {
-                setError({ said: err instanceof Error ? err.message : 'Unknown error' });
-            }
+            if (err instanceof ChunksChangedError) showStoredSet(err.data);
+            const failure = generationFailure(err);
+            setError(failure.words);
+            setNeedsNewExport(failure.needsNewExport);
             fail(run);
         } finally {
             finish(run);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, mode, speech.ready, speech.generationSource, begin, complete, fail, finish, isCurrent]);
+    }, [sermonId, canGenerateAudio, generationBody, ttsProvider, sections, chunks, generateAudioBatches, refreshAiUsage, showStoredSet, begin, complete, fail, finish, isCurrent]);
 
     const handleCancelGeneration = useCallback(() => {
         if (cancel()) setError({ key: 'audioExport.generationCancelled' });
@@ -1197,8 +1221,8 @@ export default function StepByStepWizard({
                 </button>
                 <button
                     onClick={handleGenerate}
-                    disabled={isLoading || !speech.ready || audioGenerationBlocked}
-                    title={audioGenerationBlockedKey ? t(audioGenerationBlockedKey) : undefined}
+                    disabled={isLoading || !canGenerateAudio}
+                    title={audioGenerationBlockedKey && !mayResumeGeneration ? t(audioGenerationBlockedKey) : undefined}
                     className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                 >
                     <AudioLines className="h-4 w-4" />{t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}
@@ -1224,7 +1248,11 @@ export default function StepByStepWizard({
                         className="mb-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
                     >
                         <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                        <p className="text-sm font-medium">{sayFailure(error, t)}</p>
+                        <p className="text-sm font-medium">{sayFailure(error, t)}{needsNewExport && (
+                            <button type="button" onClick={() => { resetGeneration(); setNeedsNewExport(false); setError(null); }} className="ml-2 underline">
+                                {t('audioExport.startAudioAgain')}
+                            </button>
+                        )}</p>
                     </motion.div>
                 )}
             </AnimatePresence>

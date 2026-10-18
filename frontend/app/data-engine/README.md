@@ -356,6 +356,18 @@ generated plan over a manual one) is not a server write: it is a reviewed propos
 editor's form. Callers are the reviewed legacy-boundary routes only
 (`__tests__/architecture/firestoreBoundary.ts`).
 
+Audio export operations use the server-only public `serverOperations.server.ts` facade. Only
+App Router `api/**/route.ts` entry points may import it; browser code, services and API client
+wrappers cannot. It exposes begin/continue, delivery acknowledgement and domain errors/identity,
+never a database, path, reference, transaction or injectable store. The internal audio module
+owns admission, bounded provider attempts, cached results and immutable output settlements.
+Native storage stays in the canonical `server.ts` adapter through an owner/sermon-bound contract.
+Receipt keys cannot address person data; its dedicated usage projection/writer accepts only the
+four usage fields and preserves profile/engine metadata. Successful output settlements, admission
+and usage counters commit in one transaction. These server accounting records do not enter the
+person-edit lifecycle or change feed. Existing frozen SDK budgets and legacy caller lists remain
+unchanged; architecture negative controls cover indirect API-client wrappers too.
+
 A screen with its own optimistic model can keep it and change only where writes go. The
 structure board is the example: `structure/structureWriter.ts` is one seam for all its writes
 (legacy services by default); `useEngineStructureWriter` lays each change over the document's

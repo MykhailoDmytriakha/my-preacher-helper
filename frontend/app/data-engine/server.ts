@@ -11,9 +11,10 @@ import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePoin
 import { planDataCommand } from './serverRelations';
 import { coversCommittedEffect } from './snapshotFreshness';
 
+import type { AudioExportKey, AudioExportRecord, AudioExportStore, AudioExportTransaction, AudioExportUsage } from './audioExportStore';
 import type { FeedWrite } from './serverFeed';
 import type { CollectionChanges, CollectionPage, CommandReceipt, CommandResult, DataCommand, DocumentData, EngineMetadata, Json, ResourceRef, ResourceSnapshot } from './types';
-import type { Transaction } from 'firebase-admin/firestore';
+import type { Firestore, Transaction } from 'firebase-admin/firestore';
 
 export const MAX_COMMAND_BYTES = 1024 * 1024;
 const MAX_RECEIPT_BYTES = 1_000_000;
@@ -533,4 +534,78 @@ export function serverErrorResponse(error: unknown): Response {
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
   const invalid = code === INVALID_ARGUMENT || (error instanceof Error && error.message === INVALID_ARGUMENT);
   return Response.json({ code: invalid ? INVALID_ARGUMENT : 'unavailable' }, { status: invalid ? 400 : 503, headers: { 'Cache-Control': 'no-store' } });
+}
+
+
+/** Native IO for operational audio receipts, separate from person-edit commands and feeds. */
+export function createAudioExportStore(userId: string, sermonId: string, database: Firestore = adminDb): AudioExportStore {
+  checkOwner(userId);
+  if (!validSegment(userId) || !validSegment(sermonId)) throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+  const hash = (values: string[]) => createHash('sha256').update(JSON.stringify(values)).digest('hex');
+  const head = database.collection('_audioExports').doc(hash([userId, sermonId]));
+  const identity = (value: string) => {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(value)) throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+    return value;
+  };
+  const reference = (key: AudioExportKey) => {
+    switch (key.kind) {
+      case 'head': return head;
+      case 'admission': return database.collection('_audioExportAdmissions').doc(hash([userId, sermonId, identity(key.exportId)]));
+      case 'settlement': return database.collection('_audioExportSettlements').doc(hash([userId, sermonId, identity(key.exportId), identity(key.outputId)]));
+      case 'cache':
+        if (!/^(?:chunk-\d+|bytes-\d+-\d+)$/.test(key.id)) throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+        return head.collection('_audioExportCache').doc(key.id);
+      default: throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+    }
+  };
+  const data = <T extends AudioExportRecord>(snapshot: { exists: boolean; data(): unknown }): T | undefined =>
+    snapshot.exists ? snapshot.data() as T : undefined;
+  const user = database.collection('users').doc(userId);
+  return Object.freeze({
+    userId, sermonId,
+    read: async <T extends AudioExportRecord>(key: AudioExportKey) => data<T>(await reference(key).get()),
+    readMany: async <T extends AudioExportRecord>(keys: AudioExportKey[]) => {
+      if (!keys.length) return [];
+      return (await database.getAll(...keys.map(reference))).map(snapshot => data<T>(snapshot));
+    },
+    cacheKeys: async () => (await head.collection('_audioExportCache').select('generation').get()).docs
+      .map(document => ({ kind: 'cache' as const, id: document.id })),
+    transaction: <T>(run: (transaction: AudioExportTransaction) => Promise<T>) => database.runTransaction(async native => run({
+      read: async <V extends AudioExportRecord>(key: AudioExportKey) => data<V>(await native.get(reference(key))),
+      readMany: async <V extends AudioExportRecord>(keys: AudioExportKey[]) => {
+        if (!keys.length) return [];
+        return (await native.getAll(...keys.map(reference))).map(snapshot => data<V>(snapshot));
+      },
+      readUsage: async () => (await native.get(user)).data()?.usage as AudioExportUsage | undefined,
+      write: (key, value) => {
+        assertAudioReceiptScope(value, userId, sermonId);
+        native.set(reference(key), value);
+      },
+      writeUsage: usage => {
+        assertOperationalUsage(usage);
+        native.set(user, { usage }, { merge: true });
+      },
+      removeCache: key => {
+        if (key.kind !== 'cache') throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+        native.delete(reference(key));
+      },
+    })),
+  });
+}
+
+function assertAudioReceiptScope(value: AudioExportRecord, userId: string, sermonId: string): void {
+  if ((value.userId !== undefined && value.userId !== userId) || (value.sermonId !== undefined && value.sermonId !== sermonId)) {
+    throw new DataEngineServerError(PERMISSION_DENIED, 403);
+  }
+}
+
+function assertOperationalUsage(usage: AudioExportUsage): void {
+  const counters = ['aiUsed', 'transcriptionSecondsUsed', 'audioSecondsUsed'];
+  const allowed = new Set(['periodStart', ...counters]);
+  if (!usage || Object.keys(usage).some(key => !allowed.has(key)) ||
+      typeof usage.periodStart !== 'string' || !Number.isFinite(Date.parse(usage.periodStart)) ||
+      counters.some(key => typeof usage[key as keyof AudioExportUsage] !== 'number' ||
+        !Number.isFinite(usage[key as keyof AudioExportUsage]) || Number(usage[key as keyof AudioExportUsage]) < 0)) {
+    throw new DataEngineServerError(INVALID_ARGUMENT, 400);
+  }
 }

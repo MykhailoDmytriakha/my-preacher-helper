@@ -11,6 +11,8 @@ export interface FirestoreCall { file: string; operation: string; line: number }
 export interface BoundaryAccess { file: string; capability: string; line: number }
 
 const PUBLIC_ENGINE = new Set(['data-engine/clientPolicy.ts', 'data-engine/react.client.tsx', 'data-engine/browser.client.ts', 'data-engine/DataSyncStatus.tsx', 'data-engine/DataCollectionStatus.tsx', 'data-engine/DataMembershipStatus.tsx']);
+const SERVER_OPERATIONS = 'data-engine/serverOperations.server.ts';
+const isServerEntry = (source: string) => /^api\/(?:.+\/)?route\.ts$/.test(source);
 const ENGINE_ROUTES = new Set(['api/data-engine/commands/route.ts', 'api/data-engine/documents/[collection]/[id]/route.ts',
   'api/data-engine/collections/[collection]/route.ts', 'api/data-engine/changes/[collection]/route.ts']);
 const ADAPTERS = new Set(['data-engine/server.ts', 'data-engine/source.client.ts', 'data-engine/legacyBoundary.server.ts']);
@@ -77,6 +79,7 @@ function moduleCapability(source: string, target: string, name: string, root: st
   const destination = relative(root, target);
   if (destination.startsWith('../test-utils/')) return `test-runtime:${destination}`;
   if (destination.startsWith('data-engine/') && !source.startsWith('data-engine/') && !PUBLIC_ENGINE.has(destination)) {
+    if (destination === SERVER_OPERATIONS && isServerEntry(source)) return undefined;
     if (source === 'components/OutboxConflictBanner.tsx' && destination === 'data-engine/legacyRecovery.client.ts') return undefined;
     if (destination === 'data-engine/server.ts' && ENGINE_ROUTES.has(source)) return undefined;
     // The same reviewed server writers reach an engine-owned document through the command door.
@@ -102,8 +105,14 @@ function importCapabilities(node: ts.ImportDeclaration | ts.ExportDeclaration, c
     const capability = hasRuntime && target && moduleCapability(source, target, '*', root);
     if (capability) capabilities.add(capability);
   }
+  const facadeTarget = node.moduleSpecifier && moduleSymbol(checker, node.moduleSpecifier)?.declarations?.[0]?.getSourceFile().fileName;
+  const throughServerFacade = facadeTarget && relative(root, facadeTarget) === SERVER_OPERATIONS && isServerEntry(source);
   for (const binding of bindings) {
     for (const declaration of binding.declarations ?? []) {
+      // Only the two semantic reexports may originate inside the implementation.
+      // A future native database/store reexport must still be detected at the route.
+      if (throughServerFacade && relative(root, declaration.getSourceFile().fileName) === 'data-engine/audioExport.server.ts'
+        && ['AudioExportError', 'audioExportFingerprint'].includes(binding.name)) continue;
       const capability = moduleCapability(source, declaration.getSourceFile().fileName, binding.name, root);
       if (capability) capabilities.add(capability);
     }
@@ -176,6 +185,8 @@ function legacyWritePath(value: string): string | undefined {
   const match = value.match(/\/api\/(?:data-engine\/commands|sermons|series|groups|studies|prayer|councils|service-orders|tags|thoughts-by-section|thoughts|structure|insights)(?=\/|[?#]|$)(?:\/[^?#]*)?/);
   if (!match) return undefined;
   const endpoint = match[0].replace(/\/$/, '');
+  // Delivery acknowledgement retires operational bytes; it never edits saved person data.
+  if (/^\/api\/sermons\/[^/]+\/audio\/generate\/ack$/.test(endpoint)) return undefined;
   if (/\/(?:brainstorm|generate-outline-points|compose-plan-from-scratch|cut|analyze|transcribe)$/.test(endpoint)) return undefined;
   return endpoint;
 }
