@@ -2059,6 +2059,7 @@
     },
     "exitPreachingMode": "Вийти з режиму проповіді",
     "progress": {
+      "total": "Прогрес проповіді",
       "introduction": "Вступ завершено на {progress}%",
       "main": "Основна частина завершена на {progress}%",
       "conclusion": "Висновок завершено на {progress}%"

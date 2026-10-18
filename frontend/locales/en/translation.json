@@ -2035,6 +2035,7 @@
     },
     "exitPreachingMode": "Exit Preaching Mode",
     "progress": {
+      "total": "Sermon progress",
       "introduction": "Introduction progress: {progress}% complete",
       "main": "Main part progress: {progress}% complete",
       "conclusion": "Conclusion progress: {progress}% complete"

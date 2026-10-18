@@ -120,6 +120,7 @@ describe('PreachingTimer Integration', () => {
       mainRatio: 0.6,
       conclusionRatio: 0.2,
       mode: 'total' as const,
+      phaseDurations: { introduction: 240, main: 960, conclusion: 0 },
       updateSettings: jest.fn(),
     },
     events: {

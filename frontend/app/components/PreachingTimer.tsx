@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import { usePreachingTimer } from '@/hooks/usePreachingTimer';
 import { TimerPhase, TimerPhaseDurations } from '@/types/TimerState';
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { useKeyboardShortcut } from '@hooks/useKeyboardShortcut';
 
 import CustomTimePicker from './CustomTimePicker';
@@ -175,6 +176,7 @@ interface PreachingTimerProps {
     timeRemaining: number;
     isFinished: boolean;
     isBlinking?: boolean;
+    phaseDurations?: TimerPhaseDurations;
   }) => void;
   /** When provided, used as fallback when there is no history (e.g. opened in new tab). Otherwise back() returns to where the user came from. */
   exitFallbackPath?: string;
@@ -221,18 +223,27 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     onFinish: onTimerFinished,
   });
 
+  const { introduction, main, conclusion } = settings.phaseDurations;
+  const phaseDurations = useMemo(() => ({ introduction, main, conclusion }), [introduction, main, conclusion]);
+  const timerSnapshot = useMemo(() => ({
+    currentPhase: timerState.currentPhase,
+    phaseProgress: progress.phaseProgress,
+    totalProgress: progress.totalProgress,
+    phaseProgressByPhase: {
+      introduction: progress.phaseProgressByPhase.introduction,
+      main: progress.phaseProgressByPhase.main,
+      conclusion: progress.phaseProgressByPhase.conclusion,
+    },
+    timeRemaining: progress.timeRemaining,
+    isFinished: timerState.isFinished,
+    phaseDurations,
+  }), [timerState.currentPhase, timerState.isFinished, progress.phaseProgress, progress.totalProgress,
+    progress.timeRemaining, progress.phaseProgressByPhase.introduction, progress.phaseProgressByPhase.main,
+    progress.phaseProgressByPhase.conclusion, phaseDurations]);
+
   useEffect(() => {
-    if (onTimerStateChange && progress) {
-      onTimerStateChange({
-        currentPhase: timerState.currentPhase,
-        phaseProgress: progress.phaseProgress,
-        totalProgress: progress.totalProgress,
-        phaseProgressByPhase: progress.phaseProgressByPhase,
-        timeRemaining: progress.timeRemaining,
-        isFinished: timerState.isFinished,
-      });
-    }
-  }, [timerState.currentPhase, timerState.isFinished, progress, onTimerStateChange]);
+    onTimerStateChange?.(timerSnapshot);
+  }, [timerSnapshot, onTimerStateChange]);
 
   const [showInlinePresets, setShowInlinePresets] = useState(false);
   const [showCustomPicker, setShowCustomPicker] = useState(false);
@@ -487,6 +498,27 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
             </div>
           </div>
         </div>
+
+        {settings.totalDuration > 0 && (
+          <div
+            role="progressbar"
+            aria-label={t('plan.progress.total')}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress.totalProgress * 100)}
+            className="flex h-1.5 w-full overflow-hidden"
+          >
+            {(['introduction', 'main', 'conclusion'] as const).map((phase) => {
+              const color = SERMON_SECTION_COLORS[phase === 'main' ? 'mainPart' : phase].base;
+              return phaseDurations[phase] > 0 ? (
+                <div key={phase} className="relative h-full" style={{ flex: phaseDurations[phase] }} aria-hidden="true">
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundColor: color }} />
+                  <div className="relative h-full" style={{ width: `${progress.phaseProgressByPhase[phase] * 100}%`, backgroundColor: color }} />
+                </div>
+              ) : null;
+            })}
+          </div>
+        )}
 
         {/* Inline Timer Presets */}
         {showInlinePresets && (

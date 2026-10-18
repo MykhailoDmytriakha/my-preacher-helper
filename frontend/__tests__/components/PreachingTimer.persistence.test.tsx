@@ -58,6 +58,7 @@ describe('PreachingTimer Persistence', () => {
     mainRatio: 0.8,
     conclusionRatio: 0.0,
     mode: 'total' as const,
+      phaseDurations: { introduction: 240, main: 960, conclusion: 0 },
   };
 
   const createActions = () => ({

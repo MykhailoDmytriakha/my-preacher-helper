@@ -336,6 +336,7 @@ describe('usePreachingTimer', () => {
     });
 
     expect(result.current.settings.mode).toBe('sections');
+    expect(result.current.settings.phaseDurations).toEqual({ introduction: 120, main: 600, conclusion: 180 });
     expect(result.current.settings.totalDuration).toBe(900);
     expect(result.current.timerState.timeRemaining).toBe(900);
   });

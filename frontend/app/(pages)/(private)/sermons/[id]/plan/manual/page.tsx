@@ -34,7 +34,7 @@ import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
 import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
-import type { SermonSectionKey } from "../types";
+import type { PlanTimerState, SermonSectionKey } from "../types";
 import type { SermonPoint } from "@/models/models";
 
 const NO_PLAN_CONTENT_KEY = "plan.noContent";
@@ -286,6 +286,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
   const sermonId = useRouteId();
   const router = useRouter();
   const { sermon, loading, error } = source;
+  const [timerState, setTimerState] = useState<PlanTimerState | null>(null);
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
   const conspectus = useManualConspectus({ sermon, t, mode: noteMode ? 'note' : 'manual' });
@@ -453,12 +454,12 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
         sermon={sermon}
         combinedPlan={combinedPlan}
         t={t}
-        timerState={null}
+        timerState={timerState}
         isPlanPreaching
         planViewMode="preaching"
         noContentText={noContentText}
         preachingDuration={null}
-        onTimerStateChange={() => undefined}
+        onTimerStateChange={setTimerState}
         onTimerFinished={() => undefined}
         onSetDuration={() => undefined}
       />

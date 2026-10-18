@@ -1,5 +1,5 @@
 import type { Plan } from "@/models/models";
-import type { TimerPhase } from "@/types/TimerState";
+import type { TimerPhase, TimerPhaseDurations } from "@/types/TimerState";
 
 export type PlanViewMode = "overlay" | "immersive" | "preaching";
 
@@ -29,6 +29,7 @@ export interface PlanTimerState {
   phaseProgressByPhase: PlanPhaseProgressByPhase;
   timeRemaining: number;
   isFinished: boolean;
+  phaseDurations?: TimerPhaseDurations;
 }
 
 type SermonSectionColorMap = typeof import("@/utils/themeColors").SERMON_SECTION_COLORS;

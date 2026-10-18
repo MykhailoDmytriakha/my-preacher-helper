@@ -172,6 +172,13 @@ export default function FullPlanContent({
   const introductionToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.INTRODUCTION];
   const mainToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.MAIN];
   const conclusionToneClasses = SECTION_TONE_CLASSES[SECTION_NAMES.CONCLUSION];
+  const sectionTime = (section: SermonSectionKey) => {
+    const duration = timerState?.phaseDurations?.[section];
+    if (!isPreachingMode || duration === undefined) return null;
+    return <span className="ml-4 inline-block whitespace-nowrap text-lg font-medium tabular-nums opacity-80">
+      {`${Math.floor(duration / 60).toString().padStart(2, '0')}:${(duration % 60).toString().padStart(2, '0')}`}
+    </span>;
+  };
 
   // Every reference in the plan opens over it, as the sermon's verse does: "Быт. 6:13" mid-sentence too.
   return (
@@ -211,6 +218,7 @@ export default function FullPlanContent({
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${introductionToneClasses.text} mb-4 pb-2 border-b ${introductionToneClasses.border}`}>
           {t(TRANSLATION_KEYS.SECTIONS.INTRODUCTION)}
+          {sectionTime("introduction")}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${introductionToneClasses.border} prose-introduction`}>
           <MarkdownRenderer
@@ -233,6 +241,7 @@ export default function FullPlanContent({
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${mainToneClasses.text} mb-4 pb-2 border-b ${mainToneClasses.border}`}>
           {t(TRANSLATION_SECTIONS_MAIN)}
+          {sectionTime("main")}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${mainToneClasses.border} prose-main`}>
           <MarkdownRenderer
@@ -252,6 +261,7 @@ export default function FullPlanContent({
         )}
         <h2 className={`relative z-10 text-2xl font-bold ${conclusionToneClasses.text} mb-4 pb-2 border-b ${conclusionToneClasses.border}`}>
           {t(TRANSLATION_SECTIONS_CONCLUSION)}
+          {sectionTime("conclusion")}
         </h2>
         <div className={`relative z-10 pl-2 border-l-4 ${conclusionToneClasses.border} prose-conclusion`}>
           <MarkdownRenderer

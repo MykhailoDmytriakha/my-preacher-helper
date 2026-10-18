@@ -57,7 +57,7 @@ export default function PlanPreachingView({
         <FloatingTextScaleControls />
 
         {planViewMode === "preaching" && (
-          <main className="flex-1 overflow-y-auto pt-[115px] lg:pt-[65px]">
+          <main className="flex-1 overflow-y-auto pt-[115px] lg:pt-[72px]">
             <div className="preaching-content px-4 sm:px-6 pt-0 pb-8">
               <div className="mb-4 mt-0 lg:-mt-1">
                 <Breadcrumbs forceShow={true} />
