@@ -277,6 +277,10 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261018-preaching-plan-slow-open · Возможная остаточная задержка открытия плана на сайте
+**Найден.** 2026-10-18 · владелец: спиннер или пустой экран. `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:411`, `frontend/app/sw.ts:100` — точки проверки, остаточная причина не установлена.
+**Ожидалось.** Уже просмотренный план быстро открывается из локальной копии без ожидания фоновой проверки сервера; чужой аккаунт не показывается. На проверенном Chrome длительное ожидание не повторилось. Длительность и устройство владельца неизвестны; нужны замер и стадия ожидания, если после `82b5e9d` задержка сохраняется. Связь с исправлением таймера не доказана.
+
 ### BUG-20261017-admin-offline-data · Previously seen admin content has no offline route or saved data view
 **P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
 **Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.
