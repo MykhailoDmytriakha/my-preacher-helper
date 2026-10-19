@@ -2,6 +2,14 @@ import { act, render, screen, fireEvent, cleanup, waitFor, within } from '@testi
 import React from 'react';
 
 import '@testing-library/jest-dom';
+import { createBrowserDataEngine } from '@/data-engine/browser.client';
+import { DataEngineProvider } from '@/data-engine/react.client';
+import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
+
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'u1' } }) }));
+jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
+jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 
 import type { User } from 'firebase/auth';
 import type { PlanTemplate } from '@/models/models';
@@ -119,69 +127,9 @@ describe('PlanTemplatesSection', () => {
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'Alpha renamed' }, 0));
   });
 
-  // An edit inside the 400 ms pause lived only in memory when the page went away (BUG-20261006-hidden-tab-holds-last-edit).
-  it('saves a pending structure edit at once when the page is hidden', () => {
-    jest.useFakeTimers();
-    try {
-      mockTemplates = [tpl('t1', 'Alpha', 0)];
-      render(<PlanTemplatesSection user={user} />);
-      fireEvent.click(screen.getByLabelText('common.expand'));
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
-      const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'Before the lock' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
-      expect(mockUpdate).not.toHaveBeenCalled();
+  // Immediate rendering and hidden-page capture are exercised against the real engine in
+  // templateOutlineCapture.test.tsx, rather than an implementation-shaped updateTemplate mock.
 
-      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-      try {
-        act(() => { document.dispatchEvent(new Event('visibilitychange')); });
-      } finally {
-        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
-      }
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockUpdate).toHaveBeenCalledWith('t1', { structure: expect.objectContaining({
-        introduction: [expect.objectContaining({ text: 'Before the lock' })],
-      }) }, 0);
-      act(() => { jest.advanceTimersByTime(1000); });
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
-
-  it('shows a newly added point immediately, before any refetch', () => {
-    // The hook mock never feeds back the saved structure, so if the board read
-    // straight from the cache the point would never render. The local draft
-    // buffer must show it on Enter — regression guard for the ~1s "it vanished".
-    //
-    // Fake timers: the edit is saved on a 400 ms debounce. Left pending on real timers it
-    // fired inside whichever test ran next and added a call to that test's count — the
-    // flake of 'brings the choice back when the resend is refused LATE' on a busy machine.
-    jest.useFakeTimers();
-    try {
-      mockTemplates = [tpl('t1', 'Alpha', 0)];
-      render(<PlanTemplatesSection user={user} />);
-
-      fireEvent.click(screen.getByLabelText('common.expand'));
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]); // Introduction column
-
-      const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'New point' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
-
-      // Visible right away — no waitFor, no updateTemplate round-trip needed.
-      expect(screen.getByText('New point')).toBeInTheDocument();
-      expect(mockUpdate).not.toHaveBeenCalled();
-
-      act(() => { jest.advanceTimersByTime(400); });
-      expect(mockUpdate).toHaveBeenCalledTimes(1);
-      expect(mockUpdate).toHaveBeenCalledWith('t1', { structure: expect.objectContaining({
-        introduction: [expect.objectContaining({ text: 'New point' })],
-      }) }, 0);
-    } finally {
-      jest.useRealTimers();
-    }
-  });
 });
 
 /**
@@ -271,69 +219,57 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
     expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
   });
 
-  it('does not let a structure confirmation discard a newer outline draft', async () => {
-    jest.useFakeTimers();
-    try {
-      mockTemplates = [tpl('t1', 'Alpha')];
-      mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
-      render(<PlanTemplatesSection user={user} />);
-      fireEvent.click(screen.getByLabelText('common.expand'));
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
-      let pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'Refused outline text' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
-      await act(async () => { await jest.advanceTimersByTimeAsync(400); });
-      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+  const openLegacyStructure = async () => {
+    const template = tpl('t1', 'Alpha');
+    template.structure.introduction = [{ id: 'old-point', text: 'Refused outline text' }];
+    expect(saveDraft(draftKey('u1', 't1', 'conflict:template'), { actualRevision: 5,
+      payload: { templateId: 't1', label: 'Alpha', updates: { structure: template.structure } } })).toBe(true);
+    const harness = documentEngineHarness({ resource: { collection: 'planTemplates', id: 't1' }, value: template as never,
+      metadata: { protocol: 1, generation: 'g1', revision: 1, deleted: false } });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><PlanTemplatesSection user={user} /></DataEngineProvider>);
+    await screen.findByText('freshness.conflictTitle');
+    await act(async () => { harness.engine.setOnline(false); });
+    fireEvent.click(screen.getByLabelText('common.expand'));
+    await screen.findByText('Refused outline text');
+    return view;
+  };
+  const addCanonicalPoint = (text: string) => {
+    fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
+    const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+    fireEvent.change(pointInput, { target: { value: text } });
+    fireEvent.keyDown(pointInput, { key: 'Enter' });
+  };
 
+  it('does not let a legacy structure confirmation discard a newer canonical outline draft', async () => {
+    const view = await openLegacyStructure();
+    try {
       fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
       const dialog = await screen.findByRole('dialog');
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
-      pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'Newer outline text' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
+      addCanonicalPoint('Newer outline text');
       fireEvent.click(within(dialog).getAllByRole('button')[0]);
-
+      await act(settleEngine);
       expect(mockRefresh).not.toHaveBeenCalled();
       expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
       expect(screen.getByText('Refused outline text')).toBeInTheDocument();
       expect(screen.getByText('Newer outline text')).toBeInTheDocument();
-    } finally {
-      jest.useRealTimers();
-    }
+    } finally { view.unmount(); await act(settleEngine); }
   });
 
-  it('does not clear a newer outline draft after the confirmed refresh returns', async () => {
-    jest.useFakeTimers();
+  it('does not clear a newer canonical outline draft after the legacy refresh returns', async () => {
     let finishRefresh!: (result: { isError: false }) => void;
+    mockRefresh.mockReturnValueOnce(new Promise(resolve => { finishRefresh = resolve; }));
+    const view = await openLegacyStructure();
     try {
-      mockTemplates = [tpl('t1', 'Alpha')];
-      mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
-      mockRefresh.mockReturnValueOnce(new Promise((resolve) => { finishRefresh = resolve; }));
-      render(<PlanTemplatesSection user={user} />);
-      fireEvent.click(screen.getByLabelText('common.expand'));
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
-      let pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'Refused outline text' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
-      await act(async () => { await jest.advanceTimersByTimeAsync(400); });
-      expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
-
       fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
       const dialog = await screen.findByRole('dialog');
       fireEvent.click(within(dialog).getAllByRole('button')[0]);
       await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
-
-      fireEvent.click(screen.getAllByText('structure.addPointButton')[0]);
-      pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
-      fireEvent.change(pointInput, { target: { value: 'Draft changed during refresh' } });
-      fireEvent.keyDown(pointInput, { key: 'Enter' });
-      await act(async () => { finishRefresh({ isError: false }); await Promise.resolve(); });
-
+      addCanonicalPoint('Draft changed during refresh');
+      await act(async () => { finishRefresh({ isError: false }); await settleEngine(); });
       expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
       expect(screen.getByText('Draft changed during refresh')).toBeInTheDocument();
-    } finally {
-      jest.useRealTimers();
-    }
+    } finally { view.unmount(); await act(settleEngine); }
   });
 
   it('offers the choice when the conflict arrives AFTER the write was accepted', async () => {

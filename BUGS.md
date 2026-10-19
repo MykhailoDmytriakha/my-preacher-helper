@@ -14,14 +14,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20261019-template-outline-unwritten-collapse · После ошибки сохранения новый пункт шаблона пропадает при сворачивании
-**Severity.** P2 — набранный пункт структуры остаётся только в памяти экрана и исчезает после обычного сворачивания; подтверждено управляемым отказом локального IndexedDB, не заявлением о реальном сбое квоты на проде.
-**Где.** Настройки → Шаблоны плана → раскрыть существующий шаблон → добавить пункт. `frontend/app/components/settings/PlanTemplatesSection.tsx:115-122,219-243`: `draftStructure` принадлежит компоненту, автосохранение вызывает отдельное действие, сворачивание сбрасывает копию. Общий движок уже умеет удерживать редактируемый документ: `frontend/app/data-engine/react.client.tsx:534-546,567,754-782`.
-**Ожидание пользователя.** Если запись не удалась, пункты остаются доступны с понятным состоянием и повтором. Сворачивание или переход к другому шаблону должны сначала надёжно передать текущую правку либо оставить редактор открытым; старый пустой вариант нельзя выдавать за сохранённый результат.
-**Воспроизведение.** На неизменённом localhost build `dHk_81sJK7fnppArY6V9E`, 390px, свой RAM-шаблон: добавить пункт, отклонить native IndexedDB put с этим текстом, дождаться двух отказов; пункт ещё виден. Свернуть и раскрыть — пункт исчезает, исходный другой пункт остаётся. Отправленных команд ноль. ROOT просмотрел три исходных PNG.
-**Доказательство.** Дело `2026-10-15-lokalnoe-ispravlenie-vseh-bagov`, artifacts/reference-provenance-template-capture-before-structure-390-v1.{js,json,log} и typed/after-storage-refusal/after-fold-reopen.png. `beforeFold=1`, `afterFold=0`, `storageFaults=2`, команды отсутствуют.
-**Граница и направление.** Это владение несохранённой структурой, отдельно от ожидания явных кнопок rename/delete в BUG-20261017-engine-edit-before-durable-capture. Нужен один штатный редактор/черновик движка на открытый шаблон и проверяемый захват перед его закрытием, без новой очереди и копирования merge-правил. Проверить быстрые правки, переход между шаблонами, отказ/повтор, обновление списка, офлайн-перезапуск и старые сохранённые конфликты. Исправление следует отдельным следующим циклом после явных кнопок.
-
 ### BUG-20261018-ipad-sermon-plan-button · На iPad после «План проповеди» открывается Application Error
 **P2** — план недоступен при рабочем интернете; воспроизведение на устройстве — со слов владельца. `frontend/app/components/sermon/StructureStats.tsx:206`, `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:286` — точки проверки, причина не установлена.
 **Найден.** 2026-10-18 · владелец и фидбек iPad: два `runtime-error javascript` через 26/20 мс после входа в ручной план (18:02:39/55 PDT), второй после нового запуска. **Ожидалось.** Кнопка внутри проповеди открывает её план. **Получилось.** Application Error; исторический отчёт не хранит исключение, стек, координаты, query режима или версию непосредственно в событии. Классификация `javascript` сама по себе не исключает сбой загрузки asset. В поздней сессии `82b5e9d` тот же план открывается; корень неизвестен. Задержки `engine-state` по 7–8 с относятся другим сессиям; `localFailure` после возврата назад есть в сессии первого отказа, причинная связь не доказана.
@@ -76,6 +68,17 @@
 ---
 
 ## 🔵 P3 — открыто
+
+### BUG-20261019-template-outline-tablet-crowding · На ширине 820 текст пунктов шаблона перекрывает кнопки
+**P3** — редактор доступен, но три колонки в узкой области рядом с настройками сдавливают пункты и кнопки. `frontend/app/components/settings/TemplateOutlineEditor.tsx:51-53` наследует `md:grid-cols-3`; ряд пункта — `frontend/app/components/plan-editor/OutlineBoard.tsx:805-846`.
+**Где и как.** Настройки → Шаблоны плана → раскрыть шаблон с пунктами на ширине 820px. Текст «Retained template point» пересекается с кнопками правки/удаления, подпись добавления подпункта становится узкой вертикальной полосой. Подтверждено ROOT и независимым просмотром `reference-provenance-template-inline-independent-offline-820-v1-accepted-reopened.png` в деле локальных исправлений.
+**Ожидание пользователя.** Пункты и кнопки читаются и нажимаются раздельно; число колонок зависит от доступного места редактора. Общая страница не получает горизонтальную прокрутку. Проверить тот же класс досок на соседних экранах без изменения сохранения и поведения перетаскивания.
+
+
+### BUG-20261019-template-recovery-raw-outline · Уведомление об отказе шаблона показывает внутренний JSON вместо пунктов
+**P3** — сохранённые слова доступны, но человеку приходится читать `id`, `introduction` и скобки. `frontend/app/components/EngineConflictBanner.tsx:125-141`: объект `planTemplates.structure` попадает в общий JSON fallback.
+**Где и как.** Настройки → Шаблоны плана → добавить пункт → свернуть до ответа → сервер отклоняет запись. Общая панель показывает весь объект структуры с внутренними ID. Подтверждено localhost/native1280, `reference-provenance-template-inline-after-server-refusal-1280-v2-late-refusal.png` в деле локальных исправлений.
+**Ожидание пользователя.** Уведомление сохраняет все авторские слова и показывает понятные части и пункты плана; служебные ID и JSON не нужны. Неизвестные данные нельзя скрывать. Форматирование не должно менять выбор копии, восстановление или отправку.
 
 
 ### BUG-20261018-study-note-self-recovery · При создании заметки появляется предложение восстановить текст «из прошлого сеанса»
@@ -314,18 +317,14 @@
 
 
 ### BUG-20261017-engine-edit-before-durable-capture · Some engine edit adapters still accept a timer before local capture
-**Severity.** P2 source-class recheck for remaining tag/structure adapters. Prayer actions are locally verified in Phase110 and explicit template rename/delete in Phase111; neither slice proves every remaining writer. Inline template collapse loss has its own open BUG-20261019-template-outline-unwritten-collapse.
+**Severity.** P2 source-class recheck for remaining tag/structure adapters. Prayer actions are locally verified in Phase110 and explicit template rename/delete in Phase111; neither slice proves every remaining writer. Inline template points use the canonical editor; remaining tag/structure adapters still need controlled capture QA.
 **Found.** Oct17 source class audit while fixing BUG-20261012-plan-template-create-dropped-silently; QA required, no new runtime failure claim.
 **Remaining anchors.** `useTags.ts:63,69` remove/recolor; structure `useSermonActions.ts:350,477,524`, `useAiSortingDiff.ts:578`, `useStructureDnd.ts:979,1076`, structure/page.tsx:615. Prayer hooks and explicit template actions are locally verified in Phase110/111; the remaining adapters still require their own controlled UI capture checks.
 **Expected/observed.** Awaiting local engine capture must retain the input until ownership is durable; the remaining tag/structure wrappers still call queuedMutation/queuedWrite, whose timer can resolve first. Several have rollback/conflict or late handlers, so code shape alone does not prove lost words in each UI.
 **Recheck.** For each writer-backed consumer, hold/reject canonical local capture; inspect editor state, recovery and server commands, then retry. Distinguish legacy network writers, local draft ownership and actual server delivery. Do not globally change queuedWrite: React Query/offline legacy consumers rely on another ownership contract.
 **User contract.** Edit/delete affects only the explicit action; failed capture leaves the person's current work available and explains the next step. No new product decision is needed.
 **Relation.** Earlier BUG-20261016-engine-draft-before-request concerns a draft already on disk before a request; this is acceptance before durable capture. Note delivery labeling remains a separate open record.
-**Confirmed prayer slice, 2026-10-19.** Unchanged localhost build `R_N7tn526GhNc-W7ZYaA-`, 390px, Prayer Journal -> own disposable prayer -> Add Update. A targeted native IndexedDB put refusal reached the actual engine twice; the editor closed and its authored update disappeared, with zero sent commands and no saved update. ROOT inspected both original images. Evidence: case artifacts/reference-provenance-prayer-capture-before-update-390-v2.{json,js,log}, typed/after-capture-failure PNGs. The final seven mounted regressions fail before the fix: premature update dismissal, delayed rejection, edit/answer dismissal and duplicate edit/status/delete completion. Native v1 only had an incorrect heading selector and is excluded as product evidence. Prayer edit/status/delete/add-update now await actual public capture; RED7 becomes GREEN9839, with native failure/retry and offline continuation verified independently. Tag/structure adapter scope remains open; see docs/verification/local-bug-fixes.md for the prayer slice and later production steps.
 
-
-
-**Confirmed explicit template slice, 2026-10-19.** Unchanged build dHk_81sJK7fnppArY6V9E at390, Settings -> Structure templates -> rename: two native IndexedDB refusals close the typed name with no command. Four mounted capture controls fail before correction. Independent review adds two failing owner-switch controls; all25 focused tests now pass, final full900suites/9846tests pass, lint0errors/24inheritedwarnings, compiled build J_yaHLe2A2QbxRNrLZhGW passes types/build. Eight root native cases at390/1280 verify exact retry, offline native SW cold reopen, stable queued deletion through reload and one ACK/tombstone, retained late refusal and legacy choice retry. Root inspects20 originals out of35. Canonical lists deliberately retain pending deletion until ACK; the first offline-delete probe's immediate-disappearance expectation was a harness error, corrected without product changes. Explicit rename/delete now await actual public capture, retain usable UI on failure and retire temporary UI on owner change; generic inline/KeepMine capture errors are observed. The separately confirmed inline collapse-lifetime bug remains open and next. Independent native820 rename/delete pass12 checks each with all12 final originals inspected; production/backend/installed/device acceptance stays pending in the phase packet.
 
 ### BUG-20261017-stored-choice-list-projection - Immediate list cards can show the opening copy after taking the saved version
 **Status.** Requires recheck: immediate visible mismatch and seven-second DOM residue reproduced under isolated collection-head Listen; source/product cause is not established.

@@ -5,8 +5,8 @@ import { User } from 'firebase/auth';
 import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import TemplateOutlineEditor, { type TemplateOutlineEditorHandle } from '@/components/settings/TemplateOutlineEditor';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
@@ -22,6 +22,7 @@ import type { PlanTemplate, SermonOutline } from '@/models/models';
 
 interface PlanTemplatesSectionProps {
   user: User | null;
+  requestedTemplateId?: string | null;
 }
 
 const STRUCTURE_SAVE_ERROR = 'planTemplates.saveStructureError';
@@ -31,7 +32,7 @@ const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclus
 const countPoints = (outline?: SermonOutline): number =>
   (outline?.introduction?.length ?? 0) + (outline?.main?.length ?? 0) + (outline?.conclusion?.length ?? 0);
 
-const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => {
+const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user, requestedTemplateId }) => {
   const { t } = useTranslation();
   const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh } =
     usePlanTemplates(user?.uid);
@@ -69,14 +70,14 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const [renameText, setRenameText] = useState('');
   const [renamingPending, setRenamingPending] = useState(false);
   const renamingPendingRef = useRef(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  // Local optimistic copy of the expanded template's structure. The OutlineBoard
-  // is a controlled editor (renders straight from `value`); feeding it the React
-  // Query cache directly meant a freshly added point only appeared after the
-  // debounced save + refetch round-trip (~1s of "it vanished"). Buffering the
-  // edit locally makes the point show on Enter; the save catches up in the
-  // background. Mirrors how PlanEditorModal owns its own `outline` state.
-  const [draftStructure, setDraftStructure] = useState<SermonOutline | null>(null);
+  const [expanded, setExpanded] = useState<{ owner: string; id: string } | null>(null);
+  const expandedId = expanded?.owner === user?.uid ? expanded?.id ?? null : null;
+  const expandedIdRef = useRef(expandedId);
+  expandedIdRef.current = expandedId;
+  const inlineEditor = useRef<TemplateOutlineEditorHandle | null>(null);
+  const transition = useRef<{ owner: string; token: object } | null>(null);
+  const [transitionOwner, setTransitionOwner] = useState<string | null>(null);
+  const transitioning = Boolean(user?.uid && transitionOwner === user.uid);
   const [pendingDeleteTpl, setPendingDeleteTpl] = useState<PlanTemplate | null>(null);
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
@@ -85,34 +86,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   conflictRef.current = conflict;
   const conflictTemplateIdRef = useRef(conflictTemplateId);
   conflictTemplateIdRef.current = conflictTemplateId;
-  const draftStructureRef = useRef(draftStructure);
-  draftStructureRef.current = draftStructure;
   const userIdRef = useRef(user?.uid ?? null);
   userIdRef.current = user?.uid ?? null;
-  const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
-  // The save each waiting timer will run, so the page going away can run it now.
-  const pendingSaves = useRef<Record<string, () => void>>({});
-
-  /**
-   * An outline edit waits 400 ms and, until then, lives only in memory — a screen locked or a
-   * tab left inside that pause held it back (BUG-20261006-hidden-tab-holds-last-edit). Hiding
-   * the page runs every waiting save at once.
-   */
-  useEffect(() => {
-    const flush = () => {
-      for (const [id, save] of Object.entries(pendingSaves.current)) {
-        clearTimeout(saveTimers.current[id]);
-        save();
-      }
-    };
-    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, []);
 
   useEffect(() => { withdraw(); }, [user?.uid, conflictTemplateId, withdraw]);
 
@@ -125,15 +100,38 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   }, [user?.uid]);
 
 
-  const toggleExpand = (tpl: PlanTemplate) => {
-    if (expandedId === tpl.id) {
-      setExpandedId(null);
-      setDraftStructure(null);
-    } else {
-      setExpandedId(tpl.id);
-      setDraftStructure(tpl.structure ?? emptyOutline());
+  const selectTemplate = async (nextId: string | null) => {
+    const owner = userIdRef.current;
+    if (!owner || transition.current?.owner === owner || deletingRef.current) return;
+    const currentId = expandedIdRef.current, editor = inlineEditor.current;
+    if (currentId === nextId) return;
+    const token = {};
+    transition.current = { owner, token };
+    setTransitionOwner(owner);
+    try {
+      if (currentId && editor) await editor.capture();
+      if (userIdRef.current === owner && expandedIdRef.current === currentId && inlineEditor.current === editor) {
+        setExpanded(nextId ? { owner, id: nextId } : null);
+      }
+    } catch {
+      // The canonical document says why capture failed. Its board stays open.
+    } finally {
+      if (transition.current?.token === token) {
+        transition.current = null;
+        setTransitionOwner(null);
+      }
     }
   };
+  const selectTemplateRef = useRef(selectTemplate);
+  selectTemplateRef.current = selectTemplate;
+  const openedRequest = useRef<string | null>(null);
+  useEffect(() => {
+    if (!user?.uid || !requestedTemplateId || !templates.some(tpl => tpl.id === requestedTemplateId)) return;
+    const request = JSON.stringify([user.uid, requestedTemplateId]);
+    if (openedRequest.current === request) return;
+    openedRequest.current = request;
+    void selectTemplateRef.current(requestedTemplateId);
+  }, [user?.uid, requestedTemplateId, templates]);
 
   const handleCreate = async () => {
     const submittedName = newName;
@@ -220,12 +218,12 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
       toast.error(t('planTemplates.deleteError'));
     };
     try {
-      await awaitWriteOperation(deleteTemplate(tpl.id), reportFailure);
+      const editor = expandedIdRef.current === tpl.id ? inlineEditor.current : null;
+      await awaitWriteOperation(editor ? editor.remove() : deleteTemplate(tpl.id), reportFailure);
       if (userIdRef.current !== ownerId) return;
       setPendingDeleteTpl(current => current?.id === tpl.id ? null : current);
       if (expandedId === tpl.id) {
-        setExpandedId(null);
-        setDraftStructure(null);
+        setExpanded(null);
       }
     } catch (error) {
       reportFailure(error);
@@ -233,33 +231,6 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
       deletingRef.current = false;
       setDeleting(false);
     }
-  };
-
-  // Debounced structure save while editing a template's outline inline.
-  const handleStructureChange = (tpl: PlanTemplate, structure: SermonOutline) => {
-    // Reflect the edit instantly (the board reads `value`), then persist on a debounce.
-    setDraftStructure(structure);
-    if (saveTimers.current[tpl.id]) clearTimeout(saveTimers.current[tpl.id]);
-    const ownerId = user?.uid;
-    const reportFailure = (error: unknown) => {
-      if (userIdRef.current !== ownerId) return;
-      if (offerConflictChoice(tpl, error, { structure }, tpl.name)) return;
-      console.error('Error saving template structure:', error);
-      toast.error(t(STRUCTURE_SAVE_ERROR));
-    };
-    const save = () => {
-      delete saveTimers.current[tpl.id];
-      delete pendingSaves.current[tpl.id];
-      const submission = updateTemplate(
-        tpl.id,
-        { structure },
-        tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0
-      );
-      // This observes capture; the inline draft's collapse lifetime is a separate concern.
-      void awaitWriteOperation(submission, reportFailure).catch(reportFailure);
-    };
-    pendingSaves.current[tpl.id] = save;
-    saveTimers.current[tpl.id] = setTimeout(save, 400);
   };
 
   /**
@@ -318,11 +289,12 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     const capturedOwnerId = userIdRef.current;
     const capturedTemplateId = heldConflict.payload.templateId;
     const discardsStructure = Boolean(heldConflict.payload.updates.structure);
-    const capturedDraftSnapshot = JSON.stringify(draftStructureRef.current);
+    const capturedEditor = inlineEditor.current;
+    const capturedDraftSnapshot = capturedEditor?.snapshot();
     const isCurrent = () => userIdRef.current === capturedOwnerId &&
       conflictTemplateIdRef.current === capturedTemplateId &&
       conflictRef.current === heldConflict &&
-      (!discardsStructure || JSON.stringify(draftStructureRef.current) === capturedDraftSnapshot);
+      (!discardsStructure || (inlineEditor.current === capturedEditor && capturedEditor?.snapshot() === capturedDraftSnapshot));
     setResolvingConflict(true);
     try {
       await askBeforeDiscard(true, async () => {
@@ -343,12 +315,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         // A second conflict or a new draft can arrive while refresh is in flight.
         // The old answer may retire only the exact copy it asked about.
         if (!isCurrent()) return;
-        if (discardsStructure) {
-          clearTimeout(saveTimers.current[capturedTemplateId]);
-          delete saveTimers.current[capturedTemplateId];
-          delete pendingSaves.current[capturedTemplateId];
-          setDraftStructure(null);
-        }
+        // This retires only the legacy copy; canonical editor words keep their own lifetime.
         setConflict(null, capturedTemplateId);
         advanceToNextStoredConflict();
       }, isCurrent);
@@ -365,8 +332,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">{t('planTemplates.description')}</p>
       {discardDialog}
 
-      {/* A save was TURNED AWAY. The rename input has already closed and the
-          structure lives only in memory, so this panel holds the refused edit. */}
+      {/* Saved legacy choices remain discoverable independently of the canonical editor. */}
       {conflict && (
         <SaveConflictBanner
           entityKey="entityRecord"
@@ -413,7 +379,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
               <li key={tpl.id} className="rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 p-3">
                   <button
-                    onClick={() => toggleExpand(tpl)}
+                    onClick={() => { void selectTemplate(isExpanded ? null : tpl.id); }}
+                    disabled={transitioning || deleting}
                     className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400"
                     aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
                   >
@@ -425,7 +392,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                       <input
                         type="text"
                         value={renameText}
-                        disabled={renamingPending}
+                        disabled={renamingPending || transitioning || deleting}
                         onChange={(e) => setRenameText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') handleRename(tpl);
@@ -434,10 +401,10 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                         className="flex-1 p-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         autoFocus
                       />
-                      <button aria-label={t('common.save')} disabled={renamingPending} aria-busy={renamingPending} onClick={() => handleRename(tpl)} className="p-1 text-green-600 hover:text-green-800">
+                      <button aria-label={t('common.save')} disabled={renamingPending || transitioning || deleting} aria-busy={renamingPending} onClick={() => handleRename(tpl)} className="p-1 text-green-600 hover:text-green-800">
                         <CheckIcon className="h-5 w-5" />
                       </button>
-                      <button aria-label={t('common.cancel')} disabled={renamingPending} onClick={() => { if (!renamingPendingRef.current) setRenamingId(null); }} className="p-1 text-red-600 hover:text-red-800">
+                      <button aria-label={t('common.cancel')} disabled={renamingPending || transitioning || deleting} onClick={() => { if (!renamingPendingRef.current) setRenamingId(null); }} className="p-1 text-red-600 hover:text-red-800">
                         <XMarkIcon className="h-5 w-5" />
                       </button>
                     </div>
@@ -449,7 +416,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                       </span>
                       <button
                         aria-label={t('common.edit')}
-                        disabled={renamingPending}
+                        disabled={renamingPending || transitioning || deleting}
                         onClick={() => {
                           setRenamingId(tpl.id);
                           setRenameText(tpl.name);
@@ -460,7 +427,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                       </button>
                       <button
                         aria-label={t('common.delete')}
-                        disabled={renamingPending}
+                        disabled={renamingPending || transitioning || deleting}
                         onClick={() => setPendingDeleteTpl(tpl)}
                         className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"
                       >
@@ -472,11 +439,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
 
                 {isExpanded && (
                   <div className="border-t border-gray-200 dark:border-gray-700 p-3">
-                    <OutlineBoard
-                      value={draftStructure ?? tpl.structure ?? emptyOutline()}
-                      onChange={(structure) => handleStructureChange(tpl, structure)}
-                      className="grid grid-cols-1 md:grid-cols-3 gap-3"
-                    />
+                    <TemplateOutlineEditor key={`${user?.uid}:${tpl.id}`} ref={inlineEditor}
+                      templateId={tpl.id} disabled={transitioning || deleting} />
                   </div>
                 )}
               </li>

@@ -23,6 +23,7 @@ export function documentScreenHref(resource: ResourceRef, value?: DocumentData |
     case 'prayerRequests': return `/prayers/${id}`;
     case 'studyNotes': return `/studies/${id}`;
     case 'users': return '/settings';
+    case 'planTemplates': return `/settings/templates?template=${id}`;
     case 'bibleMarks':
       if (!value || typeof value.userId !== 'string' || !isBibleId(value.bible)
         || typeof value.book !== 'string' || !getBookById(value.book)
