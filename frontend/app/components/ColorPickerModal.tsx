@@ -9,6 +9,7 @@ interface ColorPickerModalProps {
   initialColor: string;
   onOk: (newColor: string) => void;
   onCancel: () => void;
+  isSaving?: boolean;
 }
 
 // Predefined color palette 
@@ -31,10 +32,10 @@ const colorPresets = [
   '#808E9B', '#2F3542', '#747D8C', '#57606F',
 ];
 
-const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialColor, onOk, onCancel }) => {
+const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialColor, onOk, onCancel, isSaving = false }) => {
   const { t } = useTranslation();
   /* Cancel is this window's way out, and Escape means the same thing. */
-  const layer = useModalLayer({ onClose: onCancel });
+  const layer = useModalLayer({ onClose: onCancel, closeDisabled: isSaving });
   const [selectedColor, setSelectedColor] = useState(initialColor);
   const [customColor, setCustomColor] = useState(initialColor);
 
@@ -50,8 +51,9 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
   };
 
   return (
-    <div {...layer} role="dialog" aria-modal="true" className="fixed inset-0 z-[110] flex items-center justify-center overscroll-contain bg-black bg-opacity-50 backdrop-blur-sm">
+    <div {...layer} role="dialog" aria-modal="true" aria-busy={isSaving} className="fixed inset-0 z-[110] flex items-center justify-center overscroll-contain bg-black bg-opacity-50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl max-w-md w-full mx-4">
+        <fieldset disabled={isSaving} className="m-0 min-w-0 border-0 p-0">
         <h2 className="text-xl font-semibold mb-5 text-gray-800 dark:text-gray-100">
           {t('settings.editColorFor')} <span className="text-blue-500">{tagName}</span>
         </h2>
@@ -125,6 +127,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
             {t('common.save')}
           </button>
         </div>
+        </fieldset>
       </div>
     </div>
   );

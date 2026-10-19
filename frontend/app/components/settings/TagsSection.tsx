@@ -1,13 +1,13 @@
 'use client';
 
 import { User } from 'firebase/auth';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { useConfirm } from '@/hooks/useConfirm';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
-import { awaitAcceptance, awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
 import ColorPickerModal from '@components/ColorPickerModal';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -15,19 +15,51 @@ import AddTagForm from './AddTagForm';
 import TagList from './TagList';
 
 
+const TAG_SAVE_ERROR = 'common.saveError';
+
+type TagSelection = { owner: string; tag: Tag };
+type TagAction = { owner: string; kind: 'color' | 'delete' };
+
 interface TagsSectionProps {
   user: User | null;
 }
 
 const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const { t } = useTranslation();
-  const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
+  const [colorSelection, setColorSelection] = useState<TagSelection | null>(null);
+  const [deleteSelection, setDeleteSelection] = useState<TagSelection | null>(null);
+  const [pendingAction, setPendingAction] = useState<TagAction | null>(null);
+  const pendingActionRef = useRef<TagAction | null>(null);
   const { tags, addCustomTag, removeCustomTag, updateTag } = useTags(user?.uid);
-  const { confirm, confirmDialog } = useConfirm();
   const ownerRef = useRef(user?.uid);
   ownerRef.current = user?.uid;
   const customTagsRef = useRef(tags.customTags);
   customTagsRef.current = tags.customTags;
+
+  const currentTagBeingEdited = colorSelection && colorSelection.owner === user?.uid ? colorSelection.tag : null;
+  const pendingDelete = deleteSelection && deleteSelection.owner === user?.uid ? deleteSelection.tag : null;
+  const isSavingColor = pendingAction?.owner === user?.uid && pendingAction?.kind === 'color';
+  const isDeleting = pendingAction?.owner === user?.uid && pendingAction?.kind === 'delete';
+
+  useEffect(() => {
+    setColorSelection(null);
+    setDeleteSelection(null);
+  }, [user?.uid]);
+
+  // Pending UI belongs to one owner/run; an old completion cannot unlock a later action.
+  const beginAction = (kind: TagAction['kind']): TagAction | null => {
+    const owner = user?.uid;
+    if (!owner || pendingActionRef.current?.owner === owner) return null;
+    const action = { owner, kind };
+    pendingActionRef.current = action;
+    setPendingAction(action);
+    return action;
+  };
+  const finishAction = (action: TagAction) => {
+    if (pendingActionRef.current !== action) return;
+    pendingActionRef.current = null;
+    setPendingAction(current => current === action ? null : current);
+  };
 
   const handleAddTag = (name: string, color: string): WriteOperation => {
     // No signed-in user means nothing holds this tag name — refuse, so the form keeps it
@@ -46,7 +78,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     const reportFailure = (error: unknown) => {
       console.error('Error adding tag:', error);
       const key = (error as { message?: string } | null)?.message === 'Reserved tag name'
-        ? 'errors.reservedTagName' : 'common.saveError';
+        ? 'errors.reservedTagName' : TAG_SAVE_ERROR;
       toast.error(t(key));
     };
     const submission = addCustomTag(newTagObj);
@@ -54,59 +86,66 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
     return submission;
   };
 
-  const handleRemoveTag = async (tagName: string) => {
-    const ownerId = user?.uid;
-    const tag = tags.customTags.find((candidate) => candidate.name === tagName);
-    if (!ownerId || !tag) return;
-    const accepted = await confirm({
-      title: { key: 'common.deleteItem.title' },
-      description: { key: 'common.deleteItem.description' },
-      confirmText: { key: 'common.delete' },
-      cancelText: { key: 'common.cancel' },
-    });
-    if (!accepted) return;
-    const latestTag = customTagsRef.current.find((candidate) => candidate.id === tag.id && candidate.name === tag.name);
-    if (ownerRef.current !== ownerId || !latestTag) return;
+  const handleRemoveTag = (tagName: string) => {
+    const owner = user?.uid;
+    const tag = tags.customTags.find(candidate => candidate.name === tagName);
+    if (!owner || !tag || pendingActionRef.current?.owner === owner) return;
+    setDeleteSelection({ owner, tag });
+  };
 
-    // Reported by the remove descriptor in useTags — see the note above.
+  const confirmDelete = async () => {
+    const selection = deleteSelection;
+    if (!selection || selection.owner !== user?.uid) return;
+    const latest = customTagsRef.current.find(tag => tag.id === selection.tag.id && tag.name === selection.tag.name);
+    if (!latest) { setDeleteSelection(null); return; }
+    const action = beginAction('delete');
+    if (!action) return;
     const reportFailure = (error: unknown) => {
+      if (ownerRef.current !== action.owner) return;
       console.error('Error removing tag:', error);
+      toast.error(t(TAG_SAVE_ERROR));
     };
-
     try {
-      if (user?.uid) {
-        await awaitAcceptance(removeCustomTag(tagName), reportFailure);
+      await awaitWriteOperation(removeCustomTag(latest.name), reportFailure);
+      if (ownerRef.current === action.owner) {
+        setDeleteSelection(current => current === selection ? null : current);
       }
     } catch (error) {
       reportFailure(error);
+    } finally {
+      finishAction(action);
     }
   };
 
   const openColorPicker = (tag: Tag) => {
-    setCurrentTagBeingEdited(tag);
+    const owner = user?.uid;
+    if (owner && pendingActionRef.current?.owner !== owner) setColorSelection({ owner, tag });
   };
 
   const handleUpdateColor = async (newColor: string) => {
-    if (!currentTagBeingEdited || !user?.uid) return;
-    const updatedTag = { ...currentTagBeingEdited, color: newColor };
-    // Queued acceptance means a refused colour change comes back LATE; without a
-    // reporter there the tag keeps the new colour and nobody is told.
-    // Reported by the update descriptor in useTags — see the note above.
-    const reportColorFailure = (error: unknown) => {
-      console.error("Error updating tag color:", error);
+    const selection = colorSelection;
+    if (!selection || selection.owner !== user?.uid) return;
+    const action = beginAction('color');
+    if (!action) return;
+    const reportFailure = (error: unknown) => {
+      if (ownerRef.current !== action.owner) return;
+      console.error('Error updating tag color:', error);
+      toast.error(t(TAG_SAVE_ERROR));
     };
-
     try {
-      await awaitAcceptance(updateTag(updatedTag), reportColorFailure);
+      await awaitWriteOperation(updateTag({ ...selection.tag, color: newColor }), reportFailure);
+      if (ownerRef.current === action.owner) {
+        setColorSelection(current => current === selection ? null : current);
+      }
     } catch (error) {
-      reportColorFailure(error);
+      reportFailure(error);
     } finally {
-      setCurrentTagBeingEdited(null);
+      finishAction(action);
     }
   };
 
   const handleCancelColorUpdate = () => {
-    setCurrentTagBeingEdited(null);
+    if (!isSavingColor) setColorSelection(null);
   };
 
   return (
@@ -146,13 +185,24 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       {/* Render ColorPickerModal when a tag is being edited */}
       {currentTagBeingEdited && (
         <ColorPickerModal
+          key={`${user?.uid}:${currentTagBeingEdited.id}`}
+          isSaving={isSavingColor}
           tagName={currentTagBeingEdited.name}
           initialColor={currentTagBeingEdited.color}
           onOk={handleUpdateColor}
           onCancel={handleCancelColorUpdate}
         />
       )}
-      {confirmDialog}
+      <ConfirmModal
+        isOpen={Boolean(pendingDelete)}
+        onClose={() => { if (!isDeleting) setDeleteSelection(null); }}
+        onConfirm={confirmDelete}
+        title={t('common.deleteItem.title')}
+        description={t('common.deleteItem.description')}
+        confirmText={t('common.delete')}
+        cancelText={t('common.cancel')}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 };

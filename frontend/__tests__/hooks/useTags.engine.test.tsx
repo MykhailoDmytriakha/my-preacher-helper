@@ -41,11 +41,35 @@ describe('custom tags on the engine', () => {
     const { result } = render();
     await act(async () => { await awaitWriteOperation(result.current.addCustomTag({ id: 'new', userId: 'u', name: 'Faith', color: '#333', required: false }), jest.fn()); });
     expect(actions.create).toHaveBeenCalledWith({ collection: 'tags', id: 'new' }, expect.objectContaining({ userId: 'u', name: 'Faith', color: '#333', required: false }));
-    await act(async () => { await result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false }).persistence; });
+    await act(async () => { await awaitWriteOperation(result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false }), jest.fn()); });
     const recolor = actions.commit.mock.calls[0][1] as (current: Record<string, unknown>) => Record<string, unknown>;
     expect(recolor({ userId: 'u', name: 'Hope', color: '#111', required: false })).toEqual(expect.objectContaining({ color: '#444', required: false }));
-    await act(async () => { await result.current.removeCustomTag('Hope').persistence; });
+    await act(async () => { await awaitWriteOperation(result.current.removeCustomTag('Hope'), jest.fn()); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'tags', id: 't1' });
+  });
+
+  it.each(['recolor', 'remove'] as const)('waits for actual local capture when %s is pending', async (kind) => {
+    jest.useFakeTimers();
+    let finish!: () => void;
+    const capture = new Promise<void>((resolve) => { finish = resolve; });
+    const { result } = render();
+    (kind === 'recolor' ? actions.commit : actions.remove).mockReturnValueOnce(capture);
+    const operation = kind === 'recolor'
+      ? result.current.updateTag({ id: 't1', userId: 'u', name: 'Hope', color: '#444', required: false })
+      : result.current.removeCustomTag('Hope');
+    let accepted = false;
+    const waiting = awaitWriteOperation(operation, jest.fn()).then(() => { accepted = true; });
+    try {
+      await act(async () => { jest.advanceTimersByTime(50); });
+      expect(accepted).toBe(false);
+      finish();
+      await act(async () => { await waiting; });
+      expect(accepted).toBe(true);
+    } finally {
+      finish();
+      await act(async () => { await waiting; });
+      jest.useRealTimers();
+    }
   });
 
   it('refuses a duplicate or reserved name before any engine write', async () => {

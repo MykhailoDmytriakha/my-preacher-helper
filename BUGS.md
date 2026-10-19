@@ -312,10 +312,10 @@
 
 
 ### BUG-20261017-engine-edit-before-durable-capture · Some engine edit adapters still accept a timer before local capture
-**Severity.** P2 source-class recheck for remaining tag/structure adapters. Prayer actions are locally verified in Phase110 and explicit template rename/delete in Phase111; neither slice proves every remaining writer. Inline template points use the canonical editor; remaining tag/structure adapters still need controlled capture QA.
-**Found.** Oct17 source class audit while fixing BUG-20261012-plan-template-create-dropped-silently; QA required, no new runtime failure claim.
-**Remaining anchors.** `useTags.ts:63,69` remove/recolor; structure `useSermonActions.ts:350,477,524`, `useAiSortingDiff.ts:578`, `useStructureDnd.ts:979,1076`, structure/page.tsx:615. Prayer hooks and explicit template actions are locally verified in Phase110/111; the remaining adapters still require their own controlled UI capture checks.
-**Expected/observed.** Awaiting local engine capture must retain the input until ownership is durable; the remaining tag/structure wrappers still call queuedMutation/queuedWrite, whose timer can resolve first. Several have rollback/conflict or late handlers, so code shape alone does not prove lost words in each UI.
+**Severity.** P2 source-class recheck for remaining structure adapters. Their rollback/conflict and late handlers need controlled UI capture QA before deciding each consumer's actual effect.
+**Found.** Oct17 source class audit while fixing BUG-20261012-plan-template-create-dropped-silently; no new runtime failure claim for these remaining consumers.
+**Remaining anchors.** Structure `useSermonActions.ts:350,477,524`, `useAiSortingDiff.ts:578`, `useStructureDnd.ts:979,1076`, structure/page.tsx:615.
+**Expected/observed.** Awaiting local engine capture must retain the input until ownership is durable; these structure wrappers still call queuedMutation/queuedWrite, whose timer can resolve first. Several have rollback/conflict or late handlers, so code shape alone does not prove lost words in each UI.
 **Recheck.** For each writer-backed consumer, hold/reject canonical local capture; inspect editor state, recovery and server commands, then retry. Distinguish legacy network writers, local draft ownership and actual server delivery. Do not globally change queuedWrite: React Query/offline legacy consumers rely on another ownership contract.
 **User contract.** Edit/delete affects only the explicit action; failed capture leaves the person's current work available and explains the next step. No new product decision is needed.
 **Relation.** Earlier BUG-20261016-engine-draft-before-request concerns a draft already on disk before a request; this is acceptance before durable capture. Note delivery labeling remains a separate open record.

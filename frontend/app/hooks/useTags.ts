@@ -8,7 +8,6 @@ import {
   queuedMutation,
   refusedWrite,
   skippedWrite,
-  type WriteSubmission,
   type WriteOperation,
 } from '@/utils/recoverableWrite';
 import { isStructureTag } from '@/utils/structureTags';
@@ -60,16 +59,16 @@ export function useTags(userId: string | null | undefined) {
       return documentActions.create({ collection: 'tags', id },
         { userId, name: tag.name, color: tag.color, required: false, createdAt: new Date().toISOString() });
     },
-    removeCustomTag: (tagName: string): WriteSubmission => {
+    removeCustomTag: (tagName: string): WriteOperation => {
       const existing = byName(tagName);
       if (!existing) return skippedWrite();
       // The engine removes the tag from every sermon's thoughts in the same operation.
-      return queuedMutation(`tag:remove:${existing.id}`, documentActions.remove({ collection: 'tags', id: existing.id }));
+      return documentActions.remove({ collection: 'tags', id: existing.id });
     },
-    updateTag: (tag: Tag): WriteSubmission => queuedMutation(`tag:update:${tag.id}`, documentActions.commit(
+    updateTag: (tag: Tag): WriteOperation => documentActions.commit(
       { collection: 'tags', id: tag.id }, current => {
         if (!current) throw new Error('The tag was deleted');
         return { ...current, name: tag.name, color: tag.color, updatedAt: new Date().toISOString() };
-      })),
+      }),
   };
 }
