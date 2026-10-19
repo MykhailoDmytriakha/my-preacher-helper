@@ -39,15 +39,15 @@ describe('plan templates on the engine', () => {
     expect(result.current.templates).toEqual([expect.objectContaining({ id: 'tpl', name: 'Advent' })]);
     await act(async () => { await result.current.createTemplate({ id: 'new', userId: 'u', name: 'Lent', structure: outline }); });
     expect(actions.create).toHaveBeenCalledWith({ collection: 'planTemplates', id: 'new' }, expect.objectContaining({ userId: 'u', name: 'Lent' }));
-    await act(async () => { await result.current.updateTemplate('tpl', { name: 'Advent 2026' }, 3).persistence; });
+    await act(async () => { await result.current.updateTemplate('tpl', { name: 'Advent 2026' }, 3); });
     expect(current).toEqual(expect.objectContaining({ name: 'Advent 2026' }));
-    await act(async () => { await result.current.deleteTemplate('tpl').persistence; });
+    await act(async () => { await result.current.deleteTemplate('tpl'); });
     expect(actions.remove).toHaveBeenCalledWith({ collection: 'planTemplates', id: 'tpl' });
   });
 
   it('refuses an edit built from an older revision with the revision the template holds now', async () => {
     const { result } = render();
-    const error = await result.current.updateTemplate('tpl', { name: 'From a stale tab' }, 2).persistence.catch(e => e);
+    const error = await result.current.updateTemplate('tpl', { name: 'From a stale tab' }, 2).catch(e => e);
     expect(isStaleWriteError(error)).toBe(true);
     expect(error.actualRevision).toBe(3);
     expect(current).toEqual(stored);

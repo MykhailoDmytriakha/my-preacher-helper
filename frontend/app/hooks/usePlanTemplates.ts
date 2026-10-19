@@ -7,7 +7,6 @@ import {
   type CreatePlanTemplatePayload,
   type UpdatePlanTemplatePayload,
 } from '@/services/planTemplates.client';
-import { queuedMutation, queuedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { PlanTemplate } from '@/models/models';
 
@@ -32,7 +31,7 @@ export function usePlanTemplates(userId: string | null | undefined) {
     createTemplate: (payload: CreatePlanTemplatePayload): Promise<void> =>
       documentActions.create({ collection: 'planTemplates', id: payload.id },
         { userId: payload.userId, name: payload.name, structure: payload.structure as never, createdAt: now(), updatedAt: now() }),
-    updateTemplate: (id: string, updates: UpdatePlanTemplatePayload, expectedRevision?: number | null): WriteSubmission => {
+    updateTemplate: (id: string, updates: UpdatePlanTemplatePayload, expectedRevision?: number | null): Promise<void> => {
       // An edit built from an older template is refused with the revision the template holds
       // now, and the screen offers the choice.
       let refusedAt: number | null = null;
@@ -44,9 +43,9 @@ export function usePlanTemplates(userId: string | null | undefined) {
       }).then(() => {
         if (refusedAt !== null) throw new StaleWriteError(PLAN_TEMPLATE_AGGREGATE, expectedRevision ?? 0, refusedAt);
       });
-      return queuedWrite(`plan-template:update:${id}`, request);
+      return request;
     },
-    deleteTemplate: (id: string): WriteSubmission =>
-      queuedMutation(`plan-template:delete:${id}`, documentActions.remove({ collection: 'planTemplates', id })),
+    deleteTemplate: (id: string): Promise<void> =>
+      documentActions.remove({ collection: 'planTemplates', id }),
   };
 }
