@@ -6,7 +6,7 @@ import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
 import { isBibleId } from '@/utils/bibles';
-import { bookSlug } from '@/utils/bibleText';
+import { marksDocumentId } from '@/utils/bibleMarksIdentity';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -36,7 +36,7 @@ export const BIBLE_MARKS = 'bibleMarks';
 /** The marks' own form: its drafts are not a screen's typing. */
 const MARKS_SLOT = 'bible-marks';
 
-export const marksDocumentId = (owner: string, bible: BibleId, bookId: string) => `${owner}_${bible}_${bookSlug(bookId)}`;
+export { marksDocumentId } from '@/utils/bibleMarksIdentity';
 
 type StoredDocument = { verses?: unknown } & Record<string, unknown>;
 export type MarksChange = (marks: BookMarks) => BookMarks;
