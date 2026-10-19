@@ -197,6 +197,40 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  it('backs off a server copy it cannot accept instead of reading it every fifteen seconds for good', async () => {
+    // 2026-10-19: a copy recreated or removed on the server while a page holds the old one was read
+    // every 15 s for as long as the page stayed open — 233 reads an hour against 30 for a healthy one.
+    for (const server of [{ ...snapshot(1), metadata: { ...snapshot(1).metadata!, generation: 'recreated' } }, absent()]) {
+      const h = harness(); h.read.mockResolvedValue(server); h.watch(); h.next(snapshot(1));
+      await jest.advanceTimersByTimeAsync(3_600_000);
+      expect(h.read.mock.calls.length).toBeLessThanOrEqual(35);
+      expect(h.state()).toMatchObject({ readiness: 'unknown', error: false });
+      // A stream event the page can accept brings the normal lease back at once.
+      h.next(snapshot(2));
+      expect(h.state().readiness).toBe('server');
+      const settled = h.read.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(119_999);
+      expect(h.read.mock.calls.length).toBe(settled);
+      h.observer.dispose();
+    }
+  });
+
+  it('checks a silent stream every fifteen seconds for its first minute, then slows down until it speaks', async () => {
+    // A page whose listener stays silent read each document every 15 s for as long as it was open:
+    // about 240 reads an hour per document (2026-10-19). The first minute keeps the quick checks.
+    const h = harness(); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500 + 3 * 15_000);
+    expect(h.read).toHaveBeenCalledTimes(4);
+    await jest.advanceTimersByTimeAsync(3_600_000);
+    expect(h.read.mock.calls.length).toBeLessThanOrEqual(40);
+    // The stream speaking again brings the normal lease back.
+    h.next(snapshot(2));
+    const settled = h.read.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(119_999);
+    expect(h.read.mock.calls.length).toBe(settled);
+    h.observer.dispose();
+  });
+
   it('does not let repeated cache events postpone the initial silence deadline', async () => {
     const h = harness(); h.watch();
     h.next(snapshot(), 'cache');
