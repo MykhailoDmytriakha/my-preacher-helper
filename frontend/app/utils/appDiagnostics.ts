@@ -1,4 +1,5 @@
 import { getDeviceStorageHealth, subscribeDeviceStorage, subscribeStorageRelease, type SilentStorage } from '@/utils/deviceStorage';
+import { safeRuntimeErrorMetadata, type RuntimeErrorMetadata } from '@/utils/runtimeErrorDetails';
 
 /**
  * Bounded, content-free device diagnostics. Never store raw errors, URLs or documents.
@@ -34,7 +35,7 @@ const EVENTS = [
   'setting',
 ] as const;
 type EventName = typeof EVENTS[number];
-interface EventData {
+interface EventData extends RuntimeErrorMetadata {
   route?: string;
   /** Which document the route was about: eight hex characters of a hash, never the id itself. */
   doc?: string;
@@ -95,7 +96,7 @@ function routeDocument(path: string): string | undefined {
 }
 
 function safeData(input: EventData): EventData {
-  const output: EventData = {};
+  const output: EventData = safeRuntimeErrorMetadata(input);
   if (typeof input.route === 'string') {
     output.route = diagnosticRoute(input.route);
     const doc = routeDocument(input.route) ?? (typeof input.doc === 'string' && /^[0-9a-f]{8}$/.test(input.doc) ? input.doc : undefined);

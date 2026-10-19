@@ -214,28 +214,44 @@ function useNoteAIAssistant({
     // for both — gating on transcription alone let the take go out and be refused.
     const dictationBlocked = blocked('dictation');
     const dictationBlockedKey = blockedLabelKey('dictation');
-    // WHICH control is working, not merely THAT something is working. A bare boolean
-    // could only say "an analysis is running", so the busy motion landed on whichever
-    // button owned a spinner — press the one beside the references, watch the header
-    // button spin. The source is the button that was pressed; `isAnalyzing` stays as the
-    // page-wide gate that keeps a second request from starting.
-    const [analyzingSource, setAnalyzingSource] = useState<NoteAiSource | null>(null);
-    const isAnalyzing = analyzingSource !== null;
-    const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
+    // Independent fields can run together. Overlapping targets (including "all")
+    // share a lock, while each control keeps its own busy indication.
+    const [runningAnalyses, setRunningAnalyses] = useState<Partial<Record<NoteAiTarget, NoteAiSource>>>({});
+    const activeAnalyses = useRef(new Map<NoteAiTarget, AbortController>());
+    useEffect(() => {
+        const requests = activeAnalyses.current;
+        return () => {
+            requests.forEach((controller) => controller.abort());
+            requests.clear();
+        };
+    }, []);
+    const isTargetRunning = (target: NoteAiTarget) => target === 'all'
+        ? Object.keys(runningAnalyses).length > 0
+        : runningAnalyses.all !== undefined || runningAnalyses[target] !== undefined;
+    const isSourceAnalyzing = (source: NoteAiSource) => Object.values(runningAnalyses).includes(source);
+    const [analysisResults, setAnalysisResults] = useState<{ id: string; data: AnalysisResultData }[]>([]);
+    const pendingAnalysisResult = analysisResults[0]?.data ?? null;
+    const pendingAnalysisKey = analysisResults[0]?.id;
+    const dismissAnalysisResult = useCallback(() => setAnalysisResults((previous) => previous.slice(1)), []);
 
     const handleAIAnalyze = async (
         analysisType: NoteAiTarget = 'all',
         source: NoteAiSource = 'menu'
     ) => {
         if (aiBlocked) return;
+        const requests = activeAnalyses.current;
+        if (requests.has('all') || (analysisType === 'all' ? requests.size > 0 : requests.has(analysisType))) return;
         if (!content.trim()) {
             toast.error(t('studiesWorkspace.aiAnalyze.emptyContent'));
             return;
         }
 
-        setAnalyzingSource(source);
+        const controller = new AbortController();
+        requests.set(analysisType, controller);
+        setRunningAnalyses((previous) => ({ ...previous, [analysisType]: source }));
         try {
             const token = await auth.currentUser?.getIdToken();
+            if (controller.signal.aborted) return;
             const response = await apiClient('/api/studies/analyze', {
                 method: 'POST',
                 headers: {
@@ -250,6 +266,7 @@ function useNoteAIAssistant({
                     studyId: noteId,
                 }),
                 category: 'ai',
+                signal: controller.signal,
             });
             const result = await response.json();
 
@@ -257,16 +274,16 @@ function useNoteAIAssistant({
                 throw new Error(result.error);
             }
 
-            const aiResult = result.data;
-            let hasAnyResult = false;
-
-            // Check if AI actually returned anything based on what we requested
-            if ((analysisType === 'all' || analysisType === 'title') && aiResult.title) hasAnyResult = true;
-            if ((analysisType === 'all' || analysisType === 'tags') && aiResult.tags?.length > 0) hasAnyResult = true;
-            if ((analysisType === 'all' || analysisType === 'scriptureRefs') && aiResult.scriptureRefs?.length > 0) hasAnyResult = true;
+            if (controller.signal.aborted) return;
+            const aiResult: AnalysisResultData = {
+                ...(analysisType === 'all' || analysisType === 'title' ? { title: result.data.title } : {}),
+                ...(analysisType === 'all' || analysisType === 'tags' ? { tags: result.data.tags } : {}),
+                ...(analysisType === 'all' || analysisType === 'scriptureRefs' ? { scriptureRefs: result.data.scriptureRefs } : {}),
+            };
+            const hasAnyResult = Boolean(aiResult.title || aiResult.tags?.length || aiResult.scriptureRefs?.length);
 
             if (hasAnyResult) {
-                setPendingAnalysisResult(aiResult);
+                setAnalysisResults((previous) => [...previous, { id: makeId(), data: aiResult }]);
                 toast.success(t('studiesWorkspace.aiAnalyze.success'));
             } else {
                 toast.info(t('studiesWorkspace.aiAnalyze.noResults'));
@@ -274,10 +291,18 @@ function useNoteAIAssistant({
             await refreshAiUsage();
 
         } catch (error) {
+            if (controller.signal.aborted) return;
             if (isUsageCapReachedError(error)) return;
             toast.error(t('studiesWorkspace.aiAnalyze.error'));
         } finally {
-            setAnalyzingSource(null);
+            if (requests.get(analysisType) === controller) {
+                requests.delete(analysisType);
+                setRunningAnalyses((previous) => {
+                    const next = { ...previous };
+                    delete next[analysisType];
+                    return next;
+                });
+            }
         }
     };
 
@@ -326,11 +351,11 @@ function useNoteAIAssistant({
     const resendVoiceBlob = (_blob: Blob, draft: import('@/utils/recordingDraftStore').RecordingDraft) => voice.recover(draft);
 
     return {
-        isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
+        isTargetRunning, isSourceAnalyzing, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries: voice.maxRetries, handleRetryVoice, handleClearVoiceError,
         voiceController: voice,
         resendVoiceBlob,
-        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
+        pendingAnalysisResult, pendingAnalysisKey, dismissAnalysisResult, handleApplyAnalysis
     };
 }
 
@@ -724,6 +749,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         docId: draftDocId,
         creationTargetId,
         confirmedCreationIds,
+        recoveryIdentity: routeId === 'new' ? openingDraftId : noteId,
         aggregate: 'note',
         value: draftPayload,
         enabled: isInitialized,
@@ -895,10 +921,10 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
 
     // AI assistant hook
     const {
-        isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
+        isTargetRunning, isSourceAnalyzing, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob, voiceController,
-        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
+        pendingAnalysisResult, pendingAnalysisKey, dismissAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
         noteId, recordingContextId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t, saveAtOnceRef, uid, dictationSourceIds, setDictationSourceIds, linkedRecordingSourceIds, setRecordingSourceIds,
         acceptedDictationSourceIds: confirmedDictationSources?.get(noteId)
@@ -1003,19 +1029,19 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('scriptureRefs', 'scriptureRefs')}
-                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    aria-busy={analyzingSource === 'scriptureRefs'}
-                                    title={analyzingSource === 'scriptureRefs'
+                                    disabled={isTargetRunning('scriptureRefs') || !content.trim() || aiBlocked}
+                                    aria-busy={isSourceAnalyzing('scriptureRefs')}
+                                    title={isSourceAnalyzing('scriptureRefs')
                                         ? t('studiesWorkspace.aiAnalyze.analyzing')
                                         : aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
                                     // While it runs the button drops out of the hover-reveal: a control
                                     // the person just pressed must not vanish when the pointer leaves
                                     // the section, or its own feedback becomes invisible.
-                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${analyzingSource === 'scriptureRefs'
+                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${isSourceAnalyzing('scriptureRefs')
                                         ? 'opacity-100'
                                         : 'opacity-0 group-hover/refs:opacity-100 disabled:opacity-50'}`}
                                 >
-                                    {analyzingSource === 'scriptureRefs' && <AiBusyComet inset="-inset-[6px]" />}
+                                    {isSourceAnalyzing('scriptureRefs') && <AiBusyComet inset="-inset-[6px]" />}
                                     <SparklesIcon className="relative h-5 w-5" />
                                 </button>
                             )}
@@ -1103,18 +1129,18 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('tags', 'tags')}
-                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    aria-busy={analyzingSource === 'tags'}
-                                    title={analyzingSource === 'tags'
+                                    disabled={isTargetRunning('tags') || !content.trim() || aiBlocked}
+                                    aria-busy={isSourceAnalyzing('tags')}
+                                    title={isSourceAnalyzing('tags')
                                         ? t('studiesWorkspace.aiAnalyze.analyzing')
                                         : aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
                                     // Same hover-reveal exemption as the references button: while it
                                     // works, it stays on screen.
-                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${analyzingSource === 'tags'
+                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${isSourceAnalyzing('tags')
                                         ? 'opacity-100'
                                         : 'opacity-0 group-hover/tags:opacity-100 disabled:opacity-50'}`}
                                 >
-                                    {analyzingSource === 'tags' && <AiBusyComet inset="-inset-[6px]" />}
+                                    {isSourceAnalyzing('tags') && <AiBusyComet inset="-inset-[6px]" />}
                                     <SparklesIcon className="relative h-5 w-5" />
                                 </button>
                             )}
@@ -1253,8 +1279,9 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                     <NoteAiMenu
                         // Every target picked inside this menu belongs to THIS button.
                         onAnalyze={(target: NoteAiTarget) => handleAIAnalyze(target, 'menu')}
-                        isRunning={analyzingSource === 'menu'}
-                        disabled={isAnalyzing || !content.trim() || aiBlocked}
+                        isRunning={isSourceAnalyzing('menu')}
+                        disabled={!content.trim() || aiBlocked}
+                        isTargetDisabled={isTargetRunning}
                         blockedTitle={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : undefined}
                     />
                 }
@@ -1393,8 +1420,9 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
             />
 
             <AnalysisConfirmationModal
+                key={pendingAnalysisKey ?? 'empty'}
                 isOpen={!!pendingAnalysisResult}
-                onClose={() => setPendingAnalysisResult(null)}
+                onClose={dismissAnalysisResult}
                 result={pendingAnalysisResult}
                 onApply={handleApplyAnalysis}
                 bibleLocale={bibleLocale}

@@ -33,6 +33,9 @@ export interface UseDurableDraftOptions<T> {
   creationTargetId?: string;
   /** Canonical confirmed snapshots, never optimistic rows or connectivity. */
   confirmedCreationIds?: ReadonlySet<string>;
+  /** Logical editor identity across an optimistic document-id handoff. The draft
+   * moves to docId, but recovery is inspected only once for this owner/identity. */
+  recoveryIdentity?: string | null;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -82,8 +85,10 @@ export function useDurableDraft<T>({
   confirmedValue,
   creationTargetId,
   confirmedCreationIds,
+  recoveryIdentity = docId,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate) : null;
+  const recoveryKey = uid && recoveryIdentity ? draftKey(uid, recoveryIdentity, aggregate) : null;
 
   // Always-current value for the listeners below, which must not re-subscribe
   // on every keystroke just to see fresh text.
@@ -162,17 +167,18 @@ export function useDurableDraft<T>({
 
   const recoveredCreationRef = useRef<string | undefined>(undefined);
 
-  // Look for unconfirmed text exactly once per document.
+  // Inspect once per logical editor; current storage and confirmed-creation cleanup
+  // still follow the adopted document key without resurfacing this session's words.
   useEffect(() => {
-    if (!key) return;
+    if (!key || !recoveryKey) return;
     const stored = readDraft<T>(key);
     const confirmedSource = creationTargetId && stored?.creationTargetId && confirmedCreationIds?.has(stored.creationTargetId);
     if (confirmedSource) clearCreationDraft(key, stored.creationTargetId!);
-    if (inspectedKeyRef.current === key) {
+    if (inspectedKeyRef.current === recoveryKey) {
       if (creationTargetId && recoveredCreationRef.current && confirmedCreationIds?.has(recoveredCreationRef.current)) setRecovered(null);
       return;
     }
-    inspectedKeyRef.current = key;
+    inspectedKeyRef.current = recoveryKey;
     recoveredCreationRef.current = stored?.creationTargetId;
     setRecovered(stored && !confirmedSource ? stored.value : null);
     // NOTE: deliberately NOT clearing the previous key here. The previous key may
@@ -183,7 +189,7 @@ export function useDurableDraft<T>({
     // changes under a mounted editor (open: BUG-20261003-account-change-under-open-note).
     // Moving to another document is not one of these: it is an unmount (see the
     // flush below).
-  }, [key, creationTargetId, confirmedCreationIds]);
+  }, [key, recoveryKey, creationTargetId, confirmedCreationIds]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
   // every keystroke.
