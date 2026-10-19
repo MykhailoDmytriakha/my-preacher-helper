@@ -35,9 +35,11 @@ export function getClientDb(): Firestore {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
 
-  // Dev-only: point at the local Firestore emulator when explicitly enabled.
+  // Dev-only: point at the local Firestore emulator when explicitly enabled. The port is
+  // configurable because 8080 is often held by another local service.
   if (process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR === "true") {
-    connectFirestoreEmulator(dbInstance, "localhost", 8080);
+    const port = Number(process.env.NEXT_PUBLIC_FIRESTORE_EMULATOR_PORT) || 8080;
+    connectFirestoreEmulator(dbInstance, "localhost", port);
   }
 
   return dbInstance;
