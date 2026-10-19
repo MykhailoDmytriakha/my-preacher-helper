@@ -1206,6 +1206,15 @@ Offline language/rendering passes with one separate, preserved defect: both favi
 Evidence: the local case late-language-* artifacts, including original/repeated baselines, all red logs, source-body comparisons, complete source/build fingerprints, final browser scripts/results, original PNGs and independent source reviews. After separately authorized publication, verify deployed revision/worker, cold and delayed RU/UK/default-English renders, calendar/Bible formatting, public and saved private language application, selector persistence/reload, actual offline fallback, and a safe delayed completion after a language switch. Check the separate favicon issue independently. Installed PWA, Safari/physical iPad and production remain unproved. No push, merge into main or deployment occurs here.
 
 
+Upstream observation from documentation commit ff27fa54459987cf7906a50497a1b31587ffbd7b:
+production4e25552 showed recoverable React #418 while opening a manual plan, and the plan still
+opened. The source report did not establish that the language mechanism caused it or that it was
+related to the historical iPad Application Error. The accepted local language-fix commit9da100b1
+is an ancestor of this branch and is absent from that published4e lineage. Keep this observation
+for the production follow-up above; it is not a new root-run production check or proof that the
+specific reported mismatch is fixed. The local closed record stays represented by this registry.
+
+
 ## Incoming main d911264b — marks palette integration
 
 Stage: independently accepted and committed locally as03b9f054cb315c863afc1b5b194c4d2276ea48ae. Exact accepted tree, both parents and all source/build/evidence hashes were checked after commit. The final root precommit checker lacked filesystem escalation; its failure and the successful postcommit identity audit are retained in main-intake-52-commit.json. No push, merge into main or deployment.
