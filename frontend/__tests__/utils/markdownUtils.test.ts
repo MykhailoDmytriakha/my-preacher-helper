@@ -1,4 +1,4 @@
-import { sanitizeMarkdown, isValidMarkdownContent, normalizePlanPointHeadings, decodeBasicHtmlEntities, normalizePlanArrows } from '../../app/utils/markdownUtils';
+import { sanitizeMarkdown, isValidMarkdownContent, normalizePlanPointHeadings, decodeBasicHtmlEntities, normalizePlanArrows, markdownPreviewText } from '../../app/utils/markdownUtils';
 
 describe('markdownUtils', () => {
   describe('sanitizeMarkdown', () => {
@@ -203,6 +203,22 @@ describe('markdownUtils', () => {
 
     it('does not touch a lone > (e.g. a blockquote marker)', () => {
       expect(normalizePlanArrows('> a quote')).toBe('> a quote');
+    });
+  });
+
+  describe('markdownPreviewText', () => {
+    it('handles null/undefined/empty', () => {
+      expect(markdownPreviewText(null as any)).toBe('');
+      expect(markdownPreviewText('')).toBe('');
+    });
+
+    it('reads Markdown as one line of words, keeping where thoughts end', () => {
+      expect(markdownPreviewText('## Plan\n\nFour **asks**:\n1. *Bless* me.\n2. Widen `my` [borders](https://x.y)\n> Quote'))
+        .toBe('Plan · Four asks: 1. Bless me. 2. Widen my borders · Quote');
+    });
+
+    it('drops a mark cut in half at the edge of an excerpt', () => {
+      expect(markdownPreviewText('ниво**, а не только')).toBe('ниво, а не только');
     });
   });
 });

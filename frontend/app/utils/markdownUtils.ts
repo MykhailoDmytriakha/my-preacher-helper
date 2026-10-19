@@ -149,3 +149,24 @@ export const normalizePlanArrows = (content: string): string => {
   }
   return decodeBasicHtmlEntities(content).replace(/\s*(?:-{1,2}>|—>|=>)\s*/g, ' → ');
 };
+
+/**
+ * Markdown read as one line of plain words, for a short preview row: heading, bullet and quote
+ * marks, emphasis, code ticks and link addresses go; numbers of an ordered list stay. Lines are
+ * joined with a space after a sentence and with " · " after a heading or an item, so the row still
+ * reads as separate thoughts.
+ */
+export const markdownPreviewText = (content: string): string => {
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+  return content.split('\n')
+    .map(line => line
+      .replace(/^\s*(?:#{1,6}|>|[-*+])\s+/, '')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\*+|__|`/g, '')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .filter(Boolean)
+    .reduce((text, line) => (text ? `${text}${/[.!?:;,…»"”)]$/.test(text) ? ' ' : ' · '}${line}` : line), '');
+};

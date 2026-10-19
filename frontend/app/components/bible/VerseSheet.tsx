@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/20/solid';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useModalLayer } from '@/hooks/useModalLayer';
@@ -36,6 +36,11 @@ type VerseSheetProps = {
    * and buttons below. The window lies between them and never covers them.
    */
   keepVisible?: { top?: RefObject<HTMLElement | null>; bottom?: RefObject<HTMLElement | null> };
+  /**
+   * Optional personal material alongside the reader; both views retain their reading positions.
+   * `count`, once known, sits on the tab as a badge, so the reader sees there is something without opening it.
+   */
+  related?: { label: string; count?: number; render: (returnToText: () => void) => ReactNode };
 };
 
 /**
@@ -46,18 +51,18 @@ type VerseSheetProps = {
  * to close; the Bible read, its text (kept on the device) and the numbering (`utils/versification`)
  * are this module's — the same ones the Bible page reads with.
  */
-export function VerseSheet({ reference, onClose, keepVisible }: VerseSheetProps) {
+export function VerseSheet({ reference, onClose, keepVisible, related }: VerseSheetProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!reference || !mounted) return null;
   const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${reference.endChapter ?? ''}`;
   // Over everything the page draws, a meeting's own full-screen layer included.
-  return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} />, document.body);
+  return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} related={related} />, document.body);
 }
 
 type LoadState = { status: 'loading' } | { status: 'ready'; text: BookText } | { status: 'error' };
 
-function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference; onClose: () => void; keepVisible: VerseSheetProps['keepVisible'] }) {
+function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetReference; onClose: () => void; keepVisible: VerseSheetProps['keepVisible']; related: VerseSheetProps['related'] }) {
   const { t, language: interfaceLanguage } = useTranslation();
   const locale = resolveAppLocale(interfaceLanguage);
   // The Bible this device reads, as on the Bible page.
@@ -66,6 +71,15 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
   const [attempt, setAttempt] = useState(0);
   const [insets, setInsets] = useState({ top: 0, bottom: 0 });
   const [away, setAway] = useState<'up' | 'down' | null>(null);
+  const [showRelated, setShowRelated] = useState(false);
+  const relatedOpen = Boolean(related && showRelated);
+  const viewId = useId();
+  const textTabRef = useRef<HTMLButtonElement | null>(null);
+  const relatedTabRef = useRef<HTMLButtonElement | null>(null);
+  const returnToText = () => {
+    setShowRelated(false);
+    textTabRef.current?.focus({ preventScroll: true });
+  };
   const paneRef = useRef<HTMLDivElement | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   // What the text scrolls in: the window's own pane.
@@ -272,47 +286,71 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
             <XMarkIcon className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        {/* Keep responsive padding outside the scroll container so native scroll anchoring survives reflow. */}
-        <div className="flex min-h-0 flex-1 flex-col sm:px-3">
-          {/* Reachable by Tab, so the keyboard scrolls the text too. */}
-          <div ref={paneRef} tabIndex={0} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-24 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400">
-            {state.status === 'ready' ? (
-              <>
-                {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
-                {/* `isolate`: the light of a passage lies under the text and over this card. */}
-                <article ref={articleRef} className="isolate">
-                  <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} boxes={chapterWindow.boxes} />
-                </article>
-                <CrossReferenceSheet
-                  at={crossRefs.openAt}
-                  bookId={reference.book}
-                  bible={reading}
-                  locale={locale}
-                  set={crossRefs.set}
-                  verseText={crossRefs.verseText}
-                  onClose={crossRefs.close}
-                  onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
-                  layerClassName="z-[260]"
-                  linkLayerClassName="z-[270]"
-                />
-              </>
-            ) : state.status === 'loading' ? (
-              <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>
-            ) : (
-              <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
-                <p className="text-sm text-gray-700 dark:text-gray-200">{t('bible.loadError')}</p>
-                <button
-                  type="button"
-                  onClick={() => setAttempt((count) => count + 1)}
-                  className="min-h-11 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300"
-                >
-                  {t('bible.retry')}
-                </button>
-              </div>
-            )}
-          </div>
+        {related && <div role="tablist" aria-label={t('bible.sheet.views')} className="flex shrink-0 gap-1 border-b border-gray-200 px-4 dark:border-gray-700 sm:px-6">
+          {[{ active: !relatedOpen, ref: textTabRef, id: 'text', label: t('bible.sheet.text'), count: undefined }, { active: relatedOpen, ref: relatedTabRef, id: 'related', label: related.label, count: related.count }].map((tab, index) => <button
+            key={tab.id}
+            ref={tab.ref}
+            type="button"
+            role="tab"
+            id={`${viewId}-${tab.id}-tab`}
+            aria-controls={`${viewId}-${tab.id}`}
+            aria-selected={tab.active}
+            tabIndex={tab.active ? 0 : -1}
+            onClick={() => setShowRelated(index === 1)}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const next = event.key === 'Home' ? false : event.key === 'End' ? true : !relatedOpen;
+              setShowRelated(next);
+              (next ? relatedTabRef : textTabRef).current?.focus({ preventScroll: true });
+            }}
+            className={`inline-flex min-h-12 items-center border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 ${tab.active ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'}`}
+          >{tab.label}{tab.count !== undefined && <>{' '}<span data-testid="related-count" className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs leading-none tabular-nums ${tab.count ? 'bg-indigo-600 text-white dark:bg-indigo-400 dark:text-gray-900' : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300'}`}>{tab.count}</span></>}</button>)}
+        </div>}
+        {/* Both panes keep their geometry; responsive padding stays outside the reader scroll pane to preserve its native anchor. */}
+        <div className="relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] sm:px-3">
+        <div ref={paneRef} tabIndex={0} onScroll={onScroll} role={related ? 'tabpanel' : undefined} id={`${viewId}-text`} aria-labelledby={related ? `${viewId}-text-tab` : undefined} aria-hidden={relatedOpen || undefined} inert={relatedOpen} className={`relative col-start-1 row-start-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-4 pb-24 pt-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 ${relatedOpen ? 'invisible' : ''}`}>
+          {state.status === 'ready' ? (
+            <>
+              {notFound && <p role="status" className="py-4 text-center text-sm text-gray-600 dark:text-gray-300">{t('bible.goToNotFound')}</p>}
+              {/* `isolate`: the light of a passage lies under the text and over this card. */}
+              <article ref={articleRef} className="isolate">
+                <BookRibbon text={state.text} lang={BIBLES[reading].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} boxes={chapterWindow.boxes} />
+              </article>
+              <CrossReferenceSheet
+                at={crossRefs.openAt}
+                bookId={reference.book}
+                bible={reading}
+                locale={locale}
+                set={crossRefs.set}
+                verseText={crossRefs.verseText}
+                onClose={crossRefs.close}
+                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse, ...(target.endChapter ? { endChapter: target.endChapter } : {}) })}
+                layerClassName="z-[260]"
+                linkLayerClassName="z-[270]"
+              />
+            </>
+          ) : state.status === 'loading' ? (
+            <p role="status" className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">{t('bible.loading')}</p>
+          ) : (
+            <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center">
+              <p className="text-sm text-gray-700 dark:text-gray-200">{t('bible.loadError')}</p>
+              <button
+                type="button"
+                onClick={() => setAttempt((count) => count + 1)}
+                className="min-h-11 rounded-xl border border-indigo-200 bg-indigo-50 px-4 text-sm font-semibold text-indigo-700 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300"
+              >
+                {t('bible.retry')}
+              </button>
+            </div>
+          )}
         </div>
-        {away && (
+        {related && <div role="tabpanel" id={`${viewId}-related`} aria-labelledby={`${viewId}-related-tab`} aria-hidden={!relatedOpen || undefined} inert={!relatedOpen} tabIndex={0} className={`col-start-1 row-start-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-5 py-5 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 sm:px-4 ${!relatedOpen ? 'invisible' : ''}`}>
+          {related.render(returnToText)}
+        </div>}
+        </div>
+        {!relatedOpen && away && (
           // Where the passage went, the button sits: at the top for a passage scrolled off the top, at the bottom otherwise.
           <button
             type="button"
@@ -322,7 +360,7 @@ function Sheet({ reference, onClose, keepVisible }: { reference: SheetReference;
               if (drawnSpan && !inSpan(drawnSpan, passageChapter)) showChapter({ chapter: passageChapter }, () => rest(false));
               else rest(true);
             }}
-            className={`absolute left-1/2 z-10 inline-flex min-h-12 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-indigo-600 py-2 pl-4 pr-5 text-[0.9375rem] font-semibold text-white shadow-lg transition hover:bg-indigo-700 ${away === 'up' ? 'top-[5.25rem] sm:top-[4.75rem]' : 'bottom-5'}`}
+            className={`absolute left-1/2 z-10 inline-flex min-h-12 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-indigo-600 py-2 pl-4 pr-5 text-[0.9375rem] font-semibold text-white shadow-lg transition hover:bg-indigo-700 ${away === 'up' ? (related ? 'top-[8.25rem] sm:top-[7.75rem]' : 'top-[5.25rem] sm:top-[4.75rem]') : 'bottom-5'}`}
           >
             {away === 'up' ? <ArrowUpIcon className="h-5 w-5" aria-hidden="true" /> : <ArrowDownIcon className="h-5 w-5" aria-hidden="true" />}
             {wholeChapter ? t(isPsalms ? 'bible.sheet.backToPsalm' : 'bible.sheet.backToChapter', { number: Number(firstKey?.split(':')[0] ?? reference.chapter) }) : t('bible.sheet.backToPassage')}

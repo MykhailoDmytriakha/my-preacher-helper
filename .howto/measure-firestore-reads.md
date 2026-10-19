@@ -6,6 +6,7 @@ The number that matters is document reads per day against the Spark limit of 50K
 
 ## Where the number is
 
+- **Google Cloud Console → IAM & Admin → Quotas & System Limits, filter `firestore`** — the authoritative quota: «Free daily read operations per project ('(default)' database) per day», current usage against 50 000, and a per-day chart (row's chart icon). The owner can open it; on 2026-10-19 it showed 50 026 / 50 000 while the Firebase charts below showed ~11K and 0% for the same day: they leave out part of the reads (their own note: no aggregation queries, «may not match billing and quota usage»). When production answers `RESOURCE_EXHAUSTED`, read this page first.
 - **Firebase console → Firestore → Usage** — per-day reads, the owner's login. This is the source every earlier measurement used. An agent reads it only in the owner's own browser, with his word.
 - **Cloud Monitoring** — metric `firestore.googleapis.com/document/read_count`, `ALIGN_SUM` per hour plus `REDUCE_SUM`, summed by Pacific date (the console's day). The app service account (`FIREBASE_SERVICE_ACCOUNT` in `frontend/.env.local`) answers **403 Permission denied**: it has no `roles/monitoring.viewer`. Granting that role is the owner's call (a security setting). Once it is granted, the agent can measure without the console.
 

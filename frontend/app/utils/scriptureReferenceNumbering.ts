@@ -134,6 +134,14 @@ export function versesHeldIn(ref: ScriptureRefShape, to: BibleId): VersePlace[] 
   return from === to ? verses : versesThere(to, from, verses);
 }
 
+/** An explicit overlap, across translations too; naming a book whole includes its passages. */
+export function scriptureReferencesOverlap(a: ScriptureRefShape, b: ScriptureRefShape): boolean {
+  if (a.book !== b.book || !isBibleId(a.bible) || !isBibleId(b.bible)) return false;
+  if (a.chapter === undefined || b.chapter === undefined) return true;
+  const held = new Set(versesHeldIn(a, CANONICAL_BIBLE).map(place => `${place.chapter}:${place.verse}`));
+  return versesHeldIn(b, CANONICAL_BIBLE).some(place => held.has(`${place.chapter}:${place.verse}`));
+}
+
 /**
  * A passage is one contiguous interval, with exact first/last verses or whole chapters. A stored
  * `endChapter` span keeps its ending chapter; conversion may return several passages when a gap
