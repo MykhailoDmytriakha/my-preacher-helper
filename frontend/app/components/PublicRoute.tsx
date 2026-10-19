@@ -19,12 +19,7 @@ export default function PublicRoute({
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading) {
-      const guestData = localStorage.getItem('guestUser');
-      if (user || guestData) {
-        router.replace(redirectTo);
-      }
-    }
+    if (!loading && user) router.replace(redirectTo);
   }, [user, loading, router, redirectTo]);
 
   // Show loading spinner while checking authentication
@@ -33,7 +28,7 @@ export default function PublicRoute({
   }
 
   // Don't render children if user is authenticated
-  if (user || localStorage.getItem('guestUser')) {
+  if (user) {
     return <PageSpinner />;
   }
 

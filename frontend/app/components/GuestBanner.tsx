@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 
-import { auth, logOut, checkGuestExpiration } from "@services/firebaseAuth.service";
+import { useAuth } from '@/providers/AuthProvider';
+import { logOut, checkGuestExpiration } from "@services/firebaseAuth.service";
 
 /**
  * Signs out a guest whose five days are over. It renders nothing: the guest banner it once drew
@@ -10,16 +11,15 @@ import { auth, logOut, checkGuestExpiration } from "@services/firebaseAuth.servi
  * (BUG-20261011-spiritual-step-hardcoded-russian, class sweep).
  */
 export function GuestBanner() {
+  const { user } = useAuth();
   useEffect(() => {
-    const user = auth.currentUser;
     if (user?.isAnonymous && !checkGuestExpiration(user)) {
-      localStorage.removeItem('guestUser');
       // Through logOut, never `auth.signOut()` directly: signing out has to clear the
       // recovery messages too, and those hold text — a sermon title, a prayer answer —
       // that must not be waiting on screen for whoever uses this browser next.
       void logOut();
     }
-  }, []);
+  }, [user]);
 
   return null;
 }

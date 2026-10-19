@@ -36,27 +36,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const referralClaimInFlight = useRef(false);
 
   useEffect(() => {
-    // Firebase's onAuthStateChanged + browserLocalPersistence is the SINGLE
-    // source of truth and already synchronises auth across tabs natively.
-    //
-    // We deliberately do NOT mirror auth into a custom localStorage key, and we
-    // do NOT fall back to a cached `guestUser` here:
-    //  - The old custom mirror cleared a valid session in one tab whenever
-    //    another tab emitted a transient `null` (cold start / token refresh),
-    //    collapsing client-SDK lists (gated on `enabled: !!uid`) to empty and
-    //    throwing permission-denied on `users/{uid}` reads.
-    //  - A `?? readGuestUser()` fallback would resurrect a phantom user on
-    //    sign-out: Firebase notifies this listener with `null` BEFORE logOut()'s
-    //    caller removes the `guestUser` cache (handleLogout in hooks/useAuth.ts),
-    //    so the stale cache would re-authenticate the just-logged-out user.
-    //
-    // A genuine guest is an anonymous Firebase user, so it arrives here as a
-    // non-null `firebaseUser` via Firebase's own persistence; route guards and
-    // the uid hooks read the `guestUser` cache directly where they need it.
-    // WHO the tab currently belongs to, so a CHANGE can be noticed. Firebase notifies
-    // every open tab, but only the tab that ran `logOut()` cleared its recovery
-    // messages — the others kept the previous account's text on screen, with a copy
-    // button, for whoever signed in next.
+    // Firebase's listener is the single source of both identity and restoration readiness. A genuine
+    // guest is an anonymous Firebase user, restored by the same existing persistence. Routes and React
+    // readers use this context; action-time ownership uses the SDK currentUser. Neither reads a
+    // browser-storage mirror (BUG-20260810-auth-mirrors-in-localstorage).
+    // Every tab hears identity changes through Firebase. Dismiss recovery messages from the prior
+    // account so its text cannot remain on screen for the next person.
     let previousUid: string | null | undefined;
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {

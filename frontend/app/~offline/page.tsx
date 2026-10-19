@@ -14,7 +14,6 @@ import DashboardPage from '@/(pages)/(private)/dashboard/page';
 import { PrivateChrome, PrivateWorkspace } from '@/components/PrivateWorkspace';
 import { useAuth } from '@/providers/AuthProvider';
 import { resolveOfflineShellRoute, type OfflineShellRoute } from '@/utils/offlineShellRoutes';
-import { hasPersistedSession } from '@/utils/persistedSession';
 import { useTranslation } from '@locales/useTranslation';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
@@ -157,7 +156,7 @@ export default function OfflineShell() {
   // The shell stands in for private pages, which the private layout guards online. Someone signed out
   // on this device gets the card, not a private page: the worker opens this shell at the start of the
   // app on a weak signal too (BUG-20261004-weak-network-delays-offline-navigation).
-  if (!user && !hasPersistedSession()) {
+  if (loading || !user) {
     return <GenericOfflineCard requestedPath={requestedPath} pending={loading} />;
   }
 

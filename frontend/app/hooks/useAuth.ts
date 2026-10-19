@@ -17,7 +17,6 @@ export function useAuth() {
   const loginWithGoogle = useCallback(async () => {
     try {
       const userData = await signInWithGoogle();
-      localStorage.setItem("guestUser", JSON.stringify(userData));
       return userData;
     } catch (error) {
       console.error("Error signing in with Google", error);
@@ -28,7 +27,6 @@ export function useAuth() {
   const loginAsGuest = useCallback(async () => {
     try {
       const userData = await signInAsGuest();
-      localStorage.setItem("guestUser", JSON.stringify(userData));
       return userData;
     } catch (error) {
       console.error("Error signing in as guest", error);
@@ -41,7 +39,6 @@ export function useAuth() {
       const currentLang = document.cookie.match(/lang=([^;]+)/)?.[1] || 'en';
       
       await logOut();
-      localStorage.removeItem('guestUser');
       sessionStorage.clear();
 
       await i18n.changeLanguage(currentLang);

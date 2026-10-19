@@ -127,17 +127,21 @@ describe('offline shell', () => {
     }
   });
 
-  it('opens the dashboard while a saved session is still being restored', async () => {
-    mockAuth = { user: null, loading: false };
+  it.each([true, false])('does not infer a private session from persisted keys while loading=%s', async loading => {
+    mockAuth = { user: null, loading };
     localStorage.setItem('firebase:authUser:key:[DEFAULT]', '{}');
+    localStorage.setItem('guestUser', JSON.stringify({ uid: 'previous-owner' }));
     window.history.replaceState(null, '', '/');
     jest.mocked(createBrowserDataEngine).mockImplementation(membershipEngineHarness([]).createBrowser);
     const view = render(<TestProviders><OfflineShell /></TestProviders>);
     try {
+      expect(await screen.findByRole('button', { name: 'buttons.retry' })).toBeInTheDocument();
+      expect(screen.queryByLabelText('sermons')).not.toBeInTheDocument();
+      if (loading) expect(screen.getByRole('status')).toHaveTextContent('connection.offlinePage.waiting');
+      mockAuth = { user: { uid: 'owner' }, loading: false };
+      view.rerender(<TestProviders><OfflineShell /></TestProviders>);
       expect(await screen.findByLabelText('sermons')).toBeInTheDocument();
-    } finally {
-      view.unmount();
-    }
+    } finally { view.unmount(); }
   });
 
   it('gives a page it renders the records of the data engine, as the private layout does', async () => {

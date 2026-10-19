@@ -197,7 +197,7 @@ describe('firebaseAuth.service', () => {
     await expect(signInWithGoogle()).rejects.toBe(error);
   });
 
-  it('signInAsGuest stores guest data, syncs placeholder profile, and returns user', async () => {
+  it('signInAsGuest uses the Firebase session without an extra mirror and syncs the profile', async () => {
     const { signInAsGuest } = loadModule();
     const user = {
       uid: 'guest123456',
@@ -206,11 +206,10 @@ describe('firebaseAuth.service', () => {
     mockSignInAnonymously.mockResolvedValue({ user });
 
     const result = await signInAsGuest();
-    const storedGuest = JSON.parse(localStorage.getItem('guestUser') || '{}');
+    const storedGuest = localStorage.getItem('guestUser');
 
     expect(mockSignInAnonymously).toHaveBeenCalled();
-    expect(storedGuest.uid).toBe('guest123456');
-    expect(storedGuest.creationTime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(storedGuest).toBeNull();
     expect(mockUpdateUserProfile).toHaveBeenCalledWith(
       'guest123456',
       'guest-guest1@guest.local',

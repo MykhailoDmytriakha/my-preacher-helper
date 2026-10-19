@@ -14,6 +14,14 @@ jest.mock('firebase/firestore', () => ({
 }));
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 
+// This suite exercises a restored session; the default empty Auth context is still loading.
+jest.mock('@/providers/AuthProvider', () => ({
+    useAuth: () => {
+        const { auth } = jest.requireMock('@services/firebaseAuth.service');
+        return { user: auth.currentUser, loading: false, isAuthenticated: Boolean(auth.currentUser) };
+    },
+}));
+
 // Mock dependencies
 jest.mock('sonner');
 jest.mock('react-i18next', () => ({

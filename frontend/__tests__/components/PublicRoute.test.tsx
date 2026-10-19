@@ -129,7 +129,7 @@ describe('PublicRoute', () => {
     });
   });
 
-  it('should redirect when guest user is present in localStorage', async () => {
+  it('should redirect for a restored anonymous Firebase user', async () => {
     const guestUser = { uid: 'guest-uid', isAnonymous: true } as any;
     
     mockUseAuth.mockReturnValue({
@@ -138,7 +138,6 @@ describe('PublicRoute', () => {
       isAuthenticated: true,
     });
 
-    mockLocalStorage.getItem.mockReturnValue(JSON.stringify(guestUser));
 
     render(
       <PublicRoute>

@@ -39,9 +39,9 @@ const GUEST_EXPIRATION_DAYS = 5;
  * never removed. It must run before anything else touches auth on this app
  * instance; the fallback keeps a stray earlier `getAuth` from breaking sign-in.
  *
- * localStorage is deliberate, not incidental: ProtectedRoute depends on that key
- * (see ProtectedRoute.tsx). Moving persistence to IndexedDB would silently start
- * redirecting signed-in people to the landing page.
+ * browserLocalPersistence remains deliberate: keep existing sessions in their current store,
+ * without migrating or deleting them. The provider waits for Firebase to restore the user;
+ * no route reads Firebase's storage keys as a second source of identity.
  *
  * `popupRedirectResolver` must be passed explicitly here — unlike `getAuth`,
  * `initializeAuth` does not install one, and `signInWithPopup` would fail without it.
@@ -117,14 +117,6 @@ export const signInAsGuest = async (): Promise<User | null> => {
     const result = await signInAnonymously(auth);
     console.log("Guest user signed in:", result.user.uid);
     
-    localStorage.setItem(
-      "guestUser",
-      JSON.stringify({
-        ...result.user,
-        creationTime: new Date().toISOString(),
-      })
-    );
-
     // Store anonymous user information with placeholder email and name
     // without affecting language settings
     await updateUserProfile(

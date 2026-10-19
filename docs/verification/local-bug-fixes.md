@@ -2089,3 +2089,49 @@ idempotent, but unknown provider outcomes, failed-batch charging policy, real pr
 production latency/contention, platform deadlines, PWA and physical devices are outside this proof.
 Production recipe `audio-continuation-production-recipe.md` is unexecuted. Canonical recipes:
 `.howto/generate-sermon-audio.md` and `.howto/gate-and-meter-an-ai-call.md`.
+
+
+## BUG-20260810-auth-mirrors-in-localstorage
+
+Stage: locally verified and independently accepted; production verification awaits a separately
+authorized merge, push and deployment.
+
+Firebase is the single identity source. Private/public routes, the offline shell and React uid
+readers wait for the existing AuthProvider restoration. Action-time owner resolution reads the
+Firebase SDK currentUser. Obsolete guestUser writes, raw Firebase-key presence checks and the extra
+one-second route timer are removed. Existing browserLocalPersistence and popup resolver are retained;
+no session migration, store deletion or cache wipe was added. Guest expiry follows provider changes.
+
+Before product edits, frozen compiled localhost cases reproduced the orphan-key private spinner and
+stale guest mirror opening the private dashboard. The same three regression source files produced
+14 failures before correction and53 passes after it; the extra guest identity-change expiry test
+was separately red before its effect dependency fix. Obsolete mirror-contract fixtures now represent
+actual restored Firebase users. The sermon action recovery fixture supplies its missing ready auth
+context; its recovery assertions are unchanged.
+
+Final local gates: full889 suites9755 tests PASS,3 suites17 inherited tests skipped; TypeScript and
+canonical production compiler PASS; lint0 errors24 inherited warnings. Build: yaJzxe5TprZAVvq6qtNyO.
+A fresh independent reviewer reran14 suites205 tests and found no high-confidence regression.
+
+Root compared8 real compiled Chromium cases66 checks at390/1280px and personally inspected18 original
+screenshots. Fresh tablet820px acceptance ran4 cases and inspected16 originals. Existing Firebase
+SDK session restoration, online/native offline cold reload, second-tab restoration, actual SDK
+cross-tab sign-out, rejection of stale mirrors and a visible Google sign-in control passed. Online
+app API replies were controlled in RAM; native offline used real browser/SW/network/engine IndexedDB.
+This does not prove real backend persistence or provider login. No account was created.
+
+Root sealed packet: auth-identity-verification-v1.json, SHA-256
+19513083b028ed00b93f316335df760c77e2e66f79aed35e294d4f5cf7b677b5.
+Fresh report: auth-identity-fresh-acceptance-v1.json, SHA-256
+fb1bc624bd7e09b4dc03aa08c7d3adf1cb66a7539676f030d923b6e47c221688.
+Root reconciled143 root artifact pins,2268 source files,892 compiled files, one recipe and34 fresh
+nested evidence pins with zero mismatches. Exact RED test bytes, frozen before-build archive, class
+map, source review, logs and originals remain in the local case. Excluded harness diagnostics are
+retained separately; loss of the initial fresh iframe-selector failure screenshot is disclosed.
+
+Only this target record is removed; the other35 whole tracker blocks and preface remain byte-identical
+to the phase baseline. Local removal is not production closure. Google-provider interaction, actual
+physical-device/PWA acceptance, weak-network provider lookup and production behavior remain pending.
+Broader account-cache partitioning and retired-scope pending-write bugs remain separately tracked.
+The unexecuted production recipe is auth-identity-production-recipe.md; canonical account guidance
+is .howto/keep-accounts-apart.md.

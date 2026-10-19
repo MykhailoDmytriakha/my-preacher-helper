@@ -93,7 +93,7 @@ describe('ProtectedRoute', () => {
     });
   });
 
-  it('should render children when guest user is present in localStorage', async () => {
+  it('should render children for a restored anonymous Firebase user', async () => {
     const guestUser = { uid: 'guest-uid', isAnonymous: true } as any;
     
     mockUseAuth.mockReturnValue({
@@ -102,7 +102,6 @@ describe('ProtectedRoute', () => {
       isAuthenticated: true,
     });
 
-    mockLocalStorage.getItem.mockReturnValue(JSON.stringify(guestUser));
 
     render(
       <ProtectedRoute>

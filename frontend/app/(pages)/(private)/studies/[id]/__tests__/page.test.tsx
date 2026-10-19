@@ -405,8 +405,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('reopens the selected draft for the same guest owner resolved by the note reader', () => {
-        jest.useFakeTimers(); localStorage.clear(); mockAuthState.user = null;
-        localStorage.setItem('guestUser', JSON.stringify({ uid: 'guest-owner' }));
+        jest.useFakeTimers(); localStorage.clear(); mockAuthState.user = { uid: 'guest-owner' };
         const kept = { title: '', content: 'Guest unfinished words', tags: [], scriptureRefs: [], type: 'note' };
         const key = draftKey('guest-owner', 'new~guest-note', 'note');
         localStorage.setItem(key, JSON.stringify({ value: kept, savedAt: 1, creationTargetId: 'guest-note' }));

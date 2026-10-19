@@ -105,14 +105,13 @@ describe('useStudyNoteShareLinks', () => {
     expect(result.current.shareLinks).toEqual(links);
   });
 
-  it('uses guest uid from localStorage when no auth user', async () => {
-    window.localStorage.setItem('guestUser', JSON.stringify({ uid: 'guest-1' }));
+  it('uses the restored anonymous Firebase owner', async () => {
     const links = [makeShareLink({ ownerId: 'guest-1' })];
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseAuth.mockReturnValue({
-      user: null,
+      user: { uid: 'guest-1', isAnonymous: true } as any,
       loading: false,
-      isAuthenticated: false,
+      isAuthenticated: true,
     });
     mockGetShareLinks.mockResolvedValue(links);
 
@@ -141,7 +140,7 @@ describe('useStudyNoteShareLinks', () => {
 
     expect(mockGetShareLinks).not.toHaveBeenCalled();
     expect(result.current.uid).toBeUndefined();
-    expect(consoleSpy).toHaveBeenCalled();
+    expect(consoleSpy).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 

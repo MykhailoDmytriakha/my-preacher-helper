@@ -43,33 +43,9 @@ export const studyNoteListKey = (uid: string | undefined) => ['study-notes', uid
  */
 export const serviceOrderListKey = (uid: string | undefined) => ['serviceOrders', uid] as const;
 
-/**
- * The owner of whatever is on screen right now: the signed-in user, or the guest
- * identity kept in localStorage. Undefined while auth is still resolving — callers
- * get a distinct key for that state rather than silently sharing one.
- */
+/** The SDK owns action-time identity; an obsolete browser mirror cannot resurrect a signed-out owner. */
 export function resolveOwnerUid(): string | undefined {
-  const currentUser = auth.currentUser;
-  if (currentUser?.uid) {
-    return currentUser.uid;
-  }
-
-  if (typeof window === 'undefined') {
-    return undefined;
-  }
-
-  try {
-    const guestData = window.localStorage.getItem('guestUser');
-    if (!guestData) {
-      return undefined;
-    }
-
-    const parsed = JSON.parse(guestData) as { uid?: string };
-    return parsed.uid;
-  } catch (error) {
-    console.error('Error parsing guestUser from localStorage', error);
-    return undefined;
-  }
+  return auth.currentUser?.uid;
 }
 
 /**

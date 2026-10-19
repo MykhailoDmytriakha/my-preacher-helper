@@ -36,7 +36,7 @@ describe('useResolvedUid', () => {
     expect(result.current.isAuthLoading).toBe(false);
   });
 
-  it('returns firebase auth uid while auth is loading', () => {
+  it('waits for the provider to publish restored Firebase identity', () => {
     mutableAuth.currentUser = { uid: 'firebase-user' } as any;
     mockUseAuth.mockReturnValue({
       user: null,
@@ -46,11 +46,11 @@ describe('useResolvedUid', () => {
 
     const { result } = renderHook(() => useResolvedUid());
 
-    expect(result.current.uid).toBe('firebase-user');
-    expect(result.current.isAuthLoading).toBe(false);
+    expect(result.current.uid).toBeUndefined();
+    expect(result.current.isAuthLoading).toBe(true);
   });
 
-  it('returns guest uid during auth loading when stored', () => {
+  it('ignores an obsolete guest mirror during Firebase restoration', () => {
     window.localStorage.setItem('guestUser', JSON.stringify({ uid: 'guest-1' }));
     mockUseAuth.mockReturnValue({
       user: null,
@@ -60,8 +60,8 @@ describe('useResolvedUid', () => {
 
     const { result } = renderHook(() => useResolvedUid());
 
-    expect(result.current.uid).toBe('guest-1');
-    expect(result.current.isAuthLoading).toBe(false);
+    expect(result.current.uid).toBeUndefined();
+    expect(result.current.isAuthLoading).toBe(true);
   });
 
   it('returns loading state when auth is loading and no uid available', () => {
@@ -77,7 +77,7 @@ describe('useResolvedUid', () => {
     expect(result.current.isAuthLoading).toBe(true);
   });
 
-  it('returns guest uid after auth resolves without user', () => {
+  it('ignores an obsolete guest mirror after Firebase signed out', () => {
     window.localStorage.setItem('guestUser', JSON.stringify({ uid: 'guest-2' }));
     mockUseAuth.mockReturnValue({
       user: null,
@@ -87,12 +87,11 @@ describe('useResolvedUid', () => {
 
     const { result } = renderHook(() => useResolvedUid());
 
-    expect(result.current.uid).toBe('guest-2');
+    expect(result.current.uid).toBeUndefined();
     expect(result.current.isAuthLoading).toBe(false);
   });
 
   it('handles invalid guest data gracefully', () => {
-    global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
     window.localStorage.setItem('guestUser', 'invalid-json');
@@ -106,7 +105,7 @@ describe('useResolvedUid', () => {
 
     expect(result.current.uid).toBeUndefined();
     expect(result.current.isAuthLoading).toBe(false);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
 
     errorSpy.mockRestore();
   });
