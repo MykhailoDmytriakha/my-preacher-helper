@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
 
 import { MARK_COLORS, marksKey, PENCIL_COLORS, type BookMarks, type MarkColor, type PencilColor } from '@/utils/bibleMarks';
+import { cssHighlightRegistry, type HighlightSet } from '@/utils/cssHighlights';
 
 import { mapVerseText, VERSE_TEXT_ATTRIBUTE, wordsRange } from './verseWordDom';
 
@@ -25,18 +26,7 @@ import type { MarksChange } from './markStore';
 type Layer = MarkColor | `pencil-${PencilColor}`;
 export const highlightName = (layer: Layer) => `bible-mark-${layer}`;
 
-type HighlightSet = { add: (range: Range) => void; delete: (range: Range) => void };
-type HighlightRegistry = { set: (name: string, highlight: HighlightSet) => void; delete: (name: string) => void };
-type HighlightConstructor = new (...ranges: Range[]) => HighlightSet;
-
-function registry(): { highlights: HighlightRegistry; Highlight: HighlightConstructor } | null {
-  if (typeof window === 'undefined' || typeof CSS === 'undefined') return null;
-  const highlights = (CSS as unknown as { highlights?: HighlightRegistry }).highlights;
-  const Highlight = (window as unknown as { Highlight?: HighlightConstructor }).Highlight;
-  return highlights && Highlight ? { highlights, Highlight } : null;
-}
-
-export const marksSupported = (): boolean => registry() !== null;
+export const marksSupported = (): boolean => cssHighlightRegistry() !== null;
 
 const LAYERS: Layer[] = [...MARK_COLORS, ...PENCIL_COLORS.map((color) => `pencil-${color}` as const)];
 /** How long a kept stroke is shown over marks that do not hold it yet. */
@@ -75,7 +65,7 @@ function rangesOf(container: Element, verseMarks: BookMarks[string]): [Layer, Ra
 
 /** Brings the page's highlights to `marks`, touching only the verses whose marks changed. */
 function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Element>, marks: BookMarks): void {
-  const api = registry();
+  const api = cssHighlightRegistry();
   if (!api) return;
   if (!canvas.layers) {
     const layers = new Map<Layer, HighlightSet>();
@@ -109,7 +99,7 @@ function paintMarks(canvas: Canvas, root: HTMLElement, index: Map<string, Elemen
 function clearMarks(state: { painted: string | null; canvas: Canvas }): void {
   state.painted = null;
   state.canvas = { layers: null, verses: new Map() };
-  LAYERS.forEach((layer) => registry()?.highlights.delete(highlightName(layer)));
+  LAYERS.forEach((layer) => cssHighlightRegistry()?.highlights.delete(highlightName(layer)));
 }
 
 /** How a stroke shows itself, outside React: a reader redrawn on every word made an iPad lag (2026-10-16). */
@@ -151,7 +141,7 @@ export function useMarkHighlights(rootRef: RefObject<HTMLElement | null>, ready:
     const show = (target: BookMarks) => {
       const current = state.current;
       const root = rootRef.current;
-      if (!root || !current.ready || !registry()) return;
+      if (!root || !current.ready || !cssHighlightRegistry()) return;
       const key = marksKey(target);
       if (key === current.painted) return;
       current.index ??= verseIndex(root);
