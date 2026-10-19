@@ -26,6 +26,7 @@ import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { isBrowserOffline, isKnownOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
+import { outlinePointGridClass } from "@/utils/structureBoardLayout";
 import { getSectionLabel } from "@lib/sections";
 import { useTranslation } from "@locales/useTranslation";
 
@@ -968,7 +969,7 @@ export default function ScratchPanel({
 
       {/* Recovery lives with the recorder, inside the pool — one instance only. */}
       <OutlineBoard
-        className="grid grid-cols-1 items-start gap-3 sm:gap-4 lg:grid-cols-3"
+        className={`${outlinePointGridClass} items-start gap-3 sm:gap-4`}
         value={boardOutline}
         onChange={handleManualOutlineChange}
         showNotes

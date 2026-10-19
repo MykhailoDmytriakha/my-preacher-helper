@@ -6,6 +6,9 @@
  */
 export const structureThoughtGridClass = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,24rem),1fr))]';
 
+/** Outline points use the same container fit, with room for their shorter text and controls. */
+export const outlinePointGridClass = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))]';
+
 /** The board keeps one focus column or the person's explicit vertical arrangement. */
 export const boardLayoutClass = (visibleCount: number, isVertical: boolean): string => {
   if (visibleCount <= 1) return 'flex flex-col';

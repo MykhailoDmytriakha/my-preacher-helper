@@ -5,6 +5,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useDataDocument, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { outlinePointGridClass } from '@/utils/structureBoardLayout';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { SermonOutline } from '@/models/models';
@@ -49,7 +50,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover} />
       {document.loading && !document.data ? <p className="text-sm text-gray-400">{t('settings.loading')}</p>
         : document.data && <OutlineBoard value={document.data.structure as unknown as SermonOutline}
-          isReadOnly={disabled || document.readOnly} className="grid grid-cols-1 md:grid-cols-3 gap-3"
+          isReadOnly={disabled || document.readOnly} className={`${outlinePointGridClass} gap-3`}
           onChange={structure => { void document.update(current => current ? { ...current, structure: structure as never } : current).catch(() => undefined); }} />}
     </fieldset>;
   }

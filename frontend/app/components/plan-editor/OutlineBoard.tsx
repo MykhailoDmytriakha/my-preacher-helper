@@ -22,6 +22,7 @@ import {
   noteSubContainerId,
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
+import { outlinePointGridClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { sortSubPointsByPosition, subPointDeletionNeedsConfirm } from '@/utils/subPoints';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
@@ -130,7 +131,7 @@ interface OutlineBoardProps {
 }
 
 /**
- * Reusable three-column outline editor (Introduction / Main / Conclusion) with
+ * Reusable responsive outline editor (Introduction / Main / Conclusion) with
  * drag-and-drop of points across sections, inline edit, add/delete and sub-points.
  * Pure value/onChange — the parent owns persistence (sermon outline, or a template
  * structure). Holds only transient UI state (which row is being edited/added).
@@ -145,7 +146,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onSubPointDeleted,
   onOutlinePointMoved,
   onSubPointMoved,
-  className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 min-h-min md:h-full',
+  className = `${outlinePointGridClass} gap-3 sm:gap-4 min-h-min md:h-full`,
   showNotes = false,
   directText = false,
   scratch,
@@ -552,7 +553,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     return (
       <>
         <span
-          className="flex-1 min-w-0 truncate text-sm font-medium text-slate-600 dark:text-blue-50/90 cursor-text"
+          className="flex-1 min-w-0 whitespace-pre-wrap break-words text-sm font-medium text-slate-600 dark:text-blue-50/90 cursor-text"
           title={sp.text}
           onDoubleClick={() => startEditingSubPoint(sp)}
         >
@@ -592,7 +593,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (!showWrapper) return null;
 
     return (
-      <div className="ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/20 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.03] transition-all duration-150">
+      <div className={`${structureSubPointInsetClass} mr-0 sm:mr-4 mt-2 mb-2 max-w-full rounded-lg border-l border-slate-300/80 bg-white/20 py-1.5 dark:border-blue-100/35 dark:bg-white/[0.03] transition-all duration-150`}>
             <div className="min-h-[24px] space-y-1.5">
               {sorted.map((sp, index) => (
                 <React.Fragment key={sp.id}>
@@ -912,7 +913,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                   </button>
                                 )}
                                 <span
-                                  className={`text-sm text-gray-800 dark:text-gray-200 break-words ${isReadOnly ? '' : 'cursor-text'}`}
+                                  className={`min-w-0 text-sm text-gray-800 dark:text-gray-200 break-words ${isReadOnly ? '' : 'cursor-text'}`}
                                   onDoubleClick={() => {
                                     if (isReadOnly) return;
                                     setEditingPointId(point.id);
