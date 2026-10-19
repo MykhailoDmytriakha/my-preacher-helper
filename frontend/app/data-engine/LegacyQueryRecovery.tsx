@@ -7,6 +7,7 @@ import FormDialog from '@/components/ui/FormDialog';
 import { PageSpinner } from '@/components/ui/PageSpinner';
 import { useClipboard } from '@/hooks/useClipboard';
 import { getCookieLanguage } from '@/services/userSettings.service';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { answerWithin } from '@/utils/deviceStorage';
 import { fieldLabel } from '@/utils/storedFieldLabel';
@@ -43,6 +44,20 @@ function storedLanguageShown(): string {
   return [stored, stored.split('-')[0]].find(code => i18n.hasResourceBundle(code, 'translation')) ?? DEFAULT_LANGUAGE;
 }
 
+const STARTUP_SOURCE = 'legacy-migration';
+
+/** Observe the existing task, without changing its result, timeout or owner. No storage contents enter the log. */
+function preserveForStartup(enabled: (collection: string) => boolean) {
+  const startedAt = Date.now();
+  recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'started' });
+  const task = preserveLegacyQueryCache(enabled);
+  void Promise.resolve(task).then(
+    () => recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'answered', elapsedMs: Date.now() - startedAt }),
+    () => recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'failed', elapsedMs: Date.now() - startedAt }),
+  );
+  return { task, startedAt };
+}
+
 /** Mount before React Query: even expired caches must be archived before its restore can remove them. */
 export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (collection: string) => boolean; children: ReactNode }) {
   const { t } = useTranslation();
@@ -61,11 +76,14 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
     // on while the archive keeps running: its read of the old cache was issued first, and the
     // query persister writes nothing over the old cache until the archive is done. An archive that
     // fails after that is said above the app, with Retry, instead of silently keeping writes off.
-    const preserving = preserveLegacyQueryCache(enabled);
+    const { task: preserving, startedAt } = preserveForStartup(enabled);
     void answerWithin(preserving).then(result => {
       if (!active) return;
       setState('ready');
-      if (!result.answered) preserving.catch(() => { if (active) setLateFailure(true); });
+      if (!result.answered) {
+        recordDiagnostic('startup', { source: STARTUP_SOURCE, result: 'deferred', elapsedMs: Date.now() - startedAt });
+        preserving.catch(() => { if (active) setLateFailure(true); });
+      }
     }, () => { if (active) setState('failed'); });
     return () => { active = false; };
   }, [enabled, attempt]);
@@ -76,7 +94,7 @@ export function LegacyQueryMigrationGate({ enabled, children }: { enabled: (coll
   }, [state]);
   const retryLate = () => {
     setLateFailure(false);
-    preserveLegacyQueryCache(enabled).catch(() => { if (mounted.current) setLateFailure(true); });
+    preserveForStartup(enabled).task.catch(() => { if (mounted.current) setLateFailure(true); });
   };
   if (state === 'ready') return <>
     {lateFailure && <div role="alert" className="m-4 rounded-xl border p-4">

@@ -2,6 +2,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 
+import { ApplicationDiagnosticsRecorder } from "./components/diagnostics/DiagnosticsRecorder";
 import { LocalizedToaster } from "./components/LocalizedToaster";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { SkipLink } from "./components/navigation/SkipLink";
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeWatcher />
         <TextScaleProvider>
           <AuthProvider>
+            <ApplicationDiagnosticsRecorder />
             <ConnectionProvider>
               <QueryProvider>
                 <NuqsAdapter>

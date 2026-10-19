@@ -3,7 +3,6 @@
 import { ReactNode, useRef } from 'react';
 
 import { DeviceStorageNotice } from '@/components/DeviceStorageNotice';
-import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
 import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { DraftStorageNotice } from '@/components/DraftStorageNotice';
 import { EngineConflictBanner } from '@/components/EngineConflictBanner';
@@ -60,7 +59,6 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
       {/* Mounted OUTSIDE the conditional on purpose: the preaching-plan screen hides
           the chrome, and while the queue worker lived inside the banner that screen
           — the one a preacher keeps open for an hour — drained nothing at all. */}
-      <DiagnosticsRecorder pathname={pathname} />
       <OfflinePageMemory address={`${pathname}?${search}`} />
       <OutboxDrain />
       {!isPreachingPlan && (

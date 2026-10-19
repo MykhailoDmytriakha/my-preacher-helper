@@ -2,11 +2,18 @@
 
 import { useEffect } from 'react';
 
+import { useShellPathname } from '@/hooks/useShellPathname';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { runtimeErrorDetails } from '@/utils/runtimeErrorDetails';
 
-/** Remains mounted with the navigation, even when a child route is still loading. */
+/** One recorder above startup gates, with the actual address even in the precached offline shell. */
+export function ApplicationDiagnosticsRecorder() {
+  const pathname = useShellPathname();
+  return <DiagnosticsRecorder pathname={pathname} />;
+}
+
+/** Remains mounted while auth, local preparation or a child route is still loading. */
 export function DiagnosticsRecorder({ pathname }: { pathname: string }) {
   const { user, loading } = useAuth();
   useEffect(() => { recordDiagnostic('route', { route: pathname }); }, [pathname]);

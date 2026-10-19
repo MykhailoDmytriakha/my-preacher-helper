@@ -22,7 +22,7 @@ const PER_KIND: Partial<Record<EventName, number>> = {
 const SESSION = Date.now();
 const EVENTS = [
   'sermon-read', 'structure-load', 'service-orders-read', 'owner-list-read', 'gesture',
-  'boot', 'route', 'route-check', 'visibility', 'focus', 'online', 'offline', 'pageshow', 'pagehide',
+  'boot', 'startup', 'route', 'route-check', 'visibility', 'focus', 'online', 'offline', 'pageshow', 'pagehide',
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
   'freshness-check', 'freshness-error', 'freshness-timeout', 'freshness-late-response', 'freshness-late-error',
