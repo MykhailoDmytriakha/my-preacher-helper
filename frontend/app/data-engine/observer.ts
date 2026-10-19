@@ -59,9 +59,16 @@ interface Entry {
   lastServerAt: number | null;
   healthy: boolean;
   failures: number;
+  /** Server answers in a row this page could not accept (a copy recreated or removed there). */
+  rejections: number;
+  /** HTTP checks in a row that stood in for a silent listener. */
+  silentChecks: number;
   snapshotSequence: number;
   startedAt: number;
 }
+
+/** HTTP checks at the normal rate before a silent listener is checked less often: about one minute. */
+const SILENT_QUICK_CHECKS = 4;
 
 const emptyState = (): Observation => ({
   snapshot: null, source: null, readiness: 'unknown', checking: false, error: false,
@@ -110,7 +117,7 @@ export class ResourceObserver {
       entry = {
         owner, resource: { ...resource }, listeners: new Set(), state: emptyState(),
         epoch: 0, active: false, stop: null, timer: null, inFlight: null,
-        lastHttpAt: null, lastServerAt: null, healthy: false, failures: 0,
+        lastHttpAt: null, lastServerAt: null, healthy: false, failures: 0, rejections: 0, silentChecks: 0,
         snapshotSequence: 0, startedAt: 0,
       };
       this.entries.set(key, entry);
@@ -142,6 +149,8 @@ export class ResourceObserver {
       entry.lastHttpAt = null;
       entry.lastServerAt = null;
       entry.failures = 0;
+      entry.rejections = 0;
+      entry.silentChecks = 0;
       this.emit(entry);
       this.start(entry, false);
     }
@@ -221,6 +230,8 @@ export class ResourceObserver {
         if (event.source === 'server') {
           entry.healthy = true;
           entry.failures = 0;
+          entry.rejections = 0;
+          entry.silentChecks = 0;
           entry.lastServerAt = this.now();
         }
         this.emit(entry);
@@ -250,7 +261,12 @@ export class ResourceObserver {
     this.clearTimer(entry);
     if (!this.online || !this.eligible(entry) || !entry.active || entry.inFlight) return;
     const now = this.now();
-    const retryDelay = Math.min(this.maxBackoffMs, this.pollIntervalMs * 2 ** Math.min(entry.failures, 16));
+    // The first rejected answer is retried at the normal rate (a lagging replica right after a write);
+    // each one after it doubles the wait, as a failure does. A silent listener is stood in for every
+    // 15 s for its first minute, then less often until it speaks: an open page read each such document
+    // about 240 times an hour (2026-10-19).
+    const backoff = entry.failures + Math.max(0, entry.rejections - 1) + Math.max(0, entry.silentChecks - SILENT_QUICK_CHECKS);
+    const retryDelay = Math.min(this.maxBackoffMs, this.pollIntervalMs * 2 ** Math.min(backoff, 16));
     let target = entry.healthy && entry.lastServerAt !== null && !immediate
       ? entry.lastServerAt + this.leaseMs
       : entry.lastHttpAt === null
@@ -289,12 +305,17 @@ export class ResourceObserver {
         snapshot.metadata.generation !== entry.state.snapshot?.metadata?.generation)) return;
       if (!this.accept(entry, { snapshot, source: 'server' })) {
         // Rejected evidence cannot renew the lease. Fall back at the bounded retry rate,
-        // rather than scheduling the already expired lease again with a zero delay.
+        // rather than scheduling the already expired lease again with a zero delay — and slow
+        // down when it repeats: a copy recreated or removed on the server stays unacceptable, and
+        // asking every 15 s for as long as the page is open spent the read quota (2026-10-19).
         entry.healthy = false;
+        entry.rejections += 1;
         return;
       }
       entry.lastServerAt = this.now();
       entry.failures = 0;
+      entry.rejections = 0;
+      if (!entry.healthy) entry.silentChecks += 1;
     }).catch(() => {
       if (!entry.active || entry.epoch !== epoch) return;
       if (sequence !== entry.snapshotSequence && entry.healthy) return;
