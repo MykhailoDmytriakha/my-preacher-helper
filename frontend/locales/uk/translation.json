@@ -1602,7 +1602,7 @@
     "failedToAddFragment": "Не вдалося додати ключовий фрагмент",
     "failedToRemoveFragment": "Не вдалося видалити ключовий фрагмент",
     "failedToRemoveFragments": "Не вдалося видалити ключові фрагменти",
-    "dragDropUpdateFailed": "Не вдалося оновити. Зміни скасовано.",
+    "dragDropUpdateFailed": "Не вдалося одразу зберегти переміщення.",
     "brainstormGenerationError": "Не вдалося згенерувати підказку для роздумів",
     "aiSortFailedFormat": "Помилка формату сортування ШІ",
     "deletingError": "Помилка видалення",

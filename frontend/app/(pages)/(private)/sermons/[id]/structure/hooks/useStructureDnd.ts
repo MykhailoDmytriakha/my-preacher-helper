@@ -870,7 +870,7 @@ export const useStructureDnd = ({
       containersRef.current = previousContainers;
       setSermon(previousSermon);
       toast.error(t('errors.dragDropUpdateFailed', {
-        defaultValue: 'Failed to update. Changes have been reverted.',
+        defaultValue: 'Could not save the move immediately.',
       }));
     };
 

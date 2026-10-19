@@ -1584,7 +1584,7 @@
     "failedToAddFragment": "Failed to add key fragment",
     "failedToRemoveFragment": "Failed to remove key fragment",
     "failedToRemoveFragments": "Failed to remove key fragments",
-    "dragDropUpdateFailed": "Failed to update. Changes have been reverted.",
+    "dragDropUpdateFailed": "Could not save the move immediately.",
     "brainstormGenerationError": "Failed to generate brainstorm suggestion",
     "aiSortFailedFormat": "AI sorting failed format",
     "deletingError": "Error deleting",

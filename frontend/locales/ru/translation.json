@@ -1602,7 +1602,7 @@
     "failedToAddFragment": "Не удалось добавить ключевой фрагмент",
     "failedToRemoveFragment": "Не удалось удалить ключевой фрагмент",
     "failedToRemoveFragments": "Не удалось удалить ключевые фрагменты",
-    "dragDropUpdateFailed": "Не удалось обновить. Изменения отменены.",
+    "dragDropUpdateFailed": "Не удалось сразу сохранить перемещение.",
     "brainstormGenerationError": "Не удалось сгенерировать подсказку для размышлений",
     "aiSortFailedFormat": "Ошибка формата сортировки ИИ",
     "deletingError": "Ошибка удаления",
