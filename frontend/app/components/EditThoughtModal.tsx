@@ -112,6 +112,10 @@ export default function EditThoughtModal({
 
   const handleSave = async () => {
     if (isBusy || dictation.error || !isChanged) return;
+    if (!text.trim()) {
+      setSaveError({ key: 'editThought.textRequired' });
+      return;
+    }
     const submittedDraft: EditThoughtDraft = {
       text,
       tags: [...tags],

@@ -534,22 +534,8 @@ export function useSermonActions({
 
         const trimmedText = updatedText.trim();
 
-        // TRIZ+IFR: Empty text means "Cancel" for new thoughts and "Delete" for existing ones.
-        if (!trimmedText) {
-            debugLog('Structure: empty text in handleSaveEdit - interpreting as cancel/delete', {
-                editingId: editingItem?.id,
-                isTemp: Boolean(editingItem?.id?.startsWith('temp-')),
-            });
-
-            if (!editingItem || editingItem.id.startsWith('temp-')) {
-                // New, never-persisted thought -> just cancel.
-                handleCloseEdit();
-                return skippedWrite();
-            }
-
-            // Existing thought -> Delete.
-            return handleDeleteThought(editingItem.id);
-        }
+        // Save validates its own input; clearing text cannot mean Delete or Cancel.
+        if (!trimmedText) throw new Error('Thought text is required');
 
         debugLog('Structure: handleSaveEdit', {
             editingId: editingItem?.id,
@@ -565,7 +551,7 @@ export function useSermonActions({
         } else {
             return handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId, subPointId);
         }
-    }, [addingThoughtToSection, editingItem, handleCloseEdit, handleCreateNewThought, handleDeleteThought, handleUpdateExistingThought, t]);
+    }, [addingThoughtToSection, editingItem, handleCreateNewThought, handleUpdateExistingThought, t]);
 
     // Retained for the debounced compatibility caller. Explicit thought actions
     // return engine capture; the shared engine owns later delivery and retry.

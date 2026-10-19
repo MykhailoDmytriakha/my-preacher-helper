@@ -69,15 +69,18 @@ describe('useSermonActions', () => {
     expect(result.current.editingItem).toBeNull();
   });
 
-  it('handleSaveEdit cancels creation if text is empty for a new temp thought', async () => {
+  it('handleSaveEdit refuses empty text without cancelling a new thought draft', () => {
     const { result } = renderHook(() => useSermonActions(defaultProps));
     act(() => { result.current.handleAddThoughtToSection('introduction'); });
-    await act(async () => { await result.current.handleSaveEdit('', []); });
-    expect(result.current.editingItem).toBeNull();
+    const draft = result.current.editingItem;
+    expect(() => result.current.handleSaveEdit('', [])).toThrow('Thought text is required');
+    expect(result.current.editingItem).toEqual(draft);
     expect(thoughtService.createManualThought).not.toHaveBeenCalled();
+    expect(thoughtService.deleteThought).not.toHaveBeenCalled();
+    expect(mockSetSermon).not.toHaveBeenCalled();
   });
 
-  it('handleSaveEdit deletes an existing thought if text is empty', async () => {
+  it('handleSaveEdit refuses empty text without deleting the existing thought', () => {
     const existingThought = createMockThought({ id: 't1', text: 'Original' });
     const existingItem = createMockItem({ id: 't1', content: 'Original' });
 
@@ -87,9 +90,14 @@ describe('useSermonActions', () => {
 
     const { result } = renderHook(() => useSermonActions(defaultProps));
     act(() => { result.current.handleEdit(existingItem); });
-    await act(async () => { await result.current.handleSaveEdit('  ', []); });
+    expect(() => result.current.handleSaveEdit('  ', [])).toThrow('Thought text is required');
 
-    expect(thoughtService.deleteThought).toHaveBeenCalled();
+    expect(result.current.editingItem).toEqual(existingItem);
+    expect(defaultProps.sermon.thoughts).toEqual([existingThought]);
+    expect(thoughtService.deleteThought).not.toHaveBeenCalled();
+    expect(thoughtService.updateThought).not.toHaveBeenCalled();
+    expect(mockSetSermon).not.toHaveBeenCalled();
+    expect(mockSetContainers).not.toHaveBeenCalled();
   });
 
   it('handleSaveEdit creates a new thought optimistically when saving a temp item', async () => {

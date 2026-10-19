@@ -1639,6 +1639,7 @@
   "editThought": {
     "editTitle": "Edit Thought",
     "textLabel": "Thought Text",
+    "textRequired": "Enter thought text to save. To delete the thought, cancel editing and choose Delete.",
     "appendDictation": "Append dictation",
     "availableTags": "Available tags to add:",
     "outlinePointLabel": "Associated Structure Point",

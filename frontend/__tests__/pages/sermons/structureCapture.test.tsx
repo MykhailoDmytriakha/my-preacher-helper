@@ -6,6 +6,8 @@ import { createEngineStructureWriter } from '@/(pages)/(private)/sermons/[id]/st
 import EditThoughtModal from '@/components/EditThoughtModal';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
+
 import type { DocumentData } from '@/data-engine/types';
 import type { Item, Sermon, Thought } from '@/models/models';
 
@@ -42,6 +44,8 @@ function Harness() {
     allowedTags: [], debouncedSaveThought: jest.fn(), debouncedSaveStructure: jest.fn() });
   return <><button onClick={() => actions.handleAddThoughtToSection('main')}>New thought</button>
     <button onClick={() => actions.handleEdit(item)}>Edit thought</button>
+    <button onClick={() => { void awaitWriteOperation(actions.handleDeleteThought(item.id), () => undefined).catch(() => undefined); }}>Delete thought</button>
+    <ul aria-label="Saved thoughts">{sermon?.thoughts.map(value => <li key={value.id}>{value.text}</li>)}</ul>
     {actions.editingItem && <EditThoughtModal initialText={actions.editingItem.content} initialTags={[]}
       allowedTags={[]} onSave={actions.handleSaveEdit} onClose={actions.handleCloseEdit} />}</>;
 }
@@ -57,7 +61,7 @@ const writerWith = (overrides: Partial<StructureWriter> = {}): StructureWriter =
 
 describe('structure thought editor durable capture', () => {
   afterEach(() => jest.restoreAllMocks());
-  it.each(['create', 'edit-online', 'edit-offline', 'delete-empty'] as const)(
+  it.each(['create', 'edit-online', 'edit-offline'] as const)(
     'retains the %s editor until the writer actually captures its change', async mode => {
       const pending = deferred<Thought>();
       const writer = writerWith({
@@ -68,7 +72,7 @@ describe('structure thought editor durable capture', () => {
       jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(mode !== 'edit-offline');
       mount(writer);
       fireEvent.click(screen.getByRole('button', { name: mode === 'create' ? 'New thought' : 'Edit thought' }));
-      fireEvent.change(screen.getByRole('textbox', { name: 'Thought text' }), { target: { value: mode === 'delete-empty' ? '' : 'Exact authored words' } });
+      fireEvent.change(screen.getByRole('textbox', { name: 'Thought text' }), { target: { value: 'Exact authored words' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await tick();
       const retained = screen.queryByRole('dialog', { name: 'Edit Thought' }) !== null;
@@ -198,4 +202,66 @@ it('bases repeated creation retries on the last captured text rather than a stal
   const thoughts = engineCopy!.thoughts as unknown as Thought[];
   expect(thoughts).toHaveLength(2);
   expect(thoughts.filter(value => value.id !== 'existing').map(value => value.text)).toEqual(['Version A']);
+});
+
+
+describe('structure blank Save is not Delete', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it.each([
+    ['existing-online', '', true],
+    ['existing-offline', '', false],
+    ['existing-whitespace', '   \n  ', true],
+    ['new-with-whitespace', '   ', true],
+  ] as const)('keeps the %s draft and explains blank Save without writing', async (mode, blank, online) => {
+    jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
+    const writer = writerWith();
+    mount(writer);
+    fireEvent.click(screen.getByRole('button', { name: mode.startsWith('new') ? 'New thought' : 'Edit thought' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Thought text' }), { target: { value: blank } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await tick();
+    expect(screen.getByRole('dialog', { name: 'Edit Thought' })).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('editThought.textRequired');
+    expect(screen.getByRole('textbox', { name: 'Thought text' })).toHaveValue(blank);
+    expect(screen.getByRole('list', { name: 'Saved thoughts' })).toHaveTextContent('Original words');
+    expect(writer.deleteThought).not.toHaveBeenCalled();
+    expect(writer.updateThought).not.toHaveBeenCalled();
+    expect(writer.createManualThought).not.toHaveBeenCalled();
+    expect(writer.updateStructure).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Thought text' }), { target: { value: 'Corrected thought words' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('list', { name: 'Saved thoughts' })).toHaveTextContent('Corrected thought words');
+    expect(writer.deleteThought).not.toHaveBeenCalled();
+  });
+  it.each(['existing', 'new'] as const)('refuses blank %s Save at the action boundary without deleting or closing', async mode => {
+    const writer = writerWith();
+    const containers = { introduction: [], main: [item], conclusion: [], ambiguous: [] };
+    const { result } = renderHook(() => useSermonActions({ sermon: initial, setSermon: jest.fn(), containers,
+      setContainers: jest.fn(), containersRef: { current: containers }, allowedTags: [],
+      debouncedSaveThought: jest.fn(), debouncedSaveStructure: jest.fn() }), {
+      wrapper: ({ children }) => <StructureWriterContext.Provider value={writer}>{children}</StructureWriterContext.Provider>,
+    });
+    act(() => mode === 'new' ? result.current.handleAddThoughtToSection('main') : result.current.handleEdit(item));
+    await act(async () => {
+      await expect((async () => await awaitWriteOperation(result.current.handleSaveEdit('  ', [], null), () => undefined))())
+        .rejects.toThrow('Thought text is required');
+    });
+    expect(result.current.editingItem).not.toBeNull();
+    expect(writer.deleteThought).not.toHaveBeenCalled();
+    expect(writer.createManualThought).not.toHaveBeenCalled();
+    expect(writer.updateThought).not.toHaveBeenCalled();
+  });
+  it('still captures an explicit Delete and removes only that thought', async () => {
+    const captured = deferred<void>();
+    const writer = writerWith({ deleteThought: jest.fn(() => captured.promise) });
+    mount(writer);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete thought' }));
+    expect(writer.deleteThought).toHaveBeenCalledWith(initial.id, thought);
+    expect(writer.updateStructure).not.toHaveBeenCalled();
+    await act(async () => captured.resolve());
+    await waitFor(() => expect(writer.updateStructure).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('list', { name: 'Saved thoughts' })).not.toHaveTextContent('Original words');
+  });
 });
