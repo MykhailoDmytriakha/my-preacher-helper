@@ -37,8 +37,11 @@ type VerseSheetProps = {
    * and buttons below. The window lies between them and never covers them.
    */
   keepVisible?: { top?: RefObject<HTMLElement | null>; bottom?: RefObject<HTMLElement | null> };
-  /** Optional personal material alongside the reader; both views retain their reading positions. */
-  related?: { label: string; render: (returnToText: () => void) => ReactNode };
+  /**
+   * Optional personal material alongside the reader; both views retain their reading positions.
+   * `count`, once known, sits on the tab as a badge, so the reader sees there is something without opening it.
+   */
+  related?: { label: string; count?: number; render: (returnToText: () => void) => ReactNode };
 };
 
 /**
@@ -295,7 +298,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
           </button>
         </div>
         {related && <div role="tablist" aria-label={t('bible.sheet.views')} className="flex shrink-0 gap-1 border-b border-gray-200 px-4 dark:border-gray-700 sm:px-6">
-          {[{ active: !relatedOpen, ref: textTabRef, id: 'text', label: t('bible.sheet.text') }, { active: relatedOpen, ref: relatedTabRef, id: 'related', label: related.label }].map((tab, index) => <button
+          {[{ active: !relatedOpen, ref: textTabRef, id: 'text', label: t('bible.sheet.text'), count: undefined }, { active: relatedOpen, ref: relatedTabRef, id: 'related', label: related.label, count: related.count }].map((tab, index) => <button
             key={tab.id}
             ref={tab.ref}
             type="button"
@@ -313,8 +316,8 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
               setShowRelated(next);
               (next ? relatedTabRef : textTabRef).current?.focus({ preventScroll: true });
             }}
-            className={`min-h-12 border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 ${tab.active ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'}`}
-          >{tab.label}</button>)}
+            className={`inline-flex min-h-12 items-center border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400 ${tab.active ? 'border-indigo-600 text-indigo-700 dark:border-indigo-400 dark:text-indigo-300' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'}`}
+          >{tab.label}{tab.count !== undefined && <>{' '}<span data-testid="related-count" className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs leading-none tabular-nums ${tab.count ? 'bg-indigo-600 text-white dark:bg-indigo-400 dark:text-gray-900' : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300'}`}>{tab.count}</span></>}</button>)}
         </div>}
         {/* Both panes keep their geometry: hiding the book with display:none would lose its reading anchor. */}
         <div className="relative grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)]">

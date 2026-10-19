@@ -68,12 +68,12 @@ export function ScripturePreviewSheet({ reference, currentNoteId, onClose }: {
   const detailId = useId();
   const sheetReference = useMemo(() => ({ ...reference, bible: reference.bible ?? referenceBibleFor(locale) }), [reference, locale]);
   const untitled = t('bible.preview.untitled');
-  const notesLabel = `${t('bible.preview.myNotes')}${usage.complete ? ` · ${usage.results.length}` : ''}`;
 
   return <VerseSheet
     reference={sheetReference}
     onClose={onClose}
-    related={{ label: notesLabel, render: returnToText => <>
+    // The count shows once the search has finished, also from an incomplete list: the panel says it may be incomplete.
+    related={{ label: t('bible.preview.myNotes'), count: usage.loading ? undefined : usage.results.length, render: returnToText => <>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('bible.preview.notesForPassage')}</h3>
         <span className="text-xs text-gray-500 dark:text-gray-400">{formatScriptureReference(reference, { locale })}</span>

@@ -42,6 +42,21 @@ describe('the reading preview over a study note', () => {
     expect(useScriptureUsage).toHaveBeenLastCalledWith(reference, 'current', 'en');
   });
 
+  it('says on the tab how many notes are found, also when the list may be incomplete', async () => {
+    const found = { id: 'n', kind: 'note' as const, title: 'Related note', href: '/studies/n', reference, match: 'same' as const, excerpt: 'Mention.', content: 'Mention.' };
+    const count = () => screen.queryByTestId('related-count')?.textContent ?? null;
+    jest.mocked(useScriptureUsage).mockReturnValue({ results: [found], complete: false, loading: false, error: false, retry });
+    const { rerender } = render(<ScripturePreviewSheet reference={reference} currentNoteId="current" onClose={jest.fn()} />);
+    await screen.findByText('Chosen verse');
+    expect(within(screen.getByRole('tab', { name: /bible.preview.myNotes/ })).getByTestId('related-count')).toHaveTextContent('1');
+    jest.mocked(useScriptureUsage).mockReturnValue({ results: [], complete: true, loading: false, error: false, retry });
+    rerender(<ScripturePreviewSheet reference={reference} currentNoteId="current" onClose={jest.fn()} />);
+    expect(count()).toBe('0');
+    jest.mocked(useScriptureUsage).mockReturnValue({ results: [], complete: false, loading: true, error: false, retry });
+    rerender(<ScripturePreviewSheet reference={reference} currentNoteId="current" onClose={jest.fn()} />);
+    expect(count()).toBeNull();
+  });
+
   it('keeps unknown and failed searches apart from a confirmed empty result', async () => {
     jest.mocked(useScriptureUsage).mockReturnValue({ results: [], complete: false, loading: false, error: true, retry });
     render(<ScripturePreviewSheet reference={reference} currentNoteId="current" onClose={jest.fn()} />);
