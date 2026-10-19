@@ -12,6 +12,13 @@ All rich text goes through one editor: `RichMarkdownEditor` (`frontend/app/compo
 - Toolbar state that follows the caret: `useEditorState({ editor, selector })`, as in `RichMarkdownToolbar.tsx`. `useEditor` in `@tiptap/react` v3 does not re-render React on transactions (`shouldRerenderOnTransaction` defaults to false), so an `editor.isActive(...)` read during render freezes after the first render. Do not re-render the whole editor instead.
 - New markdown work: the installed `tiptap-markdown` 0.9 README says it will not be developed further and points to Tiptap's own markdown support. Evaluate the official `@tiptap/markdown` first, especially when you need custom tokenizers.
 
+## Caret below sticky controls
+
+- The opt-in `stickyToolbarTop` path uses `ui/useStickyEditorViewport.ts`: measure the existing toolbar, then pass its covered top edge into ProseMirror's native `scrollThreshold` and `scrollMargin`. The caller still owns the measured page/header offset. Keep the native other-edge defaults and ordinary manual scrolling; do not add a scroll loop or move the toolbar into a short wrapper that changes sticky containment.
+- TipTap `Editor.setOptions` forwards `editorProps` into ProseMirror `setProps`, which merges keys. Omitting a formerly set scroll property does not clear it: provide explicit `undefined` on opt-out. Exercise enabling, toolbar/header resize, passive scroll retention and disabling on the same editor instance.
+- Regression: `frontend/__tests__/components/ui/RichMarkdownEditor.scroll.test.tsx` runs the real editor/native algorithm with declared virtual geometry because JSDOM has no layout. Its DOMRect-shaped object avoids relying on a missing global constructor. Real compiled-browser typing and hit testing remain necessary for painted visibility.
+- Browser keyboard fixtures must use the platform's intended action. On macOS, End scrolls the document without moving the insertion point; use Meta+ArrowDown to move the insertion point to the document end. A concurrent native navigation animation is a different scenario from ordinary continued typing. Retain strict geometry and original PNGs, and use native-bound disabling/restoring plus real wheel/keys to establish causality independently of that shortcut.
+
 ## Custom content — techniques
 
 Main has no custom node, NodeView or decoration yet. Worked examples sit on unmerged branches: `feature/studies-wikilinks-v0` (frontend/app/components/studies/node/wikilinkExtension.ts and WikilinkChip.tsx) and `main-2` (RichMarkdownEditor with a pending insertion request and outline decorations). Read them with `git show <branch>:<path>`.

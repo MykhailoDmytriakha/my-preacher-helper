@@ -20,9 +20,10 @@ interface RichMarkdownToolbarProps {
      * The number is the distance from the top of the window to stick at.
      */
     stickyTop?: number;
+    elementRef?: React.Ref<HTMLDivElement>;
 }
 
-export function RichMarkdownToolbar({ editor, stickyTop }: RichMarkdownToolbarProps) {
+export function RichMarkdownToolbar({ editor, stickyTop, elementRef }: RichMarkdownToolbarProps) {
     const toolbarState = useEditorState({
         editor,
         selector: ({ editor: currentEditor }) => ({
@@ -49,6 +50,7 @@ export function RichMarkdownToolbar({ editor, stickyTop }: RichMarkdownToolbarPr
 
     return (
         <div
+            ref={elementRef}
             className={`flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0${stickyTop === undefined ? '' : ' sticky z-20'}`}
             style={stickyTop === undefined ? undefined : { top: stickyTop }}>
             <ToolbarButton

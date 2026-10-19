@@ -5,6 +5,7 @@ import React, { useEffect } from 'react';
 import { richMarkdownExtensions } from './richMarkdownExtensions';
 import { RichMarkdownToolbar } from './RichMarkdownToolbar';
 import { useBufferedText } from './useBufferedText';
+import { useStickyEditorViewport } from './useStickyEditorViewport';
 
 interface RichMarkdownEditorProps {
     value: string;
@@ -25,6 +26,7 @@ export function RichMarkdownEditor({
     stickyToolbarTop,
 }: RichMarkdownEditorProps) {
     const { draft, change } = useBufferedText(value, onChange);
+    const { toolbarRef, scrollProps } = useStickyEditorViewport(stickyToolbarTop);
     const editor = useEditor({
         extensions: [
             ...richMarkdownExtensions(),
@@ -36,6 +38,7 @@ export function RichMarkdownEditor({
         immediatelyRender: false,
         autofocus: autoFocus ? 'end' : false,
         editorProps: {
+            ...scrollProps,
             attributes: {
                 class:
                     'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500',
@@ -64,7 +67,7 @@ export function RichMarkdownEditor({
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} />
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} elementRef={toolbarRef} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}
