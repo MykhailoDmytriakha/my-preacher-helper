@@ -7,7 +7,10 @@ import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
 import { draftKey, readDraft } from '@/utils/durableDraft';
-import { toast } from 'sonner';
+import { Toaster, toast } from 'sonner';
+import enTranslations from '@locales/en/translation.json';
+
+let mockAiFeedbackText: string | undefined;
 
 const mockRecordingRows = new Map<string, unknown>();
 const mockAuthState: { user: { uid: string } | null; loading: boolean } = { user: { uid: 'user-1' }, loading: false };
@@ -19,6 +22,7 @@ jest.mock('idb-keyval', () => ({
   update: jest.fn(async (id: string, transform: (row: unknown) => unknown) => { mockRecordingRows.set(id, transform(mockRecordingRows.get(id))); }),
 }));
 beforeEach(() => {
+  mockAiFeedbackText = undefined;
   mockAuthState.user = { uid: 'user-1' };
   mockAuthState.loading = false;
   mockRecordingRows.clear();
@@ -34,7 +38,8 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string) => key,
+        t: (key: string) => key === 'studiesWorkspace.aiAnalyze.success' && mockAiFeedbackText
+            ? mockAiFeedbackText : key,
         i18n: { language: 'en' },
     }),
 }));
@@ -840,6 +845,51 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.keyDown(tagInput, { key: 'Enter' });
 
         expect(screen.getByText('new-tag')).toBeInTheDocument();
+    });
+
+    it('announces suggestions ready for review and preserves the note until explicit application', async () => {
+        mockAiFeedbackText = enTranslations.studiesWorkspace.aiAnalyze.success;
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = jest.fn().mockImplementation((media: string) => ({
+            media, matches: false, onchange: null,
+            addEventListener: jest.fn(), removeEventListener: jest.fn(),
+            addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
+        }));
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ success: true, data: { title: 'Suggested title', tags: ['suggested-tag'] } }),
+        });
+        const view = render(<><Toaster /><StudyNoteEditorPage /></>);
+        try {
+            fireEvent.click(screen.getByTitle('common.edit'));
+            const title = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
+            const editor = screen.getByTestId('rich-markdown-editor');
+            const originalContent = (editor as HTMLTextAreaElement).value;
+            const analyze = async () => {
+                fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+                fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.full'));
+                return screen.findByRole('button', { name: 'studiesWorkspace.aiAnalyze.applySelected' });
+            };
+
+            await analyze();
+            expect(await screen.findByText(mockAiFeedbackText)).toHaveTextContent('Suggestions are ready to review.');
+            expect(title).toHaveValue('Current Note');
+            expect(editor).toHaveValue(originalContent);
+            fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+            await waitFor(() => expect(screen.queryByRole('button', { name: 'studiesWorkspace.aiAnalyze.applySelected' })).not.toBeInTheDocument());
+            expect(title).toHaveValue('Current Note');
+            expect(editor).toHaveValue(originalContent);
+            expect(screen.queryByText('suggested-tag')).not.toBeInTheDocument();
+
+            fireEvent.click(await analyze());
+            await waitFor(() => expect(title).toHaveValue('Suggested title'));
+            expect(screen.getByText('suggested-tag')).toBeInTheDocument();
+            expect(editor).toHaveValue(originalContent);
+        } finally {
+            act(() => toast.dismiss());
+            view.unmount();
+            window.matchMedia = originalMatchMedia;
+        }
     });
 
     it('triggers AI analysis and applies results', async () => {

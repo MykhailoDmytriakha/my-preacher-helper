@@ -3461,7 +3461,7 @@
       "creating": "Creating link…"
     },
     "aiAnalyze": {
-      "success": "Analysis applied successfully.",
+      "success": "Suggestions are ready to review.",
       "noResults": "No useful suggestions found for this content.",
       "button": "AI Analyze",
       "buttonShort": "AI",

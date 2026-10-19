@@ -2189,3 +2189,19 @@ preface remain byte-identical. Local tracker removal is not production closure. 
 before capture begins, physical-device acceptance, retired-stage/failed-handoff risks and the stale
 offline creation bug remain separate boundaries. The unexecuted production recipe is
 draft-intent-production-recipe-v1.md; canonical guidance is .howto/keep-a-write-across-offline.md.
+
+## BUG-20261019-note-ai-ready-claims-applied
+
+Stage: locally verified; production verification pending.
+
+The existing AI-analysis completion notification now says that suggestions are ready to review in en/ru/uk. It no longer claims that they were applied while the confirmation dialog is still waiting. The event, queue, explicit Apply/Cancel controls and note-writing behavior are unchanged; no new key or notification was added. The client event has one consumer and three bundled translations. The server returns suggestions without modifying the note; offline clients use the same bundled message.
+
+On parent `2919b289`, the new behavioral regression rendered the real Sonner notification with the real English resource and failed: expected readiness, received `Analysis applied successfully.`. After the three string changes, the same test passes and proves that cancellation leaves the title, content and tags unchanged, while explicit application adds the proposed title/tag and preserves authored content. Regression: `frontend/app/(pages)/(private)/studies/[id]/__tests__/page.test.tsx`, “announces suggestions ready for review and preserves the note until explicit application”. An earlier setup attempt selected no test after a wrong working-directory path; it is retained as a diagnostic and is not RED evidence.
+
+Full fast Jest passed 892 suites / 9,783 tests; 3 suites / 17 tests remain skipped. Types pass; lint has 0 errors / 24 inherited warnings; production build `Vokvq46Cu20LLjc_kGKPa` passes. The scoped independent source review also passes.
+
+Compiled localhost comparison: the old build failed only the readiness check; the new build passes all 10 checks at en1280/en390/ru390/uk390. These cover the visible notification before choice, unchanged pending note, cancellation, explicit application, preserved authored text, repeat analysis and no horizontal overflow. Root personally inspected all 15 original screenshots (3 before and 12 after). The controlled stand uses a disposable synthetic note, RAM command planner and AI responses; existing auth stays in RAM. Intentional blocked SDK-listener diagnostics are classified separately, with zero unexpected console errors, page exceptions or non-allowlisted writes. No provider, actual backend persistence, production or physical-device acceptance is claimed. The separately recorded sticky-caret bug remains open.
+
+Fresh independent acceptance also passed 25 focused tests (16 note/AI, 8 translation coverage, 1 translation order) and all 10 browser checks at en820 on the same build. The reviewer personally inspected its 3 original screenshots. This is controlled localhost evidence with the same explicit boundaries.
+
+Production follow-up after an authorized merge/push: confirm the deployed revision; on an authorized disposable note, generate suggestions and inspect readiness before choosing anything; cancel and verify the note is unchanged, repeat and explicitly apply, then verify only the selected changes. Check en/ru/uk and narrow/wide widths. Record the deployed build, outcomes and screenshots.
