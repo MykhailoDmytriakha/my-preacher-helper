@@ -419,6 +419,9 @@ body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
 ::highlight(bible-mark-pencil-yellow) { text-decoration-color: #e0b100; }
 ::highlight(bible-mark-pencil-orange) { text-decoration-color: #f76b15; }
 ::highlight(bible-mark-pencil-blue) { text-decoration-color: #3e63dd; }
+/* The place a previewed note names the opened passage (ScripturePreviewSheet). */
+::highlight(scripture-mention) { background-color: #fde68a; }
+:root.dark ::highlight(scripture-mention) { background-color: rgba(251, 191, 36, 0.35); }
 :root.dark ::highlight(bible-mark-red) { background-color: rgba(255, 107, 107, 0.3); }
 :root.dark ::highlight(bible-mark-green) { background-color: rgba(61, 214, 140, 0.26); }
 :root.dark ::highlight(bible-mark-yellow) { background-color: rgba(255, 214, 10, 0.3); }

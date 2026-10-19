@@ -324,6 +324,25 @@
     "discard": "Отклонить"
   },
   "bible": {
+    "preview": {
+      "untitled": "Без названия",
+      "excludesCurrent": "Текущая заметка не входит в этот список",
+      "matches": {
+        "same": "Та же ссылка",
+        "overlap": "Пересечение отрывков",
+        "text": "Упоминание в тексте"
+      },
+      "myNotes": "Мои заметки",
+      "notesForPassage": "Заметки к этому отрывку",
+      "loadingNotes": "Ищем в ваших заметках…",
+      "notesError": "Часть заметок не удалось загрузить. Доступные совпадения показаны ниже.",
+      "partialNotes": "Показаны заметки, доступные на этом устройстве. Список может быть неполным.",
+      "emptyNotes": "Других заметок к этому отрывку пока нет.",
+      "emptyPartialNotes": "В доступных здесь заметках совпадений нет.",
+      "backToVerse": "К стиху",
+      "backToNotes": "К списку заметок",
+      "openNote": "Открыть заметку"
+    },
     "title": "Библия",
     "oldTestament": "Ветхий Завет",
     "newTestament": "Новый Завет",
@@ -382,8 +401,23 @@
     "backTo": "← {{place}}",
     "backToLabel": "Вернуться: {{place}}",
     "placeVerse": "{{chapter}}, стих {{verse}}",
-    "wayBack": { "note": "Заметка", "notes": "Заметки", "plan": "План", "sermon": "Проповедь", "group": "Группа", "order": "Порядок служения", "page": "Назад" },
-    "sheet": { "close": "Закрыть текст", "backToPassage": "К стиху", "backToChapter": "К главе {{number}}", "backToPsalm": "К псалму {{number}}" },
+    "wayBack": {
+      "note": "Заметка",
+      "notes": "Заметки",
+      "plan": "План",
+      "sermon": "Проповедь",
+      "group": "Группа",
+      "order": "Порядок служения",
+      "page": "Назад"
+    },
+    "sheet": {
+      "close": "Закрыть текст",
+      "backToPassage": "К стиху",
+      "backToChapter": "К главе {{number}}",
+      "backToPsalm": "К псалму {{number}}",
+      "views": "Разделы окна Библии",
+      "text": "Текст"
+    },
     "navigate": "Книга и глава: {{place}}",
     "chooseTranslation": "Выбор перевода",
     "changeTranslation": "{{translation}}: выбрать другой перевод",

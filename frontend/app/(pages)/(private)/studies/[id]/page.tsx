@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
@@ -38,7 +39,6 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
-import { bibleHref } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
@@ -731,6 +731,7 @@ export default function StudyNoteEditorPage() {
     const [showTagCatalog, setShowTagCatalog] = useState(false);
     const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
     const [showRefPicker, setShowRefPicker] = useState(false);
+    const [previewReference, setPreviewReference] = useState<ScriptureReference | null>(null);
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
@@ -748,7 +749,7 @@ export default function StudyNoteEditorPage() {
     const searchParams = useSearchParams();
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
-    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams });
+    useNoteKeyboardNavigation({ isEditing: isEditing || Boolean(previewReference), prevNoteId, nextNoteId, router, searchParams });
 
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
@@ -937,7 +938,10 @@ export default function StudyNoteEditorPage() {
     const roomyHeader = useRoomyHeader();
     const [sheetOpen, setSheetOpen] = useState(false);
     const openSheet = useCallback(() => setSheetOpen(true), []);
-    const closeSheet = useCallback(() => setSheetOpen(false), []);
+    const closeSheet = useCallback(() => {
+        // Escape belongs to the passage window while it covers the properties tray.
+        if (!previewReference) setSheetOpen(false);
+    }, [previewReference]);
     // The properties live in EXACTLY ONE place at a time — the panel, the sheet, or the
     // tray under the editor — because each of them carries live inputs and pickers.
     const propertiesInSheet = !isWideViewport && !isEditing;
@@ -1032,12 +1036,6 @@ export default function StudyNoteEditorPage() {
         setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
     };
 
-    // Read, a reference opens the Bible at its verse, with the way back to this note.
-    const openInBible = (ref: ScriptureReference) => {
-        const href = bibleHref(ref, { locale: bibleLocale, from: noteId ? `/studies/${noteId}` : undefined });
-        if (href) router.push(href);
-    };
-
     // The note's own properties. They are ONE instance, handed either to the side
     // panel or to the narrow-screen tray below the text — never both, because each
     // carries live inputs and pickers.
@@ -1079,7 +1077,7 @@ export default function StudyNoteEditorPage() {
                                         key={ref.id}
                                         reference={ref}
                                         isEditing={isEditing ? editingRefIndex === idx : false}
-                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : () => openInBible(ref)}
+                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : () => setPreviewReference(ref)}
                                         onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
                                     />
                                 ))}
@@ -1456,7 +1454,8 @@ export default function StudyNoteEditorPage() {
                 It shares the sheet's stacking level and is rendered after it, so while the
                 sheet is up it would sit ON the outline rows. Nothing to size while the
                 text is covered anyway. */}
-            {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
+            {previewReference && <ScripturePreviewSheet key={previewReference.id} reference={previewReference} currentNoteId={noteId} onClose={() => setPreviewReference(null)} />}
+            {!isEditing && !sheetOpen && !previewReference && <FloatingTextScaleControls />}
             {confirmDialog}
         </div>
     );

@@ -320,6 +320,25 @@
     "discard": "Discard"
   },
   "bible": {
+    "preview": {
+      "untitled": "Untitled",
+      "excludesCurrent": "The current note is not included in this list",
+      "matches": {
+        "same": "The same reference",
+        "overlap": "Overlapping passage",
+        "text": "Mention in the text"
+      },
+      "myNotes": "My notes",
+      "notesForPassage": "Notes on this passage",
+      "loadingNotes": "Looking in your notes…",
+      "notesError": "Some notes could not be loaded. Available matches are shown below.",
+      "partialNotes": "Showing notes available on this device. The list may be incomplete.",
+      "emptyNotes": "No other notes on this passage yet.",
+      "emptyPartialNotes": "No matches in the notes available here.",
+      "backToVerse": "Back to the verse",
+      "backToNotes": "Back to notes",
+      "openNote": "Open the note"
+    },
     "title": "Bible",
     "oldTestament": "Old Testament",
     "newTestament": "New Testament",
@@ -374,8 +393,23 @@
     "backTo": "← {{place}}",
     "backToLabel": "Back to {{place}}",
     "placeVerse": "{{chapter}}, verse {{verse}}",
-    "wayBack": { "note": "Note", "notes": "Notes", "plan": "Plan", "sermon": "Sermon", "group": "Group", "order": "Service order", "page": "Back" },
-    "sheet": { "close": "Close the text", "backToPassage": "Back to the verse", "backToChapter": "Back to chapter {{number}}", "backToPsalm": "Back to Psalm {{number}}" },
+    "wayBack": {
+      "note": "Note",
+      "notes": "Notes",
+      "plan": "Plan",
+      "sermon": "Sermon",
+      "group": "Group",
+      "order": "Service order",
+      "page": "Back"
+    },
+    "sheet": {
+      "close": "Close the text",
+      "backToPassage": "Back to the verse",
+      "backToChapter": "Back to chapter {{number}}",
+      "backToPsalm": "Back to Psalm {{number}}",
+      "views": "Bible window sections",
+      "text": "Text"
+    },
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",
     "changeTranslation": "{{translation}}: choose another translation",

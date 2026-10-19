@@ -35,7 +35,8 @@ export function useFocusTrap(containerRef: RefObject<HTMLElement | null>, active
       const layer = container.closest<HTMLElement>('[data-modal-layer]');
       if (layer && !isTopmostLayer(layer)) return;
       event.stopPropagation();
-      const reachable = Array.from(container.querySelectorAll<HTMLElement>(REACHABLE));
+      // Inactive reader panels stay laid out to keep their scroll position, but are not reachable.
+      const reachable = Array.from(container.querySelectorAll<HTMLElement>(REACHABLE)).filter((element) => !element.closest('[inert]'));
       if (reachable.length === 0) {
         event.preventDefault();
         return;

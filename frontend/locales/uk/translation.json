@@ -324,6 +324,25 @@
     "discard": "Відхилити"
   },
   "bible": {
+    "preview": {
+      "untitled": "Без назви",
+      "excludesCurrent": "Поточна нотатка не входить до цього списку",
+      "matches": {
+        "same": "Те саме посилання",
+        "overlap": "Перетин уривків",
+        "text": "Згадка в тексті"
+      },
+      "myNotes": "Мої нотатки",
+      "notesForPassage": "Нотатки до цього уривка",
+      "loadingNotes": "Шукаємо у ваших нотатках…",
+      "notesError": "Частину нотаток не вдалося завантажити. Доступні збіги показано нижче.",
+      "partialNotes": "Показано нотатки, доступні на цьому пристрої. Список може бути неповним.",
+      "emptyNotes": "Інших нотаток до цього уривка поки немає.",
+      "emptyPartialNotes": "У доступних тут нотатках збігів немає.",
+      "backToVerse": "До вірша",
+      "backToNotes": "До списку нотаток",
+      "openNote": "Відкрити нотатку"
+    },
     "title": "Біблія",
     "oldTestament": "Старий Заповіт",
     "newTestament": "Новий Заповіт",
@@ -382,8 +401,23 @@
     "backTo": "← {{place}}",
     "backToLabel": "Повернутися: {{place}}",
     "placeVerse": "{{chapter}}, вірш {{verse}}",
-    "wayBack": { "note": "Нотатка", "notes": "Нотатки", "plan": "План", "sermon": "Проповідь", "group": "Група", "order": "Порядок служіння", "page": "Назад" },
-    "sheet": { "close": "Закрити текст", "backToPassage": "До вірша", "backToChapter": "До розділу {{number}}", "backToPsalm": "До псалма {{number}}" },
+    "wayBack": {
+      "note": "Нотатка",
+      "notes": "Нотатки",
+      "plan": "План",
+      "sermon": "Проповідь",
+      "group": "Група",
+      "order": "Порядок служіння",
+      "page": "Назад"
+    },
+    "sheet": {
+      "close": "Закрити текст",
+      "backToPassage": "До вірша",
+      "backToChapter": "До розділу {{number}}",
+      "backToPsalm": "До псалма {{number}}",
+      "views": "Розділи вікна Біблії",
+      "text": "Текст"
+    },
     "navigate": "Книга і розділ: {{place}}",
     "chooseTranslation": "Вибір перекладу",
     "changeTranslation": "{{translation}}: вибрати інший переклад",
