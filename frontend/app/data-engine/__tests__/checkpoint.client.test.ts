@@ -34,3 +34,22 @@ it('discovers owner-scoped recovery and creates a fork without overwriting an ed
   await expect(store.create(target)).rejects.toThrow('already exists');
   storage.readFailure = true; await expect(store.listRecoverable('owner')).rejects.toThrow('read failed');
 });
+
+it('releases committed transactions while retaining two application callbacks in order', async () => {
+  const store = createIndexedDbCheckpoints();
+  storage.holdCompletionAfterCommit = (_rows, mode) => mode === 'readwrite';
+  let first = false, second = false;
+  void store.put({ ...record(), editorId: 'first' }).then(() => { first = true; });
+  void store.put({ ...record(), editorId: 'second' }).then(() => { second = true; });
+  const settle = async () => { for (let i = 0; i < 100; i += 1) await Promise.resolve(); };
+  try {
+    await settle();
+    expect((await store.read('owner', 'first'))?.checkpoint.draft?.content).toBe('mine');
+    expect((await store.read('owner', 'second'))?.checkpoint.draft?.content).toBe('mine');
+    expect([first, second]).toEqual([false, false]);
+    storage.finishCompletion!(); await settle();
+    expect([first, second]).toEqual([true, false]);
+    storage.finishCompletion!(); await settle();
+    expect([first, second]).toEqual([true, true]);
+  } finally { storage.finishCompletion?.(); storage.finishCompletion?.(); }
+});

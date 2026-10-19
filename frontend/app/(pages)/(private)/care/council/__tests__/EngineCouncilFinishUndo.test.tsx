@@ -127,14 +127,14 @@ describe('council Finish command boundaries', () => {
   it('stays in conduct without Undo on failed local capture and allows an explicit retry', async () => {
     const { harness } = setup();
     const button = await screen.findByTestId('council-finish');
-    const capture = jest.spyOn(harness.commits, 'create').mockRejectedValue(new Error('Local capture unavailable'));
+    harness.storage.writeFailure = true;
     fireEvent.click(button);
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(toast.message).not.toHaveBeenCalled();
     expect(harness.server.value?.status).toBe('preparing');
     expect(await harness.commits.list('owner')).toHaveLength(0);
-    capture.mockRestore();
+    harness.storage.writeFailure = false;
     await waitFor(() => expect(button).toBeEnabled());
     fireEvent.click(button);
     await waitFor(async () => { await settleEngine(); expect(harness.server.value?.status).toBe('held'); });

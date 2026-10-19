@@ -6,6 +6,7 @@ import { AddressedFailures, type AddressedFailure } from './failures';
 import { equalValues, mergeDocumentFields, MAX_RELATION_RESOURCES } from './protocol';
 
 import type { DocumentWriteReceipt } from './commitReceipt';
+import type { EditorRecord } from './controller';
 import type { DataEngineRuntime } from './runtime';
 import type { SessionCheckpoint } from './session';
 import type { CommandResult, DataCommand, DocumentData, EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
@@ -46,6 +47,8 @@ export interface CommitStore {
   list(owner: string): Promise<CommitRequest[]>;
   /** Atomically unique by owner/editor/generation. Repeats return the original request. */
   create(request: CommitRequest): Promise<CommitRequest>;
+  /** Native adapters capture the exact checkpoint and canonical request in one transaction. */
+  createWithCheckpoint?(request: CommitRequest, project: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest>;
   /** Atomically compares revision, then increments it. A loser must reload. */
   compareAndSet(previous: CommitRequest, next: CommitRequest): Promise<CommitRequest>;
   /** Atomic participant capture; custom document-only ports may omit this capability. */
@@ -106,7 +109,8 @@ const orderRequests = (records: CommitRequest[]): CommitRequest[] => {
   return ordered;
 };
 
-type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string };
+type CommitSaveOptions = { predecessorId?: string | null; predecessorIds?: readonly string[]; retentionScope?: string;
+  checkpoint?: (saved: CommitRequest) => EditorRecord };
 
 /** Equal parent generations still have an exact order in the durable dependency chain. */
 function selectCandidatePredecessor(records: readonly CommitRequest[], ids: readonly string[], owner: string, resource: ResourceRef): CommitRequest {
@@ -201,7 +205,9 @@ export class CommitQueue {
     if (existing) {
       if (existing.retentionScope !== frozenOptions?.retentionScope) throw new Error('Saved capture retention cannot change');
       if (intent.dirty && !equalValues(existing.value, intent.draft)) throw new Error('Saved generation cannot change its captured intent');
-      return clone(existing);
+      const saved = frozenOptions?.checkpoint ? await this.captureRequest(existing, frozenOptions.checkpoint) : existing;
+      this.assertCurrent(owner, generation);
+      return clone(saved);
     }
     if (!intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     if (intent.conflicts.length) throw Object.assign(new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
@@ -213,11 +219,17 @@ export class CommitQueue {
       revision: 0, initialized: false, working: baseline, intended: clone(intent.draft),
       command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [],
     };
-    const saved = await this.options.store.create(record);
+    const saved = await this.captureRequest(record, frozenOptions?.checkpoint);
     this.assertCurrent(owner, generation);
     this.emit(saved);
     this.requested = true;
     return clone(saved);
+  }
+
+  private async captureRequest(record: CommitRequest, checkpoint?: (saved: CommitRequest) => EditorRecord): Promise<CommitRequest> {
+    if (checkpoint && this.options.store.createWithCheckpoint) return this.options.store.createWithCheckpoint(record, checkpoint);
+    // Custom document-only ports project afterward, without native atomicity.
+    return this.options.store.create(record);
   }
 
   /** Internal capture for a relation touching several resources; transport remains in this queue. */

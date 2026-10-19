@@ -1,5 +1,6 @@
 'use client';
 
+import { writeCheckpointRecord } from './checkpointStorage.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, type CommitRequest, type CommitStore } from './commits';
 import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
@@ -89,6 +90,14 @@ export function createIndexedDbCommitStore(): CommitStore {
       readCommitRows(store, read, owner, done);
     }),
     create: request => createBatch([request]).then(records => records[0]),
+    createWithCheckpoint: (request, project) => {
+      const frozen = clone(request);
+      return transaction('readwrite', (store, read, done) => {
+        createRecord(store, read, frozen, saved => {
+          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved));
+        });
+      });
+    },
     compareAndSet: (previous, next) => compareAndSetBatch([{ previous, next }]).then(records => records[0]),
     createBatch,
     compareAndSetBatch,

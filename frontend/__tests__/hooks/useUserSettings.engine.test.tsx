@@ -166,7 +166,7 @@ describe('settings through the shared real DataEngine', () => {
   it('rejects local storage failure instead of acknowledging or sending the change', async () => {
     const context = setup(), hook = context.mount();
     await waitFor(() => expect(hook.result.current.settings.readOnly).toBe(false));
-    jest.spyOn(context.harness.commits, 'create').mockRejectedValue(new Error('disk full'));
+    context.harness.storage.writeFailure = true;
     let error: unknown;
     await act(async () => {
       try { await awaitSettingsWrite(hook.result.current.settings.updatePrepModeAccess(true), jest.fn()); }
@@ -182,13 +182,11 @@ describe('settings through the shared real DataEngine', () => {
   it('does not report acceptance while durable submission is still pending', async () => {
     const context = setup(), hook = context.mount();
     await waitFor(() => expect(hook.result.current.settings.readOnly).toBe(false));
-    const persist = context.harness.commits.create.bind(context.harness.commits);
-    let release!: () => void;
-    const pending = new Promise<void>(resolve => { release = resolve; });
-    jest.spyOn(context.harness.commits, 'create').mockImplementation(async request => {
-      await pending;
-      return persist(request);
-    });
+    context.harness.storage.holdCommit = true;
+    const release = () => {
+      context.harness.storage.holdCommit = false;
+      context.harness.storage.finishCommit?.();
+    };
     let accepted = false, submission!: Promise<void>;
     await act(async () => {
       submission = awaitSettingsWrite(hook.result.current.settings.updatePrepModeAccess(true), jest.fn()).then(() => { accepted = true; });

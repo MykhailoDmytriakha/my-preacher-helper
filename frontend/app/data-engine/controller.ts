@@ -98,6 +98,8 @@ export class EditorController {
   private manualRequests = new Set<string>();
   private result: CommandResult | null = null;
   private preparations = 0;
+  /** Submitted generations must reach the request store before a future RAM draft reaches a checkpoint. */
+  private pendingCaptures = new Set<SessionCheckpoint>();
   private disposed = false;
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
@@ -177,6 +179,7 @@ export class EditorController {
     const captured = capturedIntent ?? this.session.checkpoint();
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
+    if (this.options.commits) this.pendingCaptures.add(captured);
     this.emit();
     return this.enqueue(async () => {
       if (this.options.commits) {
@@ -187,11 +190,20 @@ export class EditorController {
           .filter(([, request]) => request.generation <= captured.editGeneration);
         const newestGeneration = Math.max(...pending.map(([, request]) => request.generation));
         const predecessorIds = pending.filter(([, request]) => request.generation === newestGeneration).map(([id]) => id);
-        const options = captureSaveOptions(predecessorIds, captureScope);
+        const record = this.record();
+        const projectCheckpoint = (request: CommitRequest): EditorRecord => {
+          const session = DataSession.restore({ ...captured, pending: Object.fromEntries(pending) });
+          const completed = [...(record.completedCommits ?? [])];
+          if (session.applyCommit(request) && !completed.includes(request.id)) completed.push(request.id);
+          return { ...record, checkpoint: session.checkpoint(), completedCommits: completed };
+        };
+        const options = { ...captureSaveOptions(predecessorIds, captureScope), checkpoint: projectCheckpoint };
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
+        this.pendingCaptures.delete(captured);
         if (capture) onCaptured!(capture.receipt);
         if (request) await this.applyCommit(request);
+        else await this.persist();
         return;
       }
       if (onCaptured) throw new Error('Write receipts require the commit queue');
@@ -207,7 +219,7 @@ export class EditorController {
       if (!this.prepared) return;
       await this.persist();
       await this.options.runtime.submit(this.prepared);
-    }).finally(() => { this.preparations -= 1; this.emit(); });
+    }).finally(() => { this.pendingCaptures.delete(captured); this.preparations -= 1; this.emit(); });
   }
 
   /** A durable form request joins this editor without absorbing unrelated staged fields. */
@@ -248,7 +260,8 @@ export class EditorController {
     if (!this.durable) return Promise.reject(Object.assign(new Error('Save the local draft before deleting'), { code: 'not-on-device-yet' }));
     const persisting = this.edit(null);
     const deletion = this.session.checkpoint();
-    return persisting.then(() => this.save(deletion, undefined, onCaptured, captureScope));
+    const saving = this.save(deletion, undefined, onCaptured, captureScope);
+    return Promise.all([persisting, saving]).then(() => undefined);
   }
 
   observe(snapshot: ResourceSnapshot, source: 'server' | 'cache'): Promise<void> {
@@ -380,6 +393,7 @@ export class EditorController {
   }
 
   private async persist(): Promise<void> {
+    if (this.pendingCaptures.size) return;
     const record = this.record();
     await this.options.store.put(record);
     this.assertCurrent();

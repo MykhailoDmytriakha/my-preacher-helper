@@ -98,6 +98,12 @@ function NoteContent({ id }: { id: string }) {
   awaiting local persistence. Do not compose `await update(...); await save()`:
   later typing may happen during that await. A saved request must survive editor
   unmount and reload independently of the newest unsaved draft.
+  Native storage captures that request and the checkpoint of its exact submitted
+  generation in one transaction. Later queued saves cannot write newer RAM values
+  ahead of their corresponding requests. Ordinary later typing remains recoverable
+  without joining that saved request. Custom document-only ports without the optional
+  `CommitStore.createWithCheckpoint` capability retain request-first projection;
+  they do not claim the native atomic boundary.
 - **Create:** use a stable client-generated document ID and `{ create: true,
   autoSave: false }`; submit the valid initial document with `commit(() => value)`.
 - **Delete:** `remove()` queues a delete against the editor's confirmed baseline.

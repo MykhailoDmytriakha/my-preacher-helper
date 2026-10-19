@@ -2,18 +2,31 @@ import { createStore } from 'idb-keyval';
 
 const clone = <T,>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 
-/** Transactional fake: writes become visible only at commit, and abort rolls back. */
+/** Transactional fake: native commit and the application's completion callback are separate boundaries. */
 export function installStorageHarness() {
+  const completionCallbacks: Array<() => void> = [];
   const harness = { rows: new Map<string, unknown>(), holdCommit: false, finishCommit: undefined as (() => void) | undefined,
-    readFailure: false, writeFailure: false };
+    readFailure: false, writeFailure: false,
+    holdCompletionAfterCommit: undefined as ((rows: ReadonlyMap<string, unknown>, mode: IDBTransactionMode) => boolean) | undefined,
+    finishCompletion: () => { completionCallbacks.shift()?.(); } };
   Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { bound: (lower: unknown, upper: unknown) => ({ lower, upper }) } });
   let queue: Promise<unknown> = Promise.resolve();
   const useStore: ReturnType<typeof createStore> = (mode, action) => {
-    const operation = queue.catch(() => undefined).then(() => {
-      const draft = new Map(harness.rows); let pending = 0, aborted = false;
+    const beginning = queue.catch(() => undefined).then(() => {
+      const draft = new Map(harness.rows); let pending = 0, aborted = false, completed = false;
+      let releaseNative!: () => void;
+      const finished = new Promise<void>(resolve => { releaseNative = resolve; });
       const tx = { oncomplete: null as (() => void) | null, onabort: null as (() => void) | null,
-        onerror: null, error: null, abort: () => { aborted = true; tx.onabort?.(); } };
-      const complete = () => { if (aborted || pending) return; if (mode === 'readwrite') harness.rows = draft; tx.oncomplete?.(); };
+        onerror: null, error: null, abort: () => { aborted = true; releaseNative(); tx.onabort?.(); } };
+      const complete = () => {
+        if (aborted || completed || pending) return;
+        completed = true;
+        if (mode === 'readwrite') harness.rows = draft;
+        // A completed IndexedDB transaction releases its locks even if page JavaScript stops here.
+        releaseNative();
+        if (harness.holdCompletionAfterCommit?.(harness.rows, mode)) completionCallbacks.push(() => tx.oncomplete?.());
+        else tx.oncomplete?.();
+      };
       const read = (value: unknown) => {
         pending += 1;
         const request = { result: clone(value), error: new Error('read failed'), onsuccess: null as (() => void) | null, onerror: null as (() => void) | null };
@@ -35,9 +48,10 @@ export function installStorageHarness() {
       } as unknown as IDBObjectStore;
       const result = action(store);
       void Promise.resolve().then(() => { if (harness.holdCommit) harness.finishCommit = complete; else complete(); });
-      return result;
+      return { result, finished };
     });
-    queue = operation; return operation;
+    queue = beginning.then(({ finished }) => finished);
+    return beginning.then(({ result }) => result);
   };
   jest.mocked(createStore).mockReturnValue(useStore);
   return harness;

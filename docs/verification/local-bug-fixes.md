@@ -2135,3 +2135,48 @@ physical-device/PWA acceptance, weak-network provider lookup and production beha
 Broader account-cache partitioning and retired-scope pending-write bugs remain separately tracked.
 The unexecuted production recipe is auth-identity-production-recipe.md; canonical account guidance
 is .howto/keep-accounts-apart.md.
+
+
+## BUG-20261016-engine-draft-before-request
+
+Stage: locally verified and independently accepted; production verification awaits a separately
+authorized merge, push and deployment.
+
+A submitted document generation and its canonical request now reach native IndexedDB in one
+transaction. The extracted checkpointStorage.client module reuses the existing checkpoint validator,
+request references and collector. Controller capture markers prevent future RAM generations from
+reaching an ordinary checkpoint ahead of their request; deletion registers Save before awaiting the
+preliminary edit. A no-op still completes local persistence. The canonical queue, operation identity,
+predecessors, receipts, database name and manual-stage ownership remain in use. Custom document-only
+stores without the optional capability retain request-first projection, without native atomicity.
+
+The actual compiled offline Bible baseline reproduced four visible marks becoming one after restart:
+checkpoint generation4 was durable but the queue held only generation1. Three original behavioral RED
+cases (one edit, four rapid saves, explicit deletion) became GREEN. Controls cover ordinary/manual
+unsent typing, later words after saved generations, failed capture and retry, immediate departure,
+rollback of request+identity+checkpoint, duplicate capture identities and no-op cleanup. Two existing
+consumer tests now inject disk failure/delay at the underlying storage boundary; their no-send,
+no-false-acceptance and explicit-retry assertions are preserved.
+
+Final gates: full891 suites9771 tests PASS,3 suites17 inherited tests skipped; TypeScript, scoped
+lint and canonical production compiler PASS; full lint0 errors24 inherited warnings. Build:
+jZf8AufJ7GOEuv-vZFKpY. A fresh independent run passed4 suites24 tests; a separate source review
+found no high-confidence actionable issue. The earlier partial full run with obsolete fault-injection
+spies is retained as a diagnostic; the subsequent complete current run passed.
+
+Root compared the original compiled failure with fixed native-browser cases at390/1280px,16 checks,
+and personally inspected6 originals. Independent820px acceptance passed8 checks and inspected3
+originals, which root also inspected. All four marks remain after native-SW offline cold reload,
+including interruption after native commit before its page callback. Nonzero expected network and
+SDK diagnostics are classified separately; uncaught page errors and backend writes are zero. Online
+private API baselines were controlled in RAM; no production or server-persistence claim is made.
+
+Root packet: draft-intent-verification-v1.json, SHA-256
+185260abba012be08808b76c1401760e16626ac871f1f2f07655e755e6a7eb53.
+Fresh report: draft-intent-fresh-acceptance-v1.json, SHA-256
+fb4532299a4e42029fa516c58ed95805e2e820794f1b30754e9d87fba7b4afc9.
+The candidate pins2271 source files and891 compiled files. The other35 whole tracker records and
+preface remain byte-identical. Local tracker removal is not production closure. Native power loss
+before capture begins, physical-device acceptance, retired-stage/failed-handoff risks and the stale
+offline creation bug remain separate boundaries. The unexecuted production recipe is
+draft-intent-production-recipe-v1.md; canonical guidance is .howto/keep-a-write-across-offline.md.
