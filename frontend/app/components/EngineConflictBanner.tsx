@@ -18,6 +18,7 @@ import { outlineRecoveryValue } from '@/utils/outlineRecovery';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
+import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { EditorRecord, RecoveryCheckpoint } from '@/data-engine/controller';
@@ -358,8 +359,9 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
     pendingChoice.current = pending;
     try {
       const accepted = await confirm({
-        title: { key: 'common.deleteItem.title' },
-        description: { key: 'common.deleteItem.description' },
+        ...(target.resource.collection === 'tags'
+          ? tagDeletionConfirmation(typeof target.screenValue?.name === 'string' ? target.screenValue.name : undefined)
+          : { title: { key: 'common.deleteItem.title' }, description: { key: 'common.deleteItem.description' } }),
         confirmText: { key: 'common.delete' },
         cancelText: { key: 'common.cancel' },
       });

@@ -7,7 +7,9 @@ import { toast } from 'sonner';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
+import { sayFailure } from '@/utils/actionFailureMessage';
 import { awaitWriteOperation, refusedWrite, type WriteOperation } from '@/utils/recoverableWrite';
+import { tagDeletionConfirmation } from '@/utils/tagDeletionConfirmation';
 import ColorPickerModal from '@components/ColorPickerModal';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -40,6 +42,7 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const pendingDelete = deleteSelection && deleteSelection.owner === user?.uid ? deleteSelection.tag : null;
   const isSavingColor = pendingAction?.owner === user?.uid && pendingAction?.kind === 'color';
   const isDeleting = pendingAction?.owner === user?.uid && pendingAction?.kind === 'delete';
+  const deleteWords = tagDeletionConfirmation(pendingDelete?.name);
 
   useEffect(() => {
     setColorSelection(null);
@@ -197,8 +200,8 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
         isOpen={Boolean(pendingDelete)}
         onClose={() => { if (!isDeleting) setDeleteSelection(null); }}
         onConfirm={confirmDelete}
-        title={t('common.deleteItem.title')}
-        description={t('common.deleteItem.description')}
+        title={sayFailure(deleteWords.title, t)}
+        description={sayFailure(deleteWords.description, t)}
         confirmText={t('common.delete')}
         cancelText={t('common.cancel')}
         isDeleting={isDeleting}

@@ -1248,6 +1248,10 @@
     "addTag": "Add",
     "editColor": "Edit Color",
     "deleteTag": "Delete tag",
+    "deleteTagConfirmation": {
+      "title": "Delete tag “{{name}}”?",
+      "description": "This tag will be removed from all thoughts. Their text and other tags will stay."
+    },
     "loading": "Loading...",
     "noCustomTags": "You don't have any custom tags yet",
     "noRequiredTags": "No required tags",
