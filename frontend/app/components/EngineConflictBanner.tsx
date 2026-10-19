@@ -14,6 +14,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { bibleMarksRecoveryValue } from '@/utils/bibleMarksRecovery';
 import { isBibleId } from '@/utils/bibles';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
+import { outlineRecoveryValue } from '@/utils/outlineRecovery';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { fieldLabel } from '@/utils/storedFieldLabel';
 import { storedFieldValue } from '@/utils/storedFieldValue';
@@ -256,6 +257,7 @@ function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }
 
   const displayValue: DisplayValue = (scope, field, value, document) => {
     if (scope === 'studyNotes.scriptureRefs' && !field && isItem(value)) return referenceItemText(value, interfaceLanguage);
+    if ((scope === 'planTemplates' && field === 'structure') || (scope === 'sermons' && field === 'outline')) return outlineRecoveryValue(t, value);
     if (scope === 'bibleMarks') return bibleMarksRecoveryValue(t, resolveAppLocale(interfaceLanguage), field, value, document);
     return storedFieldValue(t, scope, field, value);
   };
