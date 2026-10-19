@@ -31,7 +31,7 @@ describe('prayers on the engine', () => {
   it('refuses an edit of a field rewritten elsewhere, keeps the document, and keeping mine overwrites on purpose', async () => {
     const { result } = render();
     let error: unknown;
-    await act(async () => { error = await result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(e => e); });
+    await act(async () => { error = await result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).catch(e => e); });
     expect(isStaleWriteError(error)).toBe(true);
     expect(current.description).toBe('Phone text');
     expect(result.current.saveConflict).toEqual(expect.objectContaining({ payload: { id: 'p1', updates: { description: 'Laptop text' } } }));
@@ -42,7 +42,7 @@ describe('prayers on the engine', () => {
 
   it('keeps the refused text across leaving the screen, and retires it only when the resend lands', async () => {
     const first = render();
-    await act(async () => { await first.result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined); });
+    await act(async () => { await first.result.current.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).catch(() => undefined); });
     first.unmount();
     const second = render();
     expect(second.result.current.saveConflict).toEqual(expect.objectContaining({ payload: { id: 'p1', updates: { description: 'Laptop text' } } }));
@@ -60,7 +60,7 @@ describe('prayers on the engine', () => {
     }
     renderComponent(<Consumer />);
     await act(async () => {
-      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined);
+      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).catch(() => undefined);
     });
     const pending = latest.saveConflict;
 
@@ -80,7 +80,7 @@ describe('prayers on the engine', () => {
     }
     renderComponent(<Consumer />);
     await act(async () => {
-      await latest.setStatus('p1', 'answered', 'Laptop answer', undefined, { answerText: 'Old answer' }).persistence.catch(() => undefined);
+      await latest.setStatus('p1', 'answered', 'Laptop answer', undefined, { answerText: 'Old answer' }).catch(() => undefined);
     });
     const pending = latest.statusConflict;
 
@@ -101,7 +101,7 @@ describe('prayers on the engine', () => {
     }
     const view = renderComponent(<Consumer docId="p1" />);
     await act(async () => {
-      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).persistence.catch(() => undefined);
+      await latest.updatePrayer('p1', { description: 'Laptop text' }, 1, { description: 'Old text' }).catch(() => undefined);
     });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'take core' })); });
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
@@ -114,9 +114,9 @@ describe('prayers on the engine', () => {
 
   it('adds an update, answers the prayer and creates a new one through engine actions', async () => {
     const { result } = render();
-    await act(async () => { await result.current.addUpdate('p1', 'Doctor visit went well').persistence; });
+    await act(async () => { await result.current.addUpdate('p1', 'Doctor visit went well'); });
     expect(current.updates).toEqual([expect.objectContaining({ text: 'Doctor visit went well' })]);
-    await act(async () => { await result.current.setStatus('p1', 'answered', 'Healed').persistence; });
+    await act(async () => { await result.current.setStatus('p1', 'answered', 'Healed'); });
     expect(current).toEqual(expect.objectContaining({ status: 'answered', answerText: 'Healed', answeredAt: expect.any(String) }));
     let created!: ReturnType<typeof result.current.createPrayer>;
     await act(async () => { created = result.current.createPrayer({ userId: 'u', title: 'New request' }); await created; });

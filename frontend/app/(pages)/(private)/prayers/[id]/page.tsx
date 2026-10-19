@@ -30,7 +30,7 @@ import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/praye
 import { formatDateForLocale, formatDateTimeForLocale } from '@/utils/dateFormatter';
 import {
   announceIfPersisted,
-  awaitAcceptance,
+  awaitWriteOperation,
   skippedWrite,
 } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
@@ -192,12 +192,11 @@ export default function PrayerDetailPage() {
 
   const handleDelete = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
-    // No success message: deletePrayer returns on launch, so a refused delete used
-    // to be announced as done. The row leaving the list is the acceptance signal.
+    // Navigate only after the engine has durably captured this deletion.
     const submission = deletePrayer(prayer.id);
     try {
-      // usePrayerRequests' delete recovery descriptor reports a late refusal while this screen is mounted.
-      await awaitAcceptance(submission, () => undefined);
+      // The hook reports capture failure; engine recovery owns later delivery refusal.
+      await awaitWriteOperation(submission, () => undefined);
       // replace, not push: we are ON the page of the thing being deleted, so pushing leaves a dead entry in history and Back re-opens it.
       router.replace('/prayers');
     } catch {
@@ -206,7 +205,7 @@ export default function PrayerDetailPage() {
   };
 
   const handleAddUpdate = (text: string) => {
-    // Queue-owned at launch: the modal closes after acceptance and stays silent.
+    // The modal closes only after the engine has durably captured the update.
     return addUpdate(prayer.id, text);
   };
 
@@ -216,9 +215,9 @@ export default function PrayerDetailPage() {
       return skippedWrite();
     }
     const submission = setStatus(prayer.id, status);
-    // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
-    void awaitAcceptance(submission, () => undefined)
-      .then((acceptance) => announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))))
+    // A local capture is not a server-confirmed status change.
+    void awaitWriteOperation(submission, () => undefined)
+      .then((acceptance) => { if (acceptance) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))); })
       .catch(() => undefined);
     return submission;
   };

@@ -7,7 +7,6 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { StaleWriteError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
-import { queuedMutation, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
@@ -34,8 +33,8 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stri
 export function usePrayerRequestsEngine(userId: string | null | undefined, activeDocId: string | null | undefined, enabled: boolean) {
   const { t } = useTranslation();
   /**
-   * A queued write is accepted at launch, so a later failure has no other voice: the legacy
-   * hook spoke through its mutation-cache descriptors, which the engine path does not create.
+   * A failed local capture has one voice: this hook. The legacy mutation-cache
+   * descriptors do not observe engine actions. Server refusals use engine recovery.
    * A conflict is a choice shown by the screen, not a failure, and stays quiet here.
    */
   const reportLate = <T,>(request: Promise<T>): Promise<T> => request.catch((error: unknown) => {
@@ -59,7 +58,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   userIdRef.current = userId ?? null;
   const activeDocIdRef = useRef(activeDocId ?? null);
   activeDocIdRef.current = activeDocId ?? null;
-  const pending = useRef(new Set<string>());
+  const pending = useRef(new Map<string, Promise<void>>());
 
   useEffect(() => { withdraw(); }, [userId, activeDocId, withdraw]);
 
@@ -86,18 +85,21 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
     return refusal;
   }, [actions]);
 
-  const once = (key: string, run: () => Promise<void>): WriteSubmission => {
-    if (pending.current.has(key)) return skippedWrite();
-    pending.current.add(key);
-    return queuedMutation(key, reportLate(run()).finally(() => pending.current.delete(key)));
+  const once = (key: string, run: () => Promise<void>): Promise<void> => {
+    const scope = JSON.stringify([userId ?? null, key]);
+    const captured = pending.current.get(scope);
+    if (captured) return captured;
+    const request = reportLate(Promise.resolve().then(run)).finally(() => pending.current.delete(scope));
+    pending.current.set(scope, request);
+    return request;
   };
 
   const updatePrayer = (id: string, updates: Partial<PrayerRequest>, _expectedRevision?: number | null,
-    expectedBaseline?: Record<string, unknown> | null): WriteSubmission =>
+    expectedBaseline?: Record<string, unknown> | null): Promise<void> =>
     once(`prayer:update:${id}:${JSON.stringify(updates)}`, async () => {
       const refusal = await guardedEdit(id, PRAYER_CORE_AGGREGATE, updates as DocumentData, expectedBaseline);
       if (refusal) { setSaveConflict({ payload: { id, updates }, actualRevision: refusal.actualRevision }, id); throw refusal; }
-      // Retired only on a write that landed, and for the prayer it belongs to.
+      // The same local capture now owns these words; retire only this prayer's conflict.
       setSaveConflict(null, id);
     });
 
@@ -107,7 +109,7 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
   };
 
   const setStatus = (id: string, status: PrayerStatus, answerText?: string, _expectedRevision?: number | null,
-    expectedBaseline?: Record<string, unknown> | null): WriteSubmission =>
+    expectedBaseline?: Record<string, unknown> | null): Promise<void> =>
     once(`prayer:status:${id}:${status}:${answerText ?? ''}`, async () => {
       const refusal = await guardedEdit(id, PRAYER_STATUS_AGGREGATE, statusPatch(status, answerText), expectedBaseline);
       if (refusal) { setStatusConflict({ payload: { id, status, answerText }, actualRevision: refusal.actualRevision }, id); throw refusal; }
@@ -173,14 +175,14 @@ export function usePrayerRequestsEngine(userId: string | null | undefined, activ
       }
     },
     discardDialog,
-    deletePrayer: (id: string): WriteSubmission => once(`prayer:delete:${id}`, () => actions.remove(resource(id))),
-    addUpdate: (id: string, text: string): WriteSubmission => {
+    deletePrayer: (id: string): Promise<void> => once(`prayer:delete:${id}`, () => actions.remove(resource(id))),
+    addUpdate: (id: string, text: string): Promise<void> => {
       const entry = { id: newClientId(), text, createdAt: now() };
-      return queuedMutation(`prayer:update:${entry.id}`, reportLate(actions.commit(resource(id), current => {
+      return reportLate(actions.commit(resource(id), current => {
         if (!current) throw new Error('The prayer was deleted');
         const updates = Array.isArray(current.updates) ? current.updates : [];
         return { ...current, updates: [...updates, entry], updatedAt: now() };
-      })));
+      }));
     },
   };
 }

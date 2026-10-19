@@ -17,15 +17,15 @@ import { Chip } from '@/components/ui/Chip';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { formatDateForLocale } from '@/utils/dateFormatter';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
-import { type WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
 
 import PrayerStatusBadge from './PrayerStatusBadge';
 
 interface Props {
   prayer: PrayerRequest;
-  onSetStatus: (id: string, status: PrayerStatus) => WriteSubmission;
-  onDelete: (id: string) => WriteSubmission;
+  onSetStatus: (id: string, status: PrayerStatus) => WriteOperation;
+  onDelete: (id: string) => WriteOperation;
   onAddUpdate: (id: string) => void;
   onEdit: (prayer: PrayerRequest) => void;
   searchQuery?: string;
@@ -69,7 +69,7 @@ export default function PrayerRequestCard({
 
   const handleDelete = () => {
     if (!confirming) { setConfirming(true); return; }
-    void onDelete(prayer.id).acceptance.catch(() => undefined);
+    void awaitWriteOperation(onDelete(prayer.id), () => undefined).catch(() => undefined);
   };
 
   const isActive = prayer.status === 'active';

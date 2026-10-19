@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -9,14 +9,14 @@ import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { useDiscardQuestion } from '@/hooks/useConfirm';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
-import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 import { useTranslation } from '@locales/useTranslation';
 
 interface Props {
   prayerId?: string;
   onClose: () => void;
-  onSubmit: (text: string) => WriteSubmission;
+  onSubmit: (text: string) => WriteOperation;
 }
 
 export default function AddUpdateModal({ prayerId, onClose, onSubmit }: Props) {
@@ -24,6 +24,7 @@ export default function AddUpdateModal({ prayerId, onClose, onSubmit }: Props) {
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState<FailureWords | null>(null);
 
   const dictation = useTextDictation({
@@ -44,24 +45,23 @@ export default function AddUpdateModal({ prayerId, onClose, onSubmit }: Props) {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isBusy || dictation.error || !text.trim()) return;
+    if (savingRef.current || isBusy || dictation.error || !text.trim()) return;
+    savingRef.current = true;
     setError(null);
     setSaving(true);
     try {
-      // usePrayerRequests' add-update recovery descriptor reports a late refusal while this screen is mounted.
+      // The hook reports capture failure; the engine owns the captured update afterwards.
       const submission = onSubmit(text.trim());
-      await awaitAcceptance(submission, () => undefined);
-      void submission.persistence.then(() => dictation.accept()).catch(() => undefined);
+      await awaitWriteOperation(submission, () => undefined);
+      if ('persistence' in submission) void submission.persistence.then(() => dictation.accept()).catch(() => undefined);
+      else void Promise.resolve(dictation.accept()).catch(() => undefined);
       onClose();
     } catch {
-      /**
-       * SILENT. Every prayer write goes through the data engine, which keeps the person's text and
-       * reports a refusal itself (DataSyncStatus, EngineConflictBanner). This editor showed its own message on top — sometimes the raw technical
-       * one — so a single failed save arrived as two messages, one of them untranslated.
-       * The editor's whole duty here is to stay open holding what was typed.
-       */
+      // The hook reports capture failures once. Until capture succeeds, this
+      // editor retains the person's exact words for a deliberate retry.
       setError(null);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -91,7 +91,7 @@ export default function AddUpdateModal({ prayerId, onClose, onSubmit }: Props) {
           onResend={(_blob, draft) => dictation.recover(draft)} excludeDraftIds={dictation.appliedDraftIds}
           isProcessing={isBusy} resendDisabled={dictation.transcriptionBlocked} />}
         <TextareaAutosize value={text} onChange={event => setText(event.target.value)}
-          placeholder={t('prayer.update.placeholder')} aria-label={t('prayer.update.placeholder')}
+          disabled={saving} placeholder={t('prayer.update.placeholder')} aria-label={t('prayer.update.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />
         {error && <p className="text-sm text-red-500" role="alert">{sayFailure(error, t)}</p>}
       </div>

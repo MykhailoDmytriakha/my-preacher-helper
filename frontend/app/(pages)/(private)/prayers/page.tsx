@@ -41,7 +41,7 @@ import {
 } from '@/utils/prayerFilters';
 import {
   announceIfPersisted,
-  awaitAcceptance,
+  awaitWriteOperation,
   refusedWrite,
   skippedWrite,
 } from '@/utils/recoverableWrite';
@@ -287,8 +287,7 @@ export default function PrayerPage() {
   };
 
   const handleDelete = (id: string) => {
-    // Delete is queue-owned at launch; its disappearing row is the only immediate
-    // signal and must never be called a server-confirmed save.
+    // Delete resolves at local capture; the engine owns later delivery and refusal.
     return deletePrayer(id);
   };
 
@@ -301,9 +300,9 @@ export default function PrayerPage() {
     }
 
     const submission = setStatus(id, status);
-    // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
-    void awaitAcceptance(submission, () => undefined)
-      .then((acceptance) => announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))))
+    // A local capture is not a server-confirmed status change.
+    void awaitWriteOperation(submission, () => undefined)
+      .then((acceptance) => { if (acceptance) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))); })
       .catch(() => undefined);
     return submission;
   };

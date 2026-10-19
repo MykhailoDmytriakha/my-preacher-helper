@@ -1,35 +1,38 @@
 'use client';
 
 import { CheckCircleIcon } from '@heroicons/react/24/outline';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import FormDialog from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { announceIfPersisted, awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 import { useTranslation } from '@locales/useTranslation';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (answerText?: string) => WriteSubmission;
+  onSubmit: (answerText?: string) => WriteOperation;
 }
 
 export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
   const [answerText, setAnswerText] = useState('');
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const handleSubmit = async (text?: string) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      const acceptance = await awaitAcceptance(
+      const acceptance = await awaitWriteOperation(
         onSubmit(text?.trim() || undefined),
-        // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
+        // The hook reports capture failure; the engine owns later refusal.
         () => undefined
       );
-      announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged')));
+      if (acceptance) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged')));
       onClose();
     } catch (errorValue) {
       // A refusal belongs to the open editor: keep the answer exactly where it was
@@ -45,13 +48,10 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
         onClose();
         return;
       }
-      /**
-       * SILENT. Every prayer write goes through the data engine, which keeps the person's text and
-       * reports a refusal itself (DataSyncStatus, EngineConflictBanner). This editor showed its own message on top — sometimes the raw technical
-       * one — so a single failed save arrived as two messages, one of them untranslated.
-       * The editor's whole duty here is to stay open holding what was typed.
-       */
-      } finally {
+      // The hook reports capture failures once. Until capture succeeds, this
+      // editor retains the person's exact words for a deliberate retry.
+    } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -60,9 +60,9 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
 
   return (
     <FormDialog title={<span className="flex items-center gap-2"><CheckCircleIcon className="h-6 w-6 shrink-0 text-emerald-500" />{t('prayer.markAnswered.title')}</span>}
-      eyebrow={t('navigation.prayer')} description={t('prayer.markAnswered.subtitle')} tone="emerald" size="compact" onClose={onClose} dismissOnBackdrop>
+      eyebrow={t('navigation.prayer')} description={t('prayer.markAnswered.subtitle')} tone="emerald" size="compact" onClose={() => { if (!savingRef.current) onClose(); }} closeDisabled={saving} dismissOnBackdrop>
       <div className="mt-6 space-y-5">
-        <TextareaAutosize value={answerText} onChange={event => setAnswerText(event.target.value)}
+        <TextareaAutosize disabled={saving} value={answerText} onChange={event => setAnswerText(event.target.value)}
           placeholder={t('prayer.markAnswered.placeholder')} aria-label={t('prayer.markAnswered.placeholder')}
           className={FORM_INPUT_CLASS} minRows={3} autoFocus />
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
