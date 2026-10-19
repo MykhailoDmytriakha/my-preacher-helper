@@ -55,6 +55,8 @@ type ReaderMarks = {
   signs: RibbonSigns | undefined;
   /** What the book's marks need from the person, if anything (a verse changed on two devices at once). */
   syncStatus: ReactNode;
+  /** An exact book-form choice is ready for the person. */
+  pendingDecision: boolean;
   /** The window of the verse whose sign was tapped (`MarkedElsewhereSheet`). */
   elsewhere: { at: { chapter: number; verse: number } | null; entries: { bible: BibleId; verses: MarkedElsewhere[] }[]; close: () => void };
 };
@@ -159,6 +161,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
     textClass: canMark && owner ? `${armed || !zoomed ? '[touch-action:pan-y_pinch-zoom] ' : ''}[-webkit-touch-callout:none]` : '',
     signs,
     // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
+    pendingDecision: Boolean(sync?.status?.canKeepLocal || sync?.status?.canAcceptRemote),
     syncStatus: sync ? (
       <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-3"
         onRetry={() => sync.retry()}

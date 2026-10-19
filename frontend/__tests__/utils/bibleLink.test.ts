@@ -3,6 +3,10 @@ import { bibleHref, bibleHrefForText, leadingReference, namesAPlace, parsePassag
 const query = (href: string | null) => Object.fromEntries(new URL(href ?? '/none', 'https://app.test').searchParams);
 
 describe('bibleHref — a stored reference as a place to open', () => {
+  it('explicitly selects a marks owning reading Bible without reusing the numbering parameter', () => {
+    expect(query(bibleHref({ book: 'Ruth', bible: 'rst' }, { locale: 'en', readingBible: 'rst' })))
+      .toEqual({ book: 'ruth', read: 'rst' });
+  });
   it('opens a verse at itself and lights it, in the Bible the reference was written in', () => {
     const href = bibleHref({ bible: 'rst', book: 'Romans', chapter: 16, fromVerse: 21 }, { locale: 'ru', from: '/studies/n1' });
     expect(href?.startsWith('/bible?')).toBe(true);

@@ -59,6 +59,9 @@
       "studyNotes": "Заметка"
     },
     "field": {
+      "bible": "Перевод",
+      "book": "Книга",
+      "verses": "Пометки",
       "type": "Вид",
       "name": "Название",
       "title": "Название",
@@ -427,6 +430,8 @@
     "changeTranslation": "{{translation}}: выбрать другой перевод",
     "marks": {
       "toolbar": "Пометки",
+      "words": "Слова {{first}}–{{last}}",
+      "noMarks": "Пометок нет",
       "colors": "Цвет маркера",
       "marker": "Маркер: {{meaning}}",
       "pencil": "Карандаш: {{meaning}}",

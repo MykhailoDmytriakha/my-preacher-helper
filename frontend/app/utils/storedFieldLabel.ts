@@ -12,6 +12,7 @@ const NAMED_FIELDS = new Set([
   'transitionSentence', 'sermonInOneSentence', 'homileticalAnswers', 'whyPreach', 'impactOnChurch',
   'practicalQuestions', 'timelessTruth', 'christConnection', 'preachingGoal', 'statement',
   'homileticPlan', 'modernTranslation', 'updatedPlan', 'sermonPlan', 'children',
+  'bible', 'book', 'verses',
   'title', 'name', 'verse', 'description', 'date', 'items', 'steps', 'sermonIds', 'seriesKind', 'thoughts',
   'type', 'structure', 'thoughtsBySection', 'plan', 'draft', 'outline', 'topics', 'status', 'meetingDates', 'preachDates', 'tags', 'isPreached',
   'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview',

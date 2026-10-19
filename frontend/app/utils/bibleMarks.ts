@@ -236,6 +236,27 @@ export function decodeBookMarks(stored: unknown): BookMarks {
   return readBookMarks(raw);
 }
 
+/** A recovery preview must retain every stored mark; a forgiving reader alone cannot prove that. */
+export function decodeCompleteBookMarks(stored: unknown): BookMarks | null {
+  if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return null;
+  const book = decodeBookMarks(stored);
+  const canonical = encodeBookMarks(book);
+  const entries = Object.entries(stored);
+  if (entries.length !== Object.keys(canonical).length) return null;
+  for (const [field, value] of entries) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const layers = Object.entries(value);
+    const encoded = canonical[field];
+    if (!encoded || layers.length !== Object.keys(encoded).length) return null;
+    for (const [layer, runs] of layers) {
+      if (layer !== 'm' && layer !== 'p') return null;
+      const text = Array.isArray(runs) && runs.every(run => typeof run === 'string') ? runs.join(',') : runs;
+      if (typeof text !== 'string' || text !== encoded[layer]) return null;
+    }
+  }
+  return book;
+}
+
 /*
  * MARKS MADE IN ANOTHER BIBLE (2.9.3, the owner, 2026-10-16): they lie on that translation's words, so in
  * this Bible a verse only carries a sign, and a tap shows the verse there whole, painted as it is there.

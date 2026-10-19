@@ -13,7 +13,7 @@ const knownLocale = (value: unknown): AppLocale | null =>
   typeof value === 'string' && APP_LOCALES.includes(value as AppLocale) ? value as AppLocale : null;
 
 /** Own first-choice readiness and the existing follow-language/manual-choice policy. */
-export function useReadingBible(needsKnownNumbering: boolean) {
+export function useReadingBible(needsKnownNumbering: boolean, requestedBible?: BibleId) {
   const { language } = useTranslation();
   const locale = resolveAppLocale(language);
   const { uid, isAuthLoading } = useResolvedUid();
@@ -22,14 +22,22 @@ export function useReadingBible(needsKnownNumbering: boolean) {
   const loading = settings.isLoading;
   const online = settings.isOnline;
   const failed = Boolean(settings.error);
-  const [bible, setBible] = useState<BibleId | null>(null);
+  const [bible, setBible] = useState<BibleId | null>(requestedBible ?? null);
   const chosen = useRef<BibleId | null>(null);
   const initialized = useRef(false);
   const previousLocale = useRef(locale);
+  const previousRequest = useRef<BibleId | undefined>(undefined);
 
   useEffect(() => {
     const languageChanged = previousLocale.current !== locale;
     previousLocale.current = locale;
+    // A recovery link is an explicit visit to marks on this translation's words. Apply once per
+    // arrival; retaining the URL must not undo a later deliberate picker choice.
+    if (requestedBible && previousRequest.current !== requestedBible) {
+      chosen.current = requestedBible;
+      saveTranslation(requestedBible);
+    }
+    previousRequest.current = requestedBible;
     const saved = chosen.current ?? readStoredTranslation();
     if (saved) {
       initialized.current = true;
@@ -50,7 +58,7 @@ export function useReadingBible(needsKnownNumbering: boolean) {
       return;
     }
     if (languageChanged) setBible(bibleForLocale(locale));
-  }, [failed, isAuthLoading, loading, locale, needsKnownNumbering, online, profileLanguage, uid]);
+  }, [failed, isAuthLoading, loading, locale, needsKnownNumbering, online, profileLanguage, requestedBible, uid]);
 
   const changeBible = useCallback((next: BibleId) => {
     chosen.current = next;

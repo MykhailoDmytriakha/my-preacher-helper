@@ -150,3 +150,36 @@ describe('initial reading Bible readiness', () => {
     expect(view.result.current.bible).toBe('rst');
   });
 });
+
+
+describe('an explicit marks recovery arrival', () => {
+  it('opens the requested reading Bible before another stored choice or a pending profile', () => {
+    window.localStorage.setItem('bible:translation', 'kjv');
+    const view = renderHook(() => useReadingBible(false, 'rst'));
+    expect(view.result.current.bible).toBe('rst');
+  });
+
+  it('handles another recovery arrival on the same page while respecting a later picker choice', () => {
+    let requested: 'rst' | 'ubio' = 'rst';
+    const view = renderHook(() => useReadingBible(false, requested));
+    act(() => view.result.current.changeBible('kjv'));
+    view.rerender();
+    expect(view.result.current.bible).toBe('kjv');
+    requested = 'ubio';
+    view.rerender();
+    expect(view.result.current.bible).toBe('ubio');
+  });
+});
+
+
+it('can follow the same recovery translation again after the earlier arrival was consumed', () => {
+  let requested: 'rst' | undefined = 'rst';
+  const view = renderHook(() => useReadingBible(false, requested));
+  requested = undefined;
+  act(() => view.result.current.changeBible('kjv'));
+  view.rerender();
+  expect(view.result.current.bible).toBe('kjv');
+  requested = 'rst';
+  view.rerender();
+  expect(view.result.current.bible).toBe('rst');
+});

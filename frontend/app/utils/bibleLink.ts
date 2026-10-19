@@ -87,12 +87,14 @@ export function referenceFromText(raw: string, bible: BibleId): (ScriptureRefSha
 export type BibleLinkOptions = {
   /** The interface language: the Bible a reference that names none was typed in. */
   locale: AppLocale;
+  /** Explicitly open the translation that owns word-level marks, rather than renumbering a reference. */
+  readingBible?: BibleId;
   /** The screen the reference is on, for the way back. */
   from?: string;
 };
 
 /** The address that opens a stored reference in the Bible, or null when its book is unknown. */
-export function bibleHref(ref: ScriptureRefShape, { locale, from }: BibleLinkOptions): string | null {
+export function bibleHref(ref: ScriptureRefShape, { locale, from, readingBible }: BibleLinkOptions): string | null {
   if (!getBookById(ref.book)) return null;
   // A reference written before Bibles were kept is read as the interface typed it then.
   const stored = ref.bible ? ref : withStoredBible(ref, locale);
@@ -107,6 +109,7 @@ export function bibleHref(ref: ScriptureRefShape, { locale, from }: BibleLinkOpt
     }
     query.set('tr', stored.bible ?? referenceBibleFor(locale));
   }
+  if (readingBible) query.set('read', readingBible);
   const back = wayBackPath(from);
   if (back) query.set('from', back);
   return `/bible?${query.toString()}`;

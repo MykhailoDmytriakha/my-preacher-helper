@@ -30,13 +30,15 @@ export default function BiblePage() {
   const slug = searchParams?.get('book') ?? null;
   const place = parsePlaceParam(searchParams?.get('at'));
   const placeBible = searchParams?.get('tr');
+  const requestedBible = searchParams?.get('read');
   const passageEnd = parsePassageEndpoint(searchParams?.get('to'));
   const cameFrom = wayBackPath(searchParams?.get('from'));
   const bookId = slug ? bookIdFromSlug(slug) : undefined;
   const [lastPlace, setLastPlace] = useState<LastPlace | null>(null);
   const [storageFailed, setStorageFailed] = useState(false);
   // An unnumbered arrival must not become a reading entry in a temporary default Bible.
-  const { bible, changeBible } = useReadingBible(Boolean(bookId && place && !isBibleId(placeBible)));
+  const { bible, changeBible } = useReadingBible(Boolean(bookId && place && !isBibleId(placeBible)),
+    bookId && isBibleId(requestedBible) ? requestedBible : undefined);
 
   useEffect(() => {
     if (!slug) setLastPlace(readLastPlace());
@@ -83,6 +85,16 @@ export default function BiblePage() {
     window.history.pushState(newEntryState(from), '', `/bible?${query.toString()}`);
   }, [bible]);
 
+  const chooseBible = useCallback((next: Parameters<typeof changeBible>[0]) => {
+    // The arrival has been followed; an explicit later picker choice owns this visit.
+    if (searchParams?.has('read')) {
+      const query = new URLSearchParams(searchParams.toString());
+      query.delete('read');
+      window.history.replaceState(window.history.state, '', `/bible?${query.toString()}`);
+    }
+    changeBible(next);
+  }, [changeBible, searchParams]);
+
   const showBooks = useCallback(() => {
     window.history.pushState(null, '', '/bible');
     window.scrollTo({ top: 0 });
@@ -98,7 +110,7 @@ export default function BiblePage() {
             {t('bible.offlineSaveFailed')}
           </p>
         ) : null}
-        <BibleBookList bible={bible} lastPlace={lastPlace} onOpen={openBook} onChangeBible={changeBible} />
+        <BibleBookList bible={bible} lastPlace={lastPlace} onOpen={openBook} onChangeBible={chooseBible} />
       </>
     );
   }
@@ -125,12 +137,13 @@ export default function BiblePage() {
       bookId={bookId}
       bible={bible}
       initialPlace={place}
+      decideMarksOnArrival={isBibleId(requestedBible) && requestedBible === bible}
       initialBible={isBibleId(placeBible) ? placeBible : bible}
       passageEnd={passageEnd?.verse}
       passageEndChapter={passageEnd?.chapter}
       cameFrom={cameFrom}
       onOpenBook={openBook}
-      onChangeBible={changeBible}
+      onChangeBible={chooseBible}
     />
   );
 }

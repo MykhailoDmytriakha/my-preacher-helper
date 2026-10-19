@@ -14,6 +14,7 @@ import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { bookIdFromSlug, bookSlug, fetchBookText, type BookText } from '@/utils/bibleText';
+import { revealBelow } from '@/utils/revealBelow';
 import { placeIn } from '@/utils/versification';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -42,6 +43,8 @@ type BibleBookReaderProps = {
   /** The Bible read: its text, its numbering, its order of books. */
   bible: BibleId;
   initialPlace: Place | null;
+  /** An explicit return to decide saved marks, rather than resume reading at a verse. */
+  decideMarksOnArrival?: boolean;
   /** The Bible `initialPlace` is numbered in (a link's `tr`); the place is found in `bible`. */
   initialBible: BibleId;
   /** The last verse of the passage a link named (its `to`), numbered as `initialPlace`: lit on arrival. */
@@ -290,7 +293,7 @@ function readerFrame(wide: boolean) {
     : { root: 'pb-24', line: 'py-1', row: '', pane: 'min-w-0 flex-1', paneTabIndex: undefined };
 }
 
-export function BibleBookReader({ bookId, bible, initialPlace, initialBible, passageEnd = null, passageEndChapter = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
+export function BibleBookReader({ bookId, bible, initialPlace, initialBible, decideMarksOnArrival = false, passageEnd = null, passageEndChapter = null, cameFrom = null, onOpenBook, onChangeBible }: BibleBookReaderProps) {
   const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
   const locale = resolveAppLocale(interfaceLanguage);
@@ -305,6 +308,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const textRef = useRef<HTMLElement | null>(null);
   const entryRef = useRef<string | null>(null);
   const placeRef = useRef<Place | null>(null);
+  const marksDecisionRef = useRef<HTMLDivElement | null>(null);
+  const revealedDecisionRef = useRef(false);
 
   useEffect(() => {
     entryRef.current = currentEntryId();
@@ -527,7 +532,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // Before the first paint of the text: the book shows at its place and the chapter button names it
   // at once — painted first, a long book (the Psalter) showed its start and "Psalm 1" for a second.
   useLayoutEffect(() => {
-    if (!text) return;
+    if (!text || decideMarksOnArrival) return;
     const here = (place: Place | null, of: BibleId): Place | null => {
       if (!place || of === bible) return place;
       const found = placeIn(bible, of, { book: bookId, ...place });
@@ -566,7 +571,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       surfaceRef.current.scrollTo(0);
       lightPassage();
     }
-  }, [bible, bookId, fitRoom, initialBible, jumpTo, lightArrival, passageEnd, passageEndChapter, startChapter, startVerse, text]);
+  }, [bible, bookId, decideMarksOnArrival, fitRoom, initialBible, jumpTo, lightArrival, passageEnd, passageEndChapter, startChapter, startVerse, text]);
+
+  // A recovery arrival is for the question above the text. Ordinary verse restoration must not
+  // cover it with the sticky nav. Once exposed, passive renders leave later reading alone.
+  useLayoutEffect(() => {
+    if (!decideMarksOnArrival) { revealedDecisionRef.current = false; return; }
+    if (revealedDecisionRef.current || !text || !marks.pendingDecision || navHeight <= 0 || !marksDecisionRef.current) return;
+    revealBelow(marksDecisionRef.current, navHeight + STICKY_PANEL_GAP_PX);
+    revealedDecisionRef.current = true;
+  }, [decideMarksOnArrival, marks.pendingDecision, navHeight, text]);
 
   // The room follows the page: a resized window, a font that came late, the line growing on a phone.
   useEffect(() => {
@@ -778,7 +792,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       </header>
 
       <LoadNotice status={state.status} onRetry={() => setAttempt((value) => value + 1)} />
-      {marks.syncStatus}
+      <div ref={marksDecisionRef}>{marks.syncStatus}</div>
 
       <div className={`flex items-start gap-5 ${frame.row}`}>
         <div ref={setPane} tabIndex={frame.paneTabIndex} className={frame.pane}>

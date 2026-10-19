@@ -73,7 +73,7 @@ export function PrivateChrome({ pathname, search, children }: { pathname: string
                 Inside the existing gutter — its own container leaked into pages. */}
             <OutboxConflictBanner />
             {/* The same door for engine writes the server refused after this device kept them. */}
-            <EngineConflictBanner />
+            <EngineConflictBanner search={search} />
             {/* Device storage that stopped answering: records are copies for reading until it does. */}
             <DeviceStorageNotice />
             <DraftStorageNotice />

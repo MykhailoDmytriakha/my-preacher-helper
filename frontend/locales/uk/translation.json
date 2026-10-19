@@ -59,6 +59,9 @@
       "studyNotes": "Нотатка"
     },
     "field": {
+      "bible": "Переклад",
+      "book": "Книга",
+      "verses": "Позначки",
       "type": "Вид",
       "name": "Назва",
       "title": "Назва",
@@ -427,6 +430,8 @@
     "changeTranslation": "{{translation}}: вибрати інший переклад",
     "marks": {
       "toolbar": "Позначки",
+      "words": "Слова {{first}}–{{last}}",
+      "noMarks": "Позначок немає",
       "colors": "Колір маркера",
       "marker": "Маркер: {{meaning}}",
       "pencil": "Олівець: {{meaning}}",

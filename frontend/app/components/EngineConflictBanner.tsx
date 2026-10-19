@@ -11,6 +11,7 @@ import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { resolveAppLocale } from '@/utils/appLocale';
+import { bibleMarksRecoveryValue } from '@/utils/bibleMarksRecovery';
 import { isBibleId } from '@/utils/bibles';
 import { documentScreenHref, isOnDocumentScreen } from '@/utils/documentScreenHref';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
@@ -38,7 +39,7 @@ type Kind = 'conflict' | 'refused' | 'refusedCreate' | 'deletedThere' | 'deleted
  * well. Otherwise (several chains of requests, between which the engine never picks) no screen can,
  * and the stored version is the one choice, offered here.
  */
-interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; decidable?: boolean; formWork?: boolean }
+interface Waiting extends RecoveryChoiceScope { resource: ResourceRef; kind: Kind; mine: string[]; theirs: string; screen: boolean; screenValue?: DocumentData | null; decidable?: boolean; formWork?: boolean }
 
 /** The look both notices share: one for a change decided here, one for a screen's draft decided there. */
 const REFUSED_TITLE = 'dataSync.phase.refused';
@@ -66,7 +67,7 @@ const show = (value: unknown): string => {
   return JSON.stringify(value, null, 2);
 };
 type Item = Record<string, unknown> & { id: string };
-type DisplayValue = (scope: string, field: string, value: unknown) => unknown;
+type DisplayValue = (scope: string, field: string, value: unknown, document?: DocumentData) => unknown;
 const isItem = (value: unknown): value is Item => Boolean(value) && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string';
 const REFERENCE_COORDINATES = ['chapter', 'toChapter', 'fromVerse', 'endChapter', 'toVerse'];
 const REFERENCE_FIELDS = new Set(['id', 'bible', 'book', 'text', ...REFERENCE_COORDINATES]);
@@ -133,7 +134,7 @@ function changedText(value: DocumentData | null | undefined, base: DocumentData 
   if (!value) return '';
   return Object.keys(value).filter(field => !BOOKKEEPING.has(field) && JSON.stringify(value[field]) !== JSON.stringify(base?.[field]))
     .map(field => {
-      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display, name) : show(display(scope, field, value[field]));
+      const shown = Array.isArray(value[field]) ? showList(value[field] as unknown[], base?.[field], scope, field, display, name) : show(display(scope, field, value[field], value));
       return shown ? `${name(field)}: ${shown}` : '';
     }).filter(Boolean).join('\n\n');
 }
@@ -149,8 +150,8 @@ const sameWaitingChoice = (current: Waiting | null | undefined, target: Waiting)
 
 /** A matching route yields only when its document editors hold all the shown work and words. */
 function visibleWaiting(candidates: readonly Waiting[] | null | undefined, pathname: string | null | undefined,
-  answers: readonly OpenDocumentAnswer[]): Waiting | undefined {
-  return candidates?.find(candidate => !isOnDocumentScreen(pathname, candidate.resource)
+  answers: readonly OpenDocumentAnswer[], search: string): Waiting | undefined {
+  return candidates?.find(candidate => !isOnDocumentScreen(pathname, candidate.resource, candidate.screenValue, search)
     || !isRecoveryHeldOpen(candidate.records, answers));
 }
 
@@ -198,7 +199,10 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
       const { checkpoint } = drafts[0];
       const scope = captureRecoveryChoice(drafts);
       // Every opening of a screen keeps its own copy of a draft it took over: the same words are said once.
-      documents.push({ resource, kind: kindOf(drafts, refused), screen,
+      const screenValues = drafts.map(draft => draft.checkpoint.draft ?? draft.checkpoint.confirmed.value ?? draft.checkpoint.remoteCandidate?.value);
+      const screenValue = screenValues[0];
+      const sameScreen = screenValues.every(value => documentScreenHref(resource, value) === documentScreenHref(resource, screenValue));
+      documents.push({ resource, kind: kindOf(drafts, refused), screen, screenValue: sameScreen ? screenValue : null,
         mine: [...new Set(drafts.map(draft => changedText(draft.checkpoint.draft, draft.checkpoint.confirmed.value, name, resource.collection, display)).filter(Boolean))],
         theirs: changedText(checkpoint.remoteCandidate?.value ?? checkpoint.confirmed.value, null, name, resource.collection, display),
         ...scope });
@@ -218,11 +222,11 @@ function waitingDocuments(records: readonly RecoveryCheckpoint[], journal: reado
  * full for copying and the one choice is the stored version. App-wide, like the legacy
  * OutboxConflictBanner.
  */
-export function EngineConflictBanner({ pollMs = 5_000 }: { pollMs?: number }) {
-  return isDataEngineEnabled() ? <EngineConflicts pollMs={pollMs} /> : null;
+export function EngineConflictBanner({ pollMs = 5_000, search }: { pollMs?: number; search?: string }) {
+  return isDataEngineEnabled() ? <EngineConflicts pollMs={pollMs} search={search} /> : null;
 }
 
-function EngineConflicts({ pollMs }: { pollMs: number }) {
+function EngineConflicts({ pollMs, search }: { pollMs: number; search?: string }) {
   const { t, language: interfaceLanguage } = useTranslation();
   const { browser, owner } = useDataEngine();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
@@ -235,6 +239,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   });
   // The offline shell's router stands at /~offline; the open screen is the window's address.
   const pathname = useShellPathname();
+  const screenSearch = search ?? (typeof window === 'undefined' ? '' : window.location.search);
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const [busy, setBusy] = useState(false);
   const sequence = useRef(0);
@@ -249,8 +254,11 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
   const fieldNameRef = useRef((field: string) => fieldLabel(t, field));
   fieldNameRef.current = (field: string) => fieldLabel(t, field);
 
-  const displayValue: DisplayValue = (scope, field, value) => scope === 'studyNotes.scriptureRefs' && !field && isItem(value)
-    ? referenceItemText(value, interfaceLanguage) : storedFieldValue(t, scope, field, value);
+  const displayValue: DisplayValue = (scope, field, value, document) => {
+    if (scope === 'studyNotes.scriptureRefs' && !field && isItem(value)) return referenceItemText(value, interfaceLanguage);
+    if (scope === 'bibleMarks') return bibleMarksRecoveryValue(t, resolveAppLocale(interfaceLanguage), field, value, document);
+    return storedFieldValue(t, scope, field, value);
+  };
   const displayRef = useRef<DisplayValue>(displayValue);
   displayRef.current = displayValue;
 
@@ -308,7 +316,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
 
   // One question for the same held work, regardless of which editor originally captured it.
   // Other requests or unseen draft words keep their global notice.
-  const entry = visibleWaiting(waiting, pathname, openAnswers);
+  const entry = visibleWaiting(waiting, pathname, openAnswers, screenSearch);
   entryRef.current = entry ?? null;
   useEffect(() => {
     const pending = pendingChoice.current;
@@ -317,7 +325,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       withdraw();
       withdrawDelete();
     }
-  }, [browser, owner, waiting, openAnswers, pathname, withdraw, withdrawDelete]);
+  }, [browser, owner, waiting, openAnswers, pathname, screenSearch, withdraw, withdrawDelete]);
   if (!entry) return <>{discardDialog}{confirmDialog}</>;
 
   const askBeforeSettling = async (target: Waiting, choice: 'mine' | 'theirs') => {
@@ -329,7 +337,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
     try {
       await askBeforeDiscard(true, async () => {
         const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
-        const currentEntry = visibleWaiting(fresh, pathname, openAnswers);
+        const currentEntry = visibleWaiting(fresh, pathname, openAnswers, screenSearch);
         if (browserRef.current !== targetBrowser || ownerRef.current !== targetOwner
           || !sameWaitingChoice(currentEntry, target) || !sameWaitingChoice(entryRef.current, target)) return;
         await settle(choice, targetBrowser, target);
@@ -355,7 +363,7 @@ function EngineConflicts({ pollMs }: { pollMs: number }) {
       });
       if (!accepted || !isCurrent()) return;
       const fresh = await readCurrentWaiting(targetBrowser, targetOwner);
-      const currentEntry = visibleWaiting(fresh, pathname, openAnswers);
+      const currentEntry = visibleWaiting(fresh, pathname, openAnswers, screenSearch);
       if (!sameWaitingChoice(currentEntry, target) || !isCurrent()) return;
       await settle('mine', targetBrowser, target);
     } finally {
@@ -458,7 +466,7 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
   entry: Waiting; mine: string; busy: boolean; onCopy: () => void; onTakeStored: () => void;
 }) {
   const { t } = useTranslation();
-  const href = documentScreenHref(entry.resource);
+  const href = documentScreenHref(entry.resource, entry.screenValue);
   const title = entry.kind === 'refused' || entry.kind === 'refusedCreate' || entry.kind === 'refusedDelete'
     ? t(REFUSED_TITLE) : t(CONFLICT_TITLE);
   return (
@@ -469,7 +477,11 @@ function ScreenDraftNotice({ entry, mine, busy, onCopy, onTakeStored }: {
         <pre className={NOTICE_TEXT}>{mine}</pre>
       )}
       <div className="mt-3 flex flex-wrap gap-2">
-        {href && <Link href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</Link>}
+        {/* Marks belong to a translation's words. A repeated recovery link must enter that reader
+            anew even after a manual translation choice on the same URL. The draft is durable. */}
+        {href && (entry.resource.collection === 'bibleMarks'
+          ? <a href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</a>
+          : <Link href={href} className={PRIMARY_BUTTON}>{t('dataSync.openToDecide')}</Link>)}
         <button type="button" disabled={busy} onClick={onTakeStored} className={SECONDARY_BUTTON}>{t(ACCEPT_REMOTE)}</button>
         {mine && <button type="button" disabled={busy} onClick={onCopy} className={SECONDARY_BUTTON}>{t(COPY_ACTION)}</button>}
       </div>

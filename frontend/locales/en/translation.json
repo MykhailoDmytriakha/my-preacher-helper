@@ -59,6 +59,9 @@
       "studyNotes": "Study note"
     },
     "field": {
+      "bible": "Translation",
+      "book": "Book",
+      "verses": "Marks",
       "type": "Type",
       "name": "Name",
       "title": "Title",
@@ -419,6 +422,8 @@
     "changeTranslation": "{{translation}}: choose another translation",
     "marks": {
       "toolbar": "Marks",
+      "words": "Words {{first}}–{{last}}",
+      "noMarks": "No marks",
       "colors": "Marker colour",
       "marker": "Marker: {{meaning}}",
       "pencil": "Pencil: {{meaning}}",
