@@ -17,6 +17,14 @@ The owner works on an iPad in the installed app (Safari, added to the Home Scree
 - A scenario that depends on sleep, network loss or the back-forward cache has to be performed, not described: lock the iPad, airplane mode, wake, then navigate — the order matters.
 - Never clear the app's site data on the owner's device to "start clean": it signs him out (Firebase Auth lives there).
 
+## Application Error reports
+
+Read `runtime-error` and `unhandled-rejection` in the failing session, including events before a restart. The report's `runningVersion` is the version at capture time; older events may belong to another build. Storage warnings from other sessions do not prove a crash in this session. Older reports retain pathname only: do not infer `planView` or `source` from them.
+
+New exception events include an allowlisted error type, production React error number (when present), same-origin hashed public chunk basename with line/column, plan mode/source and build version. `runtimeErrorDetails.ts` examines message/stack in memory but returns none of their raw text; `appDiagnostics.ts` filters metadata again on write and restore. Never add user content, document IDs, full URLs, arbitrary filenames, messages or stacks to telemetry. A synthetic error in tests proves collection, not the cause of a reported failure.
+
+`code: javascript` is a coarse classification, not a diagnosis or proof against a chunk-loading failure. If an old report has neither exception nor coordinates, a later successful navigation cannot recover its cause. Keep that bug open; capture a new failure or inspect the real device. Do not repair sermon data on speculation.
+
 ## Why
 
 - 2026-10-02/03: three owner reports from the iPad (19:46, 19:48, 20:31) carried the whole story — wake after 94 min, offline, a full page load, `pagehide persisted:true`, silence for 45 min 52 s — and the cure was proven in the simulator and macOS Safari before anyone touched the iPad (`BUG-20260927-engine-open-hangs-on-silent-device-storage`).

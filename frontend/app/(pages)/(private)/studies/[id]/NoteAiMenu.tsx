@@ -22,6 +22,8 @@ interface NoteAiMenuProps {
     /** True only while THIS button's request is in flight. */
     isRunning: boolean;
     disabled: boolean;
+    /** Only actions whose output overlaps a running request are unavailable. */
+    isTargetDisabled?: (target: NoteAiTarget) => boolean;
     /** Shown instead of the normal tooltip when the AI quota is spent. */
     blockedTitle?: string;
 }
@@ -31,7 +33,7 @@ interface NoteAiMenuProps {
  * beside the note's title — it acts on the WHOLE note, never on the text under the
  * cursor, so it belongs next to the thing it rewrites.
  */
-export function NoteAiMenu({ onAnalyze, isRunning, disabled, blockedTitle }: NoteAiMenuProps) {
+export function NoteAiMenu({ onAnalyze, isRunning, disabled, isTargetDisabled, blockedTitle }: NoteAiMenuProps) {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -80,28 +82,32 @@ export function NoteAiMenu({ onAnalyze, isRunning, disabled, blockedTitle }: Not
                     <button
                         type="button"
                         onClick={() => pick('all')}
-                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-purple-700 transition-colors hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30"
+                        disabled={isTargetDisabled?.('all')}
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-purple-700 transition-colors hover:bg-purple-50 disabled:opacity-50 dark:text-purple-400 dark:hover:bg-purple-900/30"
                     >
                         {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
                     </button>
                     <button
                         type="button"
                         onClick={() => pick('title')}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                        disabled={isTargetDisabled?.('title')}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
                     >
                         {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
                     </button>
                     <button
                         type="button"
                         onClick={() => pick('scriptureRefs')}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                        disabled={isTargetDisabled?.('scriptureRefs')}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
                     >
                         {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
                     </button>
                     <button
                         type="button"
                         onClick={() => pick('tags')}
-                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                        disabled={isTargetDisabled?.('tags')}
+                        className="w-full px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
                     >
                         {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
                     </button>

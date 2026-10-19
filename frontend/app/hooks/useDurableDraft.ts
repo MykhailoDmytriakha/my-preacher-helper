@@ -27,6 +27,9 @@ export interface UseDurableDraftOptions<T> {
   /** Explicit editor baseline; null means no confirmed value yet. Used when a
    * temporary document id changes before its create has been acknowledged. */
   confirmedValue?: T | null;
+  /** Logical editor identity across an optimistic document-id handoff. The draft
+   * moves to docId, but recovery is inspected only once for this owner/identity. */
+  recoveryIdentity?: string | null;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -71,8 +74,10 @@ export function useDurableDraft<T>({
   value,
   enabled,
   confirmedValue,
+  recoveryIdentity = docId,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate) : null;
+  const recoveryKey = uid && recoveryIdentity ? draftKey(uid, recoveryIdentity, aggregate) : null;
 
   // Always-current value for the listeners below, which must not re-subscribe
   // on every keystroke just to see fresh text.
@@ -146,10 +151,11 @@ export function useDurableDraft<T>({
   const persistRef = useRef(persist);
   persistRef.current = persist;
 
-  // Look for unconfirmed text exactly once per document.
+  // Inspect once per logical editor, including when its draft is carried from a
+  // temporary id to the created document. It is still this session's own typing.
   useEffect(() => {
-    if (!key || inspectedKeyRef.current === key) return;
-    inspectedKeyRef.current = key;
+    if (!key || !recoveryKey || inspectedKeyRef.current === recoveryKey) return;
+    inspectedKeyRef.current = recoveryKey;
     const stored = readDraft<T>(key);
     setRecovered(stored ? stored.value : null);
     // NOTE: deliberately NOT clearing the previous key here. The previous key may
@@ -160,7 +166,7 @@ export function useDurableDraft<T>({
     // changes under a mounted editor (open: BUG-20261003-account-change-under-open-note).
     // Moving to another document is not one of these: it is an unmount (see the
     // flush below).
-  }, [key]);
+  }, [key, recoveryKey]);
 
   // Persist while typing, coalesced so long documents do not hit storage on
   // every keystroke.

@@ -160,6 +160,81 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
     });
 
+    it.each([
+        ['tags', 'tags'], ['tags', 'scriptureRefs'],
+        ['scriptureRefs', 'tags'], ['scriptureRefs', 'scriptureRefs'],
+    ] as const)('keeps both proposals when %s starts first and %s finishes first', async (start, first) => {
+        const finish: Record<string, (value: unknown) => void> = {};
+        (global.fetch as jest.Mock) = jest.fn((_url, init) => new Promise(resolve => {
+            const target = JSON.parse(init.body).analysisType;
+            finish[target] = resolve;
+        }));
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const refs = screen.getByTitle('studiesWorkspace.aiAnalyze.findRefs');
+        const tags = screen.getByTitle('studiesWorkspace.aiAnalyze.generateTags');
+        const buttons = { scriptureRefs: refs, tags };
+        const other = start === 'tags' ? 'scriptureRefs' : 'tags';
+        fireEvent.click(buttons[start]);
+        await waitFor(() => expect(finish[start]).toBeDefined());
+        expect(buttons[other]).toBeEnabled();
+        fireEvent.click(buttons[other]);
+        await waitFor(() => expect(finish[other]).toBeDefined());
+        expect(refs).toHaveAttribute('aria-busy', 'true');
+        expect(tags).toHaveAttribute('aria-busy', 'true');
+
+        const results = {
+            tags: { tags: ['parallel-tag'] },
+            scriptureRefs: { scriptureRefs: [{ id: 'parallel-ref', book: 'John', chapter: 3, fromVerse: 16 }] },
+        };
+        const resolve = async (target: keyof typeof results) => {
+            await act(async () => finish[target]({ ok: true, json: async () => ({ success: true, data: results[target] }) }));
+        };
+        const second = first === 'tags' ? 'scriptureRefs' : 'tags';
+        await resolve(first);
+        const apply = await screen.findByText('studiesWorkspace.aiAnalyze.applySelected');
+        const firstResult = first === 'tags' ? 'parallel-tag' : 'John 3:16';
+        expect(screen.getByText(firstResult)).toBeInTheDocument();
+        expect(second === 'tags' ? tags : refs).toHaveAttribute('aria-busy', 'true');
+        await resolve(second);
+        expect(screen.getByText(firstResult)).toBeInTheDocument();
+        fireEvent.click(apply);
+        const nextApply = await screen.findByText('studiesWorkspace.aiAnalyze.applySelected');
+        fireEvent.click(nextApply);
+        expect(screen.queryByText('studiesWorkspace.aiAnalyze.applySelected')).not.toBeInTheDocument();
+        expect(screen.getByText('parallel-tag')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'John 3:16' })).toBeInTheDocument();
+    });
+
+    it('blocks overlapping menu actions while an independent request survives a failure', async () => {
+        const requests: Record<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }> = {};
+        (global.fetch as jest.Mock) = jest.fn((_url, init) => new Promise((resolve, reject) => {
+            requests[JSON.parse(init.body).analysisType] = { resolve, reject };
+        }));
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        const refs = screen.getByTitle('studiesWorkspace.aiAnalyze.findRefs');
+        fireEvent.click(refs);
+        fireEvent.click(refs);
+        await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(1));
+        fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.aiAnalyze.button' }));
+        expect(screen.getByText('studiesWorkspace.aiAnalyze.full')).toBeDisabled();
+        expect(screen.getByText('studiesWorkspace.aiAnalyze.findRefs')).toBeDisabled();
+        expect(screen.getByText('studiesWorkspace.aiAnalyze.generateTitle')).toBeEnabled();
+        fireEvent.click(screen.getByText('studiesWorkspace.aiAnalyze.generateTags'));
+        await waitFor(() => expect(requests.tags).toBeDefined());
+        await act(async () => requests.scriptureRefs.reject(new Error('Reference analysis failed')));
+        expect(refs).toHaveAttribute('aria-busy', 'false');
+        expect(screen.getByRole('button', { name: 'studiesWorkspace.aiAnalyze.button' })).toHaveAttribute('aria-busy', 'true');
+        await act(async () => requests.tags.resolve({ ok: true, json: async () => ({
+            success: true, data: { tags: ['surviving-tag'], title: 'Unrequested title' },
+        }) }));
+        expect(screen.queryByText('Unrequested title')).not.toBeInTheDocument();
+        fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.applySelected'));
+        expect(screen.getByText('surviving-tag')).toBeInTheDocument();
+        expect(screen.getByDisplayValue('Current Note')).toBeInTheDocument();
+    });
+
     it('renders correctly and identifies prev/next notes based on search params', () => {
         render(<StudyNoteEditorPage />);
 

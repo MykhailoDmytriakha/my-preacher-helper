@@ -196,6 +196,7 @@ describe('note editor sync integration', () => {
     await act(async () => jest.advanceTimersByTime(1500));
     expect(createNote).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByTestId('rich-markdown-editor'), { target: { value: 'Later B' } });
+    expect(screen.queryByText('unsavedDraft.title')).not.toBeInTheDocument();
     act(() => window.dispatchEvent(new Event('pagehide')));
     expect(JSON.parse(window.localStorage.getItem('draft:v1:user-1:created-sync:note')!).value.content).toBe('Later B');
     await act(async () => { finish(); await persistence; });

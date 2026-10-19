@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useDurableDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
-import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { draftKey, moveDraft, readDraft, saveDraft } from '@/utils/durableDraft';
 
 const KEY = draftKey('uid-1', 'note-1', 'note');
 
@@ -173,6 +173,34 @@ describe('useDurableDraft', () => {
     rerender({ docId: 'note-1', value: 'later B', confirmedValue: 'create A' });
     act(() => window.dispatchEvent(new Event('pagehide')));
     expect(readDraft(KEY)?.value).toBe('later B');
+  });
+
+  it('does not offer its own carried draft as recovery when a create adopts its id', () => {
+    const { result, rerender, unmount } = renderHook(({ docId, value }) => useDurableDraft({
+      uid: 'uid-1', docId, recoveryIdentity: 'new', aggregate: 'note', enabled: true, value, confirmedValue: '',
+    }), { initialProps: { docId: 'new', value: 'Create A' } });
+    act(() => jest.advanceTimersByTime(300));
+    moveDraft(draftKey('uid-1', 'new', 'note'), KEY);
+    rerender({ docId: 'note-1', value: 'Later B' });
+    expect(result.current.recovered).toBeNull();
+    act(() => jest.advanceTimersByTime(300));
+    expect(readDraft(KEY)?.value).toBe('Later B');
+    unmount();
+    const reopened = render('server value');
+    expect(reopened.result.current.recovered).toBe('Later B');
+  });
+
+  it('preserves a genuine opening recovery offer across id adoption', () => {
+    const temporaryKey = draftKey('uid-1', 'new', 'note');
+    saveDraft(temporaryKey, 'Previous session');
+    const { result, rerender } = renderHook(({ docId }) => useDurableDraft({
+      uid: 'uid-1', docId, recoveryIdentity: 'new', aggregate: 'note', enabled: true,
+      value: 'Current session', confirmedValue: '',
+    }), { initialProps: { docId: 'new' } });
+    expect(result.current.recovered).toBe('Previous session');
+    moveDraft(temporaryKey, KEY);
+    rerender({ docId: 'note-1' });
+    expect(result.current.recovered).toBe('Previous session');
   });
 
   it('keeps a draft the server never confirmed', () => {

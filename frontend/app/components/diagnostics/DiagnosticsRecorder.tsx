@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { runtimeErrorDetails } from '@/utils/runtimeErrorDetails';
 
 /** Remains mounted with the navigation, even when a child route is still loading. */
 export function DiagnosticsRecorder({ pathname }: { pathname: string }) {
@@ -18,9 +19,10 @@ export function DiagnosticsRecorder({ pathname }: { pathname: string }) {
     const offline = () => recordDiagnostic('offline');
     const show = (event: PageTransitionEvent) => recordDiagnostic('pageshow', { persisted: event.persisted });
     const hide = (event: PageTransitionEvent) => recordDiagnostic('pagehide', { persisted: event.persisted });
-    // Classify messages in memory; never copy their potentially private contents.
-    const error = (event: ErrorEvent) => recordDiagnostic('runtime-error', { code: /chunk|dynamically imported module/i.test(event.message) ? 'chunk-load' : 'javascript' });
-    const rejection = () => recordDiagnostic('unhandled-rejection');
+    // Keep the public build location and finite categories, never raw messages or stacks.
+    const details = (input: Parameters<typeof runtimeErrorDetails>[0]) => runtimeErrorDetails(input, window.location, process.env.NEXT_PUBLIC_APP_VERSION ?? 'dev');
+    const error = (event: ErrorEvent) => recordDiagnostic('runtime-error', details(event));
+    const rejection = (event: PromiseRejectionEvent) => recordDiagnostic('unhandled-rejection', details({ error: event.reason }));
     const worker = () => recordDiagnostic('worker-change');
     document.addEventListener('visibilitychange', visibility);
     window.addEventListener('focus', focus);
