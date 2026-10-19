@@ -1810,3 +1810,20 @@ describe('Column Component', () => {
     });
   });
 });
+
+
+describe('AI review during durable capture', () => {
+  test.each([false, true])('retains disabled review controls in focus mode %s', isFocusMode => {
+    const keep = jest.fn();
+    const revert = jest.fn();
+    render(<Column id="introduction" title="Introduction" items={[{ id: 'capture-item', content: 'Keep my proposal', customTagNames: [] }]}
+      isFocusMode={isFocusMode} isDiffModeActive isApplyingSort highlightedItems={{ 'capture-item': { type: 'moved' } }}
+      onKeepAll={keep} onRevertAll={revert} />);
+    const accept = screen.getByRole('button', { name: isFocusMode ? 'Accept all remaining' : 'Accept All' });
+    const reject = screen.getByRole('button', { name: isFocusMode ? 'Reject all suggestions' : 'Reject All' });
+    expect(accept).toBeDisabled();
+    expect(reject).toBeDisabled();
+    fireEvent.click(accept); fireEvent.click(reject);
+    expect(keep).not.toHaveBeenCalled(); expect(revert).not.toHaveBeenCalled();
+  });
+});

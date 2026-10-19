@@ -9,8 +9,8 @@ import { useTextDictation } from '@/hooks/useTextDictation';
 import { SermonOutline } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import {
-  awaitAcceptance,
-  type WriteSubmission,
+  awaitWriteOperation,
+  type WriteOperation,
 } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { useTranslation } from '@locales/useTranslation';
@@ -45,7 +45,7 @@ interface EditThoughtModalProps {
     updatedTags: string[],
     outlinePointId?: string | null,
     subPointId?: string | null
-  ) => WriteSubmission;
+  ) => WriteOperation;
   onSubmissionRejected?: (draft: EditThoughtDraft) => void;
   onClose: () => void;
 }
@@ -122,9 +122,10 @@ export default function EditThoughtModal({
     setIsSubmitting(true);
     setSaveError(null);
     try {
+      const retireDictationSources = dictation.captureAcceptance();
       const submission = onSave(text, tags, selectedSermonPointId, selectedSubPointId ?? null);
 
-      await awaitAcceptance(submission, (error) => {
+      await awaitWriteOperation(submission, (error) => {
         /**
          * ONE REFUSAL, ONE VOICE. A late rejection lands when this editor is already
          * closed, so its own message would be invisible — which is why a toast was
@@ -140,8 +141,10 @@ export default function EditThoughtModal({
         onSubmissionRejected?.(submittedDraft);
       });
 
-      // A durable writer owns the text before its raw safety copy is released.
-      void submission.persistence.then(() => dictation.accept()).catch(() => undefined);
+      // Capture owns these exact words locally; legacy writers keep their separate
+      // persistence boundary. Neither path retires a source after refused capture.
+      const captured = 'persistence' in submission ? submission.persistence : submission;
+      void captured.then(retireDictationSources).catch(() => undefined);
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { toast } from 'sonner';
 
 import { useStructureWriter } from "@/components/sermon/structureWriter";
@@ -13,7 +13,7 @@ import {
   hasLockedThoughtAnchorsPreserved,
   replaceScopedItemsInColumn,
 } from "@/utils/aiSorting";
-import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
+import { skippedWrite, type WriteOperation } from "@/utils/recoverableWrite";
 import { useTranslation } from '@locales/useTranslation';
 
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
@@ -292,12 +292,22 @@ export const useAiSortingDiff = ({
   const [isDiffModeActive, setIsDiffModeActive] = useState<boolean>(false);
   const [isSorting, setIsSorting] = useState(false);
   const [sortingTarget, setSortingTarget] = useState<AiSortTarget | null>(null);
+  // A capture belongs to this owner/document, even if its promise outlives the screen.
+  const applying = useMemo(() => ({ sermonId, owner: sermon?.userId, pending: null as Promise<void> | null }), [sermonId, sermon?.userId]);
+  const currentApplying = useRef<typeof applying | null>(applying);
+  currentApplying.current = applying;
+  useEffect(() => {
+    currentApplying.current = applying;
+    return () => { if (currentApplying.current === applying) currentApplying.current = null; };
+  }, [applying]);
+  const [pendingSort, setPendingSort] = useState<object | null>(null);
+  const isApplyingSort = pendingSort === applying;
 
   const handleAiSort = useCallback(async (targetInput: string | AiSortTarget) => {
     const target = resolveAiSortTarget(targetInput);
     const { columnId, outlinePointId } = target;
 
-    if (isSorting || !sermon || !sermonId) return;
+    if (applying.pending || isSorting || !sermon || !sermonId) return;
 
     const currentColumnItems: Item[] = containers[columnId] || [];
     const scopedItems = outlinePointId
@@ -380,6 +390,7 @@ export const useAiSortingDiff = ({
       setSortingTarget(null);
     }
   }, [
+    applying,
     containers,
     isDiffModeActive,
     isSorting,
@@ -392,6 +403,7 @@ export const useAiSortingDiff = ({
 
   // Handler for accepting a single item change
   const handleKeepItem = useCallback((itemId: string, columnId: string) => {
+    if (applying.pending) return;
     // Find the current item
     const sectionItems = containers[columnId];
     if (!Array.isArray(sectionItems)) return;
@@ -443,6 +455,7 @@ export const useAiSortingDiff = ({
     // Update structure in database
     debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
   }, [
+    applying,
     containers, 
     sermon, 
     sermonId, 
@@ -452,6 +465,7 @@ export const useAiSortingDiff = ({
 
   // Handler for reverting a single item change
   const handleRevertItem = useCallback((itemId: string, columnId: string) => {
+    if (applying.pending) return;
     if (!preSortState || !preSortState[columnId]) return;
     
     // Find the original item state
@@ -529,6 +543,7 @@ export const useAiSortingDiff = ({
     // Update structure in database
     debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
   }, [
+    applying,
     preSortState, 
     containers, 
     setContainers, 
@@ -538,86 +553,49 @@ export const useAiSortingDiff = ({
     debouncedSaveStructure
   ]);
 
-  // Handler for accepting all remaining changes
-  const handleKeepAll = useCallback((): WriteSubmission => {
-    if (Object.keys(highlightedItems).length === 0 || !sermon || !sermonId) {
-      return skippedWrite();
-    }
+  // Review closes only after all of this decision's actual device captures finish.
+  const handleKeepAll = useCallback((): WriteOperation => {
+    if (applying.pending) return applying.pending;
+    if (Object.keys(highlightedItems).length === 0 || !sermon || !sermonId) return skippedWrite();
 
-    const thoughtUpdates = collectThoughtUpdates(highlightedItems, containers, sermon);
-
-    // Persist the exact accepted placement now. A debounced callback has no
-    // acceptance or refusal channel, so using it here let a rejected AI result
-    // stay on screen as if it had been saved.
-    const thoughtRequests = thoughtUpdates.map((update) => {
-      const thought = sermon.thoughts.find((candidate) => candidate.id === update.id);
-      return thought
-        ? writer.updateThought(
-            sermonId,
-            {
-              ...thought,
-              outlinePointId: update.outlinePointId,
-              subPointId: update.subPointId ?? null,
-            },
-            thought
-          )
-        : Promise.resolve();
-    });
-
-    const newStructure = createStructureFromContainers(containers);
-    const persistence = Promise.allSettled([
-      ...thoughtRequests,
-      writer.updateStructure(sermonId, newStructure, sermon.structure),
-    ]).then((results) => {
-      const refused = results.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === 'rejected' && !isOfflineQueuedError(result.reason),
-      );
+    setPendingSort(applying);
+    const persistence = Promise.resolve().then(async () => {
+      const thoughtRequests = collectThoughtUpdates(highlightedItems, containers, sermon).map(update => {
+        const thought = sermon.thoughts.find(candidate => candidate.id === update.id);
+        return thought ? writer.updateThought(sermonId, {
+          ...thought, outlinePointId: update.outlinePointId, subPointId: update.subPointId ?? null,
+        }, thought) : Promise.resolve();
+      });
+      const results = await Promise.allSettled([
+        ...thoughtRequests,
+        writer.updateStructure(sermonId, createStructureFromContainers(containers), sermon.structure),
+      ]);
+      const refused = results.find((result): result is PromiseRejectedResult =>
+        result.status === 'rejected' && !isOfflineQueuedError(result.reason));
       if (refused) throw refused.reason;
+      if (currentApplying.current !== applying) return;
+      setHighlightedItems({});
+      setIsDiffModeActive(false);
+      setPreSortState(null);
+      // This confirms the review decision after local capture, never server delivery.
+      toast.success(t('structure.aiSortChangesAccepted', { defaultValue: 'All AI suggestions accepted.' }));
+    }).catch(error => {
+      // The proposal and its decision controls stay usable for a deliberate retry.
+      if (currentApplying.current === applying) toast.error(t('errors.failedToSaveStructure'));
+      throw error;
+    }).finally(() => {
+      applying.pending = null;
+      if (currentApplying.current === applying) setPendingSort(null);
     });
-    const submission = queuedMutation(`structure:ai-sort:${sermonId}`, persistence);
-
-    // Clear highlighted items and exit diff mode
-    setHighlightedItems({});
-    setIsDiffModeActive(false);
-    setPreSortState(null);
-
-    // This confirms the review decision, not persistence. The write is `queued`,
-    // so it never claims that the server saved anything.
-    toast.success(t('structure.aiSortChangesAccepted', {
-      defaultValue: 'All AI suggestions accepted.'
-    }));
-
-    let failureReported = false;
-    const restoreRejectedSort = () => {
-      if (failureReported) return;
-      failureReported = true;
-      if (preSortState) {
-        setContainers((previous) => ({ ...previous, ...preSortState }));
-      }
-      toast.error(t('errors.failedToSaveStructure'));
-    };
-    // `queued` resolves immediately because the durable writer owns the intent;
-    // a refusal after that must still be visible and must remove the unaccepted
-    // arrangement from the board.
-    void awaitAcceptance(submission, restoreRejectedSort).catch(restoreRejectedSort);
-    return submission;
-  }, [
-    writer,
-    highlightedItems,
-    containers,
-    sermon,
-    sermonId,
-    preSortState,
-    setContainers,
-    setHighlightedItems,
-    setIsDiffModeActive,
-    setPreSortState,
-    t
-  ]);
+    applying.pending = persistence;
+    // Button callbacks may ignore the returned promise; the engine still reports refusal.
+    void persistence.catch(() => undefined);
+    return persistence;
+  }, [applying, writer, highlightedItems, containers, sermon, sermonId, t]);
 
   // Handler for reverting all changes
   const handleRevertAll = useCallback((columnId: string) => {
+    if (applying.pending) return;
     if (!preSortState || !preSortState[columnId]) return;
     
     // Revert the column to its pre-sort state
@@ -635,7 +613,7 @@ export const useAiSortingDiff = ({
     toast.info(t('structure.aiSortChangesReverted', {
       defaultValue: 'All AI suggestions reverted.'
     }));
-  }, [preSortState, setContainers, t]);
+  }, [applying, preSortState, setContainers, t]);
 
   return {
     // State
@@ -644,6 +622,7 @@ export const useAiSortingDiff = ({
     isDiffModeActive,
     isSorting,
     sortingTarget,
+    isApplyingSort,
     
     // Actions
     handleAiSort,

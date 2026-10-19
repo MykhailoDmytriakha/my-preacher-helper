@@ -46,6 +46,7 @@ export interface ColumnProps {
   onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
   thoughtsPerSermonPoint?: Record<string, number>;
   isDiffModeActive?: boolean;
+  isApplyingSort?: boolean;
   highlightedItems?: HighlightedItems;
   onKeepItem?: (itemId: string, columnId: string) => void;
   onRevertItem?: (itemId: string, columnId: string) => void;

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useSermonActions } from '../useSermonActions';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
 import { Sermon, Item } from '@/models/models';
-import type { WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
 const mockUnsubscribe = jest.fn();
 
@@ -162,12 +162,12 @@ describe('useSermonActions', () => {
                 result.current.handleAddThoughtToSection('introduction');
             });
 
-            let refused!: WriteSubmission;
+            let refused!: WriteOperation;
             act(() => {
-                refused = result.current.handleSaveEdit('New Content', [], undefined) as WriteSubmission;
+                refused = result.current.handleSaveEdit('New Content', [], undefined) as WriteOperation;
             });
-            await expect(refused.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(refused.persistence).rejects.toThrow('Failed');
+            await expect(awaitWriteOperation(refused, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
+            await expect(awaitWriteOperation(refused, () => undefined)).rejects.toThrow('Failed');
 
             // The person corrects and saves again — this time it works.
             mockCreateManualThought.mockResolvedValueOnce({
@@ -176,10 +176,10 @@ describe('useSermonActions', () => {
                 tags: [],
                 date: '2026-08-14',
             });
-            let accepted!: WriteSubmission;
+            let accepted!: WriteOperation;
             await act(async () => {
-                accepted = result.current.handleSaveEdit('Fixed content', [], undefined) as WriteSubmission;
-                await accepted.persistence.catch(() => undefined);
+                accepted = result.current.handleSaveEdit('Fixed content', [], undefined) as WriteOperation;
+                await awaitWriteOperation(accepted, () => undefined).catch(() => undefined);
             });
 
             act(() => {
@@ -198,13 +198,13 @@ describe('useSermonActions', () => {
                 result.current.handleAddThoughtToSection('introduction');
             });
 
-            let submission!: WriteSubmission;
+            let submission!: WriteOperation;
             act(() => {
                 submission = result.current.handleSaveEdit('New Content', [], undefined) as typeof submission;
             });
 
-            await expect(submission.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(submission.persistence).rejects.toThrow('Failed');
+            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
+            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Failed');
             /**
              * The editor that STARTED this create is still open and holding the text, so
              * it explains the refusal itself — one refusal, one reporter. Nothing is
@@ -215,22 +215,24 @@ describe('useSermonActions', () => {
             expect(result.current.editingItem).not.toBeNull();
         });
 
-        it('accepts a queued create from the exact local replica and stays silent', async () => {
-            mockCreateManualThought.mockReturnValue(new Promise(() => undefined));
+        it('waits for actual create capture and stays silent', async () => {
+            let capture!: (thought: Sermon['thoughts'][number]) => void;
+            mockCreateManualThought.mockReturnValue(new Promise(resolve => { capture = resolve; }));
             const { result } = renderHook(() => useSermonActions(defaultProps));
             act(() => result.current.handleAddThoughtToSection('introduction'));
-
-            let submission!: WriteSubmission;
-            act(() => {
-                submission = result.current.handleSaveEdit('Queued create', [], undefined) as typeof submission;
-            });
-            await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
-
+            let submission!: WriteOperation;
+            act(() => { submission = result.current.handleSaveEdit('Captured create', [], undefined); });
+            let accepted = false;
+            const waiting = awaitWriteOperation(submission, () => undefined).then(() => { accepted = true; });
+            await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+            expect(accepted).toBe(false);
+            await act(async () => { capture(mockCreateManualThought.mock.calls[0][1]); await waiting; });
+            expect(accepted).toBe(true);
             expect(mockToast.error).not.toHaveBeenCalled();
             expect(mockUnsubscribe).not.toHaveBeenCalled();
         });
 
-        it('reopens a late rejected create and reuses its client id on retry', async () => {
+        it('recovers an abandoned create after refused capture and reuses its client id on retry', async () => {
             let rejectPersistence!: (error: Error) => void;
             mockCreateManualThought.mockReturnValue(new Promise((_resolve, reject) => {
                 rejectPersistence = reject;
@@ -238,18 +240,18 @@ describe('useSermonActions', () => {
             const { result } = renderHook(() => useSermonActions(defaultProps));
             act(() => result.current.handleAddThoughtToSection('introduction'));
 
-            let submission!: WriteSubmission;
+            let submission!: WriteOperation;
             act(() => {
                 submission = result.current.handleSaveEdit('Recover this create', [], undefined) as typeof submission;
             });
             const firstId = mockCreateManualThought.mock.calls[0][1].id;
-            await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
+            await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
             act(() => result.current.handleCloseEdit());
             expect(result.current.editingItem).toBeNull();
 
             await act(async () => {
                 rejectPersistence(Object.assign(new Error('Permission denied'), { code: 'permission-denied' }));
-                await expect(submission.persistence).rejects.toThrow('Permission denied');
+                await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Permission denied');
             });
             expect(result.current.editingItem?.content).toBe('Recover this create');
 
@@ -309,13 +311,13 @@ describe('useSermonActions', () => {
                 result.current.handleEdit(mockItem);
             });
 
-            let submission!: WriteSubmission;
+            let submission!: WriteOperation;
             act(() => {
                 submission = result.current.handleSaveEdit('text', [], undefined) as typeof submission;
             });
 
-            await expect(submission.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
-            await expect(submission.persistence).rejects.toThrow('Update failed');
+            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toMatchObject({ code: 'permission-denied' });
+            await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Update failed');
             expect(consoleErrorSpy).toHaveBeenCalled();
             // The editor for THIS thought is still open, so IT explains the refusal
             // inline and holds the text — one refusal, one reporter. The restore path
@@ -325,20 +327,20 @@ describe('useSermonActions', () => {
             consoleErrorSpy.mockRestore();
         });
 
-        it('waits for the online transaction before accepting an update', async () => {
+        it('accepts an update only after actual local capture without a server receipt', async () => {
             mockUpdateThought.mockResolvedValue({ ...mockSermon.thoughts[0], text: 'Saved online' });
             const { result } = renderHook(() => useSermonActions(defaultProps));
             act(() => result.current.handleEdit(mockItem));
 
-            let submission!: WriteSubmission;
+            let submission!: WriteOperation;
             act(() => {
                 submission = result.current.handleSaveEdit('Queued update', [], 'point-1') as typeof submission;
             });
-            await expect(submission.acceptance).resolves.toEqual({ kind: 'persisted' });
+            await expect(awaitWriteOperation(submission, () => undefined)).resolves.toBeNull();
             expect(mockToast.error).not.toHaveBeenCalled();
         });
 
-        it('reopens the exact edit when an accepted update later fails terminally', async () => {
+        it('recovers the exact abandoned edit after local capture is refused', async () => {
             let rejectPersistence!: (error: Error) => void;
             mockUpdateThought.mockReturnValue(new Promise((_resolve, reject) => {
                 rejectPersistence = reject;
@@ -349,16 +351,16 @@ describe('useSermonActions', () => {
                 const { result } = renderHook(() => useSermonActions(defaultProps));
                 act(() => result.current.handleEdit(mockItem));
 
-                let submission!: WriteSubmission;
+                let submission!: WriteOperation;
                 act(() => {
                     submission = result.current.handleSaveEdit('Recover this edit', [], 'point-1') as typeof submission;
                 });
-                await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
+                await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
                 act(() => result.current.handleCloseEdit());
 
                 await act(async () => {
                     rejectPersistence(Object.assign(new Error('Permission denied'), { code: 'permission-denied' }));
-                    await expect(submission.persistence).rejects.toThrow('Permission denied');
+                    await expect(awaitWriteOperation(submission, () => undefined)).rejects.toThrow('Permission denied');
                 });
                 expect(result.current.editingItem?.content).toBe('Recover this edit');
                 // Reopened AND explained — reopening in silence read as a glitch.

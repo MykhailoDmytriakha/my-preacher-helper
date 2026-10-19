@@ -26,10 +26,9 @@ import { newClientId } from "@/utils/clientId";
 import { getExportContent } from "@/utils/exportContent";
 import { outlinePointText } from '@/utils/outlineDnd';
 import {
-  awaitAcceptance,
-  queuedMutation,
+  awaitWriteOperation,
   skippedWrite,
-  type WriteSubmission,
+  type WriteOperation,
 } from "@/utils/recoverableWrite";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
@@ -262,6 +261,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
   const {
     highlightedItems,
     isDiffModeActive,
+    isApplyingSort,
     isSorting,
     sortingTarget,
     handleAiSort,
@@ -492,9 +492,8 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       failureReported = true;
       toast.error(t('errors.deletingError') || "Failed to delete thought.");
     };
-    // Deletes have no editor to keep open. The optimistic row may disappear on
-    // `queued`, but a later refusal restores it in the hook and is reported here.
-    void awaitAcceptance(submission, reportFailure).catch(reportFailure);
+    // Explicit deletion has no editor; its actual capture refusal is reported here.
+    void awaitWriteOperation(submission, reportFailure).catch(reportFailure);
   };
 
   // Function to handle outline updates from Column components
@@ -563,7 +562,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     thoughtIds: string[];
     isLocked: boolean;
     errorMessage: string;
-  }): WriteSubmission => {
+  }): WriteOperation => {
     if (!sermon || thoughtIds.length === 0) return skippedWrite();
 
     const thoughtsToUpdate = sermon.thoughts.filter((thought) => (
@@ -609,10 +608,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       throw failed.reason;
     })();
 
-    // This surface is offline-first: React Query is not involved, but the client
-    // write can hand the intent to the durable outbox. Therefore it is `queued`,
-    // never an asserted server save, and no lock success toast is allowed.
-    const submission = queuedMutation(`thought:lock:${sermon.id}:${thoughtIds.join(',')}:${isLocked}`, persistence);
+    // Keep the actual engine capture promise; an optimistic lock is no server receipt.
     let failureReported = false;
     const handleFailure = () => {
       if (failureReported) return;
@@ -620,11 +616,11 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       restoreLockSnapshot(previousSermon, previousContainers);
       toast.error(errorMessage);
     };
-    void awaitAcceptance(submission, handleFailure).catch(handleFailure);
-    return submission;
+    void persistence.catch(handleFailure);
+    return persistence;
   }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon, structureWriter]);
 
-  const handleToggleThoughtLock = useCallback((thoughtId: string, isLocked: boolean): WriteSubmission => {
+  const handleToggleThoughtLock = useCallback((thoughtId: string, isLocked: boolean): WriteOperation => {
     return commitThoughtLockChange({
       thoughtIds: [thoughtId],
       isLocked,
@@ -632,7 +628,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     });
   }, [commitThoughtLockChange, t]);
 
-  const handleTogglePointLock = useCallback((outlinePointId: string, isLocked: boolean): WriteSubmission => {
+  const handleTogglePointLock = useCallback((outlinePointId: string, isLocked: boolean): WriteOperation => {
     if (!sermon) return skippedWrite();
 
     const thoughtIds = sermon.thoughts
@@ -968,6 +964,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
+                isApplyingSort={isApplyingSort}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
@@ -1010,6 +1007,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
+                isApplyingSort={isApplyingSort}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}
@@ -1050,6 +1048,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
                 onOutlineUpdate={handleOutlineUpdate}
                 thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                 isDiffModeActive={isDiffModeActive}
+                isApplyingSort={isApplyingSort}
                 highlightedItems={highlightedItems}
                 onKeepItem={handleKeepItem}
                 onRevertItem={handleRevertItem}

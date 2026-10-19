@@ -79,6 +79,7 @@ export default function Column({
   thoughtsPerSermonPoint = {}, // Destructure the new prop with a default value
   // New props for AI sort with interactive confirmation
   isDiffModeActive = false,
+  isApplyingSort = false,
   highlightedItems = {},
   onKeepItem,
   onRevertItem,
@@ -246,6 +247,7 @@ export default function Column({
       {...(subPointText !== undefined ? { locationContext: { subPointText } } : {})}
       containerId={id}
       onEdit={onEdit}
+      disabled={isApplyingSort}
       isHighlighted={item.id in highlightedItems}
       highlightType={highlightedItems[item.id]?.type}
       onKeep={onKeepItem}
@@ -416,6 +418,7 @@ export default function Column({
             {/* Accept all button */}
             <button
               onClick={() => onKeepAll?.(id)}
+              disabled={isApplyingSort}
               className="w-full px-4 py-2 text-sm font-medium rounded-md bg-green-600 dark:bg-green-700 text-white hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center justify-center"
             >
               <CheckIcon className="h-4 w-4 mr-2" />
@@ -425,6 +428,7 @@ export default function Column({
             {/* Reject all button */}
             <button
               onClick={() => onRevertAll?.(id)}
+              disabled={isApplyingSort}
               className="w-full px-4 py-2 text-sm font-medium rounded-md bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center justify-center"
             >
               <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
@@ -853,6 +857,7 @@ export default function Column({
             {/* Accept all button */}
             <button
               onClick={() => onKeepAll?.(id)}
+              disabled={isApplyingSort}
               className={`px-2 py-1 text-xs font-medium rounded ${UI_COLORS.success.bg} dark:${UI_COLORS.success.darkBg} ${UI_COLORS.success.text} dark:${UI_COLORS.success.darkText} hover:bg-green-500 dark:hover:bg-green-600 transition-colors shadow-sm flex items-center`}
             >
               <CheckIcon className="h-3 w-3 mr-1" />
@@ -862,6 +867,7 @@ export default function Column({
             {/* Reject all button */}
             <button
               onClick={() => onRevertAll?.(id)}
+              disabled={isApplyingSort}
               className="px-2 py-1 text-xs font-medium rounded bg-orange-600 dark:bg-orange-700 text-white hover:bg-orange-500 dark:hover:bg-orange-600 transition-colors shadow-sm flex items-center"
             >
               <ArrowUturnLeftIcon className="h-3 w-3 mr-1" />

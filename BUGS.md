@@ -22,6 +22,11 @@
 
 ## 🟠 P2 — открыто
 
+### BUG-20261019-structure-empty-edit-deletes-thought · Сохранение пустого текста мысли запускает её удаление
+**P2** — обычная правка текста превращается в удаление без отдельной команды и подтверждения. Якорь: `frontend/app/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions.ts`, `handleSaveEdit`, ветка `!trimmedText` для существующей мысли.
+**Ожидалось / получилось.** Проповедник открывает «Проповедь → Структура → изменить мысль», стирает текст и нажимает «Сохранить». Если мысль требует непустого текста, форма должна объяснить это и остаться открытой. Вместо этого обработчик вызывает `handleDeleteThought`. Native baseline `structure-capture-119-baseline-native-delete-empty-v1` подтверждает исчезновение карточки и редактора; серверная потеря в этом опыте не утверждается, потому что намеренно прервана запись на устройство.
+**Как должно работать для пользователя.** Удаление — отдельное явное действие. Пустое поле не разрешает молча удалять существующую сущность; её требования к тексту проверяются до записи. Самостоятельный следующий баг после capture119; не смешивать изменение смысла кнопки с исправлением ожидания записи.
+
 ### BUG-20261018-ipad-sermon-plan-button · На iPad после «План проповеди» открывается Application Error
 **P2** — план недоступен при рабочем интернете; воспроизведение на устройстве — со слов владельца. `frontend/app/components/sermon/StructureStats.tsx:206`, `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:286` — точки проверки, причина не установлена.
 **Найден.** 2026-10-18 · владелец и фидбек iPad: два `runtime-error javascript` через 26/20 мс после входа в ручной план (18:02:39/55 PDT), второй после нового запуска. **Ожидалось.** Кнопка внутри проповеди открывает её план. **Получилось.** Application Error; исторический отчёт не хранит исключение, стек, координаты, query режима или версию непосредственно в событии. Классификация `javascript` сама по себе не исключает сбой загрузки asset. В поздней сессии `82b5e9d` тот же план открывается; корень неизвестен. Задержки `engine-state` по 7–8 с относятся другим сессиям; `localFailure` после возврата назад есть в сессии первого отказа, причинная связь не доказана.
@@ -76,6 +81,11 @@
 ---
 
 ## 🔵 P3 — открыто
+
+### BUG-20261019-structure-drag-false-reverted-message · После отказа перетаскивания сообщение обещает отмену, хотя карточка остаётся в новом месте
+**P3** — человек получает неверное подтверждение результата. Якорь: `frontend/app/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd.ts`, `rollback`, `errors.failedToUpdate`.
+**Ожидалось / получилось.** «Проповедь → Структура»: переместить мысль из основной части во вступление; локальное хранилище отказывает. Сообщение говорит «Changes have been reverted», но на исходном и исправленном capture119 стендах карточка остаётся во вступлении, а серверная копия — в основной части. Доказательства: native-drag-v2 JSON и лично просмотренные ROOT исходные held/refused PNG в capture119 baseline и current; проверен момент через500мс после отказа, а не бесконечное состояние.
+**Как должно работать.** Сообщение должно описывать показанный результат: намерение осталось на экране и требует повтора либо положение действительно восстановилось. Не обещать отмену, которую экран не показывает. Отдельно от уже исправленной границы capture; нельзя скрывать несохранённое намерение или молча менять серверный документ ради текста сообщения.
 
 ### BUG-20261018-study-note-self-recovery · При создании заметки появляется предложение восстановить текст «из прошлого сеанса»
 
@@ -302,6 +312,10 @@
 
 ## 🔍 Требует перепроверки
 
+### BUG-20261019-ai-item-accepts-unreviewed-order · Принятие одной AI-подсказки может сохранять весь ещё не просмотренный порядок
+**Требует перепроверки.** При аудите119: `frontend/app/(pages)/(private)/sermons/[id]/structure/hooks/useAiSortingDiff.ts`, `handleKeepItem`/`handleRevertItem`, сначала снимают подсветку и вызывают отложенный writer для структуры всех колонок. Нужен отдельный native сценарий «AI-сортировка → принять только одну мысль → перезагрузить → проверить остальные предложения» и проверка отказа отложенной записи. Это пока вывод по коду, не доказанная потеря/принятие в браузере.
+**Как должно работать.** Одно решение человека касается выбранной подсказки; непринятые предложения остаются на рассмотрении, а отказ записи не должен молча закрывать их проверку. В119 эти действия должны быть заблокированы лишь на время уже запущенного Accept All. Полный частичный review — отдельный следующий разбор.
+
 ### BUG-20261019-flaky-sermon-title-take-theirs · Тест «шапка проповеди: взять чужой заголовок» падает под нагрузкой полного прогона
 **Найден.** 2026-10-19 · `frontend/__tests__/pages/sermons/sermonTitleTakeTheirs.test.tsx:30` → «The manual form is not ready» (`frontend/app/data-engine/react.client.tsx:936`) в одном из двух полных `test:fast`; отдельно 3 из 3 зелёные, повторный полный прогон зелёный. **Ожидалось.** Тест детерминирован. **Чем опасен.** Vercel гоняет весь Jest на сборке: одно такое падение молча отменяет выкатку. Корень не установлен; вероятно, `waitFor` по умолчанию (1 с) не дожидается готовности формы на загруженной машине (класс BUG-20260905).
 
@@ -313,16 +327,6 @@
 **P3 recheck** — admin reads require live access/API; a route entry alone could replace an honest connection notice with a false access refusal. `frontend/app/~offline/page.tsx:45`; `frontend/app/(pages)/(private)/admin/page.tsx:735` and`:898`.
 **Expected / source risk.** Seen content should remain readable on this device without granting new rights. Current route is absent and the page holds API results in memory; non-admin QA confirms generic fallback but cannot establish an authorized admin's data-loss symptom.
 **User contract.** Read only authorized retained content; changes always require the normal server check. Reproduce with disposable authorized admin fixtures before selecting a cache/access design. Separate from BUG-20261017-offline-settings-and-prayer-route-missing.
-
-
-### BUG-20261017-engine-edit-before-durable-capture · Some engine edit adapters still accept a timer before local capture
-**Severity.** P2 source-class recheck for remaining structure adapters. Their rollback/conflict and late handlers need controlled UI capture QA before deciding each consumer's actual effect.
-**Found.** Oct17 source class audit while fixing BUG-20261012-plan-template-create-dropped-silently; no new runtime failure claim for these remaining consumers.
-**Remaining anchors.** Structure `useSermonActions.ts:350,477,524`, `useAiSortingDiff.ts:578`, `useStructureDnd.ts:979,1076`, structure/page.tsx:615.
-**Expected/observed.** Awaiting local engine capture must retain the input until ownership is durable; these structure wrappers still call queuedMutation/queuedWrite, whose timer can resolve first. Several have rollback/conflict or late handlers, so code shape alone does not prove lost words in each UI.
-**Recheck.** For each writer-backed consumer, hold/reject canonical local capture; inspect editor state, recovery and server commands, then retry. Distinguish legacy network writers, local draft ownership and actual server delivery. Do not globally change queuedWrite: React Query/offline legacy consumers rely on another ownership contract.
-**User contract.** Edit/delete affects only the explicit action; failed capture leaves the person's current work available and explains the next step. No new product decision is needed.
-**Relation.** Earlier BUG-20261016-engine-draft-before-request concerns a draft already on disk before a request; this is acceptance before durable capture. Note delivery labeling remains a separate open record.
 
 
 ### BUG-20261017-stored-choice-list-projection - Immediate list cards can show the opening copy after taking the saved version

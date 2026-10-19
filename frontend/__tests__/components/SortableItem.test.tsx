@@ -692,3 +692,16 @@ Second paragraph with indentation.
     expect(lockButton.querySelector('svg')?.getAttribute('class') || '').toContain('text-blue-800');
   });
 });
+
+
+test('blocks both per-item review decisions on a disabled card during capture', () => {
+  const keep = jest.fn(); const revert = jest.fn();
+  render(<SortableItem item={{ id: 'pending-proposal', content: 'Words remain visible', customTagNames: [] }}
+    containerId="main" isHighlighted disabled onKeep={keep} onRevert={revert} />);
+  const accept = screen.getByTitle('structure.keepChanges');
+  const reject = screen.getByTitle('structure.revertChanges');
+  expect(accept).toBeDisabled(); expect(reject).toBeDisabled();
+  fireEvent.click(accept); fireEvent.click(reject);
+  expect(keep).not.toHaveBeenCalled(); expect(revert).not.toHaveBeenCalled();
+  expect(screen.getByText('Words remain visible')).toBeVisible();
+});

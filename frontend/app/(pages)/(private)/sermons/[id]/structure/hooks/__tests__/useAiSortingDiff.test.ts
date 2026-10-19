@@ -3,6 +3,7 @@ import { renderHook as rtlRenderHook, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { Item, SermonPoint, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@/services/sortAI.service';
 import { UsageCapReachedError } from '@/services/usageLimits';
@@ -47,6 +48,18 @@ const renderHook = <T,>(callback: () => T) =>
   });
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockGetOutlinePointAiSortState = aiSortingUtils.getOutlinePointAiSortState as jest.MockedFunction<typeof aiSortingUtils.getOutlinePointAiSortState>;
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const nextMacrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe('useAiSortingDiff', () => {
   const mockSermon: Sermon = {
@@ -481,7 +494,13 @@ describe('useAiSortingDiff', () => {
       expect(mockSetContainers).toHaveBeenCalled();
 
       mockSetContainers.mockClear();
-      act(() => result.current.handleKeepAll());
+      let keepOperation!: ReturnType<typeof result.current.handleKeepAll>;
+      act(() => {
+        keepOperation = result.current.handleKeepAll();
+      });
+      await act(async () => {
+        await awaitWriteOperation(keepOperation, () => undefined);
+      });
       expect(result.current.isDiffModeActive).toBe(false);
 
       // Re-activate diff mode and revert all
@@ -521,7 +540,84 @@ describe('useAiSortingDiff', () => {
   });
 
   describe('persistence edge cases', () => {
-    it('restores an accepted AI arrangement when its writer is later refused', async () => {
+    it('keeps AI review pending through local capture, blocks duplicates, and can retry a refused capture', async () => {
+      const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
+      mockSortItemsWithAI.mockResolvedValueOnce(changedItems);
+      const hook = renderHook(() => {
+        const [containers, setContainers] = React.useState<Record<string, Item[]>>(mockContainers);
+        return useAiSortingDiff({ ...defaultProps, containers, setContainers });
+      });
+
+      await act(async () => {
+        await hook.result.current.handleAiSort('introduction');
+      });
+      expect(hook.result.current.isDiffModeActive).toBe(true);
+      expect(Object.keys(hook.result.current.highlightedItems).length).toBeGreaterThan(0);
+      expect(hook.result.current.preSortState).not.toBeNull();
+
+      const failedThoughtCapture = deferred<typeof mockSermon.thoughts[number]>();
+      const failedStructureCapture = deferred<unknown>();
+      mockUpdateThought.mockReturnValueOnce(failedThoughtCapture.promise);
+      mockUpdateStructure.mockReturnValueOnce(failedStructureCapture.promise);
+
+      let firstOperation!: ReturnType<typeof hook.result.current.handleKeepAll>;
+      act(() => {
+        firstOperation = hook.result.current.handleKeepAll();
+      });
+      let firstFinished = false;
+      const firstWaiting = awaitWriteOperation(firstOperation, () => undefined).then(() => {
+        firstFinished = true;
+      });
+
+      await act(async () => {
+        await nextMacrotask();
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalledTimes(1);
+      expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
+      expect(firstFinished).toBe(false);
+      expect(hook.result.current.isDiffModeActive).toBe(true);
+      expect(Object.keys(hook.result.current.highlightedItems).length).toBeGreaterThan(0);
+      expect(hook.result.current.preSortState).not.toBeNull();
+      const thoughtWrites = mockUpdateThought.mock.calls.length;
+      const structureWrites = mockUpdateStructure.mock.calls.length;
+
+      act(() => {
+        hook.result.current.handleKeepAll();
+      });
+      expect(mockUpdateThought).toHaveBeenCalledTimes(thoughtWrites);
+      expect(mockUpdateStructure).toHaveBeenCalledTimes(structureWrites);
+
+      const refusal = Object.assign(new Error('Local capture refused'), { code: 'capture-refused' });
+      await act(async () => {
+        failedThoughtCapture.reject(refusal);
+        failedStructureCapture.resolve(undefined);
+        await expect(firstWaiting).rejects.toMatchObject({ code: 'capture-refused' });
+      });
+
+      expect(hook.result.current.isDiffModeActive).toBe(true);
+      expect(Object.keys(hook.result.current.highlightedItems).length).toBeGreaterThan(0);
+      expect(hook.result.current.preSortState).not.toBeNull();
+
+      const retryThoughtCapture = deferred<typeof mockSermon.thoughts[number]>();
+      const retryStructureCapture = deferred<unknown>();
+      mockUpdateThought.mockReturnValueOnce(retryThoughtCapture.promise);
+      mockUpdateStructure.mockReturnValueOnce(retryStructureCapture.promise);
+      let retryOperation!: ReturnType<typeof hook.result.current.handleKeepAll>;
+      act(() => {
+        retryOperation = hook.result.current.handleKeepAll();
+      });
+      const retryWaiting = awaitWriteOperation(retryOperation, () => undefined);
+
+      await act(async () => {
+        retryThoughtCapture.resolve(mockSermon.thoughts[0]);
+        retryStructureCapture.resolve(undefined);
+        await retryWaiting;
+      });
+      expect(hook.result.current.isDiffModeActive).toBe(false);
+    });
+
+    it('keeps the AI proposal available to retry when local capture is refused', async () => {
       const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
         code: 'permission-denied',
         name: 'FirebaseError',
@@ -542,13 +638,14 @@ describe('useAiSortingDiff', () => {
 
       await act(async () => {
         const submission = hook.result.current.sort.handleKeepAll();
-        // The refusal now lands BEFORE acceptance, so acceptance rejects instead of
-        // resolving and then reporting late. The arrangement must still roll back.
-        await expect(submission.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await expect(awaitWriteOperation(submission, () => undefined))
+          .rejects.toMatchObject({ code: 'permission-denied' });
       });
 
-      expect(hook.result.current.containers.introduction[0]?.outlinePointId).toBeUndefined();
+      expect(hook.result.current.containers.introduction[0]?.outlinePointId).toBe('intro-1');
+      expect(hook.result.current.sort.isDiffModeActive).toBe(true);
+      expect(Object.keys(hook.result.current.sort.highlightedItems).length).toBeGreaterThan(0);
+      expect(hook.result.current.sort.preSortState).not.toBeNull();
       expect(mockToast.error).toHaveBeenCalledWith(expect.anything());
     });
 
@@ -590,8 +687,12 @@ describe('useAiSortingDiff', () => {
         mockSermonPoints.introduction
       );
 
+      let keepOperation!: ReturnType<typeof keepAllHook.result.current.handleKeepAll>;
       act(() => {
-        keepAllHook.result.current.handleKeepAll();
+        keepOperation = keepAllHook.result.current.handleKeepAll();
+      });
+      await act(async () => {
+        await awaitWriteOperation(keepOperation, () => undefined);
       });
 
       expect(mockUpdateThought).toHaveBeenCalledWith(
@@ -740,7 +841,13 @@ describe('useAiSortingDiff', () => {
       await act(async () => {
         await hook.result.current.handleAiSort('introduction');
       });
-      act(() => hook.result.current.handleKeepAll());
+      let keepOperation!: ReturnType<typeof hook.result.current.handleKeepAll>;
+      act(() => {
+        keepOperation = hook.result.current.handleKeepAll();
+      });
+      await act(async () => {
+        await awaitWriteOperation(keepOperation, () => undefined);
+      });
       expect(hook.result.current.isDiffModeActive).toBe(false);
       expect(mockSetContainers).toHaveBeenCalled();
     });

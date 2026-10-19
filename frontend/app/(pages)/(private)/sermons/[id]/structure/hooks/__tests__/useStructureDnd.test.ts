@@ -3,6 +3,7 @@ import React from 'react';
 import { toast } from 'sonner';
 
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
+import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { Item, Sermon, Thought } from '@/models/models';
 
 import { useStructureDnd } from '../useStructureDnd';
@@ -30,6 +31,18 @@ const renderHook = <T,>(callback: () => T) =>
   });
 
 const mockToastError = toast.error as jest.Mock;
+
+const deferred = <T,>() => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
+
+const nextMacrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe('useStructureDnd', () => {
   const BASE_DATE = '2026-01-15T00:00:00.000Z';
@@ -1108,7 +1121,7 @@ describe('useStructureDnd', () => {
   });
 
   describe('handleDragEnd side effects', () => {
-    it('rolls back an optimistic drag and reports a Firebase refusal that arrives after queued acceptance', async () => {
+    it('rolls back an optimistic drag and exposes a Firebase refusal before local capture', async () => {
       const sermon = buildSermon();
       const containers = buildContainers();
       const containersRef = { current: containers };
@@ -1126,12 +1139,15 @@ describe('useStructureDnd', () => {
       }));
 
       act(() => result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as any));
+      let operation!: ReturnType<typeof result.current.handleDragEnd>;
       await act(async () => {
-        await result.current.handleDragEnd(buildDragEvent(
+        operation = result.current.handleDragEnd(buildDragEvent(
           THOUGHT_ONE,
           buildOver('main', 'main'),
         ));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await expect(awaitWriteOperation(operation, () => undefined))
+          .rejects.toMatchObject({ code: 'permission-denied' });
+        await nextMacrotask();
       });
 
       expect(containersRef.current).toEqual(containers);
@@ -1781,7 +1797,8 @@ describe('useStructureDnd', () => {
       const mockEvent = buildDragEvent(THOUGHT_ONE, buildOver('main', 'main'));
 
       await act(async () => {
-        await result.current.handleDragEnd(mockEvent);
+        await expect(awaitWriteOperation(result.current.handleDragEnd(mockEvent), () => undefined))
+          .rejects.toThrow('boom');
       });
 
       const lastSetCall = mockSetContainers.mock.calls[mockSetContainers.mock.calls.length - 1]?.[0];
@@ -1826,6 +1843,120 @@ describe('useStructureDnd', () => {
 
       expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).not.toHaveBeenCalled();
+    });
+
+    it('keeps a regular drop pending until both writer captures finish', async () => {
+      const containers = buildContainers();
+      const sermon = buildSermon();
+      const containersRef = { current: containers };
+      const thoughtCapture = deferred<Thought>();
+      const structureCapture = deferred<unknown>();
+      mockUpdateThought.mockReturnValueOnce(thoughtCapture.promise);
+      mockUpdateStructure.mockReturnValueOnce(structureCapture.promise);
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as any);
+      });
+      let operation!: ReturnType<typeof result.current.handleDragEnd>;
+      act(() => {
+        operation = result.current.handleDragEnd(buildDragEvent(THOUGHT_ONE, buildOver('main', 'main')));
+      });
+
+      let captureFinished = false;
+      const waiting = awaitWriteOperation(operation, () => undefined).then(() => {
+        captureFinished = true;
+      });
+      await act(async () => {
+        await nextMacrotask();
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalledTimes(1);
+      expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
+      expect(captureFinished).toBe(false);
+      expect(containersRef.current.main.map((item) => item.id)).toContain(THOUGHT_ONE);
+      expect(containersRef.current.main.find((item) => item.id === THOUGHT_ONE)?.content).toBe('Test thought-1');
+
+      await act(async () => {
+        thoughtCapture.resolve(sermon.thoughts[0]);
+        structureCapture.resolve(undefined);
+        await waiting;
+      });
+      expect(captureFinished).toBe(true);
+    });
+
+    it('keeps a committed live preview pending until its writer captures finish', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildItem(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 2000 }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildThought(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 2000 }),
+        ],
+        structure: { introduction: [THOUGHT_ONE, THOUGHT_TWO], main: [], conclusion: [], ambiguous: [] },
+      });
+      const containersRef = { current: containers };
+      const thoughtCapture = deferred<Thought>();
+      const structureCapture = deferred<unknown>();
+      mockUpdateThought.mockReturnValueOnce(thoughtCapture.promise);
+      mockUpdateStructure.mockReturnValueOnce(structureCapture.promise);
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_TWO } } as any);
+      });
+      containersRef.current = {
+        ...containers,
+        introduction: [
+          buildItem(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 500 }),
+          buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+        ],
+      };
+
+      let operation!: ReturnType<typeof result.current.handleDragEnd>;
+      act(() => {
+        operation = result.current.handleDragEnd(buildDragEvent(THOUGHT_TWO, buildOver(THOUGHT_TWO, 'introduction', OUTLINE_INTRO)));
+      });
+      let captureFinished = false;
+      const waiting = awaitWriteOperation(operation, () => undefined).then(() => {
+        captureFinished = true;
+      });
+      await act(async () => {
+        await nextMacrotask();
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalledTimes(1);
+      expect(mockUpdateStructure).toHaveBeenCalledTimes(1);
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({ introduction: [THOUGHT_TWO, THOUGHT_ONE] }),
+        expect.anything(),
+      );
+      expect(captureFinished).toBe(false);
+      expect(containersRef.current.introduction.map((item) => item.id)).toEqual([THOUGHT_TWO, THOUGHT_ONE]);
+      expect(containersRef.current.introduction[0]?.content).toBe('Test thought-2');
+
+      await act(async () => {
+        thoughtCapture.resolve(sermon.thoughts[1]);
+        structureCapture.resolve(undefined);
+        await waiting;
+      });
+      expect(captureFinished).toBe(true);
     });
   });
 });

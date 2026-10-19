@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { useStructureWriter, type StructureWriter } from "@/components/sermon/structureWriter";
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
+import { skippedWrite, type WriteOperation } from "@/utils/recoverableWrite";
 import { useTranslation } from '@locales/useTranslation';
 
 import { applyConfirmedThought } from "../utils/confirmedThought";
@@ -801,7 +801,7 @@ export const useStructureDnd = ({
   // state, live previews, and the same-container swap recovery. Splitting it risks the
   // drag-state-reversion class of bugs, so its complexity is accepted here on purpose.
   // eslint-disable-next-line sonarjs/cognitive-complexity
-  const handleDragEnd = useCallback((event: DragEndEvent): WriteSubmission => {
+  const handleDragEnd = useCallback((event: DragEndEvent): WriteOperation => {
     const { active, over } = event;
     dlog('dragEnd: over =', over ? String(over.id) : null, '| active =', String(active?.id));
 
@@ -976,13 +976,9 @@ export const useStructureDnd = ({
             }, movedThought)
           : null;
         const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
-        const submission = queuedMutation(
-          `structure:drag:${sermon.id}:${String(active.id)}`,
-          persistence
-        );
-        void awaitAcceptance(submission, rollback).catch(rollback);
+        void persistence.catch(rollback);
         dlog('end: APPLIED (from preview) →', now.container, (preview[now.container] || []).map((i) => i.id));
-        return submission;
+        return persistence;
       }
 
       dlog('  reason: hasMeaningfulDropChange=false (order/assignment identical)');
@@ -1073,12 +1069,8 @@ export const useStructureDnd = ({
 
     const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon, writer);
     const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
-    const submission = queuedMutation(
-      `structure:drag:${sermon.id}:${String(active.id)}`,
-      persistence
-    );
-    void awaitAcceptance(submission, rollback).catch(rollback);
-    return submission;
+    void persistence.catch(rollback);
+    return persistence;
   }, [
     writer,
     sermon,

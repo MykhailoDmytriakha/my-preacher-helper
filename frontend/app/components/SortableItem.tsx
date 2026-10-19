@@ -286,7 +286,7 @@ const SortableItemReviewFooter = ({
   onKeep,
   onRevert,
   t,
-  isOverlay,
+  disabled,
 }: {
   item: Item;
   containerId: string;
@@ -295,7 +295,7 @@ const SortableItemReviewFooter = ({
   onKeep?: (itemId: string, containerId: string) => void;
   onRevert?: (itemId: string, containerId: string) => void;
   t: TranslateFn;
-  isOverlay: boolean;
+  disabled: boolean;
 }) => {
   if (!isHighlighted) {
     return null;
@@ -320,7 +320,7 @@ const SortableItemReviewFooter = ({
             }}
             className={`focus:outline-none border border-green-200 bg-green-50 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:hover:bg-green-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.keepChanges", { defaultValue: "Keep this change" })}
-            disabled={isOverlay}
+            disabled={disabled}
           >
             <CheckIcon className="h-5 w-5 text-green-500 hover:text-green-700" />
           </button>
@@ -335,7 +335,7 @@ const SortableItemReviewFooter = ({
             }}
             className={`focus:outline-none border border-orange-200 bg-orange-50 hover:bg-orange-100 dark:border-orange-700 dark:bg-orange-900/30 dark:hover:bg-orange-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.revertChanges", { defaultValue: "Revert to original" })}
-            disabled={isOverlay}
+            disabled={disabled}
           >
             <ArrowUturnLeftIcon className="h-5 w-5 text-orange-500 hover:text-orange-700" />
           </button>
@@ -437,7 +437,7 @@ function SortableItemCard({
             onKeep={onKeep}
             onRevert={onRevert}
             t={t}
-            isOverlay={isOverlay}
+            disabled={isSemanticallyDisabled}
           />
         </div>
         <SortableItemActions

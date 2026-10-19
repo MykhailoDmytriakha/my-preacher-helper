@@ -4,7 +4,7 @@ import React, { useRef, useState } from 'react';
 import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useSermonActions';
 import EditThoughtModal from '@/components/EditThoughtModal';
 import { StructureWriterContext, type StructureWriter } from '@/components/sermon/structureWriter';
-import type { WriteSubmission } from '@/utils/recoverableWrite';
+import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
 import type { Item, Sermon } from '@/models/models';
 import { aiUsageStub } from '@test-utils/aiUsage';
@@ -30,7 +30,7 @@ const testWriter: StructureWriter = {
   createManualThought: jest.fn(),
   updateSermonOutline: jest.fn(),
 };
-let capturedThoughtSubmission: WriteSubmission | null = null;
+let capturedThoughtSubmission: WriteOperation | null = null;
 
 jest.mock('firebase/firestore', () => ({
   doc: jest.fn(),
@@ -184,11 +184,9 @@ describe('thought edit refusal through the real sermon action hook', () => {
     });
     await act(async () => {
       await expect(mockUpdateThought.mock.results[0]?.value).rejects.toThrow('Permission denied');
-      // The refusal now arrives BEFORE acceptance, so acceptance rejects and the
-      // editor never closes over a refused write. Previously acceptance resolved as
-      // `queued` and the refusal had to chase the person through a late toast.
-      await expect(capturedThoughtSubmission?.acceptance).rejects.toThrow('Permission denied');
-      await expect(capturedThoughtSubmission?.persistence).rejects.toThrow('Permission denied');
+      // The actual engine capture rejects; no timer receipt can close this editor.
+      expect(capturedThoughtSubmission).not.toBeNull();
+      await expect(awaitWriteOperation(capturedThoughtSubmission!, () => undefined)).rejects.toThrow('Permission denied');
       await Promise.resolve();
     });
     const dialog = screen.getByRole('dialog', { name: 'Edit Thought' });
