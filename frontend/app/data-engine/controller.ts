@@ -1,3 +1,4 @@
+import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
@@ -56,6 +57,7 @@ interface ControllerOptions {
   operationId: () => string;
   isCurrentOwner: (owner: string) => boolean;
   readConfirmed?: (resource: ResourceRef) => Promise<ResourceSnapshot>;
+  readWriteTarget?: (resource: ResourceRef) => Promise<ResourceSnapshot | null>;
   commits?: CommitQueue;
   /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
   submittedCheckpoint?: SessionCheckpoint;
@@ -307,6 +309,19 @@ export class EditorController {
         throw new Error('Manual resolution changed an unselected field');
       }
       this.assertManualResolution(selection);
+      const before = this.session.checkpoint();
+      if (isFirstBookMarksDraft(before.confirmed, before.draft) && !before.remoteCandidate
+        && this.result?.kind === 'refused' && ['generation-mismatch', 'already-exists'].includes(this.result.code)
+        && this.options.readWriteTarget) {
+        // A command prepared by an older bundle stays immutable. Read before retiring it,
+        // then the existing explicit choice preserves the private draft and remote siblings.
+        const target = await this.options.readWriteTarget(before.confirmed.resource);
+        this.assertCurrent();
+        if (!target) throw Object.assign(new Error('Read the current marks book before keeping local marks'), { code: 'fresh-read-required' });
+        firstBookMarksIntent(before.confirmed, this.session.checkpoint().draft, target);
+        this.session.observe(target, { source: 'server' });
+        await this.persist();
+      }
       const cancelled = Object.keys(this.session.checkpoint().pending);
       if (this.options.commits && cancelled.length && !isDirectLegacyDocumentIntent(cancelled, this.prepared?.operationId)) await this.cancelCommits(expected ? Object.keys(expected.checkpoint.pending) : undefined);
       const checkpoint = this.session.checkpoint();

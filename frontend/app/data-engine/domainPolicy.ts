@@ -1,6 +1,7 @@
 import { deriveSeriesItemsFromSermonIds } from '@/utils/seriesItems';
 import { isServiceOrderCatalogKey, serviceOrderSeedCycle } from '@/utils/serviceOrderSeedIdentity';
 
+import { firstBookMarksIntent } from './bibleMarksCreation';
 import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { diffFields, equalValues, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 
@@ -137,7 +138,7 @@ function prepareUpdate(base: CommandBase, confirmed: ResourceSnapshot & { value:
   return { command: { ...base, kind: 'update', changes: writable }, submittedValue: copy(draft) };
 }
 
-/** One command per ACK boundary. This never uses a refreshed primary value as the user's baseline. */
+/** One command per ACK boundary. Authored baselines stay pinned; first marks use a logical empty book. */
 export function prepareDomainCommand(owner: string, operationId: string, confirmed: ResourceSnapshot, draft: DocumentData | null, targets: readonly ResourceSnapshot[] = []): DomainPreparation {
   const base: CommandBase = { protocol: 1, owner, operationId, resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null, dependsOn: [] };
   let prepared: DomainPreparation;
@@ -148,9 +149,14 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
       || (['sermons', 'groups'].includes(confirmed.resource.collection) && (draft.seriesId != null || draft.seriesPosition != null))) {
       return failure('Edit membership through its material or series', 'relation-owner-required');
     }
+    const target = targets.find(candidate => candidate.resource.collection === confirmed.resource.collection && candidate.resource.id === confirmed.resource.id);
+    const marks = target && firstBookMarksIntent(confirmed, draft, target);
     const seed = confirmed.resource.collection === 'serviceOrders' && isServiceOrderCatalogKey(draft.catalogKey)
       && serviceOrderSeedCycle(owner, draft.catalogKey, confirmed.resource.id) !== null;
-    prepared = { command: seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
+    prepared = { command: marks ? { ...base, kind: 'update', generation: target!.metadata?.generation ?? null, changes: [
+      { path: ['verses'], before: { exists: true, value: marks.baseline.verses }, after: { exists: true, value: marks.value.verses } },
+      ...diffFields(target!.value!, marks.value).filter(change => change.path[0] === 'updatedAt'),
+    ] } : seed ? { ...base, kind: 'relation', relation: 'service-order-seed', value: copy(draft) }
       : { ...base, kind: 'create', value: copy(draft) }, submittedValue: copy(draft) };
   } else prepared = prepareUpdate(base, { ...confirmed, value: confirmed.value }, draft, targets);
   return { ...prepared, command: copy(validateCommand(prepared.command)) };

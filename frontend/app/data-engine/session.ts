@@ -1,3 +1,4 @@
+import { firstBookMarksIntent } from './bibleMarksCreation';
 import { prepareDomainCommand } from './domainPolicy';
 import { ACTION_SLOT, editorSlot } from './editorIdentity';
 import { projectManualSelection } from './manualScope';
@@ -280,7 +281,8 @@ export class DataSession {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
     if (candidate) {
-      const merged = mergeDocumentFields(this.state.confirmed.value, this.state.draft, candidate.value);
+      const marks = firstBookMarksIntent(this.state.confirmed, this.state.draft, candidate);
+      const merged = mergeDocumentFields(marks?.baseline ?? this.state.confirmed.value, marks?.value ?? this.state.draft, candidate.value);
       this.state.confirmed = copy(candidate);
       // mergeFields preserves mine at conflicting paths; this explicit action accepts that choice.
       this.state.draft = merged.value.exists ? copy(merged.value.value as DocumentData) : null;

@@ -124,6 +124,7 @@ const aboutEditor = <T,>(controller: EditorController, work: Promise<T>): Promis
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const hasFormWork = (owner: string, resource: ResourceRef, requests: readonly CommitRequest[]) => requests.some(request => request.owner === owner
   && sameResource(request.baseline.resource, resource) && !['acknowledged', 'cancelled'].includes(request.state) && editorSlot(request.editorId) === null);
+const SERVER_SNAPSHOT_IDENTITY_MISMATCH = 'Server snapshot identity mismatch';
 const CACHED_IDENTITY_MISMATCH = 'Cached snapshot identity mismatch';
 /** A read refused only because this device holds no copy and the server cannot be asked now (hidden tab, offline). */
 const NEEDS_CONNECTION = 'needs-connection';
@@ -171,6 +172,7 @@ export class DataEngine {
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
       operationId: options.operationId, readConfirmed: resource => this.read(resource),
+      readWriteTarget: resource => this.readWriteTarget(resource),
       readCommitted: (resource, proof) => this.readCommittedSnapshot(resource, proof), canDeliver: () => this.canSend() });
     this.stopCommits = this.commits.subscribe(({ request }) => {
       if (request.owner !== this.owner || this.disposed) return;
@@ -314,8 +316,20 @@ export class DataEngine {
     const server = await (options ? this.options.transport.read(owner, copy(resource), options)
       : this.options.transport.read(owner, copy(resource)));
     this.assertCurrent(owner, generation);
-    if (!sameResource(server.resource, resource)) throw new Error('Server snapshot identity mismatch');
+    if (!sameResource(server.resource, resource)) throw new Error(SERVER_SNAPSHOT_IDENTITY_MISMATCH);
     return server;
+  }
+
+  /** A captured write may need its target even when this page is hidden; cache is not proof. */
+  private async readWriteTarget(resource: ResourceRef): Promise<ResourceSnapshot | null> {
+    const owner = this.requireOwner(), generation = this.generation;
+    this.validateResource(resource, owner);
+    if (!this.canSend()) return null;
+    const snapshot = await this.options.transport.read(owner, copy(resource), { fresh: true });
+    this.assertCurrent(owner, generation);
+    if (!sameResource(snapshot.resource, resource)) throw new Error(SERVER_SNAPSHOT_IDENTITY_MISMATCH);
+    if (!snapshotBelongsToOwner(owner, snapshot)) throw Object.assign(new Error('Write target belongs to another owner'), { code: 'permission-denied' });
+    return snapshot;
   }
 
   /** The list counterparts: the rows this device confirmed, or the whole list from the server. */
@@ -895,7 +909,7 @@ export class DataEngine {
     if (!this.online || !this.visible) throw Object.assign(new Error('The document is not available in the local cache'), { code: NEEDS_CONNECTION });
     const server = await this.options.transport.read(owner, resource);
     this.assertCurrent(owner, generation);
-    if (!sameResource(server.resource, resource)) throw new Error('Server snapshot identity mismatch');
+    if (!sameResource(server.resource, resource)) throw new Error(SERVER_SNAPSHOT_IDENTITY_MISMATCH);
     return this.persistSnapshot(owner, generation, server);
   }
 
@@ -957,6 +971,7 @@ export class DataEngine {
         owner, editorId, snapshot, store: this.options.checkpoints, runtime: this.options.runtime,
         operationId: this.options.operationId,
         readConfirmed: resource => this.read(resource),
+        readWriteTarget: resource => this.readWriteTarget(resource),
         commits: this.commits,
         submittedCheckpoint: submittedCheckpoint ?? undefined,
         isCurrentOwner: uid => !entry.closed && this.current(uid, generation),

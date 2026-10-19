@@ -1,4 +1,5 @@
 import { advanceAtomicCommit, atomicParticipants, cancellationScope, cancelActionCommits, canCancelSavedIntent, initializeCommit, type AtomicCommitIdentity } from './atomicCommits';
+import { isFirstBookMarksDraft } from './bibleMarksCreation';
 import { pendingCommitRetirement, retireCommitJournal } from './commitJournal';
 import { CommitReceipts } from './commitReceipt';
 import { prepareDomainCommand, requiredDomainTargets } from './domainPolicy';
@@ -161,6 +162,8 @@ export class CommitQueue {
     runtime: DataEngineRuntime;
     operationId: () => string;
     readConfirmed: (resource: ResourceRef) => Promise<ResourceSnapshot>;
+    /** A fresh write prerequisite; null defers preparation while offline. */
+    readWriteTarget?: (resource: ResourceRef) => Promise<ResourceSnapshot | null>;
     readCommitted?: (resource: ResourceRef, proof: EngineMetadata) => Promise<ResourceSnapshot>;
     canDeliver?: () => boolean;
   }) {}
@@ -436,6 +439,12 @@ export class CommitQueue {
     if (record.command) return this.advanceCommand(record, owner, generation, commit);
     if (equalValues(record.working.value, record.intended)) return commit({ ...record, state: 'acknowledged', result: { kind: 'acknowledged', operationId: record.id, snapshot: record.working } });
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
+    if (isFirstBookMarksDraft(record.working, record.intended)) {
+      const target = await (this.options.readWriteTarget ?? this.options.readConfirmed)(record.working.resource);
+      this.assertCurrent(owner, generation);
+      if (!target) return false;
+      targets.push(target);
+    }
     this.assertCurrent(owner, generation);
     const operationId = record.sequence === 0 ? record.id : `${record.id}-${record.sequence}`;
     let prepared: ReturnType<typeof prepareDomainCommand>;

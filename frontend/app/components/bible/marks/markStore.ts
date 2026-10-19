@@ -5,8 +5,8 @@ import { useDataCollection, useDataDocument } from '@/data-engine/react.client';
 import { refusalMessage } from '@/utils/actionFailureMessage';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { decodeBookMarks, encodeBookMarks, marksKey, type BookMarks, type OtherBookMarks } from '@/utils/bibleMarks';
-import { isBibleId } from '@/utils/bibles';
 import { marksDocumentId } from '@/utils/bibleMarksIdentity';
+import { isBibleId } from '@/utils/bibles';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { DocumentData } from '@/data-engine/types';
