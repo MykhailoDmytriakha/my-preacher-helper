@@ -67,7 +67,6 @@ export default function PlaceTrailSettings() {
         choices={TRAIL_RECENT_CHOICES}
         onPick={(recent) => save({ recent })}
       />
-      <p className="p-4 text-sm text-gray-600 dark:text-gray-400 md:px-6">{t('settings.bible.trail.device')}</p>
     </section>
   );
 }
