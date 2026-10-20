@@ -91,6 +91,8 @@ interface CollectionEntry {
   sweptAt: number | null;
   refreshTimer: ReturnType<typeof setTimeout> | null;
   refreshFailures: number;
+  /** A late failure cannot override successful work in a newer reader generation. */
+  lastSuccessfulGeneration: number;
   /** When the last automatic read failed: cooldowns count from here, so a return to the screen runs an overdue retry at once. */
   failedAt: number | null;
 }
@@ -262,25 +264,36 @@ export class CollectionReader {
       entry.inFlight.explicit ||= explicit;
       return entry.inFlight.promise.then(copy);
     }
-    // Every failed automatic read gets a cooldown, even before the first server
-    // answer establishes legacy mode. Head events cannot bypass it; explicit Retry may.
-    if (!explicit && entry.refreshFailures > 0 && entry.refreshTimer !== null) return Promise.resolve(copy(entry.state));
+    if (!explicit && entry.refreshFailures > 0 && this.refreshDelay(entry) > 0) {
+      this.scheduleRefresh(entry);
+      return Promise.resolve(copy(entry.state));
+    }
     this.clearRefreshTimer(entry);
-    const promise = this.synchronize(entry, generation);
+    const operation = this.synchronize(entry, generation);
+    const promise = operation.then(answer => answer.state);
     entry.inFlight = { generation, promise, explicit };
-    const finish = (failed = false) => {
-      if (entry.inFlight?.promise !== promise) return;
-      entry.inFlight = null;
-      entry.refreshFailures = failed ? entry.refreshFailures + 1 : 0;
-      if (failed) entry.failedAt = Date.now();
+    const finish = (outcome: 'server' | 'skipped' | 'failed', error?: unknown) => {
+      if (entry.inFlight?.promise === promise) entry.inFlight = null;
+      if (this.disposed || entry.closed || entry.owner !== this.owner) return;
+      if (outcome === 'server' && this.current(entry, generation)) {
+        entry.refreshFailures = 0;
+        entry.failedAt = null;
+        entry.lastSuccessfulGeneration = generation;
+      } else if (outcome === 'failed' && !(error instanceof Error && error.name === 'AbortError')
+        && generation >= entry.lastSuccessfulGeneration) {
+        // Reachability may already have restarted the reader before this rejection arrived.
+        entry.refreshFailures += 1;
+        entry.failedAt = Date.now();
+      }
       this.scheduleRefresh(entry);
     };
-    void promise.then(() => {
-      finish();
-      if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size && this.needsRefresh(entry)) {
+    void operation.then(answer => {
+      finish(answer.fromServer ? 'server' : 'skipped');
+      if (answer.fromServer && this.current(entry, generation) && this.online && this.visible
+        && entry.listeners.size && this.needsRefresh(entry)) {
         this.background(this.requestRefresh(collection, false), entry, generation);
       }
-    }, () => finish(true));
+    }, error => finish('failed', error));
     return promise.then(copy);
   }
 
@@ -305,7 +318,7 @@ export class CollectionReader {
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
         loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
-        legacyOpen: false, asked: false, sweepDue: true, sweptAt: null, refreshTimer: null, refreshFailures: 0, failedAt: null };
+        legacyOpen: false, asked: false, sweepDue: true, sweptAt: null, refreshTimer: null, refreshFailures: 0, lastSuccessfulGeneration: -1, failedAt: null };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -344,11 +357,11 @@ export class CollectionReader {
     return !this.online || !this.visible;
   }
 
-  private async synchronize(entry: CollectionEntry, generation: number): Promise<CollectionState> {
+  private async synchronize(entry: CollectionEntry, generation: number): Promise<{ state: CollectionState; fromServer: boolean }> {
     try {
       await this.load(entry, generation, true);
       this.assertCurrent(entry, generation);
-      if (this.cannotReadNow(entry)) return copy(entry.state);
+      if (this.cannotReadNow(entry)) return { state: copy(entry.state), fromServer: false };
       entry.state = { ...entry.state, checking: true, freshness: entry.state.snapshots.length ? 'cache' : 'unknown', error: null };
       this.emit(entry);
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -360,7 +373,7 @@ export class CollectionReader {
           entry.state = { ...entry.state, complete: true, freshness: 'server', checking: false, version: entry.cursor!.version, error: null };
           if (entry.headVersion !== null && entry.headVersion > entry.state.version) entry.state.freshness = 'cache';
           this.emit(entry);
-          return copy(entry.state);
+          return { state: copy(entry.state), fromServer: true };
         } catch (error) {
           if (errorCode(error) !== 'cursor-changed' || attempt === 2) throw error;
           await this.load(entry, generation, true);
@@ -598,6 +611,17 @@ export class CollectionReader {
     if (!this.current(entry, this.generation) || (!entry.legacyOpen && entry.refreshFailures === 0) || !this.online || !this.visible
       || !entry.listeners.size || entry.inFlight) return;
     const generation = this.generation;
+    const delay = this.refreshDelay(entry);
+    entry.refreshTimer = setTimeout(() => {
+      entry.refreshTimer = null;
+      if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {
+        entry.sweepDue = true;
+        this.background(this.requestRefresh(entry.collection, false), entry, generation);
+      }
+    }, delay);
+  }
+
+  private refreshDelay(entry: CollectionEntry): number {
     // Both clocks are absolute — the last failure, the last full listing — so feed reads after every
     // autosave cannot keep pushing the sweep away, and a return to the screen runs an overdue retry now.
     const failing = entry.refreshFailures > 0;
@@ -606,14 +630,7 @@ export class CollectionReader {
       : this.legacySweepIntervalMs;
     const now = Date.now();
     const since = (failing ? entry.failedAt : entry.sweptAt) ?? now;
-    const delay = Math.max(0, since + (this.attended ? interval : Math.max(interval, this.idleRefreshIntervalMs)) - now);
-    entry.refreshTimer = setTimeout(() => {
-      entry.refreshTimer = null;
-      if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {
-        entry.sweepDue = true;
-        this.background(this.requestRefresh(entry.collection, false), entry, generation);
-      }
-    }, delay);
+    return Math.max(0, since + (this.attended ? interval : Math.max(interval, this.idleRefreshIntervalMs)) - now);
   }
 
   private requireAvailableCache(entry: CollectionEntry): void {

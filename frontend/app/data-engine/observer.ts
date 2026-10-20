@@ -64,6 +64,8 @@ interface Entry {
   /** HTTP checks in a row that stood in for a silent listener. */
   silentChecks: number;
   snapshotSequence: number;
+  /** Owner changes and accepted server evidence retire failures from earlier epochs. */
+  failureFenceEpoch: number;
   startedAt: number;
 }
 
@@ -118,7 +120,7 @@ export class ResourceObserver {
         owner, resource: { ...resource }, listeners: new Set(), state: emptyState(),
         epoch: 0, active: false, stop: null, timer: null, inFlight: null,
         lastHttpAt: null, lastServerAt: null, healthy: false, failures: 0, rejections: 0, silentChecks: 0,
-        snapshotSequence: 0, startedAt: 0,
+        snapshotSequence: 0, failureFenceEpoch: 0, startedAt: 0,
       };
       this.entries.set(key, entry);
     }
@@ -144,6 +146,7 @@ export class ResourceObserver {
     this.owner = owner;
     for (const entry of this.entries.values()) {
       this.stop(entry);
+      entry.failureFenceEpoch = entry.epoch;
       // A component retained across sign-out must not retain another account's data.
       entry.state = emptyState();
       entry.lastHttpAt = null;
@@ -316,12 +319,17 @@ export class ResourceObserver {
       entry.failures = 0;
       entry.rejections = 0;
       if (!entry.healthy) entry.silentChecks += 1;
-    }).catch(() => {
-      if (!entry.active || entry.epoch !== epoch) return;
+    }).catch((error) => {
+      if (this.disposed || this.owner !== entry.owner || epoch < entry.failureFenceEpoch
+        || this.entries.get(keyOf(entry.owner, entry.resource)) !== entry
+        || (error instanceof Error && error.name === 'AbortError')) return;
       if (sequence !== entry.snapshotSequence && entry.healthy) return;
+      // A synchronous reachability notification can retire the epoch before its read rejects.
+      // Keep the real failure's retry cost, while fencing publication of the old request's state.
       entry.failures += 1;
       entry.healthy = false;
-      entry.state = { ...entry.state, readiness: 'unknown', error: true };
+      if (entry.active && entry.epoch === epoch) entry.state = { ...entry.state, readiness: 'unknown', error: true };
+      this.schedule(entry);
     }).finally(() => {
       if (!entry.active || entry.epoch !== epoch) return;
       entry.inFlight = null;
@@ -342,6 +350,7 @@ export class ResourceObserver {
     if (current && event.source === 'cache' && entry.state.source === 'server') return false;
     if (current && !this.canReplace(current, incoming)) return false;
     entry.snapshotSequence += 1;
+    if (event.source === 'server') entry.failureFenceEpoch = entry.epoch;
     entry.state = {
       ...entry.state, snapshot: incoming, source: event.source,
       readiness: !this.online && event.source === 'server' ? 'unknown' : event.source, error: false,

@@ -303,6 +303,65 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  it('counts a real failed read after its synchronous reachability callback restarted the observer', async () => {
+    const h = harness(); h.read.mockImplementation(async () => {
+      h.observer.setOnline(false); throw new Error('Transport timed out');
+    }); h.watch(); await jest.advanceTimersByTimeAsync(2_500);
+    for (const [calls, wait] of [[1, 30_000], [2, 60_000], [3, 120_000]]) {
+      expect(h.read).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(2_000); h.observer.setOnline(true); await jest.advanceTimersByTimeAsync(0);
+      expect(h.read).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(wait - 2_001); expect(h.read).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(calls + 1);
+    }
+    h.observer.dispose();
+  });
+
+  it('retains a pending transport failure after a quick lifecycle restart', async () => {
+    const h = harness(); const request = deferred<ResourceSnapshot>(); h.read.mockReturnValueOnce(request.promise); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500); h.observer.setOnline(false); h.observer.setOnline(true);
+    request.reject(new Error('Old transport timed out')); await jest.advanceTimersByTimeAsync(0);
+    await jest.advanceTimersByTimeAsync(29_999); expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(2);
+    h.observer.dispose();
+  });
+
+  it('does not turn caller cancellation into an outage or an increased retry delay', async () => {
+    const h = harness(); h.read.mockRejectedValueOnce(Object.assign(new Error('Read cancelled'), { name: 'AbortError' })); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500); expect(h.state()).toMatchObject({ error: false, checking: false });
+    await jest.advanceTimersByTimeAsync(14_999); expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(2);
+    h.observer.dispose();
+  });
+
+  it('keeps newer accepted HTTP evidence when an older epoch fails later', async () => {
+    const h = harness(); const request = deferred<ResourceSnapshot>(); h.read.mockReturnValueOnce(request.promise).mockResolvedValue(snapshot(3)); h.watch();
+    const old = h.observer.refresh(resource); await Promise.resolve(); h.observer.setOnline(false); h.observer.setOnline(true);
+    await h.observer.refresh(resource); request.reject(new Error('Older failure')); await old;
+    expect(h.state()).toMatchObject({ snapshot: snapshot(3), error: false });
+    await jest.advanceTimersByTimeAsync(14_999); expect(h.read).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(3);
+    h.observer.dispose();
+  });
+
+  it('does not bring a previous owner session failure back after switching away and returning', async () => {
+    const h = harness(); const request = deferred<ResourceSnapshot>(); h.read.mockReturnValueOnce(request.promise); h.watch();
+    const old = h.observer.refresh(resource); await Promise.resolve(); h.observer.setOwner('next-owner'); h.observer.setOwner('owner');
+    request.reject(new Error('Old account session failure')); await old;
+    expect(h.state()).toMatchObject({ error: false, snapshot: null });
+    await jest.advanceTimersByTimeAsync(2_499); expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(2);
+    h.observer.dispose();
+  });
+
+  it('preserves an already-counted failure deadline across a connectivity restart', async () => {
+    const h = harness(); h.read.mockRejectedValueOnce(new Error('Read failed')); h.watch();
+    await jest.advanceTimersByTimeAsync(2_500); h.observer.setOnline(false); h.observer.setOnline(true);
+    await jest.advanceTimersByTimeAsync(29_999); expect(h.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); expect(h.read).toHaveBeenCalledTimes(2);
+    h.observer.dispose();
+  });
+
   it('backs off failed reads with a bounded maximum', async () => {
     const h = harness(); h.read.mockRejectedValue(new Error('Network failure.')); h.watch();
     await jest.advanceTimersByTimeAsync(2_500);

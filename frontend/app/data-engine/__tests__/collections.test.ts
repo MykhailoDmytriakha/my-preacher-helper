@@ -86,6 +86,106 @@ describe('CollectionReader durable read lifecycle', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it.each(['setOnline', 'setVisible'] as const)('keeps an automatic failure deadline through a quick %s restart', async method => {
+    const s = setup(); jest.mocked(s.transport.list).mockRejectedValue(new Error('Read timed out'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    await jest.advanceTimersByTimeAsync(5_000); s.reader[method](false); s.reader[method](true); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(24_999); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(2);
+    stop(); s.reader.dispose();
+  });
+
+  it('escalates failures when reachability changes synchronously before the failed read rejects', async () => {
+    const s = setup(); jest.mocked(s.transport.list).mockImplementation(async () => {
+      s.reader.setOnline(false); throw new Error('Transport timed out');
+    });
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    for (const [calls, wait] of [[1, 30_000], [2, 60_000], [3, 120_000]]) {
+      expect(s.transport.list).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(2_000); s.reader.setOnline(true); await settle();
+      expect(s.transport.list).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(wait - 2_001); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(calls);
+      await jest.advanceTimersByTimeAsync(1); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(calls + 1);
+    }
+    stop(); s.reader.dispose();
+  });
+
+  it('recovers a current generation while an older local snapshot read is still pending', async () => {
+    const s = setup(); s.seed(row('a'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    const stored = await s.snapshots.list('owner', collection);
+    const held = pending<ResourceSnapshot[]>();
+    jest.mocked(s.snapshots.list).mockImplementationOnce(() => held.promise);
+    const oldRefresh = s.reader.refresh(collection).catch(() => undefined); await settle();
+    try {
+      s.change(row('b')); s.reader.setVisible(false); s.reader.setVisible(true); await settle();
+      expect((await s.reader.read(collection)).snapshots).toContainEqual(row('b'));
+    } finally {
+      held.resolve(stored); await oldRefresh; stop(); s.reader.dispose();
+    }
+  });
+
+  it('counts both real failures across generations before allowing another automatic attempt', async () => {
+    const s = setup(); const rejects: ((error: Error) => void)[] = [];
+    jest.mocked(s.transport.list).mockImplementation(() => new Promise((_resolve, reject) => { rejects.push(reject); }));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    s.reader.setOnline(false); s.reader.setOnline(true); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    rejects[0](new Error('Old transport timed out')); await settle();
+    rejects[1](new Error('Current transport timed out')); await settle();
+    await jest.advanceTimersByTimeAsync(59_999); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1); await settle(); expect(s.transport.list).toHaveBeenCalledTimes(3);
+    stop(); s.reader.dispose();
+  });
+
+  it('does not erase a failed feed cooldown with a cache-only offline refresh', async () => {
+    const s = setup(); s.seed(row('a')); const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.transport.changes).mockRejectedValueOnce(new Error('Feed timed out'));
+    s.change(row('b')); s.head(); await settle(); const calls = jest.mocked(s.transport.changes).mock.calls.length;
+    s.reader.setOnline(false); await s.reader.refresh(collection); s.reader.setOnline(true); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls);
+    await jest.advanceTimersByTimeAsync(30_000); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    expect((await s.reader.read(collection)).snapshots).toContainEqual(row('b'));
+    stop(); s.reader.dispose();
+  });
+
+  it('keeps explicit Retry immediate during a failed automatic read cooldown', async () => {
+    const s = setup(); s.seed(row('a')); jest.mocked(s.transport.list).mockRejectedValueOnce(new Error('Read timed out'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    expect((await s.reader.refresh(collection)).snapshots).toContainEqual(row('a'));
+    expect(s.transport.list).toHaveBeenCalledTimes(2); stop(); s.reader.dispose();
+  });
+
+  it('does not count a lifecycle-only interruption as a failed server read', async () => {
+    const s = setup(); s.seed(row('a'));
+    const list = s.transport.list.bind(s.transport); const held = pending<CollectionPage>();
+    jest.mocked(s.transport.list).mockImplementationOnce(() => held.promise);
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    s.reader.setVisible(false); s.reader.setVisible(true); await settle(); held.resolve(await list('owner', collection)); await settle();
+    expect((await s.reader.read(collection)).snapshots).toContainEqual(row('a'));
+    const calls = jest.mocked(s.transport.changes).mock.calls.length;
+    s.change(row('b')); s.head(); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    expect((await s.reader.read(collection)).snapshots).toContainEqual(row('b'));
+    stop(); s.reader.dispose();
+  });
+
+  it('does not let an older failed attempt add a cooldown after a newer explicit success', async () => {
+    const s = setup(); s.seed(row('a')); const stop = s.reader.watch(collection, jest.fn()); await settle();
+    let reject!: (error: Error) => void;
+    jest.mocked(s.transport.changes).mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    s.change(row('b')); s.head(); await settle(); s.reader.setVisible(false); s.reader.setVisible(true); await settle();
+    await s.reader.refresh(collection); reject(new Error('Older request failed late')); await settle();
+    const calls = jest.mocked(s.transport.changes).mock.calls.length;
+    s.change(row('c')); s.head(); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    expect((await s.reader.read(collection)).snapshots).toContainEqual(row('c'));
+    stop(); s.reader.dispose();
+  });
+
   it('backs off an initial failure before the server can report its legacy mode', async () => {
     const s = setup();
     jest.mocked(s.transport.list).mockRejectedValue(new Error('quota unavailable'));
