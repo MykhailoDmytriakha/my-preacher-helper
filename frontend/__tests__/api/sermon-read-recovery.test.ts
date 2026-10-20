@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { GET } from '@/api/sermons/[id]/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 const get = jest.fn();
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: () => ({ doc: () => ({ get: () => get() }) }) } }));
@@ -37,4 +38,22 @@ it('distinguishes a missing document from a database failure', async () => {
   expect((await run()).status).toBe(404);
   get.mockRejectedValueOnce(new Error('database unavailable'));
   expect((await run()).status).toBe(503);
+});
+
+// BUG-20261019-routes-hang-when-store-refuses: the browser calls this read by itself with an 8 s
+// timeout; a store that never answered held it to the wall, and the browser took that for "offline".
+it('answers 503 "unavailable" within three seconds when the store does not answer', async () => {
+  jest.useFakeTimers();
+  let answer: Response | undefined;
+  try {
+    __resetStoreAvailabilityForTests();
+    get.mockImplementation(() => new Promise(() => undefined));
+    void run().then((response) => { answer = response as unknown as Response; });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(answer?.status).toBe(503);
+    expect(await answer?.json()).toEqual({ code: 'unavailable' });
+  } finally {
+    jest.useRealTimers();
+    __resetStoreAvailabilityForTests();
+  }
 });

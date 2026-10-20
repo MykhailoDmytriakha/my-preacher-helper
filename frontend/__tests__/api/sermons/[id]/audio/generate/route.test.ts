@@ -12,6 +12,7 @@ import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { generateChunkAudio, splitTextEvenly, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
@@ -1285,5 +1286,19 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: 'Bad JSON' });
+  });
+
+  it('answers a refused first store read before generate provider work', async () => {
+    __resetStoreAvailabilityForTests();
+    mockGet.mockRejectedValueOnce(Object.assign(new Error('Test store refusal'), { code: 8 }));
+    try {
+      const request = new NextRequest('http://localhost:3047/api/qa-audio', { body: JSON.stringify({}) });
+      const response = await POST(request as unknown as Parameters<typeof POST>[0], { params: Promise.resolve({ id: 'qa-sermon' }) });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({ code: 'unavailable' });
+      expect(generateChunkAudio).not.toHaveBeenCalled();
+    } finally {
+      __resetStoreAvailabilityForTests();
+    }
   });
 });

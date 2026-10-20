@@ -120,6 +120,28 @@ describe('structuredOutput client', () => {
     delete process.env.DEBUG_MODE;
   });
 
+  // BUG-20261019-routes-hang-when-store-refuses (Codex review): analysing an unsaved note reaches the
+  // store first here, through the user's plan; with the daily quota spent it waited until the wall.
+  it('gives up on a plan read the store does not answer within its deadline, and never asks a model', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+      const mod = await import('@/api/clients/structuredOutput');
+      let outcome: unknown = 'pending';
+      void mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+        formatName: 'test-format',
+        logContext: { source: 'test' },
+        userId: 'user-1',
+      }).then((value) => { outcome = value; }, (error: unknown) => { outcome = error; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(outcome).toMatchObject({ code: 'unavailable', status: 503 });
+      expect(openaiParseMock).not.toHaveBeenCalled();
+      expect(geminiParseMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('returns parsed payload on success and emits telemetry', async () => {
     openaiParseMock.mockResolvedValueOnce({
       choices: [{ message: { parsed: { answer: 'ok' }, content: 'raw' } }],

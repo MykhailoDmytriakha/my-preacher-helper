@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { Item, Sermon } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sortItemsWithAI } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     console.log(`Sort route: Sorting ${itemsToSort.length} items in column ${columnId} for sermon ${sermonId}`);
 
     // Fetch the sermon data for context
-    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId)) as Sermon;
     if (!sermon) {
       console.error(`Sort route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
@@ -71,6 +72,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ sortedItems });
   } catch (error) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Sort route: Error sorting items:', error);
     return NextResponse.json({ error: 'Failed to sort items' }, { status: 500 });
   }

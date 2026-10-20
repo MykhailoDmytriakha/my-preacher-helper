@@ -1,5 +1,6 @@
 import { apiClient, isConnectionFailure, onConnectivityChange } from '@/utils/apiClient';
 import { __resetConnectivityForTests, getConnectivityStatus } from '@/utils/connectivity';
+import { __resetServerAvailabilityForTests, isServerUnavailable } from '@/utils/serverAvailability';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
 import { UsageCapReachedError } from '@/services/usageLimits';
@@ -95,6 +96,35 @@ describe('apiClient', () => {
     expect(getConnectivityStatus()).toBe(true);
 
     unsubscribe();
+  });
+
+  // BUG-20261019-outage-said-as-two-check-lines: a 503 is "connected, but the server cannot give data".
+  it('records that the server cannot give data on a 503, and that it can on a later success', async () => {
+    __resetServerAvailabilityForTests();
+    // A 503 that is not the store's refusal (e.g. "admin access is not configured") says nothing about the data.
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('{"error":"Admin access is not configured"}', { status: 503 }));
+    await apiClient('http://test.com/admin/me');
+    expect(isServerUnavailable()).toBe(false);
+
+    // The store's refusal carries Retry-After (`storeRetryHeaders`).
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('{"code":"unavailable"}', { status: 503, headers: { 'Retry-After': '30' } }));
+    await apiClient('http://test.com');
+    expect(isServerUnavailable()).toBe(true);
+
+    // The knock answers without the database: it says nothing about the data.
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
+    await apiClient('http://test.com/health', { category: 'health' });
+    expect(isServerUnavailable()).toBe(true);
+
+    // A success that never touched the database (Codex review: /api/admin/me) proves nothing either.
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('{}'));
+    await apiClient('http://test.com/admin/me');
+    expect(isServerUnavailable()).toBe(true);
+
+    // A success of a request that reads or writes the person's data does.
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('{}'));
+    await apiClient('http://test.com', { answersFromStore: true });
+    expect(isServerUnavailable()).toBe(false);
   });
 
   it('returns response even if status is 401', async () => {

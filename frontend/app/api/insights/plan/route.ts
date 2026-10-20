@@ -7,6 +7,7 @@ import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse } from '@/data-engine/serverEdit.server';
 import { Sermon } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSectionHints } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch the sermon data
-    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId)) as Sermon;
     if (!sermon) {
       console.error(`Plan route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
@@ -55,6 +56,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
     if (isUsageCapReachedError(error)) return usageCapResponse(error);

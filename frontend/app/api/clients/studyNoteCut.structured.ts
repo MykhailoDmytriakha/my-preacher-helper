@@ -11,6 +11,7 @@
  * by section, so the count stays explainable to the person who reads the result.
  */
 import { CutNoteResponseSchema, type CutNoteResponse, type CutNoteSection } from '@/config/schemas/zod';
+import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { stoppedAtDeadline } from '@/utils/aiTimeFailure';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
@@ -267,6 +268,8 @@ export async function cutStudyNoteIntoScratch(input: CutStudyNoteInput): Promise
     if (isUsageCapReachedError(error)) {
       throw error;
     }
+    // So must a refused store: the route answers it as 503 "unavailable".
+    if (error instanceof StoreUnavailableError) throw error;
     const message = error instanceof Error ? error.message : 'Unknown error while cutting the note';
     logger.error('CutStudyNote', message);
     return { success: false, data: null, error: message };

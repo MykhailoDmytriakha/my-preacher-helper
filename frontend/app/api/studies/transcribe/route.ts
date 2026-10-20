@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
             import('@/services/usageLimits.server'),
         ]);
         const now = new Date();
-        const entitlement = await getUserEntitlementServerSide(uid);
+        const entitlement = await withStore(() => getUserEntitlementServerSide(uid));
         const usageAdmission = createUsageAdmission(
             uid,
             entitlement,
@@ -225,6 +226,7 @@ export async function POST(request: Request) {
         if (isUsageCapReachedError(error)) {
             return usageCapResponse(error);
         }
+        if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
         tracker.emit({
             status: "error",
             httpStatus: 500,

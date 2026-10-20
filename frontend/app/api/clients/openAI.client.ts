@@ -19,6 +19,7 @@ import {
 } from "@/config/schemas/zod";
 import { NotePlanResponseSchema } from '@/config/schemas/zod/notePlan.zod';
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint, SermonOutline } from "@/models/models";
+import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
@@ -900,6 +901,7 @@ export async function generateSermonDirections(
   } catch (error) {
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
     if (isUsageCapReachedError(error)) throw error;
+    if (error instanceof StoreUnavailableError) throw error;
     // Return an empty array on error for consistent handling
     return [];
   }
@@ -1239,6 +1241,7 @@ export async function generatePlanPointContent(
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
     if (isUsageCapReachedError(error)) throw error;
+    if (error instanceof StoreUnavailableError) throw error;
     return { content: "", success: false };
   }
 }

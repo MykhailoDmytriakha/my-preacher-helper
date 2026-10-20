@@ -10,6 +10,7 @@ import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/lega
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { Sermon, Thought } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { addSermonThought } from '@/utils/sermonThoughtEdits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
@@ -111,7 +112,7 @@ async function handleManualPost(request: Request, uid: string) {
     if (!sermonId || !thought) {
       return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
     }
-    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon | null;
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId)) as Sermon | null;
     if (!sermon) {
       return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
@@ -132,6 +133,7 @@ async function handleManualPost(request: Request, uid: string) {
     console.log("Firestore update: Stored new manual thought into sermon document.");
     return NextResponse.json(thoughtWithId);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
     console.error('Thoughts route: Manual POST error:', error);
@@ -211,7 +213,7 @@ async function handleAutoPost(request: Request, uid: string) {
 
     const sermon = await tracker.timePhase(
       "fetch_sermon",
-      () => sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>,
+      () => withStore(() => sermonsRepository.fetchSermonById(sermonId)) as Promise<Sermon | null>,
       { sermonId }
     );
     if (!sermon) {
@@ -370,6 +372,7 @@ async function handleAutoPost(request: Request, uid: string) {
     const acceptedThought = (acceptedDocument?.thoughts as unknown as Thought[] | undefined)?.find(item => item.id === thought.id) ?? thought;
     return NextResponse.json(acceptedThought);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;
     console.error('Thoughts route: Transcription error:', error);

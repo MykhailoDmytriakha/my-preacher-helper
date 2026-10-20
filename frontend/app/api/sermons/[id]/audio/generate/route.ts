@@ -20,6 +20,7 @@ import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, updateOwnedDocument } from '@/data-engine/serverEdit.server';
 import { AudioExportError, audioExportFingerprint, beginAudioExportBatch } from '@/data-engine/serverOperations.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
@@ -298,7 +299,7 @@ export async function POST(
         const { id: sermonId } = await params;
 
         // 1. Load sermon with chunks
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        const sermonDoc = await withStore(() => adminDb.collection('sermons').doc(sermonId).get());
         if (!sermonDoc.exists) {
             return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
         }
@@ -685,6 +686,7 @@ function streamFailureDetails(error: unknown): Pick<ErrorEvent, 'code' | 'chunks
 }
 
 function audioRouteFailure(error: unknown): NextResponse | undefined {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     if (error instanceof AudioExportError) return NextResponse.json({ code: error.code, error: error.message }, { status: error.code === 'audio-export-missing' ? 400 : 409 });
     return undefined;

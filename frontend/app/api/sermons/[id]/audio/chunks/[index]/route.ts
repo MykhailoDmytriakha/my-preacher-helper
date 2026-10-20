@@ -12,6 +12,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { heardChunks, storedSource } from '@/utils/audioChunkIdentity';
 import { PreparedAudioChanged, putPreparedAudio, readPreparedAudioSources, preparedAudioVersion, requirePreparedAudio } from '@/utils/preparedAudioSources';
 import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
@@ -122,6 +123,7 @@ async function persistChunkEdit(
 }
 
 function chunkEditErrorResponse(error: unknown, changedTo: Record<string, unknown> | undefined, changedMode: AudioSourceMode | undefined): NextResponse {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo, changedMode);
     if (error instanceof PreparedAudioChanged) return chunksChangedResponse(changedTo, error.mode);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
@@ -151,7 +153,7 @@ export async function PUT(
         }
 
         // 1. Load sermon
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        const sermonDoc = await withStore(() => adminDb.collection('sermons').doc(sermonId).get());
         if (!sermonDoc.exists) {
             return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
         }

@@ -1,3 +1,5 @@
+import { adminDb } from '@/config/firebaseAdminConfig';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { PUT } from '@/api/sermons/[id]/audio/chunks/route';
 import { writeOwnedDocument } from '@/data-engine/serverEdit.server';
 
@@ -106,4 +108,21 @@ it('retains the only saved AI text when a source switch stores Original', async 
   expect(response.status).toBe(200);
   expect(written?.audioChunks).toEqual(raw);
   expect(JSON.stringify(written)).toContain('Polished opening');
+});
+
+it('answers a refused store read during source switch without writing audio', async () => {
+  __resetStoreAvailabilityForTests();
+  const read = jest.spyOn(adminDb, 'collection').mockImplementationOnce(() => {
+    throw Object.assign(new Error('Test store refusal'), { code: 8 });
+  });
+  try {
+    const response = await put({ chunks: ai, mode: 'ai', expected: raw });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ code: 'unavailable' });
+    expect(writeOwnedDocument).not.toHaveBeenCalled();
+    expect(written).toBeNull();
+  } finally {
+    read.mockRestore();
+    __resetStoreAvailabilityForTests();
+  }
 });

@@ -16,6 +16,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
 import { assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { storedChunk, storedSource } from '@/utils/audioChunkIdentity';
 import { activatePreparedAudio, PreparedAudioChanged, preparedAudioVersion, readPreparedAudioSources } from '@/utils/preparedAudioSources';
 import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
@@ -39,7 +40,7 @@ export async function PUT(
         const { id: sermonId } = await params;
 
         // Load sermon to verify ownership
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        const sermonDoc = await withStore(() => adminDb.collection('sermons').doc(sermonId).get());
         if (!sermonDoc.exists) {
             return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
         }
@@ -86,6 +87,7 @@ export async function PUT(
         const sources = readPreparedAudioSources(accepted ?? result), source = sources[mode];
         return NextResponse.json({ success: true, count: chunks.length, mode, sources, ...(source ? { source: preparedAudioVersion(source) } : {}) });
     } catch (error) {
+        if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
         if (error instanceof PreparedAudioChanged || (error instanceof ServerEditError && error.code === CHUNKS_CHANGED)) return chunksChangedResponse(changedTo, error instanceof PreparedAudioChanged ? error.mode : changedMode);
         const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
         if (boundary) return boundary;

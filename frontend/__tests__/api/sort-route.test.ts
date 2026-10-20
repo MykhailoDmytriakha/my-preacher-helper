@@ -2,6 +2,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { sortItemsWithAI } from '@/api/clients/openAI.client';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
 import { POST } from '@/api/sort/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { UsageCapReachedError } from '@/services/usageLimits';
 
 jest.mock('next/server', () => ({
@@ -155,5 +156,29 @@ describe('POST /api/sort', () => {
       hardCap: 12,
       resetsAt: '2026-10-01T00:00:00.000Z',
     });
+  });
+});
+
+// BUG-20261019-routes-hang-when-store-refuses: with the database's quota spent, the sermon read waited
+// 30–40 s locally and until the 60 s wall on Vercel before a generic error.
+describe('POST /api/sort while the store does not answer', () => {
+  it('answers 503 "unavailable" within three seconds and never calls the model', async () => {
+    jest.useFakeTimers();
+    const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    let answer: Response | undefined;
+    try {
+      __resetStoreAvailabilityForTests();
+      mockAuth.mockResolvedValue('user-1');
+      mockFetchSermon.mockImplementation(() => new Promise(() => undefined));
+      void POST(makeRequest(validBody())).then((response) => { answer = response as unknown as Response; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+      expect(await answer?.json()).toEqual({ code: 'unavailable' });
+      expect(mockSort).not.toHaveBeenCalled();
+    } finally {
+      consoleSpy.mockRestore();
+      jest.useRealTimers();
+      __resetStoreAvailabilityForTests();
+    }
   });
 });

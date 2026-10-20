@@ -1,6 +1,7 @@
 
 import { POST } from '@/api/sermons/[id]/audio/optimize/route';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { createAudioChunks, splitTextIntoChunks, splitTextEvenly } from '@/api/clients/tts.client';
@@ -1023,4 +1024,18 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(res.status).toBe(200);
         expect(mockWriteOwnedDocument).not.toHaveBeenCalled();
     });
+
+  it('answers a refused first store read before optimize provider work', async () => {
+    __resetStoreAvailabilityForTests();
+    mockGet.mockRejectedValueOnce(Object.assign(new Error('Test store refusal'), { code: 8 }));
+    try {
+      const request = new NextRequest('http://localhost:3047/api/qa-audio', { body: JSON.stringify({}) });
+      const response = await POST(request, { params: Promise.resolve({ id: 'qa-sermon' }) });
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({ code: 'unavailable' });
+      expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+    } finally {
+      __resetStoreAvailabilityForTests();
+    }
+  });
 });

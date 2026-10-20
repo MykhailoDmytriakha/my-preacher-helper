@@ -1,3 +1,5 @@
+import { adminDb } from '@/config/firebaseAdminConfig';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { PUT } from '@/api/sermons/[id]/audio/chunks/[index]/route';
 import { writeOwnedDocument } from '@/data-engine/serverEdit.server';
 import { mutateLegacyResource } from '@/data-engine/legacyBoundary.server';
@@ -169,4 +171,21 @@ it('keeps a tokenless old-client edit synchronized with the active prepared sour
   });
   expect(written?.audioChunks).toMatchObject([{ text: 'AI corrected' }]);
   expect(written?.audioMetadata).toMatchObject({ mode: 'ai', voice: 'kept' });
+});
+
+it('answers a refused store read during chunk correction without writing audio', async () => {
+  __resetStoreAvailabilityForTests();
+  const read = jest.spyOn(adminDb, 'collection').mockImplementationOnce(() => {
+    throw Object.assign(new Error('Test store refusal'), { code: 8 });
+  });
+  try {
+    const response = await put({ text: 'Kept correction', expected: [chunk('Polished opening')] });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ code: 'unavailable' });
+    expect(writeOwnedDocument).not.toHaveBeenCalled();
+    expect(written).toBeNull();
+  } finally {
+    read.mockRestore();
+    __resetStoreAvailabilityForTests();
+  }
 });

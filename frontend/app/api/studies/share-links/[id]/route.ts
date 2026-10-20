@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 const ERROR_MESSAGES = {
@@ -16,7 +17,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const { id } = await params;
 
   try {
-    const existing = await studyNoteShareLinksRepository.getById(id);
+    const existing = await withStore(() => studyNoteShareLinksRepository.getById(id));
     if (!existing) {
       return NextResponse.json({ success: true });
     }
@@ -28,6 +29,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     await studyNoteShareLinksRepository.deleteLink(id);
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error(`DELETE /api/studies/share-links/${id} error`, error);
     return NextResponse.json({ error: 'Failed to delete share link' }, { status: 500 });
   }
