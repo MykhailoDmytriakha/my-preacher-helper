@@ -487,10 +487,10 @@ describe('useAiSortingDiff', () => {
         await result.current.handleAiSort('introduction');
       });
 
-      act(() => result.current.handleKeepItem('thought-1', 'introduction'));
+      await act(async () => { await awaitWriteOperation(result.current.handleKeepItem('thought-1', 'introduction'), () => undefined); });
       expect(result.current.highlightedItems).not.toHaveProperty('thought-1');
 
-      act(() => result.current.handleRevertItem('thought-1', 'introduction'));
+      await act(async () => { await awaitWriteOperation(result.current.handleRevertItem('thought-1', 'introduction'), () => undefined); });
       expect(mockSetContainers).toHaveBeenCalled();
 
       mockSetContainers.mockClear();
@@ -508,7 +508,7 @@ describe('useAiSortingDiff', () => {
       await act(async () => {
         await result.current.handleAiSort('introduction');
       });
-      act(() => result.current.handleRevertAll('introduction'));
+      await act(async () => { await awaitWriteOperation(result.current.handleRevertAll('introduction'), () => undefined); });
       expect(result.current.highlightedItems).toEqual({});
       expect(mockSetContainers).toHaveBeenCalled();
     });
@@ -525,10 +525,10 @@ describe('useAiSortingDiff', () => {
       });
       expect(mockSetContainers).toHaveBeenCalled();
 
-      act(() => {
-        result.current.handleKeepItem('thought-1', 'introduction');
-      });
-      expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
+      await act(async () => { await awaitWriteOperation(result.current.handleKeepItem('thought-1', 'introduction'), () => undefined); });
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        'sermon-1', expect.any(Object), mockSermon.structure, expect.objectContaining({ thoughtIds: ['thought-1'] }),
+      );
 
       act(() => result.current.setHighlightedItems({ 'test-item': { type: 'moved' } }));
       expect(result.current.highlightedItems).toEqual({ 'test-item': { type: 'moved' } });
@@ -737,19 +737,19 @@ describe('useAiSortingDiff', () => {
         await revertHook.result.current.handleAiSort('introduction');
       });
 
-      act(() => {
-        revertHook.result.current.handleRevertItem('thought-1', 'introduction');
-      });
+      await act(async () => { await awaitWriteOperation(revertHook.result.current.handleRevertItem('thought-1', 'introduction'), () => undefined); });
 
-      expect(revertSaveThought).toHaveBeenCalledWith(
-        'sermon-1',
-        expect.objectContaining({
-          id: 'thought-1',
-          outlinePointId: undefined,
+      expect(mockUpdateStructure).toHaveBeenLastCalledWith(
+        'sermon-1', expect.any(Object), mockSermon.structure, expect.objectContaining({
+          thoughtIds: ['thought-1'],
+          thoughtUpdates: [expect.objectContaining({
+            thought: expect.objectContaining({ id: 'thought-1', outlinePointId: null, subPointId: null }),
+            baseThought: expect.objectContaining({ id: 'thought-1', outlinePointId: 'intro-1' }),
+          })],
         }),
-        expect.objectContaining({ id: 'thought-1' })
       );
-      expect(revertSaveStructure).toHaveBeenCalledTimes(1);
+      expect(revertSaveThought).not.toHaveBeenCalled();
+      expect(revertSaveStructure).not.toHaveBeenCalled();
     });
   });
 
@@ -823,8 +823,10 @@ describe('useAiSortingDiff', () => {
       await act(async () => {
         await debounceHook.result.current.handleAiSort('introduction');
       });
-      act(() => debounceHook.result.current.handleKeepItem('thought-1', 'introduction'));
-      expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
+      await act(async () => { await awaitWriteOperation(debounceHook.result.current.handleKeepItem('thought-1', 'introduction'), () => undefined); });
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        'sermon-1', expect.any(Object), mockSermon.structure, expect.objectContaining({ thoughtIds: ['thought-1'] }),
+      );
     });
   });
 

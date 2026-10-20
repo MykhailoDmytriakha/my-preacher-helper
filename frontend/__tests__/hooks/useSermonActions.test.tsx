@@ -22,7 +22,7 @@ const thoughtService = {
   createManualThought: jest.fn(),
 };
 const mockWriter: StructureWriter = {
-  updateStructure: jest.fn(),
+  updateStructure: jest.fn().mockResolvedValue({}),
   ...thoughtService,
   updateSermonOutline: jest.fn(),
 };
@@ -204,21 +204,28 @@ describe('useSermonActions', () => {
     expect(result.current.editingItem).not.toBeUndefined();
   });
 
-  it('handleMoveToAmbiguous moves item to ambiguous container', () => {
+  it('handleMoveToAmbiguous moves item to ambiguous container', async () => {
     const itemToMove = createMockItem({ id: 't1', content: 'hello' });
     defaultProps.sermon = createMockSermon({ id: 'sermon-1', thoughts: [createMockThought({ id: 't1' })] });
     defaultProps.containers.main = [itemToMove];
 
     const { result } = renderHook(() => useSermonActions(defaultProps));
 
-    act(() => { result.current.handleMoveToAmbiguous('t1', 'main'); });
+    await act(async () => { await result.current.handleMoveToAmbiguous('t1', 'main'); });
 
     expect(mockSetContainers).toHaveBeenCalledWith(expect.objectContaining({
       main: [],
       ambiguous: [expect.objectContaining({ id: 't1', outlinePointId: null })]
     }));
-    expect(defaultProps.debouncedSaveThought).toHaveBeenCalled();
-    expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
+    expect(mockWriter.updateStructure).toHaveBeenCalledWith(
+      'sermon-1', expect.objectContaining({ main: [], ambiguous: ['t1'] }), defaultProps.sermon.structure,
+      expect.objectContaining({ thoughtIds: ['t1'], thoughtUpdates: [expect.objectContaining({
+        thought: expect.objectContaining({ id: 't1', outlinePointId: null, subPointId: null }),
+        baseThought: expect.objectContaining({ id: 't1' }),
+      })] }),
+    );
+    expect(defaultProps.debouncedSaveThought).not.toHaveBeenCalled();
+    expect(defaultProps.debouncedSaveStructure).not.toHaveBeenCalled();
   });
 
   it('handleRetryPendingThought re-fires the debounced thought save', async () => {

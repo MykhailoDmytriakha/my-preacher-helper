@@ -16,6 +16,7 @@ import {
 import { skippedWrite, type WriteOperation } from "@/utils/recoverableWrite";
 import { useTranslation } from '@locales/useTranslation';
 
+import { advanceReviewBaseline } from "../utils/aiReviewPlacement";
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 
 type AiSortTarget = {
@@ -280,8 +281,6 @@ export const useAiSortingDiff = ({
   outlinePoints,
   sermon,
   sermonId,
-  debouncedSaveThought,
-  debouncedSaveStructure,
 }: UseAiSortingDiffProps) => {
   const { t } = useTranslation();
   const writer = useStructureWriter();
@@ -401,157 +400,72 @@ export const useAiSortingDiff = ({
     t,
   ]);
 
-  // Handler for accepting a single item change
-  const handleKeepItem = useCallback((itemId: string, columnId: string) => {
-    if (applying.pending) return;
-    // Find the current item
-    const sectionItems = containers[columnId];
-    if (!Array.isArray(sectionItems)) return;
-    
-    const item = sectionItems.find(i => i.id === itemId);
-    if (!item) return;
-
-    // Remove from highlighted items
-    setHighlightedItems(prev => {
-      const newHighlighted = { ...prev };
-      delete newHighlighted[itemId];
-      
-      // If no more highlighted items, exit diff mode
-      if (Object.keys(newHighlighted).length === 0) {
+  // Manual actions use this same boundary after their actual device capture.
+  const handlePlacementCaptured = useCallback((itemId: string, board: Record<string, Item[]>) => {
+    setPreSortState(previous => previous ? advanceReviewBaseline(previous, board, [itemId]) : previous);
+    setHighlightedItems(previous => {
+      if (!(itemId in previous)) return previous;
+      const remaining = { ...previous };
+      delete remaining[itemId];
+      if (Object.keys(remaining).length === 0) {
         setIsDiffModeActive(false);
         setPreSortState(null);
       }
-      
-      return newHighlighted;
+      return remaining;
     });
+  }, []);
 
-    // Persist outline point and sub-point changes
-    if (sermon) {
-      const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-      if (thought) {
-        const prevOutline = (thought.outlinePointId ?? null);
-        const nextOutline = (item.outlinePointId ?? null);
-        const prevSubPoint = (thought.subPointId ?? null);
-        const nextSubPoint = (item.subPointId ?? null);
-        if (prevOutline !== nextOutline || prevSubPoint !== nextSubPoint) {
-          const updatedThought: Thought = {
-            ...thought,
-            outlinePointId: nextOutline,
-            subPointId: nextSubPoint,
-          };
-          debouncedSaveThought(sermonId!, updatedThought, thought);
-        }
-      }
-    }
-
-    // Save the current structure
-    const newStructure: ThoughtsBySection = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
-  }, [
-    applying,
-    containers, 
-    sermon, 
-    sermonId, 
-    debouncedSaveThought, 
-    debouncedSaveStructure
-  ]);
-
-  // Handler for reverting a single item change
-  const handleRevertItem = useCallback((itemId: string, columnId: string) => {
-    if (applying.pending) return;
-    if (!preSortState || !preSortState[columnId]) return;
-    
-    // Find the original item state
-    const originalItem = preSortState[columnId].find(i => i.id === itemId);
-    if (!originalItem) return;
-    
-    // Find current position in the container
-    const currentIndex = containers[columnId].findIndex(i => i.id === itemId);
-    if (currentIndex === -1) return;
-    
-    // Find original position
-    const originalIndex = preSortState[columnId].findIndex(i => i.id === itemId);
-    
-    // Update containers to revert this item
-    setContainers(prev => {
-      // Create a copy of the current items
-      const updatedItems = [...prev[columnId]];
-      
-      // Remove item from current position
-      updatedItems.splice(currentIndex, 1);
-      
-      // Find proper insertion position (considering other items may have moved)
-      let insertPosition = originalIndex;
-      if (insertPosition > updatedItems.length) {
-        insertPosition = updatedItems.length;
-      }
-      
-      // Insert item at the proper position
-      updatedItems.splice(insertPosition, 0, originalItem);
-      
-      return {
-        ...prev,
-        [columnId]: updatedItems
-      };
+  const captureReviewDecision = useCallback((write: () => Promise<unknown>, captured: () => void): WriteOperation => {
+    if (applying.pending) return applying.pending;
+    setPendingSort(applying);
+    const persistence = Promise.resolve().then(write).catch(error => {
+      if (!isOfflineQueuedError(error)) throw error;
+    }).then(() => {
+      if (currentApplying.current === applying) captured();
+    }).catch(error => {
+      if (currentApplying.current === applying) toast.error(t('errors.failedToSaveStructure'));
+      throw error;
+    }).finally(() => {
+      applying.pending = null;
+      if (currentApplying.current === applying) setPendingSort(null);
     });
-    
-    // Remove from highlighted items
-    setHighlightedItems(prev => {
-      const newHighlighted = { ...prev };
-      delete newHighlighted[itemId];
-      
-      // If no more highlighted items, exit diff mode
-      if (Object.keys(newHighlighted).length === 0) {
-        setIsDiffModeActive(false);
-        setPreSortState(null);
-      }
-      
-      return newHighlighted;
+    applying.pending = persistence;
+    void persistence.catch(() => undefined);
+    return persistence;
+  }, [applying, t]);
+
+  const handleKeepItem = useCallback((itemId: string, columnId: string): WriteOperation => {
+    if (applying.pending) return applying.pending;
+    const item = containers[columnId]?.find(candidate => candidate.id === itemId);
+    const thought = sermon?.thoughts.find(candidate => candidate.id === itemId);
+    if (!item || !thought || !sermonId || !(itemId in highlightedItems)) return skippedWrite();
+    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(containers), sermon?.structure, {
+      thoughtIds: [itemId],
+      thoughtUpdates: [{ thought: { ...thought, outlinePointId: item.outlinePointId ?? null, subPointId: item.subPointId ?? null }, baseThought: thought }],
+    }), () => handlePlacementCaptured(itemId, containers));
+  }, [applying, containers, sermon, sermonId, highlightedItems, captureReviewDecision, writer, handlePlacementCaptured]);
+
+  const handleRevertItem = useCallback((itemId: string, columnId: string): WriteOperation => {
+    if (applying.pending) return applying.pending;
+    const originalItems = preSortState?.[columnId];
+    const originalItem = originalItems?.find(candidate => candidate.id === itemId);
+    const item = containers[columnId]?.find(candidate => candidate.id === itemId);
+    const thought = sermon?.thoughts.find(candidate => candidate.id === itemId);
+    if (!originalItems || !originalItem || !item || !thought || !sermonId || !(itemId in highlightedItems)) return skippedWrite();
+    const revertedItems = containers[columnId].filter(candidate => candidate.id !== itemId);
+    revertedItems.splice(Math.min(originalItems.indexOf(originalItem), revertedItems.length), 0, originalItem);
+    const revertedBoard = { ...containers, [columnId]: revertedItems };
+    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(revertedBoard), sermon?.structure, {
+      thoughtIds: [itemId],
+      thoughtUpdates: [{
+        thought: { ...thought, outlinePointId: originalItem.outlinePointId ?? null, subPointId: originalItem.subPointId ?? null },
+        baseThought: { ...thought, outlinePointId: item.outlinePointId ?? null, subPointId: item.subPointId ?? null },
+      }],
+    }), () => {
+      setContainers(revertedBoard);
+      handlePlacementCaptured(itemId, revertedBoard);
     });
-    
-    // If there was an outline/sub-point change, revert it in the database
-    if (sermon) {
-      const currentItem = containers[columnId][currentIndex];
-      if (currentItem.outlinePointId !== originalItem.outlinePointId || (currentItem.subPointId ?? null) !== (originalItem.subPointId ?? null)) {
-        const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-        if (thought) {
-          const updatedThought: Thought = {
-            ...thought,
-            outlinePointId: originalItem.outlinePointId,
-            subPointId: originalItem.subPointId ?? null,
-          };
-          debouncedSaveThought(sermonId!, updatedThought, thought);
-        }
-      }
-    }
-    
-    // Save the updated structure
-    const newStructure: ThoughtsBySection = {
-      introduction: containers.introduction.map((item) => item.id),
-      main: containers.main.map((item) => item.id),
-      conclusion: containers.conclusion.map((item) => item.id),
-      ambiguous: containers.ambiguous.map((item) => item.id),
-    };
-    
-    // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
-  }, [
-    applying,
-    preSortState, 
-    containers, 
-    setContainers, 
-    sermon, 
-    sermonId, 
-    debouncedSaveThought, 
-    debouncedSaveStructure
-  ]);
+  }, [applying, preSortState, containers, sermon, sermonId, highlightedItems, captureReviewDecision, writer, setContainers, handlePlacementCaptured]);
 
   // Review closes only after all of this decision's actual device captures finish.
   const handleKeepAll = useCallback((): WriteOperation => {
@@ -593,27 +507,30 @@ export const useAiSortingDiff = ({
     return persistence;
   }, [applying, writer, highlightedItems, containers, sermon, sermonId, t]);
 
-  // Handler for reverting all changes
-  const handleRevertAll = useCallback((columnId: string) => {
-    if (applying.pending) return;
-    if (!preSortState || !preSortState[columnId]) return;
-    
-    // Revert the column to its pre-sort state
-    setContainers(prev => ({
-      ...prev,
-      [columnId]: [...preSortState[columnId]]
-    }));
-    
-    // Clear highlighted items and exit diff mode
-    setHighlightedItems({});
-    setIsDiffModeActive(false);
-    setPreSortState(null);
-    
-    // Show confirmation toast
-    toast.info(t('structure.aiSortChangesReverted', {
-      defaultValue: 'All AI suggestions reverted.'
-    }));
-  }, [applying, preSortState, setContainers, t]);
+  const handleRevertAll = useCallback((columnId: string): WriteOperation => {
+    if (applying.pending) return applying.pending;
+    if (!preSortState?.[columnId] || !sermon || !sermonId) return skippedWrite();
+    const revertedBoard = { ...containers, [columnId]: preSortState[columnId] };
+    const thoughtIds = Object.keys(highlightedItems);
+    const thoughtUpdates = thoughtIds.flatMap(id => {
+      const original = preSortState[columnId].find(item => item.id === id);
+      const preview = containers[columnId]?.find(item => item.id === id);
+      const thought = sermon.thoughts.find(item => item.id === id);
+      return original && preview && thought ? [{
+        thought: { ...thought, outlinePointId: original.outlinePointId ?? null, subPointId: original.subPointId ?? null },
+        baseThought: { ...thought, outlinePointId: preview.outlinePointId ?? null, subPointId: preview.subPointId ?? null },
+      }] : [];
+    });
+    return captureReviewDecision(() => writer.updateStructure(sermonId, createStructureFromContainers(revertedBoard), sermon.structure, {
+      thoughtIds, thoughtUpdates,
+    }), () => {
+      setContainers(revertedBoard);
+      setHighlightedItems({});
+      setIsDiffModeActive(false);
+      setPreSortState(null);
+      toast.info(t('structure.aiSortChangesReverted', { defaultValue: 'All AI suggestions reverted.' }));
+    });
+  }, [applying, preSortState, sermon, sermonId, containers, highlightedItems, captureReviewDecision, writer, setContainers, t]);
 
   return {
     // State
@@ -630,6 +547,7 @@ export const useAiSortingDiff = ({
     handleRevertItem,
     handleKeepAll,
     handleRevertAll,
+    handlePlacementCaptured,
     
     // Setters for external use (e.g., when dragging highlighted items)
     setHighlightedItems,

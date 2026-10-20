@@ -123,3 +123,86 @@ describe('structure writes on an engine document', () => {
     expect(main[0].subPoints?.map(sub => sub.text)).toEqual(['X on the board', 'Y on the phone']);
   });
 });
+
+describe('scoped structure placement intent', () => {
+  const original = ['a', 'b', 'c', 'd'];
+  const preview = ['d', 'c', 'b', 'a'];
+  const initial = () => ({ ...base(),
+    thoughts: original.map(id => thought(id, `Authored ${id}`)),
+    structure: structure({ main: original }), thoughtsBySection: structure({ main: original }),
+  }) as unknown as DocumentData;
+
+  it('preserves every unselected stored section and relative order', async () => {
+    const { state, writer } = draft(initial());
+    state.current = { ...state.current!, structure: structure({ main: ['a', 'c', 'd'], conclusion: ['b'] }) as unknown as DocumentData };
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }), { thoughtIds: ['a'] });
+    expect(state.current!.structure).toEqual(structure({ main: ['c', 'd', 'a'], conclusion: ['b'] }));
+    expect(state.current!.thoughtsBySection).toEqual(state.current!.structure);
+  });
+
+  it('does not interpret an unseen newly created placement as deletion', async () => {
+    const { state, writer } = draft(initial());
+    await writer.createManualThought('s1', thought('new', 'New thought'), 'main');
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }), { thoughtIds: ['new'] });
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toEqual([...original, 'new']);
+    expect(preservesSermonLinks(initial(), state.current!)).toBe(true);
+  });
+
+  it('captures selected assignment and placement together without republishing its older words', async () => {
+    const opened = initial();
+    let current: DocumentData | null = { ...opened, thoughts: original.map(id => thought(id, id === 'a' ? 'Newer authored words' : `Authored ${id}`)) as unknown as DocumentData[] };
+    const update = jest.fn(async (apply: (value: DocumentData | null) => DocumentData | null) => { current = apply(current); });
+    const writer = createEngineStructureWriter({ update }, 'owner-1');
+    const baseline = thought('a', 'Authored a');
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }), {
+      thoughtIds: ['a'], thoughtUpdates: [{ thought: { ...baseline, outlinePointId: 'point', subPointId: null }, baseThought: baseline }],
+    });
+    expect(update).toHaveBeenCalledTimes(1);
+    expect((current!.structure as unknown as ThoughtsBySection).main).toEqual(['b', 'c', 'd', 'a']);
+    expect((current!.thoughts as unknown as Thought[]).find(value => value.id === 'a')).toMatchObject({ text: 'Newer authored words', outlinePointId: 'point' });
+    expect((current!.thoughts as unknown as Thought[]).filter(value => value.id !== 'a').map(value => value.outlinePointId)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('keeps every existing thought when the old sermon has no stored section arrays', async () => {
+    const legacy = { ...initial(), structure: undefined, thoughtsBySection: undefined,
+      thoughts: original.map((id, index) => thought(id, `Authored ${id}`, { tags: ['main'], date: `2026-09-${String(index + 1).padStart(2, '0')}` })),
+    } as unknown as DocumentData;
+    const { state, writer } = draft(legacy);
+    await writer.updateStructure('s1', structure({ main: preview }), null, { thoughtIds: ['a'] });
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toEqual(['b', 'c', 'd', 'a']);
+    expect((state.current!.thoughts as unknown as Thought[]).map(value => value.text)).toEqual(original.map(id => `Authored ${id}`));
+  });
+
+  it('leaves unselected stored section membership unchanged when outline metadata differs', async () => {
+    const value = { ...initial(), outline: { introduction: [{ id: 'intro', text: 'Opening' }], main: [], conclusion: [] },
+      thoughts: original.map(id => thought(id, `Authored ${id}`, { outlinePointId: id === 'b' ? 'intro' : null })),
+    } as unknown as DocumentData;
+    const { state, writer } = draft(value);
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }), { thoughtIds: ['a'] });
+    expect(state.current!.structure).toEqual(structure({ main: ['b', 'c', 'd', 'a'] }));
+  });
+
+  it('leaves unselected stored relative order unchanged across outline groups', async () => {
+    const value = { ...initial(), outline: { introduction: [], main: [{ id: 'first', text: 'First' }, { id: 'second', text: 'Second' }], conclusion: [] },
+      thoughts: original.map((id, index) => thought(id, `Authored ${id}`, { outlinePointId: index % 2 === 0 ? 'first' : 'second' })),
+    } as unknown as DocumentData;
+    const { state, writer } = draft(value);
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }), { thoughtIds: ['a'] });
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toEqual(['b', 'c', 'd', 'a']);
+  });
+
+  it('fills unlisted thoughts in a partial old structure before moving only the selected thought', async () => {
+    const value = { ...initial(), structure: structure({ main: ['a'] }), thoughtsBySection: undefined,
+      thoughts: original.map((id, index) => thought(id, `Authored ${id}`, { tags: ['main'], date: `2026-09-${String(index + 1).padStart(2, '0')}` })),
+    } as unknown as DocumentData;
+    const { state, writer } = draft(value);
+    await writer.updateStructure('s1', structure({ main: preview }), null, { thoughtIds: ['a'] });
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toEqual(['b', 'c', 'd', 'a']);
+  });
+
+  it('allows explicit whole-board acceptance to retain the entire proposal', async () => {
+    const { state, writer } = draft(initial());
+    await writer.updateStructure('s1', structure({ main: preview }), structure({ main: original }));
+    expect((state.current!.structure as unknown as ThoughtsBySection).main).toEqual(preview);
+  });
+});

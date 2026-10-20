@@ -11,8 +11,15 @@ import type { StructureSectionId } from '@/utils/structureTags';
  * the change over the document's current copy and hands it to the engine, which owns delivery
  * and conflicts; outside its provider every write is refused.
  */
+/** A placement action names its own thoughts; omitted scope means an explicit whole-board action. */
+export interface StructureWriteOptions {
+  thoughtIds?: readonly string[];
+  /** Assignment and order are captured as one action through the same document update. */
+  thoughtUpdates?: readonly { thought: Thought; baseThought: Thought | null }[];
+}
+
 export interface StructureWriter {
-  updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null): Promise<unknown>;
+  updateStructure(sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null, options?: StructureWriteOptions): Promise<unknown>;
   updateThought(sermonId: string, thought: Thought, baseThought: Thought | null): Promise<Thought>;
   deleteThought(sermonId: string, thought: Thought): Promise<void>;
   /** `section`: the column it was added in, where it is placed whatever its tags. */

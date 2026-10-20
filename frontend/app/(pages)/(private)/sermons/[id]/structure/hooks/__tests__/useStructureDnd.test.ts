@@ -1410,7 +1410,8 @@ describe('useStructureDnd', () => {
         },
         // …and the arrangement the screen holds as stored, so a move made on another
         // device is not reverted by this save.
-        expect.anything()
+        expect.anything(),
+        { thoughtIds: [THOUGHT_TWO] },
       );
     });
 
@@ -1476,6 +1477,7 @@ describe('useStructureDnd', () => {
         sermon.id,
         expect.objectContaining({ introduction: [THOUGHT_TWO, THOUGHT_ONE] }),
         expect.anything(),
+        { thoughtIds: [THOUGHT_TWO] },
       );
     });
 
@@ -1632,7 +1634,8 @@ describe('useStructureDnd', () => {
         },
         // …and the arrangement the screen holds as stored, so a move made on another
         // device is not reverted by this save.
-        expect.anything()
+        expect.anything(),
+        { thoughtIds: [THOUGHT_THREE] },
       );
     });
 
@@ -1695,7 +1698,8 @@ describe('useStructureDnd', () => {
         },
         // …and the arrangement the screen holds as stored, so a move made on another
         // device is not reverted by this save.
-        expect.anything()
+        expect.anything(),
+        { thoughtIds: [THOUGHT_ONE] },
       );
       expect(mockSetSermon).toHaveBeenCalledWith(expect.any(Function));
     });
@@ -1766,7 +1770,8 @@ describe('useStructureDnd', () => {
         },
         // …and the arrangement the screen holds as stored, so a move made on another
         // device is not reverted by this save.
-        expect.anything()
+        expect.anything(),
+        { thoughtIds: [THOUGHT_ONE] },
       );
     });
 
@@ -1946,6 +1951,7 @@ describe('useStructureDnd', () => {
         sermon.id,
         expect.objectContaining({ introduction: [THOUGHT_TWO, THOUGHT_ONE] }),
         expect.anything(),
+        { thoughtIds: [THOUGHT_TWO] },
       );
       expect(captureFinished).toBe(false);
       expect(containersRef.current.introduction.map((item) => item.id)).toEqual([THOUGHT_TWO, THOUGHT_ONE]);

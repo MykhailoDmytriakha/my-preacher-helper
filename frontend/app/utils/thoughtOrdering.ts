@@ -391,3 +391,43 @@ export function removeThoughtIdFromStructure(
 
   return normalized;
 }
+
+/** Apply only the named placements; a preview must never reorder the other thoughts. */
+export function applyScopedThoughtPlacement(
+  current: ThoughtsBySection | null | undefined,
+  proposed: ThoughtsBySection,
+  thoughtIds: readonly string[],
+): ThoughtsBySection {
+  const result = normalizeStructure(current);
+  const target = normalizeStructure(proposed);
+  // A just-created thought may not have reached the caller's board yet. Absence
+  // from a placement proposal is not Delete; the domain delete owns removal.
+  const mentioned = new Set(Object.values(target).flat());
+  const selected = new Set(thoughtIds.filter(id => mentioned.has(id)));
+  for (const section of SECTION_ORDER) {
+    result[section] = (result[section] ?? []).filter(id => !selected.has(id));
+  }
+  for (const section of SECTION_ORDER) {
+    const items = result[section]!;
+    for (const [index, id] of (target[section] ?? []).entries()) {
+      if (selected.has(id)) items.splice(Math.min(index, items.length), 0, id);
+    }
+  }
+  return result;
+}
+
+/** Fill legacy omissions without reinterpreting any explicitly stored placement. */
+export function completeStoredThoughtPlacement(sermon: SermonOrderingInput): ThoughtsBySection {
+  const stored = normalizeStructure(sermon.structure ?? sermon.thoughtsBySection);
+  const placed = new Set(Object.values(stored).flat());
+  const fallback = canonicalizeStructure(sermon);
+  for (const section of SECTION_ORDER) {
+    for (const id of fallback[section] ?? []) {
+      if (!placed.has(id)) {
+        stored[section]!.push(id);
+        placed.add(id);
+      }
+    }
+  }
+  return stored;
+}

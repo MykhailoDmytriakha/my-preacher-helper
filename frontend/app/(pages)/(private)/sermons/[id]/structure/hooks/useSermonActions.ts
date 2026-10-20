@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { toast } from 'sonner';
 
-import { useStructureWriter } from "@/components/sermon/structureWriter";
+import { useStructureWriter, type StructureWriteOptions } from "@/components/sermon/structureWriter";
 import { useResolvedUid } from "@/hooks/useResolvedUid";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { newClientId } from "@/utils/clientId";
@@ -23,7 +24,8 @@ interface UseSermonActionsProps {
     containersRef: React.MutableRefObject<Record<string, Item[]>>;
     allowedTags: { name: string; color: string }[];
     debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
-    debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
+    debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null, options?: StructureWriteOptions) => void;
+    onPlacementCaptured?: (thoughtId: string, containers: Record<string, Item[]>) => void;
     retryThoughtSave?: (thoughtId: string) => Promise<void>;
 }
 
@@ -41,9 +43,8 @@ export function useSermonActions({
     setContainers,
     containersRef,
     allowedTags,
-    debouncedSaveThought,
-    debouncedSaveStructure,
     retryThoughtSave,
+    onPlacementCaptured,
 }: UseSermonActionsProps) {
     const { t } = useTranslation();
     const writer = useStructureWriter();
@@ -331,7 +332,8 @@ export function useSermonActions({
                 }
 
                 const persistStructure = buildStructureFromContainers(containersRef.current);
-                await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
+                await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure, { thoughtIds: [addedThought.id] });
+                onPlacementCaptured?.(addedThought.id, containersRef.current);
             } catch (error) {
                 console.error("Error adding thought:", error);
                 // Roll back the optimistic container + sermon writes.
@@ -355,7 +357,7 @@ export function useSermonActions({
         })();
 
         return persistence;
-    }, [addingThoughtToSection, allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, updateItemInContainers, writer]);
+    }, [addingThoughtToSection, allowedTags, containersRef, editingItem, queueRejectedEditor, setContainers, setSermon, updateItemInContainers, writer, onPlacementCaptured]);
 
     // UPDATE — optimistic + version-guarded (a newer edit must win over an older
     // in-flight save). A terminal failure rolls back and restores the editor.
@@ -513,7 +515,8 @@ export function useSermonActions({
                 // so a DnD reorder made while the delete was in flight is preserved
                 // instead of being overwritten by the older pre-await snapshot.
                 const persistStructure = structureFromContainers(containersRef.current);
-                await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
+                await writer.updateStructure(currentSermon.id, persistStructure, currentSermon.structure, { thoughtIds: [thoughtId] });
+                onPlacementCaptured?.(thoughtId, containersRef.current);
             } catch (error) {
                 console.error("Error deleting thought:", error);
                 setContainers(prevContainers);
@@ -525,7 +528,7 @@ export function useSermonActions({
             }
         })();
         return persistence;
-    }, [containersRef, setContainers, setSermon, writer]);
+    }, [containersRef, setContainers, setSermon, writer, onPlacementCaptured]);
 
     const handleSaveEdit = useCallback((updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null): WriteOperation => {
         // The sermon is gone, so nothing takes this text: refuse rather than report a
@@ -561,44 +564,35 @@ export function useSermonActions({
         }
     }, [retryThoughtSave]);
 
-    const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
-        if (!sermon) return;
-        if (!['introduction', 'main', 'conclusion'].includes(fromContainerId)) return;
-
+    const handleMoveToAmbiguous = (itemId: string, fromContainerId: string): WriteOperation => {
+        if (!sermon || !['introduction', 'main', 'conclusion'].includes(fromContainerId)) return skippedWrite();
         const sourceItems = containers[fromContainerId] || [];
-        const itemIndex = sourceItems.findIndex((it) => it.id === itemId);
-        if (itemIndex === -1) return;
-
-        const item = sourceItems[itemIndex];
-        const updatedSource = [...sourceItems.slice(0, itemIndex), ...sourceItems.slice(itemIndex + 1)];
-        const movedItem = { ...item, outlinePointId: null, requiredTags: [] as string[] };
-        const updatedAmbiguous = [...(containers.ambiguous || []), movedItem];
-
+        const item = sourceItems.find(candidate => candidate.id === itemId);
+        const thought = sermon.thoughts.find(candidate => candidate.id === itemId);
+        if (!item || !thought) return skippedWrite();
+        const previous = containersRef.current;
         const updatedContainers = {
             ...containers,
-            [fromContainerId]: updatedSource,
-            ambiguous: updatedAmbiguous,
+            [fromContainerId]: sourceItems.filter(candidate => candidate.id !== itemId),
+            ambiguous: [...(containers.ambiguous || []), { ...item, outlinePointId: null, subPointId: null, requiredTags: [] }],
         };
-
         setContainers(updatedContainers);
-
-        const thought = sermon.thoughts.find((t) => t.id === itemId);
-        if (thought) {
-            const updatedThought: Thought = {
-                ...thought,
-                tags: [
-                    ...(movedItem.requiredTags || []),
-                    ...(movedItem.customTagNames || []).map((tag) => tag.name),
-                ],
-                outlinePointId: null,
-            };
-            // The screen's own copy is the baseline, so only the cleared placement
-            // travels and the words stay as stored.
-            debouncedSaveThought(sermon.id, updatedThought, thought);
-        }
-
-        const newStructure = structureFromContainers(updatedContainers);
-        debouncedSaveStructure(sermon.id, newStructure, sermon.structure);
+        containersRef.current = updatedContainers;
+        const persistence = writer.updateStructure(sermon.id, structureFromContainers(updatedContainers), sermon.structure, {
+            thoughtIds: [itemId],
+            thoughtUpdates: [{ thought: {
+                ...thought, tags: (item.customTagNames || []).map(tag => tag.name), outlinePointId: null, subPointId: null,
+            }, baseThought: thought }],
+        }).then(() => {
+            onPlacementCaptured?.(itemId, containersRef.current);
+        }).catch(error => {
+            setContainers(previous);
+            containersRef.current = previous;
+            toast.error(t('errors.failedToSaveStructure'));
+            throw error;
+        });
+        void persistence.catch(() => undefined);
+        return persistence;
     };
 
     return {

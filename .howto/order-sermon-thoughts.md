@@ -15,6 +15,15 @@ Every user-facing thought order — Structure, Plan, audio raw/optimized preview
 - Writers keep the order consistent: `insertThoughtIdInStructure` / `removeThoughtIdFromStructure`; the engine transforms in `frontend/app/utils/sermonThoughtEdits.ts` write `structure` and `thoughtsBySection` together.
 - An edit reads the same order. `patchSermonThought` moves a thought only when the edit names another section — an outline point there, or a section tag the edit itself changed; a change of words or leaving a point keeps it where the person put it. A board drag stores the column in `structure` only and clears section tags, so an edit that re-derived the section from tags alone sent every dragged thought under review (2026-10-13).
 
+
+## Scope a placement write while AI suggestions are visible
+
+The structure board may display AI suggestions that have not been accepted. Its `containers` are a preview, not the stored arrangement. Every item-local action (drag, create, delete, move, audio-created thought, or one AI decision) calls `StructureWriter.updateStructure` with `StructureWriteOptions.thoughtIds` naming only its own thoughts. The engine writer uses `completeStoredThoughtPlacement` from `thoughtOrdering.ts`: it retains every stored placement and fills only missing IDs with the existing `canonicalizeStructure` fallback. It then applies `applyScopedThoughtPlacement`; it preserves every unselected thought's stored section and relative order. An ID absent from a proposal is not Delete: a just-created thought may not have reached the board. Domain deletion owns removal.
+
+For an individual AI review decision, include selected assignment changes in `thoughtUpdates`, so its assignment and order share one `document.update` capture. For these item-local board actions, pass `thoughtIds`; explicit whole-board acceptance may omit it. The older `usePersistence` compatibility seam still accepts unscoped structure saves: it is not a review-decision boundary and must not receive an AI preview for an item-local action. Keep `structure` and `thoughtsBySection` identical.
+
+Review closes only after the public writer promise resolves at durable local capture. A refusal leaves the selected proposal and retry controls available. `structure/utils/aiReviewPlacement.ts` advances the cancellation baseline only after a captured decision, preserving already accepted/manual placements when the rest are rejected. Native controls cover individual keep/reject, refusal followed by retry or reject, create/delete/move/drag, reconnect replay, and explicit acceptance of remaining proposals; provider quality and recording hardware require their own checks.
+
 ## Why
 
 - 2026-04-25: section counters that counted only `outlinePointId` showed zero for valid thoughts placed in a section without a point.

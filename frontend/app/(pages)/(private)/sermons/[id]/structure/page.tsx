@@ -218,31 +218,6 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     setSermon,
   });
 
-  // Sermon actions hook
-  const {
-    editingItem,
-    addingThoughtToSection,
-    handleEdit,
-    handleCloseEdit,
-    handleAddThoughtToSection,
-    handleSaveEdit,
-    handleDeleteThought,
-    handleMoveToAmbiguous,
-  } = useSermonActions({
-    sermon,
-    setSermon,
-    containers,
-    setContainers,
-    containersRef,
-    allowedTags,
-    debouncedSaveThought,
-    debouncedSaveStructure,
-    retryThoughtSave: async (thoughtId: string) => {
-      if (!sermonId) return;
-      await retryThoughtSave(sermonId, thoughtId);
-    },
-  });
-
   // Section visibility (subsumes focus mode: 1 visible = focus, 2 = pair, 3 = all)
   const {
     focusedColumn,
@@ -269,9 +244,7 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     handleRevertItem,
     handleKeepAll,
     handleRevertAll,
-    setHighlightedItems,
-    setIsDiffModeActive,
-    setPreSortState,
+    handlePlacementCaptured,
   } = useAiSortingDiff({
     containers,
     setContainers,
@@ -280,6 +253,32 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
     sermonId,
     debouncedSaveThought,
     debouncedSaveStructure,
+  });
+
+  // Sermon actions hook
+  const {
+    editingItem,
+    addingThoughtToSection,
+    handleEdit,
+    handleCloseEdit,
+    handleAddThoughtToSection,
+    handleSaveEdit,
+    handleDeleteThought,
+    handleMoveToAmbiguous,
+  } = useSermonActions({
+    sermon,
+    setSermon,
+    containers,
+    setContainers,
+    containersRef,
+    allowedTags,
+    onPlacementCaptured: handlePlacementCaptured,
+    debouncedSaveThought,
+    debouncedSaveStructure,
+    retryThoughtSave: async (thoughtId: string) => {
+      if (!sermonId) return;
+      await retryThoughtSave(sermonId, thoughtId);
+    },
   });
 
   const requestAiSortForOutlinePoint = useCallback(async (columnId: "introduction" | "main" | "conclusion", outlinePointId: string) => {
@@ -445,12 +444,13 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
       // Use debounced structure save
       // Third argument: the arrangement as this screen holds it stored, so a move
       // made on another device is not reverted by this save.
-      debouncedSaveStructure(sermon.id, newStructure, sermon.structure);
+      await structureWriter.updateStructure(sermon.id, newStructure, sermon.structure, { thoughtIds: [thought.id] });
+      handlePlacementCaptured(thought.id, containersRef.current);
     } catch (e) {
       console.error('Error handling audio thought creation:', e);
       toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
     }
-  }, [allowedTags, debouncedSaveStructure, sermon, t, setContainers, setSermon]);
+  }, [allowedTags, structureWriter, handlePlacementCaptured, containersRef, sermon, t, setContainers, setSermon]);
 
   const getExportContentForFocusedColumn = async (format: 'plain' | 'markdown', options?: { includeTags?: boolean }) => {
     if (!focusedColumn || !sermon) {
@@ -820,20 +820,12 @@ function StructureBoard({ sermonId, engine, holdingRef, syncStatus, readOnly = f
   };
 
   const onDragEndWrapper = (event: DragEndEvent) => {
-    const { active } = event;
-    const activeKey = String(active?.id ?? "");
-    if (activeKey && activeKey in highlightedItems) {
-      setHighlightedItems((prev) => {
-        const next = { ...prev } as typeof prev;
-        delete next[activeKey];
-        if (Object.keys(next).length === 0) {
-          setIsDiffModeActive(false);
-          setPreSortState(null);
-        }
-        return next;
-      });
-    }
-    handleDragEnd(event);
+    const activeKey = String(event.active?.id ?? "");
+    const operation = handleDragEnd(event);
+    // DnD owns rollback/refusal. Review changes only after its actual capture succeeds.
+    void awaitWriteOperation(operation, () => undefined).then(acceptance => {
+      if (acceptance?.kind !== 'skipped' && activeKey) handlePlacementCaptured(activeKey, containersRef.current);
+    }).catch(() => undefined);
   };
 
   // Add loading and error handling based on the hook's state

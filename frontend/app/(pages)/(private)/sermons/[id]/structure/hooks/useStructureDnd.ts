@@ -607,7 +607,8 @@ const handleStructureUpdate = async (
   sermon: Sermon,
   newStructure: ThoughtsBySection,
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>,
-  writer: StructureWriter
+  writer: StructureWriter,
+  thoughtId: string
 ): Promise<void> => {
   const normalizedStructure: ThoughtsBySection = {
     ...newStructure,
@@ -617,7 +618,7 @@ const handleStructureUpdate = async (
   if (changesDetected) {
     // `sermon.structure` is the arrangement this screen holds as stored: with it, a
     // thought moved on another device keeps that section instead of jumping back.
-    await writer.updateStructure(sermon.id, normalizedStructure, sermon.structure);
+    await writer.updateStructure(sermon.id, normalizedStructure, sermon.structure, { thoughtIds: [thoughtId] });
     setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: normalizedStructure } : prev));
   }
 };
@@ -964,7 +965,8 @@ export const useStructureDnd = ({
           sermon,
           buildStructureFromContainers(preview),
           setSermon,
-          writer
+          writer,
+          String(active.id)
         );
         const movedThought = sermon.thoughts.find((thought) => thought.id === String(active.id));
         const thoughtPersistence = movedThought
@@ -1067,7 +1069,7 @@ export const useStructureDnd = ({
       }
     }
 
-    const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon, writer);
+    const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon, writer, String(active.id));
     const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
     void persistence.catch(rollback);
     return persistence;

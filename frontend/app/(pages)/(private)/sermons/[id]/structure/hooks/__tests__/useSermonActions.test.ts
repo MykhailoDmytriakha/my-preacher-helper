@@ -373,23 +373,61 @@ describe('useSermonActions', () => {
     });
 
     describe('handleMoveToAmbiguous', () => {
-        it('moves item and clears outline point', () => {
-            const { result } = renderHook(() => useSermonActions(defaultProps));
+        it('moves item and clears outline placement in one scoped writer operation', async () => {
+            const customTag = { name: 'custom-kept', color: '#123456' };
+            const sermon = {
+                ...mockSermon,
+                thoughts: [{
+                    ...mockSermon.thoughts[0],
+                    tags: ['custom-kept'],
+                    outlinePointId: 'point-1',
+                    subPointId: 'subpoint-1',
+                }],
+                structure: { introduction: ['thought-1'], main: [], conclusion: [], ambiguous: [] },
+            };
+            const item = {
+                ...mockItem,
+                customTagNames: [customTag],
+                outlinePointId: 'point-1',
+                subPointId: 'subpoint-1',
+            };
+            const props = {
+                ...defaultProps,
+                sermon,
+                containers: { introduction: [item], main: [], conclusion: [], ambiguous: [] },
+                containersRef: { current: { introduction: [item], main: [], conclusion: [], ambiguous: [] } },
+            };
+            mockUpdateStructure.mockResolvedValue({});
+            const { result } = renderHook(() => useSermonActions(props));
+            let operation!: WriteOperation;
 
             act(() => {
-                result.current.handleMoveToAmbiguous('thought-1', 'introduction');
+                operation = result.current.handleMoveToAmbiguous('thought-1', 'introduction');
+            });
+            await act(async () => {
+                await awaitWriteOperation(operation, () => undefined);
             });
 
-            expect(defaultProps.setContainers).toHaveBeenCalled();
-            expect(defaultProps.debouncedSaveThought).toHaveBeenCalledWith(
+            expect(props.setContainers).toHaveBeenCalled();
+            expect(defaultProps.debouncedSaveThought).not.toHaveBeenCalled();
+            expect(defaultProps.debouncedSaveStructure).not.toHaveBeenCalled();
+            expect(mockUpdateStructure).toHaveBeenCalledWith(
                 'sermon-1',
-                expect.objectContaining({ outlinePointId: null }),
-                // `expect.anything()` rejects null, so this asserts a baseline was
-                // actually STATED — without one the write claims every field and a
-                // move republishes this screen's copy of the text.
-                expect.anything()
+                { introduction: [], main: [], conclusion: [], ambiguous: ['thought-1'] },
+                sermon.structure,
+                {
+                    thoughtIds: ['thought-1'],
+                    thoughtUpdates: [{
+                        thought: expect.objectContaining({
+                            id: 'thought-1',
+                            tags: ['custom-kept'],
+                            outlinePointId: null,
+                            subPointId: null,
+                        }),
+                        baseThought: sermon.thoughts[0],
+                    }],
+                },
             );
-            expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
         });
 
         it('ignores if source section is not structural', () => {

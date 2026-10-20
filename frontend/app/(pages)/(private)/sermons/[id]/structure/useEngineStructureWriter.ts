@@ -8,10 +8,11 @@ import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeSections } from '@/utils/mergeSections';
 import { addSermonThought, deleteSermonThought, patchSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
+import { applyScopedThoughtPlacement, completeStoredThoughtPlacement } from '@/utils/thoughtOrdering';
 
 import type { StructureWriter } from '@/components/sermon/structureWriter';
 import type { DocumentData } from '@/data-engine/types';
-import type { Sermon, SermonOutline, ThoughtsBySection } from '@/models/models';
+import type { Sermon, SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
 import type { ThoughtFieldPatch } from '@/utils/sermonThoughtEdits';
 
 type SermonDocument = ReturnType<typeof useDataDocument>;
@@ -20,6 +21,12 @@ const THOUGHT_FIELDS: (keyof ThoughtFieldPatch)[] = ['text', 'tags', 'date', 'ou
 const asSermon = (value: DocumentData): Sermon => ({ ...value, thoughts: (value.thoughts ?? []) } as unknown as Sermon);
 const asDocument = (sermon: Sermon): DocumentData => deepCleanUndefined(sermon) as unknown as DocumentData;
 const unavailable = () => new Error('The sermon is not available for editing');
+
+const applyThoughtUpdate = (current: Sermon, thought: Thought, baseThought: Thought | null): Sermon => {
+  const changed = changedFields(baseThought, thought) as Record<string, unknown>;
+  const patch = Object.fromEntries(THOUGHT_FIELDS.filter(key => key in changed).map(key => [key, changed[key] ?? null])) as ThoughtFieldPatch;
+  return Object.keys(patch).length ? patchSermonThought(current, thought.id, patch) : current;
+};
 
 /**
  * Placement may name only thoughts the document still has, each once. The board can hold a
@@ -57,14 +64,18 @@ export function editEngineSermon<T>(document: Pick<SermonDocument, 'update'>, ow
 export function createEngineStructureWriter(document: Pick<SermonDocument, 'update'>, owner: string | null): StructureWriter {
   const edit = <T,>(apply: (current: Sermon) => { next: Sermon; result: T }) => editEngineSermon(document, owner, apply);
   return {
-    updateStructure: (_sermonId, structure, baseStructure) => edit(current => {
-      const merged = placeExisting(mergeSections(structure, current.structure ?? current.thoughtsBySection, baseStructure ?? null), current.thoughts);
-      return { next: { ...current, structure: merged, thoughtsBySection: merged }, result: merged };
+    updateStructure: (_sermonId, structure, baseStructure, options) => edit(current => {
+      const edited = (options?.thoughtUpdates ?? []).reduce((next, update) => applyThoughtUpdate(next, update.thought, update.baseThought), current);
+      // Fill legacy omissions while preserving every existing unselected placement.
+      const stored = options?.thoughtIds ? completeStoredThoughtPlacement(edited) : edited.structure ?? edited.thoughtsBySection;
+      const intended = options?.thoughtIds
+        ? applyScopedThoughtPlacement(stored, structure, options.thoughtIds)
+        : mergeSections(structure, stored, baseStructure ?? null);
+      const merged = placeExisting(intended, edited.thoughts);
+      return { next: { ...edited, structure: merged, thoughtsBySection: merged }, result: merged };
     }),
     updateThought: (_sermonId, thought, baseThought) => edit(current => {
-      const changed = changedFields(baseThought, thought) as Record<string, unknown>;
-      const patch = Object.fromEntries(THOUGHT_FIELDS.filter(key => key in changed).map(key => [key, changed[key] ?? null])) as ThoughtFieldPatch;
-      const next = Object.keys(patch).length ? patchSermonThought(current, thought.id, patch) : current;
+      const next = applyThoughtUpdate(current, thought, baseThought);
       return { next, result: next.thoughts.find(item => item.id === thought.id) ?? thought };
     }),
     deleteThought: (_sermonId, thought) => edit(current => ({ next: deleteSermonThought(current, thought.id), result: undefined })),
