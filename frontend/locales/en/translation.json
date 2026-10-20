@@ -292,7 +292,7 @@
     "copy": "Copy technical information",
     "copied": "Copied",
     "copyFailed": "Automatic copying failed. Select the report text and copy it manually.",
-    "localOnly": "The report stays on this device and is not sent automatically. History contains up to 80 events from the last 24 hours."
+    "localOnly": "The report stays on this device and is not sent automatically. History contains up to {{maxEvents}} events from the last {{hours}} hours."
   },
   "freshness": {
     "checkOnlyHint": "Checking does not replace the text on this screen.",

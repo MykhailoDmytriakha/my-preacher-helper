@@ -4,7 +4,7 @@ import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from '@headlessui/re
 import { useEffect, useState } from 'react';
 
 import { useClipboard } from '@/hooks/useClipboard';
-import { buildDiagnosticReport, diagnosticServerVersion } from '@/utils/appDiagnostics';
+import { buildDiagnosticReport, DIAGNOSTIC_RETENTION, diagnosticServerVersion } from '@/utils/appDiagnostics';
 import { useTranslation } from '@locales/useTranslation';
 
 /** One shared viewer for feedback and freshness warnings; copying never submits feedback. */
@@ -56,7 +56,7 @@ export function TechnicalDetailsDialog() {
             <DialogTitle className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('diagnostics.title')}</DialogTitle>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{t('diagnostics.description')}</p>
             <textarea aria-label={t('diagnostics.report')} readOnly value={report} spellCheck={false} className="mt-4 min-h-0 flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50 p-3 font-mono text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" rows={18} />
-            <p role="status" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{copyError ? t('diagnostics.copyFailed') : t('diagnostics.localOnly')}</p>
+            <p role="status" className="mt-2 text-sm text-slate-600 dark:text-slate-300">{copyError ? t('diagnostics.copyFailed') : t('diagnostics.localOnly', DIAGNOSTIC_RETENTION)}</p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm dark:text-slate-100">{t('common.close')}</button>
               <button type="button" onClick={() => { void copyToClipboard(report); }} disabled={collecting} className={`grid items-center rounded-lg px-4 py-2 text-center text-sm font-medium text-white transition-colors ${isCopied ? 'bg-green-600' : 'bg-blue-600'}`}>

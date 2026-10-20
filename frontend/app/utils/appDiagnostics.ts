@@ -9,8 +9,9 @@ import { safeRuntimeErrorMetadata, type RuntimeErrorMetadata } from '@/utils/run
  * short fingerprint instead of its id, and routine events cannot push the path out.
  */
 const STORAGE_KEY = 'preacher:diagnostics:v1';
-const MAX_EVENTS = 150;
-const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+export const DIAGNOSTIC_RETENTION = { maxEvents: 150, hours: 24 } as const;
+const MAX_EVENTS = DIAGNOSTIC_RETENTION.maxEvents;
+const MAX_AGE_MS = DIAGNOSTIC_RETENTION.hours * 60 * 60 * 1000;
 /**
  * The newest few of each routine kind. In twelve real reports swipe gestures took up to 49 of 80
  * places and pushed the path out; a kind not listed here is kept up to the overall bound.
@@ -244,7 +245,7 @@ export function buildDiagnosticReport() {
       viewport: { width: window.innerWidth, height: window.innerHeight, pixelRatio: window.devicePixelRatio },
       serviceWorker: 'serviceWorker' in navigator ? navigator.serviceWorker.controller?.state ?? 'uncontrolled' : 'unsupported',
     },
-    retention: { maxEvents: MAX_EVENTS, hours: 24, perKind: PER_KIND },
+    retention: { ...DIAGNOSTIC_RETENTION, perKind: PER_KIND },
     storage: { silent: getDeviceStorageHealth().silent.map(({ database, since }) => ({ database, silentForMs: Math.max(0, Date.now() - since) })) },
     edits: editQueueSummary(),
     events: diagnosticEvents(),
