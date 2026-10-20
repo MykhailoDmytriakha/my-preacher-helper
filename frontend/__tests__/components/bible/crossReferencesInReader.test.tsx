@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -7,11 +7,12 @@ import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { CrossReferenceSettings } from '@/components/bible/CrossReferenceSettings';
 import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs, useCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
+import { restingScrollTop } from '@/components/bible/verseSheetGeometry';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { TextScaleProvider } from '@/providers/TextScaleProvider';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
-import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
+import { coversChapter, crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
 import { bookSlug, verseWords, type BookText } from '@/utils/bibleText';
 
@@ -162,6 +163,112 @@ describe('cross references in the Bible reader', () => {
     const again = screen.getByRole('dialog', { name: label(subject.outside) });
     await userEvent.click(within(again).getByRole('button', { name: 'common.close' }));
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
+  });
+
+  // The owner, 2026-10-17 and 2026-10-19: a link opened its verse alone, and where the context was not
+  // remembered the verse gave no details. It opens in its whole chapter — that chapter only, and seen so.
+  it('a link opens in its whole chapter: named above, its end below, the passage lit among its neighbours', async () => {
+    renderRuth();
+    const list = await openLinksOfSubject();
+    await userEvent.click(within(list).getByText(label(subject.outside)));
+    const link = screen.getByRole('dialog', { name: label(subject.outside) });
+    const { book, chapter, fromVerse, toVerse } = subject.outside;
+    const verses = (publicFile(`bible-text/rst/v1/${bookSlug(book)}.json`) as BookText).chapters[chapter - 1];
+    const psalm = book === 'Psalms';
+    await waitFor(() => expect(within(link).getByText(psalm ? 'bible.crossRefs.psalmEnd' : 'bible.crossRefs.chapterEnd')).toBeInTheDocument());
+    expect(within(link).getAllByText(psalm ? 'bible.psalm' : 'bible.crossRefs.chapterOfBook').length).toBeGreaterThan(0);
+    const words = (raw: string) => verseWords(raw).slice(0, 30);
+    expect(link.textContent).toContain(words(verses[0]));
+    expect(link.textContent).toContain(words(verses[verses.length - 1]));
+    const lit = Array.from(link.querySelectorAll('[data-arrival="on"]'));
+    expect(lit).toHaveLength(coversChapter(subject.outside, 'rst') ? 0 : toVerse - fromVerse + 1);
+    if (lit.length > 0) expect(lit[0].textContent).toContain(words(verses[fromVerse - 1]));
+    // Rows of another place are never taken for the verse being read or for a verse to mark.
+    expect(link.querySelector('[data-verse], [data-verse-text]')).toBeNull();
+  });
+
+  it('a link to a whole chapter lights nothing: the chapter is the passage', async () => {
+    const found = (() => {
+      for (let chapter = 1; chapter <= ruthText.chapters.length; chapter += 1) {
+        for (let verse = 1; verse <= ruthText.chapters[chapter - 1].length; verse += 1) {
+          const references = crossReferencesAt(ruthSet, 'rst', { book: 'Ruth', chapter, verse });
+          const reference = references.find((candidate) => candidate.book !== 'Psalms' && coversChapter(candidate, 'rst'));
+          if (reference) return { chapter, verse, reference, main: references.some(isMainReference) };
+        }
+      }
+      throw new Error('No link of Ruth names a whole chapter');
+    })();
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: found.chapter, verse: found.verse }} onOpenBook={jest.fn()} />);
+    const opener = found.main ? await screen.findByTestId(`cross-refs-${found.chapter}:${found.verse}`) : (await screen.findAllByRole('button', { name: 'bible.crossRefs.verseRefs' }))
+      .find((button) => button.closest('[data-verse]')?.getAttribute('data-verse') === `${found.chapter}:${found.verse}`) as HTMLElement;
+    await userEvent.click(opener);
+    const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+    if (isMainReference(found.reference)) {
+      await userEvent.click(within(list).getByText(label(found.reference)));
+    } else {
+      if (found.main) await userEvent.click(within(list).getByRole('button', { name: 'bible.crossRefs.othersSection' }));
+      await userEvent.click(within(list).getByRole('button', { name: label(found.reference) }));
+    }
+    const link = screen.getByRole('dialog', { name: label(found.reference) });
+    await waitFor(() => expect(within(link).getByText('bible.crossRefs.chapterEnd')).toBeInTheDocument());
+    expect(within(link).getByText(/bible\.crossRefs\.scopeLinkChapter/)).toBeInTheDocument();
+    expect(link.querySelectorAll('[data-arrival="on"]')).toHaveLength(0);
+  });
+
+  // A tablet turned, a window made lower: the card's pane changes height, and the passage must not slip
+  // out of it unannounced (an independent review, 2026-10-20).
+  it('the pane changing height: the passage comes back to the middle, or "back to the verse" shows once the person has scrolled', async () => {
+    const watched = new Map<Element, () => void>();
+    const shared = globalThis.ResizeObserver;
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+      constructor(private readonly callback: () => void) {}
+      observe(target: Element) { watched.set(target, this.callback); }
+      unobserve() {}
+      disconnect() {}
+    };
+    try {
+      renderRuth();
+      const list = await openLinksOfSubject();
+      await userEvent.click(within(list).getByText(label(subject.outside)));
+      const link = screen.getByRole('dialog', { name: label(subject.outside) });
+      await waitFor(() => expect(within(link).getByText('bible.crossRefs.chapterEnd')).toBeInTheDocument());
+      const pane = link.querySelector<HTMLElement>('div[tabindex="0"]') as HTMLElement;
+      const lit = Array.from(link.querySelectorAll<HTMLElement>('[data-arrival="on"]'));
+      expect(lit.length).toBeGreaterThan(0);
+      // The passage stands 1000–1100 px down its chapter; the pane is 600 px high, then 300.
+      let height = 600;
+      let top = pane.scrollTop;
+      Object.defineProperty(pane, 'clientHeight', { configurable: true, get: () => height });
+      Object.defineProperty(pane, 'scrollHeight', { configurable: true, get: () => 3000 });
+      Object.defineProperty(pane, 'scrollTop', { configurable: true, get: () => top, set: (value: number) => { top = value; } });
+      for (const row of lit) row.getBoundingClientRect = () => ({ top: 1000 - top, bottom: 1100 - top }) as DOMRect;
+      const resized = () => act(() => watched.get(pane)?.());
+
+      // Not scrolled: it comes back to the middle of the new height.
+      resized();
+      expect(top).toBe(restingScrollTop({ top: 1000, bottom: 1100 }, 600, 3000));
+
+      // Scrolled, the passage still in sight; the pane made lower puts it below — the way back shows.
+      top = 650;
+      fireEvent.scroll(pane);
+      expect(within(link).queryByText('bible.sheet.backToPassage')).not.toBeInTheDocument();
+      height = 300;
+      resized();
+      expect(within(link).getByText('bible.sheet.backToPassage')).toBeInTheDocument();
+    } finally {
+      globalThis.ResizeObserver = shared;
+    }
+  });
+
+  // The owner, 2026-10-19: "5 independent sources" read as nothing; the main and the rest already say it.
+  it('says nowhere how many sources give a link', async () => {
+    renderRuth();
+    const list = await openLinksOfSubject();
+    await userEvent.click(within(list).getByRole('button', { name: 'bible.crossRefs.othersSection' }));
+    await userEvent.click(within(list).getByRole('switch', { name: 'bible.crossRefs.othersAsVerses' }));
+    await userEvent.click(within(list).getByText(label(subject.main[0])));
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
+    expect(screen.queryByText(/bible\.crossRefs\.sources/)).not.toBeInTheDocument();
   });
 
   it('a link into another book: its text first, then "Open" asks for that book at the passage, with the verse it came from as the way back', async () => {

@@ -1,16 +1,20 @@
 'use client';
 
+import { ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/20/solid';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Switch from '@/components/ui/Switch';
-import { getBookIds, getLocalizedAbbrev } from '@/utils/bibleBooks';
+import { getBookIds, getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
+import { BIBLES } from '@/utils/bibles';
 import { fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { coversChapter, crossReferenceLabel, crossReferencesAt, isMainReference, type CrossReference, type CrossRefsBook } from '@/utils/crossReferences';
 
+import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
 import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
+import { passageAway, restingScrollTop, type PassageBox } from './verseSheetGeometry';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -89,24 +93,150 @@ function passageText(text: BookText | undefined, reference: CrossReference): str
   return reference.toVerse > last ? `${words} …` : words;
 }
 
-/** One link: its text, how many independent sources give it, and "Open". Closed, the links are under it. */
-function ReferenceDetail({ reference, label, text, titleId, onClose, onOpen }: {
-  reference: CrossReference; label: string; text: string | null; titleId: string;
+/** Where the lit rows sit in the pane's scrolling text, in px from its top; null — nothing is lit. */
+function litBox(pane: HTMLElement): PassageBox | null {
+  const rows = Array.from(pane.querySelectorAll<HTMLElement>(`[${ARRIVAL_ATTRIBUTE}="on"]`));
+  if (rows.length === 0) return null;
+  const origin = pane.getBoundingClientRect().top - pane.scrollTop;
+  return {
+    top: Math.min(...rows.map((row) => row.getBoundingClientRect().top - origin)),
+    bottom: Math.max(...rows.map((row) => row.getBoundingClientRect().bottom - origin)),
+  };
+}
+
+/**
+ * One link in its context — the whole chapter it is in, and only that chapter (the owner, 2026-10-19:
+ * "it must be seen that the context is one chapter"): its name above the text, its end below, the
+ * passage lit and brought to the middle, "back to the verse" when scrolled away. A link to a whole
+ * chapter lights nothing and opens at its start. "Open" goes there to read on; closed, the links are
+ * under it as they were.
+ */
+function ReferenceInContext({ reference, label, text, bible, locale, titleId, onClose, onOpen }: {
+  reference: CrossReference; label: string; text: BookText | undefined; bible: BibleId; locale: AppLocale; titleId: string;
   onClose: () => void; onOpen: () => void;
 }) {
   const { t } = useTranslation();
+  const verses = text?.chapters[reference.chapter - 1];
+  const whole = coversChapter(reference, bible);
+  const psalm = reference.book === 'Psalms';
+  const paneRef = useRef<HTMLDivElement | null>(null);
+  const restedAtRef = useRef<number | null>(null);
+  const [away, setAway] = useState<'up' | 'down' | null>(null);
+
+  const rest = useCallback((smooth: boolean) => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const box = litBox(pane);
+    const top = box ? restingScrollTop(box, pane.clientHeight, pane.scrollHeight) : 0;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (smooth && !reduced && typeof pane.scrollTo === 'function') pane.scrollTo({ top, behavior: 'smooth' });
+    else pane.scrollTop = top;
+    restedAtRef.current = top;
+  }, []);
+
+  // The passage comes to the middle once the chapter is in, and again when the serif arrives late and
+  // moves every line — unless the person has scrolled.
+  useLayoutEffect(() => {
+    if (!verses) return undefined;
+    rest(false);
+    setAway(null);
+    let alive = true;
+    void document.fonts?.ready.then(() => {
+      if (alive && paneRef.current && paneRef.current.scrollTop === restedAtRef.current) rest(false);
+    });
+    return () => { alive = false; };
+  }, [verses, rest]);
+
+  const noteAway = useCallback(() => {
+    const pane = paneRef.current;
+    const box = pane ? litBox(pane) : null;
+    setAway(pane && box ? passageAway(box, pane.scrollTop, pane.clientHeight) : null);
+  }, []);
+
+  // The pane changes height with the screen — a tablet turned, a window made lower: the passage comes
+  // back to the middle unless the person has scrolled, and "back to the verse" is asked again if they have.
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (!verses || !pane || typeof ResizeObserver === 'undefined') return undefined;
+    let height = pane.clientHeight;
+    const observer = new ResizeObserver(() => {
+      if (pane.clientHeight === height) return;
+      height = pane.clientHeight;
+      if (pane.scrollTop === restedAtRef.current) rest(false);
+      else noteAway();
+    });
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [verses, rest, noteAway]);
+
+  const heading = psalm
+    ? t('bible.psalm', { number: reference.chapter })
+    : t('bible.crossRefs.chapterOfBook', { book: getLocalizedBookName(reference.book, locale), number: reference.chapter });
+  const scope = whole
+    ? t(psalm ? 'bible.crossRefs.scopeLinkPsalm' : 'bible.crossRefs.scopeLinkChapter')
+    : t(psalm ? 'bible.crossRefs.scopePsalm' : 'bible.crossRefs.scopeChapter');
+
   return (
     <>
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex shrink-0 items-start justify-between gap-2">
         <h3 id={titleId} className="pt-1 font-serif text-2xl font-bold text-gray-900 dark:text-white">{label}</h3>
         <SheetCloseButton onClose={onClose} />
       </div>
-      <p className="mt-0.5 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</p>
-      <p className="mt-3 font-serif text-lg leading-relaxed text-gray-800 dark:text-gray-100">{text ?? t('common.loading')}</p>
+      <div className="mt-1 flex shrink-0 items-baseline justify-between gap-3 border-b border-gray-200 pb-2 dark:border-gray-700">
+        <span className="min-w-0 text-sm font-semibold text-gray-900 dark:text-gray-100">{heading}</span>
+        <span className="shrink-0 text-xs text-gray-600 dark:text-gray-400">
+          {verses ? `${scope} · ${t('bible.crossRefs.verseCount', { count: verses.length })}` : scope}
+        </span>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {/* The light of the passage reaches 6 px past its verses; the pane reaches as far into the card's
+            margin and gives it back as padding, so the text keeps its width and nothing scrolls sideways. */}
+        <div
+          ref={paneRef}
+          onScroll={noteAway}
+          tabIndex={0}
+          aria-label={heading}
+          className="absolute -inset-x-1.5 inset-y-0 overflow-y-auto overflow-x-hidden overscroll-contain px-1.5 pb-20 pt-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
+        >
+          {verses ? (
+            <>
+              {/* `isolate`: the light of the passage lies under the text and over the card. */}
+              <div className="isolate">
+                <ChapterVerses
+                  chapter={reference.chapter}
+                  verses={verses}
+                  lang={BIBLES[bible].language}
+                  lit={(verse) => !whole && verse >= reference.fromVerse && verse <= reference.toVerse}
+                />
+              </div>
+              <div className="mt-6 flex items-center gap-3 pl-10">
+                <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+                <span className="text-xs text-gray-600 dark:text-gray-400">
+                  {t(psalm ? 'bible.crossRefs.psalmEnd' : 'bible.crossRefs.chapterEnd', { number: reference.chapter })}
+                </span>
+                <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
+              </div>
+            </>
+          ) : (
+            <p role="status" className="py-6 text-center text-sm text-gray-600 dark:text-gray-400">{t('common.loading')}</p>
+          )}
+        </div>
+        {away ? (
+          // Where the passage went, the button sits: at the top for a passage scrolled off the top, at the bottom otherwise.
+          <button
+            type="button"
+            onClick={() => rest(true)}
+            className={`absolute left-1/2 z-10 inline-flex min-h-11 -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-indigo-600 py-2 pl-3.5 pr-4 text-sm font-semibold text-white shadow-lg transition hover:bg-indigo-700 ${away === 'up' ? 'top-3' : 'bottom-3'}`}
+          >
+            {away === 'up' ? <ArrowUpIcon className="h-5 w-5" aria-hidden="true" /> : <ArrowDownIcon className="h-5 w-5" aria-hidden="true" />}
+            {t('bible.sheet.backToPassage')}
+          </button>
+        ) : null}
+      </div>
       <button
         type="button"
         onClick={onOpen}
-        className="mt-4 min-h-12 w-full rounded-xl bg-indigo-600 px-4 text-base font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+        className="mt-3 min-h-12 w-full shrink-0 rounded-xl bg-indigo-600 px-4 text-base font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
       >
         {t('bible.crossRefs.open', { place: label })}
       </button>
@@ -120,18 +250,17 @@ function inBibleOrder(references: readonly CrossReference[]): CrossReference[] {
   return [...references].sort((a, b) => order.indexOf(a.book) - order.indexOf(b.book) || a.chapter - b.chapter || a.fromVerse - b.fromVerse);
 }
 
-/** One link as a verse: its name, how many independent sources give it, and its whole text. */
+/**
+ * One link as a verse: its name and its whole text. How many sources give it is not written: the
+ * main and the rest already say it (the owner, 2026-10-19, did not read "5 independent sources").
+ */
 function ReferenceRow({ reference, label, text, onPick }: {
   reference: CrossReference; label: string; text: string | null; onPick: (reference: CrossReference) => void;
 }) {
-  const { t } = useTranslation();
   return (
     <li className="border-b border-gray-100 last:border-b-0 dark:border-gray-800">
       <button type="button" onClick={() => onPick(reference)} className="block w-full py-2.5 text-left">
-        <span className="flex items-baseline justify-between gap-3">
-          <span className="font-semibold text-indigo-700 dark:text-indigo-300">{label}</span>
-          <span className="shrink-0 text-xs text-gray-600 dark:text-gray-400">{t('bible.crossRefs.sources', { count: reference.weight })}</span>
-        </span>
+        <span className="block font-semibold text-indigo-700 dark:text-indigo-300">{label}</span>
         <span className="mt-0.5 block font-serif text-[15px] leading-snug text-gray-700 dark:text-gray-300">{text ?? '…'}</span>
       </button>
     </li>
@@ -262,7 +391,7 @@ function ReferenceList({ references, loading, place, verseText, titleId, bible, 
 
 /**
  * THE LINKS OF ONE VERSE — the list (the main ones with their text, the rest by book or as verses)
- * and one link's text with "Open". Reading stays where it was: the window lies over the page and
+ * and one link in its chapter with "Open". Reading stays where it was: the window lies over the page and
  * only "Open" moves the reader. A phone gets it from the bottom edge, a tablet in the middle, a wide
  * screen as a card on the right.
  */
@@ -318,11 +447,14 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
       </ReaderSheet>
       {/* One link over the list, as a cascade: closed, the list is found exactly as it was. */}
       {picked ? (
-        <ReaderSheet titleId={linkTitleId} onClose={() => setPicked(null)} layerClassName={linkLayerClassName} depth={2}>
-          <ReferenceDetail
+        <ReaderSheet titleId={linkTitleId} onClose={() => setPicked(null)} layerClassName={linkLayerClassName} depth={2} fill>
+          <ReferenceInContext
+            key={crossReferenceLabel(picked, bible, locale)}
             reference={picked}
             label={crossReferenceLabel(picked, bible, locale)}
-            text={passageText(texts.get(picked.book), picked)}
+            text={texts.get(picked.book)}
+            bible={bible}
+            locale={locale}
             titleId={linkTitleId}
             onClose={() => setPicked(null)}
             onOpen={() => onOpenReference(picked, at)}

@@ -77,14 +77,25 @@ const READING_TOP = 'var(--reading-top)';
 /** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
 const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
 
-function VerseRow({ chapter, verse, raw, lang, crossRefs, signs }: { chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns }) {
+function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = false, lit }: {
+  chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns;
+  /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
+  detached?: boolean;
+  /** Lit from the start; rows of the ribbon are lit by the screen setting `data-arrival` itself. */
+  lit?: boolean;
+}) {
   const { opensParagraph, segments } = parseVerse(raw);
   const sign = signs?.at.get(`${chapter}:${verse}`);
   const count = crossRefs?.counts.get(`${chapter}:${verse}`);
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
-    <div data-verse={`${chapter}:${verse}`} style={{ scrollMarginTop: READING_TOP }} className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}>
+    <div
+      data-verse={detached ? undefined : `${chapter}:${verse}`}
+      {...(lit ? { [ARRIVAL_ATTRIBUTE]: 'on' } : {})}
+      style={{ scrollMarginTop: READING_TOP }}
+      className={`flex gap-3 ${ARRIVAL_CLASSES} ${opensParagraph && verse > 1 ? 'mt-2' : ''}`}
+    >
       {signs && sign ? (
         <button
           type="button"
@@ -113,7 +124,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs }: { chapter: nu
       <p style={VERSE_TEXT_STYLE} className="min-w-0 flex-1 font-serif leading-[1.65] text-gray-800 dark:text-gray-100">
         {/* The verse's own words, apart from the chip: marks count and paint them (`marks/verseWordDom.ts`).
             They are in their Bible's language whatever the interface speaks: a screen reader reads them so. */}
-        <span data-verse-text="" lang={lang}>
+        <span data-verse-text={detached ? undefined : ''} lang={lang}>
           {segments.map((segment, index) =>
             segment.kind === 'break' ? <br key={index} /> : <Fragment key={index}><Segment segment={segment} /></Fragment>
           )}
@@ -178,3 +189,20 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
     </>
   );
 });
+
+/**
+ * One chapter drawn on its own, as the ribbon draws it — a link's chapter in the window of a verse's
+ * links (`CrossReferenceSheet`), the passage lit. Its rows are detached: the reader's marks and its
+ * place read look rows up by `data-verse`, and this chapter is not the book being read.
+ */
+export function ChapterVerses({ chapter, verses, lang, lit }: {
+  chapter: number; verses: readonly string[]; lang: string; lit: (verse: number) => boolean;
+}) {
+  return (
+    <>
+      {verses.map((raw, verseIndex) => (
+        <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} detached lit={lit(verseIndex + 1)} />
+      ))}
+    </>
+  );
+}
