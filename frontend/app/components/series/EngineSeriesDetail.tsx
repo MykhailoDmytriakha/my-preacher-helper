@@ -14,6 +14,7 @@ import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
 import { useAuth } from '@/providers/AuthProvider';
+import { listReadState } from '@/utils/listReadState';
 import { hydrateSeries } from '@/utils/seriesDocument';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -84,7 +85,8 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     sermon: item.type === 'sermon' ? sermons.sermons.find(sermon => sermon.id === item.refId) : undefined,
     group: item.type === 'group' ? groups.groups.find(group => group.id === item.refId) : undefined }));
   const refresh = async () => { await Promise.all([document.retry(), collection.refreshSeries()]); };
-  return <SeriesDetailView readOnly={readOnly} series={series} items={items} onBack={() => router.push('/series')}
+  return <SeriesDetailView readOnly={readOnly} series={series} items={items}
+    sermonsRead={listReadState(sermons)} groupsRead={listReadState(groups)} onBack={() => router.push('/series')}
     onAddSermons={() => setMembership({ mode: 'sermon' })} onAddGroups={() => setMembership({ mode: 'group' })}
     onEdit={() => setEditing(true)} onDelete={() => setDeleting(true)} onRefresh={() => { void refresh().catch(() => undefined); }}
     feedback={<>{unavailable && <RecordUnavailable presence={document.presence}

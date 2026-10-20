@@ -565,4 +565,21 @@ describe('Sermons Page', () => {
       expect(localStorageMock.getItem('sermons:searchInThoughts')).toBe('false');
     });
   });
+
+  it('does not certify an empty sermon account or zero statistics after a failed read', () => {
+    mockUseDashboardSermons.mockReturnValue({ sermons: [], loading: false, error: new Error('Store unavailable'), refresh: jest.fn() });
+    render(<SermonsPage />);
+    expect(screen.queryByText('Create your first sermon to get started')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-stats')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('retains actual sermon cards while a collection refresh is refused', () => {
+    mockUseDashboardSermons.mockReturnValue({ sermons: mockSermons, loading: false, error: new Error('Store unavailable'), refresh: jest.fn() });
+    render(<SermonsPage />);
+    expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-stats')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
 });

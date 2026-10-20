@@ -14,16 +14,18 @@ interface AgendaViewProps {
   /** Everything there is, across months: the agenda is a single running list. */
   entries: CalendarEntry[];
   series?: Series[];
+  canDescribe?: boolean;
 }
 
 /** The same entries as the month view, in one list that crosses months. */
-export default function AgendaView({ entries, series = [] }: AgendaViewProps) {
+export default function AgendaView({ entries, series = [], canDescribe = true }: AgendaViewProps) {
   const { t } = useTranslation();
 
   // `ru-RU` used to fall through a strict comparison to English month names.
   const { dateLocale } = useAppLocale();
   const ordered = [...entries].sort(byNewestFirst);
 
+  if (ordered.length === 0 && !canDescribe) return null;
   if (ordered.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 py-20 text-center dark:border-gray-700 dark:bg-gray-800/30">

@@ -4,6 +4,7 @@ import { ArrowLeftIcon, PencilIcon, PlusIcon, TrashIcon } from '@heroicons/react
 import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import { useMemo, type ReactNode } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import { formatDateForLocale } from '@/utils/dateFormatter';
@@ -12,14 +13,16 @@ import { useTranslation } from '@locales/useTranslation';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
 import type { ChipTone } from '@/utils/chipClasses';
+import type { ListReadState } from '@/utils/listReadState';
 
 export type ResolvedSeriesItem = { item: SeriesItem; sermon?: Sermon; group?: Group };
 const SERIES_STATUS_TONES: Record<string, ChipTone> = { draft: 'neutral', active: 'blue', completed: 'emerald' };
 
 /** Shared presentation; opening ancestors, delivery and draft ownership belong to callers. */
 export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGroups, onEdit, onDelete, onRefresh,
-  feedback, itemsContent, reorderHint, children, readOnly = false }: {
+  feedback, itemsContent, reorderHint, children, readOnly = false, sermonsRead: relatedSermonsRead = 'ready', groupsRead: relatedGroupsRead = 'ready' }: {
   series: Series; items: ResolvedSeriesItem[]; readOnly?: boolean;
+  sermonsRead?: ListReadState; groupsRead?: ListReadState;
   onBack: () => void; onAddSermons: () => void; onAddGroups: () => void; onEdit: () => void; onDelete: () => void; onRefresh: () => void;
   feedback?: ReactNode; itemsContent: ReactNode; reorderHint?: ReactNode; children?: ReactNode;
 }) {
@@ -30,6 +33,8 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
     completedSermons: items.filter(entry => entry.item.type === 'sermon' && Boolean(entry.sermon && getEffectiveIsPreached(entry.sermon))).length,
     conductedGroups: items.filter(entry => entry.item.type === 'group' && (entry.group?.meetingDates || []).length > 0).length,
   }), [items]);
+  const sermonsRead = stats.sermonsCount === 0 ? 'ready' : relatedSermonsRead;
+  const groupsRead = stats.groupsCount === 0 ? 'ready' : relatedGroupsRead;
   return <div className="space-y-7">
     {feedback}
       <div className="overflow-hidden rounded-3xl border border-gray-200/70 bg-gradient-to-br from-blue-600/10 via-indigo-600/10 to-cyan-600/10 p-6 shadow-sm dark:border-gray-800 dark:from-blue-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10">
@@ -162,16 +167,18 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
             {t('dashboard.preached', { defaultValue: 'Preached' })}
           </p>
           <span className="mt-2 block text-2xl font-bold text-purple-600 dark:text-purple-300">
-            {stats.completedSermons}
+            {sermonsRead === 'ready' ? stats.completedSermons : '—'}
           </span>
+          <ListReadFeedback state={sermonsRead} />
         </div>
         <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
             {t('workspaces.series.detail.conductedMeetings', { defaultValue: 'Meetings' })}
           </p>
           <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">
-            {stats.conductedGroups}
+            {groupsRead === 'ready' ? stats.conductedGroups : '—'}
           </span>
+          <ListReadFeedback state={groupsRead} />
         </div>
       </div>
       <div className="space-y-4 rounded-2xl border border-gray-200/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-gray-800 dark:bg-gray-900/70">

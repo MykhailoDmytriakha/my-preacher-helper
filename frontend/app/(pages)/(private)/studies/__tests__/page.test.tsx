@@ -684,4 +684,18 @@ describe('StudiesPage', () => {
       expect(matchingNotesLabels[0]).toHaveTextContent('0');
     });
   });
+
+  it('opens an available note share window without claiming access is off after the link read fails', () => {
+    mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), notes: [createMockNote({ id: 'known-note', title: 'Known note' })] });
+    mockUseStudyNoteShareLinks.mockReturnValue({ ...baseUseStudyNoteShareLinksValue(), error: new Error('Store unavailable') });
+    render(<StudiesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByText('studiesWorkspace.shareLinks.accessOff')).not.toBeInTheDocument();
+    expect(dialog.queryByText('studiesWorkspace.shareLinks.inviteText')).not.toBeInTheDocument();
+    expect(dialog.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: 'studiesWorkspace.shareLinks.createButton' })).toBeDisabled();
+    expect(screen.getAllByText('Known note').length).toBeGreaterThan(0);
+  });
+
 });

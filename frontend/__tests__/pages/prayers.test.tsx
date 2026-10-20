@@ -488,4 +488,28 @@ describe('Prayer Page', () => {
     // The typed answer is ON SCREEN — this banner is its only remaining copy.
     expect(screen.getByText(/God provided a job/)).toBeInTheDocument();
   });
+
+  it('does not call a refused prayer list empty and keeps ordinary creation available', () => {
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), prayerRequests: [], loading: false, error: new Error('Store unavailable') });
+    render(<PrayerPage />);
+    expect(screen.queryByText('No prayer requests yet')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Prayer' })).toBeEnabled();
+  });
+
+  it('does not certify a filtered empty result after refusal', () => {
+    queryStateDefaults.q = 'no matching words';
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), loading: false, error: new Error('Store unavailable') });
+    render(<PrayerPage />);
+    expect(screen.queryByText('No prayers match this filter')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('keeps an actual cached prayer card readable beside its collection failure', () => {
+    mockUsePrayerRequests.mockReturnValue({ ...mockUsePrayerRequests(), loading: false, error: new Error('Store unavailable') });
+    render(<PrayerPage />);
+    expect(screen.getByTestId('prayer-card-active-1')).toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
 });

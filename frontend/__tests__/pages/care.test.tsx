@@ -17,15 +17,18 @@ import uk from '../../locales/uk/translation.json';
  */
 
 const mockPrayers: { status: string }[] = [];
+let mockPrayerReadError: Error | null = null;
+let mockCouncilReadError: Error | null = null;
+const mockCouncils: { status: string }[] = [];
 
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'user-1' } }) }));
 jest.mock('@/hooks/usePrayerRequests', () => ({
-  usePrayerRequests: () => ({ prayerRequests: mockPrayers }),
+  usePrayerRequests: () => ({ prayerRequests: mockPrayers, loading: false, error: mockPrayerReadError }),
 }));
 
 // The plane counts councils in preparation the same way; the hook needs a QueryClient the
 // page test does not build, and the number is the section's own concern.
-jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: [], loading: false, error: null, refresh: jest.fn() }) }));
+jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: mockCouncils, loading: false, error: mockCouncilReadError, refresh: jest.fn() }) }));
 
 /** Every section on the plane, grouped into the card it belongs to. */
 const SECTIONS_BY_CARD = {
@@ -43,6 +46,9 @@ const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/order
 describe('Pastor plane', () => {
   beforeEach(() => {
     mockPrayers.length = 0;
+    mockPrayerReadError = null;
+    mockCouncilReadError = null;
+    mockCouncils.length = 0;
   });
 
   it('names the plane', () => {
@@ -161,4 +167,31 @@ describe('Pastor plane', () => {
       });
     });
   });
+
+  it('keeps the prayer journal reachable without asserting a complete count after refusal', () => {
+    mockPrayers.push({ status: 'active' });
+    mockPrayerReadError = new Error('Store unavailable');
+    render(<CarePage />);
+    const row = screen.getByTestId('care-section-prayers');
+    expect(row).toHaveAttribute('href', '/prayers');
+    expect(within(row).queryByText('1')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('withholds an incomplete council count while leaving the section link available', () => {
+    mockCouncils.push({ status: 'preparing' });
+    mockCouncilReadError = new Error('Store unavailable');
+    render(<CarePage />);
+    const row = screen.getByTestId('care-section-council');
+    expect(row).toHaveAttribute('href', '/care/council');
+    expect(within(row).queryByText('1')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('shows a genuinely read council count', () => {
+    mockCouncils.push({ status: 'preparing' });
+    render(<CarePage />);
+    expect(within(screen.getByTestId('care-section-council')).getByText('1')).toBeInTheDocument();
+  });
+
 });

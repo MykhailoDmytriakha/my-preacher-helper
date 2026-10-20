@@ -15,6 +15,7 @@ import { useQueryState } from 'nuqs';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
@@ -29,6 +30,7 @@ import {
   PRAYER_CORE_AGGREGATE,
   PRAYER_STATUS_AGGREGATE,
 } from '@/services/prayerRequests.client';
+import { listReadState } from '@/utils/listReadState';
 import {
   filterPrayerRequests,
   getDefaultPrayerSortKey,
@@ -110,6 +112,7 @@ export default function PrayerPage() {
   const {
     prayerRequests,
     loading,
+    error,
     createPrayer,
     updatePrayer,
     deletePrayer,
@@ -124,6 +127,7 @@ export default function PrayerPage() {
     takeTheirsOnStatusConflict,
     discardDialog,
   } = usePrayerRequests(user?.uid ?? null, conflictDocId);
+  const readState = listReadState({ loading, error });
 
   const [filterStatus, setFilterStatus] = useQueryState<PrayerFilterStatus>('filter', {
     defaultValue: 'active',
@@ -443,7 +447,7 @@ export default function PrayerPage() {
                   className={`${TAB_BASE_CLASSES} ${isActive ? activeClasses : TAB_INACTIVE_CLASSES}`}
                 >
                   {label}
-                  {counts[key] > 0 && (
+                  {readState === 'ready' && counts[key] > 0 && (
                     <span
                       className={`ml-2 rounded-full px-2.5 py-0.5 text-xs ${
                         isActive ? activeBadgeClasses : BADGE_INACTIVE_CLASSES
@@ -723,7 +727,8 @@ export default function PrayerPage() {
         )}
       </div>
 
-      {loading ? (
+      <ListReadFeedback state={readState} />
+      {loading && prayerRequests.length === 0 ? (
         <div className="space-y-3">
           {[1, 2, 3].map((index) => (
             <div
@@ -732,7 +737,7 @@ export default function PrayerPage() {
             />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && readState === 'ready' ? (
         <div className="py-16 text-center text-gray-400 dark:text-gray-500">
           <FireIcon className="mx-auto mb-3 h-12 w-12 opacity-30" />
           <p className="text-sm">

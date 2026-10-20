@@ -13,15 +13,15 @@ import ShareLinksPanel from '../components/ShareLinksPanel';
 
 export default function ShareLinksPage() {
   const { t } = useTranslation();
-  const { notes, loading: notesLoading } = useStudyNotes();
+  const { notes, loading: notesLoading, error: notesError } = useStudyNotes();
   const {
     shareLinks,
     loading: shareLinksLoading,
+    error: shareLinksError,
     createShareLink,
     deleteShareLink,
   } = useStudyNoteShareLinks();
 
-  const loading = notesLoading || shareLinksLoading;
 
   return (
     <section className="space-y-6">
@@ -50,7 +50,10 @@ export default function ShareLinksPage() {
       <ShareLinksPanel
         notes={notes}
         shareLinks={shareLinks}
-        loading={loading}
+        loading={shareLinksLoading}
+          error={shareLinksError}
+          notesLoading={notesLoading}
+          notesError={notesError}
         onCreate={createShareLink}
         onDelete={deleteShareLink}
       />

@@ -3,11 +3,13 @@
 import { DocumentDuplicateIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 import { useCallback, useMemo, useState } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import Select from '@/components/ui/Select';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { formatDateForLocale } from '@/utils/dateFormatter';
+import { listReadState } from '@/utils/listReadState';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -16,10 +18,14 @@ interface ShareLinksPanelProps {
   notes: StudyNote[];
   shareLinks: StudyNoteShareLink[];
   loading?: boolean;
+  error?: unknown;
+  notesLoading?: boolean;
+  notesError?: unknown;
   onCreate: (noteId: string) => WriteSubmission;
   onDelete: (linkId: string) => WriteSubmission;
 }
 
+const UNTITLED_NOTE = 'studiesWorkspace.untitled';
 const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800';
 const HEADER_CLASS = 'flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-gray-100 dark:border-gray-700 pb-5 mb-5';
 const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10';
@@ -32,11 +38,18 @@ export default function ShareLinksPanel({
   notes,
   shareLinks,
   loading = false,
+  error,
+  notesLoading = false,
+  notesError,
   onCreate,
   onDelete,
 }: ShareLinksPanelProps) {
   const { t, language: interfaceLanguage } = useTranslation();
   const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
+
+  const linksRead = listReadState({ loading, error });
+  const notesRead = listReadState({ loading: notesLoading, error: notesError });
+  const panelRead = listReadState({ loading, error }, { loading: notesLoading, error: notesError });
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -56,7 +69,7 @@ export default function ShareLinksPanel({
   );
 
   const handleCreate = useCallback(async () => {
-    if (!selectedNoteId || isCreating) return;
+    if (!selectedNoteId || isCreating || panelRead !== 'ready') return;
     try {
       setIsCreating(true);
       setWriteError(null);
@@ -73,7 +86,7 @@ export default function ShareLinksPanel({
     } finally {
       setIsCreating(false);
     }
-  }, [selectedNoteId, isCreating, onCreate]);
+  }, [selectedNoteId, isCreating, onCreate, panelRead]);
 
   const handleDelete = useCallback(async (linkId: string) => {
     if (deletingId) return;
@@ -126,14 +139,14 @@ export default function ShareLinksPanel({
             <option value="">{t('studiesWorkspace.shareLinks.selectPlaceholder')}</option>
             {availableNotes.map((note) => (
               <option key={note.id} value={note.id}>
-                {note.title || t('studiesWorkspace.untitled')}
+                {note.title || t(UNTITLED_NOTE)}
               </option>
             ))}
           </Select>
           <button
             type="button"
             onClick={handleCreate}
-            disabled={!selectedNoteId || isCreating}
+            disabled={!selectedNoteId || isCreating || panelRead !== 'ready'}
             className={ACTION_BUTTON_CLASS}
           >
             <PlusIcon className="h-4 w-4" />
@@ -149,13 +162,9 @@ export default function ShareLinksPanel({
       )}
 
       <div className="mt-4 space-y-3">
-        {loading && shareLinks.length === 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
-            {t('common.loading')}
-          </div>
-        ) : null}
+        <ListReadFeedback state={panelRead} />
 
-        {!loading && shareLinks.length === 0 ? (
+        {linksRead === 'ready' && shareLinks.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
             {t('studiesWorkspace.shareLinks.empty')}
           </div>
@@ -177,7 +186,7 @@ export default function ShareLinksPanel({
                 <div key={link.id} className={ROW_CLASS}>
                   <div className="flex flex-col min-w-0">
                     <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {note?.title || t('studiesWorkspace.untitled')}
+                      {note ? note.title || t(UNTITLED_NOTE) : notesRead === 'ready' ? t(UNTITLED_NOTE) : t('common.unknown')}
                     </p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate">
                       {sharePath}

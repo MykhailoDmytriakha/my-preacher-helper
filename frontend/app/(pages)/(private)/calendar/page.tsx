@@ -12,6 +12,7 @@ import DateEventList from "@/components/calendar/DateEventList";
 import { EnginePreachDateModal } from "@/components/calendar/EnginePreachDateModal";
 import LegacyDataWarning from "@/components/calendar/LegacyDataWarning";
 import PreachCalendar from "@/components/calendar/PreachCalendar";
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { useCalendarCouncils } from "@/hooks/useCalendarCouncils";
 import { useCalendarGroups } from "@/hooks/useCalendarGroups";
 import { useCalendarNotes } from "@/hooks/useCalendarNotes";
@@ -31,6 +32,7 @@ import {
 } from "@/utils/calendarEntries";
 import { toDateOnlyKey } from "@/utils/dateOnly";
 import { debugLog } from "@/utils/debugMode";
+import { listReadState, type ListReadSource } from '@/utils/listReadState';
 import {
     getEffectiveIsPreached,
     getEffectivePreachDateStatus
@@ -61,6 +63,17 @@ export default function CalendarPage() {
     const { entries: noteCalendarEntries, isLoading: notesLoading, error: notesError } = useCalendarNotes();
     const { entries: prayerCalendarEntries, isLoading: prayersLoading, error: prayersError } = useCalendarPrayers();
     const sourcesLoading = isLoading || groupsLoading || councilsLoading || notesLoading || prayersLoading;
+    const sources: Record<CalendarKind, ListReadSource> = {
+        sermon: { loading: isLoading, error },
+        group: { loading: groupsLoading, error: groupsError },
+        council: { loading: councilsLoading, error: councilsError },
+        note: { loading: notesLoading, error: notesError },
+        prayer: { loading: prayersLoading, error: prayersError },
+    };
+    const calendarRead = listReadState(...Object.values(sources));
+    const visibleRead = listReadState(...CALENDAR_KINDS.filter(kind => shown[kind]).map(kind => sources[kind]));
+    const readyKinds = CALENDAR_KINDS.filter(kind => listReadState(sources[kind]) === 'ready');
+    const sermonsReady = listReadState(sources.sermon) === 'ready';
 
     // Fetch series data for series color indicators
     const { series: allSeries } = useSeries(user?.uid || null);
@@ -168,22 +181,6 @@ export default function CalendarPage() {
         setSelectedDate(today);
     };
 
-    /*
-     * A FAILED READ IS NOT AN EMPTY CALENDAR. One source refusing while the others answered — or
-     * while the cache still holds last week's month — used to blank the whole page, analytics and
-     * all. The page gives up only when there is genuinely nothing to show.
-     */
-    if ((error || groupsError || councilsError || notesError || prayersError) && allEntries.length === 0) {
-        return (
-            <div className="flex items-center justify-center min-h-[400px]">
-                <div className="text-center">
-                    <h2 className="text-xl font-semibold text-red-600">Error loading calendar</h2>
-                    <p className="text-gray-500">Please try again later.</p>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="space-y-6">
             <CalendarHeader
@@ -192,8 +189,9 @@ export default function CalendarPage() {
                 currentMonth={currentMonth}
                 onGoToToday={handleGoToToday}
             />
+            <ListReadFeedback state={calendarRead} />
 
-            {!sourcesLoading && (
+            {!sourcesLoading && sermonsReady && (
                 <LegacyDataWarning
                     pendingSermons={pendingSermons}
                     onAddDate={handleAddDate}
@@ -218,19 +216,19 @@ export default function CalendarPage() {
                         )}
 
                         {/* Analytics Mini-Summary could go here */}
-                        {!sourcesLoading && (
+                        {!sourcesLoading && readyKinds.length > 0 && (
                             <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50">
                                 <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">
                                     {t('calendar.analytics.quickSummary')}
                                 </h3>
                                 <div className="space-y-2">
-                                    <div className="flex justify-between text-xs">
+                                    {sermonsReady && <div className="flex justify-between text-xs">
                                         <span className="text-blue-600 dark:text-blue-400">{t('calendar.analytics.totalPreachings')}</span>
                                         <span className="font-bold text-blue-900 dark:text-blue-100">
                                             {preachedSermonsCount}
                                         </span>
-                                    </div>
-                                    {plannedSermonsCount > 0 && (
+                                    </div>}
+                                    {sermonsReady && plannedSermonsCount > 0 && (
                                         <div className="flex justify-between text-xs">
                                             <span className="text-amber-600 dark:text-amber-400">
                                                 {t('calendar.analytics.plannedPreachings', { defaultValue: 'Planned preachings' })}
@@ -240,7 +238,7 @@ export default function CalendarPage() {
                                             </span>
                                         </div>
                                     )}
-                                    {pendingSermons.length > 0 && (
+                                    {sermonsReady && pendingSermons.length > 0 && (
                                         <div className="flex justify-between text-xs">
                                             <span className="text-amber-600 dark:text-amber-400">{t('calendar.analytics.pendingDateEntry')}</span>
                                             <span className="font-bold text-amber-900 dark:text-amber-100">
@@ -253,7 +251,7 @@ export default function CalendarPage() {
                                       kind wears everywhere else on this page — so a new kind gets its row
                                       without a block written by hand.
                                     */}
-                                    {CALENDAR_KINDS.filter((kind) => kind !== 'sermon' && monthCounts[kind] > 0).map((kind) => (
+                                    {readyKinds.filter((kind) => kind !== 'sermon' && monthCounts[kind] > 0).map((kind) => (
                                         <div key={kind} className="flex justify-between text-xs" data-testid={`calendar-summary-${kind}`}>
                                             <span className={CALENDAR_KIND_STYLE[kind].legendLabel}>
                                                 {t(CALENDAR_KIND_STYLE[kind].legendKey)}
@@ -276,7 +274,8 @@ export default function CalendarPage() {
                                 ))}
                             </div>
                         ) : (
-                            <DateEventList month={currentMonth} entries={entriesThisMonth} series={allSeries} />
+                            <DateEventList month={currentMonth} entries={entriesThisMonth} series={allSeries}
+                                canDescribe={visibleRead === 'ready'} knownCountKinds={readyKinds} />
                         )}
                     </div>
                 </div>
@@ -290,11 +289,11 @@ export default function CalendarPage() {
                             ))}
                         </div>
                     ) : (
-                        <AgendaView entries={visibleEntries} series={allSeries} />
+                        <AgendaView entries={visibleEntries} series={allSeries} canDescribe={visibleRead === 'ready'} />
                     )}
                 </div>
             ) : (
-                <AnalyticsSection sermonsByDate={normalizedSermonsByDate} />
+                sermonsReady ? <AnalyticsSection sermonsByDate={normalizedSermonsByDate} /> : null
             )}
 
             {isModalOpen && selectedSermon && <EnginePreachDateModal

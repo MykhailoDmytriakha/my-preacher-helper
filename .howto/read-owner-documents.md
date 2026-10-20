@@ -11,6 +11,16 @@ For an engine-owned collection, read through `useDataDocument` or `useDataCollec
 - `frontend/app/utils/deviceStorage.ts` watches bounded storage reads, records silence diagnostics and lets read gates stop waiting. It does not cancel or falsely fail an indeterminate write. The normal editor replaces the copy when storage answers.
 - Atomic single-key updates use `utils/storageUpdate.ts:updateStoredValue` with the existing custom store. It keeps idb-keyval's read-modify-write and transaction-completion fence, adding an abort listener before the first read starts. A confirmed abort rejects; a genuinely unfinished transaction still waits. Use the same helper for watched engine snapshots/cursors/journal and recording drafts; do not mute storage health, cancel writes on a timer, or replay an unknown outcome. Direct engine state transactions already install failure handlers before reads.
 
+## Present a failed list without inventing an empty account
+
+Keep the collection's `loading` and `error` alongside its rows. `utils/listReadState.ts` resolves failed/loading/ready for one source or all contributors; `components/ListReadFeedback.tsx` renders the existing translated data-read message. This presentation helper neither reads nor retries data. Use the facade's retry policy and preserve its actual rows and ordinary actions.
+
+Only ready sources certify total counts, empty invitations and filtered no-match claims. A derived aggregate needs every contributing source; unrelated healthy sections remain useful. Membership metadata can itself prove a zero-member count without reading an unrelated collection. Existing member counts from a loaded series stay known while preached/meeting totals need their related documents.
+
+Pass both note and link read states into share-link views. Keep known link copy/revoke actions. Hold creation while existence cannot be established, and show an unknown title if its note is unavailable; do not rename it Untitled or claim that access is off. An actually loaded empty title still uses the normal Untitled label.
+
+Verify true-empty successful reads, retained local rows with a real refusal, cold failure and successful recovery. A fresh cached legacy query is still successful until it actually refetches: `useServerFirstQuery` becomes stale after30seconds and does not refetch merely because time passed while mounted. Require the actual refused request before claiming that a link-read failure was tested. Run these checks on the emulator described in `.howto/run-a-demo-on-the-emulator.md`.
+
 ## Reproduce silent storage on localhost
 
 Open any page with the engine on, make the tab report visible (the automation tab is hidden), then hold a write transaction on the engine's records store with an endless chain of reads — every engine call on that store queues behind it and after `STORAGE_SILENCE_MS` (3 s) the database is declared silent:

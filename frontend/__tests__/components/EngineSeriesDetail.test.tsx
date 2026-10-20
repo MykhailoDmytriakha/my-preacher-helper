@@ -9,11 +9,12 @@ import { settleEngine } from '../../test-utils/documentEngineHarness';
 import type { ResourceSnapshot } from '@/data-engine/types';
 
 const mockReplace = jest.fn();
+let mockRelatedGroupError: Error | null = null;
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: jest.fn(), replace: mockReplace }) }));
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' } }) }));
 jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest.fn() }));
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
-jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: null }) }));
+jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: mockRelatedGroupError }) }));
 jest.mock('@/hooks/useDashboardSermons', () => ({ useDashboardSermons: () => ({ sermons: [], loading: false, error: null }) }));
 jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <p>{content}</p> }));
@@ -32,7 +33,7 @@ function setup(id = 'b') {
   function Workspace() { return <DataEngineProvider><SeriesMembershipRecovery /><EngineSeriesDetail seriesId={id} /></DataEngineProvider>; }
   return { harness, Workspace, view: render(<Workspace />) };
 }
-beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
+beforeEach(() => { mockRelatedGroupError = null; jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });
 afterEach(() => { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; });
 it('projects a queued atomic move immediately, recovers its status after restart, then confirms it', async () => {
   const { harness, view, Workspace } = setup();
@@ -220,5 +221,28 @@ it('keeps staged series words readable without ordinary edit controls after the 
   expect(screen.getByText('My series words kept in the form')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'workspaces.series.editSeries' })).not.toBeInTheDocument();
   expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+
+it('keeps series membership readable without a complete meeting total when the group read fails', async () => {
+  mockRelatedGroupError = new Error('Store unavailable');
+  const { view } = setup('a');
+  await screen.findByRole('heading', { name: 'a', level: 1 });
+  expect(screen.getByRole('heading', { name: 'Meeting' })).toBeInTheDocument();
+  const label = screen.getByText(/^(Meetings|workspaces\.series\.detail\.conductedMeetings)$/);
+  expect(within(label.parentElement!).queryByText('0')).not.toBeInTheDocument();
+  expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  view.unmount();
+});
+
+
+it('knows a series with no group members has zero conducted meetings without reading groups', async () => {
+  mockRelatedGroupError = new Error('Store unavailable');
+  const { view } = setup('b');
+  await screen.findByRole('heading', { name: 'b', level: 1 });
+  const label = screen.getByText(/^(Meetings|workspaces\.series\.detail\.conductedMeetings)$/);
+  expect(within(label.parentElement!).getByText('0')).toBeInTheDocument();
+  expect(screen.queryByText('dataSync.backgroundFailure')).not.toBeInTheDocument();
   view.unmount();
 });

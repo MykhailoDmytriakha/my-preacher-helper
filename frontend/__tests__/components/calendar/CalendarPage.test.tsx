@@ -524,8 +524,8 @@ describe('CalendarPage', () => {
 
     render(<CalendarPage />);
 
-    expect(screen.getByText('Error loading calendar')).toBeInTheDocument();
-    expect(screen.getByText('Please try again later.')).toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+    expect(screen.queryByText('Please try again later.')).not.toBeInTheDocument();
   });
 
   it('renders agenda view infrastructure', () => {
@@ -632,7 +632,7 @@ describe('CalendarPage', () => {
       expect(screen.queryByTestId('preach-calendar')).not.toBeInTheDocument();
     });
 
-    it('says the calendar failed only when it has nothing at all to show', () => {
+    it('explains a calendar source refusal in translated words', () => {
       mockUseCalendarSermons.mockReturnValue({
         sermons: [],
         sermonsByDate: {},
@@ -645,7 +645,7 @@ describe('CalendarPage', () => {
 
       render(<CalendarPage />);
 
-      expect(screen.getByText('Error loading calendar')).toBeInTheDocument();
+      expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
     });
 
     it('carries the same entries into the agenda, with the switches visible there too', () => {
@@ -727,4 +727,23 @@ describe('CalendarPage', () => {
       expect(screen.getByTestId('preach-calendar')).toBeInTheDocument();
     });
   });
+
+  it('does not summarize failed sermons as zero while another calendar source has an entry', () => {
+    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
+    mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
+    mockUseCalendarNotes.mockReturnValue({ entries: [{ ...mockNoteEntry, date: new Date().toISOString().slice(0, 10) }], isLoading: false, error: null });
+    render(<CalendarPage />);
+    expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'note');
+    expect(screen.queryByText('Total Preachings')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('uses translated read failure words instead of claiming an entirely unread calendar is empty', () => {
+    mockUseCalendarSermons.mockReturnValue({ sermons: [], pendingSermons: [], sermonsByDate: {}, isLoading: false, error: new Error('Store unavailable'), refetch: jest.fn() } as any);
+    mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
+    render(<CalendarPage />);
+    expect(screen.queryByText('Error loading calendar')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
 });

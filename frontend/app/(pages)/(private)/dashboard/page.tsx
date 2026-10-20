@@ -1,5 +1,6 @@
 'use client';
 
+
 import {
   BookMarked,
   BookOpen,
@@ -20,6 +21,7 @@ import { useMemo, useState } from 'react';
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
@@ -37,6 +39,7 @@ import { councilEntries, groupEntries, sermonEntries, type CalendarKind } from '
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { groupMeetingDay } from '@/utils/groupMeeting';
+import { listReadState, type ListReadState } from '@/utils/listReadState';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { formatScriptureReference } from '@/utils/scriptureReference';
@@ -48,6 +51,7 @@ import type { TFunction } from 'i18next';
 type Tone = 'blue' | 'emerald' | 'amber' | 'rose' | 'gray' | 'violet' | 'cyan';
 
 type Metric = {
+  readState: ListReadState;
   label: string;
   value: string;
   helper: string;
@@ -87,6 +91,7 @@ type PrayerItem = {
 };
 
 type SeriesItem = {
+  needsSermonRead: boolean;
   id: string;
   title: string;
   progress: string;
@@ -225,12 +230,24 @@ export default function DashboardPage() {
   const { t, language: interfaceLanguage } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
-  const { sermons, state: sermonState } = useDashboardSermons();
-  const { series } = useSeries(user?.uid || null);
-  const { notes } = useStudyNotes();
-  const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
-  const { groups } = useGroupsRead(user?.uid || null);
-  const { councils } = useCouncilsRead();
+  const sermonSource = useDashboardSermons();
+  const seriesSource = useSeries(user?.uid || null);
+  const noteSource = useStudyNotes();
+  const prayerSource = usePrayerRequests(user?.uid || null);
+  const groupSource = useGroupsRead(user?.uid || null);
+  const councilSource = useCouncilsRead();
+  const { sermons, state: sermonState } = sermonSource;
+  const { series } = seriesSource;
+  const { notes } = noteSource;
+  const { prayerRequests, createPrayer } = prayerSource;
+  const { groups } = groupSource;
+  const { councils } = councilSource;
+  const reads = {
+    sermons: listReadState(sermonSource), series: listReadState(seriesSource),
+    notes: listReadState(noteSource), prayers: listReadState(prayerSource),
+    groups: listReadState(groupSource),
+    agenda: listReadState(sermonSource, groupSource, councilSource),
+  };
   const [showSermonModal, setShowSermonModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
 
@@ -257,6 +274,7 @@ export default function DashboardPage() {
   const metrics: Metric[] = [
     {
       label: t('dashboardHome.metrics.activeSermons.label'),
+      readState: reads.sermons,
       value: String(dashboardData.activeSermonsCount),
       helper: t('dashboardHome.metrics.activeSermons.helper'),
       href: '/sermons',
@@ -265,6 +283,7 @@ export default function DashboardPage() {
     },
     {
       label: t('dashboardHome.metrics.activeSeries.label'),
+      readState: reads.series,
       value: String(dashboardData.activeSeriesCount),
       helper: t('dashboardHome.metrics.activeSeries.helper'),
       href: '/series',
@@ -273,6 +292,7 @@ export default function DashboardPage() {
     },
     {
       label: t('dashboardHome.metrics.studyNotes.label'),
+      readState: reads.notes,
       value: String(dashboardData.studyNotesCount),
       helper: t('dashboardHome.metrics.studyNotes.helper'),
       href: '/studies',
@@ -281,6 +301,7 @@ export default function DashboardPage() {
     },
     {
       label: t('dashboardHome.metrics.activeGroups.label'),
+      readState: reads.groups,
       value: String(dashboardData.activeGroupsCount),
       helper: t('dashboardHome.metrics.activeGroups.helper'),
       href: '/groups',
@@ -289,6 +310,7 @@ export default function DashboardPage() {
     },
     {
       label: t('dashboardHome.metrics.upcomingDates.label'),
+      readState: reads.agenda,
       value: String(dashboardData.upcomingDatesCount),
       helper: t('dashboardHome.metrics.upcomingDates.helper'),
       href: '/calendar',
@@ -297,6 +319,7 @@ export default function DashboardPage() {
     },
     {
       label: t('dashboardHome.metrics.activePrayers.label'),
+      readState: reads.prayers,
       value: String(dashboardData.activePrayersCount),
       helper: t('dashboardHome.metrics.activePrayers.helper'),
       href: '/prayers',
@@ -354,16 +377,16 @@ export default function DashboardPage() {
 
       {/* Row order matches the approved color demo: Sermons · Studies · Calendar */}
       <section className="grid gap-3 xl:grid-cols-6">
-        <SermonsPanel sermons={dashboardData.sermonRows} />
-        <RecentStudiesPanel studies={dashboardData.studyItems} />
-        <AgendaPanel agendaItems={dashboardData.agendaItems} />
+        <SermonsPanel readState={reads.sermons} sermons={dashboardData.sermonRows} />
+        <RecentStudiesPanel readState={reads.notes} studies={dashboardData.studyItems} />
+        <AgendaPanel readState={reads.agenda} agendaItems={dashboardData.agendaItems} />
       </section>
 
       {/* Series · Groups · Prayer — same column template as row 1 so panel edges line up */}
       <section className="grid gap-3 xl:grid-cols-6">
-        <ActiveSeriesPanel seriesItems={dashboardData.seriesItems} />
-        <LatestGroupsPanel groups={dashboardData.groupItems} />
-        <PrayerFocusPanel prayers={dashboardData.prayerItems} />
+        <ActiveSeriesPanel readState={reads.series} detailsRead={reads.sermons} seriesItems={dashboardData.seriesItems} />
+        <LatestGroupsPanel readState={reads.groups} groups={dashboardData.groupItems} />
+        <PrayerFocusPanel readState={reads.prayers} prayers={dashboardData.prayerItems} />
       </section>
 
       {showSermonModal && (
@@ -389,6 +412,7 @@ export default function DashboardPage() {
 }
 
 function MetricCard({ metric }: { metric: Metric }) {
+  const { t } = useTranslation();
   const Icon = metric.icon;
   const tone = toneClasses[metric.tone];
 
@@ -402,8 +426,8 @@ function MetricCard({ metric }: { metric: Metric }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-gray-600 dark:text-gray-400">{metric.label}</p>
-        <p className="text-2xl font-bold tabular-nums text-gray-950 dark:text-white">{metric.value}</p>
-        <p className="truncate text-xs text-gray-500 dark:text-gray-400">{metric.helper}</p>
+        <p className="text-2xl font-bold tabular-nums text-gray-950 dark:text-white">{metric.readState === 'ready' ? metric.value : '—'}</p>
+        <p className="truncate text-xs text-gray-500 dark:text-gray-400">{metric.readState === 'ready' ? metric.helper : t(metric.readState === 'failed' ? 'dataSync.backgroundFailure' : 'common.loading')}</p>
       </div>
       <ChevronRight className="h-5 w-5 text-gray-400 transition group-hover:translate-x-0.5 group-hover:text-gray-700 dark:group-hover:text-gray-200" />
     </Link>
@@ -427,7 +451,7 @@ function PanelTitle({
   );
 }
 
-function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
+function SermonsPanel({ sermons, readState }: { sermons: SermonRow[]; readState: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(5, sermons.length, PANEL_ROW_HEIGHT);
 
@@ -441,7 +465,8 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
         </Link>
       </div>
 
-      {sermons.length === 0 ? (
+      <ListReadFeedback state={readState} className="px-4" />
+      {sermons.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={BookOpen} text={t('dashboardHome.sections.sermons.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
@@ -479,7 +504,7 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
   );
 }
 
-function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
+function AgendaPanel({ agendaItems, readState }: { agendaItems: AgendaItem[]; readState: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(5, agendaItems.length, PANEL_ROW_HEIGHT);
   const visibleItems = agendaItems.slice(0, visibleCount);
@@ -494,7 +519,8 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
         </Link>
       </div>
 
-      {agendaItems.length === 0 ? (
+      <ListReadFeedback state={readState} className="px-4" />
+      {agendaItems.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={CalendarDays} text={t('dashboardHome.sections.week.empty')} />
       ) : (
         <div className={`p-2`}>
@@ -530,7 +556,7 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
   );
 }
 
-function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
+function PrayerFocusPanel({ prayers, readState }: { prayers: PrayerItem[]; readState: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(4, prayers.length, PANEL_ROW_HEIGHT);
 
@@ -544,7 +570,8 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
         </Link>
       </div>
 
-      {prayers.length === 0 ? (
+      <ListReadFeedback state={readState} className="px-4" />
+      {prayers.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={Flame} text={t('dashboardHome.sections.prayer.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
@@ -574,7 +601,7 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
   );
 }
 
-function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
+function ActiveSeriesPanel({ seriesItems, readState, detailsRead }: { seriesItems: SeriesItem[]; readState: ListReadState; detailsRead: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, seriesItems.length, PANEL_ROW_HEIGHT);
 
@@ -588,7 +615,8 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
         </Link>
       </div>
 
-      {seriesItems.length === 0 ? (
+      <ListReadFeedback state={readState === 'ready' && seriesItems.some(item => item.needsSermonRead) ? detailsRead : readState} className="px-4" />
+      {seriesItems.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={NotebookTabs} text={t('dashboardHome.sections.series.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
@@ -609,9 +637,9 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
               <div className="min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{seriesItem.title}</p>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{seriesItem.progress}</span>
+                  {(detailsRead === 'ready' || !seriesItem.needsSermonRead) && <span className="text-xs text-gray-500 dark:text-gray-400">{seriesItem.progress}</span>}
                 </div>
-                <p className="mt-2 truncate text-xs text-gray-500 dark:text-gray-400">{seriesItem.next}</p>
+                {(detailsRead === 'ready' || !seriesItem.needsSermonRead) && <p className="mt-2 truncate text-xs text-gray-500 dark:text-gray-400">{seriesItem.next}</p>}
               </div>
               <Chip tone="violet" size="sm" className="self-start">
                 {seriesItem.status}
@@ -624,7 +652,7 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
   );
 }
 
-function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
+function RecentStudiesPanel({ studies, readState }: { studies: StudyItem[]; readState: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, studies.length, PANEL_ROW_HEIGHT);
 
@@ -638,7 +666,8 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
         </Link>
       </div>
 
-      {studies.length === 0 ? (
+      <ListReadFeedback state={readState} className="px-4" />
+      {studies.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={StickyNote} text={t('dashboardHome.sections.studies.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
@@ -673,7 +702,7 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
   );
 }
 
-function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
+function LatestGroupsPanel({ groups, readState }: { groups: GroupItem[]; readState: ListReadState }) {
   const { t } = useTranslation();
   const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, groups.length, PANEL_ROW_HEIGHT);
 
@@ -687,7 +716,8 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
         </Link>
       </div>
 
-      {groups.length === 0 ? (
+      <ListReadFeedback state={readState} className="px-4" />
+      {groups.length === 0 && readState === 'ready' ? (
         <EmptyPanel icon={UsersRound} text={t('dashboardHome.sections.groups.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
@@ -940,6 +970,7 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
       return {
         id: item.id,
         title: item.title || item.theme || item.bookOrTopic || t('dashboardHome.sections.series.untitled'),
+        needsSermonRead: total > 0,
         progress: total > 0
           ? t('dashboardHome.sections.series.progress', { preached, total })
           : t('dashboardHome.sections.series.noItems'),

@@ -49,6 +49,7 @@ export default function StudiesPage() {
   const {
     shareLinks,
     loading: shareLinksLoading,
+    error: shareLinksError,
     createShareLink,
     deleteShareLink,
   } = useStudyNoteShareLinks();
@@ -540,6 +541,7 @@ export default function StudiesPage() {
         note={shareNote}
         shareLink={shareNote ? shareLinksByNoteId.get(shareNote.id) : undefined}
         loading={shareLinksLoading}
+        error={shareLinksError}
         onClose={() => setShareNote(null)}
         onCreate={createShareLink}
         onDelete={deleteShareLink}

@@ -82,4 +82,30 @@ describe('ShareLinksPage', () => {
     expect(screen.getByText('studiesWorkspace.shareLinks.empty')).toBeInTheDocument();
     expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
   });
+
+  it('keeps a refused share-link read distinct from a successful empty list', () => {
+    mockUseStudyNotes.mockReturnValue({ notes: [], loading: false, error: null } as any);
+    mockUseStudyNoteShareLinks.mockReturnValue({ shareLinks: [], loading: false, error: new Error('Store unavailable'), createShareLink: jest.fn(), deleteShareLink: jest.fn() } as any);
+    render(<ShareLinksPage />);
+    expect(screen.queryByText('studiesWorkspace.shareLinks.empty')).not.toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
+  it('reports unavailable note choices without mislabelling a successful empty link list', () => {
+    mockUseStudyNotes.mockReturnValue({ notes: [], loading: false, error: new Error('Store unavailable') } as any);
+    mockUseStudyNoteShareLinks.mockReturnValue({ shareLinks: [], loading: false, error: null, createShareLink: jest.fn(), deleteShareLink: jest.fn() } as any);
+    render(<ShareLinksPage />);
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+    expect(screen.getByText('studiesWorkspace.shareLinks.empty')).toBeInTheDocument();
+  });
+
+  it('retains a known link without calling its unavailable note untitled', () => {
+    mockUseStudyNotes.mockReturnValue({ notes: [], loading: false, error: new Error('Store unavailable') } as any);
+    mockUseStudyNoteShareLinks.mockReturnValue({ shareLinks: [{ id: 'link', ownerId: 'owner', noteId: 'unread-note', token: 'known-token', createdAt: '2026-10-01', viewCount: 1 }], loading: false, error: null, createShareLink: jest.fn(), deleteShareLink: jest.fn() } as any);
+    render(<ShareLinksPage />);
+    expect(screen.queryByText('studiesWorkspace.untitled')).not.toBeInTheDocument();
+    expect(screen.getByText('common.unknown')).toBeInTheDocument();
+    expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
+  });
+
 });

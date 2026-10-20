@@ -17,9 +17,11 @@ import { ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import { useMemo } from 'react';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useAuth } from '@/providers/AuthProvider';
+import { listReadState } from '@/utils/listReadState';
 import { CARE_CARD_TONES, type CareCardTone } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -134,20 +136,25 @@ export default function CarePage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   // The same list the journal itself reads, so opening the plane also warms its cache.
-  const { prayerRequests } = usePrayerRequests(user?.uid ?? null);
+  const prayerSource = usePrayerRequests(user?.uid ?? null);
+  const { prayerRequests } = prayerSource;
+  const prayersRead = listReadState(prayerSource);
   // The councils still being prepared: the number a pastor wants before opening the row.
-  const { councils } = useCouncilsRead();
+  const councilSource = useCouncilsRead();
+  const { councils } = councilSource;
+  const councilsRead = listReadState(councilSource);
 
   const counts = useMemo<Partial<Record<SectionKey, number>>>(
     () => ({
-      prayers: (prayerRequests ?? []).filter((prayer) => prayer.status === 'active').length,
-      council: councils.filter((council) => council.status === 'preparing').length,
+      prayers: prayersRead === 'ready' ? (prayerRequests ?? []).filter((prayer) => prayer.status === 'active').length : undefined,
+      council: councilsRead === 'ready' ? councils.filter((council) => council.status === 'preparing').length : undefined,
     }),
-    [councils, prayerRequests]
+    [councils, prayerRequests, prayersRead, councilsRead]
   );
 
   return (
     <div className="mx-auto w-full max-w-7xl">
+      <ListReadFeedback state={listReadState(prayerSource, councilSource)} />
       <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">
         {t('care.title')}
       </h1>

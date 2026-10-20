@@ -7,6 +7,7 @@ import { useTranslation } from "@locales/useTranslation";
 
 interface DashboardContentProps {
     loading: boolean;
+    canDescribe?: boolean;
     sermons: Sermon[];
     processedSermons: Sermon[];
     searchSnippetsById: Record<string, ThoughtSnippet[] | undefined>;
@@ -17,6 +18,7 @@ interface DashboardContentProps {
 
 export default function DashboardContent({
     loading,
+    canDescribe = true,
     sermons,
     processedSermons,
     searchSnippetsById,
@@ -26,7 +28,7 @@ export default function DashboardContent({
 }: DashboardContentProps) {
     const { t } = useTranslation();
 
-    if (loading) {
+    if (loading && sermons.length === 0) {
         return (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -35,6 +37,8 @@ export default function DashboardContent({
             </div>
         );
     }
+
+    if (!canDescribe && processedSermons.length === 0) return null;
 
     if (sermons.length === 0) {
         return (

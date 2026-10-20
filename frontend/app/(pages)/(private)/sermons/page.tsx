@@ -7,6 +7,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import { Chip } from "@/components/ui/Chip";
 import Select from "@/components/ui/Select";
@@ -15,6 +16,7 @@ import { useDashboardSermons } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
 import { useSeries } from "@/hooks/useSeries";
 import { useAuth } from "@/providers/AuthProvider";
+import { listReadState } from '@/utils/listReadState';
 import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
 import { buildInSeriesRefIds } from "@/utils/seriesMembership";
 import AddSermonModal from "@components/AddSermonModal";
@@ -50,7 +52,8 @@ const CHECKBOX_CLASSES = "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ri
 export default function SermonsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { sermons, loading, state: sermonState } = useDashboardSermons();
+  const { sermons, loading, error, state: sermonState } = useDashboardSermons();
+  const readState = listReadState({ loading, error });
 
   const { series: allSeries } = useSeries(user?.uid || null);
 
@@ -178,14 +181,12 @@ export default function SermonsPage() {
       </div>
 
       <DataCollectionStatus state={sermonState} />
+      <ListReadFeedback state={readState} />
       {/* Stats Section */}
       <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
         <div className="px-4 sm:px-0">
-          {loading ? (
-            <DashboardStatsSkeleton />
-          ) : (
-            <DashboardStats sermons={sermons} />
-          )}
+          {loading && <DashboardStatsSkeleton />}
+          {readState === 'ready' && <DashboardStats sermons={sermons} />}
         </div>
       </div>
 
@@ -210,7 +211,7 @@ export default function SermonsPage() {
                 ? "bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
                 : BADGE_INACTIVE_CLASSES
                 }`}>
-                {loading ? "-" : sermons.filter((sermon) => !getEffectiveIsPreached(sermon)).length}
+                {readState !== 'ready' ? "-" : sermons.filter((sermon) => !getEffectiveIsPreached(sermon)).length}
               </span>
             </button>
             <button
@@ -228,7 +229,7 @@ export default function SermonsPage() {
                 ? "bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
                 : BADGE_INACTIVE_CLASSES
                 }`}>
-                {loading ? "-" : sermons.filter((sermon) => getEffectiveIsPreached(sermon)).length}
+                {readState !== 'ready' ? "-" : sermons.filter((sermon) => getEffectiveIsPreached(sermon)).length}
               </span>
             </button>
             <button
@@ -246,7 +247,7 @@ export default function SermonsPage() {
                 ? "bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
                 : BADGE_INACTIVE_CLASSES
                 }`}>
-                {loading ? "-" : sermons.length}
+                {readState !== 'ready' ? "-" : sermons.length}
               </span>
             </button>
           </nav>
@@ -515,6 +516,7 @@ export default function SermonsPage() {
 
       {/* Content Area */}
       <DashboardContent
+        canDescribe={readState === 'ready'}
         loading={loading}
         sermons={sermons}
         processedSermons={processedSermons}

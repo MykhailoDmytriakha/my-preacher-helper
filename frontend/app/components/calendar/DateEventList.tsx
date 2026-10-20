@@ -6,7 +6,7 @@ import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { formatMonthTitle } from '@/utils/appLocale';
-import { CALENDAR_KINDS, countByKind, entriesByDate, type CalendarEntry } from '@/utils/calendarEntries';
+import { CALENDAR_KINDS, countByKind, entriesByDate, type CalendarEntry, type CalendarKind } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -17,13 +17,15 @@ interface DateEventListProps {
   /** Everything falling in this month, already filtered by what the person chose to see. */
   entries: CalendarEntry[];
   series?: Series[];
+  canDescribe?: boolean;
+  knownCountKinds?: readonly CalendarKind[];
 }
 
 /**
  * THE MONTH, DAY BY DAY. It knows nothing about sermons, groups or councils — only about entries
  * and the counts they add up to, so a new kind arrives without a line changing here.
  */
-export default function DateEventList({ month, entries, series = [] }: DateEventListProps) {
+export default function DateEventList({ month, entries, series = [], canDescribe = true, knownCountKinds = CALENDAR_KINDS }: DateEventListProps) {
   const { t } = useTranslation();
   const { dateLocale } = useAppLocale();
 
@@ -37,7 +39,7 @@ export default function DateEventList({ month, entries, series = [] }: DateEvent
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formattedMonth}</h2>
         <div className="flex items-center gap-3">
-          {CALENDAR_KINDS.filter((kind) => counts[kind] > 0).map((kind) => (
+          {knownCountKinds.filter((kind) => counts[kind] > 0).map((kind) => (
             <span key={kind} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
               <span className={`h-2 w-2 shrink-0 rounded-full ${CALENDAR_KIND_STYLE[kind].dot}`} />
               {counts[kind]} {t(CALENDAR_KIND_STYLE[kind].countKey, { count: counts[kind] })}
@@ -47,7 +49,7 @@ export default function DateEventList({ month, entries, series = [] }: DateEvent
       </div>
 
       <div className="space-y-6">
-        {sortedDates.length === 0 ? (
+        {sortedDates.length === 0 && canDescribe ? (
           <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-center dark:border-gray-700 dark:bg-gray-800/30">
             <p className="text-gray-500 dark:text-gray-400">{t('calendar.noPreachDates')}</p>
           </div>

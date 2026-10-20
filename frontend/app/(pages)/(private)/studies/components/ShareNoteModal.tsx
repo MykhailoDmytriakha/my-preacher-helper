@@ -12,10 +12,12 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 
+import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { formatDateForLocale } from '@/utils/dateFormatter';
+import { listReadState, type ListReadState } from '@/utils/listReadState';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 import { useTranslation } from '@locales/useTranslation';
@@ -25,6 +27,7 @@ interface ShareNoteModalProps {
   note: StudyNote | null;
   shareLink?: StudyNoteShareLink;
   loading?: boolean;
+  error?: unknown;
   onClose: () => void;
   onCreate: (noteId: string) => WriteSubmission;
   onDelete: (linkId: string) => WriteSubmission;
@@ -48,11 +51,13 @@ export default function ShareNoteModal({
   note,
   shareLink,
   loading = false,
+  error,
   onClose,
   onCreate,
   onDelete,
 }: ShareNoteModalProps) {
   const { t, language: interfaceLanguage } = useTranslation();
+  const readState = listReadState({ loading, error });
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
   const [isWorking, setIsWorking] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -74,7 +79,7 @@ export default function ShareNoteModal({
   }, [confirmingDelete]);
 
   const handleCreate = useCallback(async () => {
-    if (!note || isWorking) return;
+    if (!note || isWorking || readState !== 'ready') return;
     try {
       setIsWorking(true);
       // useStudyNoteShareLinks' create recovery descriptor reports a late refusal while this screen is mounted.
@@ -89,7 +94,7 @@ export default function ShareNoteModal({
     } finally {
       setIsWorking(false);
     }
-  }, [note, isWorking, onCreate]);
+  }, [note, isWorking, onCreate, readState]);
 
   const handleDelete = useCallback(async () => {
     if (!shareLink || isWorking) return;
@@ -148,17 +153,7 @@ export default function ShareNoteModal({
             <h2 id="share-note-title" className="text-xl font-semibold leading-7 text-gray-900 dark:text-gray-100">
               {note.title || t('studiesWorkspace.untitled')}
             </h2>
-            {shareLink ? (
-              <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
-                {t('studiesWorkspace.shareLinks.accessOn')}
-              </p>
-            ) : (
-              <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                <LockClosedIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
-                {t('studiesWorkspace.shareLinks.accessOff')}
-              </p>
-            )}
+            <ShareLinkAccess available={Boolean(shareLink)} state={readState} />
           </div>
           <button
             type="button"
@@ -253,20 +248,48 @@ export default function ShareNoteModal({
             )}
           </>
         ) : (
-          <div className="flex flex-col gap-3.5">
-            <p className="text-[15px] leading-6 text-gray-700 dark:text-gray-300">
-              {loading ? t('studiesWorkspace.shareLinks.loadingLink') : t('studiesWorkspace.shareLinks.inviteText')}
-            </p>
-            <button type="button" onClick={handleCreate} disabled={isWorking || loading} className={PRIMARY_BUTTON_CLASS}>
-              <LinkIcon className="h-[18px] w-[18px]" />
-              {isWorking ? t('studiesWorkspace.shareLinks.creating') : t('studiesWorkspace.shareLinks.createButton')}
-            </button>
-            <p className="text-[13px] text-gray-500 dark:text-gray-400">{t('studiesWorkspace.shareLinks.inviteHint')}</p>
-          </div>
+          <ShareLinkCreation loading={loading} working={isWorking} state={readState} onCreate={handleCreate} />
         )}
       </div>
     </div>
   );
 
   return createPortal(modalContent, document.body);
+}
+
+
+/** A failed lookup cannot establish that access is closed. */
+function ShareLinkAccess({ available, state }: { available: boolean; state: ListReadState }) {
+  const { t } = useTranslation();
+  return <>
+    <ListReadFeedback state={state === 'failed' ? 'failed' : 'ready'} />
+    {available ? (
+      <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+        {t('studiesWorkspace.shareLinks.accessOn')}
+      </p>
+    ) : state === 'ready' ? (
+      <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <LockClosedIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+        {t('studiesWorkspace.shareLinks.accessOff')}
+      </p>
+    ) : null}
+  </>;
+}
+
+/** Creating a second capability must wait until the first capability's existence is known. */
+function ShareLinkCreation({ loading, working, state, onCreate }: {
+  loading: boolean; working: boolean; state: ListReadState; onCreate: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  return <div className="flex flex-col gap-3.5">
+    <p className="text-[15px] leading-6 text-gray-700 dark:text-gray-300">
+      {loading ? t('studiesWorkspace.shareLinks.loadingLink') : state === 'ready' ? t('studiesWorkspace.shareLinks.inviteText') : null}
+    </p>
+    <button type="button" onClick={onCreate} disabled={working || state !== 'ready'} className={PRIMARY_BUTTON_CLASS}>
+      <LinkIcon className="h-[18px] w-[18px]" />
+      {working ? t('studiesWorkspace.shareLinks.creating') : t('studiesWorkspace.shareLinks.createButton')}
+    </button>
+    {state === 'ready' && <p className="text-[13px] text-gray-500 dark:text-gray-400">{t('studiesWorkspace.shareLinks.inviteHint')}</p>}
+  </div>;
 }
