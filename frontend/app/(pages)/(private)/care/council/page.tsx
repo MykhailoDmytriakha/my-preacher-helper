@@ -199,7 +199,9 @@ function CouncilListContent({ source }: { source: CouncilListSource }) {
          */
         <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 dark:border-amber-900/60 dark:bg-amber-950/30" role="alert">
           <p className="text-sm text-amber-900 dark:text-amber-200">{t('council.readFailed')}</p>
-          <button type="button" onClick={() => void refresh()} className={`mt-3 ${buttonQuiet}`} data-testid="council-retry">
+          <button type="button" onClick={async () => {
+              try { await refresh(); } catch { /* The read state already keeps the failure visible. */ }
+            }} className={`mt-3 ${buttonQuiet}`} data-testid="council-retry">
             {t('council.retry')}
           </button>
         </section>
