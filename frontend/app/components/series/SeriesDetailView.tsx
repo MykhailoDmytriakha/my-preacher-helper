@@ -31,7 +31,7 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
     sermonsCount: items.filter(entry => entry.item.type === 'sermon').length,
     groupsCount: items.filter(entry => entry.item.type === 'group').length,
     completedSermons: items.filter(entry => entry.item.type === 'sermon' && Boolean(entry.sermon && getEffectiveIsPreached(entry.sermon))).length,
-    conductedGroups: items.filter(entry => entry.item.type === 'group' && (entry.group?.meetingDates || []).length > 0).length,
+    meetingsCount: items.reduce((count, entry) => count + (entry.item.type === 'group' ? entry.group?.meetingDates?.length ?? 0 : 0), 0),
   }), [items]);
   const sermonsRead = stats.sermonsCount === 0 ? 'ready' : relatedSermonsRead;
   const groupsRead = stats.groupsCount === 0 ? 'ready' : relatedGroupsRead;
@@ -173,10 +173,10 @@ export function SeriesDetailView({ series, items, onBack, onAddSermons, onAddGro
         </div>
         <div className="rounded-2xl bg-white/80 p-4 shadow-sm ring-1 ring-gray-200 backdrop-blur dark:bg-gray-900/80 dark:ring-gray-800">
           <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {t('workspaces.series.detail.conductedMeetings', { defaultValue: 'Meetings' })}
+            {t('workspaces.groups.itemsLabel.meetings', { defaultValue: 'Meetings' })}
           </p>
           <span className="mt-2 block text-2xl font-bold text-amber-600 dark:text-amber-300">
-            {groupsRead === 'ready' ? stats.conductedGroups : '—'}
+            {groupsRead === 'ready' ? stats.meetingsCount : '—'}
           </span>
           <ListReadFeedback state={groupsRead} />
         </div>

@@ -230,18 +230,19 @@ it('keeps series membership readable without a complete meeting total when the g
   const { view } = setup('a');
   await screen.findByRole('heading', { name: 'a', level: 1 });
   expect(screen.getByRole('heading', { name: 'Meeting' })).toBeInTheDocument();
-  const label = screen.getByText(/^(Meetings|workspaces\.series\.detail\.conductedMeetings)$/);
+  const label = screen.getByText(/^(Meetings|workspaces\.groups\.itemsLabel\.meetings)$/);
   expect(within(label.parentElement!).queryByText('0')).not.toBeInTheDocument();
+  expect(within(label.parentElement!).getByText('—')).toBeInTheDocument();
   expect(screen.getByText('dataSync.backgroundFailure')).toBeInTheDocument();
   view.unmount();
 });
 
 
-it('knows a series with no group members has zero conducted meetings without reading groups', async () => {
+it('knows a series with no group members has zero meetings without reading groups', async () => {
   mockRelatedGroupError = new Error('Store unavailable');
   const { view } = setup('b');
   await screen.findByRole('heading', { name: 'b', level: 1 });
-  const label = screen.getByText(/^(Meetings|workspaces\.series\.detail\.conductedMeetings)$/);
+  const label = screen.getByText(/^(Meetings|workspaces\.groups\.itemsLabel\.meetings)$/);
   expect(within(label.parentElement!).getByText('0')).toBeInTheDocument();
   expect(screen.queryByText('dataSync.backgroundFailure')).not.toBeInTheDocument();
   view.unmount();
