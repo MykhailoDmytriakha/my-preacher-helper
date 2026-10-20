@@ -1,5 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { focusManager, onlineManager, QueryObserver, useQueryClient } from '@tanstack/react-query';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -7,6 +7,8 @@ import { QueryProvider, shouldDehydrateMutation } from '@/providers/QueryProvide
 import { preserveLegacyQueryCache } from '@/data-engine/legacyQueryRecovery.client';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { createIDBPersister } from '@/utils/queryPersister';
+import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { __resetConnectivityForTests, beginConnectivityRequest, reportServerReachable, reportServerUnreachable } from '@/utils/connectivity';
 
 jest.mock('@/utils/queryPersister', () => ({
   createIDBPersister: jest.fn(),
@@ -256,5 +258,208 @@ describe('QueryProvider — React Query follows the one answer about the connect
     reportServerReachable();
     await expect(done).resolves.toBe('saved');
     expect(save).toHaveBeenCalledTimes(2);
+  });
+});
+
+
+describe('QueryProvider exhausted read recovery', () => {
+  beforeEach(() => {
+    jest.useFakeTimers(); jest.setSystemTime(1_000_000); jest.clearAllMocks();
+    jest.mocked(preserveLegacyQueryCache).mockResolvedValue(undefined);
+    __resetConnectivityForTests();
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    focusManager.setFocused(true); onlineManager.setOnline(true);
+    mockCreateIDBPersister.mockReturnValue({ persistClient: jest.fn(), restoreClient: jest.fn(), removeClient: jest.fn() });
+  });
+  afterEach(() => {
+    jest.clearAllTimers(); jest.useRealTimers(); __resetConnectivityForTests();
+    onlineManager.setOnline(true); focusManager.setFocused(undefined);
+  });
+  const settle = async () => { for (let index = 0; index < 100; index += 1) await Promise.resolve(); };
+  const key = ['qa-query-reconnect', 'owner'] as const;
+  const WrapperRead = ({ read }: { read: () => Promise<string> }) => {
+    const result = useServerFirstQuery({ queryKey: key, queryFn: read, staleTime: 0 });
+    return <p>{result.status}</p>;
+  };
+  async function setup(useWrapper = false, warm = false, reports = true) {
+    let client!: ReturnType<typeof useQueryClient>;
+    const read = jest.fn(() => {
+      const request = beginConnectivityRequest();
+      return new Promise<string>((_resolve, reject) => setTimeout(() => {
+        if (reports) { reportServerUnreachable(request); setTimeout(() => reportServerReachable(), 2_000); }
+        reject(new Error('Read timed out'));
+      }, 5_000));
+    });
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(<QueryProvider><ClientProbe onReady={value => { client = value; }} />
+        {useWrapper && <WrapperRead read={read} />}</QueryProvider>);
+      await settle();
+    });
+    expect(client).toBeDefined();
+    if (warm) client.setQueryData(key, 'known');
+    const observer = useWrapper ? null : new QueryObserver(client, { queryKey: key, queryFn: read, staleTime: 0 });
+    const stop = observer?.subscribe(() => undefined); await settle();
+    const close = () => { stop?.(); observer?.destroy(); view.unmount(); client.clear(); };
+    return { client, read, observer, view, close };
+  }
+  async function reachTerminalRecovery(s: Awaited<ReturnType<typeof setup>>) {
+    expect(s.read).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(7_000); expect(s.read).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(5_000);
+    expect(s.client.getQueryState(key)?.status).toBe('error');
+    await jest.advanceTimersByTimeAsync(2_000);
+  }
+
+  it.each([false, true])('defers an exhausted reconnect and delivers it without another connectivity event (wrapper=%s)', async useWrapper => {
+    const s = await setup(useWrapper);
+    try {
+      await reachTerminalRecovery(s); expect(s.read).toHaveBeenCalledTimes(2);
+      expect(s.client.getQueryState(key)?.status).toBe('error');
+      await jest.advanceTimersByTimeAsync(27_999); expect(s.read).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { s.close(); }
+  });
+
+  it('does not make manual refetch wait for a deferred reconnect', async () => {
+    const s = await setup(false, true);
+    try {
+      await reachTerminalRecovery(s);
+      s.read.mockImplementationOnce(async () => { reportServerReachable(); return 'recovered'; });
+      await s.observer!.refetch();
+      expect(s.client.getQueryData(key)).toBe('recovered');
+      const calls = s.read.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(120_000); expect(s.read).toHaveBeenCalledTimes(calls);
+    } finally { s.close(); }
+  });
+
+  it('does not delay a paused save when an exhausted read is waiting', async () => {
+    const s = await setup();
+    try {
+      await jest.advanceTimersByTimeAsync(12_000);
+      const save = jest.fn(async () => 'saved');
+      const done = s.client.getMutationCache().build(s.client, { mutationFn: save, networkMode: 'online', retry: false }).execute(undefined);
+      await settle(); expect(save).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(2_000); await expect(done).resolves.toBe('saved'); await settle();
+      expect(save).toHaveBeenCalledTimes(1); expect(s.read).toHaveBeenCalledTimes(2);
+    } finally { s.close(); }
+  });
+
+  it('keeps a reconnect during an already-failing retry until its terminal result', async () => {
+    const s = await setup();
+    s.read.mockImplementationOnce(() => new Promise((_resolve, reject) => setTimeout(() => reject(new Error('HTTP read refused')), 5_000)));
+    try {
+      await reachTerminalRecovery(s); expect(s.read).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(27_999); expect(s.read).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { s.close(); }
+  });
+
+  it('does not poll a terminal error when no reconnect was requested', async () => {
+    const s = await setup(false, false, false);
+    try {
+      await jest.advanceTimersByTimeAsync(120_000);
+      expect(s.read).toHaveBeenCalledTimes(2); expect(s.client.getQueryState(key)?.status).toBe('error');
+    } finally { s.close(); }
+  });
+
+  it('increases the pause after another exhausted cycle', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s);
+      await jest.advanceTimersByTimeAsync(28_000); expect(s.read).toHaveBeenCalledTimes(3);
+      await jest.advanceTimersByTimeAsync(14_000); expect(s.read).toHaveBeenCalledTimes(4);
+      await jest.advanceTimersByTimeAsync(57_999); expect(s.read).toHaveBeenCalledTimes(4);
+      await jest.advanceTimersByTimeAsync(1); expect(s.read).toHaveBeenCalledTimes(5);
+    } finally { s.close(); }
+  });
+
+  it('retains a due reconnect while hidden and resumes it on return without another online event', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s); focusManager.setFocused(false);
+      await jest.advanceTimersByTimeAsync(29_000); expect(s.read).toHaveBeenCalledTimes(2);
+      focusManager.setFocused(true); await settle(); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { s.close(); }
+  });
+
+  it('retains a due reconnect while offline and coalesces its eventual return', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s); reportServerUnreachable();
+      await jest.advanceTimersByTimeAsync(50_000); expect(s.read).toHaveBeenCalledTimes(2);
+      reportServerReachable(); await settle(); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { s.close(); }
+  });
+
+  it('cancels deferred work when the last observer leaves', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s); const calls = s.read.mock.calls.length;
+      s.observer!.destroy(); await jest.advanceTimersByTimeAsync(120_000);
+      expect(s.read).toHaveBeenCalledTimes(calls);
+    } finally { s.close(); }
+  });
+
+  it('does not refetch a removed query after its deferred reconnect falls due', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s); const calls = s.read.mock.calls.length;
+      s.client.removeQueries({ queryKey: key, exact: true }); await jest.advanceTimersByTimeAsync(120_000);
+      expect(s.read).toHaveBeenCalledTimes(calls);
+    } finally { s.close(); }
+  });
+
+  it('does not treat an optimistic cache patch as a completed server read', async () => {
+    const s = await setup(false, true);
+    try {
+      await reachTerminalRecovery(s);
+      s.observer!.setOptions({ ...s.observer!.options, staleTime: 30_000 });
+      s.client.setQueryData(key, 'optimistic');
+      await jest.advanceTimersByTimeAsync(28_000); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { s.close(); }
+  });
+
+  it('coalesces reconnect requests from two observers of the same query', async () => {
+    const s = await setup();
+    const second = new QueryObserver(s.client, { queryKey: key, queryFn: s.read, staleTime: 0 });
+    const stop = second.subscribe(() => undefined);
+    try {
+      await reachTerminalRecovery(s); expect(s.read).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(28_000); expect(s.read).toHaveBeenCalledTimes(3);
+    } finally { stop(); second.destroy(); s.close(); }
+  });
+
+  it('does not delay another owner query behind this query failure', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s);
+      const readOther = jest.fn(async () => 'other owner');
+      const second = new QueryObserver(s.client, { queryKey: ['qa-query-reconnect', 'other-owner'], queryFn: readOther });
+      const stop = second.subscribe(() => undefined); await settle();
+      expect(readOther).toHaveBeenCalledTimes(1);
+      stop(); second.destroy();
+    } finally { s.close(); }
+  });
+
+  it('keeps an ordinary healthy reconnect immediate', async () => {
+    const s = await setup();
+    const read = jest.fn(async () => 'known');
+    const second = new QueryObserver(s.client, { queryKey: ['qa-healthy-query', 'owner'], queryFn: read, staleTime: 0 });
+    const stop = second.subscribe(() => undefined);
+    try {
+      await settle(); expect(read).toHaveBeenCalledTimes(1);
+      reportServerUnreachable(); reportServerReachable(); await settle();
+      expect(read).toHaveBeenCalledTimes(2);
+    } finally { stop(); second.destroy(); s.close(); }
+  });
+
+  it('retires its deferred work when the provider unmounts even if an external observer remains', async () => {
+    const s = await setup();
+    try {
+      await reachTerminalRecovery(s); const calls = s.read.mock.calls.length;
+      s.view.unmount(); await jest.advanceTimersByTimeAsync(120_000);
+      expect(s.read).toHaveBeenCalledTimes(calls);
+    } finally { s.close(); }
   });
 });

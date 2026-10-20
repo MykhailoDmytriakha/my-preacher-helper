@@ -2,7 +2,7 @@
 
 import { QueryClient, MutationCache, hydrate, onlineManager, type Query } from '@tanstack/react-query';
 import { PersistQueryClientProvider, type PersistedClient } from '@tanstack/react-query-persist-client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 
@@ -14,6 +14,7 @@ import { isConnectionFailure } from '@/utils/apiClient';
 import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
+import { createQueryReconnectRecovery } from '@/utils/queryReconnectRecovery';
 import { i18n } from '@locales/i18n';
 
 /**
@@ -98,7 +99,8 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [queryClient] = useState(() => {
+  const [{ queryClient, reconnectRecovery }] = useState(() => {
+    const reconnectRecovery = createQueryReconnectRecovery();
     const client = new QueryClient({
         mutationCache: new MutationCache({
           onError: (error: unknown) => {
@@ -128,7 +130,7 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
             staleTime: 1000 * 30, // 30s instead of 0 to reduce load (S3 Fix)
             retry: 1,
             refetchOnWindowFocus: false, // Less aggressive (S3 Fix)
-            refetchOnReconnect: true,
+            refetchOnReconnect: reconnectRecovery.refetchOnReconnect,
             refetchOnMount: true,
             networkMode: 'offlineFirst',
             gcTime: PERSISTED_CACHE_MAX_AGE,
@@ -170,8 +172,10 @@ const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
 
     registerOfflineMutationDefaults(client);
     if (typeof window !== 'undefined') followConnectivityInQueries();
-    return client;
+    return { queryClient: client, reconnectRecovery };
   });
+
+  useEffect(() => reconnectRecovery.connect(queryClient), [queryClient, reconnectRecovery]);
 
   const [persister] = useState(() => createIDBPersister(undefined, {
     mayOverwrite: queryCacheMayBeOverwritten,

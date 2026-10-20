@@ -67,7 +67,7 @@ export function useServerFirstQuery<
     staleTime: staleTime ?? (isCacheFirst ? CACHE_FIRST_STALE_TIME_MS : 0),
     refetchOnMount: refetchOnMount ?? (isCacheFirst ? true : 'always'),
     refetchOnWindowFocus: refetchOnWindowFocus ?? !isCacheFirst,
-    refetchOnReconnect: refetchOnReconnect ?? true,
+    ...(refetchOnReconnect === undefined ? {} : { refetchOnReconnect }),
     networkMode: networkMode ?? 'offlineFirst',
   });
 
