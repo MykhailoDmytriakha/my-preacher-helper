@@ -16,9 +16,13 @@ function initAdmin() {
         Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString()
       );
 
-      return initializeApp({
+      const app = initializeApp({
         credential: cert(serviceAccount)
       });
+      // A mature gRPC reconnect pause otherwise lasts minutes, beyond the route's 30-second retry.
+      // Configure once on app creation: HMR must reuse an already-used client without settings().
+      getFirestore(app).settings({ 'grpc.max_reconnect_backoff_ms': 10_000 });
+      return app;
     } catch (error) {
       console.error("Error initializing Firebase Admin:", error);
       throw error;
