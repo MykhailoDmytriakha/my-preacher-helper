@@ -6,8 +6,8 @@ import { deviceChoice } from '@/utils/deviceChoice';
  * as a count beside a verse; in a passage window opened from a sermon, a note or a group only when
  * asked for; the main links or all of them; the rest of a verse's links in its window as verses with
  * their text, or only as references (the owner, 2026-10-16). One record per device, like the Bible chosen
- * (`translation.ts`): the reader and the settings in the "T" menu read and write the same one, and a
- * change shows at once in both. The page holds it in memory and storage is only written through
+ * (`translation.ts`): the reader, the window's switch and Settings → Bible read and write the same one, and a
+ * change shows at once in all. The page holds it in memory and storage is only written through
  * (`utils/deviceChoice.ts`): on the owner's iPad a re-read of storage took "on" back off.
  */
 export type CrossReferenceMode = 'main' | 'all';
@@ -52,7 +52,7 @@ export function readCrossReferencePrefs(): CrossReferencePrefs {
 }
 
 /** Where a change came from, for the technical details a feedback report sends. */
-export type CrossReferencePrefsSource = 'window' | 'menu';
+export type CrossReferencePrefsSource = 'window' | 'settings';
 
 const said = (value: unknown) => (typeof value === 'boolean' ? (value ? 'on' : 'off') : String(value));
 

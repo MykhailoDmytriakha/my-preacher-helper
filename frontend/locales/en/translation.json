@@ -1181,9 +1181,9 @@
         "history": "History",
         "historyHint": "How many places the trail remembers. When it is full, the oldest place leaves.",
         "recent": "Recent",
-        "recentHint": "How many of the last places count as recent: going to one adds no link, it only lights it.",
-        "device": "The numbers and the trail itself are kept on this device."
-      }
+        "recentHint": "How many of the last places count as recent: going to one adds no link, it only lights it."
+      },
+      "device": "These settings and the trail of places are kept on this device."
     },
     "showVersion": {
       "title": "Show app version",

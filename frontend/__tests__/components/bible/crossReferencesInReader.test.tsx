@@ -4,7 +4,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
-import { CrossReferenceSettings } from '@/components/bible/CrossReferenceSettings';
 import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs, useCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
 import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
@@ -385,47 +384,18 @@ describe('the cross-reference settings', () => {
     expect(result.current).toEqual({ show: true, inWindow: false, mode: 'all', othersAsVerses: false });
   });
 
-  it('lives under the text size in the "T" menu; off, its two sub-rows rest', async () => {
+  // The owner, 2026-10-20: the "T" is about the text; the Bible's settings moved to Settings → Bible.
+  it('the reader\'s "T" holds the text size, not the Bible\'s settings', async () => {
     render(
       <TextScaleProvider>
-        <FloatingTextScaleControls>
-          <CrossReferenceSettings />
-        </FloatingTextScaleControls>
+        <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: subject.chapter, verse: subject.verse }} onOpenBook={jest.fn()} />
       </TextScaleProvider>
     );
+    await screen.findByTestId(`cross-refs-${key}`);
     await userEvent.click(await screen.findByLabelText('Text size'));
     const menu = screen.getByRole('dialog', { name: 'Text size' });
     expect(within(menu).getByRole('slider', { name: 'Text size slider' })).toBeInTheDocument();
-    const settings = within(menu).getByTestId('cross-reference-settings');
-    const [show, inWindow] = within(settings).getAllByRole('switch');
-    expect(show).toBeChecked();
-    expect(inWindow).not.toBeChecked();
-
-    await userEvent.click(within(settings).getByRole('button', { name: 'bible.crossRefs.all' }));
-    expect(readCrossReferencePrefs().mode).toBe('all');
-    await userEvent.click(show);
-    expect(readCrossReferencePrefs().show).toBe(false);
-    expect(inWindow).toBeDisabled();
-    expect(within(settings).getByRole('button', { name: 'bible.crossRefs.main' })).toBeDisabled();
-  });
-
-  it('carries the window\'s "the rest as verses" switch too: one choice for both', async () => {
-    render(
-      <TextScaleProvider>
-        <FloatingTextScaleControls>
-          <CrossReferenceSettings />
-        </FloatingTextScaleControls>
-      </TextScaleProvider>
-    );
-    await userEvent.click(await screen.findByLabelText('Text size'));
-    const settings = within(screen.getByRole('dialog', { name: 'Text size' })).getByTestId('cross-reference-settings');
-    const asVerses = within(settings).getByRole('switch', { name: 'bible.crossRefs.othersAsVersesSetting' });
-    expect(asVerses).not.toBeChecked();
-    await userEvent.click(asVerses);
-    expect(readCrossReferencePrefs().othersAsVerses).toBe(true);
-    expect(asVerses).toBeChecked();
-    act(() => saveCrossReferencePrefs({ othersAsVerses: false }));
-    expect(asVerses).not.toBeChecked();
+    expect(within(menu).queryByTestId('cross-reference-settings')).not.toBeInTheDocument();
   });
 
   it('without settings of its own a screen keeps the bare size capsule', async () => {
