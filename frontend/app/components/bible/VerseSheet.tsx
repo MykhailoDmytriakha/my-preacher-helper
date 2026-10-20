@@ -20,7 +20,8 @@ import { readingSurface } from './readingSurface';
 import { readTranslation } from './translation';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
-import { passageAway, passageKeys, restingScrollTop, type PassageBox, type SheetReference } from './verseSheetGeometry';
+import { usePassageRest } from './usePassageRest';
+import { passageAway, passageKeys, type PassageBox, type SheetReference } from './verseSheetGeometry';
 
 export type { SheetReference } from './verseSheetGeometry';
 
@@ -93,7 +94,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
   // the Bible page, whose way back is the screen this window lies over.
   const crossRefs = useBookCrossRefs(reference.book, reading, state.status === 'ready' ? state.text : null, 'window');
   const { openReference: openInBible } = useOpenInBible();
-  const restedAtRef = useRef<number | null>(null);
+  const noteAwayRef = useRef<() => void>(() => undefined);
 
   const keys = useMemo(() => passageKeys(reference, reading), [reference, reading]);
   const wholeChapter = !reference.fromVerse;
@@ -149,17 +150,10 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
     return { top, bottom };
   }, [keys, wholeChapter]);
 
-  const rest = useCallback((smooth: boolean) => {
-    const pane = paneRef.current;
-    const box = passageBox();
-    if (!pane) return;
-    // Measured at the moment, never remembered: a font that came late or a turned phone moves every line.
-    const top = box ? restingScrollTop(box, pane.clientHeight, pane.scrollHeight) : 0;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (smooth && !reduced && typeof pane.scrollTo === 'function') pane.scrollTo({ top, behavior: 'smooth' });
-    else pane.scrollTop = top;
-    restedAtRef.current = top;
-  }, [passageBox]);
+  const { rest, isResting, noteScroll: noteRestScroll, drawn: passageDrawn } = usePassageRest({
+    paneRef, textRef: articleRef, box: passageBox, enabled: state.status === 'ready',
+    onLayout: () => noteAwayRef.current(),
+  });
 
   // A BIG BOOK IS DRAWN AROUND THE PASSAGE (`useChapterWindow`, as in the reader): the chapters near the
   // place read are in the window, the others stand as boxes of their height. A new width or text size
@@ -170,7 +164,6 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
   const readingLine = () => surfaceRef.current.edge() + 8;
   /** The verse at the top of the window, noted as the person scrolls. */
   const readRef = useRef<{ key: string; offset: number } | null>(null);
-  const noteAwayRef = useRef<() => void>(() => undefined);
   const noteReadRef = useRef<() => void>(() => undefined);
   const chapterWindow = useChapterWindow({
     text,
@@ -180,7 +173,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
     onReflow: () => {
       const pane = paneRef.current;
       if (!pane) return;
-      if (pane.scrollTop === restedAtRef.current) {
+      if (isResting()) {
         rest(false);
         return;
       }
@@ -190,9 +183,10 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
     },
     // Other chapters drawn with no scroll can put another verse at the top, and bring the passage into the
     // window: both are read again. A landing on the passage (`rest`) has settled the arrow already.
-    onDrawn: () => {
+    onDrawn: (moved) => {
+      passageDrawn(moved);
       noteReadRef.current();
-      if (paneRef.current && paneRef.current.scrollTop !== restedAtRef.current) noteAwayRef.current();
+      if (!isResting()) noteAwayRef.current();
     },
   });
   const showChapter = chapterWindow.show;
@@ -222,10 +216,10 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
     // The serif can arrive after the first layout and move every line: rest again, unless the person has scrolled.
     let alive = true;
     void document.fonts?.ready.then(() => {
-      if (alive && paneRef.current && paneRef.current.scrollTop === restedAtRef.current) rest(false);
+      if (alive && isResting()) rest(false);
     });
     return () => { alive = false; };
-  }, [state, keys, rest, lightPassage, passageChapter, showChapter]);
+  }, [state, keys, rest, isResting, lightPassage, passageChapter, showChapter]);
 
   // Where the passage is from what shows: above, below, or in sight.
   const noteAway = () => {
@@ -254,6 +248,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
   noteReadRef.current = noteRead;
 
   const onScroll = () => {
+    noteRestScroll();
     chapterWindow.follow();
     noteRead();
     noteAway();

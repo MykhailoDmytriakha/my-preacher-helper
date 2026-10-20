@@ -1,5 +1,6 @@
 'use client';
 
+
 import { ArrowDownIcon, ArrowUpIcon } from '@heroicons/react/20/solid';
 import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -15,7 +16,8 @@ import { useTranslation } from '@locales/useTranslation';
 import { ARRIVAL_ATTRIBUTE, ChapterVerses } from './BookRibbon';
 import { saveCrossReferencePrefs, useCrossReferencePrefs } from './crossReferencePrefs';
 import { ReaderSheet, SheetCloseButton } from './ReaderSheet';
-import { passageAway, restingScrollTop, type PassageBox } from './verseSheetGeometry';
+import { usePassageRest } from './usePassageRest';
+import { passageAway, type PassageBox } from './verseSheetGeometry';
 
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
@@ -125,19 +127,14 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
     .map((place) => place.verse)), [bible, reference, whole]);
   const psalm = reference.book === 'Psalms';
   const paneRef = useRef<HTMLDivElement | null>(null);
-  const restedAtRef = useRef<number | null>(null);
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const noteAwayRef = useRef<() => void>(() => undefined);
   const [away, setAway] = useState<'up' | 'down' | null>(null);
 
-  const rest = useCallback((smooth: boolean) => {
-    const pane = paneRef.current;
-    if (!pane) return;
-    const box = litBox(pane);
-    const top = box ? restingScrollTop(box, pane.clientHeight, pane.scrollHeight) : 0;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (smooth && !reduced && typeof pane.scrollTo === 'function') pane.scrollTo({ top, behavior: 'smooth' });
-    else pane.scrollTop = top;
-    restedAtRef.current = top;
-  }, []);
+  const passageBox = useCallback(() => paneRef.current ? litBox(paneRef.current) : null, []);
+  const { rest, isResting, noteScroll: noteRestScroll } = usePassageRest({
+    paneRef, textRef, box: passageBox, enabled: Boolean(verses), onLayout: () => noteAwayRef.current(),
+  });
 
   // The passage comes to the middle once the chapter is in, and again when the serif arrives late and
   // moves every line — unless the person has scrolled.
@@ -147,10 +144,10 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
     setAway(null);
     let alive = true;
     void document.fonts?.ready.then(() => {
-      if (alive && paneRef.current && paneRef.current.scrollTop === restedAtRef.current) rest(false);
+      if (alive && isResting()) rest(false);
     });
     return () => { alive = false; };
-  }, [verses, rest]);
+  }, [verses, rest, isResting]);
 
   const noteAway = useCallback(() => {
     const pane = paneRef.current;
@@ -158,21 +155,7 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
     setAway(pane && box ? passageAway(box, pane.scrollTop, pane.clientHeight) : null);
   }, []);
 
-  // The pane changes height with the screen — a tablet turned, a window made lower: the passage comes
-  // back to the middle unless the person has scrolled, and "back to the verse" is asked again if they have.
-  useEffect(() => {
-    const pane = paneRef.current;
-    if (!verses || !pane || typeof ResizeObserver === 'undefined') return undefined;
-    let height = pane.clientHeight;
-    const observer = new ResizeObserver(() => {
-      if (pane.clientHeight === height) return;
-      height = pane.clientHeight;
-      if (pane.scrollTop === restedAtRef.current) rest(false);
-      else noteAway();
-    });
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, [verses, rest, noteAway]);
+  noteAwayRef.current = noteAway;
 
   const heading = psalm
     ? t('bible.psalm', { number: reference.chapter })
@@ -198,7 +181,7 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
             margin and gives it back as padding, so the text keeps its width and nothing scrolls sideways. */}
         <div
           ref={paneRef}
-          onScroll={noteAway}
+          onScroll={() => { noteRestScroll(); noteAway(); }}
           tabIndex={0}
           aria-label={heading}
           className="absolute -inset-x-1.5 inset-y-0 overflow-y-auto overflow-x-hidden overscroll-contain px-1.5 pb-20 pt-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400"
@@ -206,7 +189,7 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
           {verses ? (
             <>
               {/* `isolate`: the light of the passage lies under the text and over the card. */}
-              <div className="isolate">
+              <div ref={textRef} className="isolate">
                 <ChapterVerses
                   chapter={reference.chapter}
                   verses={verses}

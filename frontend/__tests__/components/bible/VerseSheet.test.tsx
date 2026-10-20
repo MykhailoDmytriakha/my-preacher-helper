@@ -100,6 +100,8 @@ describe('VerseSheet — the passage over the screen', () => {
       Object.defineProperty(pane, 'clientHeight', { configurable: true, value: 600 });
       Object.defineProperty(pane, 'scrollHeight', { configurable: true, value: 1000 });
       const reading = (key: string) => dialog.querySelector<HTMLElement>(`[data-verse="${key}"]`)!.getBoundingClientRect().top;
+      // Deliver the initial pane geometry before this later deliberate reading input.
+      act(() => { for (const callback of [...callbacks]) callback(); });
       // The person reads chapter 3. Reflow then makes native anchoring expose chapter 2,
       // and its scroll event arrives before ResizeObserver's recalibration callback.
       pane!.scrollTop = 168 - heldOffset;
