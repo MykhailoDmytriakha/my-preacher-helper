@@ -214,8 +214,11 @@ describe('PrayerDetailPage', () => {
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(3);
   });
 
-  it('renders the not-found state when the prayer is missing', () => {
-    mockUsePrayerDetail.mockReturnValue({ prayer: null, isLoading: false });
+  it('renders the shared not-found state only for a confirmed missing prayer', () => {
+    mockUsePrayerDetail.mockReturnValue({ prayer: null, isLoading: false,
+      presence: { kind: 'absent', source: 'server',
+        snapshot: { resource: { collection: 'prayerRequests', id: 'p1' }, value: null, metadata: null } },
+      refresh: jest.fn() });
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [],
       loading: false,
@@ -227,10 +230,33 @@ describe('PrayerDetailPage', () => {
 
     render(<PrayerDetailPage />);
 
-    // The strings are translated now, so the assertion follows the KEYS: hardcoded
-    // English here is what let the untranslated text survive in the first place.
-    expect(screen.getByText('prayer.notFound')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← prayer.back' })).toHaveAttribute('href', '/prayers');
+    expect(screen.getByText('recordAvailability.notFound')).toBeInTheDocument();
+    expect(screen.queryByText('recordAvailability.notHereYet')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'common.back' }));
+    expect(mockPush).toHaveBeenCalledWith('/prayers');
+  });
+
+  it('does not call a failed unread prayer missing and retries that prayer read', async () => {
+    const refresh = jest.fn(async () => undefined);
+    mockUsePrayerDetail.mockReturnValue({ prayer: null, isLoading: false,
+      presence: { kind: 'unknown', source: null, snapshot: null }, refresh });
+    render(<PrayerDetailPage />);
+    expect(screen.queryByText('prayer.notFound')).not.toBeInTheDocument();
+    expect(screen.getByText('recordAvailability.notHereYet')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.retry' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'common.back' }));
+    expect(mockPush).toHaveBeenCalledWith('/prayers');
+  });
+
+  it('shows a pending explicit deletion without inventing completed absence', () => {
+    mockUsePrayerDetail.mockReturnValue({ prayer: null, isLoading: false,
+      presence: { kind: 'deleting', source: 'local',
+        snapshot: { resource: { collection: 'prayerRequests', id: 'p1' }, value: activePrayer, metadata: null } },
+      refresh: jest.fn() });
+    render(<PrayerDetailPage />);
+    expect(screen.queryByText('prayer.notFound')).not.toBeInTheDocument();
+    expect(screen.getByText('recordAvailability.deleting')).toBeInTheDocument();
   });
 
   it('handles edit, update, status, and delete flows for active prayers', async () => {

@@ -19,6 +19,7 @@ import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { Chip } from '@/components/ui/Chip';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
@@ -63,11 +64,9 @@ export default function PrayerDetailPage() {
     // The id makes a refused save durable — see usePrayerRequests.
     usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
 
-  // Detail pages must be driven by the document query. A persisted empty list can
-  // legitimately be fresh for its cache window while this document already exists;
-  // using that list as an existence check produced a false "not found" even though
-  // the breadcrumb's document query had already loaded the prayer.
-  const { prayer, isLoading: detailLoading } = usePrayerDetail(
+  // Content and presence come from the same engine collection. An unread row is
+  // unknown; only a complete successful server answer can establish absence.
+  const { prayer, isLoading: detailLoading, presence, refresh } = usePrayerDetail(
     typeof id === 'string' ? id : '',
     user?.uid
   );
@@ -171,12 +170,7 @@ export default function PrayerDetailPage() {
   }
 
   if (!prayer) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500">
-        <p>{t('prayer.notFound')}</p>
-        <Link href="/prayers" className="text-rose-500 text-sm mt-2 inline-block">← {t('prayer.back')}</Link>
-      </div>
-    );
+    return <RecordUnavailable presence={presence} onBack={() => router.push('/prayers')} onRetry={refresh} />;
   }
 
   const handleEdit = (payload: PrayerFormPayload) => {

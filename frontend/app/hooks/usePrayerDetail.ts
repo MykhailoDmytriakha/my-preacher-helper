@@ -12,5 +12,6 @@ export function usePrayerDetail(prayerId: string, userId?: string | null) {
   const engineRows = useDataCollection(uid && prayerId ? 'prayerRequests' : null);
   const engineRow = engineRows.state?.documents?.find(row => row.resource.id === prayerId);
   const prayer = engineRow?.value ? { ...(engineRow.value as unknown as PrayerRequest), id: prayerId } : null;
-  return { prayer, isLoading: Boolean(prayerId) && !prayer && engineRows.loading };
+  return { prayer, isLoading: Boolean(prayerId) && !prayer && engineRows.loading,
+    presence: engineRows.presence(prayerId), refresh: engineRows.refresh };
 }
