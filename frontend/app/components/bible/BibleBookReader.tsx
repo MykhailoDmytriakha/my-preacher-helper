@@ -396,6 +396,9 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       fitRoom();
       target.scrollIntoView({ block: 'start' });
       broughtRef.current = { place: { chapter, verse: row ? verse : 1 }, scrollY: surfaceRef.current.top() };
+      // While the verse holds, the reader keeps it (jumped to again as the text grows); the browser's own
+      // scroll to keep what shows would be taken for the person's and let the verse go early.
+      surfaceRef.current.anchoring(false);
       then?.();
     });
   }, [fitRoom, showChapter]);
@@ -602,7 +605,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       // Leaving, or a jump waiting for its chapter: the page is not where the person reads.
       if (leavingRef.current || jumping()) return;
       // Moved from where a jump left the page: from here the place is what the top shows.
-      if (broughtRef.current && Math.abs(surface.top() - broughtRef.current.scrollY) >= 1) broughtRef.current = null;
+      if (broughtRef.current && Math.abs(surface.top() - broughtRef.current.scrollY) >= 1) {
+        broughtRef.current = null;
+        surface.anchoring(true);
+      }
       // A fast scroll can bring a chapter's box to the reading line before its verses are drawn: the
       // place is that chapter, and the chapters drawn follow it.
       const line = surface.edge() + readingInsetRef.current;
@@ -626,6 +632,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     surface.target.addEventListener('scroll', note, { passive: true });
     return () => {
       surface.target.removeEventListener('scroll', note);
+      surface.anchoring(true);
       if (timer !== null) store();
       flushPlaceRef.current = () => undefined;
       notePlaceRef.current = () => undefined;

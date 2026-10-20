@@ -551,6 +551,21 @@ describe('BibleBookReader', () => {
     afterEach(() => {
       Reflect.deleteProperty(globalThis, 'ResizeObserver');
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      document.documentElement.style.overflowAnchor = '';
+    });
+
+    // BUG-20261020-ipad-arrival-place-verse-early, traced live on an iPad-wide screen: the chips arriving
+    // on the verses above grew the text, the browser kept what it showed by scrolling the page itself
+    // (scroll anchoring), and that scroll was taken for the person's — the place was let go a verse early
+    // before the jump could be made again. While the verse holds, the browser does not move the page; the
+    // person's scroll gives it back.
+    it('keeps the browser from moving the page while the verse holds, and gives that back once the person scrolls', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      expect(document.documentElement.style.overflowAnchor).toBe('none');
+      Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      expect(document.documentElement.style.overflowAnchor).toBe('');
     });
 
     it('is jumped to again until the person scrolls, and then left where the person put it', async () => {
