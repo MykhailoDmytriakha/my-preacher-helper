@@ -100,7 +100,7 @@ export default function SeriesItemCard({
           )}
           {!isSermon && (group?.meetingDates || []).length > 0 && (
             <Chip tone="amber" size="sm">
-              {t('calendar.analytics.totalPreachings', { defaultValue: 'Meetings' })}: {(group?.meetingDates || []).length}
+              {t('workspaces.groups.itemsLabel.meetings', { defaultValue: 'Meetings' })}: {(group?.meetingDates || []).length}
             </Chip>
           )}
         </div>
