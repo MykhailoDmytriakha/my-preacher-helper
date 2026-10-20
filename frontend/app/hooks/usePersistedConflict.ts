@@ -38,6 +38,7 @@ export function usePersistedConflict<T>(
   aggregate: string
 ) {
   const [conflict, setConflictState] = useState<PersistedConflict<T> | null>(null);
+  const [restoredKey, setRestoredKey] = useState<string | null>(null);
 
   const key = uid && docId ? draftKey(uid, docId, `conflict:${aggregate}`) : null;
   const keyRef = useRef(key);
@@ -53,6 +54,7 @@ export function usePersistedConflict<T>(
     const stored = readDraft<PersistedConflict<T>>(key);
     if (stored) ownByKeyRef.current.set(key, stored.value);
     setConflictState(stored ? stored.value : null);
+    setRestoredKey(key);
   }, [key]);
 
   /**
@@ -85,7 +87,8 @@ export function usePersistedConflict<T>(
       docIdOverride && uid ? draftKey(uid, docIdOverride, `conflict:${aggregate}`) : keyRef.current;
 
     if (next) {
-      setConflictState(next);
+      // A late refusal keeps its named backup without replacing the current document.
+      if (currentKey === keyRef.current) setConflictState(next);
       if (!currentKey) return;
       ownByKeyRef.current.set(currentKey, next);
       saveDraft(currentKey, next);
@@ -115,5 +118,6 @@ export function usePersistedConflict<T>(
     [uid, aggregate]
   );
 
-  return [conflict, setConflict] as const;
+  // Consumers that restore an editor wait for this key before accepting input.
+  return [conflict, setConflict, key === null || restoredKey === key] as const;
 }

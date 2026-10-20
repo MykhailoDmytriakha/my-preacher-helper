@@ -2046,6 +2046,11 @@
     "attachmentAlt": "Вкладення {{number}}"
   },
   "planEditor": {
+    "wholeStructureDescription": "Для цієї збереженої правки потрібно вибрати одну з двох структур цілком. Спочатку перегляньте збережену структуру, перш ніж замінити її своєю.",
+    "useWholeLocalStructure": "Використати мою структуру цілком",
+    "reviewCurrentStructure": "Переглянути збережену структуру",
+    "currentStructure": "Збережена структура",
+    "localStructure": "Ваша структура",
     "title": "Редактор структури",
     "openButton": "Редактор структури",
     "templates": "Шаблони",

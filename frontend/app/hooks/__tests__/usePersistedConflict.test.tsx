@@ -127,4 +127,15 @@ describe('usePersistedConflict', () => {
 
     expect(result.current[0]).toEqual({ payload: { title: 'refused on B' }, actualRevision: 8 });
   });
+  it('stores a late refusal for its own document without publishing it over the current document', () => {
+    const view=renderHook(({id}) => usePersistedConflict<{title:string}>('u1',id,'meta'),{initialProps:{id:'a'}});
+    const late=view.result.current[1];
+    view.rerender({id:'b'});
+    act(() => view.result.current[1]({payload:{title:'Current B'},actualRevision:2}));
+    act(() => late({payload:{title:'Late A'},actualRevision:1},'a'));
+    expect(view.result.current[0]?.payload.title).toBe('Current B');
+    view.rerender({id:'a'});
+    expect(view.result.current[0]?.payload.title).toBe('Late A');
+  });
+
 });

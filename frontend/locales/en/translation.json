@@ -2024,6 +2024,11 @@
     "attachmentAlt": "Attachment {{number}}"
   },
   "planEditor": {
+    "wholeStructureDescription": "For this saved edit, choose between two complete structures. Review the saved structure before replacing it with yours.",
+    "useWholeLocalStructure": "Use my entire structure",
+    "reviewCurrentStructure": "Review saved structure",
+    "currentStructure": "Saved structure",
+    "localStructure": "Your structure",
     "title": "Structure editor",
     "openButton": "Structure editor",
     "templates": "Templates",

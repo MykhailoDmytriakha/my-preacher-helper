@@ -195,12 +195,16 @@ describe('the plan editor saves with what it opened with', () => {
     expect(mockSave).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText('edit-a-point')); // types more meanwhile
 
-    resolveFirst?.({ introduction: [], main: [{ id: 'p1', text: 'THE OLD ANSWER' }], conclusion: [] });
+    const captured: SermonOutline = { introduction: [], main: [
+      { id: 'p1', text: 'edit 1' }, { id: 'phone-point', text: 'Added on phone' },
+    ], conclusion: [] };
+    resolveFirst?.(captured);
     await flushSaveDebounce();
 
     // The board still holds what the person typed LAST, not the stale answer.
     expect(mockSave).toHaveBeenCalledTimes(2);
-    expect(screen.getByTestId('board-text')).toHaveTextContent('edit 2');
+    expect(screen.getByTestId('board-text')).toHaveTextContent('edit 2|Added on phone');
+    expect(mockSave.mock.calls[1][2]).toEqual(captured);
   });
 
   it('stops autosaving until the person decides', async () => {

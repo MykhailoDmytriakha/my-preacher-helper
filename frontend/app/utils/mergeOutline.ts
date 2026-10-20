@@ -1,4 +1,5 @@
 import { mergeValues } from '@/data-engine/react.client';
+import { mergeOutlineOrder, normalizeOutlineFields } from '@/utils/outlineMergeParts';
 
 import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
 
@@ -43,14 +44,6 @@ const SECTIONS: Section[] = ['introduction', 'main', 'conclusion'];
 const byId = (points: OutlinePoint[] | undefined): Map<string, OutlinePoint> =>
   new Map((points ?? []).map((p) => [p.id, p]));
 
-function uniquePointsById(points: OutlinePoint[] | undefined): OutlinePoint[] {
-  const seen = new Set<string>();
-  return (points ?? []).filter((point) => {
-    if (seen.has(point.id)) return false;
-    seen.add(point.id);
-    return true;
-  });
-}
 
 function withoutDuplicateIds(outline: SermonOutline): SermonOutline {
   const seen = new Set<string>();
@@ -110,40 +103,6 @@ function sectionOf(outline: SermonOutline | null | undefined, id: string): Secti
   return SECTIONS.find((section) => (outline?.[section] ?? []).some((point) => point.id === id));
 }
 
-/**
- * Whose ORDER should this section follow?
- *
- * The order of the points IS the shape of the sermon, so a reordering is work, not
- * formatting — and it used to be lost in silence: this editor's order was always
- * taken, so a phone that moved the conclusion ahead had its decision undone by the
- * next save from a laptop that merely reworded something.
- *
- * Decided exactly like content: whoever MOVED decides, and this editor wins when
- * both did. Deliberately NOT a collision — a refusal over ordering would train the
- * person to dismiss the question, and the next real one goes with it.
- *
- * Compared over the ids all three sides hold in this section, so an addition or a
- * deletion on either side is not mistaken for a move.
- */
-function sectionFollowsTheirOrder(
-  base: SermonOutline | null | undefined,
-  mine: SermonOutline,
-  theirs: SermonOutline,
-  section: Section
-): boolean {
-  if (!base) return false;
-  const shared = (id: string) =>
-    (base[section] ?? []).some((p) => p.id === id) &&
-    (mine[section] ?? []).some((p) => p.id === id) &&
-    (theirs[section] ?? []).some((p) => p.id === id);
-  const orderOf = (outline: SermonOutline) =>
-    uniquePointsById(outline[section]).map((p) => p.id).filter(shared);
-
-  const started = orderOf(base);
-  const movedHere = orderOf(mine).some((id, index) => id !== started[index]);
-  const movedThere = orderOf(theirs).some((id, index) => id !== started[index]);
-  return !movedHere && movedThere;
-}
 
 export function mergeOutline(
   base: SermonOutline | null | undefined,
@@ -239,56 +198,11 @@ export function mergeOutline(
     reconcileExistingPoint({ id, startedIn, hereSection, thereSection, start, here, there }, placement, content, collisions);
   });
 
-  const emitted = new Set<string>();
-
   SECTIONS.forEach((section) => {
-    const result: OutlinePoint[] = [];
-
-    // Whoever reordered leads; this editor leads when nobody did, or when both did.
-    const theirOrder = sectionFollowsTheirOrder(base, mine, theirs, section);
-    const leading = uniquePointsById(theirOrder ? theirs[section] : mine[section]);
-    const trailing = uniquePointsById(theirOrder ? mine[section] : theirs[section]);
-
-    // The leading order first, for the points that end up in THIS section.
-    leading.forEach((point) => {
-      if (placement.get(point.id) !== section) return;
-      if (emitted.has(point.id)) return;
-      const decided = content.get(point.id);
-      if (decided) {
-        result.push(decided);
-        emitted.add(point.id);
-      }
-    });
-
-    // Then whatever the OTHER side places here and the leader does not list — an
-    // addition made over there, or a point moved into this section. Each lands after
-    // the neighbour it followed on its own side, so its placement is respected
-    // instead of everything piling up at the end.
-    trailing.forEach((point, index) => {
-      if (placement.get(point.id) !== section) return;
-      if (emitted.has(point.id)) return;
-      const decided = content.get(point.id);
-      if (!decided) return;
-      /**
-       * Land it after the nearest point that preceded it ON ITS OWN SIDE and is
-       * already placed here. Only the IMMEDIATE predecessor used to be consulted, so
-       * a point inserted at the FRONT — or moved into this section ahead of
-       * everything — had no anchor and was appended to the very end instead. The
-       * order of the points is the shape of the sermon, and silently moving one from
-       * first to last changes what gets preached when.
-       */
-      let anchor = -1;
-      for (let back = index - 1; back >= 0 && anchor < 0; back -= 1) {
-        anchor = result.findIndex((p) => p.id === trailing[back].id);
-      }
-      if (anchor >= 0) result.splice(anchor + 1, 0, decided);
-      // If every predecessor was removed by the merge, this is the first surviving
-      // point from that side; appending it would turn an opening thought into a close.
-      else result.unshift(decided);
-      emitted.add(point.id);
-    });
-
-    merged[section] = result;
+    const ids = (outline: SermonOutline | null | undefined) => (outline?.[section] ?? []).map(point => point.id);
+    const wanted = new Set([...placement].filter(([,home]) => home === section).map(([id]) => id));
+    merged[section] = mergeOutlineOrder(base ? ids(base) : null, ids(mine), ids(theirs), wanted)
+      .map(id => content.get(id)!);
   });
 
   // One id lives in one place. A candidate that holds an id in two places — two devices moved a
@@ -369,11 +283,8 @@ function reconcileExistingPoint(
 function asField(point: OutlinePoint) {
   // Absent and empty mean the same here as in `samePoint`: an empty note or a false "reviewed"
   // is not something either side wrote.
-  const plain = <T extends { note?: string; isReviewed?: boolean }>(item: T): T => {
-    const { note, isReviewed, ...rest } = item;
-    return { ...rest, ...(note ? { note } : {}), ...(isReviewed ? { isReviewed } : {}) } as T;
-  };
-  const value = { ...plain(point), subPoints: (point.subPoints ?? []).map(plain) };
+
+  const value = { ...normalizeOutlineFields(point), subPoints: (point.subPoints ?? []).map(normalizeOutlineFields) };
   return { exists: true as const, value: JSON.parse(JSON.stringify(value)) };
 }
 
