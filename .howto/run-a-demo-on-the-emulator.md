@@ -14,6 +14,8 @@ A demo, or a live check that needs particular data, runs against the local Fires
 
 ## Traps
 
+- Build canonical seed values from the actual create path and `app/data-engine/resourceSchemas.ts`. Notes require `isDraft`; series require `theme` and `bookOrTopic`. HTTP200 alone is insufficient: commands can return `kind: refused`. Require `kind: acknowledged` and verify the accepted value before any UI claim. Series title and theme may be identical on a card: select the heading by role instead of an ambiguous text match. Native133 v1/v2 preserve these rejected fixture/selector attempts.
+
 - In a deliberate emulator outage/restart check, wait the full `Retry-After` measured from the completed refusal response. A listening emulator port does not establish that the existing application client has recovered: require an actual authenticated application read to return 200 before claiming recovery. If it still answers 503, retain that attempt and honor its new response pause; bound any local recheck. Never use such a retry loop against an exhausted production quota.
 
 - When testing a production-Firestore deny guard, wrap stub transports before loading it and assert the guard refuses before those stubs are called. Even a broken guard must not send the negative-control probe to production. Keep its expected-block log separate from the real QA server guard log; pure policy tests and actual Admin SDK emulator preflight prove different things.

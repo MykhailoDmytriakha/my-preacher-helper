@@ -65,6 +65,7 @@ function SeriesView({ source, onCreate, feedback }: {
 }) {
   const { t } = useTranslation();
   const { series, loading, error, refreshSeries } = source;
+  const canDescribeSeries = !loading && !error;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -143,7 +144,7 @@ function SeriesView({ source, onCreate, feedback }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      {canDescribeSeries && <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {/* Total Series */}
         <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
           <div className="flex items-center">
@@ -211,7 +212,7 @@ function SeriesView({ source, onCreate, feedback }: {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700/60 dark:bg-gray-800/50">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -269,7 +270,7 @@ function SeriesView({ source, onCreate, feedback }: {
       {loading ? (
         <SeriesGridSkeleton />
       ) : filteredSeries.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-14 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
+        canDescribeSeries && <div className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-14 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/40 dark:text-blue-200">
             <PlusIcon className="h-7 w-7" />
           </div>

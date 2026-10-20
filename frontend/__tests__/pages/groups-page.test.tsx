@@ -109,6 +109,26 @@ describe('GroupsPage', () => {
     withCollection();
   });
 
+  it('does not describe a refused groups read with zero statistics', () => {
+    withCollection({ groups: [], error: new Error('Read refused') });
+    render(<GroupsPage />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load groups');
+    expect(screen.queryByText('Total groups')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New group' })).toBeEnabled();
+  });
+
+  it('retains local group cards when a later read fails', () => {
+    withCollection({ error: new Error('Read refused') });
+    render(<GroupsPage />);
+    expect(screen.getByTestId('group-card-g1')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('keeps statistics for a successfully read groups list', () => {
+    render(<GroupsPage />);
+    expect(screen.getByText('Total groups')).toBeInTheDocument();
+  });
+
   it('renders error state', () => {
     withCollection({ groups: [], error: new Error('boom') });
 

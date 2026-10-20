@@ -68,6 +68,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
   const { user } = useAuth();
   const groupsUserId = user?.uid ?? null;
   const { groups, loading, error, refreshGroups } = source;
+  const canDescribeGroups = !loading && !error;
   const { series } = useSeries(groupsUserId);
 
   useEffect(() => {
@@ -121,7 +122,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      {canDescribeGroups && <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {/* Total Groups */}
         <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-5">
           <div className="flex items-center">
@@ -189,7 +190,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
             </div>
           </div>
         </div>
-      </div>
+      </div>}
 
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

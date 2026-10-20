@@ -185,6 +185,46 @@ describe('StudiesPage', () => {
     });
   });
 
+  describe('failed read presentation', () => {
+    it('keeps the failure and ordinary creation without a first-note invitation', () => {
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), error: new Error('Read refused') });
+      render(<StudiesPage />);
+      expect(screen.getByText('studiesWorkspace.loadError')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'studiesWorkspace.newNote' })).toBeEnabled();
+      expect(screen.queryByText('studiesWorkspace.noNotes')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'studiesWorkspace.createFirstNote' })).not.toBeInTheDocument();
+    });
+
+    it('does not report failed notes as zero in the summary, tabs or result count', () => {
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), error: new Error('Read refused') });
+      render(<StudiesPage />);
+      expect(screen.queryByText('0 studiesWorkspace.stats.notesLabel')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^studiesWorkspace.tabs.all/ })).not.toHaveTextContent('(0)');
+      expect(screen.queryByText('studiesWorkspace.allNotes')).not.toBeInTheDocument();
+    });
+
+    it('does not call an unknown filtered list a no-match result', () => {
+      mockQueryState.search = 'missing';
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), error: new Error('Read refused') });
+      render(<StudiesPage />);
+      expect(screen.getByText('studiesWorkspace.loadError')).toBeInTheDocument();
+      expect(screen.queryByText('studiesWorkspace.noMatchingNotes')).not.toBeInTheDocument();
+    });
+
+    it('keeps available local notes visible after a read fails', () => {
+      mockUseStudyNotes.mockReturnValue({ ...baseUseStudyNotesValue(), error: new Error('Read refused'), notes: [createMockNote({ id: 'kept', title: 'Kept local note' })] });
+      render(<StudiesPage />);
+      expect(screen.getByText('Kept local note')).toBeInTheDocument();
+      expect(screen.getByText('studiesWorkspace.loadError')).toBeInTheDocument();
+    });
+
+    it('keeps the first-note invitation for a successfully read empty list', () => {
+      render(<StudiesPage />);
+      expect(screen.getByRole('button', { name: 'studiesWorkspace.createFirstNote' })).toBeEnabled();
+      expect(screen.getByText('0 studiesWorkspace.stats.notesLabel')).toBeInTheDocument();
+    });
+  });
+
   it('shows the stats badge and new note button text', () => {
     render(<StudiesPage />);
 

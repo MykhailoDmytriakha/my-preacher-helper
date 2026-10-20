@@ -367,6 +367,39 @@ describe('Series Page', () => {
         });
     });
 
+    describe('failed read presentation', () => {
+        it('keeps its failure and ordinary creation without a first-series invitation', () => {
+            withCollection({ series: [], error: new Error('Read refused') });
+            render(<SeriesPage />);
+            expect(screen.getByRole('alert')).toHaveTextContent('dataSync.readFailed');
+            screen.getAllByRole('button', { name: 'New Series' }).forEach(button => expect(button).toBeEnabled());
+            expect(screen.queryByText('No series yet')).not.toBeInTheDocument();
+            expect(screen.queryByText('Create your first series to get started')).not.toBeInTheDocument();
+        });
+
+        it('does not describe a failed read with zero-valued statistics', () => {
+            withCollection({ series: [], error: new Error('Read refused') });
+            render(<SeriesPage />);
+            expect(screen.queryByText('workspaces.series.stats.total')).not.toBeInTheDocument();
+            expect(screen.queryByText('workspaces.series.stats.active')).not.toBeInTheDocument();
+        });
+
+        it('does not claim a filtered failed read has no series', () => {
+            withCollection({ series: mockSeries, error: new Error('Read refused') });
+            render(<SeriesPage />);
+            fireEvent.change(screen.getByPlaceholderText('Search by title, book, theme...'), { target: { value: 'no-match-at-all' } });
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+            expect(screen.queryByText('No series yet')).not.toBeInTheDocument();
+        });
+
+        it('keeps actual local series cards visible after a read fails', () => {
+            withCollection({ series: mockSeries, error: new Error('Read refused') });
+            render(<SeriesPage />);
+            expect(screen.getByTestId('series-card-series-1')).toBeInTheDocument();
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+        });
+    });
+
     describe('Create Series Modal', () => {
         it('opens the engine create modal with a fresh id when clicking New Series', () => {
             render(<SeriesPage />);

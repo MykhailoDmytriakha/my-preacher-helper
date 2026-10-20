@@ -45,6 +45,7 @@ export default function StudiesPage() {
     loading: notesLoading,
     error: notesError,
   } = useStudyNotes();
+  const canDescribeNotes = !notesLoading && !notesError;
   const {
     shareLinks,
     loading: shareLinksLoading,
@@ -322,7 +323,7 @@ export default function StudiesPage() {
         <UnfinishedNoteDrafts uid={uid} notes={notes} confirmedCreationIds={confirmedCreationIds} canClassifyRecordings={!notesLoading && !notesError} />
 
         {/* Stats bar */}
-        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
+        {canDescribeNotes && <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-300">
           <div className="flex items-center gap-2">
             <ClipboardDocumentListIcon className="h-5 w-5" />
             <span>
@@ -338,7 +339,7 @@ export default function StudiesPage() {
               </div>
             </>
           )}
-        </div>
+        </div>}
       </header>
 
       {/* Type Tabs */}
@@ -355,7 +356,7 @@ export default function StudiesPage() {
           >
             {t(`studiesWorkspace.tabs.${tab}`)}
             {/* Show count in parentheses for non-question tabs */}
-            {tab !== 'questions' && (
+            {canDescribeNotes && tab !== 'questions' && (
               <span className={`ml-1.5 ${activeTab === tab ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
                 ({noteCounts[tab]})
               </span>
@@ -367,7 +368,7 @@ export default function StudiesPage() {
             )}
 
             {/* Amber badge for questions (always show if > 0, replaces parentheses count) */}
-            {tab === 'questions' && noteCounts.questions > 0 && (
+            {canDescribeNotes && tab === 'questions' && noteCounts.questions > 0 && (
               <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
                 {noteCounts.questions}
               </span>
@@ -463,7 +464,7 @@ export default function StudiesPage() {
       {/* Results header with expand/collapse */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600 dark:text-gray-400">
-          {hasActiveFilters ? (
+          {canDescribeNotes && (hasActiveFilters ? (
             <span>
               {t('studiesWorkspace.matchingNotes')}: <strong>{visibleNotes.length}</strong>
             </span>
@@ -471,7 +472,7 @@ export default function StudiesPage() {
             <span>
               {t('studiesWorkspace.allNotes')}: <strong>{visibleNotes.length}</strong>
             </span>
-          )}
+          ))}
         </div>
 
         {visibleNotes.length > 0 && (
@@ -512,7 +513,7 @@ export default function StudiesPage() {
           ))}
         </div>
       ) : visibleNotes.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-900">
+        canDescribeNotes && <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 dark:border-gray-700 dark:bg-gray-900">
           <ClipboardDocumentListIcon className="h-12 w-12 text-gray-400 dark:text-gray-600" />
           <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
             {hasActiveFilters
