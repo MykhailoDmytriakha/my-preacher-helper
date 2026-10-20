@@ -9,6 +9,7 @@ import {
 import { providerIds } from '@/api/clients/ai/providerId';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { getAiModelDefaultsState } from '@/services/aiModelDefaults.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 
 import type { AiFunctionId } from '@/api/clients/ai/functionCatalog';
 
@@ -38,17 +39,20 @@ const jsonResponse = (body: unknown, status = 200): NextResponse =>
   NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const startedAt = performance.now();
   const admin = await requireAdminEmail(request);
   if (!admin.ok) return admin.response;
 
   try {
-    return jsonResponse(await getAiModelDefaultsState());
-  } catch {
+    return jsonResponse(await withStore(() => getAiModelDefaultsState(), { startedAt }));
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const startedAt = performance.now();
   const admin = await requireAdminEmail(request);
   if (!admin.ok) return admin.response;
 
@@ -73,9 +77,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    await adminDb.collection('config').doc('aiModelDefaults').set(patchResult.data, { merge: true });
-    return jsonResponse(await getAiModelDefaultsState());
-  } catch {
+    return await withStore(async () => {
+      await adminDb.collection('config').doc('aiModelDefaults').set(patchResult.data, { merge: true });
+      return jsonResponse(await getAiModelDefaultsState());
+    }, { write: true, startedAt });
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 }

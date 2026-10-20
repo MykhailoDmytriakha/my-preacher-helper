@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireAdminEmail } from '@/api/admin/adminAuth';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { TIER_VALUES } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ uid: string }> }
 ): Promise<NextResponse> {
+  const startedAt = performance.now();
   const admin = await requireAdminEmail(request);
   if (!admin.ok) return admin.response;
 
@@ -75,10 +77,13 @@ export async function POST(
   }
 
   try {
-    await adminDb.collection('users').doc(uidResult.data).set(patchResult.data, { merge: true });
-    const entitlement = await getUserEntitlementServerSide(uidResult.data);
-    return jsonResponse(entitlement);
-  } catch {
+    return await withStore(async () => {
+      await adminDb.collection('users').doc(uidResult.data).set(patchResult.data, { merge: true });
+      const entitlement = await getUserEntitlementServerSide(uidResult.data);
+      return jsonResponse(entitlement);
+    }, { write: true, startedAt });
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 }

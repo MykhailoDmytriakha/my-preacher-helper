@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse } from '@/services/storeAvailability.server';
 
 export function writeError(error: unknown) {
+  if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
   const boundary = legacyBoundaryResponse(error);
   if (boundary) return boundary;
   const code = (error as { code?: string }).code;

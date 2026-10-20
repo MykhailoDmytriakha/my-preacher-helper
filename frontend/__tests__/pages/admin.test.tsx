@@ -5,6 +5,8 @@ import React from 'react';
 
 import AdminPage from '@/(pages)/(private)/admin/page';
 import { auth } from '@/services/firebaseAuth.service';
+import { beginConnectivityRequest } from '@/utils/connectivity';
+import { __resetServerAvailabilityForTests, isServerUnavailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
 const mockTranslate = (key: string) => key;
 
@@ -58,6 +60,7 @@ describe('Admin Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fetchMock.resetMocks();
+    __resetServerAvailabilityForTests();
     (auth as { currentUser: unknown }).currentUser = adminUser;
     mockOnAuthStateChanged.mockImplementation((callback) => {
       if (typeof callback === 'function') callback(adminUser as never);
@@ -326,9 +329,11 @@ describe('Admin Page', () => {
 
     fireEvent.click(await screen.findByText('beta@example.com'));
     fireEvent.change(screen.getByLabelText('admin.paidTier'), { target: { value: 'tier1' } });
+    reportServerUnavailable(beginConnectivityRequest());
     fireEvent.click(screen.getByRole('button', { name: 'admin.users.save' }));
 
     expect(await screen.findByText('admin.users.toastSaved')).toBeInTheDocument();
+    expect(isServerUnavailable()).toBe(false);
     expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/admin/users/user-beta/entitlement');
     const betaRow = within(screen.getByRole('table')).getByText('beta@example.com').closest('tr');
     expect(within(betaRow as HTMLTableRowElement).getByText('admin.users.tiers.tier2')).toBeInTheDocument();
@@ -390,11 +395,43 @@ describe('Admin Page', () => {
     fireEvent.change(screen.getByLabelText('admin.modelDefaults.functions.text: admin.modelDefaults.model'), { target: { value: 'deepseek/deepseek-v4-pro' } });
     fireEvent.change(screen.getByLabelText('admin.modelDefaults.functions.transcription: admin.modelDefaults.model'), { target: { value: 'gpt-4o-mini-transcribe' } });
     fireEvent.change(screen.getByLabelText('admin.modelDefaults.functions.tts: admin.modelDefaults.provider'), { target: { value: 'openai' } });
+    reportServerUnavailable(beginConnectivityRequest());
     fireEvent.click(screen.getByRole('button', { name: 'admin.modelDefaults.save' }));
 
     expect(await screen.findByText('admin.modelDefaults.success')).toBeInTheDocument();
+    expect(isServerUnavailable()).toBe(false);
     expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/admin/ai-defaults');
     expect(fetchMock.mock.calls[3]?.[1]?.method).toBe('POST');
     expect(JSON.parse(String(fetchMock.mock.calls[3]?.[1]?.body))).toEqual(savedDefaults.effective);
   });
+
+  it.each(['users', 'model defaults'])('a successful %s read clears the prior store refusal', async source => {
+    reportServerUnavailable(beginConnectivityRequest());
+    fetchMock.mockResponses(
+      [JSON.stringify({ admin: true }), { status: 200 }],
+      [JSON.stringify(source === 'users' ? { users } : { error: 'Failed' }), { status: source === 'users' ? 200 : 500 }],
+      [JSON.stringify(source === 'model defaults' ? modelDefaults : { error: 'Failed' }), { status: source === 'model defaults' ? 200 : 500 }]
+    );
+    render(<AdminPage />);
+    if (source === 'users') {
+      await screen.findByText('alpha@example.com');
+    } else {
+      fireEvent.click(await screen.findByRole('button', { name: 'admin.modelDefaults.nav.modelDefaults' }));
+      await waitFor(() => expect(screen.getByRole('button', { name: 'admin.modelDefaults.save' })).toBeEnabled());
+    }
+    expect(isServerUnavailable()).toBe(false);
+  });
+
+  it('a successful access check alone does not clear the prior store refusal', async () => {
+    reportServerUnavailable(beginConnectivityRequest());
+    fetchMock.mockResponses(
+      [JSON.stringify({ admin: true }), { status: 200 }],
+      [JSON.stringify({ error: 'Failed' }), { status: 500 }],
+      [JSON.stringify({ error: 'Failed' }), { status: 500 }]
+    );
+    render(<AdminPage />);
+    await screen.findByText('admin.users.loadFailed');
+    expect(isServerUnavailable()).toBe(true);
+  });
+
 });

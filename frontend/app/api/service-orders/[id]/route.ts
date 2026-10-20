@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { withStore } from '@/services/storeAvailability.server';
 import { isEngineTombstone } from '@/utils/engineTombstone';
 
 import { noStore, writeError } from '../writeSupport';
@@ -11,11 +12,12 @@ const NOT_FOUND = 'Service order not found';
 
 type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, { params }: Context) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { id } = await params;
-    const snapshot = await adminDb.collection('serviceOrders').doc(id).get();
+    const snapshot = await withStore(() => adminDb.collection('serviceOrders').doc(id).get(), { startedAt });
     if (!snapshot.exists || snapshot.data()?.userId !== uid || isEngineTombstone(snapshot.data())) {
       return NextResponse.json({ error: NOT_FOUND }, { status: 404 });
     }

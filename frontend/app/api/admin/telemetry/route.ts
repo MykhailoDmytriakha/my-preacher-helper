@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { describePrompt, resolvePromptKey } from "@/api/clients/ai/promptRegistry";
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 
 import { checkTelemetryAdminAuth, TELEMETRY_COLLECTION } from "./telemetryAdmin";
 
@@ -37,12 +38,13 @@ type VersionAccumulator = {
 // GET /api/admin/telemetry
 // Returns summary grouped by promptName → promptVersion with computed metrics.
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const admin = await checkTelemetryAdminAuth(request);
   if (!admin.ok) return admin.response;
 
   try {
     const { adminDb } = await import("@/config/firebaseAdminConfig");
-    const snapshot = await adminDb.collection(TELEMETRY_COLLECTION).get();
+    const snapshot = await withStore(() => adminDb.collection(TELEMETRY_COLLECTION).get(), { startedAt });
 
     const summary: Record<string, { total: number; versions: Record<string, VersionAccumulator> }> = {};
 
@@ -162,6 +164,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
@@ -169,27 +172,31 @@ export async function GET(request: Request) {
 // DELETE /api/admin/telemetry
 // Deletes ALL telemetry records. Returns count of deleted documents.
 export async function DELETE(request: Request) {
+  const startedAt = performance.now();
   const admin = await checkTelemetryAdminAuth(request);
   if (!admin.ok) return admin.response;
 
   try {
-    const { adminDb } = await import("@/config/firebaseAdminConfig");
-    const snapshot = await adminDb.collection(TELEMETRY_COLLECTION).get();
-    const total = snapshot.size;
+    return await withStore(async () => {
+      const { adminDb } = await import("@/config/firebaseAdminConfig");
+      const snapshot = await adminDb.collection(TELEMETRY_COLLECTION).get();
+      const total = snapshot.size;
 
-    // Firestore batch limit is 500
-    const chunks: typeof snapshot.docs[] = [];
-    for (let i = 0; i < snapshot.docs.length; i += 500) {
-      chunks.push(snapshot.docs.slice(i, i + 500));
-    }
-    for (const chunk of chunks) {
-      const batch = adminDb.batch();
-      chunk.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-    }
+      // Firestore batch limit is 500
+      const chunks: typeof snapshot.docs[] = [];
+      for (let i = 0; i < snapshot.docs.length; i += 500) {
+        chunks.push(snapshot.docs.slice(i, i + 500));
+      }
+      for (const chunk of chunks) {
+        const batch = adminDb.batch();
+        chunk.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+      }
 
-    return NextResponse.json({ deleted: total });
+      return NextResponse.json({ deleted: total });
+    }, { write: true, startedAt });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

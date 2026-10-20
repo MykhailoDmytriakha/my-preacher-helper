@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { withStore } from '@/services/storeAvailability.server';
 import { councilsRepository } from '@repositories/councils.repository';
 
 import { noStore, writeError } from './writeSupport';
@@ -14,10 +15,11 @@ import { noStore, writeError } from './writeSupport';
 
 /** GET /api/councils — every council belonging to the caller. */
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
-    const councils = await councilsRepository.listForOwner(uid);
+    const councils = await withStore(() => councilsRepository.listForOwner(uid), { startedAt });
     return NextResponse.json(councils, { headers: noStore });
   } catch (error) {
     console.error('Error listing councils:', error);

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { legacyBoundaryResponse, refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 const REQUEST_REFUSED = 'Request refused';
@@ -12,15 +13,17 @@ const ERROR_MESSAGES = {
 } as const;
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   const { id } = await params;
   try {
-    const material = await studiesRepository.getMaterial(id);
+    const material = await withStore(() => studiesRepository.getMaterial(id), { startedAt });
     if (!material) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (material.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(material);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const refusal = legacyBoundaryResponse(error);
     if (refusal) return refusal;
     if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
+
 import {
   buildTelemetryQualityReview,
   checkTelemetryAdminAuth,
@@ -33,6 +35,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
+  const startedAt = performance.now();
   const admin = await checkTelemetryAdminAuth(request);
   if (!admin.ok) return admin.response;
 
@@ -66,7 +69,7 @@ export async function GET(
         .where("promptVersion", "==", versionFilter);
     }
 
-    const snapshot = await query.get();
+    const snapshot = await withStore(() => query.get(), { startedAt });
     const records = snapshot.docs
       .map((doc) => ({ documentId: doc.id, ...doc.data() } as TelemetryRecordForAdmin))
       .filter((record) => !qualityFilter || record.qualityReview?.quality === qualityFilter)
@@ -86,6 +89,7 @@ export async function GET(
       records,
     });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
@@ -96,6 +100,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
+  const startedAt = performance.now();
   const admin = await checkTelemetryAdminAuth(request);
   if (!admin.ok) return admin.response;
 
@@ -105,30 +110,33 @@ export async function PATCH(
   try {
     const body = TelemetryReviewPatchSchema.parse(await request.json());
     const qualityReview = buildTelemetryQualityReview(body);
-    const { adminDb, FieldValue } = await import("@/config/firebaseAdminConfig");
-    const docRef = adminDb.collection(TELEMETRY_COLLECTION).doc(body.eventId);
-    const docSnap = await docRef.get();
+    return await withStore(async () => {
+      const { adminDb, FieldValue } = await import("@/config/firebaseAdminConfig");
+      const docRef = adminDb.collection(TELEMETRY_COLLECTION).doc(body.eventId);
+      const docSnap = await docRef.get();
 
-    if (!docSnap.exists) {
-      return NextResponse.json({ error: "Telemetry record not found" }, { status: 404 });
-    }
+      if (!docSnap.exists) {
+        return NextResponse.json({ error: "Telemetry record not found" }, { status: 404 });
+      }
 
-    const data = docSnap.data();
-    if (data?.promptName !== decoded) {
-      return NextResponse.json({ error: "Telemetry record belongs to a different promptName" }, { status: 409 });
-    }
+      const data = docSnap.data();
+      if (data?.promptName !== decoded) {
+        return NextResponse.json({ error: "Telemetry record belongs to a different promptName" }, { status: 409 });
+      }
 
-    await docRef.update({
-      qualityReview,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+      await docRef.update({
+        qualityReview,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
 
-    return NextResponse.json({
-      promptName: decoded,
-      eventId: body.eventId,
-      qualityReview,
-    });
+      return NextResponse.json({
+        promptName: decoded,
+        eventId: body.eventId,
+        qualityReview,
+      });
+    }, { write: true, startedAt });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof ZodError) {
       return NextResponse.json({ error: "Invalid review payload", issues: error.issues }, { status: 400 });
     }
@@ -143,6 +151,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
+  const startedAt = performance.now();
   const admin = await checkTelemetryAdminAuth(request);
   if (!admin.ok) return admin.response;
 
@@ -152,36 +161,39 @@ export async function DELETE(
   const versionFilter = searchParams.get("version");
 
   try {
-    const { adminDb } = await import("@/config/firebaseAdminConfig");
+    return await withStore(async () => {
+      const { adminDb } = await import("@/config/firebaseAdminConfig");
 
-    let query = adminDb.collection(TELEMETRY_COLLECTION).where("promptName", "==", decoded);
+      let query = adminDb.collection(TELEMETRY_COLLECTION).where("promptName", "==", decoded);
 
-    if (versionFilter) {
-      query = adminDb
-        .collection(TELEMETRY_COLLECTION)
-        .where("promptName", "==", decoded)
-        .where("promptVersion", "==", versionFilter);
-    }
+      if (versionFilter) {
+        query = adminDb
+          .collection(TELEMETRY_COLLECTION)
+          .where("promptName", "==", decoded)
+          .where("promptVersion", "==", versionFilter);
+      }
 
-    const snapshot = await query.get();
-    const total = snapshot.size;
+      const snapshot = await query.get();
+      const total = snapshot.size;
 
-    const chunks: typeof snapshot.docs[] = [];
-    for (let i = 0; i < snapshot.docs.length; i += 500) {
-      chunks.push(snapshot.docs.slice(i, i + 500));
-    }
-    for (const chunk of chunks) {
-      const batch = adminDb.batch();
-      chunk.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-    }
+      const chunks: typeof snapshot.docs[] = [];
+      for (let i = 0; i < snapshot.docs.length; i += 500) {
+        chunks.push(snapshot.docs.slice(i, i + 500));
+      }
+      for (const chunk of chunks) {
+        const batch = adminDb.batch();
+        chunk.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+      }
 
-    return NextResponse.json({
-      promptName: decoded,
-      version: versionFilter ?? null,
-      deleted: total,
-    });
+      return NextResponse.json({
+        promptName: decoded,
+        version: versionFilter ?? null,
+        deleted: total,
+      });
+    }, { write: true, startedAt });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }

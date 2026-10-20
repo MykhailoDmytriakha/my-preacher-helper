@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { requireAdminEmail } from '@/api/admin/adminAuth';
 import { adminAuth, adminDb } from '@/config/firebaseAdminConfig';
 import { readReferralWarning } from '@/services/referral.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import {
   normalizeUserEntitlementServerSide,
   resolveEffectiveTier,
@@ -32,6 +33,7 @@ const jsonResponse = (body: unknown, status = 200): NextResponse =>
   NextResponse.json(body, { status, headers: NO_STORE_HEADERS });
 
 export async function GET(request: Request): Promise<NextResponse> {
+  const startedAt = performance.now();
   const admin = await requireAdminEmail(request);
   if (!admin.ok) return admin.response;
 
@@ -39,10 +41,12 @@ export async function GET(request: Request): Promise<NextResponse> {
     const pageToken = new URL(request.url).searchParams.get('pageToken') || undefined;
     // Scale note: both collection reads are unbounded; replace with indexed/materialized
     // summaries before the admin population grows beyond the current operational scale.
-    const [authPage, entitlementSnapshot, referralEventsSnapshot] = await Promise.all([
+    const [authPage, [entitlementSnapshot, referralEventsSnapshot]] = await Promise.all([
       adminAuth.listUsers(1000, pageToken),
-      adminDb.collection('users').get(),
-      adminDb.collection('referralEvents').get(),
+      withStore(() => Promise.all([
+        adminDb.collection('users').get(),
+        adminDb.collection('referralEvents').get(),
+      ]), { startedAt }),
     ]);
     const entitlementDocuments = new Map<string, Record<string, unknown>>(
       entitlementSnapshot.docs.map((document) => [
@@ -89,7 +93,8 @@ export async function GET(request: Request): Promise<NextResponse> {
       users,
       ...(authPage.pageToken ? { nextPageToken: authPage.pageToken } : {}),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 }

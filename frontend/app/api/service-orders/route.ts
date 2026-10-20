@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { serviceOrdersRepository } from '@repositories/serviceOrders.repository';
 
 /**
@@ -15,16 +16,18 @@ import { serviceOrdersRepository } from '@repositories/serviceOrders.repository'
  */
 
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   try {
     const uid = await getRequiredAuthenticatedUid(request);
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const orders = await serviceOrdersRepository.listForOwner(uid);
+    const orders = await withStore(() => serviceOrdersRepository.listForOwner(uid), { startedAt });
     return NextResponse.json(orders, {
       // A rite read to prove what the server holds must never come from a cache in between.
       headers: { 'Cache-Control': 'no-store' },
     });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Error listing service orders:', error);
     return NextResponse.json({ error: 'Failed to list service orders' }, { status: 500 });
   }

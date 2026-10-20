@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { legacyBoundaryResponse, refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) {
     return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
@@ -19,9 +21,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const materials = await studiesRepository.listMaterials(uid);
+    const materials = await withStore(() => studiesRepository.listMaterials(uid), { startedAt });
     return NextResponse.json(materials.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const refusal = legacyBoundaryResponse(error);
     if (refusal) return refusal;
     if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {

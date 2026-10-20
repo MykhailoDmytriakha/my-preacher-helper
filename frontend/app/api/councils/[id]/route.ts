@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { withStore } from '@/services/storeAvailability.server';
 import { councilsRepository } from '@repositories/councils.repository';
 
 import { noStore, writeError } from '../writeSupport';
@@ -10,11 +11,12 @@ type Context = { params: Promise<{ id: string }> };
 
 
 export async function GET(request: Request, { params }: Context) {
+  const startedAt = performance.now();
   const uid = await getRequiredAuthenticatedUid(request);
   if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   try {
     const { id } = await params;
-    const council = await councilsRepository.getForOwner(uid, id);
+    const council = await withStore(() => councilsRepository.getForOwner(uid, id), { startedAt });
     if (!council) return NextResponse.json({ error: 'Council not found' }, { status: 404 });
     return NextResponse.json(council, { headers: noStore });
   } catch (error) {
