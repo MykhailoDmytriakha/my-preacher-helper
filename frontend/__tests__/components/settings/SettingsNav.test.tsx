@@ -29,6 +29,7 @@ describe('SettingsNav', () => {
     expect(screen.getByRole('link', { name: 'settings.nav.aiModels' })).toHaveAttribute('href', '/settings/limits');
     expect(screen.getByRole('link', { name: 'settings.manageTags' })).toHaveAttribute('href', '/settings/tags');
     expect(screen.getByRole('link', { name: 'settings.planTemplates' })).toHaveAttribute('href', '/settings/templates');
+    expect(screen.getByRole('link', { name: 'settings.nav.bible' })).toHaveAttribute('href', '/settings/bible');
   });
 
   it.each([
@@ -36,6 +37,7 @@ describe('SettingsNav', () => {
     ['tags', 'settings.manageTags', 'settings.userSettings'],
     ['limits', 'settings.nav.aiModels', 'settings.userSettings'],
     ['templates', 'settings.planTemplates', 'settings.userSettings'],
+    ['bible', 'settings.nav.bible', 'settings.userSettings'],
   ])('marks %s as the page you are on', (section, currentLabel, otherLabel) => {
     render(<SettingsNav activeSection={section as never} />);
 

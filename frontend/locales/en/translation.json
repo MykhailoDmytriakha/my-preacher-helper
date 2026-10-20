@@ -393,6 +393,10 @@
     "previousBook": "← {{book}}",
     "backTo": "← {{place}}",
     "backToLabel": "Back to {{place}}",
+    "trail": {
+      "title": "Trail of places",
+      "toggle": "Trail of places: {{count}}"
+    },
     "placeVerse": "{{chapter}}, verse {{verse}}",
     "wayBack": {
       "note": "Note",
@@ -1079,7 +1083,8 @@
   },
   "settings": {
     "nav": {
-      "aiModels": "AI & limits"
+      "aiModels": "AI & limits",
+      "bible": "Bible"
     },
     "planTemplates": "Structure templates",
     "backToDashboard": "Back",
@@ -1168,6 +1173,17 @@
     "debugMode": {
       "title": "Debug Mode",
       "description": "Enable extra console logging for troubleshooting"
+    },
+    "bible": {
+      "trail": {
+        "title": "Trail of places",
+        "description": "The places in the Bible you have been to, one link each. Show or hide the trail with its button next to “←” in the reader.",
+        "history": "History",
+        "historyHint": "How many places the trail remembers. When it is full, the oldest place leaves.",
+        "recent": "Recent",
+        "recentHint": "How many of the last places count as recent: going to one adds no link, it only lights it.",
+        "device": "The numbers and the trail itself are kept on this device."
+      }
     },
     "showVersion": {
       "title": "Show app version",

@@ -1,6 +1,6 @@
 'use client';
 
-import { UserCircleIcon, SparklesIcon, TagIcon, DocumentTextIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, SparklesIcon, TagIcon, DocumentTextIcon, ShieldCheckIcon, BookOpenIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,6 +19,7 @@ const sectionIcon: Record<SettingsSection, React.ComponentType<React.SVGProps<SV
   limits: SparklesIcon,
   tags: TagIcon,
   templates: DocumentTextIcon,
+  bible: BookOpenIcon,
 };
 
 const sectionLabelKey: Record<SettingsSection, string> = {
@@ -26,6 +27,7 @@ const sectionLabelKey: Record<SettingsSection, string> = {
   limits: 'settings.nav.aiModels',
   tags: 'settings.manageTags',
   templates: 'settings.planTemplates',
+  bible: 'settings.nav.bible',
 };
 
 const ITEM_CLASS = 'w-full flex items-center justify-center md:justify-start gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-colors';

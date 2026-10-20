@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
 import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
 import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
+import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { verseCount } from '@/utils/versification';
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
@@ -52,6 +53,7 @@ beforeEach(() => {
   window.history.replaceState(null, '');
   window.sessionStorage.clear();
   window.localStorage.clear();
+  resetPlaceTrailForTests();
   global.fetch = jest.fn(async () => okResponse()) as unknown as typeof fetch;
   scrollIntoView.mockClear();
   Element.prototype.scrollIntoView = scrollIntoView;
@@ -367,17 +369,18 @@ describe('BibleBookReader', () => {
     }
   });
 
-  it('offers the way back to the book it was opened from, and going back offers this book in turn', async () => {
-    window.history.replaceState({ bibleEntry: 'entry-3', bibleFrom: { slug: 'romans', chapter: 5, verse: 9 } }, '');
+  // The owner, 2026-10-20: the way back goes left along the trail of places — a swap between the last two
+  // places never reached the third.
+  it('offers the way back to the trail\'s link before this book, opens that book at its place and lights the link', async () => {
+    arriveOnTrail({ book: 'Romans', chapter: 5, verse: 9, bible: 'rst' });
     const onOpenBook = jest.fn();
-    try {
-      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
-      await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
-      expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 }, expect.objectContaining({ slug: 'ruth' }));
-    } finally {
-      window.history.replaceState(null, '');
-    }
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
+    await screen.findByText('Третья глава');
+    expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 1 }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(readPlaceTrail().at).toBe(0);
+    expect(readPlaceTrail().links).toHaveLength(2);
   });
 
   it('offers no way back to a book opened from the list', async () => {
