@@ -18,6 +18,12 @@ export type ReadingSurface = {
   /** Where its visible part starts and ends on the screen. */
   edge: () => number;
   bottom: () => number;
+  /**
+   * Whether the browser may scroll it by itself to keep what shows in place while the text above grows
+   * (scroll anchoring, `overflow-anchor`). Off while a verse jumped to holds: the reader keeps that verse
+   * itself, and the browser's own scroll was taken for the person's (BUG-20261020-ipad-arrival-place-verse-early).
+   */
+  anchoring: (on: boolean) => void;
 };
 
 /** The pane when the text has one, else the page. */
@@ -31,6 +37,9 @@ export function readingSurface(pane: HTMLElement | null): ReadingSurface {
       contentHeight: () => document.documentElement.scrollHeight,
       edge: () => 0,
       bottom: () => window.innerHeight,
+      anchoring: (on) => {
+        document.documentElement.style.overflowAnchor = on ? '' : 'none';
+      },
     };
   }
   return {
@@ -43,5 +52,8 @@ export function readingSurface(pane: HTMLElement | null): ReadingSurface {
     contentHeight: () => pane.scrollHeight,
     edge: () => pane.getBoundingClientRect().top,
     bottom: () => pane.getBoundingClientRect().bottom,
+    anchoring: (on) => {
+      pane.style.overflowAnchor = on ? '' : 'none';
+    },
   };
 }

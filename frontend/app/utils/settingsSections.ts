@@ -6,7 +6,7 @@
  * names are kept only as a translation on the way in: links written before the split —
  * the plan editor's "manage templates", a bookmark — still land where they meant to.
  */
-export const SETTINGS_SECTIONS = ['user', 'limits', 'tags', 'templates'] as const;
+export const SETTINGS_SECTIONS = ['user', 'limits', 'tags', 'templates', 'bible'] as const;
 
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 

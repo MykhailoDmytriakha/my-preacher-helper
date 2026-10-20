@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { BibleBookReader } from '@/components/bible/BibleBookReader';
 import { CrossReferenceSettings } from '@/components/bible/CrossReferenceSettings';
 import { readCrossReferencePrefs, resetCrossReferencePrefsForTests, saveCrossReferencePrefs, useCrossReferencePrefs } from '@/components/bible/crossReferencePrefs';
+import { resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { useBookCrossRefs } from '@/components/bible/useBookCrossRefs';
 import { restingScrollTop } from '@/components/bible/verseSheetGeometry';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
@@ -59,6 +60,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   resetCrossReferencePrefsForTests();
+  resetPlaceTrailForTests();
   forgetLoadedCrossRefs();
   setRequests = [];
   global.fetch = jest.fn(async (url: string) => {

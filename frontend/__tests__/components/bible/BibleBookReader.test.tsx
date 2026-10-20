@@ -5,6 +5,7 @@ import { BibleBookReader, roomBelow } from '@/components/bible/BibleBookReader';
 import { ChapterPicker, ReadingPill } from '@/components/bible/BiblePicker';
 import { currentEntryId, saveEntryPlace } from '@/components/bible/lastPlace';
 import { TextScaleProvider, useTextScale } from '@/providers/TextScaleProvider';
+import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests } from '@/components/bible/placeTrailStore';
 import { verseCount } from '@/utils/versification';
 
 // The reader's marks keep one form of the data engine per book; these tests mount no engine.
@@ -53,6 +54,7 @@ beforeEach(() => {
   window.history.replaceState(null, '');
   window.sessionStorage.clear();
   window.localStorage.clear();
+  resetPlaceTrailForTests();
   global.fetch = jest.fn(async () => okResponse()) as unknown as typeof fetch;
   scrollIntoView.mockClear();
   Element.prototype.scrollIntoView = scrollIntoView;
@@ -617,17 +619,18 @@ describe('BibleBookReader', () => {
     }
   });
 
-  it('offers the way back to the book it was opened from, and going back offers this book in turn', async () => {
-    window.history.replaceState({ bibleEntry: 'entry-3', bibleFrom: { slug: 'romans', chapter: 5, verse: 9 } }, '');
+  // The owner, 2026-10-20: the way back goes left along the trail of places — a swap between the last two
+  // places never reached the third.
+  it('offers the way back to the trail\'s link before this book, opens that book at its place and lights the link', async () => {
+    arriveOnTrail({ book: 'Romans', chapter: 5, verse: 9, bible: 'rst' });
     const onOpenBook = jest.fn();
-    try {
-      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
-      await screen.findByText('Третья глава');
-      await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
-      expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 }, expect.objectContaining({ slug: 'ruth' }));
-    } finally {
-      window.history.replaceState(null, '');
-    }
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={null} onOpenBook={onOpenBook} />);
+    await screen.findByText('Третья глава');
+    expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 1 }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    expect(onOpenBook).toHaveBeenCalledWith('romans', { chapter: 5, verse: 9 }, expect.objectContaining({ slug: 'ruth' }));
+    expect(readPlaceTrail().at).toBe(0);
+    expect(readPlaceTrail().links).toHaveLength(2);
   });
 
   it('offers no way back to a book opened from the list', async () => {
@@ -801,6 +804,21 @@ describe('BibleBookReader', () => {
     afterEach(() => {
       Reflect.deleteProperty(globalThis, 'ResizeObserver');
       Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+      document.documentElement.style.overflowAnchor = '';
+    });
+
+    // BUG-20261020-ipad-arrival-place-verse-early, traced live on an iPad-wide screen: the chips arriving
+    // on the verses above grew the text, the browser kept what it showed by scrolling the page itself
+    // (scroll anchoring), and that scroll was taken for the person's — the place was let go a verse early
+    // before the jump could be made again. While the verse holds, the browser does not move the page; the
+    // person's scroll gives it back.
+    it('keeps the browser from moving the page while the verse holds, and gives that back once the person scrolls', async () => {
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 3, verse: 1 }} onOpenBook={jest.fn()} />);
+      await screen.findByText('Третья глава');
+      expect(document.documentElement.style.overflowAnchor).toBe('none');
+      Object.defineProperty(window, 'scrollY', { value: 300, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      expect(document.documentElement.style.overflowAnchor).toBe('');
     });
 
     it('is jumped to again until the person scrolls, and then left where the person put it', async () => {

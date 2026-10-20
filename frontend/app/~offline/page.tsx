@@ -53,6 +53,7 @@ const LAZY_ROUTES: Record<Exclude<OfflineShellRoute, 'dashboard'>, OfflineRoute>
   'settings:limits': { Component: lazy(() => import('@/(pages)/(private)/settings/limits/page')), Layout: SettingsSectionLayout },
   'settings:tags': { Component: lazy(() => import('@/(pages)/(private)/settings/tags/page')), Layout: SettingsSectionLayout },
   'settings:templates': { Component: lazy(() => import('@/(pages)/(private)/settings/templates/page')), Layout: SettingsSectionLayout },
+  'settings:bible': { Component: lazy(() => import('@/(pages)/(private)/settings/bible/page')), Layout: SettingsSectionLayout },
   sermons: { Component: lazy(() => import('@/(pages)/(private)/sermons/page')) },
   series: { Component: lazy(() => import('@/(pages)/(private)/series/page')) },
   groups: { Component: lazy(() => import('@/(pages)/(private)/groups/page')) },

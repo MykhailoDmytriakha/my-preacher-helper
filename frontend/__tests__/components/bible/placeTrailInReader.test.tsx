@@ -1,0 +1,199 @@
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { BibleBookReader } from '@/components/bible/BibleBookReader';
+import { resetCrossReferencePrefsForTests } from '@/components/bible/crossReferencePrefs';
+import { arriveOnTrail, readPlaceTrail, resetPlaceTrailForTests, stepOnTrail } from '@/components/bible/placeTrailStore';
+import { bibleCrossRefsBase } from '@/utils/bibleCrossRefsCache';
+import { crossReferenceLabel, crossReferencesAt, forgetLoadedCrossRefs, isMainReference, type CrossRefsBook } from '@/utils/crossReferences';
+
+import type { BookText } from '@/utils/bibleText';
+
+// The reader's marks keep one form of the data engine per book; these tests mount no engine.
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  useDataDocument: () => ({ data: null, loading: true, commit: jest.fn(), status: null, recoveryIdentity: {} }),
+}));
+
+/*
+ * The trail of places in the Bible reader, on the real files of Ruth and its cross references: a link
+ * followed within the book adds a link to the trail, the way back only lights the place left, a link of
+ * the trail opens its place (the owner, 2026-10-20, case 2026-10-12-block-diagram, 2.12).
+ */
+const publicFile = (path: string) => JSON.parse(readFileSync(join(__dirname, '../../../public', path), 'utf8'));
+const ruthSet: CrossRefsBook = publicFile(`${bibleCrossRefsBase.slice(1)}/ruth.json`);
+const ruthText: BookText = publicFile('bible-text/rst/v1/ruth.json');
+
+/** A verse of Ruth with a main link into another chapter of Ruth. */
+const subject = (() => {
+  for (let chapter = 1; chapter <= ruthText.chapters.length; chapter += 1) {
+    for (let verse = 1; verse <= ruthText.chapters[chapter - 1].length; verse += 1) {
+      const inside = crossReferencesAt(ruthSet, 'rst', { book: 'Ruth', chapter, verse })
+        .find((reference) => isMainReference(reference) && reference.book === 'Ruth' && reference.chapter !== chapter);
+      if (inside) return { chapter, verse, inside };
+    }
+  }
+  throw new Error('No verse of Ruth links to another chapter of Ruth');
+})();
+
+/** A verse of Ruth with a main link to another verse of its own chapter. */
+const withinChapter = (() => {
+  for (let chapter = 1; chapter <= ruthText.chapters.length; chapter += 1) {
+    for (let verse = 1; verse <= ruthText.chapters[chapter - 1].length; verse += 1) {
+      const near = crossReferencesAt(ruthSet, 'rst', { book: 'Ruth', chapter, verse })
+        .find((reference) => isMainReference(reference) && reference.book === 'Ruth' && reference.chapter === chapter);
+      if (near) return { chapter, verse, near };
+    }
+  }
+  throw new Error('No verse of Ruth links within its own chapter');
+})();
+
+const answer = (body: unknown) => ({ ok: true, status: 200, json: async () => body, clone() { return this; }, headers: new Headers({ 'content-type': 'application/json' }) });
+
+beforeEach(() => {
+  window.matchMedia = jest.fn((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
+  })) as unknown as typeof window.matchMedia;
+  window.history.replaceState(null, '');
+  window.sessionStorage.clear();
+  window.localStorage.clear();
+  resetCrossReferencePrefsForTests();
+  resetPlaceTrailForTests();
+  forgetLoadedCrossRefs();
+  global.fetch = jest.fn(async (url: string) => answer(publicFile(url.slice(1)))) as unknown as typeof fetch;
+  Element.prototype.scrollIntoView = jest.fn();
+  window.scrollTo = jest.fn() as unknown as typeof window.scrollTo;
+});
+
+const renderRuth = () => render(
+  <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: subject.chapter, verse: subject.verse }} onOpenBook={jest.fn()} />
+);
+
+/** From the verse to its link within Ruth: the list, the link's card, "Open". */
+const followTheLink = async () => {
+  await userEvent.click(await screen.findByTestId(`cross-refs-${subject.chapter}:${subject.verse}`));
+  const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+  await userEvent.click(within(list).getByText(crossReferenceLabel(subject.inside, 'rst', 'en')));
+  await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
+  await waitFor(() => expect(readPlaceTrail().links).toHaveLength(2));
+};
+
+const trailLinks = () => within(screen.getByRole('navigation', { name: 'bible.trail.title' })).getAllByRole('button');
+const lit = () => trailLinks().findIndex((link) => link.getAttribute('aria-current') === 'location');
+
+describe('the trail of places in the reader', () => {
+  it('the book opened is the first link; a trail of one link has no button', async () => {
+    renderRuth();
+    await screen.findByTestId(`cross-refs-${subject.chapter}:${subject.verse}`);
+    expect(readPlaceTrail().links).toEqual([{ book: 'Ruth', chapter: subject.chapter, verse: subject.verse, bible: 'rst' }]);
+    expect(screen.queryByRole('button', { name: 'bible.trail.toggle' })).not.toBeInTheDocument();
+  });
+
+  it('a link followed within the book joins the trail; its button counts the links and shows and hides them', async () => {
+    renderRuth();
+    await followTheLink();
+    const toggle = await screen.findByRole('button', { name: 'bible.trail.toggle' });
+    expect(toggle).toHaveTextContent('2');
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
+
+    await userEvent.click(toggle);
+    expect(trailLinks()).toHaveLength(2);
+    expect(lit()).toBe(1);
+    expect(readPlaceTrail().links[1]).toEqual(expect.objectContaining({ book: 'Ruth', chapter: subject.inside.chapter, verse: subject.inside.fromVerse }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
+    expect(screen.queryByRole('navigation', { name: 'bible.trail.title' })).not.toBeInTheDocument();
+  });
+
+  it('the way back to the verse only lights its link: nothing is added', async () => {
+    renderRuth();
+    await followTheLink();
+    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    expect(trailLinks()).toHaveLength(2);
+    expect(lit()).toBe(0);
+  });
+
+  // The owner, 2026-10-20: "←" swapped between the last two places and never reached Zeph 3:10 on the trail.
+  it('the way back goes left along the trail link by link, adding nothing, and the first link has none', async () => {
+    arriveOnTrail({ book: 'Ruth', chapter: 1, verse: 1, bible: 'rst' });
+    arriveOnTrail({ book: 'Ruth', chapter: 2, verse: 3, bible: 'rst' });
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 4, verse: 2 }} onOpenBook={jest.fn()} />);
+    await waitFor(() => expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 2 })));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 1 }));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.backToLabel' }));
+    expect(readPlaceTrail()).toEqual(expect.objectContaining({ at: 0 }));
+    expect(readPlaceTrail().links.map((link) => link.chapter)).toEqual([1, 2, 4]);
+    expect(screen.queryByRole('button', { name: 'bible.backToLabel' })).not.toBeInTheDocument();
+  });
+
+  it('a link of the trail opens its place, and going there again and again adds nothing', async () => {
+    renderRuth();
+    await followTheLink();
+    await userEvent.click(screen.getByRole('button', { name: 'bible.trail.toggle' }));
+    for (const index of [0, 1, 0, 1]) {
+      await userEvent.click(trailLinks()[index]);
+      expect(lit()).toBe(index);
+    }
+    expect(trailLinks()).toHaveLength(2);
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+  // An independent review, 2026-10-20: a note → Ruth → Romans → "← Ruth" lost the way back to the note,
+  // which lived only in the first entry's address.
+  it('the way back from a link opened from a note goes to the note, also after another book and a step back', async () => {
+    const push = jest.fn();
+    const navigation = jest.requireMock<{ useRouter: () => unknown }>('next/navigation');
+    const useRouter = jest.spyOn(navigation, 'useRouter').mockReturnValue({ push });
+    try {
+      const first = render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} cameFrom="/studies/n1" onOpenBook={jest.fn()} />);
+      await waitFor(() => expect(readPlaceTrail().links[0]).toEqual(expect.objectContaining({ book: 'Ruth', screen: '/studies/n1' })));
+      first.unmount();
+      // The next book opened, then the way back stepped onto Ruth again: its entry knows no note.
+      arriveOnTrail({ book: 'Romans', chapter: 5, verse: 9, bible: 'rst' });
+      stepOnTrail(0);
+      render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 2 }} onOpenBook={jest.fn()} />);
+      await waitFor(() => expect(readPlaceTrail().at).toBe(0));
+      await userEvent.click(await screen.findByRole('button', { name: 'bible.backToLabel' }));
+      expect(push).toHaveBeenCalledWith('/studies/n1');
+      expect(readPlaceTrail().links).toHaveLength(2);
+    } finally {
+      useRouter.mockRestore();
+    }
+  });
+
+  // The same review: after a link within the chapter, the minimap or a scroll into another chapter kept
+  // "← <verse>" and took the person back there instead of along the trail.
+  it('the way back to a verse of the same chapter is forgotten once the reading leaves that chapter', async () => {
+    render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: withinChapter.chapter, verse: withinChapter.verse }} onOpenBook={jest.fn()} />);
+    await userEvent.click(await screen.findByTestId(`cross-refs-${withinChapter.chapter}:${withinChapter.verse}`));
+    const list = screen.getByRole('dialog', { name: 'bible.crossRefs.listTitle' });
+    await userEvent.click(within(list).getByText(crossReferenceLabel(withinChapter.near, 'rst', 'en')));
+    await userEvent.click(screen.getByRole('button', { name: 'bible.crossRefs.open' }));
+    expect(await screen.findByRole('button', { name: 'bible.backToLabel' })).toBeInTheDocument();
+    expect(readPlaceTrail().links).toHaveLength(1);
+
+    // The person reads on into the next chapter: the verse at the reading top is its first one.
+    const other = withinChapter.chapter === ruthText.chapters.length ? 1 : withinChapter.chapter + 1;
+    const realRect = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const verse = this.dataset?.verse;
+      if (!verse) return realRect.call(this);
+      const order = Array.from(document.querySelectorAll<HTMLElement>('[data-verse]')).map((row) => row.dataset.verse);
+      const top = 16 + (order.indexOf(verse) - order.indexOf(`${other}:1`)) * 40;
+      return { top, bottom: top + 40, left: 0, right: 100, width: 100, height: 40, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    };
+    try {
+      Object.defineProperty(window, 'scrollY', { value: 5000, configurable: true });
+      act(() => { window.dispatchEvent(new Event('scroll')); });
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'bible.backToLabel' })).not.toBeInTheDocument());
+    } finally {
+      Element.prototype.getBoundingClientRect = realRect;
+      Object.defineProperty(window, 'scrollY', { value: 0, configurable: true });
+    }
+  });
+});

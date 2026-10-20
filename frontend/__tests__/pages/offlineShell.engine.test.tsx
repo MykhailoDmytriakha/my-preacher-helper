@@ -45,6 +45,7 @@ jest.mock('@/(pages)/(private)/settings/user/page', () => () => <p>User settings
 jest.mock('@/(pages)/(private)/settings/limits/page', () => () => <p>Limits settings probe</p>);
 jest.mock('@/(pages)/(private)/settings/tags/page', () => () => <p>Tag settings probe</p>);
 jest.mock('@/(pages)/(private)/settings/templates/page', () => () => <p>Template settings probe</p>);
+jest.mock('@/(pages)/(private)/settings/bible/page', () => () => <p>Bible settings probe</p>);
 jest.mock('@/(pages)/(private)/prayers/[id]/page', () => mockDetail('Prayer detail probe', 1));
 jest.mock('@/(pages)/(private)/groups/[id]/conduct/page', () => mockDetail('Group conduct probe', 1));
 jest.mock('@/(pages)/(private)/studies/share-links/page', () => () => <p>Share links probe</p>);
@@ -75,6 +76,7 @@ describe('offline shell', () => {
     ['/settings', 'Settings redirect probe'], ['/settings/user', 'User settings probe'],
     ['/settings/limits', 'Limits settings probe'], ['/settings/tags', 'Tag settings probe'],
     ['/settings/templates', 'Template settings probe'],
+    ['/settings/bible', 'Bible settings probe'],
     ['/prayers/local-prayer', 'Prayer detail probe:local-prayer'],
     ['/groups/local-group/conduct', 'Group conduct probe:local-group'],
     ['/studies/share-links', 'Share links probe'],
@@ -99,7 +101,7 @@ describe('offline shell', () => {
     } finally { view.unmount(); }
   });
 
-  it.each(['/settings/templates', '/prayers/private', '/groups/private/conduct', '/studies/share-links'])(
+  it.each(['/settings/templates', '/settings/bible', '/prayers/private', '/groups/private/conduct', '/studies/share-links'])(
     'does not render a private route at %s without a session', async path => {
       mockAuth = { user: null, loading: false };
       window.history.replaceState(null, '', path);

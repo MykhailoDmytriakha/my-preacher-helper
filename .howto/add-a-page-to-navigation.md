@@ -15,6 +15,7 @@ Nav items come from one list, `primaryNavItems` in `frontend/app/components/navi
 - Back button: `BackLink` (`frontend/app/components/settings/BackLink.tsx`) calls `router.back()` when `window.history.length > 1`, else `router.push(to)`.
 - Full-screen page without chrome: derive a flag from the route in the private layout (`isPreachingPlan` hides `DashboardNav` and the trail) and let the page own its width and padding. Do not hide chrome by rewriting breadcrumb labels or touching unrelated routes. A focused page that still wants the trail renders `Breadcrumbs` with `forceShow` itself (`PlanPreachingView.tsx`).
 - Read the path with `useShellPathname`, not `usePathname`: inside the offline shell the router reports `/~offline`, and nothing would light up.
+- Add a settings section to `utils/settingsSections.ts` and connect its existing page to `LAZY_ROUTES` in `app/~offline/page.tsx` with `SettingsSectionLayout`. The shared route type includes every section, so a missing mapping blocks the production build (TS2741) and a previously visited SPA screen falls back to the generic card on offline reload. Extend `__tests__/pages/offlineShell.engine.test.tsx` with its rendered page/frame and signed-out control, then verify the actual menu visit followed by an offline reload; a full online document visit may cache HTML and hide a missing shell route.
 
 ## When it goes wrong
 
