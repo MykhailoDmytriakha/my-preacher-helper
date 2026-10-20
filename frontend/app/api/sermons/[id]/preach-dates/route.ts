@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
@@ -16,7 +17,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
         const { id } = await params;
-        const sermon = await sermonsRepository.fetchSermonById(id);
+        const sermon = await withStore(() => sermonsRepository.fetchSermonById(id));
         if (!sermon) {
             return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
         }
@@ -25,6 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
         return NextResponse.json({ preachDates: sermon.preachDates || [] });
     } catch (error: unknown) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     const boundary = legacyBoundaryResponse(error);
     if (boundary) return boundary;
         const { id } = await params;

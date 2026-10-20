@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 const VIEW_COOKIE_PREFIX = 'share_note_viewed_';
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const { token } = await params;
 
   try {
-    const shared = await studyNoteShareLinksRepository.readSharedNote(token);
+    const shared = await withStore(() => studyNoteShareLinksRepository.readSharedNote(token));
     if (!shared) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -49,6 +50,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return response;
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error(`GET /api/share/notes/${token} error`, error);
     return NextResponse.json({ error: 'Failed to load shared note' }, { status: 500 });
   }

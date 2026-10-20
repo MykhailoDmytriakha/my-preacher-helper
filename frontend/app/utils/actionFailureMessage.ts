@@ -96,9 +96,16 @@ export function failureWords(error: unknown, fallbackKey: string): FailureWords 
   return { key: fallbackKey };
 }
 
+/**
+ * A server that did not answer: its error carries the transport's sentence for developers ("Data
+ * engine request failed"), never an instruction (BUG-20261019-unavailable-refusal-in-english).
+ */
+const SERVER_DID_NOT_ANSWER = new Set(['unavailable', 'deadline-exceeded']);
+
 /** For a refused action: an unknown refusal keeps the engine's own sentence, which may be an instruction. */
 export function refusalWords(error: unknown, fallbackKey: string): FailureWords {
   const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
+  if (SERVER_DID_NOT_ANSWER.has(code) && !ranOutOfTime(error)) return { key: 'dataSync.failure.serverUnavailable' };
   if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
   return failureWords(error, fallbackKey);
 }

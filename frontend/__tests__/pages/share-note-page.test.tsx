@@ -73,6 +73,17 @@ describe('SharedNotePage', () => {
     await waitFor(() => expect(screen.getByText('shareNotes.error')).toBeInTheDocument());
   });
 
+  // BUG-20261019-routes-hang-when-store-refuses: the database refusing is not "this note is gone".
+  it('says the note is temporarily unavailable when the server cannot give it', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 503 });
+
+    render(<SharedNotePage />);
+
+    await waitFor(() => expect(screen.getByText('shareNotes.unavailable')).toBeInTheDocument());
+    expect(screen.queryByText('shareNotes.notFound')).not.toBeInTheDocument();
+    expect(screen.queryByText('shareNotes.error')).not.toBeInTheDocument();
+  });
+
   it('renders error state when request throws', async () => {
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     mockFetch.mockRejectedValueOnce(new Error('boom'));

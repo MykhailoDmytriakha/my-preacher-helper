@@ -1,4 +1,5 @@
 /** @jest-environment node */
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { readSharedNotePreview } from '@/services/sharedNotePreview.server';
 import ru from '@locales/ru/translation.json';
 import uk from '@locales/uk/translation.json';
@@ -61,4 +62,21 @@ describe('readSharedNotePreview', () => {
     errorSpy.mockRestore();
     warnSpy.mockRestore();
   });
+});
+
+// BUG-20261019-routes-hang-when-store-refuses: the share page builds its metadata from this read, so a
+// database that never answered held the whole page until the Vercel wall.
+it('gives up on a database that does not answer within the store deadline, retry included', async () => {
+  jest.useFakeTimers();
+  let preview: unknown = 'pending';
+  try {
+    __resetStoreAvailabilityForTests();
+    repository.readSharedNote.mockImplementation(() => new Promise(() => undefined));
+    void readSharedNotePreview('token').then((value) => { preview = value; });
+    await jest.advanceTimersByTimeAsync(3_000);
+    expect(preview).toBeNull();
+  } finally {
+    jest.useRealTimers();
+    __resetStoreAvailabilityForTests();
+  }
 });

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { isOwnersTombstone } from '@/data-engine/legacyBoundary.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { requestLanguage } from '@/utils/appLocale';
 import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
@@ -22,9 +23,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const links = await studyNoteShareLinksRepository.listByOwner(uid);
+    const links = await withStore(() => studyNoteShareLinksRepository.listByOwner(uid));
     return NextResponse.json(links);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('GET /api/studies/share-links error', error);
     return NextResponse.json({ error: 'Failed to fetch share links' }, { status: 500 });
   }
@@ -50,7 +52,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_ID_REQUIRED }, { status: 400 });
     }
 
-    const note = await studiesRepository.getNote(noteId, requestLanguage(request));
+    const note = await withStore(() => studiesRepository.getNote(noteId, requestLanguage(request)));
     if (!note || isOwnersTombstone(note as unknown as Record<string, unknown>, uid)) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_NOT_FOUND }, { status: 404 });
     }
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
     const created = await studyNoteShareLinksRepository.createLink({ ownerId: uid, noteId, token, authorLanguage: requestLanguage(request) });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('POST /api/studies/share-links error', error);
     return NextResponse.json({ error: 'Failed to create share link' }, { status: 500 });
   }

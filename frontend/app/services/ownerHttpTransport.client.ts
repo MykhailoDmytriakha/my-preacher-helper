@@ -102,6 +102,8 @@ export async function requestOwnerJson<T>(
       cache: 'no-store',
       category: 'crud',
       timeout: 8000,
+      // Every owner document route reads or writes the store: its success says the data is back.
+      answersFromStore: true,
       signal: controller.signal,
       ...(keepalive && withinKeepaliveBudget ? { keepalive: true } : {}),
     });

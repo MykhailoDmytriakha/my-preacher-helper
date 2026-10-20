@@ -8,6 +8,7 @@ import { studiesRepository } from '@/api/repositories/studies.repository';
 import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { refuseLegacyWriteRoute } from '@/data-engine/legacyBoundary.server';
 import { ThoughtInStructure } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { requestLanguage } from '@/utils/appLocale';
 import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
@@ -78,7 +79,7 @@ async function generateSermonPointContent(
 ) {
   try {
     // Fetch the sermon
-    const sermon = await sermonsRepository.fetchSermonById(sermonId);
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId));
     if (!sermon) {
       return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
@@ -163,6 +164,7 @@ async function generateSermonPointContent(
     return jsonNoStore({ content });
   } catch (error: unknown) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);
     return jsonNoStore(
       { error: 'Failed to generate content', details: (error as Error).message },
@@ -181,7 +183,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const parsed = NotePlanRequestSchema.safeParse(await request.json());
     if (!parsed.success) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });
     const { id } = await params;
-    const sermon = await sermonsRepository.fetchSermonById(id);
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(id));
     if (!sermon) return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
     if (sermon.userId !== uid) return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     const { outlinePointId, targetNodeId, style, expectedContext, revision } = parsed.data;
@@ -240,6 +242,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return jsonNoStore(result);
   } catch (error) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof SyntaxError) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });
     console.error('Note plan generation failed', error);
     return jsonNoStore({ error: 'generationFailed' }, { status: 500 });

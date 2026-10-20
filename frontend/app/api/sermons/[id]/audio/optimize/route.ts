@@ -35,6 +35,7 @@ import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, updateLegacyResource } from '@/data-engine/legacyBoundary.server';
 import { applyLegacyPatch, assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { createUsageAdmission } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
@@ -77,7 +78,7 @@ export async function POST(
         const { id: sermonId } = await params;
 
         // 1. Load sermon
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        const sermonDoc = await withStore(() => adminDb.collection('sermons').doc(sermonId).get());
         if (!sermonDoc.exists) {
             return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
         }
@@ -216,6 +217,7 @@ export async function POST(
         if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
         console.error('Optimize error:', error);
         if (isUsageCapReachedError(error)) return usageCapResponse(error);
+        if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
         return legacyBoundaryResponse(error) ?? serverEditResponse(error) ?? NextResponse.json(
             { error: error instanceof Error ? error.message : 'Optimization failed' },
             { status: 500 }

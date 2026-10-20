@@ -8,6 +8,7 @@ import { auth } from '@/services/firebaseAuth.service';
 import { recordLastSeen } from '@/services/lastSeen.client';
 import { claimPendingReferral } from '@/services/referral.client';
 import { debugLog } from '@/utils/debugMode';
+import { forgetServerAvailability } from '@/utils/serverAvailability';
 import { forgetReportedFailures } from '@/utils/writeRecovery';
 
 interface AuthContextType {
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // and the record of "already reported" must not silence the next session.
         toast.dismiss();
         forgetReportedFailures();
+        forgetServerAvailability();
       }
       previousUid = nextUid;
 

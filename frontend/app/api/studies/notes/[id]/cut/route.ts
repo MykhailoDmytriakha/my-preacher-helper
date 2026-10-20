@@ -6,6 +6,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { requestLanguage } from '@/utils/appLocale';
 import { createFenceTracker } from '@/utils/markdownFence';
@@ -136,7 +137,7 @@ async function loadOwnedNote(
     };
   }
 
-  const note = await studiesRepository.getNote(id, requestLanguage(request));
+  const note = await withStore(() => studiesRepository.getNote(id, requestLanguage(request)));
   if (!note) {
     return { refusal: NextResponse.json({ success: false, error: 'Study note not found' }, { status: 404 }) };
   }
@@ -200,6 +201,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     };
     return NextResponse.json(body);
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Studies cut outline: error', error);
     return NextResponse.json({ success: false, error: 'Failed to read the study note' }, { status: 500 });
   }
@@ -313,6 +315,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json(body);
   } catch (error) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof RouteDeadlineError) return cutTimedOut();
     console.error('Studies cut route: error', error);
     return NextResponse.json({ success: false, error: 'Failed to cut the study note' }, { status: 500 });

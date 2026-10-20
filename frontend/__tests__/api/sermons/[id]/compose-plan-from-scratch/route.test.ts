@@ -1,4 +1,5 @@
 import { adminAuth } from '@/config/firebaseAdminConfig';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { composePlanFromScratch } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -56,6 +57,7 @@ async function postWithToken(token?: string, body?: unknown) {
 describe('compose-plan-from-scratch route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetStoreAvailabilityForTests();
   });
 
   it('returns 401 when no bearer token is supplied', async () => {
@@ -120,7 +122,9 @@ describe('compose-plan-from-scratch route', () => {
     expect(body).toEqual({ outline });
   });
 
-  it('answers its own 504 in time when reading the sermon stalls past the deadline', async () => {
+  // BUG-20261019-routes-hang-when-store-refuses: a stalled store is said within the store's 3 s, not at
+  // the route's own wall.
+  it('answers 503 "unavailable" in time when reading the sermon stalls', async () => {
     jest.useFakeTimers();
     try {
       (adminAuth.verifyIdToken as jest.Mock).mockResolvedValueOnce({ uid: 'user-1' });
@@ -128,10 +132,10 @@ describe('compose-plan-from-scratch route', () => {
       let response: Response | undefined;
       void postWithToken('valid-token').then((answer: Response) => { response = answer; });
 
-      await jest.advanceTimersByTimeAsync(45_000);
+      await jest.advanceTimersByTimeAsync(3_000);
 
-      expect(response?.status).toBe(504);
-      expect(await response?.json()).toEqual(expect.objectContaining({ code: 'deadline-exceeded' }));
+      expect(response?.status).toBe(503);
+      expect(await response?.json()).toEqual({ code: 'unavailable' });
       expect(composePlanFromScratch).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
@@ -322,7 +326,7 @@ describe('pinned proposal generation source', () => {
   const note = { id: 'n1', text: 'Pinned text', createdAt: '2026-09-22' };
   const source = { title: 'Pinned title', verse: 'Romans 1', scratch: [{ ...note, section: null }] };
   const outline = { introduction: [], main: [], conclusion: [] };
-  beforeEach(() => { jest.clearAllMocks(); (adminAuth.verifyIdToken as jest.Mock).mockResolvedValue({ uid: 'owner' }); });
+  beforeEach(() => { jest.clearAllMocks(); __resetStoreAvailabilityForTests(); (adminAuth.verifyIdToken as jest.Mock).mockResolvedValue({ uid: 'owner' }); });
   it.each(['text', 'section', 'createdAt', 'title', 'verse'] as const)('refuses changed %s before spending an AI call', async field => {
     const sermon = { id: 'sermon-1', userId: 'owner', title: 'Pinned title', verse: 'Romans 1', scratch: [note] };
     const changed = ['title', 'verse'].includes(field) ? { ...sermon, [field]: 'Remote' }

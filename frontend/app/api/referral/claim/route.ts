@@ -12,6 +12,7 @@ import {
   REFERRAL_WARNING_AT,
   type ReferralWarningContext,
 } from '@/services/referral.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { afterResponse } from '@/utils/server/afterResponse.server';
 
 import type { UserEntitlement } from '@/models/models';
@@ -143,7 +144,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     const inviteeRef = adminDb.collection('users').doc(invitee.uid);
     const inviterRef = adminDb.collection('users').doc(inviterUid);
-    const inviterGateSnapshot = await inviterRef.get();
+    const inviterGateSnapshot = await withStore(() => inviterRef.get());
     if (!inviterGateSnapshot.exists) {
       return jsonResponse({ error: 'unknownInviter' }, 404);
     }
@@ -203,7 +204,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     const { warning } = result;
     if (warning) afterResponse(() => notifyOwnerOfReferralWarning(inviterUid, warning, now.toISOString()));
     return jsonResponse({ status: result.status });
-  } catch {
+  } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     return jsonResponse({ error: 'internalServerError' }, 500);
   }
 }

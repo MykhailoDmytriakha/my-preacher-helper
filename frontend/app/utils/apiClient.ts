@@ -12,12 +12,19 @@ import {
 import { debugLog } from '@/utils/debugMode';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { replaceMethod } from '@/utils/replaceMethod';
+import { reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
 export type RequestCategory = 'metadata' | 'detail' | 'crud' | 'ai' | 'audio' | 'health';
 
 export interface ApiClientOptions extends RequestInit {
   category?: RequestCategory;
   timeout?: number;
+  /**
+   * The route reads or writes the person's data, so its success proves the store answers and takes
+   * back "server unavailable" (`utils/serverAvailability`). A route that answers without the store
+   * (the knock, /api/admin/me) proves nothing about it.
+   */
+  answersFromStore?: boolean;
 }
 
 const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
@@ -175,7 +182,7 @@ async function performApiRequest(
   options: ApiClientOptions,
   requestId: number
 ): Promise<Response> {
-  const { category = 'crud', timeout, ...fetchOptions } = options;
+  const { category = 'crud', timeout, answersFromStore = false, ...fetchOptions } = options;
   const finalTimeout = timeout ?? TIMEOUT_BY_CATEGORY[category];
 
   try {
@@ -194,6 +201,11 @@ async function performApiRequest(
     // Any reply — 200 or 503 — reached our server: that is "yes" (owner's rule 2). Whether the
     // route succeeded is the caller's question, not the connection's.
     reportServerReachable(requestId);
+    // The store's refusal is the other half of that answer: reached, but the server could not give the
+    // data — a 503 with Retry-After, which only the store guard sends. Only a success that went through
+    // the store says the data is back.
+    if (response.status === 503 && response.headers?.has?.('Retry-After')) reportServerUnavailable(requestId);
+    else if (response.ok && answersFromStore) reportServerAvailable(requestId);
     // The usage check reads a copy of this answer: marked like any other read of it.
     const answer = markBodyCutOff(response, requestId, category === 'ai' || category === 'audio', fetchOptions.signal);
     await throwIfUsageCapReached(answer);

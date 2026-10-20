@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { requestLanguage } from '@/utils/appLocale';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
     // fire-and-forget) is therefore allowed. When a study DOES exist and belongs to
     // someone else, we still refuse (defense-in-depth: don't act on a foreign resource).
     if (studyId && typeof studyId === 'string' && studyId !== 'new') {
-      const study = await studiesRepository.getNote(studyId, requestLanguage(request));
+      const study = await withStore(() => studiesRepository.getNote(studyId, requestLanguage(request)));
       if (study && study.userId !== uid) {
         return NextResponse.json(
           { success: false, error: 'Forbidden: you do not own this study note' },
@@ -124,6 +125,7 @@ export async function POST(request: Request) {
 
   } catch (error) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Studies analyze route: Error', error);
     return NextResponse.json(
       { success: false, error: 'Failed to analyze study note' },

@@ -1,3 +1,5 @@
+import { NextResponse } from 'next/server';
+
 import { withinDeadline } from '@/utils/withinDeadline';
 
 /**
@@ -69,6 +71,17 @@ export async function withStore<T>(
 /** `Retry-After` for a refusal this module made; nothing for any other failure. */
 export function storeRetryHeaders(error: unknown): Record<string, string> {
   return error instanceof StoreUnavailableError ? { 'Retry-After': String(error.retryAfterSeconds) } : {};
+}
+
+/**
+ * The answer of a route the PERSON calls — an AI step, an audio step, a public link — when the store
+ * refused that way (BUG-20261019-routes-hang-when-store-refuses). Those routes waited for the store
+ * without a bound: 30–40 s on 2026-10-19, and on Vercel until the wall (10 s, 60 s for AI) before a
+ * generic error. Their first store touch goes through `withStore`; its refusal answers here, so the
+ * browser hears "unavailable" within seconds and the app says it in one line (`utils/serverAvailability`).
+ */
+export function storeUnavailableResponse(error: StoreUnavailableError): NextResponse {
+  return NextResponse.json({ code: error.code }, { status: error.status, headers: { 'Cache-Control': 'no-store', ...storeRetryHeaders(error) } });
 }
 
 export function __resetStoreAvailabilityForTests(): void {

@@ -1,3 +1,4 @@
+import { withStore } from '@/services/storeAvailability.server';
 import { detectTextLocale } from '@/utils/appLocale';
 import { buildSharedNotePreview } from '@/utils/sharedNotePreview';
 import en from '@locales/en/translation.json';
@@ -36,9 +37,13 @@ export async function readSharedNotePreview(token: string): Promise<SharedNotePr
   try {
     // A messenger fetches a card once and keeps it; one passing database error should not
     // decide what a link looks like for good, so a failed read gets a second try.
-    const shared = await studyNoteShareLinksRepository.readSharedNote(token).catch((error: unknown) => {
+    // Each attempt waits for the database a bounded time: the share page's metadata is built from this
+    // read, and a database out of its daily quota held the whole page until the Vercel wall
+    // (BUG-20261019-routes-hang-when-store-refuses). Refused that way, the retry is refused at once.
+    const read = () => withStore(() => studyNoteShareLinksRepository.readSharedNote(token));
+    const shared = await read().catch((error: unknown) => {
       console.warn('readSharedNotePreview: retrying after a failed read', error);
-      return studyNoteShareLinksRepository.readSharedNote(token);
+      return read();
     });
     if (!shared) return null;
     // The author's language when the link kept it; a link made before reads it off the note's words.

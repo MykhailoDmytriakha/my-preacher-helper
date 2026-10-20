@@ -6,6 +6,7 @@ import uk from '../../../locales/uk/translation.json';
 import { DataSyncStatus, STATUS_SETTLE_MS } from '../DataSyncStatus';
 import { isSyncTrouble } from '../status';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
+import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
 import type { SyncPhase, SyncStatus } from '../status';
 
@@ -307,4 +308,51 @@ it('puts a trouble the person was shown into the technical report, and nothing f
   rerender(<DataSyncStatus subject="doc" status={status('conflict')} />);
   expect(lines()).toHaveLength(before + 1);
   expect(conflicts()).toBe(conflictsBefore + 1);
+});
+
+/*
+ * WHILE THE SERVER CANNOT GIVE THE PERSON'S DATA, ONE LINE SAYS IT FOR THE WHOLE APP
+ * (BUG-20261019-outage-said-as-two-check-lines). The owner read two technical lines above the Bible
+ * and another pair under "Settings" as "the app is offline"; the app-wide line (OfflineBanner) says
+ * what happens and what becomes of the changes, so a block does not repeat it in its own words.
+ */
+describe('while the server answers that it cannot give data', () => {
+  beforeEach(() => { jest.useFakeTimers(); __resetServerAvailabilityForTests(); });
+  afterEach(() => { jest.useRealTimers(); __resetServerAvailabilityForTests(); });
+
+  it('leaves a failed check and an unanswered delivery to the app-wide line', () => {
+    act(() => { reportServerUnavailable(1); });
+    const { container, rerender } = render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS * 2); });
+    expect(container).toBeEmptyDOMElement();
+    rerender(<DataSyncStatus subject="doc" status={status('unknown')} onRetry={jest.fn()} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('still asks the person to choose in a conflict and still says a refusal', () => {
+    act(() => { reportServerUnavailable(1); });
+    const { rerender } = render(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(en.freshness.conflictTitle);
+    rerender(<DataSyncStatus subject="doc" status={status('refused')} />);
+    expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase.refused);
+  });
+
+  it('speaks again about a failed check once the server gives data again', () => {
+    act(() => { reportServerUnavailable(1); });
+    render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
+    act(() => { reportServerAvailable(2); });
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+    expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();
+  });
+});
+
+// BUG-20261019-unavailable-refusal-in-english: "Retry" against a server that cannot answer showed
+// the transport's English sentence.
+it('says a retry that the server could not answer in the person\'s words', async () => {
+  const unavailable = Object.assign(new Error('Data engine request failed'), { code: 'unavailable' });
+  render(<DataSyncStatus subject="doc" status={status('unknown')} onRetry={jest.fn().mockRejectedValue(unavailable)} />);
+  fireEvent.click(screen.getByRole('button', { name: en.dataSync.retry }));
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  expect(screen.getByRole('alert')).toHaveTextContent(en.dataSync.failure.serverUnavailable);
+  expect(screen.queryByText(/Data engine/)).not.toBeInTheDocument();
 });

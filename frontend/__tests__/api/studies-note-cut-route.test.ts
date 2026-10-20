@@ -1,5 +1,6 @@
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { collectNoteHeadings, GET, groundKeyPassage, MAX_CUT_CHARS, POST } from '@/api/studies/notes/[id]/cut/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { cutStudyNoteIntoScratch } from '@clients/studyNoteCut.structured';
 import { studiesRepository } from '@repositories/studies.repository';
@@ -63,6 +64,7 @@ const goodCut = () => ({
 describe('POST /api/studies/notes/:id/cut', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetStoreAvailabilityForTests();
     mockGetUid.mockResolvedValue('owner-1');
     mockGetNote.mockResolvedValue(ownNote);
     mockCut.mockResolvedValue(goodCut());
@@ -203,6 +205,7 @@ describe('grounding helpers', () => {
 describe('GET /api/studies/notes/[id]/cut — the plan, before any model is called', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetStoreAvailabilityForTests();
     mockGetUid.mockResolvedValue('owner-1');
     mockGetNote.mockResolvedValue(ownNote);
   });
@@ -234,22 +237,25 @@ describe('GET /api/studies/notes/[id]/cut — the plan, before any model is call
 describe('POST — cutting one slice of the note', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    __resetStoreAvailabilityForTests();
     mockGetUid.mockResolvedValue('owner-1');
     mockGetNote.mockResolvedValue(ownNote);
     mockCut.mockResolvedValue(goodCut());
   });
 
-  it('answers its own 504 in time when reading the note stalls past the wall', async () => {
+  // BUG-20261019-routes-hang-when-store-refuses: a stalled store is said within the store's 3 s, not at
+  // the route's own wall.
+  it('answers 503 "unavailable" in time when reading the note stalls', async () => {
     jest.useFakeTimers();
     try {
       mockGetNote.mockImplementationOnce(() => new Promise(() => undefined));
       let response: Response | undefined;
       void POST(request({ offset: 0 }), params('note-1')).then((answer) => { response = answer; });
 
-      await jest.advanceTimersByTimeAsync(50_000);
+      await jest.advanceTimersByTimeAsync(3_000);
 
-      expect(response?.status).toBe(504);
-      expect(await response?.json()).toEqual(expect.objectContaining({ code: 'deadline-exceeded' }));
+      expect(response?.status).toBe(503);
+      expect(await response?.json()).toEqual({ code: 'unavailable' });
       expect(mockCut).not.toHaveBeenCalled();
     } finally {
       jest.useRealTimers();

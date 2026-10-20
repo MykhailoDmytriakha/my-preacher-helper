@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { Sermon } from '@/models/models';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateBrainstormSuggestion } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     // Fetch the sermon data
-    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
+    const sermon = await withStore(() => sermonsRepository.fetchSermonById(sermonId)) as Sermon;
     if (!sermon) {
       console.error(`Brainstorm route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ suggestion });
   } catch (error: unknown) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error("Brainstorm route: Error generating brainstorm suggestion:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(

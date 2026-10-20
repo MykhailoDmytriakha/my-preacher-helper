@@ -21,6 +21,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { applyLegacyPatch, assertServerWritable, serverEditResponse, ServerEditError, writeOwnedDocument } from '@/data-engine/serverEdit.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { heardChunks, storedChunk } from '@/utils/audioChunkIdentity';
 import { CHUNKS_CHANGED, chunksChangedResponse } from '@/utils/server/audioChunksChanged.server';
 
@@ -41,7 +42,7 @@ export async function PUT(
         const { id: sermonId } = await params;
 
         // Load sermon to verify ownership
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        const sermonDoc = await withStore(() => adminDb.collection('sermons').doc(sermonId).get());
         if (!sermonDoc.exists) {
             return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
         }
@@ -93,6 +94,7 @@ export async function PUT(
 
         return NextResponse.json({ success: true, count: chunks.length });
     } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     if (error instanceof ServerEditError && error.code === CHUNKS_CHANGED) return chunksChangedResponse(changedTo);
     const boundary = legacyBoundaryResponse(error) ?? serverEditResponse(error);
     if (boundary) return boundary;

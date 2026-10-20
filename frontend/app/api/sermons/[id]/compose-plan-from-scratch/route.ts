@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config/schemas/zod';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { scratchComposeSource } from '@/utils/scratchComposeSource';
@@ -133,6 +134,7 @@ function composeFailure(timedOut: boolean) {
 /** A refusal the route already has words for: a spent allowance, or its own deadline. */
 function knownRefusal(error: unknown) {
   if (isUsageCapReachedError(error)) return usageCapResponse(error);
+  if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
   if (error instanceof RouteDeadlineError) return composeFailure(true);
   return null;
 }
@@ -156,7 +158,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'Sermon ID is required' }, { status: 400 });
     }
 
-    const sermon = await beforeDeadline(() => sermonsRepository.fetchSermonById(sermonId), 'while reading the sermon');
+    const sermon = await beforeDeadline(() => withStore(() => sermonsRepository.fetchSermonById(sermonId)), 'while reading the sermon');
     if (!sermon) {
       return jsonNoStore({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }

@@ -16,7 +16,7 @@ import type { ScriptureReference } from '@/models/models';
 const PAGE_CONTAINER_CLASS = 'min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100';
 const CONTENT_WRAPPER_CLASS = 'mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10 sm:px-6';
 
-type ShareNoteStatus = 'loading' | 'ready' | 'notFound' | 'error';
+type ShareNoteStatus = 'loading' | 'ready' | 'notFound' | 'unavailable' | 'error';
 
 // A study can gather forty passages; under the title they are a preview, not the index.
 const PASSAGE_PREVIEW = 6;
@@ -55,6 +55,12 @@ export default function SharedNotePage() {
         const response = await fetch(`/api/share/notes/${token}`, { cache: 'no-store' });
         if (response.status === 404) {
           setStatus('notFound');
+          return;
+        }
+        // The server is there but cannot read the note now (the database's daily quota spent):
+        // the link is fine, it is the moment that is wrong (BUG-20261019-routes-hang-when-store-refuses).
+        if (response.status === 503) {
+          setStatus('unavailable');
           return;
         }
         if (!response.ok) {
@@ -116,6 +122,15 @@ export default function SharedNotePage() {
             suppressHydrationWarning={true}
           >
             {t('shareNotes.notFound')}
+          </div>
+        )}
+
+        {status === 'unavailable' && (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+            suppressHydrationWarning={true}
+          >
+            {t('shareNotes.unavailable')}
           </div>
         )}
 

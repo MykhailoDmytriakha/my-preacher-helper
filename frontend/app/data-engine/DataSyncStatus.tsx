@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useLasting } from '@/hooks/useLasting';
+import { useServerUnavailable } from '@/hooks/useServerUnavailable';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 
@@ -66,8 +67,13 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
     if (failed) setFailed(null);
   }
   const [selectedId, setSelectedId] = useState('');
-  const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server'));
-  const readTrouble = useLasting(Boolean(status?.readFailed));
+  // While the server says it cannot give the person's data, the app-wide line says so and what
+  // becomes of the changes (`OfflineBanner`); a block does not repeat it in its own words — a failed
+  // check, an unconfirmed copy, a delivery still unanswered — nor offers a Retry that can only be
+  // refused again (BUG-20261019-outage-said-as-two-check-lines). Choices and refusals still speak.
+  const serverUnavailable = useServerUnavailable();
+  const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverUnavailable;
+  const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverUnavailable;
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
   const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
@@ -101,7 +107,7 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
   const conflictBanner = status?.phase === 'conflict' && keep && accept;
   // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
   const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
-  const trouble = isSyncTrouble(status?.phase);
+  const trouble = isSyncTrouble(status?.phase) && !(serverUnavailable && status?.phase === 'unknown');
   const troublePhase = trouble ? status?.phase : null;
   // What the person was shown goes into the technical report's path (owner, 2026-10-10).
   useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);

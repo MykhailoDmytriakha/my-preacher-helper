@@ -6,6 +6,7 @@
  */
 import * as structuredOutput from '@clients/structuredOutput';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
+import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { UsageCapReachedError } from '@/services/usageLimits';
 
 // Mock the structuredOutput module
@@ -175,6 +176,15 @@ describe('analyzeStudyNote', () => {
     (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(capError);
 
     await expect(analyzeStudyNote('Test content')).rejects.toBe(capError);
+  });
+
+  // BUG-20261019-routes-hang-when-store-refuses (Codex review): an unsaved draft's analysis reached
+  // the store first through the plan read; its refusal came back as a failed analysis (500).
+  it('does not turn a refused store into a failed analysis', async () => {
+    const refused = new StoreUnavailableError(30);
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(refused);
+
+    await expect(analyzeStudyNote('Test content')).rejects.toBe(refused);
   });
 
   it('should filter invalid scripture refs', async () => {

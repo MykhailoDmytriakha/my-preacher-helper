@@ -9,6 +9,7 @@
  * All outputs respect the language of the input note.
  */
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
+import { StoreUnavailableError } from '@/services/storeAvailability.server';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { noteLanguage, referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 
@@ -576,6 +577,8 @@ export async function analyzeStudyNote(
 
   } catch (error) {
     if (isUsageCapReachedError(error)) throw error;
+    // The route answers a refused store itself: 503 "unavailable", not a failed analysis.
+    if (error instanceof StoreUnavailableError) throw error;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('AnalyzeStudyNote', `Failed: ${errorMessage}`);
     return {

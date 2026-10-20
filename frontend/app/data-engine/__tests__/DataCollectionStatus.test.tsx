@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { DataCollectionStatus } from '../DataCollectionStatus';
 import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
+import { __resetServerAvailabilityForTests, reportServerUnavailable } from '@/utils/serverAvailability';
 import type { CollectionState } from '../collections';
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -34,4 +35,20 @@ it('says nothing about delivery on its way and speaks only for local work needin
   rerender(<DataCollectionStatus state={{ ...state, documents: [{ ...document, needsAttention: true }] }} />);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.collectionAttention');
   expect(screen.queryByText('dataSync.phase.queued')).toBeNull();
+});
+// BUG-20261019-outage-said-as-two-check-lines: with the server answering that it cannot give data, the
+// list told a connected person to "connect to check the server"; the app-wide line says it instead.
+it('leaves an incomplete list to the app-wide line while the server cannot give data, and still asks for attention', () => {
+  jest.useFakeTimers();
+  try {
+    __resetServerAvailabilityForTests();
+    act(() => { reportServerUnavailable(1); });
+    const document = { resource: { collection: 'groups', id: 'g' }, value: {}, pending: true, needsAttention: true, deleting: false };
+    const { container, rerender } = render(<DataCollectionStatus state={{ ...state, complete: false }} />);
+    act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
+    expect(container).toBeEmptyDOMElement();
+    rerender(<DataCollectionStatus state={{ ...state, complete: false, documents: [document] }} />);
+    expect(screen.getByRole('status')).toHaveTextContent('dataSync.collectionAttention');
+    expect(screen.queryByText('dataSync.collectionIncomplete')).toBeNull();
+  } finally { jest.useRealTimers(); __resetServerAvailabilityForTests(); }
 });

@@ -15,6 +15,7 @@ import {
   FEEDBACK_RATE_LIMIT_MAX_SUBMISSIONS,
   FEEDBACK_RATE_LIMIT_WINDOW_MS,
 } from '@/services/rateLimit.server';
+import { StoreUnavailableError, storeUnavailableResponse, withStore } from '@/services/storeAvailability.server';
 import {
   checkFeedbackDiagnostics,
   getFeedbackImageDecodedSize,
@@ -383,12 +384,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const rateLimit = await consumeSlidingWindowRateLimit({
+    const rateLimit = await withStore(() => consumeSlidingWindowRateLimit({
       scope: 'feedback',
       key: identity.uid,
       limit: FEEDBACK_RATE_LIMIT_MAX_SUBMISSIONS,
       windowMs: FEEDBACK_RATE_LIMIT_WINDOW_MS,
-    });
+    }), { write: true });
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Too many feedback submissions. Please try again later.' },
@@ -454,6 +455,7 @@ export async function POST(request: NextRequest) {
       id: result.id
     });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) return storeUnavailableResponse(error);
     console.error('Error submitting feedback:', error);
 
     // Log detailed error information

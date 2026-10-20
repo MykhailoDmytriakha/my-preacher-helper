@@ -15,6 +15,7 @@ import 'openai/shims/node';
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
+import { StoreUnavailableError, withStore } from "@/services/storeAvailability.server";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { withinDeadline } from "@/utils/withinDeadline";
 
@@ -327,9 +328,12 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       ]);
       const now = new Date();
       const userId = options.userId;
-      const entitlement = await withinChainDeadline(() => getUserEntitlementServerSide(userId, {
+      // The plan is often the request's first store read (analysing an unsaved note): bounded like
+      // every first read, so an exhausted database answers "unavailable" in seconds instead of
+      // holding the request to the wall (BUG-20261019-routes-hang-when-store-refuses).
+      const entitlement = await withinChainDeadline(() => withStore(() => getUserEntitlementServerSide(userId, {
         includeTextPreference: true,
-      }), chainDeadline, 'while reading the plan');
+      })), chainDeadline, 'while reading the plan');
       if (!isUsageAdmitted(options.usageAdmission, options.userId, 'ai')) {
         assertAiUsageAvailable(entitlement, now);
       }
@@ -494,6 +498,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 
   } catch (error) {
     if (isUsageCapReachedError(error)) throw error;
+    // The route says "unavailable" itself (`storeUnavailableResponse`); a model failure it is not.
+    if (error instanceof StoreUnavailableError) throw error;
 
     const endTime = performance.now();
     const durationMs = endTime - startTime;

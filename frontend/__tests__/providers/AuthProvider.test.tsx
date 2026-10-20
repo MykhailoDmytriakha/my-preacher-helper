@@ -5,6 +5,8 @@ import React from 'react';
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
 import { recordLastSeen } from '@/services/lastSeen.client';
 import { claimPendingReferral } from '@/services/referral.client';
+import { beginConnectivityRequest } from '@/utils/connectivity';
+import { __resetServerAvailabilityForTests, isServerUnavailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
 
 // Mock Firebase auth
@@ -180,6 +182,24 @@ describe('AuthProvider', () => {
       expect(screen.getByTestId('user')).toHaveTextContent('no-user');
       expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
     });
+  });
+
+  // BUG-20261019-outage-said-as-two-check-lines (Codex review): after signing out, nothing on the landing
+  // page reads the person's data, so a remembered "server unavailable" would never be taken back.
+  it('forgets that the server could not give data when the account changes', async () => {
+    __resetServerAvailabilityForTests();
+    render(<AuthProvider><TestComponent /></AuthProvider>);
+    await act(async () => { authStateCallback?.({ uid: 'owner-1' } as User); });
+    reportServerUnavailable(beginConnectivityRequest());
+    expect(isServerUnavailable()).toBe(true);
+    const startedBeforeSignOut = beginConnectivityRequest();
+
+    await act(async () => { authStateCallback?.(null); });
+    expect(isServerUnavailable()).toBe(false);
+    // A late refusal of a request the previous account started does not bring it back.
+    reportServerUnavailable(startedBeforeSignOut);
+    expect(isServerUnavailable()).toBe(false);
+    __resetServerAvailabilityForTests();
   });
 
   it('should clean up auth listener on unmount', () => {
