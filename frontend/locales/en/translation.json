@@ -1,4 +1,13 @@
 {
+  "recordAvailability": {
+    "notFound": "This record was not found.",
+    "notHereYet": "This record is not available on this device yet.",
+    "deleting": "Your deletion is waiting to be saved.",
+    "checkConnection": "Check your connection and try again. An incomplete download does not mean the record was deleted.",
+    "checking": "Checking for the record…",
+    "keptCopy": "A copy kept on this device",
+    "keptCopyHelp": "You can read and copy these words. This does not restore or change the record."
+  },
   "gestures": {
     "pullRefresh": "Pull to refresh",
     "releaseRefresh": "Release to refresh",
@@ -4164,7 +4173,7 @@
     "writeConflict": "This service was changed on another device. Your text is still in the field — move it across and save again.",
     "stepGone": "This step was removed on another device. Your words are still in the field — move them into another step so they are not lost.",
     "titleRequired": "A rite needs a name. The one you typed was not saved — give it a name and it will be.",
-    "goneWithWords": "This service was removed on another device. What you had written is here and has not been saved anywhere — copy it out before you leave this page.",
+    "goneWithWords": "Your words are still on this screen. Copy them before leaving the page.",
     "listUnread": "The list could not be read — it looks like the connection. Nothing is lost: the services are on the server.",
     "slowRead": "The server is taking a long time to answer.",
     "retry": "Try again",

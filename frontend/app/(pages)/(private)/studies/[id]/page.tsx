@@ -9,6 +9,7 @@ import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBann
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
@@ -61,6 +62,7 @@ import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
+import { RetainedNoteDraft } from './RetainedNoteDraft';
 import { useNoteAutoSave } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
@@ -632,7 +634,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     const router = useRouter();
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
-    const { uid, notes, noteDelivery, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+    const { uid, notes, noteDelivery, notePresence, refetch, confirmedDictationSources, confirmedCreationIds, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const { creationId, recordingContextId, creationTargetId, noteId, isNew, draftDocId } = useNewStudyNoteDraft({
         uid, routeId, createdNoteId, openingDraftId, notes, confirmedCreationIds,
     });
@@ -664,6 +666,8 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
+    const presence = notePresence?.(noteId);
+    const unavailable = !isNew && (presence?.kind === 'absent' || presence?.kind === 'deleting' || (!existingNote && !createdNoteId));
     // A projected row or a local capture alone cannot confirm this note on the server.
     const noteIsAccepted = noteDelivery?.get(noteId)?.pending === false;
 
@@ -769,7 +773,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
         deliberateOverwriteRef,
         resaveNonce,
         saveAtOnceRef,
-        saveBlocked: saveConflict,
+        saveBlocked: saveConflict || unavailable,
         onConflict: () => setSaveConflict(true),
         onCaptured: markCaptured,
         onSaved: (saved) => {
@@ -1288,12 +1292,21 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
 
     // ─── RENDER ─────────────────────────────────────────────────────────────
 
-    if (notesLoading || (!isInitialized && !isNew)) {
-        return (
-            <div className="flex items-center justify-center p-12">
-                <ArrowPathIcon className="h-6 w-6 animate-spin text-emerald-600" />
+    if (isNew && notesLoading) {
+        return <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+            <button type="button" onClick={handleBack} className="font-semibold text-emerald-700 dark:text-emerald-300">{t('common.back')}</button>
+            <div role="status" className="flex items-center gap-2">
+                <ArrowPathIcon className="h-5 w-5 animate-spin text-emerald-600" aria-hidden />
+                <span>{t('common.loading')}</span>
             </div>
-        );
+            {unsavedRecovery && <RetainedNoteDraft draft={unsavedRecovery} />}
+        </div>;
+    }
+    if (unavailable) {
+        const kept = unsavedRecovery ?? (isInitialized ? draftPayload : null);
+        return <RecordUnavailable presence={presence} checking={notesLoading} onBack={handleBack} onRetry={refetch}>
+            {kept && <RetainedNoteDraft draft={kept} />}
+        </RecordUnavailable>;
     }
 
     return (

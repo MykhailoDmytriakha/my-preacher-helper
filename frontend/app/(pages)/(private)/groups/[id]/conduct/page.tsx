@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react';
 import ConductBlock from '@/components/groups/conduct/ConductBlock';
 import ConductOverview from '@/components/groups/conduct/ConductOverview';
 import ConductPreflight from '@/components/groups/conduct/ConductPreflight';
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConductTimer } from '@/hooks/useConductTimer';
@@ -29,7 +30,8 @@ export default function ConductPage() {
 }
 function EngineConductPage({ groupId }: { groupId: string }) {
   const document = useGroupDataDocument(groupId);
-  const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId);
+  const { form, flow, updateDuration, recovery } = useGroupConductForm(groupId, Boolean(document.document.confirmed?.value)
+    && document.document.presence.kind !== 'absent' && document.document.presence.kind !== 'deleting');
   /*
    * A COPY FOR READING STILL RUNS THE MEETING. Only the setup writes — the durations, saved on
    * Start — and the meeting itself lives in this page: steps, timers, the overview. So while the
@@ -40,7 +42,7 @@ function EngineConductPage({ groupId }: { groupId: string }) {
    */
   if (document.document.readOnly && document.group) {
     return <ConductView groupId={groupId} group={document.group} loading={false} saveFlow={async () => undefined}
-      lockDurations readOnlyNote={document.document.readOnlyReason} />;
+      presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
   }
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
     <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.refresh}
@@ -51,11 +53,13 @@ function EngineConductPage({ groupId }: { groupId: string }) {
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />}
   </div>;
   return <ConductView groupId={groupId} group={document.group ? { ...document.group, flow } : null}
+    presence={document.document.presence} onRetry={document.refresh}
     loading={document.loading || form.loading} saveFlow={() => form.save()}
     updateDuration={(id, duration) => { void updateDuration(id, duration).catch(() => undefined); }}
     setupDisabled={form.loading || !form.active || form.busy || form.status?.phase === 'deleted'} feedback={feedback} />;
 }
-function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback }: {
+function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupDisabled = false, lockDurations = false, readOnlyNote, feedback, presence, onRetry }: {
+  presence?: import('@/data-engine/recordPresence').RecordPresence; onRetry?: () => unknown | Promise<unknown>;
   groupId: string; group: Group | null; loading: boolean; saveFlow: (flow: GroupFlowItem[]) => Promise<void>;
   updateDuration?: (id: string, durationMin: number | null) => void; setupDisabled?: boolean;
   lockDurations?: boolean; readOnlyNote?: string | null; feedback?: ReactNode;
@@ -136,24 +140,16 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
   const handleEnd = () => router.push(`/groups/${groupId}`);
   const handleBack = () => router.push(`/groups/${groupId}`);
 
-  // Once the meeting runs, a late editor opening (storage answering mid-meeting) must not blank it.
-  if (loading && phase === 'preflight') {
-    return (
-      <div className="page-gesture-follow fixed inset-0 z-[200] flex items-center justify-center bg-white dark:bg-gray-950">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
-      </div>
-    );
+  // A meeting already running keeps its pinned blocks. Before Start, even an unanswered read has an exit.
+  if (!group && phase === 'preflight') {
+    return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
+      <RecordUnavailable presence={presence} checking={loading} onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+    </div>;
   }
-
-  if (!group) {
-    return (
-      <div className="page-gesture-follow fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white dark:bg-gray-950">
-        {feedback}
-        <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load group' })}
-        </div>
-      </div>
-    );
+  if (loading && phase === 'preflight') {
+    return <div className="page-gesture-follow fixed inset-0 z-[200] overflow-y-auto bg-white dark:bg-gray-950">
+      <RecordUnavailable presence={presence} checking onBack={() => router.push('/groups')} onRetry={onRetry}>{feedback}</RecordUnavailable>
+    </div>;
   }
 
   if (activeFlow.length === 0) {

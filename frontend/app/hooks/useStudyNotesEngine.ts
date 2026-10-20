@@ -118,6 +118,7 @@ export function useStudyNotesEngine(enabled: boolean) {
     uid,
     notes,
     noteDelivery,
+    notePresence: collection.presence,
     confirmedDictationSources,
     confirmedCreationIds,
     loading: isAuthLoading || (Boolean(uid) && collection.loading),

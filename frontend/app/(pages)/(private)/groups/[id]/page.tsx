@@ -37,6 +37,7 @@ import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 import { GroupReadOnlyContent } from '@/components/groups/GroupReadOnlyContent';
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
@@ -289,36 +290,25 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   // The private layout owns the sign-in flow; no editor is shown without a user.
   if (!user?.uid) return null;
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        {feedback}
-        {[1, 2, 3].map((index) => (
-          <div
-            key={index}
-            className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-          />
-        ))}
-      </div>
-    );
+  if (!group) {
+    return <RecordUnavailable presence={editor.presence} checking={loading}
+      onBack={() => router.push('/groups')} onRetry={editor.refresh}>
+      {feedback}
+      {editor.retainedGroup && <GroupReadOnlyContent group={editor.retainedGroup} allowConduct={false} />}
+      {loading && !editor.retainedGroup && [1, 2, 3].map(index => <div key={index} aria-hidden className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />)}
+    </RecordUnavailable>;
+  }
+  if (editor.presence?.kind === 'absent' || editor.presence?.kind === 'deleting') {
+    return <><RecordUnavailable presence={editor.presence} onBack={() => router.push('/groups')} onRetry={editor.refresh}>{feedback}</RecordUnavailable>
+      <GroupReadOnlyContent group={editor.retainedGroup ?? group} allowConduct={false} />{confirmDialog}</>;
   }
 
-  if (!group) {
-    return (
-      <div className="space-y-4">
-        {feedback}
-        <button
-          onClick={() => router.push('/groups')}
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          {t('navigation.groups', { defaultValue: 'Groups' })}
-        </button>
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load group' })}
-        </div>
-      </div>
-    );
+  if (loading) {
+    return <div className="space-y-4">
+      <button type="button" onClick={() => router.push('/groups')}>{t('common.back')}</button>
+      {feedback}
+      {[1, 2, 3].map(index => <div key={index} className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />)}
+    </div>;
   }
 
   return (

@@ -19,13 +19,13 @@ const canSave = (value: DocumentData, initial: DocumentData | null | undefined) 
 };
 
 /** The meeting's fields share one durable stage; only a finished date (or no date) may submit it. */
-export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[], pending: boolean) {
+export function useGroupMeetingEditor(groupId: string, stored: GroupMeetingDate[], pending: boolean, available = true) {
   const form = useDataForm({ collection: 'groups', id: groupId }, 'group-meeting', [['meetingDates']]);
   const [opened, setOpened] = useState(false);
   const latest = useRef(form); latest.current = form;
   const { active, loading, begin, cancel } = form;
-  const needsRefresh = active && !form.dirty && !pending && JSON.stringify(meetings(form.data)) !== JSON.stringify(stored);
-  useEffect(() => { if (!loading && !active) void begin().catch(() => undefined); }, [loading, active, begin]);
+  const needsRefresh = available && active && !form.dirty && !pending && JSON.stringify(meetings(form.data)) !== JSON.stringify(stored);
+  useEffect(() => { if (available && !loading && !active) void begin().catch(() => undefined); }, [available, loading, active, begin]);
   useEffect(() => { if (active) setOpened(true); }, [active]);
   useEffect(() => {
     if (needsRefresh) void cancel().then(begin).catch(() => undefined);

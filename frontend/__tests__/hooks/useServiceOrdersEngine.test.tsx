@@ -2,6 +2,8 @@ import { serviceOrderSeedId } from '@/utils/serviceOrderSeedIdentity';
 import { act, renderHook } from '@testing-library/react';
 
 import { useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { collectionRecordPresence } from '@/data-engine/recordPresence';
+import type { CollectionState } from '@/data-engine/collections';
 import { useServiceOrdersEngine } from '@/hooks/useServiceOrdersEngine';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
@@ -143,6 +145,7 @@ describe('whether a rite is gone — said only by the server', () => {
     jest.mocked(useDataCollection).mockImplementation(() => ({
       state: { snapshots: answer.snapshots, documents: answer.documents, complete: answer.complete, freshness: answer.freshness, checking: false, version: 1, error: null },
       loading: false, error: null, refresh: jest.fn(async () => answer),
+      refreshPresence: async (id: string) => collectionRecordPresence({ collection: 'serviceOrders', id }, answer as CollectionState),
     }) as never);
     return renderHook(() => useServiceOrdersEngine('u', true));
   };

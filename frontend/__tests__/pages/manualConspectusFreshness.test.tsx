@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
@@ -7,7 +7,7 @@ import '@testing-library/jest-dom';
 
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
-import { draftKey, saveDraft } from '@/utils/durableDraft';
+import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 
 import { documentEngineHarness } from '../../test-utils/documentEngineHarness';
 
@@ -199,4 +199,34 @@ describe('the save button on the hand-written screen', () => {
     // Introduction's tone — literal classes, because Tailwind cannot see a computed one.
     expect(saveButton().className).toContain('bg-amber-600');
   });
+});
+
+
+it('names a server-confirmed missing manual-plan sermon and leaves for the sermon list', async () => {
+  harness = documentEngineHarness({ resource: { collection: 'sermons', id: 'sermon-1' }, value: null, metadata: null });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const client = queryClient();
+  const view = rtlRender(page(client));
+  expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount(); client.clear();
+});
+
+
+it('keeps a previous manual-plan cell readable and unchanged while the missing sermon read waits', async () => {
+  const key = draftKey('user-1', 'sermon-1', 'plan:kept-point');
+  saveDraft(key, 'A paragraph kept before leaving');
+  const stored = readDraft(key);
+  harness = documentEngineHarness({ resource: { collection: 'sermons', id: 'sermon-1' }, value: null, metadata: null });
+  jest.mocked(harness.transport.read).mockImplementation(() => new Promise(() => undefined));
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const client = queryClient();
+  const view = rtlRender(page(client));
+  expect(await screen.findByText('A paragraph kept before leaving')).toBeVisible();
+  expect(within(screen.getByText('A paragraph kept before leaving').closest('li')!).getByRole('button', { name: 'plan.orphanedCopy' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
+  view.unmount(); client.clear();
+  expect(readDraft(key)).toEqual(stored);
 });

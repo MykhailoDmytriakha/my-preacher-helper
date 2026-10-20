@@ -79,9 +79,9 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
   collectionRef.current = collection;
   const recheck = useCallback(async (id: string): Promise<'found' | 'absent' | 'unreachable' | 'overlapped'> => {
     try {
-      const state = await collectionRef.current.refresh() as { freshness?: string; documents?: { resource: { id: string }; value: DocumentData | null }[] };
-      if (state.documents?.some(row => row.resource.id === id && row.value)) return 'found';
-      return state.freshness === 'server' ? 'absent' : 'unreachable';
+      const presence = await collectionRef.current.refreshPresence(id);
+      if (presence.kind === 'present' || presence.kind === 'creating') return 'found';
+      return presence.kind === 'absent' ? 'absent' : 'unreachable';
     } catch {
       return 'unreachable';
     }
@@ -212,6 +212,7 @@ export function useServiceOrdersEngine(userId: string | null | undefined, enable
 
   return {
     orders,
+    orderPresence: collection.presence,
     loading: Boolean(userId) && enabled && collection.loading,
     error: collection.error ? new Error(collection.error) : null,
     isOnline,

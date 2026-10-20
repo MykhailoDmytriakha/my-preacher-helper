@@ -194,3 +194,31 @@ it.each([
   expect(screen.queryByRole('button', { name: 'dataSync.recover' })).not.toBeInTheDocument();
   reopened.unmount();
 });
+
+
+it('names a server-confirmed missing series and keeps the way back available', async () => {
+  const { view, harness } = setup('missing-series');
+  expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+
+it('keeps staged series words readable without ordinary edit controls after the parent disappears', async () => {
+  const { harness, view } = setup();
+  await screen.findByRole('heading', { name: 'b', level: 1 });
+  fireEvent.click(screen.getByRole('button', { name: 'workspaces.series.editSeries' }));
+  const title = await screen.findByDisplayValue('b');
+  await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'My series words kept in the form' } });
+  await act(async () => { await settleEngine(); });
+  const deleted = series('b');
+  harness.replace({ ...deleted, value: null, metadata: { ...deleted.metadata!, revision: 2, deleted: true } });
+  await act(async () => { await harness.engine.retry(deleted.resource); await settleEngine(); });
+  expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+  expect(screen.getByText('My series words kept in the form')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'workspaces.series.editSeries' })).not.toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});

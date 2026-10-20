@@ -187,6 +187,52 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
     });
 
+    it('waits for the owner collection before exposing a new note editor', async () => {
+        (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+        const collection = { uid: undefined, notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() };
+        (useStudyNotes as jest.Mock).mockReturnValue(collection);
+        const view = render(<StudyNoteEditorPage />);
+        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+        (useStudyNotes as jest.Mock).mockReturnValue({ ...collection, uid: 'user-1', loading: false });
+        view.rerender(<StudyNoteEditorPage />);
+        expect(await screen.findByTestId('rich-markdown-editor')).toBeVisible();
+    });
+
+    it('names a server-confirmed missing note and offers a route back', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: false,
+            notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'note-1' }, value: null, metadata: null } }),
+            refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        render(<StudyNoteEditorPage />);
+        expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+        expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+    });
+
+    it.each([false, true])('keeps a prior missing-note draft visible while its read is waiting: metadataOnly=%s', async metadataOnly => {
+        localStorage.clear();
+        const kept = { title: metadataOnly ? '' : 'Kept missing title', content: metadataOnly ? '' : 'Kept missing words', tags: ['kept-missing-tag'],
+            scriptureRefs: [{ id: 'kept-reference', book: 'John', chapter: 3, fromVerse: 16, bible: 'kjv' }], type: 'note' };
+        const key = draftKey('user-1', 'note-1', 'note');
+        localStorage.setItem(key, JSON.stringify({ value: kept, savedAt: Date.now() - 1000 }));
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true,
+            notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
+            refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        const view = render(<StudyNoteEditorPage />);
+        try {
+            expect(await screen.findByText('kept-missing-tag')).toBeVisible();
+            expect(screen.getByText(/3:16/)).toBeVisible();
+            if (!metadataOnly) {
+                expect(screen.getByText('Kept missing title')).toBeVisible();
+                expect(screen.getByText('Kept missing words')).toBeVisible();
+            }
+            expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+            view.unmount();
+            expect(readDraft(key)?.value).toEqual(kept);
+        } finally { view.unmount(); localStorage.clear(); }
+    });
+
     it.each([['Only A', 'Only B'], ['Same words', 'Same words']])(
         'keeps independent precreate drafts %s and %s after sequential editor departures',
         (first, second) => {

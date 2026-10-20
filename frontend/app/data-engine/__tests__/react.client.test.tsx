@@ -7,6 +7,7 @@ import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.clie
 import { DataSyncStatus } from '../DataSyncStatus';
 import { ENGINE_OWNED_COLLECTIONS } from '../engineOwnedCollections';
 import { useRecoveryDiscovery } from '../useRecoveryDiscovery';
+import { UNKNOWN_RECORD_PRESENCE } from '../recordPresence';
 import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, shouldPersistLegacyQuery, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
 import type { CollectionState } from '../collections';
@@ -54,6 +55,7 @@ function makeEditor() {
     commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
     getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
     form: jest.fn(),
+    getPresence: () => UNKNOWN_RECORD_PRESENCE,
     getState: jest.fn(() => clone(state)), getObservation: jest.fn(() => clone(observation)), getDelivery: jest.fn(() => clone(delivery)),
     subscribe: jest.fn(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }),
     edit: jest.fn(async value => {
@@ -674,6 +676,36 @@ describe('React collection and explicit recovery APIs', () => {
     await act(async () => { refreshing.resolve(collectionState()); await refresh; });
     expect(result.current.state).toEqual(deleted); expect(result.current.error).toBeNull();
     unmount(); expect(b.collectionWatches[0].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies the exact refreshed collection before its React observation echoes', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+    await act(async () => b.collectionWatches[0].next({ ...collectionState([]), freshness: 'cache', complete: false }));
+    expect(result.current.presence(resource.id).kind).toBe('unknown');
+    b.engine.refreshCollection.mockResolvedValueOnce(collectionState());
+    await act(async () => {
+      await expect(result.current.refreshPresence(resource.id)).resolves.toMatchObject({ kind: 'present', source: 'server', snapshot: snapshot() });
+    });
+    expect(result.current.presence(resource.id).kind).toBe('unknown');
+    expect(b.engine.refreshCollection).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a late presence refresh after its owner is replaced', async () => {
+    const first = makeBrowser(), second = makeBrowser();
+    jest.mocked(createBrowserDataEngine).mockReturnValueOnce(first.browser).mockReturnValue(second.browser);
+    const { result, rerender } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(first.collectionWatches).toHaveLength(1));
+    const answer = deferred<CollectionState>(); first.engine.refreshCollection.mockReturnValueOnce(answer.promise);
+    const request = result.current.refreshPresence(resource.id).catch(error => error);
+    owner('other'); rerender();
+    await waitFor(() => expect(second.collectionWatches).toHaveLength(1));
+    let failure: unknown;
+    await act(async () => { answer.resolve(collectionState([])); failure = await request; });
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain('active collection changed');
+    expect(result.current.presence(resource.id).kind).toBe('unknown');
   });
 
   it('fences collection A-to-B-to-A callbacks and late refresh failures, and disables a null collection', async () => {

@@ -1,12 +1,12 @@
 "use client";
 
 import { FileText, Pencil, Save } from "lucide-react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useRef, useState } from "react";
 
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useRouteId } from "@/hooks/useRouteId";
@@ -281,11 +281,14 @@ function EngineManualConspectusPage({ sermonId }: { sermonId: string }) {
 
 type SermonSource = ReturnType<typeof useEngineSermonSource>;
 
-function ManualConspectusContent({ source, readOnly = false }: { source: SermonSource; readOnly?: boolean }) {
+function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { source: SermonSource; readOnly?: boolean }) {
   const { t } = useTranslation();
   const sermonId = useRouteId();
   const router = useRouter();
-  const { sermon, loading, error } = source;
+  const { sermon, loading } = source;
+  const { owner } = useDataEngine();
+  const unavailable = source.document.presence?.kind === 'absent' || source.document.presence?.kind === 'deleting';
+  const readOnly = copyReadOnly || unavailable;
   const [timerState, setTimerState] = useState<PlanTimerState | null>(null);
   const searchParams = useSearchParams();
   const noteMode = searchParams.get('source') === 'note';
@@ -297,7 +300,7 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
    * editor's cells are merged over time and would keep text a newer copy no longer has.
    */
   const storedText = useMemo(() => readPlanText(sermon), [sermon]);
-  const shownText = readOnly ? storedText : conspectus.contentByNodeId;
+  const shownText = copyReadOnly ? storedText : conspectus.contentByNodeId;
 
   /**
    * WHICH POINTS THE FULLNESS MAP SHOULD LIGHT UP.
@@ -323,14 +326,14 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
    * from "someone else's paragraph" to "your own".
    */
   const draft = usePlanTextDraft({
-    uid: sermon?.userId,
-    sermonId: sermon?.id,
+    uid: owner,
+    sermonId,
     contentByNodeId: conspectus.contentByNodeId,
     modifiedNodeIds: conspectus.modifiedNodeIds,
     pendingNodeIds: conspectus.pendingNodeIds,
     pendingText: conspectus.pendingText,
     liveNodeIds: livePlanNodes,
-    frozen: readOnly,
+    frozen: copyReadOnly,
   });
   /** Unsaved text whose card is gone — typed here, or left by an earlier session — kept in sight. */
   const orphans = mergeOrphans(
@@ -408,26 +411,11 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
     });
   };
 
-  if (loading) {
-    return <div className="p-8 text-center text-gray-500">{t("common.loading", { defaultValue: "…" })}</div>;
-  }
-
-  /**
-   * A REFUSAL IS NOT A SLOW LOAD.
-   *
-   * `loading || !sermon` folded both into one spinner, so a 403, a 404 or a network error
-   * that had already given up left the page saying "Loading…" for as long as someone was
-   * willing to wait. Nothing is coming; say so, and offer the way back.
-   */
-  if (error || !sermon) {
-    return (
-      <div className="p-8 text-center">
-        <p className="mb-4 text-gray-700 dark:text-gray-200">{t("errors.failedToLoadSermon")}</p>
-        <Link href={`/sermons/${sermonId}`} className="text-blue-600 hover:underline dark:text-blue-400">
-          {t("actions.backToSermon")}
-        </Link>
-      </div>
-    );
+  if (!sermon) {
+    return <RecordUnavailable presence={source.document.presence} checking={loading}
+      onBack={() => router.push('/sermons')} onRetry={source.refreshSermon}>
+      <OrphanedPlanText subject={JSON.stringify([owner, sermonId])} cells={orphans} readOnly onDiscard={() => undefined} />
+    </RecordUnavailable>;
   }
 
   if (isImmersive) {
@@ -468,6 +456,8 @@ function ManualConspectusContent({ source, readOnly = false }: { source: SermonS
 
   return (
     <div className="space-y-6 p-4">
+      {unavailable && <RecordUnavailable presence={source.document.presence}
+        onBack={() => router.push('/sermons')} onRetry={source.refreshSermon} />}
       <PlanOverlayPortal
         isPlanOverlay={isOverlay}
         sermon={sermon}

@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 
 import { useDataDocument, useDataEngine } from '@/data-engine/react.client';
+import { UNKNOWN_RECORD_PRESENCE } from '@/data-engine/recordPresence';
 import { applyCommand } from '@/data-engine/protocol';
 import { DataSession } from '@/data-engine/session';
 
@@ -20,7 +21,7 @@ function setup(value: ResourceSnapshot = snapshot()) {
   const session = new DataSession(value);
   const api = {
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
-    recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
+    recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: value.value, confirmed: value, remote: null, state: null, status: null, loading: false, error: null,
     commit: jest.fn(),
     update: jest.fn(async (mutate: (current: DocumentData | null) => DocumentData | null) => {

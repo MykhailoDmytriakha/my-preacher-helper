@@ -227,6 +227,44 @@ describe('GroupDetailPage', () => {
     return { harness, view, delivered };
   }
 
+  it('names a server-confirmed missing group without opening a form against absence', async () => {
+    const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' }, value: null, metadata: null });
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+    expect(screen.queryByText('Manual form requires a live confirmed document')).not.toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it('keeps unfinished meeting words visible after another device deletes the group', async () => {
+    const { harness } = setupGroupPage();
+    const date = await screen.findByDisplayValue('2026-02-11');
+    const location = screen.getByDisplayValue('Hall');
+    await waitFor(() => {
+      expect(date).toBeEnabled();
+      expect(location).toBeEnabled();
+    });
+
+    fireEvent.change(date, { target: { value: '2026-0' } });
+    fireEvent.change(screen.getByDisplayValue('Hall'), { target: { value: 'A hall kept after deletion' } });
+    await act(async () => { await settleEngine(); });
+
+    harness.silentRemoteDelete();
+    await act(async () => {
+      await harness.engine.retry({ collection: 'groups', id: 'group-1' });
+      await settleEngine();
+    });
+
+    expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+    expect(screen.getByText('2026-0')).toBeVisible();
+    expect(screen.getByText('A hall kept after deletion')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Delete group' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(harness.transport.send).not.toHaveBeenCalled();
+  });
+
   it('does not apply an old flow-item confirmation after its item and template change', async () => {
     const template = {
       id: 'tpl-1', type: 'topic', title: 'Main topic', content: 'Original words', status: 'filled',
@@ -262,14 +300,14 @@ describe('GroupDetailPage', () => {
     expect(document.querySelectorAll('.animate-pulse')).toHaveLength(0);
   });
 
-  it('shows the load error when the group no longer exists', async () => {
+  it('names the server-confirmed deletion when the group no longer exists', async () => {
     const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' },
       metadata: { protocol: 1, generation: 'group-generation', revision: 2, deleted: true }, value: null },
     { cached: false });
     jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
     render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
 
-    expect(await screen.findByText('Failed to load group')).toBeInTheDocument();
+    expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Delete group' })).not.toBeInTheDocument();
   });
 

@@ -11,6 +11,7 @@ import { captureMembershipPins } from './membershipCapture';
 import { describeActionDelivery, describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
+import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
@@ -69,6 +70,7 @@ export interface ManagedManualForm {
 export interface ManagedEditor {
   getState(): EditorState;
   getObservation(): Observation;
+  getPresence(): RecordPresence;
   getDelivery(): JournalEntry[];
   getActions(): Array<{ id: string; delivery: MembershipDelivery }>;
   carryCouncilTopicToNew(topicId: string, title: string): Promise<ResourceSnapshot>;
@@ -1093,6 +1095,29 @@ export class DataEngine {
             pendingIds, [...this.commitRecords.values()], this.pending) };
         },
         getObservation: () => { active(); return copy(entry.observation); },
+        getPresence: () => {
+          active();
+          const { checkpoint } = controller.getState();
+          const pending = Object.keys(checkpoint.pending);
+          const local = checkpoint.dirty || pending.length > 0;
+          if (local && checkpoint.draft === null && checkpoint.confirmed.value !== null) {
+            return { kind: 'deleting', source: 'local', snapshot: copy(checkpoint.confirmed) };
+          }
+          const heldCreation = pending.some(id => {
+            const request = this.commitRecords.get(id);
+            return request && request.owner === owner && sameResource(request.baseline.resource, frozen)
+              && !['acknowledged', 'cancelled'].includes(request.state) && request.baseline.value === null
+              && !request.baseline.metadata && request.value !== null;
+          });
+          if (checkpoint.draft !== null && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata
+            && (heldCreation || creating && local)) {
+            return { kind: 'creating', source: 'local', snapshot: { resource: copy(frozen), value: copy(checkpoint.draft), metadata: null } };
+          }
+          const accepted = [...this.commitRecords.values()].flatMap(request =>
+            request.owner === owner && request.result?.kind === 'acknowledged'
+              && sameResource(request.result.snapshot.resource, frozen) ? [request.result.snapshot] : []);
+          return copy(documentRecordPresence(frozen, entry.observation, undefined, accepted));
+        },
         getDelivery: () => { active(); return copy(this.editorDelivery(entry, this.pending)); },
         getActions: () => {
           active();

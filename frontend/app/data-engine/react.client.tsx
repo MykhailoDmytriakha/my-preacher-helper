@@ -19,6 +19,7 @@ import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQ
 import { discoverLegacyRecovery as discoverLegacyOriginals } from './legacyRecovery.client';
 import { recoveryHeldOpen as heldOpen, type OpenDocumentAnswer } from './openDocumentAnswers';
 import { mergeFields } from './protocol';
+import { collectionRecordPresence, documentRecordPresence, UNKNOWN_RECORD_PRESENCE, type RecordPresence } from './recordPresence';
 import { captureRecoveryChoice as captureChoice, recoveryChoiceFingerprint, type RecoveryChoiceScope } from './recoveryChoice';
 import { deletedUnder } from './session';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
@@ -579,6 +580,7 @@ interface OpenEditor {
   editor: ManagedEditor;
   state: EditorState;
   status: SyncStatus;
+  presence: RecordPresence;
   actions: ReturnType<ManagedEditor['getActions']>;
 }
 interface RecoveryRequest {
@@ -639,7 +641,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         if (!active) return;
         try {
           const state = value.getState();
-          setOpened({ identity, owner, key, browser, editor: value, state, actions: value.getActions?.() ?? [], status: describeSync(state, value.getObservation(), value.getDelivery()) });
+          setOpened({ identity, owner, key, browser, editor: value, state, presence: value.getPresence?.() ?? UNKNOWN_RECORD_PRESENCE, actions: value.getActions?.() ?? [], status: describeSync(state, value.getObservation(), value.getDelivery()) });
         } catch (failure) { setError(failure, 'read'); }
       };
       stop = value.subscribe(publish);
@@ -792,6 +794,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     getManualForm,
     recoveryIdentity: identity as object,
     data: current ? current.state.checkpoint.draft : copy?.snapshot.value ?? null,
+    presence: current?.presence ?? (copy ? documentRecordPresence(copy.snapshot.resource, { snapshot: copy.snapshot, source: copy.source === 'server' ? 'server' : 'cache', readiness: copy.source === 'server' ? 'server' : 'cache', checking: false, error: false }) : UNKNOWN_RECORD_PRESENCE),
     confirmed: current?.state.checkpoint.confirmed ?? null,
     remote: current?.state.checkpoint.remoteCandidate ?? null,
     state: current?.state ?? null,
@@ -946,25 +949,31 @@ export function useDataCollection(collection: string | null) {
   // The engine's background failure explains only a list still waiting (see useBackgroundFailure);
   // it neither stops that list from being offered a copy nor hides one.
   const error = ownError ?? (copy || !waiting ? null : backgroundFailure);
+  const refresh = async () => {
+  if (!current() || !browser || !owner || !collection) throw new Error('The active collection changed');
+  try {
+    const next = await browser.engine.refreshCollection(collection);
+    if (!current()) throw new Error('The active collection changed');
+    setFailure(null);
+    if (subscription.current?.identity === identity && !subscription.current.watching) setAttempt(value => value + 1);
+    return next;
+  } catch (error) {
+    if (current()) setFailure({ identity, words: failureWords(error, BACKGROUND_FAILED) });
+    throw error;
+  }
+  };
+  const presence = (id: string, answer: CollectionState | null = copy ? copy.state : state) =>
+    collection ? collectionRecordPresence({ collection, id }, answer) : UNKNOWN_RECORD_PRESENCE;
   return {
     state: copy ? copy.state : state,
+    presence,
     loading: waiting && !copy && !error,
     /** The rows are a copy for reading while the list's own storage is silent. */
     readOnly: Boolean(copy),
     error,
-    refresh: async () => {
-      if (!current() || !browser || !owner || !collection) throw new Error('The active collection changed');
-      try {
-        const next = await browser.engine.refreshCollection(collection);
-        if (!current()) throw new Error('The active collection changed');
-        setFailure(null);
-        if (subscription.current?.identity === identity && !subscription.current.watching) setAttempt(value => value + 1);
-        return next;
-      } catch (error) {
-        if (current()) setFailure({ identity, words: failureWords(error, BACKGROUND_FAILED) });
-        throw error;
-      }
-    },
+    refresh,
+    /** One identity-fenced refresh classified from that exact answer, without waiting for a React echo. */
+    refreshPresence: async (id: string) => presence(id, await refresh()),
   };
 }
 

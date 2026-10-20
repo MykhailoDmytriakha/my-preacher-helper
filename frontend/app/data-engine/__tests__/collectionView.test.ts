@@ -14,7 +14,7 @@ const views = (requests: CommitRequest[], snapshots = [snapshot()]) => collectio
 it('presents submitted creation and updates without changing confirmed snapshots', () => {
   const saved = request(), absent = { resource, value: null, metadata: null };
   expect(views([{ ...saved, baseline: absent, working: absent }], [])).toEqual([
-    { resource, value: saved.value, pending: true, needsAttention: false, deleting: false },
+    { resource, value: saved.value, pending: true, needsAttention: false, deleting: false, creating: true },
   ]);
   const confirmed = [snapshot()], frozen = JSON.stringify(confirmed);
   expect(views([saved], confirmed)[0].value?.title).toBe('save');

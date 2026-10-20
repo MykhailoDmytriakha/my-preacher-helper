@@ -3,6 +3,7 @@
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { useGroupMeetingEditor } from '@/hooks/useGroupMeetingEditor';
+import { hydrateGroup } from '@/utils/groupDocument';
 
 import type { GroupPageEditor } from './groupPageEditor';
 import type { Group } from '@/models/models';
@@ -19,17 +20,23 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
   const change = (mutate: (current: Group) => Group) => { void data.update(mutate).catch(() => undefined); };
   const field = <K extends 'title' | 'status' | 'templates' | 'flow'>(key: K): Dispatch<SetStateAction<Group[K]>> =>
     next => change(current => ({ ...current, [key]: nextValue(next, current[key]) }));
-  const meeting = useGroupMeetingEditor(groupId, group?.meetingDates ?? [], Boolean(data.document.state?.manualWork));
+  const meeting = useGroupMeetingEditor(groupId, group?.meetingDates ?? [], Boolean(data.document.state?.manualWork),
+    Boolean(data.document.confirmed?.value) && data.document.presence.kind !== 'absent' && data.document.presence.kind !== 'deleting');
   const first = meeting.first;
   const recovery = data.recovery;
   const manual = meeting.form.dirty || data.document.state?.manualWork;
+  const heldMeeting = manual && meeting.form.data;
+  const retainedGroup = heldMeeting ? hydrateGroup({ ...(group ?? heldMeeting), id: groupId,
+    meetingDates: heldMeeting.meetingDates ?? [] } as unknown as Group) : undefined;
   const status = manual ? meeting.form.status : data.status;
   const error = meeting.form.error || data.error;
   const choices = [...recovery.choices.map(choice => ({ ...choice, id: `document:${choice.id}` })),
     ...meeting.recovery.choices.map(choice => ({ ...choice, id: `meeting:${choice.id}` }))];
   return {
     readOnly: data.document.readOnly,
-    group, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: field('title'),
+    presence: data.document.presence,
+    refresh: data.refresh,
+    group, retainedGroup, loading: data.loading || Boolean(group && meeting.loading), title: group?.title ?? '', setTitle: field('title'),
     description: group?.description ?? '', setDescription: next => change(current => ({ ...current, description: nextValue(next, current.description ?? '') })),
     status: group?.status ?? 'draft', setStatus: field('status'), templates: group?.templates ?? [], setTemplates: field('templates'),
     flow: group?.flow ?? [], setFlow: field('flow'), meetingDate: first?.date ?? '', setMeetingDate: meeting.field('date'),

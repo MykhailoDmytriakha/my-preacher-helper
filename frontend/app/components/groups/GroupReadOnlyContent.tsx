@@ -29,7 +29,7 @@ function BlockDetails({ template }: { template: GroupBlockTemplate }) {
  * stays: the conduct screen runs on the same copy. Why editing is off is said once, for the whole
  * app, by DeviceStorageNotice above the page; repeating it here was the third copy on screen.
  */
-export function GroupReadOnlyContent({ group }: { group: Group }) {
+export function GroupReadOnlyContent({ group, allowConduct = true }: { group: Group; allowConduct?: boolean }) {
   const { t } = useTranslation();
   const flow = normalizeFlow(group.flow);
   const templatesById = new Map(group.templates.map(template => [template.id, template]));
@@ -62,7 +62,7 @@ export function GroupReadOnlyContent({ group }: { group: Group }) {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('groupFlow.title', { defaultValue: 'Group Flow' })}</h2>
-          {flow.length > 0 && (
+          {allowConduct && flow.length > 0 && (
             <Link href={`/groups/${group.id}/conduct`} className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-100 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60">
               <PlayIcon className="h-4 w-4" />
               {t('conduct.startButton', { defaultValue: 'Start Meeting' })}

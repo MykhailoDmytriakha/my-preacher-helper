@@ -1,11 +1,16 @@
+import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { Group } from '@/models/models';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 
 /** What the group page draws and edits; every change is persisted by the data engine (useGroupPageEditor). */
 export interface GroupPageEditor {
   group: Group | null;
+  /** A read-only projection of a held meeting stage, never an editor baseline. */
+  retainedGroup?: Group;
   loading: boolean;
   readOnly?: boolean;
+  presence?: RecordPresence;
+  refresh?: () => unknown | Promise<unknown>;
   title: string;
   setTitle: Dispatch<SetStateAction<string>>;
   description: string;

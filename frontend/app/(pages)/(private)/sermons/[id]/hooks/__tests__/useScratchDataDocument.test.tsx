@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useDataDocument, useDocumentActions } from '@/data-engine/react.client';
+import { UNKNOWN_RECORD_PRESENCE } from '@/data-engine/recordPresence';
 import { DataSession } from '@/data-engine/session';
 import { newClientId } from '@/utils/clientId';
 
@@ -46,7 +47,7 @@ function setup(initial: DocumentData | null = { userId: 'owner', title: 'Keep ti
   const actions = { acceptRemote: jest.fn(), keepLocal: jest.fn(), getManualForm: jest.fn(), listRecoverable: jest.fn(), recover: jest.fn(), retry: jest.fn(), remove: jest.fn() };
   jest.mocked(useDataDocument).mockImplementation(() => ({
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
-    recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
+    recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: session.checkpoint().draft,
     confirmed: session.checkpoint().confirmed,
     remote: null, state, status: { phase } as SyncStatus,

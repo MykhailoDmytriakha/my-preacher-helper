@@ -88,6 +88,7 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   uid: 'mock-user',
   notes: [],
   noteDelivery: new Map(),
+  notePresence: () => ({ kind: 'unknown', source: null, snapshot: null }),
   confirmedDictationSources: new Map(),
   confirmedCreationIds: new Set(),
   loading: false,

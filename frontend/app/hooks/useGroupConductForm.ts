@@ -11,11 +11,11 @@ import type { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 const flow = (data: DocumentData | null) => (data?.flow ?? []) as unknown as GroupFlowItem[];
 
 /** Meeting setup is a manual stage: Start submits the duration edits against their opening values. */
-export function useGroupConductForm(groupId: string) {
+export function useGroupConductForm(groupId: string, available = true) {
   const { t } = useTranslation();
   const form = useDataForm({ collection: 'groups', id: groupId }, 'conduct-setup', [['flow']]);
   const { loading, begin } = form;
-  useEffect(() => { if (!loading) void begin().catch(() => undefined); }, [loading, begin]);
+  useEffect(() => { if (available && !loading) void begin().catch(() => undefined); }, [available, loading, begin]);
   const recovery = useRecoveryDiscovery({ identity: form.recoveryIdentity, enabled: !loading, version: String(form.active),
     list: async () => (await form.listRecoverable()).map(({ scopeId, record }) => ({
       id: scopeId, title: String(record.baseline.value?.title ?? groupId),

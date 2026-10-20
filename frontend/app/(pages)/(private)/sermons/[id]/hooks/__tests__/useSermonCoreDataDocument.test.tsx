@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 
 import { useDataDocument, useDataEngine, useDataForm } from '@/data-engine/react.client';
+import { UNKNOWN_RECORD_PRESENCE } from '@/data-engine/recordPresence';
 import { DataSession } from '@/data-engine/session';
 
 import { useSermonCoreDataDocument } from '../useSermonCoreDataDocument';
@@ -16,7 +17,7 @@ function setup(value: DocumentData | null = { userId: 'owner', title: 'Original'
   let durable = Promise.resolve();
   const api = {
     actions: [], carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
-    recoveryIdentity: {}, readOnly: false, copySource: null, readOnlyReason: null,
+    recoveryIdentity: {}, presence: UNKNOWN_RECORD_PRESENCE, readOnly: false, copySource: null, readOnlyReason: null,
     data: value, confirmed: session.checkpoint().confirmed, remote: null,
     state: null, status: null, loading: false, error: null,
     commit: jest.fn(),

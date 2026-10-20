@@ -3,6 +3,7 @@ import React from 'react';
 
 import ServiceOrderPage from '@/(pages)/(private)/care/orders/[id]/page';
 import '@testing-library/jest-dom';
+import type { RecordPresence } from '@/data-engine/recordPresence';
 import type { ServiceOrderStep } from '@/models/models';
 
 /**
@@ -24,6 +25,7 @@ const state = {
   orders: [] as unknown[],
   loading: false,
   isOnline: true,
+  orderPresence: undefined as undefined | ((id: string) => RecordPresence),
 };
 
 jest.mock('@/hooks/useServiceOrders', () => ({
@@ -73,6 +75,7 @@ describe('One service', () => {
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
     state.loading = false;
     state.isOnline = true;
+    state.orderPresence = undefined;
   });
 
   it('reads as a page, with the steps in order and no fields in sight', () => {
@@ -1216,6 +1219,21 @@ describe('One service', () => {
    * service was deleted when it is sitting on the server is how trust in a section dies.
    */
   describe('when the service is not here', () => {
+    it('keeps the pending absence answer through the refresh loading transition', async () => {
+      state.orders = [];
+      let finish!: (answer: string) => void;
+      mockRecheck.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      const view = render(<ServiceOrderPage />);
+      expect(mockRecheck).toHaveBeenCalledWith('order-1');
+      state.loading = true;
+      view.rerender(<ServiceOrderPage />);
+      state.loading = false;
+      view.rerender(<ServiceOrderPage />);
+      await act(async () => { finish('absent'); });
+      expect(await screen.findByText('serviceOrders.notFound')).toBeVisible();
+      expect(screen.queryByTestId('service-order-loading')).not.toBeInTheDocument();
+    });
+
     /**
      * A CACHED LIST IS NOT PROOF OF ABSENCE. It is read cache-first and counts as fresh for
      * half a minute, so a rite created on the laptop and opened on the phone a moment later is
@@ -1292,6 +1310,7 @@ describe('One service', () => {
       expect(mockRecheck).toHaveBeenCalledTimes(1);
 
       state.isOnline = true;
+    state.orderPresence = undefined;
       rerender(<ServiceOrderPage />);
       expect(await screen.findByText('serviceOrders.notFound')).toBeInTheDocument();
       expect(mockRecheck).toHaveBeenCalledTimes(2);
@@ -1313,6 +1332,34 @@ describe('when the rite is deleted elsewhere mid-edit', () => {
     state.orders = [order([step('s1', 'Перед началом'), step('s2', 'Молитва')])];
     state.loading = false;
     state.isOnline = true;
+    state.orderPresence = undefined;
+  });
+
+  it('keeps projected queued words readable after the server confirms the order is absent', async () => {
+    state.orders = [order([step('kept-step', 'My kept step', 'Words still in the local queue')])];
+    state.orderPresence = () => ({ kind: 'absent', source: 'server', snapshot: {
+      resource: { collection: 'serviceOrders', id: 'order-1' }, value: null,
+      metadata: { protocol: 1, generation: 'g', revision: 2, deleted: true },
+    } });
+    render(<ServiceOrderPage />);
+    expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+    expect(screen.getByText('Words still in the local queue')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'serviceOrders.edit' })).not.toBeInTheDocument();
+    expect(mockUpdateSteps).not.toHaveBeenCalled();
+    expect(mockRenameOrder).not.toHaveBeenCalled();
+  });
+
+  it('keeps typed words while an unavailable read does not prove the order was deleted', async () => {
+    mockRecheck.mockResolvedValueOnce('unreachable');
+    const { rerender } = render(<ServiceOrderPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.edit' }));
+    fireEvent.change(screen.getAllByRole('textbox', { name: 'serviceOrders.stepWords' })[0], { target: { value: 'Words kept while the read cannot answer' } });
+    state.orders = [];
+    rerender(<ServiceOrderPage />);
+    expect(await screen.findByText('recordAvailability.notHereYet')).toBeVisible();
+    expect(screen.getByText('Words kept while the read cannot answer')).toBeVisible();
+    expect(screen.queryByText('serviceOrders.notFound')).not.toBeInTheDocument();
+    expect(screen.getByTestId('service-order-gone')).toHaveTextContent('serviceOrders.goneWithWords');
   });
 
   it('shows the unsaved words instead of announcing absence', async () => {
@@ -1402,6 +1449,7 @@ describe('One service following the engine row', () => {
     state.orders = [order([step('s1', 'Перед началом')])];
     state.loading = false;
     state.isOnline = true;
+    state.orderPresence = undefined;
   });
   const remoteEdit = () => { state.orders = [{ ...order([step('s1', 'Written on the phone')]), title: 'Renamed on the phone' }]; };
 

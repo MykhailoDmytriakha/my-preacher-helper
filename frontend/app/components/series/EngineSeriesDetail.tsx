@@ -4,8 +4,8 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
-import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
@@ -18,6 +18,7 @@ import { hydrateSeries } from '@/utils/seriesDocument';
 import { useTranslation } from '@locales/useTranslation';
 
 import { EngineEditSeriesModal, SERIES_METADATA_SELECTION } from './EngineEditSeriesModal';
+import { RetainedSeriesMetadata } from './RetainedSeriesMetadata';
 import { SeriesDetailView } from './SeriesDetailView';
 import SeriesItemCard from './SeriesItemCard';
 import { SeriesMembershipDialog, type SeriesMembershipDialogMode } from './SeriesMembershipDialog';
@@ -43,6 +44,8 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const { t } = useTranslation(), router = useRouter(), { user } = useAuth();
   const document = useDataDocument({ collection: 'series', id: seriesId }, { autoSave: false });
   usePublishShellTitle('series', seriesId, document.data);
+  const unavailable = document.presence?.kind === 'absent' || document.presence?.kind === 'deleting';
+  const readOnly = document.readOnly || unavailable;
   const collection = useSeriesDataCollection(true, user?.uid ?? null);
   const sermons = useDashboardSermons(), groups = useGroupsRead(user?.uid ?? null);
   const [editing, setEditing] = useState(false), [deleting, setDeleting] = useState(false);
@@ -65,25 +68,28 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     onKeepLocal={() => saveKeptSeries(document)} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} />;
-  if (document.loading && !document.data) return <SeriesDetailSkeleton />;
-  if (!document.data) return <div className="space-y-4">
-    <button onClick={() => router.push('/series')}>{t(SERIES_LABEL)}</button>
-    {sync}
-    {!document.status && !document.error && <p>{t('dataSync.phase.deleted')}</p>}
-  </div>;
+  const retainedMetadata = unavailable && (metadata.active || metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <>
+    <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.status} error={metadata.error}
+      recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
+      onRecover={metadataRecovery.recover} onRetry={metadata.retry} />
+    <RetainedSeriesMetadata value={metadata.data} />
+  </>;
+  if (!document.data) return <RecordUnavailable presence={document.presence} checking={document.loading}
+    onBack={() => router.push('/series')} onRetry={document.retry}>{sync}{retainedMetadata}</RecordUnavailable>;
   const base = hydrateSeries({ ...document.data, id: seriesId } as unknown as Series);
   const projected = collection.series.find(series => series.id === seriesId);
   // Presentation only. Never feed a submitted collection projection into the metadata form's ancestor.
-  const series = !document.readOnly && projected ? { ...base, items: projected.items, sermonIds: projected.sermonIds, seriesKind: projected.seriesKind } : base;
+  const series = !readOnly && projected ? { ...base, items: projected.items, sermonIds: projected.sermonIds, seriesKind: projected.seriesKind } : base;
   const items = (series.items ?? []).map(item => ({ item,
     sermon: item.type === 'sermon' ? sermons.sermons.find(sermon => sermon.id === item.refId) : undefined,
     group: item.type === 'group' ? groups.groups.find(group => group.id === item.refId) : undefined }));
   const refresh = async () => { await Promise.all([document.retry(), collection.refreshSeries()]); };
-  return <SeriesDetailView readOnly={document.readOnly} series={series} items={items} onBack={() => router.push('/series')}
+  return <SeriesDetailView readOnly={readOnly} series={series} items={items} onBack={() => router.push('/series')}
     onAddSermons={() => setMembership({ mode: 'sermon' })} onAddGroups={() => setMembership({ mode: 'group' })}
     onEdit={() => setEditing(true)} onDelete={() => setDeleting(true)} onRefresh={() => { void refresh().catch(() => undefined); }}
-    feedback={<>{sync}
-      {!document.readOnly && !editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
+    feedback={<>{unavailable && <RecordUnavailable presence={document.presence}
+      onBack={() => router.push('/series')} onRetry={document.retry} />}{sync}{retainedMetadata}
+      {!readOnly && !editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
         <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.dirty ? metadata.status : null} error={metadata.error}
           recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
@@ -96,14 +102,14 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     reorderHint={<button type="button" className="underline" onClick={() => setMembership({ mode: 'reorder' })}>
       {t('workspaces.series.actions.reorder')}</button>}
     itemsContent={<div className="space-y-4">{items.map((entry, index) => <SeriesItemCard key={entry.item.id} id={entry.item.id}
-      position={index + 1} resolvedItem={entry} sortable={false} onRemove={document.readOnly ? undefined : (type, refId) => setMembership({ mode: 'remove', member: { type, refId } })} />)}</div>}>
-    {!document.readOnly && editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
-    {!document.readOnly && membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
+      position={index + 1} resolvedItem={entry} sortable={false} onRemove={readOnly ? undefined : (type, refId) => setMembership({ mode: 'remove', member: { type, refId } })} />)}</div>}>
+    {!readOnly && editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
+    {!readOnly && membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
       seriesId={seriesId} {...membership} onClose={() => setMembership(null)}
       onCreateSermon={() => { setMembership(null); setCreatingSermon(true); }} />}
-    {!document.readOnly && creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
+    {!readOnly && creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
       onQueued={() => setCreatingSermon(false)} />}
-    {!document.readOnly && deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}
+    {!readOnly && deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}
   </SeriesDetailView>;
 }
 function DeleteSeries({ seriesId, onClose, onDeleted }: { seriesId: string; onClose: () => void; onDeleted: () => void }) {

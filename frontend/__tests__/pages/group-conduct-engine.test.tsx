@@ -46,6 +46,20 @@ it('runs the meeting from the blocks it started with when another device removes
   expect(screen.getByText('Conducting now')).toBeInTheDocument();
   view.unmount();
 });
+it('keeps a started meeting running after its stored group is deleted', async () => {
+  const { harness, view } = setup();
+  const start = await screen.findByRole('button', { name: /conduct.preflight.startButton/ });
+  await waitFor(() => expect(start).toBeEnabled());
+  fireEvent.click(start);
+  expect(await screen.findByText('Conducting now')).toBeVisible();
+  harness.silentRemoteDelete();
+  await act(async () => { await harness.engine.retry({ collection: 'groups', id: 'group-1' }); await settleEngine(); });
+  expect(screen.getByText('Conducting now')).toBeVisible();
+  expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});
+
 it('keeps duration typing unsent and conflicts against the pinned opening value on Start', async () => {
   const { harness, view } = setup();
   const duration = await screen.findByDisplayValue('5');
@@ -145,4 +159,26 @@ it('opens the stored meeting setup from the actual offline address without route
     expect(screen.getByDisplayValue('5')).toBeInTheDocument();
     expect(harness.transport.send).not.toHaveBeenCalled();
   } finally { view.unmount(); }
+});
+
+
+it('names a server-confirmed missing conduct group and offers a way to the groups list', async () => {
+  const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' }, value: null, metadata: null });
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
+  expect(await screen.findByText('recordAvailability.notFound')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(screen.queryByText('Manual form requires a live confirmed document')).not.toBeInTheDocument();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+it('leaves a way back while a conduct group read has no answer', async () => {
+  const harness = documentEngineHarness({ resource: { collection: 'groups', id: 'group-1' }, value: null, metadata: null });
+  jest.mocked(harness.transport.read).mockImplementation(() => new Promise(() => undefined));
+  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  const view = render(<DataEngineProvider><ConductPage /></DataEngineProvider>);
+  expect(await screen.findByRole('button', { name: 'common.back' })).toBeEnabled();
+  expect(screen.queryByText('recordAvailability.notFound')).not.toBeInTheDocument();
+  view.unmount();
 });

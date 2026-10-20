@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -140,6 +141,32 @@ function BackToList({ className = '' }: { className?: string }) {
   );
 }
 
+/** One read-only rendering for words retained by an open editor or a submitted queue. */
+function RetainedOrderSteps({ steps, refsDraft }: { steps: ServiceOrderStep[]; refsDraft: Record<string, string> }) {
+  return (
+        <ol className="mt-6 flex flex-col gap-5">
+          {steps.map((step, index) => (
+            <li key={step.id} className="text-sm">
+              <p className="font-bold text-gray-900 dark:text-white">
+                {index + 1}. {step.title}
+              </p>
+              {step.body && (
+                <p className="mt-1 whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-300">
+                  {step.body}
+                </p>
+              )}
+              {/* As typed, comma and all, if he was in the middle of the field when it happened. */}
+              {(refsDraft[step.id] ?? (step.scriptureRefs ?? []).join(', ')) && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {refsDraft[step.id] ?? (step.scriptureRefs ?? []).join(', ')}
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
+  );
+}
+
 function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -147,9 +174,10 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
 
-  const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, renameOrder, deleteOrder } =
+  const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, orderPresence, renameOrder, deleteOrder } =
     useServiceOrders();
   const cachedOrder = orders.find((candidate) => candidate.id === orderId);
+  const presence = orderPresence?.(orderId);
   // The copy on screen; it follows the engine row whenever nothing on screen is unsaved (below).
   const [acceptedOrder, setAcceptedOrder] = useState<ServiceOrder | null>(null);
   useEffect(() => {
@@ -240,6 +268,12 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const [verdict, setVerdict] = useState<'checking' | 'absent' | 'unreachable' | null>(null);
   const rechecked = useRef(false);
+  const question = useRef(0);
+  const recheckRef = useRef(recheck);
+  recheckRef.current = recheck;
+  const presenceKind = presence?.kind;
+  const hasOrder = Boolean(order);
+  useEffect(() => () => { question.current += 1; rechecked.current = false; }, []);
   /** The last answer could not reach the server: ask once more when the connection comes back. */
   const unanswered = useRef(false);
   const [askAgain, setAskAgain] = useState(0);
@@ -252,28 +286,38 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   useEffect(() => {
     // Asked with or without the icon (owner's rule 3); "absent" needs the server (`recheck`).
-    if (order || loading || rechecked.current) return;
+    if (hasOrder) {
+      question.current += 1;
+      rechecked.current = false;
+      setVerdict(null);
+      return;
+    }
+    if (presenceKind === 'absent') {
+      question.current += 1;
+      rechecked.current = true;
+      unanswered.current = false;
+      setVerdict('absent');
+      return;
+    }
+    if (loading || rechecked.current) return;
     rechecked.current = true;
     setVerdict('checking');
-    let gone = false;
+    const currentQuestion = ++question.current;
     /*
      * A read that crossed a write proves nothing either way, so it is simply asked again — a
      * few times, and then the page says "not here yet" rather than inventing a deletion. No
      * timer: each attempt is one question, and the answers run out.
      */
     const ask = async (attemptsLeft: number): Promise<void> => {
-      const answer = await recheck(orderId);
-      if (gone) return;
+      const answer = await recheckRef.current(orderId);
+      if (currentQuestion !== question.current) return;
       if (answer === 'overlapped' && attemptsLeft > 0) return ask(attemptsLeft - 1);
       if (answer === 'found') return setVerdict(null);
       if (answer !== 'absent') unanswered.current = true;
       setVerdict(answer === 'overlapped' ? 'unreachable' : answer);
     };
     void ask(2);
-    return () => {
-      gone = true;
-    };
-  }, [order, loading, askAgain, recheck, orderId]);
+  }, [hasOrder, loading, askAgain, presenceKind, orderId]);
 
   /**
    * A REFUSED WRITE, A QUEUED WRITE AND A CONFLICT ARE THREE DIFFERENT ANSWERS.
@@ -708,6 +752,18 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     setAcceptedOrder(cachedOrder);
   }, [cachedOrder, hasLocalChanges, acceptedOrder]);
 
+  if (presence?.kind === 'absent' || presence?.kind === 'deleting') {
+    const kept = cachedOrder ?? lastKnown.current;
+    return <RecordUnavailable presence={presence} onBack={() => router.push('/care/orders')}
+      onRetry={() => recheck(orderId)}>
+      {kept && <section className="space-y-4">
+        <h2 className="text-xl font-bold">{titleDraft ?? kept.title}</h2>
+        <ServiceOrderFailure message={t(presence.kind === 'absent' ? 'serviceOrders.goneWithWords' : 'recordAvailability.deleting') as string} testId="service-order-gone" />
+        <RetainedOrderSteps steps={typed ?? kept.steps} refsDraft={refsDraft} />
+      </section>}
+    </RecordUnavailable>;
+  }
+
   if (!order && (typed || titleDraft || unresolved.current.size > 0) && lastKnown.current) {
     return (
       <div className="mx-auto w-full max-w-3xl">
@@ -717,31 +773,15 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           {titleDraft ?? lastKnown.current.title}
         </h1>
 
+        <p role="status" className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+          {t(verdict === 'absent' ? 'serviceOrders.notFound' : 'recordAvailability.notHereYet')}
+        </p>
         <ServiceOrderFailure
           message={t('serviceOrders.goneWithWords') as string}
           testId="service-order-gone"
         />
 
-        <ol className="mt-6 flex flex-col gap-5">
-          {liveSteps.map((step, index) => (
-            <li key={step.id} className="text-sm">
-              <p className="font-bold text-gray-900 dark:text-white">
-                {index + 1}. {step.title}
-              </p>
-              {step.body && (
-                <p className="mt-1 whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-300">
-                  {step.body}
-                </p>
-              )}
-              {/* As typed, comma and all, if he was in the middle of the field when it happened. */}
-              {(refsDraft[step.id] ?? (step.scriptureRefs ?? []).join(', ')) && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {refsDraft[step.id] ?? (step.scriptureRefs ?? []).join(', ')}
-                </p>
-              )}
-            </li>
-          ))}
-        </ol>
+        <RetainedOrderSteps steps={liveSteps} refsDraft={refsDraft} />
       </div>
     );
   }
@@ -751,7 +791,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     This screen rendered nothing at all while the read was in the air — invisible on a fast
     machine, and on a tablet with a poor connection a heading over emptiness.
   */
-  if ((loading || verdict === 'checking') && !order) {
+  if ((loading || verdict === 'checking') && verdict !== 'absent' && !order) {
     return (
       <div className="mx-auto w-full max-w-3xl" aria-busy="true" data-testid="service-order-loading">
         <BackToList />

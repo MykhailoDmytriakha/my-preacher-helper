@@ -12,20 +12,31 @@ export interface CollectionDocumentView {
   pending: boolean;
   needsAttention: boolean;
   deleting: boolean;
+  /** Proven submitted first creation, kept separate from server existence. */
+  creating?: true;
+  /** A confirmed ACK that the list has not caught up with yet; never a projected draft. */
+  acknowledged?: ResourceSnapshot;
 }
 
 export function collectionDocumentViews(owner: string, collection: string, snapshots: readonly ResourceSnapshot[], requests: readonly CommitRequest[]): CollectionDocumentView[] {
-  const confirmed = new Map(snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
+  const listed = new Map(snapshots.map(snapshot => [snapshot.resource.id, snapshot]));
+  const confirmed = new Map(listed);
+  const acknowledged = new Map<string, ResourceSnapshot>();
   const related = requests.filter(request => request.owner === owner && request.baseline.resource.collection === collection);
   // ACK may arrive before the feed read. Keep its proven content visible throughout
   // that interval, without upgrading collection completeness or server freshness.
   for (const request of related) {
     if (request.result?.kind !== 'acknowledged') continue;
     const snapshot = request.result.snapshot;
-    if (canReplaceSnapshot(confirmed.get(snapshot.resource.id), snapshot)) confirmed.set(snapshot.resource.id, snapshot);
+    if (canReplaceSnapshot(confirmed.get(snapshot.resource.id), snapshot)) {
+      confirmed.set(snapshot.resource.id, snapshot);
+      const previous = listed.get(snapshot.resource.id);
+      if (!previous || !canReplaceSnapshot(snapshot, previous)) acknowledged.set(snapshot.resource.id, snapshot);
+    }
   }
   const views = new Map([...confirmed].map(([id, snapshot]) => [id, {
     resource: snapshot.resource, value: snapshot.value, pending: false, needsAttention: false, deleting: false,
+    ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
   }]));
   const ids = new Set(related.filter(request => !['acknowledged', 'cancelled'].includes(request.state)).map(request => request.baseline.resource.id));
   for (const id of ids) {
@@ -46,7 +57,10 @@ export function collectionDocumentViews(owner: string, collection: string, snaps
     // Keep a pending deletion addressable until its acknowledgement; a failed
     // deletion must never remove the only route to its retry/recovery controls.
     views.set(id, { resource, value: checkpoint?.draft ?? confirmed.get(id)?.value ?? checkpoint?.confirmed.value ?? null,
-      pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null) });
+      pending: true, needsAttention, deleting: Boolean(checkpoint && checkpoint.draft === null),
+      ...(acknowledged.has(id) ? { acknowledged: acknowledged.get(id)! } : {}),
+      ...(checkpoint && checkpoint.confirmed.value === null && !checkpoint.confirmed.metadata && checkpoint.draft !== null
+        ? { creating: true as const } : {}) });
   }
   return JSON.parse(JSON.stringify([...views.values()]));
 }

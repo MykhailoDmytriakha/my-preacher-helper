@@ -6,6 +6,7 @@ import { STORAGE_SILENCE_MS, STORAGE_WAKE_GRACE_MS, resetDeviceStorageForTests, 
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
 import { DataDocumentProvider, DataEngineProvider, useDataCollection, useDataDocument, useDataForm, useDocumentActions } from '../react.client';
+import { UNKNOWN_RECORD_PRESENCE } from '../recordPresence';
 
 import type { CollectionState } from '../collections';
 import type { EditorState } from '../controller';
@@ -42,7 +43,7 @@ function makeEditor(title: string): ManagedEditor {
   return {
     commitWithReceipt: jest.fn(), removeWithReceipt: jest.fn(),
     getActions: jest.fn(() => []), carryCouncilTopicToNew: jest.fn(), carryCouncilTopicToExisting: jest.fn(), discardAction: jest.fn(),
-    form: jest.fn(), getState: jest.fn(() => state), getObservation: jest.fn(() => observation), getDelivery: jest.fn(() => []),
+    form: jest.fn(), getPresence: () => UNKNOWN_RECORD_PRESENCE, getState: jest.fn(() => state), getObservation: jest.fn(() => observation), getDelivery: jest.fn(() => []),
     subscribe: jest.fn(() => () => undefined), edit: jest.fn(async () => undefined), commit: jest.fn(async () => undefined),
     save: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined),
     remove: jest.fn(async () => undefined), dispose: jest.fn(), close: jest.fn(),
