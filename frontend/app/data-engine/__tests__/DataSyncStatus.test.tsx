@@ -5,6 +5,9 @@ import ru from '../../../locales/ru/translation.json';
 import uk from '../../../locales/uk/translation.json';
 import { DataSyncStatus, STATUS_SETTLE_MS } from '../DataSyncStatus';
 import { isSyncTrouble } from '../status';
+import { useServerUnavailable } from '@/hooks/useServerUnavailable';
+import { ServerUnavailableNoticeContext } from '@/hooks/useServerUnavailableNotice';
+import type { ReactElement, ReactNode } from 'react';
 import { diagnosticEvents } from '@/utils/appDiagnostics';
 import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
 
@@ -429,13 +432,21 @@ it('puts a trouble the person was shown into the technical report, and nothing f
  * and another pair under "Settings" as "the app is offline"; the app-wide line (OfflineBanner) says
  * what happens and what becomes of the changes, so a block does not repeat it in its own words.
  */
+// Unit fixture for an already-visible app notice; the real delayed transition is tested with
+// OfflineBanner and ServerUnavailableNoticeProvider in UserSettingsOutageRead.test.tsx.
+function SharedNotice({ children }: { children: ReactNode }) {
+  const shown = useServerUnavailable();
+  return <ServerUnavailableNoticeContext.Provider value={shown}>{children}</ServerUnavailableNoticeContext.Provider>;
+}
+const renderWithNotice = (ui: ReactElement) => render(ui, { wrapper: SharedNotice });
+
 describe('while the server answers that it cannot give data', () => {
   beforeEach(() => { jest.useFakeTimers(); __resetServerAvailabilityForTests(); });
   afterEach(() => { jest.useRealTimers(); __resetServerAvailabilityForTests(); });
 
   it('leaves a failed check and an unanswered delivery to the app-wide line', () => {
     act(() => { reportServerUnavailable(1); });
-    const { container, rerender } = render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
+    const { container, rerender } = renderWithNotice(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS * 2); });
     expect(container).toBeEmptyDOMElement();
     rerender(<DataSyncStatus subject="doc" status={status('unknown')} onRetry={jest.fn()} />);
@@ -444,7 +455,7 @@ describe('while the server answers that it cannot give data', () => {
 
   it('still asks the person to choose in a conflict and still says a refusal', () => {
     act(() => { reportServerUnavailable(1); });
-    const { rerender } = render(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
+    const { rerender } = renderWithNotice(<DataSyncStatus subject="doc" status={status('conflict', { canKeepLocal: true, canAcceptRemote: true })} onKeepLocal={jest.fn()} onAcceptRemote={jest.fn()} />);
     expect(screen.getByRole('alert')).toHaveTextContent(en.freshness.conflictTitle);
     rerender(<DataSyncStatus subject="doc" status={status('refused')} />);
     expect(screen.getByRole('status')).toHaveTextContent(en.dataSync.phase.refused);
@@ -452,7 +463,7 @@ describe('while the server answers that it cannot give data', () => {
 
   it('speaks again about a failed check once the server gives data again', () => {
     act(() => { reportServerUnavailable(1); });
-    render(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
+    renderWithNotice(<DataSyncStatus subject="doc" status={status('saved', { freshness: 'unknown', readFailed: true })} onRetry={jest.fn()} />);
     act(() => { reportServerAvailable(2); });
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
     expect(screen.getByText(en.dataSync.readFailed)).toBeInTheDocument();

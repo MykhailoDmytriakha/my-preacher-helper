@@ -44,7 +44,7 @@ const TemplateOutlineEditor = forwardRef<TemplateOutlineEditorHandle, { template
         title: String(record.checkpoint.draft?.name ?? record.checkpoint.confirmed.value?.name ?? t('settings.planTemplates')) })),
       recover: document.recover });
     return <fieldset disabled={disabled} className="min-w-0 space-y-3">
-      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error}
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
         onRetry={document.retry} onKeepLocal={async () => { await document.keepLocal(); await document.save(); }}
         onAcceptRemote={document.acceptRemote} recoveryChoices={recovery.choices}
         recoveryLoading={recovery.loading} recoveryError={recovery.error} onRecover={recovery.recover} />

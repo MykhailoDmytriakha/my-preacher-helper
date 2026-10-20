@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { failureWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
-import { useTranslation } from '@locales/useTranslation';
+import { useFailureNotice } from '@/hooks/useFailureNotice';
+import { failureWords, type FailureWords } from '@/utils/actionFailureMessage';
 
 
 export interface RecoveryDiscoveryOptions<T> {
@@ -18,7 +18,7 @@ export interface RecoveryDiscoveryOptions<T> {
 export function useRecoveryDiscovery<T>({ identity, enabled, version, list, recover }: RecoveryDiscoveryOptions<T>) {
   // The list's failure is kept as words and said when shown; silent device storage keeps its own
   // explanation (BUG-20261003-engine-error-sentence-on-screen).
-  const { t } = useTranslation();
+  const say = useFailureNotice();
   const latest = useRef({ identity, enabled, list, recover });
   latest.current = { identity, enabled, list, recover };
   const mounted = useRef(false);
@@ -47,5 +47,5 @@ export function useRecoveryDiscovery<T>({ identity, enabled, version, list, reco
     if (current()) await refresh();
   }, [current, refresh]);
   const shown = state?.identity === identity ? state : null;
-  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: shown?.error ? sayFailure(shown.error, t) : null, refresh, recover: restore };
+  return { choices: shown?.choices ?? [], loading: enabled && (shown?.loading ?? true), error: say(shown?.error), refresh, recover: restore };
 }

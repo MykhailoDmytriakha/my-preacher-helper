@@ -26,7 +26,7 @@ export type FailureValue = string | { key: string };
 /** One sentence — by key, or words as they are — or several said one after another (`parts`). */
 export type FailureWords =
   | { said: string }
-  | { key: string; values?: Record<string, FailureValue> }
+  | { key: string; values?: Record<string, FailureValue>; announcedBy?: 'server-outage' }
   | { parts: FailureWords[] };
 
 const SAID = new Set(['read-only', 'said']);
@@ -83,6 +83,12 @@ const sayOf = (error: unknown): FailureWords | null => {
   return say && typeof say.key === 'string' && say.key ? { key: say.key, ...(say.values ? { values: say.values } : {}) } : null;
 };
 
+/**
+ * A server that did not answer: its error carries the transport's sentence for developers ("Data
+ * engine request failed"), never an instruction (BUG-20261019-unavailable-refusal-in-english).
+ */
+const SERVER_DID_NOT_ANSWER = new Set(['unavailable', 'deadline-exceeded']);
+
 export function failureWords(error: unknown, fallbackKey: string): FailureWords {
   const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
   const said = SAID.has(code) ? sayOf(error) : null;
@@ -93,14 +99,8 @@ export function failureWords(error: unknown, fallbackKey: string): FailureWords 
   const known = KNOWN.get(code);
   if (known) return { key: known };
   logFailureOnce(error);
-  return { key: fallbackKey };
+  return { key: fallbackKey, ...(SERVER_DID_NOT_ANSWER.has(code) ? { announcedBy: 'server-outage' as const } : {}) };
 }
-
-/**
- * A server that did not answer: its error carries the transport's sentence for developers ("Data
- * engine request failed"), never an instruction (BUG-20261019-unavailable-refusal-in-english).
- */
-const SERVER_DID_NOT_ANSWER = new Set(['unavailable', 'deadline-exceeded']);
 
 /** For a refused action: an unknown refusal keeps the engine's own sentence, which may be an instruction. */
 export function refusalWords(error: unknown, fallbackKey: string): FailureWords {
@@ -108,6 +108,16 @@ export function refusalWords(error: unknown, fallbackKey: string): FailureWords 
   if (SERVER_DID_NOT_ANSWER.has(code) && !ranOutOfTime(error)) return { key: 'dataSync.failure.serverUnavailable' };
   if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
   return failureWords(error, fallbackKey);
+}
+
+/** Omit only failed reads owned by the active app outage notice; action refusals have no such owner. */
+export function withoutServerReadNotice(words: FailureWords | null | undefined): FailureWords | null {
+  if (!words) return null;
+  if ('parts' in words) {
+    const parts = words.parts.map(withoutServerReadNotice).filter((part): part is FailureWords => part !== null);
+    return parts.length ? { parts } : null;
+  }
+  return 'key' in words && words.announcedBy === 'server-outage' ? null : words;
 }
 
 type Translate = (key: string, values?: Record<string, string>) => string;

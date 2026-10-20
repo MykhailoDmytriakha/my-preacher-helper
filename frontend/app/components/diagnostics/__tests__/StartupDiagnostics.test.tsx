@@ -14,7 +14,10 @@ jest.mock('@/providers/AuthProvider', () => ({
 jest.mock('@/providers/QueryProvider', () => ({
   QueryProvider: ({ children }: { children: ReactNode }) => mockGateClosed ? null : <>{children}</>,
 }));
-jest.mock('@/providers/ConnectionProvider', () => ({ ConnectionProvider: ({ children }: { children: ReactNode }) => <>{children}</> }));
+jest.mock('@/providers/ConnectionProvider', () => ({
+  ConnectionProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  useConnection: () => ({ isOnline: true, offlineShown: false }),
+}));
 jest.mock('@/providers/TextScaleProvider', () => ({ TextScaleProvider: ({ children }: { children: ReactNode }) => <>{children}</> }));
 jest.mock('@/components/LocalizedToaster', () => ({ LocalizedToaster: () => null }));
 jest.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));

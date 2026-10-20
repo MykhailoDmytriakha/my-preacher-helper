@@ -4,8 +4,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useConfirm, useDiscardQuestion } from '@/hooks/useConfirm';
+import { useFailureNotice } from '@/hooks/useFailureNotice';
 import { useLasting } from '@/hooks/useLasting';
-import { useServerUnavailable } from '@/hooks/useServerUnavailable';
+import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
 import { refusalWords, sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { useTranslation } from '@locales/useTranslation';
@@ -31,6 +32,8 @@ export interface DataSyncStatusProps {
   subject: unknown;
   status: SyncStatus | null;
   error?: string | null;
+  /** Words from the same failure as `error`; the data-read fact stays with the caller. */
+  errorWords?: FailureWords;
   onKeepLocal?: () => void | Promise<void>;
   onAcceptRemote?: () => void | Promise<void>;
   onRetry?: () => void | Promise<void>;
@@ -49,8 +52,9 @@ export interface DataSyncStatusProps {
 const GONE = Symbol('gone');
 
 /** Present the engine's decisions; conflict detection and merge policy stay in the engine. */
-export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
+export function DataSyncStatus({ subject, status, error, errorWords, onKeepLocal, onAcceptRemote, onRetry, recoveryChoices = [], onRecover, recoveryLoading = false, recoveryError, title, className = '' }: DataSyncStatusProps) {
   const { t } = useTranslation();
+  const sayNotice = useFailureNotice();
   const { askBeforeDiscard, discardDialog, withdraw } = useDiscardQuestion('text');
   const { confirm: confirmDelete, confirmDialog: deleteDialog, withdraw: withdrawDelete } = useConfirm();
   const deleting = Boolean(status?.deleting && status.canKeepLocal);
@@ -81,14 +85,14 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
   // becomes of the changes (`OfflineBanner`); a block does not repeat it in its own words — a failed
   // check, an unconfirmed copy, a delivery still unanswered — nor offers a Retry that can only be
   // refused again (BUG-20261019-outage-said-as-two-check-lines). Choices and refusals still speak.
-  const serverUnavailable = useServerUnavailable();
-  const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverUnavailable;
-  const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverUnavailable;
+  const serverNoticeShown = useServerUnavailableNotice();
+  const unconfirmedCopy = useLasting(Boolean(status && status.freshness !== 'server')) && !serverNoticeShown;
+  const readTrouble = useLasting(Boolean(status?.readFailed)) && !serverNoticeShown;
   const selected = recoveryChoices.find(choice => choice.id === selectedId);
   const busy = busyFor.has(subject);
   // `error` arrives already in words: the engine hooks translate where they catch
   // (BUG-20261003-engine-error-sentence-on-screen); a failed choice here is said the same way.
-  const failure = error ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
+  const failure = sayNotice(errorWords, error ?? null) ?? (failed && failed.subject === subject ? sayFailure(failed.words, t) : null);
   const run = (callback: () => void | Promise<void>) => {
     if (runningFor.current.has(subject)) return;
     runningFor.current.add(subject);
@@ -125,7 +129,7 @@ export function DataSyncStatus({ subject, status, error, onKeepLocal, onAcceptRe
   };
   // An unconfirmed copy is the app still checking; it is said only beside a check that failed.
   const showFreshness = unconfirmedCopy && readTrouble && status?.freshness !== 'server';
-  const trouble = isSyncTrouble(status?.phase) && !(serverUnavailable && status?.phase === 'unknown');
+  const trouble = isSyncTrouble(status?.phase) && !(serverNoticeShown && status?.phase === 'unknown');
   const troublePhase = trouble ? status?.phase : null;
   // What the person was shown goes into the technical report's path (owner, 2026-10-10).
   useEffect(() => { if (troublePhase) recordDiagnostic('sync-trouble', { code: troublePhase }); }, [troublePhase]);

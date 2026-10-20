@@ -61,7 +61,7 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
   const { recovery } = document;
 
   return <>
-    <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} className="mb-4"
+    <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mb-4"
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />

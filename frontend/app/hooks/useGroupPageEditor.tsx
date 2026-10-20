@@ -44,7 +44,7 @@ export function useGroupPageEditor(groupId: string): GroupPageEditor {
     meetingAudience: first?.audience ?? '', setMeetingAudience: meeting.field('audience'),
     meetingFieldsEnabled: meeting.enabled,
     deleteGroupDetail: data.deleteGroupDetail,
-    feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error}
+    feedback: <DataSyncStatus subject={manual ? meeting.form.recoveryIdentity : data.document.recoveryIdentity} status={status} error={error} errorWords={meeting.form.error ? meeting.form.errorWords : data.document.errorWords}
       onKeepLocal={manual ? meeting.form.keepLocal : data.keepLocal} onAcceptRemote={manual ? meeting.form.acceptRemote : data.acceptRemote} onRetry={manual ? meeting.form.retry : data.refresh}
       recoveryChoices={choices} onRecover={id => id.startsWith('meeting:') ? meeting.recovery.recover(id.slice(8)) : recovery.recover(id.slice(9))}
       recoveryLoading={recovery.loading || meeting.recovery.loading} recoveryError={recovery.error || meeting.recovery.error} />,

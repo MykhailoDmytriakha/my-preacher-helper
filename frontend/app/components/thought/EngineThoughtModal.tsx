@@ -124,7 +124,7 @@ export function EngineThoughtModal({ sermonId, thoughtId, allowedTags, onClose }
         submitLabel={t('buttons.save')} savingLabel={t('buttons.saving')} saving={form.busy} cancelDisabled={isBusy} unsaved={form.dirty}
         submitDisabled={isBusy || Boolean(dictation.error) || readOnly || !form.durable || !form.dirty || !form.status?.canSave || !shown.text.trim()} />}>
     <div className="space-y-5">
-      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} onRetry={form.retry}
+      <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error ?? (missingOpening ? t('dataSync.missingOpeningVersion') : null)} errorWords={form.error ? form.errorWords : undefined} onRetry={form.retry}
         onKeepLocal={() => resolve('local')} onAcceptRemote={() => resolve('remote')}
         recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
         onRecover={recovery.recover} />

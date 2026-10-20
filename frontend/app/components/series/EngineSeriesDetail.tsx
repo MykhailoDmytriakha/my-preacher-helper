@@ -64,12 +64,12 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
     list: async () => (await document.listRecoverable()).map(({ id, record }) => ({ id,
       title: String(record.checkpoint.draft?.title ?? record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)) })),
     recover: document.recover });
-  const sync = <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
+  const sync = <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
     onKeepLocal={() => saveKeptSeries(document)} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
     onRecover={recovery.recover} />;
   const retainedMetadata = unavailable && (metadata.active || metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <>
-    <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.status} error={metadata.error}
+    <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.status} error={metadata.error} errorWords={metadata.errorWords}
       recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
       onRecover={metadataRecovery.recover} onRetry={metadata.retry} />
     <RetainedSeriesMetadata value={metadata.data} />
@@ -91,7 +91,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       onBack={() => router.push('/series')} onRetry={document.retry} />}{sync}{retainedMetadata}
       {!readOnly && !editing && (metadata.dirty || metadataRecovery.choices.length > 0 || metadataRecovery.error) && <section className="space-y-2 rounded-lg border p-3">
         <h2 className="font-semibold">{t('workspaces.series.metadataRecovery')}</h2>
-        <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.dirty ? metadata.status : null} error={metadata.error}
+        <DataSyncStatus subject={metadata.recoveryIdentity} status={metadata.dirty ? metadata.status : null} error={metadata.error} errorWords={metadata.errorWords}
           recoveryChoices={metadataRecovery.choices} recoveryLoading={metadataRecovery.loading} recoveryError={metadataRecovery.error}
           onRecover={metadataRecovery.recover} />
         {metadata.dirty && <button type="button" className="underline" onClick={() => setEditing(true)}>{t('workspaces.series.editSeries')}</button>}
@@ -122,7 +122,7 @@ function DeleteSeries({ seriesId, onClose, onDeleted }: { seriesId: string; onCl
   };
   return <FormDialog title={t('workspaces.series.deleteSeries')} onClose={onClose}>
     <div className="space-y-4"><p>{t('workspaces.series.deleteSeriesConfirm')}</p>
-      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
         onAcceptRemote={document.acceptRemote} onKeepLocal={() => saveKeptSeries(document)} />
       <button type="button" disabled={busy || !document.status?.canRemove} className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50"
         onClick={() => { void remove(); }}>{t('workspaces.series.deleteSeries')}</button>

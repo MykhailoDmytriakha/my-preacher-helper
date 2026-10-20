@@ -29,3 +29,12 @@ A demo, or a live check that needs particular data, runs against the local Fires
 ## Why
 
 - 2026-10-19: production answered `RESOURCE_EXHAUSTED` to every read while the owner asked for a demo with full data; seeding production was impossible and would have mixed test records into the shared base. The emulator stand showed the feature the same day.
+
+
+## Observe the recovery state before choosing a button
+
+An emulator outage does not imply every warm tab has received a failed request. For a cached-profile control, check the preserved profile and absence of a separate settings failure; require the global outage line only after establishing an actual failed browser read in that context.
+
+After restarting the owned emulator and application, a collection can recover on its ordinary observer before a planned Retry click. If the button is gone, verify the actual successful browser collection response, cleared global line and truthful current list state. Click Retry only while it is still offered. A profile whose opening failed may still need its own Settings Retry; verify that actual button and successful profile read separately. Keep automatic recovery and a clicked retry as different evidence claims.
+
+A native scenario must use the screen's actual panel: council detail has its own `council.readFailed` panel; it does not use the generic `data-record-unavailable` selector. Preserve failed scenario reports and correct the predicate instead of calling an unmet test assumption a product defect. Evidence: `settings-outage-131-native-v{1,2,3}-adjudication-v1.json`.

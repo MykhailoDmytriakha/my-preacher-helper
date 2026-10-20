@@ -115,7 +115,7 @@ function EngineStructureBoard({ sermonId }: { sermonId: string }) {
   return <StructureWriterContext.Provider value={writer}>
     <StructureBoard key={document.readOnly ? 'copy' : 'editor'} sermonId={sermonId} engine={engine} holdingRef={holdingRef} readOnly={document.readOnly}
       syncStatus={document.readOnly ? null : <DataSyncStatus
-        subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry}
+        subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry}
         onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote} />} />
   </StructureWriterContext.Provider>;
 }

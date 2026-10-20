@@ -1,7 +1,7 @@
 'use client';
 
 import { useLasting } from '@/hooks/useLasting';
-import { useServerUnavailable } from '@/hooks/useServerUnavailable';
+import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { CollectionState } from './collections';
@@ -18,8 +18,8 @@ export function DataCollectionStatus({ state }: { state: CollectionState | null 
   const attention = state?.documents?.some(document => document.pending && document.needsAttention) ?? false;
   // While the server says it cannot give data, the app-wide line says what the list is: the copy on
   // this device; "connect to check" told a connected person the wrong thing (BUG-20261019-outage-said-as-two-check-lines).
-  const serverUnavailable = useServerUnavailable();
-  const incomplete = useLasting(!state?.complete) && !serverUnavailable;
+  const serverNoticeShown = useServerUnavailableNotice();
+  const incomplete = useLasting(!state?.complete) && !serverNoticeShown;
   if (!attention && !incomplete) return null;
   return <div role="status" className="mb-3 rounded-lg border border-amber-200 p-3 text-sm dark:border-amber-700">
     {attention && <p>{t('dataSync.collectionAttention')}</p>}

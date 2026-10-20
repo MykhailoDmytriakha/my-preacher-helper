@@ -5,6 +5,7 @@ import { Inter, Roboto_Mono } from "next/font/google";
 import { ApplicationDiagnosticsRecorder } from "./components/diagnostics/DiagnosticsRecorder";
 import { LocalizedToaster } from "./components/LocalizedToaster";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { ServerUnavailableNoticeProvider } from "./providers/ServerUnavailableNoticeProvider";
 import { SkipLink } from "./components/navigation/SkipLink";
 import { ThemeWatcher } from "./components/ThemeWatcher";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
@@ -70,8 +71,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <LanguageInitializer />
                   <LocalizedToaster />
                   <div className="min-h-screen flex flex-col" id="app-shell">
-                    <OfflineBanner />
-                    {children}
+                    <ServerUnavailableNoticeProvider>
+                      <OfflineBanner />
+                      {children}
+                    </ServerUnavailableNoticeProvider>
                   </div>
                 </NuqsAdapter>
               </QueryProvider>

@@ -609,7 +609,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
   const recovery = selection?.base === base ? selection : null;
   const identity = useMemo(() => ({ base, attempt, recovery }), [base, attempt, recovery]);
   const [failure, setFailure] = useState<{ identity: object; words: FailureWords } | null>(null);
-  const error = failure?.identity === identity ? say(failure.words) : null;
+  const observedFailure = failure?.identity === identity ? failure : null;
+  const error = say(observedFailure?.words);
   /** Hold a failure for the screen as words: `read` for a failed read, `refused` for a refused action; null clears it. */
   const setError = useCallback((failure: unknown, kind: 'read' | 'refused' = 'refused') => {
     setFailure(failure === null ? null : { identity, words: (kind === 'read' ? failureWords : refusalWords)(failure, DOCUMENT_FAILED) });
@@ -792,6 +793,8 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
   return {
     getManualForm,
+    /** Notification metadata; `error` still reports the read failure to data consumers. */
+    ...(observedFailure ? { errorWords: observedFailure.words } : {}),
     recoveryIdentity: identity as object,
     data: current ? current.state.checkpoint.draft : copy?.snapshot.value ?? null,
     presence: current?.presence ?? (copy ? documentRecordPresence(copy.snapshot.resource, { snapshot: copy.snapshot, source: copy.source === 'server' ? 'server' : 'cache', readiness: copy.source === 'server' ? 'server' : 'cache', checking: false, error: false }) : UNKNOWN_RECORD_PRESENCE),
@@ -1029,6 +1032,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   const proposals = useMemo(() => ({ identity, pending: new Set<AbortController>() }), [identity]);
   useEffect(() => () => { proposals.pending.forEach(controller => controller.abort()); }, [proposals]);
   const error = failure?.identity === identity ? say(failure.words) : readOnly ? document.readOnlyReason : document.error;
+  const errorWords = failure?.identity === identity ? failure.words : readOnly ? undefined : document.errorWords;
   /*
    * A form shows its own stage only while it has one: open for editing, or holding words not yet
    * saved. Closed and clean, it has nothing of its own, and its last Save may no longer be the
@@ -1051,6 +1055,7 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
     dirty: target?.state?.dirty ?? false,
     status: describeManualSync(target?.state ?? null, document.state, document.status, error),
     error,
+    ...(errorWords ? { errorWords } : {}),
     begin,
     propose: (producer: (source: DocumentData) => Promise<DocumentData>) => {
       const controller = new AbortController(); proposals.pending.add(controller);

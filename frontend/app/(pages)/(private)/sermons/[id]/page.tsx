@@ -662,7 +662,7 @@ function SermonPageContent({ id }: { id: string }) {
   if (sermonIsMissing(sermon, { loading, awaitingFirstAnswer })) {
     return (
       <div className="space-y-4 py-8">
-        <DataSyncStatus subject={core.recoveryIdentity} status={core.status} error={core.error}
+        <DataSyncStatus subject={core.recoveryIdentity} status={core.status} error={core.error} errorWords={core.errorWords}
           onKeepLocal={core.keepLocal} onAcceptRemote={core.acceptRemote} onRetry={core.retry} />
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
           <h2 className="text-xl font-semibold mb-2">
@@ -691,7 +691,7 @@ function SermonPageContent({ id }: { id: string }) {
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
-        subject: core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error,
+        subject: core.recoveryIdentity, values: core.coreValues, isReadOnly: core.isReadOnly, status: core.status, error: core.error, errorWords: core.errorWords,
         titleForm: core.titleBinding, verseForm: core.verseBinding,
         keepLocal: core.keepLocal, acceptRemote: core.acceptRemote, retry: core.retry,
       }} />

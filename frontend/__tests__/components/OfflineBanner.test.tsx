@@ -1,6 +1,7 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render as renderUI, screen } from '@testing-library/react';
 import React from 'react';
 
+import { ServerUnavailableNoticeProvider } from '@/providers/ServerUnavailableNoticeProvider';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerUnavailable } from '@/utils/serverAvailability';
@@ -8,6 +9,8 @@ import { __resetServerAvailabilityForTests, reportServerAvailable, reportServerU
 import en from '../../locales/en/translation.json';
 import ru from '../../locales/ru/translation.json';
 import uk from '../../locales/uk/translation.json';
+
+const render = (content: React.ReactNode) => renderUI(<ServerUnavailableNoticeProvider>{content}</ServerUnavailableNoticeProvider>);
 
 const mockIsOnline = jest.fn();
 jest.mock('@/providers/ConnectionProvider', () => ({

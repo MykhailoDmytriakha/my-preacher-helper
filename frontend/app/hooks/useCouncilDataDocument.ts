@@ -122,7 +122,7 @@ export function useCouncilDataDocument(councilId: string) {
     loading: document.loading,
     /** A copy for reading while device storage is silent; every change is refused with a reason. */
     readOnly: document.readOnly,
-    error: document.error,
+    error: document.error, errorWords: document.errorWords,
     status: document.status,
     /** What the sync block speaks about (DataSyncStatus `subject`). */
     recoveryIdentity: document.recoveryIdentity,

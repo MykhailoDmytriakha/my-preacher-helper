@@ -163,7 +163,7 @@ export function useReaderMarks({ textRef, text, ready, bible, bookId, drawn }: {
     // Refused strokes say so themselves (a toast); the status shows only what waits for a choice.
     pendingDecision: Boolean(sync?.status?.canKeepLocal || sync?.status?.canAcceptRemote),
     syncStatus: sync ? (
-      <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} error={sync.state ? null : sync.error} className="mb-3"
+      <DataSyncStatus subject={sync.recoveryIdentity} status={sync.status} {...(!sync.state && { error: sync.error, errorWords: sync.errorWords })} className="mb-3"
         onRetry={() => sync.retry()}
         onKeepLocal={() => { setDeciding(true); return sync.keepLocal().finally(() => setDeciding(false)); }}
         onAcceptRemote={() => { setDeciding(true); return sync.acceptRemote().finally(() => setDeciding(false)); }} />

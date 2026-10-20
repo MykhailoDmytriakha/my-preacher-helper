@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { useServerUnavailableShown } from '@/hooks/useServerUnavailable';
+import { useServerUnavailableNotice } from '@/hooks/useServerUnavailableNotice';
 import { useAuth } from '@/providers/AuthProvider';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { useTranslation } from '@locales/useTranslation';
@@ -19,7 +19,7 @@ export function OfflineBanner() {
   const { t } = useTranslation();
   const { offlineShown } = useConnection();
   const { user } = useAuth();
-  const serverUnavailableShown = useServerUnavailableShown() && Boolean(user);
+  const serverUnavailableShown = useServerUnavailableNotice() && Boolean(user);
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { DataCollectionStatus } from '../DataCollectionStatus';
+import { ServerUnavailableNoticeContext } from '@/hooks/useServerUnavailableNotice';
 import { STATUS_SETTLE_MS } from '@/hooks/useLasting';
 import { __resetServerAvailabilityForTests, reportServerUnavailable } from '@/utils/serverAvailability';
 import type { CollectionState } from '../collections';
@@ -44,7 +45,9 @@ it('leaves an incomplete list to the app-wide line while the server cannot give 
     __resetServerAvailabilityForTests();
     act(() => { reportServerUnavailable(1); });
     const document = { resource: { collection: 'groups', id: 'g' }, value: {}, pending: true, needsAttention: true, deleting: false };
-    const { container, rerender } = render(<DataCollectionStatus state={{ ...state, complete: false }} />);
+    const { container, rerender } = render(<DataCollectionStatus state={{ ...state, complete: false }} />, {
+      wrapper: ({ children }) => <ServerUnavailableNoticeContext.Provider value={true}>{children}</ServerUnavailableNoticeContext.Provider>,
+    });
     act(() => { jest.advanceTimersByTime(STATUS_SETTLE_MS); });
     expect(container).toBeEmptyDOMElement();
     rerender(<DataCollectionStatus state={{ ...state, complete: false, documents: [document] }} />);

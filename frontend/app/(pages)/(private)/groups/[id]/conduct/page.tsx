@@ -45,9 +45,9 @@ function EngineConductPage({ groupId }: { groupId: string }) {
       presence={document.document.presence} onRetry={document.refresh} lockDurations readOnlyNote={document.document.readOnlyReason} />;
   }
   const feedback = <div className="shrink-0 px-5 py-2 empty:hidden">
-    <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.refresh}
+    <DataSyncStatus subject={document.document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.refresh}
       onAcceptRemote={document.acceptRemote} onKeepLocal={document.keepLocal} />
-    {form.active && <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} onRetry={form.retry}
+    {form.active && <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} onRetry={form.retry}
       onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />}

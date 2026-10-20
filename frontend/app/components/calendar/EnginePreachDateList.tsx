@@ -26,7 +26,7 @@ export function EnginePreachDateList({ sermonId, showDocumentStatus = true }: {
   const disabled = document.readOnly || document.loading || !sermon || document.status?.phase === 'deleted';
   return <section aria-labelledby={headingId} className="space-y-4">
     {showDocumentStatus && document.readOnly && <p role="status">{document.readOnlyReason}</p>}
-    {showDocumentStatus && <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} onRetry={document.retry} />}
+    {showDocumentStatus && <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} onRetry={document.retry} />}
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 id={headingId} className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
         <CalendarDaysIcon className="w-4 h-4" />{t('calendar.historyTitle')}

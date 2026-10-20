@@ -56,6 +56,6 @@ export function useGroupDataDocument(groupId: string) {
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision]),
     list: listRecoverable, recover: document.recover });
   return { group, document, update, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate,
-    deleteGroupDetail: document.remove, loading: document.loading, error: document.error, status: document.status,
+    deleteGroupDetail: document.remove, loading: document.loading, error: document.error, errorWords: document.errorWords, status: document.status,
     recovery, refresh: document.retry, acceptRemote: document.acceptRemote, keepLocal: document.keepLocal };
 }
