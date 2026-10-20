@@ -6,6 +6,7 @@ import { POST } from '@/api/data-engine/commands/route';
 import { GET as read } from '@/api/data-engine/documents/[collection]/[id]/route';
 import { ENGINE_OWNED_COLLECTIONS } from '@/data-engine/engineOwnedCollections';
 import { listDocuments, processCommand, readCollectionChanges, readCommandBody, readDocument } from '@/data-engine/server';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {} }));
 jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({ getRequiredAuthenticatedUid: jest.fn() }));
@@ -27,6 +28,7 @@ beforeAll(() => {
   global.Response = jest.requireActual('undici').Response;
 });
 beforeEach(() => {
+  __resetStoreAvailabilityForTests();
   process.env.DATA_ENGINE_ENABLED = 'true';
   (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue('verified-owner');
   (readCommandBody as jest.Mock).mockResolvedValue({ owner: 'spoofed-owner' });
@@ -160,6 +162,30 @@ describe('DataEngine HTTP routes', () => {
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({ code: 'unavailable' });
     }
+  });
+
+  // BUG-20261019-quota-outage-burns-vercel-functions: with the daily quota spent the store SDK retries for
+  // minutes; every route the screen polls was killed at 10 s and the browser, giving up at 8 s, asked again.
+  it('answers 503 with Retry-After within a few seconds when the store never answers, and the next poll does not wait again', async () => {
+    let answer: Response | undefined;
+    jest.useFakeTimers();
+    try {
+      (readCollectionChanges as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+      (readDocument as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+      void changes(request('http://localhost/api/data-engine/changes/sermons?after=66&limit=100'), listContext).then(response => { answer = response; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+      expect(answer?.headers.get('Retry-After')).toMatch(/^\d+$/);
+
+      let next: Response | undefined;
+      void read(request(), documentContext).then(response => { next = response; });
+      await jest.advanceTimersByTimeAsync(0);
+      expect(next?.status).toBe(503);
+      expect(readDocument).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(await answer!.json()).toEqual({ code: 'unavailable' });
   });
 
   it('serves authenticated changes with an explicit cursor and optional bounded page size', async () => {
