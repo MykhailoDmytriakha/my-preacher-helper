@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { StoreUnavailableError, storeRetryHeaders, withStore } from '@/services/storeAvailability.server';
 import { isEngineTombstone } from '@/utils/engineTombstone';
 
 /**
@@ -50,7 +51,29 @@ const OWNER_COLLECTIONS = new Set([
 const PAGE_SIZE = 500;
 const MAX_DOCUMENTS = 5000;
 
+/** Every document of `collection` owned by `uid`, page by page; null when the list is too large to read this way. */
+async function readOwnerDocuments(collection: string, uid: string): Promise<Record<string, unknown>[] | null> {
+  const documents: Record<string, unknown>[] = [];
+  let after: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+  for (;;) {
+    let page = adminDb
+      .collection(collection)
+      .where('userId', '==', uid)
+      // Ordered so the pages are a sequence and not an arbitrary redraw between requests.
+      .orderBy('__name__')
+      .limit(PAGE_SIZE);
+    if (after) page = page.startAfter(after);
+    const snapshot = await page.get();
+    // A tombstone is the engine's record that a document is gone — never a row of the list.
+    snapshot.docs.forEach((doc) => { if (!isEngineTombstone(doc.data())) documents.push({ ...doc.data(), id: doc.id }); });
+    if (snapshot.size < PAGE_SIZE) return documents;
+    if (documents.length >= MAX_DOCUMENTS) return null;
+    after = snapshot.docs[snapshot.docs.length - 1];
+  }
+}
+
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   try {
     const uid = await getRequiredAuthenticatedUid(request);
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -60,30 +83,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unknown collection' }, { status: 400 });
     }
 
-    const documents: Record<string, unknown>[] = [];
-    let after: FirebaseFirestore.QueryDocumentSnapshot | undefined;
-    for (;;) {
-      let page = adminDb
-        .collection(collection)
-        .where('userId', '==', uid)
-        // Ordered so the pages are a sequence and not an arbitrary redraw between requests.
-        .orderBy('__name__')
-        .limit(PAGE_SIZE);
-      if (after) page = page.startAfter(after);
-      const snapshot = await page.get();
-      // A tombstone is the engine's record that a document is gone — never a row of the list.
-      snapshot.docs.forEach((doc) => { if (!isEngineTombstone(doc.data())) documents.push({ ...doc.data(), id: doc.id }); });
-      if (snapshot.size < PAGE_SIZE) break;
-      if (documents.length >= MAX_DOCUMENTS) {
-        return NextResponse.json({ error: 'List too large to read this way' }, { status: 507 });
-      }
-      after = snapshot.docs[snapshot.docs.length - 1];
+    const documents = await withStore(() => readOwnerDocuments(collection, uid), { startedAt });
+    if (documents === null) {
+      return NextResponse.json({ error: 'List too large to read this way' }, { status: 507 });
     }
     return NextResponse.json(documents, {
       // A read taken to prove what the server holds must not be answered by something in between.
       headers: { 'Cache-Control': 'private, no-store', Vary: 'Authorization' },
     });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) {
+      return NextResponse.json({ code: error.code }, { status: error.status, headers: storeRetryHeaders(error) });
+    }
     console.error('Error reading owner list:', error);
     return NextResponse.json({ error: 'Failed to read list' }, { status: 500 });
   }

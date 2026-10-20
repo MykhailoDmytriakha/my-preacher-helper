@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { GET } from '@/api/owner-list/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 /**
  * A NEW DOOR INTO THE APP IS A DOOR, and a door is checked.
@@ -150,5 +151,27 @@ describe('GET /api/owner-list — documents the data engine deleted', () => {
     });
     const response = await GET(request('councils'));
     expect(await response.json()).toEqual([{ id: 'alive', userId: 'owner-1', title: 'Живой совет' }]);
+  });
+});
+
+// BUG-20261019-quota-outage-burns-vercel-functions (Codex review): the study screen still reads the
+// sermons built on a note through this route; a store that never answered outlived the browser's
+// timeout, flipped the app offline and restarted every list.
+describe('owner list while the store does not answer', () => {
+  it('answers 503 within three seconds instead of waiting for the store', async () => {
+    jest.useFakeTimers();
+    let answer: { status: number } | undefined;
+    try {
+      __resetStoreAvailabilityForTests();
+      mockUid.mockResolvedValue('owner-1');
+      collection.mockReturnValue(query);
+      get.mockImplementation(() => new Promise(() => undefined));
+      void GET(new Request('http://localhost/api/owner-list?collection=sermons')).then(response => { answer = response as unknown as typeof answer; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+    } finally {
+      jest.useRealTimers();
+      __resetStoreAvailabilityForTests();
+    }
   });
 });

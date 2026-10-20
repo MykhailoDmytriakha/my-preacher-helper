@@ -34,6 +34,7 @@ jest.mock('next/server', () => ({
 
 import { getFunctionCatalog, getFunctionDefault } from '@/api/clients/ai/functionCatalog';
 import { GET } from '@/api/me/entitlement/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 const { adminAuth } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminAuth: { verifyIdToken: jest.Mock };
@@ -154,5 +155,40 @@ describe('GET /api/me/entitlement', () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
     expect(entitlementService.getUserEntitlementServerSide).not.toHaveBeenCalled();
+  });
+
+  // BUG-20261019-quota-outage-burns-vercel-functions: the screen asks for this on every reconnect with a
+  // 5 s browser timeout; a store that never answered held the function until Vercel killed it at 10 s.
+  it('answers within three seconds of the request even when verifying the caller took most of them', async () => {
+    jest.useFakeTimers();
+    let answer: { status: number } | undefined;
+    try {
+      __resetStoreAvailabilityForTests();
+      adminAuth.verifyIdToken.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ uid: 'caller-uid' }), 2_500)));
+      entitlementService.getUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+      void GET(request('Bearer token')).then(response => { answer = response as unknown as typeof answer; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+    } finally {
+      jest.useRealTimers();
+      __resetStoreAvailabilityForTests();
+    }
+  });
+
+  it('answers 503 with Retry-After within a few seconds when the store never answers', async () => {
+    jest.useFakeTimers();
+    let answer: { status: number; headers: Headers; json: () => Promise<unknown> } | undefined;
+    try {
+      __resetStoreAvailabilityForTests();
+      entitlementService.getUserEntitlementServerSide.mockImplementation(() => new Promise(() => undefined));
+      void GET(request('Bearer token')).then(response => { answer = response as unknown as typeof answer; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+      expect(answer?.headers.get('Retry-After')).toMatch(/^\d+$/);
+    } finally {
+      jest.useRealTimers();
+      __resetStoreAvailabilityForTests();
+    }
+    await expect(answer!.json()).resolves.toEqual({ code: 'unavailable' });
   });
 });

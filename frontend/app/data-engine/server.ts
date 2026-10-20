@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { storeRetryHeaders } from '@/services/storeAvailability.server';
 
 import { isCollectionServed, isLegacyOpen, mayBeRetiredByCascade } from './activation';
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
@@ -513,5 +514,5 @@ export function serverErrorResponse(error: unknown): Response {
   if (error instanceof DataEngineServerError) return Response.json({ code: error.code }, { status: error.status, headers: { 'Cache-Control': 'no-store' } });
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
   const invalid = code === INVALID_ARGUMENT || (error instanceof Error && error.message === INVALID_ARGUMENT);
-  return Response.json({ code: invalid ? INVALID_ARGUMENT : 'unavailable' }, { status: invalid ? 400 : 503, headers: { 'Cache-Control': 'no-store' } });
+  return Response.json({ code: invalid ? INVALID_ARGUMENT : 'unavailable' }, { status: invalid ? 400 : 503, headers: { 'Cache-Control': 'no-store', ...storeRetryHeaders(error) } });
 }

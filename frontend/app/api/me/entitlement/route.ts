@@ -4,6 +4,7 @@ import { aiFunctionIds, getFunctionCatalog, getFunctionDefault } from '@/api/cli
 import { TIER_LIMITS } from '@/api/clients/ai/tierPolicy';
 import { adminAuth } from '@/config/firebaseAdminConfig';
 import { getAiModelDefaults } from '@/services/aiModelDefaults.server';
+import { StoreUnavailableError, storeRetryHeaders, withStore } from '@/services/storeAvailability.server';
 import { resolveUsageRemaining } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 
@@ -56,14 +57,15 @@ const getAllowedFunctionModels = (
 
 /** Returns entitlement for the Firebase caller only; no caller-supplied UID is accepted. */
 export async function GET(request: Request) {
+  const startedAt = performance.now();
   const uid = await getAuthenticatedUid(request);
   if (!uid) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const [entitlement, configuredDefaults] = await Promise.all([
+    const [entitlement, configuredDefaults] = await withStore(() => Promise.all([
       getUserEntitlementServerSide(uid, { includeModelPreferences: true }),
       getAiModelDefaults(),
-    ]);
+    ]), { startedAt });
     const now = new Date();
     const effectiveTier = resolveEffectiveTier(entitlement, now);
     const preferences = {
@@ -99,6 +101,9 @@ export async function GET(request: Request) {
       ...(entitlement.promotion ? { promotion: entitlement.promotion } : {}),
     });
   } catch (error) {
+    if (error instanceof StoreUnavailableError) {
+      return jsonNoStore({ code: error.code }, { status: error.status, headers: storeRetryHeaders(error) });
+    }
     console.error('me/entitlement: failed to read entitlement', error);
     return jsonNoStore({ error: 'Internal server error' }, { status: 500 });
   }

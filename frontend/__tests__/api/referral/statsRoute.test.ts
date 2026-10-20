@@ -18,6 +18,7 @@ jest.mock('next/server', () => ({
 }));
 
 import { GET } from '@/api/referral/stats/route';
+import { __resetStoreAvailabilityForTests } from '@/services/storeAvailability.server';
 
 const { adminAuth, adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminAuth: { verifyIdToken: jest.Mock };
@@ -68,5 +69,22 @@ describe('GET /api/referral/stats', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toContain('no-store');
     await expect(response.json()).resolves.toEqual({ invitedCount: 4 });
+  });
+
+  // BUG-20261019-quota-outage-burns-vercel-functions (Codex review): the settings screen asks for this
+  // by itself with a 5 s browser timeout; the count query retries "Quota exceeded" for minutes.
+  it('answers 503 within three seconds when the store never answers', async () => {
+    jest.useFakeTimers();
+    let answer: { status: number } | undefined;
+    try {
+      __resetStoreAvailabilityForTests();
+      getMock.mockImplementation(() => new Promise(() => undefined));
+      void GET(new Request('http://localhost/api/referral/stats', { headers: { authorization: 'Bearer token' } })).then(response => { answer = response as unknown as typeof answer; });
+      await jest.advanceTimersByTimeAsync(3_000);
+      expect(answer?.status).toBe(503);
+    } finally {
+      jest.useRealTimers();
+      __resetStoreAvailabilityForTests();
+    }
   });
 });
