@@ -207,7 +207,6 @@ export default function PlanPageHeader({
 
       <div className="flex flex-wrap items-center gap-3">
         <ViewPlanMenu
-          sermonId={sermonId}
           combinedPlan={combinedPlan}
           sectionMenuRef={sectionMenuRef}
           showSectionMenu={showSectionMenu}

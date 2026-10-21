@@ -9,6 +9,7 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Chip } from '@/components/ui/Chip';
@@ -78,6 +79,7 @@ const formatMeetingDate = (value: string, language?: string): string | null => {
 
 export default function GroupCard({ group, series = [], onDelete }: GroupCardProps) {
   const { t, language: interfaceLanguage } = useTranslation();
+  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -225,7 +227,9 @@ export default function GroupCard({ group, series = [], onDelete }: GroupCardPro
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                window.location.href = `/series/${groupSeries.id}`;
+                // Inside the app, never a full page load: a reload freezes this page for Back and the series
+                // waits for the device storage it holds (BUG-20261020-released-page-back-says-local-failure).
+                router.push(`/series/${groupSeries.id}`);
               }}
               title={groupSeries.title}
             >

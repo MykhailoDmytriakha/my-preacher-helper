@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>release, then back</title><body><h1>asks a version change, then goes back</h1><script>
+// Keeps its own connection open, as the app's next page does, and asks the release exactly like
+// utils/deviceStorage.ts (RELEASE_WORKER_SOURCE: probe the version, ask the next one, end on the first answer).
+// release=0 is the control: no ask, just back. back=<ms> is how long after the answer the person goes back.
+const q = new URLSearchParams(location.search), run = q.get('run'), dbName = 'lab-' + run;
+const log = (ev, data = {}) => fetch('/log', { method: 'POST', body: JSON.stringify({ run, page: 's', ev, ...data, ms: Math.round(performance.now()) }), keepalive: true }).catch(() => {});
+const back = Number(q.get('back') ?? 1000);
+const SOURCE = `onmessage = (event) => {
+  const name = event.data.name;
+  const probe = indexedDB.open(name);
+  probe.onupgradeneeded = () => probe.transaction.abort();
+  probe.onerror = (error) => { if (error && error.preventDefault) error.preventDefault(); postMessage('failed'); };
+  probe.onsuccess = () => {
+    const version = probe.result.version;
+    probe.result.close();
+    const ask = indexedDB.open(name, version + 1);
+    ask.onblocked = () => postMessage('blocked');
+    ask.onupgradeneeded = () => { ask.transaction.abort(); postMessage('unblocked'); };
+    ask.onsuccess = () => { ask.result.close(); postMessage('unblocked'); };
+    ask.onerror = (error) => { if (error && error.preventDefault) error.preventDefault(); };
+  };
+};`;
+const open = indexedDB.open(dbName);
+open.onsuccess = () => {
+  const db = open.result;
+  log('open', { version: db.version });
+  setTimeout(() => {
+    if (q.get('release') === '0') { log('no-release'); setTimeout(() => history.back(), back); return; }
+    const source = URL.createObjectURL(new Blob([SOURCE], { type: 'text/javascript' }));
+    const worker = new Worker(source);
+    let ended = false;
+    const end = () => { if (ended) return; ended = true; worker.terminate(); URL.revokeObjectURL(source); };
+    worker.onmessage = event => { log('worker', { says: event.data }); end(); setTimeout(() => history.back(), back); };
+    worker.postMessage({ name: dbName });
+    log('asked');
+    setTimeout(end, 1500);
+  }, 1000);
+};
+</script>

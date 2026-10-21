@@ -9,10 +9,6 @@
     "keptCopyHelp": "You can read and copy these words. This does not restore or change the record."
   },
   "gestures": {
-    "pullRefresh": "Pull to refresh",
-    "releaseRefresh": "Release to refresh",
-    "refreshing": "Refreshing…",
-    "failed": "Could not reload the page. Pull to try again.",
     "back": "Back",
     "releaseBack": "Release to go back"
   },

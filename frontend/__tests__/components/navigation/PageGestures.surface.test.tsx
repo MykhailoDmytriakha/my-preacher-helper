@@ -30,36 +30,36 @@ afterEach(() => {
   jest.clearAllTimers(); jest.useRealTimers();
 });
 
-it.each([40, 600, 1190])('reloads the document immediately after a top pull at x=%s', async x => {
-  render(<><PageGestures /><div data-testid="content">Page content</div></>);
+// The pull to reload was removed (owner, 2026-10-20): it got in the way more than it helped.
+it.each([40, 600, 1190])('leaves a pull at the top at x=%s alone: nothing reloads and the page stays put', x => {
+  const { container } = render(<><PageGestures /><div data-testid="content">Page content</div></>);
   drag(screen.getByTestId('content'), x, 100, x, 280);
-  await act(async () => { await Promise.resolve(); });
-  expect(reload).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole('status')).toHaveTextContent('gestures.refreshing');
+  act(() => { jest.advanceTimersByTime(1000); });
+  expect(reload).not.toHaveBeenCalled();
+  expect(container.querySelector('[data-page-gesture]')).toHaveAttribute('data-page-gesture', 'idle');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
-it.each(['button', 'link'])('starts a pull on a %s without turning it into a click', async role => {
+it.each(['button', 'link'])('keeps the click of a %s a pull started on', role => {
   const click = jest.fn();
   render(<><PageGestures /><button onClick={click}>Action</button><a href="/settings" onClick={click}>Settings</a></>);
   drag(screen.getByRole(role), 40, 100, 40, 280);
-  await act(async () => { await Promise.resolve(); });
-  expect(reload).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole(role), { detail: 1 });
-  expect(click).not.toHaveBeenCalled();
+  expect(click).toHaveBeenCalledTimes(1);
 });
 
-it('preserves ordinary button taps and accepts pulls starting on an SVG icon', () => {
+it('preserves ordinary button taps and accepts a swipe back starting on an SVG icon', () => {
   const click = jest.fn();
   render(<><PageGestures /><button onClick={click}><svg><circle data-testid="icon" /></svg>Action</button></>);
   const icon = screen.getByTestId('icon');
-  fireEvent.touchStart(icon, { touches: [point(1190, 100)] });
-  expect(fireEvent.touchMove(icon, { touches: [point(1190, 102)] })).toBe(true);
-  fireEvent.touchEnd(icon, { touches: [], changedTouches: [point(1190, 102)] });
+  fireEvent.touchStart(icon, { touches: [point(600, 100)] });
+  expect(fireEvent.touchMove(icon, { touches: [point(602, 100)] })).toBe(true);
+  fireEvent.touchEnd(icon, { touches: [], changedTouches: [point(602, 100)] });
   fireEvent.click(icon, { detail: 1 });
   expect(click).toHaveBeenCalledTimes(1);
-  expect(reload).not.toHaveBeenCalled();
-  drag(icon, 1190, 100, 1190, 280);
-  expect(reload).toHaveBeenCalledTimes(1);
+  drag(icon, 600, 100, 900, 102);
+  act(() => { jest.advanceTimersByTime(200); });
+  expect(mockBack).toHaveBeenCalledTimes(1);
   fireEvent.click(icon, { detail: 1 });
   expect(click).toHaveBeenCalledTimes(1);
 });
@@ -91,6 +91,7 @@ describe('the whole page travels with the finger', () => {
     fireEvent.touchMove(content, { touches: [point(340, 302)] });
     expect(surface.style.position).toBe('relative');
     expect(surface.style.left).toBe('140px');
+    expect(surface.style.top).toBe('');
     expect(surface.style.getPropertyValue('--page-gesture-x')).toBe('140px');
     fireEvent.touchMove(content, { touches: [point(260, 302)] });
     act(() => { jest.advanceTimersByTime(300); });
@@ -113,19 +114,5 @@ describe('the whole page travels with the finger', () => {
     expect(mockBack).not.toHaveBeenCalled();
     act(() => { jest.advanceTimersByTime(200); });
     expect(mockBack).toHaveBeenCalledTimes(1);
-  });
-
-  it('pulls the page down and keeps it lowered under the spinner while the document reloads', async () => {
-    const { surface } = renderPage();
-    const content = screen.getByTestId('content');
-    fireEvent.touchStart(content, { touches: [point(600, 100)] });
-    fireEvent.touchMove(content, { touches: [point(600, 200)] });
-    expect(surface.style.top).toBe('50px');
-    fireEvent.touchMove(content, { touches: [point(600, 280)] });
-    fireEvent.touchEnd(content, { touches: [], changedTouches: [point(600, 280)] });
-    await act(async () => { await Promise.resolve(); });
-    expect(reload).toHaveBeenCalledTimes(1);
-    expect(surface.style.top).toBe('56px');
-    expect(screen.getByRole('status')).toHaveClass('sr-only');
   });
 });

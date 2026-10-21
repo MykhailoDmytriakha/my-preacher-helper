@@ -1,5 +1,7 @@
 import { serverCopyIsNewer, type VersionedCopy } from '../utils/readFreshness';
 
+import { equalValues } from './protocol';
+
 import type { EngineMetadata, ResourceRef, ResourceSnapshot } from './types';
 
 function metadataCovers(current: EngineMetadata, incoming: EngineMetadata | null): boolean {
@@ -22,4 +24,12 @@ export function canReplaceSnapshot(current: ResourceSnapshot | undefined, incomi
   }
   if (incoming.metadata || current.value === null || incoming.value === null) return true;
   return !serverCopyIsNewer(current.value as VersionedCopy, incoming.value as VersionedCopy);
+}
+
+/**
+ * Whether a stored copy is worth a write: the incoming one may replace it and says something new.
+ * The same copy again writes nothing — reading writes nothing to the device (owner, 2026-10-20).
+ */
+export function storesNewCopy(current: ResourceSnapshot | undefined, incoming: ResourceSnapshot): boolean {
+  return canReplaceSnapshot(current, incoming) && !equalValues(current, incoming);
 }

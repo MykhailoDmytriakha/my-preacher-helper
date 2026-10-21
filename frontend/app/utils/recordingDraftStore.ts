@@ -1,7 +1,7 @@
-import { createStore, entries, get } from 'idb-keyval';
-
+import { entries, get } from 'idb-keyval';
 
 import { newClientId } from '@/utils/clientId';
+import { reconnectingStore } from '@/utils/deviceStorage';
 import { recordingMatchesDestination } from '@/utils/recordingDraftScope';
 import { updateStoredValue } from '@/utils/storageUpdate';
 
@@ -62,10 +62,11 @@ export function subscribeRecordingDrafts(listener: () => void): () => void {
   };
 }
 
-let store: ReturnType<typeof createStore> | null = null;
+// Lazily open IndexedDB and renew a connection closed by the browser.
+let store: ReturnType<typeof reconnectingStore> | null = null;
 const getStore = () => {
   if (typeof indexedDB === 'undefined') return null;
-  if (!store) store = createStore('recording-drafts', 'recording-drafts');
+  if (!store) store = reconnectingStore('recording-drafts', 'recording-drafts');
   return store;
 };
 const requireStore = () => {

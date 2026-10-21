@@ -5,6 +5,7 @@ import { requiredDomainTargets } from './domainPolicy';
 import { editorSlot } from './editorIdentity';
 import { projectManualSelection, type ManualPath } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
+import { isRecoverableCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { submittedWorkCheckpoint } from './submittedWork';
@@ -108,6 +109,10 @@ export class EditorController {
   private unsubscribe: () => void = () => undefined;
   private stopCommits: () => void = () => undefined;
   private completedCommits: string[] = [];
+  /** Whether the device holds a checkpoint for this editor, which a write must keep or clear. */
+  private held = false;
+  /** How many completed commits the device has already had cleared. */
+  private clearedCommits = 0;
   private atomicPending = new Set<string>();
 
   private constructor(private readonly options: ControllerOptions) {
@@ -128,6 +133,8 @@ export class EditorController {
       controller.prepared = saved.prepared;
       controller.unfinalized = saved.unfinalized ?? [];
       controller.completedCommits = saved.completedCommits ?? [];
+      controller.held = true;
+      controller.clearedCommits = controller.completedCommits.length;
     }
     if (!saved && options.submittedCheckpoint) {
       const checkpoint = options.submittedCheckpoint;
@@ -410,8 +417,16 @@ export class EditorController {
   private async persist(): Promise<void> {
     if (this.pendingCaptures.size) return;
     const record = this.record();
-    await this.options.store.put(record);
-    this.assertCurrent();
+    const keeps = isRecoverableCheckpoint(record);
+    // Reading a document writes nothing to the device: with nothing to keep, nothing held and no
+    // commits to clear there is no transaction at all. Each write is one Safari can freeze mid-flight
+    // when the page is left, holding the store for every other page (owner, 2026-10-20).
+    if (keeps || this.held || record.completedCommits!.length > this.clearedCommits) {
+      await this.options.store.put(record);
+      this.assertCurrent();
+      this.held = keeps;
+      this.clearedCommits = record.completedCommits!.length;
+    }
     // Another keystroke may have arrived during the storage transaction.
     this.durable = this.session.getState().editGeneration === record.checkpoint.editGeneration;
     this.error = null;

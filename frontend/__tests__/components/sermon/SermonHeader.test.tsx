@@ -368,24 +368,21 @@ describe('SermonHeader Component', () => {
       });
     });
 
-    it('renders preach button and navigates to preaching plan', () => {
-      const originalLocation = window.location;
-      // Override window.location for test
-      delete (window as Partial<Window>).location;
-      window.location = {
-        ...originalLocation,
-        href: '',
-      };
-
-      mount(mockSermon);
-
-      const preachButton = screen.getByTitle('Preach');
-      fireEvent.click(preachButton);
-
-      expect(window.location.href).toBe(`/sermons/${mockSermon.id}/plan?planView=preaching`);
-
-      // Restore original location
-      window.location = originalLocation;
+    it('opens the preaching plan inside the app, without reloading the page', () => {
+      // A full reload freezes the sermon page Safari keeps for Back, and its unfinished write holds the
+      // device storage the plan reads (BUG-20261020-released-page-back-says-local-failure).
+      const push = jest.fn();
+      const navigation = jest.requireMock<{ useRouter: () => unknown }>('next/navigation');
+      const useRouter = jest.spyOn(navigation, 'useRouter').mockReturnValue({ push });
+      const before = window.location.href;
+      try {
+        mount(mockSermon);
+        fireEvent.click(screen.getByTitle('Preach'));
+        expect(push).toHaveBeenCalledWith(`/sermons/${mockSermon.id}/plan?planView=preaching`);
+        expect(window.location.href).toBe(before);
+      } finally {
+        useRouter.mockRestore();
+      }
     });
   });
 

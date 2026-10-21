@@ -1,0 +1,50 @@
+<!doctype html><meta charset="utf-8"><title>restored after release</title><body><h1>holder, restored after a release</h1><script type="module">
+// The page Safari froze holds the store; another page asks a version change (s.html); this page comes back.
+// hold=1 leaves a read-then-write transaction in flight, as the engine does when a navigation lands mid-save.
+import { watchedStore } from './deviceStorage.js';
+import { update, get } from './idb-keyval.js';
+const q = new URLSearchParams(location.search), run = q.get('run'), dbName = 'lab-' + run;
+const log = (ev, data = {}) => navigator.sendBeacon('/log', JSON.stringify({ run, page: 'r', ev, ...data, ms: Math.round(performance.now()) }));
+const describe = error => String(error && error.name) + ': ' + String(error && error.message);
+const store = watchedStore(dbName, 's', 'engine-state');
+// A second, raw connection (opened once the store exists) only to see when this page's connections are told they were closed.
+const watchRaw = () => new Promise(resolve => {
+  const raw = indexedDB.open(dbName);
+  raw.onsuccess = () => {
+    const db = raw.result;
+    db.onclose = () => log('raw-close-event');
+    db.onerror = () => log('raw-error-event');
+    db.onversionchange = () => log('raw-versionchange');
+    resolve();
+  };
+});
+const call = label => {
+  const t = performance.now();
+  return update('counter', value => (value ?? 0) + 1, store)
+    .then(() => get('counter', store))
+    .then(value => log(label + '-ok', { value, took: Math.round(performance.now() - t) }))
+    .catch(error => log(label + '-error', { err: describe(error) }));
+};
+addEventListener('pagehide', e => log('pagehide', { persisted: e.persisted }));
+addEventListener('pageshow', e => {
+  log('pageshow', { persisted: e.persisted });
+  if (!e.persisted) return;
+  call('resume-sync');
+  setTimeout(() => call('resume-t0'), 0);
+  setTimeout(() => call('resume-t500'), 500);
+  setTimeout(() => call('resume-t2000'), 2000);
+});
+update('counter', () => 1, store).then(watchRaw).then(() => {
+  log('first-write');
+  if (q.get('hold') === '1') store('readwrite', st => { const spin = () => { st.get('counter').onsuccess = spin; }; spin(); log('spinning'); return new Promise(() => {}); });
+  // hold=2: the held transaction settles the way the engine's do (storage.client.ts): complete or abort, so its fate on return is seen.
+  if (q.get('hold') === '2') store('readwrite', st => new Promise((resolve, reject) => {
+    st.transaction.oncomplete = resolve;
+    st.transaction.onabort = () => reject(st.transaction.error ?? new Error('aborted without error'));
+    let reads = 0;
+    const spin = () => { reads += 1; if (reads < 200000) st.get('counter').onsuccess = spin; else st.put('held-done', 'held'); };
+    spin(); log('spinning');
+  })).then(() => log('held-complete'), error => log('held-error', { err: describe(error) }));
+  setTimeout(() => { location.href = 's.html?' + q.toString(); }, 300);
+}).catch(error => log('first-error', { err: describe(error) }));
+</script>

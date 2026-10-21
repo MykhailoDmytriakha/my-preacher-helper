@@ -15,24 +15,27 @@ function move(x = 200, y = 270) {
 function end(x = 200, y = 270) {
   fireEvent.touchEnd(screen.getByTestId('page'), { touches: [], changedTouches: [touch(x, y)] });
 }
-function Harness({ refresh, back, routeKey = '/studies', enabled = true, readOffset }: {
-  refresh: () => void; back: () => void; routeKey?: string; enabled?: boolean; readOffset?: () => { x: number; y: number };
+function Harness({ back, routeKey = '/studies', enabled = true, readOffset }: {
+  back: () => void; routeKey?: string; enabled?: boolean; readOffset?: () => { x: number };
 }) {
-  const view = usePageGestures({ routeKey, enabled, onRefresh: refresh, onBack: back, readOffset });
+  const view = usePageGestures({ routeKey, enabled, onBack: back, readOffset });
   return <div data-testid="page"><output data-testid="state">{view.kind}:{view.distance}</output><textarea aria-label="Draft" defaultValue="Keep my words" /></div>;
 }
 function setup() {
-  const refresh = jest.fn(), back = jest.fn();
-  const rendered = render(<Harness refresh={refresh} back={back} />);
-  return { refresh, back, ...rendered };
+  const back = jest.fn();
+  const rendered = render(<Harness back={back} />);
+  return { back, ...rendered };
 }
-const flush = async () => { await act(async () => { await Promise.resolve(); }); };
 const wait = (ms: number) => act(() => { jest.advanceTimersByTime(ms); });
 const state = () => screen.getByTestId('state');
 /** A finger moving at a steady pace reports every frame, as a real one does. */
 function slide(fromX: number, toX: number, ms: number, y = 105) {
   const steps = Math.max(1, Math.round(ms / 16));
   for (let step = 1; step <= steps; step += 1) { wait(ms / steps); move(fromX + ((toX - fromX) * step) / steps, y); }
+}
+/** A swipe right far enough to go back, then the slide-out. */
+function swipeBack(from = 200, to = 320) {
+  start(from, 105); move(to, 105); end(to, 105); wait(LEAVE_MS);
 }
 
 describe('Page touch gestures', () => {
@@ -48,36 +51,33 @@ describe('Page touch gestures', () => {
   });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); document.body.style.overflow = ''; });
 
-  it('follows the pull and requests one document reload only on release', () => {
-    const { refresh } = setup();
-    start(); move(200, 160);
-    expect(screen.getByTestId('state')).toHaveTextContent('pull:30');
-    move(); expect(screen.getByTestId('state')).toHaveTextContent('pull:85');
-    expect(refresh).not.toHaveBeenCalled();
-    end();
-    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
-    expect(refresh).toHaveBeenCalledTimes(1);
-    start(); move(); end();
-    expect(refresh).toHaveBeenCalledTimes(1);
-    fireEvent(window, new Event('pagehide'));
-    expect(screen.getByTestId('state')).toHaveTextContent('idle');
+  it('leaves a pull down at the top to the browser: the page does not move and nothing takes the touch', () => {
+    // The pull to reload was removed (owner, 2026-10-20): it got in the way more than it helped.
+    const { back } = setup();
+    start(200, 100);
+    expect(fireEvent.touchMove(screen.getByTestId('page'), { touches: [touch(200, 160)] })).toBe(true);
+    move(200, 280); end(200, 280); wait(LEAVE_MS);
+    expect(state()).toHaveTextContent('idle');
+    expect(back).not.toHaveBeenCalled();
+    expect(recordDiagnostic).not.toHaveBeenCalledWith('gesture', expect.objectContaining({ result: 'tracking' }));
   });
 
-  it('cancels a short pull, a reversed pull and an interrupted touch', () => {
-    const { refresh } = setup();
-    start(); move(200, 140); end(200, 140);
-    start(); move(); move(200, 120); end(200, 120);
-    start(); move(); fireEvent.touchCancel(screen.getByTestId('page')); end();
+  it('cancels a short swipe and an interrupted touch', () => {
+    const { back } = setup();
+    start(200); slide(200, 250, 600); end(250, 105);
     expect(state()).toHaveTextContent('settling');
     wait(SETTLE_MS);
+    start(200, 105); move(320, 105); fireEvent.touchCancel(screen.getByTestId('page')); end(320, 105);
+    expect(state()).toHaveTextContent('settling');
+    wait(SETTLE_MS + LEAVE_MS);
     expect(state()).toHaveTextContent('idle');
-    expect(refresh).not.toHaveBeenCalled();
+    expect(back).not.toHaveBeenCalled();
   });
 
   it('lets an Apple Pencil write on the Bible\'s text instead of going back; a finger there still goes back', () => {
     const back = jest.fn();
     function PenHarness() {
-      const view = usePageGestures({ routeKey: '/bible', enabled: true, onRefresh: jest.fn(), onBack: back });
+      const view = usePageGestures({ routeKey: '/bible', enabled: true, onBack: back });
       return <div data-testid="page"><output>{view.kind}</output><p data-pen-surface="" data-testid="text">In the beginning</p></div>;
     }
     render(<PenHarness />);
@@ -89,86 +89,68 @@ describe('Page touch gestures', () => {
     expect(back).toHaveBeenCalledTimes(1);
   });
 
-  it('allows back navigation while a requested reload has not left the document', async () => {
-    const refresh = jest.fn(), back = jest.fn();
-    render(<Harness refresh={refresh} back={back} />);
-    start(); move(); end(); await flush();
-    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
-    start(); move(); end(); await flush();
-    expect(refresh).toHaveBeenCalledTimes(1);
-    start(200); move(230, 105); end(230, 105);
-    expect(state()).toHaveTextContent('refreshing');
-    start(200); move(320, 105); end(320, 105); wait(LEAVE_MS);
-    expect(back).toHaveBeenCalledTimes(1);
-    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'back', result: 'released' });
-  });
-
-  it('does not turn ordinary scrolling or a diagonal movement into refresh', () => {
-    const { refresh } = setup();
+  it('does not turn scrolling or a diagonal movement into a gesture', () => {
+    const { back } = setup();
     Object.defineProperty(window, 'scrollY', { value: 200 });
-    start(); Object.defineProperty(window, 'scrollY', { value: 0 }); move(); end();
+    start(); move(); end();
     start(); move(350, 270); end(350, 270);
     start(); move(200, 50); move(); end();
-    expect(refresh).not.toHaveBeenCalled();
-    expect(screen.getByTestId('state')).toHaveTextContent('idle');
+    wait(LEAVE_MS);
+    expect(back).not.toHaveBeenCalled();
+    expect(state()).toHaveTextContent('idle');
   });
 
   it('leaves fields, focused editing, nested scrolling and dialogs alone', () => {
-    const { refresh } = setup();
+    const { back } = setup();
     const field = screen.getByLabelText('Draft');
-    start(200, 100, field); move(); end();
-    field.focus(); start(); move(); end(); field.blur();
+    start(200, 105, field); move(320, 105); end(320, 105); wait(LEAVE_MS);
+    field.focus(); swipeBack(); field.blur();
     // A pane that scrolls sideways owns every swipe in it.
     const page = screen.getByTestId('page');
     page.style.overflowX = 'auto';
     Object.defineProperty(page, 'scrollWidth', { configurable: true, value: 900 });
     Object.defineProperty(page, 'clientWidth', { configurable: true, value: 300 });
-    start(); move(); end(); page.style.overflowX = '';
-    document.body.style.overflow = 'hidden'; start(); move(); end();
+    swipeBack(); page.style.overflowX = '';
+    document.body.style.overflow = 'hidden'; swipeBack();
     // The scroll lock holds the root alone off iOS: a held root is an open layer too.
-    document.body.style.overflow = ''; document.documentElement.style.overflow = 'hidden'; start(); move(); end();
+    document.body.style.overflow = ''; document.documentElement.style.overflow = 'hidden'; swipeBack();
     document.documentElement.style.overflow = '';
-    expect(refresh).not.toHaveBeenCalled();
+    expect(back).not.toHaveBeenCalled();
+    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'control' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'focused-editor' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });
     expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'open-layer' });
   });
 
-  it('leaves the pull to a pane that scrolls only up and down, but a swipe across it still goes back', () => {
+  it('goes back on a swipe across a pane that scrolls only up and down', () => {
     // A text in its own pane — a study, the Bible beside its minimap — goes back as a text in the page did.
-    const { back, refresh } = setup();
+    const { back } = setup();
     const page = screen.getByTestId('page');
     page.style.overflowY = 'auto';
     Object.defineProperty(page, 'scrollHeight', { configurable: true, value: 500 });
     Object.defineProperty(page, 'clientHeight', { configurable: true, value: 200 });
-    start(); move(); end();
-    expect(refresh).not.toHaveBeenCalled();
-    // With nowhere to go back to, the pane keeps the whole gesture.
-    Object.defineProperty(window.history, 'length', { configurable: true, value: 1 });
-    start(); move(); end();
-    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'start', result: 'blocked', code: 'nested-gesture' });
-    Object.defineProperty(window.history, 'length', { configurable: true, value: 2 });
     start(200); slide(200, 360, 300); end(360, 105); wait(LEAVE_MS);
     expect(back).toHaveBeenCalledTimes(1);
     page.style.overflowY = '';
   });
 
   it('cancels when a second finger joins or the browser owns a noncancelable move', () => {
-    const { refresh } = setup();
-    start(); move();
-    fireEvent.touchStart(screen.getByTestId('page'), { touches: [touch(200, 270), touch(250, 270, 2)] });
-    end(); wait(SETTLE_MS); expect(state()).toHaveTextContent('idle');
-    start(); fireEvent.touchMove(screen.getByTestId('page'), { touches: [touch(200, 270)], cancelable: false }); end();
-    expect(refresh).not.toHaveBeenCalled();
+    const { back } = setup();
+    start(200, 105); move(320, 105);
+    fireEvent.touchStart(screen.getByTestId('page'), { touches: [touch(320, 105), touch(400, 105, 2)] });
+    end(320, 105); wait(SETTLE_MS); expect(state()).toHaveTextContent('idle');
+    start(200, 105); fireEvent.touchMove(screen.getByTestId('page'), { touches: [touch(320, 105)], cancelable: false }); end(320, 105);
+    wait(LEAVE_MS);
+    expect(back).not.toHaveBeenCalled();
   });
 
   it('goes back from any free area, including after scrolling, but cancels short swipes and missing history', () => {
-    const { back, refresh, rerender } = setup();
+    const { back, rerender } = setup();
     let page = 0;
     // Each successful swipe ends on the previous page, as the router delivers it.
     const swipe = (from: number, to: number) => {
       start(from); slide(from, to, 300); end(to, 105); wait(LEAVE_MS);
-      rerender(<Harness refresh={refresh} back={back} routeKey={`/page-${++page}`} />);
+      rerender(<Harness back={back} routeKey={`/page-${++page}`} />);
     };
     swipe(200, 360); expect(back).toHaveBeenCalledTimes(1);
     Object.defineProperty(window, 'scrollY', { value: 400 });
@@ -178,47 +160,21 @@ describe('Page touch gestures', () => {
     swipe(200, 360); expect(back).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['pagehide', 'pageshow'])('clears reload feedback on %s even during another touch', event => {
+  it.each(['pagehide', 'pageshow'])('shows the page at rest on %s even during a swipe', event => {
     setup();
-    start(); move(); end();
-    start(10);
+    start(200, 105); move(320, 105);
+    expect(state()).toHaveTextContent('back:120');
     fireEvent(window, new Event(event));
-    expect(screen.getByTestId('state')).toHaveTextContent('idle');
-    end(10, 100);
-  });
-
-  it('does not resurrect a departed page refresh on the next page', async () => {
-    const refresh = jest.fn(), back = jest.fn();
-    const { rerender } = render(<Harness refresh={refresh} back={back} />);
-    start(); move(); end(); await flush();
-    rerender(<Harness refresh={refresh} back={back} routeKey="/series" />);
-    start(10); end(10, 100);
-    expect(screen.getByTestId('state')).toHaveTextContent('idle');
-    await act(async () => { await jest.advanceTimersByTimeAsync(20_000); });
-    expect(screen.getByTestId('state')).toHaveTextContent('idle');
-  });
-
-  it('recovers from a refused reload instead of keeping the spinner forever', async () => {
-    const { refresh } = setup();
-    refresh.mockImplementationOnce(() => { throw new Error('Reload refused'); });
-    start(); move(); end();
-    expect(screen.getByTestId('state')).toHaveTextContent('error');
-    start(); move(); end();
-    expect(screen.getByTestId('state')).toHaveTextContent('refreshing');
-    await act(async () => { await jest.advanceTimersByTimeAsync(5000); });
-    expect(screen.getByTestId('state')).toHaveTextContent('error');
-    expect(recordDiagnostic).toHaveBeenCalledWith('gesture', { source: 'reload', result: 'failed', code: 'navigation-not-started' });
-    expect(screen.getByLabelText('Draft')).toHaveValue('Keep my words');
-    start(); move(); end();
-    expect(refresh).toHaveBeenCalledTimes(3);
+    expect(state()).toHaveTextContent('idle');
+    end(320, 105);
   });
 
   it('cancels on navigation and stays silent when disabled', () => {
-    const { refresh, back, rerender } = setup();
-    start(); move(); rerender(<Harness refresh={refresh} back={back} routeKey="/series" />); end();
-    expect(refresh).not.toHaveBeenCalled();
-    rerender(<Harness refresh={refresh} back={back} enabled={false} />);
-    start(); move(); end(); expect(refresh).not.toHaveBeenCalled();
+    const { back, rerender } = setup();
+    start(200, 105); move(320, 105); rerender(<Harness back={back} routeKey="/series" />); end(320, 105); wait(LEAVE_MS);
+    expect(back).not.toHaveBeenCalled();
+    rerender(<Harness back={back} enabled={false} />);
+    swipeBack(); expect(back).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -228,30 +184,27 @@ describe('Page touch gestures', () => {
     ['Android PWA', 'Linux; Android', 5, true],
     ['Mac PWA', 'Macintosh', 0, true],
     ['Windows touch PWA', 'Windows NT', 10, true],
-  ])('leaves both gestures untouched in %s', async (_name, userAgent, points, standalone) => {
+  ])('leaves the page untouched in %s', (_name, userAgent, points, standalone) => {
     Object.defineProperty(navigator, 'userAgent', { value: userAgent });
     Object.defineProperty(navigator, 'maxTouchPoints', { value: points });
     window.matchMedia = jest.fn().mockImplementation(() => ({ matches: standalone }));
-    const { refresh, back } = setup();
+    const { back } = setup();
     const event = new Event('touchstart', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'touches', { value: [touch(10, 100)] });
     fireEvent(screen.getByTestId('page'), event);
     expect(event.defaultPrevented).toBe(false);
     move(130, 105); end(130, 105);
-    start(); move(); end(); await flush();
-    expect(refresh).not.toHaveBeenCalled();
+    swipeBack();
     expect(back).not.toHaveBeenCalled();
     expect(screen.getByTestId('state')).toHaveTextContent('idle');
   });
 
-  it('supports classic iPad identification and the iOS standalone flag', async () => {
+  it('supports classic iPad identification and the iOS standalone flag', () => {
     Object.defineProperty(navigator, 'userAgent', { value: 'iPad' });
     Object.defineProperty(navigator, 'standalone', { value: true });
     window.matchMedia = jest.fn().mockImplementation(() => ({ matches: false }));
-    const { refresh, back } = setup();
-    start(); move(); end(); await flush();
-    expect(refresh).toHaveBeenCalledTimes(1);
-    start(200); move(320, 105); end(320, 105); wait(LEAVE_MS);
+    const { back } = setup();
+    swipeBack();
     expect(back).toHaveBeenCalledTimes(1);
   });
 
@@ -282,10 +235,10 @@ describe('Page touch gestures', () => {
   });
 
   it('goes back on a quick flick short of the threshold, and cancels a flick back to the left past it', () => {
-    const { back, refresh, rerender } = setup();
+    const { back, rerender } = setup();
     start(200); wait(16); move(215, 101); wait(16); move(250, 102); end(250, 102); wait(LEAVE_MS);
     expect(back).toHaveBeenCalledTimes(1);
-    rerender(<Harness refresh={refresh} back={back} routeKey="/previous" />);
+    rerender(<Harness back={back} routeKey="/previous" />);
     start(200); slide(200, 250, 600); end(250, 105); wait(LEAVE_MS);
     expect(state()).toHaveTextContent('settling');
     start(200); slide(200, 500, 300); wait(16); move(440, 102); wait(16); move(380, 102); end(380, 102); wait(LEAVE_MS);
@@ -295,8 +248,8 @@ describe('Page touch gestures', () => {
   });
 
   it('glides an abandoned swipe home, and a caught page continues from where it is drawn', () => {
-    const refresh = jest.fn(), back = jest.fn();
-    render(<Harness refresh={refresh} back={back} readOffset={() => ({ x: 50, y: 0 })} />);
+    const back = jest.fn();
+    render(<Harness back={back} readOffset={() => ({ x: 50 })} />);
     start(200); slide(200, 280, 300); end(280, 105);
     expect(state()).toHaveTextContent('settling');
     wait(20);
@@ -347,14 +300,13 @@ describe('Page touch gestures', () => {
     dialog.remove(); other.remove();
   });
 
-  it('starts nothing at the left edge, not even a pull at the top, so Safari keeps its swipe', () => {
-    const { refresh, back } = setup();
+  it('starts nothing at the left edge, so Safari keeps its swipe', () => {
+    const { back } = setup();
     start(10, 100);
     expect(fireEvent.touchMove(screen.getByTestId('page'), { touches: [touch(11, 102)] })).toBe(true);
     expect(fireEvent.touchMove(screen.getByTestId('page'), { touches: [touch(110, 105)] })).toBe(true);
     end(110, 105);
     start(10, 100); move(12, 280); end(12, 280); wait(LEAVE_MS);
-    expect(refresh).not.toHaveBeenCalled();
     expect(back).not.toHaveBeenCalled();
     expect(state()).toHaveTextContent('idle');
   });
@@ -368,7 +320,7 @@ describe('Page touch gestures', () => {
   });
 
   it('returns a page whose back went nowhere and stops offering back on it until the next page', () => {
-    const { back, refresh, rerender } = setup();
+    const { back, rerender } = setup();
     start(200); move(400, 105); end(400, 105); wait(LEAVE_MS);
     expect(back).toHaveBeenCalledTimes(1);
     wait(1500);
@@ -378,7 +330,7 @@ describe('Page touch gestures', () => {
     start(200); move(400, 105); end(400, 105); wait(LEAVE_MS);
     expect(back).toHaveBeenCalledTimes(1);
     expect(state()).toHaveTextContent('idle');
-    rerender(<Harness refresh={refresh} back={back} routeKey="/next" />);
+    rerender(<Harness back={back} routeKey="/next" />);
     start(200); move(400, 105); end(400, 105); wait(LEAVE_MS);
     expect(back).toHaveBeenCalledTimes(2);
   });
@@ -412,68 +364,23 @@ describe('Page touch gestures', () => {
     expect(state()).toHaveTextContent('settling');
   });
 
-  it('does not let a reload that never left interrupt a back already under way', () => {
-    const { refresh, back } = setup();
-    start(); move(); end();
-    expect(refresh).toHaveBeenCalledTimes(1);
-    wait(4900);
-    start(200); move(400, 105); end(400, 105);
-    wait(100);
-    expect(state()).toHaveTextContent('leaving');
-    const other = document.createElement('button');
-    const pressed = jest.fn();
-    other.addEventListener('click', pressed);
-    document.body.appendChild(other);
-    fireEvent.click(other, { detail: 1 });
-    expect(pressed).not.toHaveBeenCalled();
-    wait(100);
-    expect(back).toHaveBeenCalledTimes(1);
-    other.remove();
-  });
-
-  it.each(['lift', 'cancel', 'drift'])('never strands the reload spinner when it fails under a resting touch (%s)', ending => {
-    setup();
-    start(); move(); end();
-    wait(4900);
-    start(600, 400);
-    wait(100);
-    if (ending === 'lift') end(600, 400);
-    if (ending === 'cancel') fireEvent.touchCancel(screen.getByTestId('page'));
-    if (ending === 'drift') { move(560, 360); end(560, 360); }
-    expect(state()).toHaveTextContent('error');
-    wait(4000);
-    expect(state()).toHaveTextContent('idle');
-  });
-
-  it('lets a drag that began before a reload failed finish without the notice ending it', () => {
-    setup();
-    start(); move(); end();
-    wait(4950);
-    start(200, 400); wait(100);
-    move(260, 402);
-    wait(4000);
-    expect(state()).toHaveTextContent('back:60');
-    wait(300); end(260, 402); wait(SETTLE_MS);
-    expect(state()).toHaveTextContent('idle');
-  });
-
-  it('catches a page drawn close to home without a jump, and leaves a page gliding on the other axis alone', () => {
-    const refresh = jest.fn(), back = jest.fn();
-    let drawn = { x: 5, y: 0 };
-    render(<Harness refresh={refresh} back={back} readOffset={() => drawn} />);
+  it('catches a page drawn close to home without a jump, and a drag down does not catch it', () => {
+    const back = jest.fn();
+    let drawn = { x: 5 };
+    render(<Harness back={back} readOffset={() => drawn} />);
     start(200); slide(200, 260, 300); end(260, 105);
     wait(200);
     start(300); move(320, 105);
     expect(state()).toHaveTextContent('back:5');
     wait(300); end(320, 105); wait(SETTLE_MS);
-    drawn = { x: 50, y: 0 };
+    drawn = { x: 50 };
     start(200); slide(200, 280, 300); end(280, 105);
     wait(20);
     start(600, 100); move(600, 160); move(600, 280); end(600, 280);
     expect(state()).toHaveTextContent('settling');
-    expect(refresh).not.toHaveBeenCalled();
     wait(SETTLE_MS);
     expect(state()).toHaveTextContent('idle');
+    expect(back).not.toHaveBeenCalled();
   });
 
   it('offers back again on a page whose back went nowhere once history grows', () => {
