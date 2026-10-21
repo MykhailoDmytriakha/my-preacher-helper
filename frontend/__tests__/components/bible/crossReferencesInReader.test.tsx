@@ -384,8 +384,9 @@ describe('the cross-reference settings', () => {
     expect(result.current).toEqual({ show: true, inWindow: false, mode: 'all', othersAsVerses: false });
   });
 
-  // The owner, 2026-10-20: the "T" is about the text; the Bible's settings moved to Settings → Bible.
-  it('the reader\'s "T" holds the text size, not the Bible\'s settings', async () => {
+  // The owner, 2026-10-20: the "T" is about the text; the Bible's settings moved to Settings → Bible, and
+  // the "T" leads there in one tap.
+  it('the reader\'s "T" holds the text size and the way to Settings → Bible, not the Bible\'s settings', async () => {
     render(
       <TextScaleProvider>
         <BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: subject.chapter, verse: subject.verse }} onOpenBook={jest.fn()} />
@@ -396,6 +397,7 @@ describe('the cross-reference settings', () => {
     const menu = screen.getByRole('dialog', { name: 'Text size' });
     expect(within(menu).getByRole('slider', { name: 'Text size slider' })).toBeInTheDocument();
     expect(within(menu).queryByTestId('cross-reference-settings')).not.toBeInTheDocument();
+    expect(within(menu).getByRole('link', { name: 'bible.settingsLink' })).toHaveAttribute('href', '/settings/bible');
   });
 
   it('without settings of its own a screen keeps the bare size capsule', async () => {

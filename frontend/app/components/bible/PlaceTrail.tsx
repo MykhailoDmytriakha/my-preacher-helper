@@ -41,20 +41,30 @@ const ROUTE_ICON = (
   </svg>
 );
 
-export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: number; shown: boolean; floating: boolean; onToggle: () => void }) {
-  const { t } = useTranslation();
+function buttonClasses(shown: boolean, floating: boolean): string {
   const state = shown
     ? 'border-indigo-300 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-950/50'
     : floating ? 'border-gray-300 bg-white/90 dark:border-gray-600 dark:bg-gray-900/90' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900';
+  return floating
+    ? `pointer-events-auto inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold tabular-nums text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:text-indigo-300 dark:shadow-black/40 ${state}`
+    : `mr-3 inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold tabular-nums text-indigo-700 transition hover:border-indigo-300 dark:text-indigo-300 ${state}`;
+}
+
+function linkClasses(here: boolean): string {
+  return `inline-flex min-h-9 items-center whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold tabular-nums transition ${here
+    ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-400 dark:bg-indigo-500'
+    : 'border-gray-200 bg-white text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40'}`;
+}
+
+export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: number; shown: boolean; floating: boolean; onToggle: () => void }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-pressed={shown}
       aria-label={t('bible.trail.toggle', { count })}
-      className={floating
-        ? `pointer-events-auto inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold tabular-nums text-indigo-700 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:text-indigo-300 dark:shadow-black/40 ${state}`
-        : `mr-3 inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold tabular-nums text-indigo-700 transition hover:border-indigo-300 dark:text-indigo-300 ${state}`}
+      className={buttonClasses(shown, floating)}
     >
       {ROUTE_ICON}
       {count}
@@ -93,9 +103,7 @@ export function PlaceTrailStrip({ trail, bible, locale, floating, onGo }: {
                 type="button"
                 onClick={() => onGo(link)}
                 aria-current={here ? 'location' : undefined}
-                className={`inline-flex min-h-9 items-center whitespace-nowrap rounded-full border px-3 text-[13px] font-semibold tabular-nums transition ${here
-                  ? 'border-indigo-600 bg-indigo-600 text-white dark:border-indigo-400 dark:bg-indigo-500'
-                  : 'border-gray-200 bg-white text-indigo-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-900 dark:text-indigo-300 dark:hover:bg-indigo-950/40'}`}
+                className={linkClasses(here)}
               >
                 {linkLabel(link, bible, locale)}
               </button>
@@ -104,6 +112,30 @@ export function PlaceTrailStrip({ trail, bible, locale, floating, onGo }: {
         })}
       </ol>
     </nav>
+  );
+}
+
+/**
+ * The trail's look for Settings → Bible: its button with the number of places, and a row of a few
+ * places, the last one lit — drawn as the reader draws them, pressing nothing. The words beside it say
+ * what it is, so a screen reader is not read the picture.
+ */
+export function PlaceTrailSample({ labels }: { labels: string[] }) {
+  return (
+    <div aria-hidden="true" className="flex flex-wrap items-center gap-y-2">
+      <span className={buttonClasses(false, false)}>
+        {ROUTE_ICON}
+        {labels.length}
+      </span>
+      <span className="flex flex-wrap items-center gap-1.5">
+        {labels.map((label, index) => (
+          <span key={label} className="flex items-center gap-1.5">
+            {index > 0 ? <span className="text-gray-400 dark:text-gray-500">›</span> : null}
+            <span className={linkClasses(index === labels.length - 1)}>{label}</span>
+          </span>
+        ))}
+      </span>
+    </div>
   );
 }
 

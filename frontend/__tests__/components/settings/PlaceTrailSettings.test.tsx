@@ -6,7 +6,7 @@ import PlaceTrailSettings from '@/components/settings/PlaceTrailSettings';
 
 /*
  * The trail of places in the settings' "Bible" section (the owner, 2026-10-20: not in the reader's "T"):
- * how many places it keeps and how many of the last ones are recent, on this device.
+ * what it is, then how many places it keeps and how many of its last places a move does not repeat, on this device.
  */
 beforeEach(() => {
   window.localStorage.clear();
@@ -19,6 +19,7 @@ describe('PlaceTrailSettings', () => {
   it('shows the history and the recent places with the device\'s choice pressed: 30 and 7 at first', () => {
     render(<PlaceTrailSettings />);
     expect(screen.getByRole('heading', { name: 'settings.bible.trail.title' })).toBeInTheDocument();
+    expect(screen.getByText('settings.bible.trail.intro')).toBeInTheDocument();
     expect(within(group('settings.bible.trail.history')).getByRole('button', { name: '30' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(group('settings.bible.trail.recent')).getByRole('button', { name: '7' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(group('settings.bible.trail.history')).getAllByRole('button').map((button) => button.textContent)).toEqual(['10', '30', '50', '100']);
@@ -42,5 +43,13 @@ describe('PlaceTrailSettings', () => {
     books.forEach((book) => arriveOnTrail({ book, chapter: 1, verse: 1, bible: 'rst' }));
     arriveOnTrail({ book: 'Genesis', chapter: 1, verse: 1, bible: 'rst' });
     expect(readPlaceTrail().links.map((link) => link.book)).toEqual([...books, 'Genesis']);
+  });
+
+  it('shows the trail as the reader draws it: its button with the number of places and three places, the last one lit', () => {
+    const { container } = render(<PlaceTrailSettings />);
+    const sample = container.querySelector('[aria-hidden="true"]');
+    expect(sample).toHaveTextContent('3');
+    expect(sample).toHaveTextContent('Isa 19:1');
+    expect(sample).toHaveTextContent('Josh 2:11');
   });
 });

@@ -307,7 +307,7 @@ function OtherReferences({ references, bible, locale, onPick }: {
 
 /**
  * A verse's links: the main ones with their whole text, the rest folded under them — as verses with
- * their text or only as references, the person's choice (`othersAsVerses`, also in the "T" menu). The
+ * their text or only as references, the person's choice (`othersAsVerses`, also in Settings → Bible). The
  * switch stands in the rest's row before its chevron while they are open (the owner, 2026-10-16).
  */
 function ReferenceList({ references, loading, place, verseText, titleId, bible, locale, texts, othersOpen, onToggleOthers, onPick, onClose }: {

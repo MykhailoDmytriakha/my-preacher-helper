@@ -393,6 +393,7 @@
     "previousBook": "← {{book}}",
     "backTo": "← {{place}}",
     "backToLabel": "Back to {{place}}",
+    "settingsLink": "Bible settings",
     "trail": {
       "title": "Trail of places",
       "toggle": "Trail of places: {{count}}"
@@ -445,20 +446,13 @@
       }
     },
     "crossRefs": {
-      "title": "Cross-references",
-      "hint": "A number beside a verse: the places the sources agree on",
-      "inWindow": "Also in a passage window",
-      "inWindowHint": "When a passage opens from a sermon, a note or a group",
-      "show": "Show",
-      "main": "Main",
-      "all": "All",
       "verseRefs": "Cross-references for verse {{verse}}",
       "chip": "Verse {{verse}}: {{number}} cross-references",
       "listTitle": "Cross-references for {{place}}",
       "mainSection": "Main · {{number}}",
       "othersSection": "Others · {{number}}",
       "allSection": "All · {{number}}",
-      "noMain": "No main ones: the sources do not agree here.",
+      "noMain": "No main cross-references for this verse.",
       "open": "Open {{place}}",
       "chapterOfBook": "{{book}}, chapter {{number}}",
       "scopeChapter": "whole chapter",
@@ -469,9 +463,7 @@
       "verseCount_other": "{{count}} verses",
       "chapterEnd": "end of chapter {{number}}",
       "psalmEnd": "end of Psalm {{number}}",
-      "othersAsVerses": "Verses",
-      "othersAsVersesSetting": "The rest as verses",
-      "othersAsVersesHint": "In a verse's links: with their text, or only the references"
+      "othersAsVerses": "Verses"
     },
     "translations": {
       "rst": {
@@ -1175,15 +1167,36 @@
       "description": "Enable extra console logging for troubleshooting"
     },
     "bible": {
+      "crossRefs": {
+        "title": "Cross-references",
+        "intro": "Other places in the Bible linked to a verse. If a verse has them, tap its number or the ⇄ badge at the end of the verse to open their list, and go to any of them from there.",
+        "sampleCaption": "Example — {{place}} in the Bible:",
+        "sampleVerse": "For God so loved the world…",
+        "marks": "Cross-reference badges beside verses",
+        "marksHint": "Turn it off and there are no badges in the Bible or in a passage window, and the list of links does not open.",
+        "off": "The badges are off. Turn on “Cross-reference badges beside verses” to set the rest.",
+        "inWindow": "Badges in a passage window",
+        "inWindowHint": "The window with Bible text that opens when you tap a Scripture reference — in a sermon, a note or a group, for example.",
+        "count": "Number on the badge",
+        "countMain": "Main",
+        "countAll": "All",
+        "countHint": "Main cross-references are the ones at least three reference works give for this verse. {{place}} has {{main}} main ones and {{total}} in all. On the badge: “Main” — {{main}}, “All” — {{total}}. The list it opens is always complete. If a verse has only other cross-references, “Main” shows no badge — tap the verse number to open the list.",
+        "others": "The other places in the list",
+        "othersAddresses": "References only",
+        "othersVerses": "With text",
+        "othersHint": "In the list, the main cross-references always come with their text. The others can show only their references, like “Gen 1:1, 2:3”, or each with its text. In the list itself, the “{{switch}}” switch changes the same choice."
+      },
       "trail": {
         "title": "Trail of places",
-        "description": "The places in the Bible you have been to, one link each. Show or hide the trail with its button next to “←” in the reader.",
-        "history": "History",
-        "historyHint": "How many places the trail remembers. When it is full, the oldest place leaves.",
-        "recent": "Recent",
-        "recentHint": "How many of the last places count as recent: going to one adds no link, it only lights it."
+        "intro": "The trail is a chain of chapters you have moved to — along a cross-reference or by picking a chapter, for example — with a verse remembered in each. Tap a place on the trail to go back to that verse. “←” goes back along the trail, and beside the arrow it says exactly where you will return — a place in the Bible or another part of the app, such as a note. When you simply read on, the trail does not grow; the verse you are at updates on it.",
+        "sampleCaption": "This is how the trail looks in the Bible:",
+        "button": "The button with the number of places (the first one in the example) shows and hides the trail; in the Bible it stands by “←”. It appears once there are two places or more.",
+        "history": "How many places to keep",
+        "historyHint": "When there are more, the oldest leave the trail; the place you are at always stays. Lower the number while the trail is long and the extra old places leave at once, for good.",
+        "recent": "Don’t repeat recent places",
+        "recentHint": "If the same chapter is already among the trail’s last {{count}} places, going there does not add it again: the trail highlights that place and keeps the new verse in it. If the chapter appears earlier on the trail, going there adds it to the end again."
       },
-      "device": "These settings and the trail of places are kept on this device."
+      "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own."
     },
     "showVersion": {
       "title": "Show app version",

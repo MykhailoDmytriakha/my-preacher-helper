@@ -77,6 +77,27 @@ const READING_TOP = 'var(--reading-top)';
 /** The verse text follows the app's text size (`--text-scale`, the "T" button), like the sermon and meeting screens. */
 const VERSE_TEXT_STYLE = { fontSize: 'calc(1.1875rem * var(--text-scale, 1))' };
 
+/**
+ * The chip after a verse: how many places its links lead to; pressed, it opens their list. Without
+ * `onOpen` it is only its look — Settings → Bible shows a verse with it as it stands in the reader.
+ */
+export function CrossRefsChip({ count, label, onOpen, testId }: { count: number; label?: string; onOpen?: () => void; testId?: string }) {
+  return (
+    <Chip
+      size="sm"
+      tone="indigo"
+      weight="bold"
+      icon={<ArrowsRightLeftIcon className="h-3 w-3" aria-hidden="true" />}
+      ariaLabel={label}
+      onClick={onOpen}
+      className="align-[0.15em] font-sans"
+      data-testid={testId}
+    >
+      {count}
+    </Chip>
+  );
+}
+
 function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = false, lit }: {
   chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns;
   /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
@@ -132,18 +153,12 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = fals
         {crossRefs && shown > 0 ? (
           <>
             {' '}
-            <Chip
-              size="sm"
-              tone="indigo"
-              weight="bold"
-              icon={<ArrowsRightLeftIcon className="h-3 w-3" aria-hidden="true" />}
-              ariaLabel={crossRefs.chipLabel(verse, shown)}
-              onClick={() => crossRefs.onOpen(chapter, verse)}
-              className="align-[0.15em] font-sans"
-              data-testid={`cross-refs-${chapter}:${verse}`}
-            >
-              {shown}
-            </Chip>
+            <CrossRefsChip
+              count={shown}
+              label={crossRefs.chipLabel(verse, shown)}
+              onOpen={() => crossRefs.onOpen(chapter, verse)}
+              testId={`cross-refs-${chapter}:${verse}`}
+            />
           </>
         ) : null}
       </p>
