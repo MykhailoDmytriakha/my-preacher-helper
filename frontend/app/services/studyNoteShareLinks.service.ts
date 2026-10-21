@@ -2,11 +2,9 @@ import { StudyNoteShareLink } from '@/models/models';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
 export async function getStudyNoteShareLinks(userId: string): Promise<StudyNoteShareLink[]> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`${API_BASE}/api/studies/share-links?userId=${userId}`, { category: 'metadata',
+  const res = await apiClient(`/api/studies/share-links?userId=${userId}`, { category: 'metadata',
     cache: 'no-store',
     headers: authHeaders,
   });
@@ -19,7 +17,7 @@ export async function getStudyNoteShareLinks(userId: string): Promise<StudyNoteS
 
 export async function createStudyNoteShareLink(userId: string, noteId: string): Promise<StudyNoteShareLink> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`${API_BASE}/api/studies/share-links`, { category: 'crud',
+  const res = await apiClient('/api/studies/share-links', { category: 'crud',
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ userId, noteId }),
@@ -33,7 +31,7 @@ export async function createStudyNoteShareLink(userId: string, noteId: string): 
 
 export async function deleteStudyNoteShareLink(userId: string, linkId: string): Promise<void> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const res = await apiClient(`${API_BASE}/api/studies/share-links/${linkId}?userId=${userId}`, { category: 'crud',
+  const res = await apiClient(`/api/studies/share-links/${linkId}?userId=${userId}`, { category: 'crud',
     method: 'DELETE',
     headers: authHeaders,
   });

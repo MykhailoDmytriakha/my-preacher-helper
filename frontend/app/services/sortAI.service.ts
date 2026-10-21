@@ -6,8 +6,6 @@ import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { i18n } from '@locales/i18n';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
 /**
  * Sorts items within a column using AI
  * @param columnId The ID of the column (introduction, main, conclusion, ambiguous)
@@ -26,7 +24,7 @@ export const sortItemsWithAI = async (
     console.log(`sortItemsWithAI: Starting AI sort for column ${columnId} with ${items.length} items`);
     const authHeaders = await getAuthenticatedRequestHeaders();
 
-    const response = await apiClient(`${API_BASE}/api/sort`, {
+    const response = await apiClient('/api/sort', {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ columnId, items, sermonId, outlinePoints }),

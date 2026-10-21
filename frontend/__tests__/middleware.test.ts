@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { middleware } from '../middleware';
+import { APP_LANGUAGE_HEADER } from '@/utils/appLocale';
 
 // Mock NextResponse
 
@@ -90,6 +91,15 @@ describe('Middleware', () => {
 
         expect(res.status).toBe(204);
         expect(res.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:3000');
+    });
+
+    // BUG-20261021-language-header-blocked-cross-origin: a page still running a bundle that asks another
+    // domain sends the interface language with every signed-in request; a preflight that does not allow
+    // it makes the browser block the request.
+    it('allows every header a signed-in request carries, the interface language too', () => {
+        req = createRequest('/api/studies/share-links', 'https://my-preacher-helper.com', 'OPTIONS');
+        const allowed = (middleware(req).headers.get('Access-Control-Allow-Headers') ?? '').split(',').map(name => name.trim().toLowerCase());
+        expect(allowed).toEqual(expect.arrayContaining(['authorization', 'content-type', APP_LANGUAGE_HEADER.toLowerCase()]));
     });
 
     it('should use DEFAULT_ALLOWED_ORIGINS if env var is missing', () => {

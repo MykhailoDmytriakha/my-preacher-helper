@@ -7,8 +7,6 @@ import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageL
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
 // Study notes are written only through the data engine (engineOwnedCollections.ts). What stays
 // here is the note list read the sermon side still uses and the AI cut routes.
 /** The note body is one editable unit; server-side links (materialIds) are not. */
@@ -128,7 +126,7 @@ export interface NoteCutOutline {
  */
 export async function fetchNoteCutOutline(noteId: string): Promise<NoteCutOutline> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await apiClient(`${API_BASE}/api/studies/notes/${noteId}/cut`, {
+  const response = await apiClient(`/api/studies/notes/${noteId}/cut`, {
     method: 'GET',
     headers: authHeaders,
     category: 'detail',
@@ -184,7 +182,7 @@ export async function cutStudyNoteIntoScratch(
   slice?: { offset: number; limit: number }
 ): Promise<CutStudyNoteResponse> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await apiClient(`${API_BASE}/api/studies/notes/${noteId}/cut`, {
+  const response = await apiClient(`/api/studies/notes/${noteId}/cut`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     category: 'ai',

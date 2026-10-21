@@ -9,10 +9,10 @@ The My Preacher Helper API is a REST API built with Next.js API routes. It provi
 ## Base URL
 
 ```
-${API_BASE}/api
+/api
 ```
 
-Where `API_BASE` is defined in the environment configuration.
+A path on the domain the page came from — never an address from the environment, so a page never asks another domain (`frontend/__tests__/architecture/apiOnPageDomain.test.ts`).
 
 ## Authentication
 

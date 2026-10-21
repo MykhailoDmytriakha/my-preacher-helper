@@ -10,7 +10,6 @@ import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { isKnownOffline } from '@/utils/connectivity';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
 
 function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {
@@ -47,7 +46,7 @@ export async function composePlanFromScratch(
 
   const token = await currentUser.getIdToken();
   const scratchNoteIds = Array.from(knownScratchNoteIds);
-  const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/compose-plan-from-scratch`, {
+  const response = await apiClient(`/api/sermons/${sermonId}/compose-plan-from-scratch`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,

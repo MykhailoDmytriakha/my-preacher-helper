@@ -119,7 +119,6 @@ const mockBrainstormSuggestion: BrainstormSuggestion = {
 const resetScenarioState = () => {
   fetchMock.resetMocks();
   jest.clearAllMocks();
-  process.env.NEXT_PUBLIC_API_BASE = 'http://localhost:3000';
 };
 
 
@@ -128,8 +127,6 @@ describe('BrainstormModule', () => {
   Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     fetchMock.resetMocks();
     jest.clearAllMocks();
-    // Set up default environment variable for API base
-    process.env.NEXT_PUBLIC_API_BASE = 'http://localhost:3000';
     mockUseAiUsage.mockReturnValue(aiUsageStub({ refresh: jest.fn() }));
   });
 

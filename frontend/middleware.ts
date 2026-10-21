@@ -26,7 +26,9 @@ function getCorsHeaders(request: NextRequest): Headers {
     headers.set('Access-Control-Allow-Origin', allowOrigin);
   }
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // `x-app-language` is `APP_LANGUAGE_HEADER` (`utils/appLocale.ts`; the middleware test keeps them one): a page still
+  // running a bundle that asks another domain sends it with every signed-in request (BUG-20261021-language-header-blocked-cross-origin).
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-app-language');
   headers.set('Access-Control-Max-Age', '86400');
   return headers;
 }
