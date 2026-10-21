@@ -20,6 +20,7 @@ import { useTranslation } from '@locales/useTranslation';
 
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
 import { BookPicker, ChapterPicker, ReadingPill, TranslationPicker } from './BiblePicker';
+import { BibleSettingsLink } from './BibleSettingsLink';
 import { bookSequence, booksOf } from './bookOrder';
 import { ARRIVAL_ATTRIBUTE, BookRibbon, type RibbonCrossRefs } from './BookRibbon';
 import { CrossReferenceSheet } from './CrossReferenceSheet';
@@ -895,10 +896,11 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, dec
         onClose={marks.elsewhere.close}
         onOpenBible={openInBible}
       />
-      {/* The "T" of every reading screen — the text size, and here the marks' legend; the Bible's own
-          settings live in Settings → Bible. On a phone it stands above the bar with the way back and the book's pill. */}
+      {/* The "T" of every reading screen — the text size, and here the marks' legend and the way to the
+          Bible's own settings (Settings → Bible). On a phone it stands above the bar with the way back and the book's pill. */}
       <FloatingTextScaleControls className="max-md:!bottom-24">
         {marks.legend}
+        <BibleSettingsLink />
       </FloatingTextScaleControls>
     </div>
   );
