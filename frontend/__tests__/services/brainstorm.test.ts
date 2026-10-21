@@ -10,7 +10,6 @@ jest.mock('@/utils/authenticatedRequest', () => ({
 }));
 
 // Hard code the API URL for testing instead of using environment variable
-const API_URL = 'http://localhost:3000';
 
 describe('brainstorm.service', () => {
   let generateBrainstormSuggestion: any;
@@ -19,8 +18,6 @@ describe('brainstorm.service', () => {
     fetchMock.resetMocks();
     jest.clearAllMocks();
     
-    // Set up environment variable before importing
-    process.env.NEXT_PUBLIC_API_BASE = API_URL;
     
     // Suppress console.log for cleaner test output
     jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -34,8 +31,6 @@ describe('brainstorm.service', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
-    // Restore the environment variable
-    process.env.NEXT_PUBLIC_API_BASE = API_URL;
   });
 
   const mockSermonId = 'test-sermon-123';
@@ -64,7 +59,7 @@ describe('brainstorm.service', () => {
       // Assert
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
-        `${API_URL}/api/sermons/${mockSermonId}/brainstorm`,
+        `/api/sermons/${mockSermonId}/brainstorm`,
         expect.objectContaining({
           method: 'POST',
           headers: {
@@ -137,25 +132,19 @@ describe('brainstorm.service', () => {
         .rejects.toThrow();
     });
 
-    it('handles missing NEXT_PUBLIC_API_BASE environment variable', async () => {
-      // Arrange - clear environment variable and re-import module
-      delete process.env.NEXT_PUBLIC_API_BASE;
+    // BUG-20261021-language-header-blocked-cross-origin: an address in the environment sent `.com`
+    // pages to vercel.app, across domains; the page now asks its own domain whatever the env says.
+    it('asks the page\'s own domain whatever address the environment holds', async () => {
+      process.env.NEXT_PUBLIC_API_BASE = 'https://elsewhere.example';
       jest.resetModules();
-    const brainstormService = await import('@/services/brainstorm.service');
-    const testFunction = brainstormService.generateBrainstormSuggestion;
-
-      // Mock response for undefined URL
+      const brainstormService = await import('@/services/brainstorm.service');
       fetchMock.mockResponseOnce(JSON.stringify(mockSuccessResponse), { status: 200 });
-      
-      // Act
-      const result = await testFunction(mockSermonId);
 
-      // Assert - verify the URL was constructed with undefined and function still works
-      expect(fetchMock).toHaveBeenCalledWith(
-        `undefined/api/sermons/${mockSermonId}/brainstorm`,
-        expect.any(Object)
-      );
+      const result = await brainstormService.generateBrainstormSuggestion(mockSermonId);
+
+      expect(fetchMock).toHaveBeenCalledWith(`/api/sermons/${mockSermonId}/brainstorm`, expect.any(Object));
       expect(result).toEqual(mockBrainstormSuggestion);
+      delete process.env.NEXT_PUBLIC_API_BASE;
     });
 
     it('validates suggestion object structure', async () => {
@@ -220,7 +209,7 @@ describe('brainstorm.service', () => {
 
       // Assert
       expect(fetchMock).toHaveBeenCalledWith(
-        `${API_URL}/api/sermons/${customSermonId}/brainstorm`,
+        `/api/sermons/${customSermonId}/brainstorm`,
         expect.any(Object)
       );
     });

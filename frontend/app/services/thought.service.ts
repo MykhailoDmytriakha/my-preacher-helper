@@ -5,7 +5,6 @@ import { withStatus } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getTranscriptionAuthorizationHeaders } from '@/utils/transcriptionRetryClient';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const AUDIO_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 1200;
 
 type AudioThoughtErrorResponse = {
@@ -64,12 +63,12 @@ export const createAudioThought = async (
     }
 
     console.log(
-      `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
+      `transcribeAudio: Sending audio blob and sermon id ${sermonId} to /api/thoughts.`
     );
 
     const headers = await getTranscriptionAuthorizationHeaders();
 
-    const response = await apiClient(`${API_BASE}/api/thoughts`, {
+    const response = await apiClient('/api/thoughts', {
       method: "POST",
       body: formData,
       category: 'audio',
@@ -165,7 +164,7 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
     formData.append("audio", audioBlob, "recording.webm");
     const headers = await getTranscriptionAuthorizationHeaders();
 
-    const response = await apiClient(`${API_BASE}/api/thoughts/transcribe`, {
+    const response = await apiClient('/api/thoughts/transcribe', {
       method: "POST",
       body: formData,
       category: 'audio',

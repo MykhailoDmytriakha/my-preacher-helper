@@ -17,9 +17,6 @@ import {
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
 
-// Mock environment variable
-process.env.NEXT_PUBLIC_API_BASE = 'http://localhost:3000';
-
 // Mock toast
 jest.mock('sonner', () => ({
   toast: {
@@ -67,7 +64,7 @@ describe('Thought Service', () => {
         originalText: 'Raw',
       });
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts/transcribe'),
+        '/api/thoughts/transcribe',
         expect.objectContaining({
           headers: { Authorization: 'Bearer firebase-token' },
         })
@@ -91,7 +88,7 @@ describe('Thought Service', () => {
 
       expect(result).toEqual(mockThought);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts'),
+        '/api/thoughts',
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),
@@ -254,7 +251,7 @@ describe('Thought Service', () => {
 
       expect(result).toEqual(mockThought);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts'),
+        '/api/thoughts',
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),

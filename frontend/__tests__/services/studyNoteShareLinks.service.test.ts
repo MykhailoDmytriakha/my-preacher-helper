@@ -11,15 +11,10 @@ describe('studyNoteShareLinks.service', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockFetch.mockClear();
-    process.env.NEXT_PUBLIC_API_BASE = '';
     const service = await import('@/services/studyNoteShareLinks.service');
     getStudyNoteShareLinks = service.getStudyNoteShareLinks;
     createStudyNoteShareLink = service.createStudyNoteShareLink;
     deleteStudyNoteShareLink = service.deleteStudyNoteShareLink;
-  });
-
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_API_BASE;
   });
 
   it('fetches share links for a user', async () => {

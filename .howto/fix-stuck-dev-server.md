@@ -21,4 +21,4 @@ A dev server that burns a CPU core, or answers `Cannot find module './5611.js'`,
 - 2026-10-03: a dev server running 4.5 h of hot recompiles reached ~13 GB; a restart brought it back to ~3.4 GB.
 - 2026-09-16: a production `next build` into the running dev server's `.next` left it answering `Cannot find module './5611.js'`.
 
-See also: `.howto/run-a-demo-on-the-emulator.md` (a second server must empty `NEXT_PUBLIC_API_BASE`, or its pages talk to :3000) · `.howto/set-up-the-service-worker.md` · `.howto/keep-server-code-out-of-browser-bundle.md`
+See also: `.howto/run-a-demo-on-the-emulator.md` · `.howto/set-up-the-service-worker.md` · `.howto/keep-server-code-out-of-browser-bundle.md`

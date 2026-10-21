@@ -53,7 +53,7 @@ describe('outline service AI transport', () => {
 
     await expect(generateSermonPointsForSection('sermon-1', 'main')).resolves.toEqual(outlinePoints);
     expect(apiClient).toHaveBeenCalledWith(
-      expect.stringContaining('/api/sermons/sermon-1/generate-outline-points'),
+      '/api/sermons/sermon-1/generate-outline-points',
       expect.objectContaining({ category: 'ai', method: 'POST' })
     );
   });

@@ -58,7 +58,7 @@ Use a production build for offline QA, not hot-reloading development assets:
 
 ```sh
 npm run test:coverage && npm run lint:full
-NEXT_PUBLIC_API_BASE='' npm run build
+npm run build
 cd frontend
 npm run start -- --hostname 127.0.0.1 --port 3100
 ```

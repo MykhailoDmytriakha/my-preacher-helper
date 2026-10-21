@@ -4,8 +4,6 @@ import { ranOutOfTime } from '@/utils/aiTimeFailure';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
 /** What went wrong, in terms a person can act on. */
 export type AiInsightFailure = 'too-large' | 'unavailable';
 
@@ -55,7 +53,7 @@ async function requestInsights(
   let status: number | undefined;
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await apiClient(`${API_BASE}${path}`, {
+    const response = await apiClient(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'

@@ -15,7 +15,6 @@ const mockFetch = jest.fn();
 
 async function importServiceWithClientMocks() {
   jest.resetModules();
-  process.env.NEXT_PUBLIC_API_BASE = '';
 
   jest.doMock('@/config/firebaseClientDb', () => ({
     getClientDb: mockGetClientDb,
@@ -61,7 +60,6 @@ describe('studies.service', () => {
   });
 
   afterEach(() => {
-    delete process.env.NEXT_PUBLIC_API_BASE;
     jest.dontMock('@/config/firebaseClientDb');
     jest.dontMock('firebase/firestore');
   });

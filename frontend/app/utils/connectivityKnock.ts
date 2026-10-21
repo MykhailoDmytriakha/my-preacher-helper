@@ -46,8 +46,7 @@ const visible = () => typeof document === 'undefined' || document.visibilityStat
 
 const ask = (): Promise<KnockOutcome> => {
   if (inFlight) return inFlight;
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? '';
-  inFlight = apiClient(`${API_BASE}/api/health`, {
+  inFlight = apiClient('/api/health', {
     method: 'HEAD',
     category: 'health',
     // From the network every time: a stored answer would announce a connection that reached nothing.

@@ -3,8 +3,6 @@ import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isKnownOffline } from '@/utils/connectivity';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-
 /**
  * Generates outline points for a specific section of a sermon
  * @param sermonId The ID of the sermon
@@ -20,7 +18,7 @@ export const generateSermonPointsForSection = async (
       return [];
     }
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
+    const response = await apiClient(`/api/sermons/${sermonId}/generate-outline-points`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
