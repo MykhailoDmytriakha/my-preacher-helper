@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import SermonsPage from '@/(pages)/(private)/sermons/page';
@@ -50,6 +50,30 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => mockUseSearchParams(),
   usePathname: () => '/sermons',
 }));
+
+// A deterministic public query-state boundary. Actual Next queue/timer behavior is covered by native QA.
+jest.mock('nuqs', () => {
+  const React = require('react');
+  return {
+    useQueryState: (key: string, options: any) => {
+      const [value, setValue] = React.useState(() => {
+        const raw = mockUseSearchParams().get(key);
+        return raw === null ? options.defaultValue : options.parse ? options.parse(raw) ?? options.defaultValue : raw;
+      });
+      const write = React.useCallback((next: string | null, callOptions?: { history?: string }) => {
+        const query = new URLSearchParams(window.location.search);
+        if (next === null || next === options.defaultValue) query.delete(key); else query.set(key, next);
+        const suffix = query.toString();
+        const url = window.location.pathname + (suffix ? '?' + suffix : '') + window.location.hash;
+        const method = callOptions?.history === 'push' ? 'pushState' : 'replaceState';
+        window.history[method](null, '', url);
+        setValue(next ?? options.defaultValue);
+        return Promise.resolve(query);
+      }, [key, options.defaultValue]);
+      return [value, write];
+    },
+  };
+});
 
 // Define mock sermons
 const mockSermons = [
@@ -148,6 +172,7 @@ describe('Sermons Page', () => {
   beforeEach(() => {
     localStorageMock.clear();
     jest.clearAllMocks();
+    window.history.replaceState(null, '', '/sermons');
     // Default to empty search params
     mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
 
@@ -203,7 +228,7 @@ describe('Sermons Page', () => {
     it('switches between Active, All, and Preached tabs', async () => {
       // Setup initial state: tab=null -> active
       mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
-      const { rerender } = render(<SermonsPage />);
+      render(<SermonsPage />);
 
       // Initially Active tab - should show active sermons only
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -212,11 +237,7 @@ describe('Sermons Page', () => {
 
       // Click All tab
       fireEvent.click(screen.getByText('All'));
-      expect(mockPush).toHaveBeenCalledWith('/sermons?tab=all');
-
-      // Simulate router update
-      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=all'));
-      rerender(<SermonsPage />);
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('all');
 
       // Should show all sermons
       expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
@@ -225,11 +246,7 @@ describe('Sermons Page', () => {
 
       // Click Preached tab
       fireEvent.click(screen.getByText('Preached'));
-      expect(mockPush).toHaveBeenCalledWith('/sermons?tab=preached');
-
-      // Simulate router update
-      mockUseSearchParams.mockReturnValue(new URLSearchParams('tab=preached'));
-      rerender(<SermonsPage />);
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('preached');
 
       // Should show Preached sermon only
       expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
@@ -409,34 +426,63 @@ describe('Sermons Page', () => {
       });
     });
 
-    it('updates URL with search query via debounce', async () => {
+    it('does not start a new list navigation when opening an already matching search URL', () => {
       jest.useFakeTimers();
-      mockUseSearchParams.mockReturnValue(new URLSearchParams(''));
+      window.history.replaceState(null, '', '/sermons?tab=all&q=faith');
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(window.location.search));
+      try {
+        render(<SermonsPage />);
+        act(() => { jest.advanceTimersByTime(350); });
+        expect(screen.getByPlaceholderText('Search sermons...')).toHaveValue('faith');
+        expect(new URLSearchParams(window.location.search).get('tab')).toBe('all');
+        expect(mockReplace).not.toHaveBeenCalled();
+      } finally { jest.useRealTimers(); }
+    });
 
+    it('keeps the tab chosen after typing instead of letting an older search update replace it', () => {
+      jest.useFakeTimers();
+      window.history.replaceState(null, '', '/sermons');
+      mockUseSearchParams.mockReturnValue(new URLSearchParams());
+      mockPush.mockImplementation((url: string) => window.history.pushState(null, '', url));
+      mockReplace.mockImplementation((url: string) => window.history.replaceState(null, '', url));
+      try {
+        render(<SermonsPage />);
+        fireEvent.click(screen.getByRole('button', { name: 'Search sermons...' }));
+        fireEvent.change(screen.getByPlaceholderText('Search sermons...'), { target: { value: 'faith' } });
+        act(() => { jest.advanceTimersByTime(100); });
+        fireEvent.click(screen.getByRole('button', { name: /^All\s*3$/i }));
+        act(() => { jest.advanceTimersByTime(350); });
+        const query = new URLSearchParams(window.location.search);
+        expect(query.get('tab')).toBe('all');
+        expect(query.get('q')).toBe('faith');
+        expect(screen.getByPlaceholderText('Search sermons...')).toHaveValue('faith');
+        expect(mockReplace).not.toHaveBeenCalled();
+      } finally {
+        mockPush.mockReset(); mockReplace.mockReset(); jest.useRealTimers();
+      }
+    });
+
+    it('keeps the authored search in the URL and clears only its query parameter', () => {
+      window.history.replaceState(null, '', '/sermons?tab=all#saved-position');
+      mockUseSearchParams.mockReturnValue(new URLSearchParams(window.location.search));
       render(<SermonsPage />);
-
-      // Open search
       fireEvent.click(screen.getByRole('button', { name: 'Search sermons...' }));
       const searchInput = screen.getByPlaceholderText('Search sermons...');
 
       fireEvent.change(searchInput, { target: { value: 'faith' } });
+      expect(searchInput).toHaveValue('faith');
+      expect(new URLSearchParams(window.location.search).get('q')).toBe('faith');
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('all');
+      expect(screen.getByTestId('sermon-card-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('sermon-card-2')).not.toBeInTheDocument();
 
-      // Fast forward the debounce timer (300ms)
-      jest.advanceTimersByTime(300);
-
-      await waitFor(() => {
-        expect(mockReplace).toHaveBeenCalledWith('/sermons?q=faith', { scroll: false });
-      });
-
-      // Clear search
       fireEvent.change(searchInput, { target: { value: '' } });
-      jest.advanceTimersByTime(300);
-
-      await waitFor(() => {
-        expect(mockReplace).toHaveBeenCalledWith('/sermons?', { scroll: false });
-      });
-
-      jest.useRealTimers();
+      expect(searchInput).toHaveValue('');
+      expect(new URLSearchParams(window.location.search).has('q')).toBe(false);
+      expect(new URLSearchParams(window.location.search).get('tab')).toBe('all');
+      expect(window.location.hash).toBe('#saved-position');
+      expect(screen.getByTestId('sermon-card-2')).toBeInTheDocument();
+      expect(mockReplace).not.toHaveBeenCalled();
     });
 
     it('collapses search input on blur when empty', async () => {

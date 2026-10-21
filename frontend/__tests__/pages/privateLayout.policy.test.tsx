@@ -34,6 +34,14 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/sermons',
 }));
 
+// This test checks shell wrappers; URL/history behavior is covered by the list regressions.
+jest.mock('nuqs', () => ({
+  useQueryState: (_key: string, { defaultValue }: { defaultValue: string }) => [
+    defaultValue,
+    jest.fn(() => Promise.resolve(new URLSearchParams())),
+  ],
+}));
+
 // Sermon pages run on the data engine: the real engine opens the sermon document, with only the
 // server and the browser transport replaced.
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'owner' }, loading: false }) }));

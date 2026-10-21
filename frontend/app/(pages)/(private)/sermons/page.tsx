@@ -2,7 +2,7 @@
 
 import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/react';
 import { AdjustmentsHorizontalIcon, MagnifyingGlassIcon, XMarkIcon, ArrowsUpDownIcon } from '@heroicons/react/24/outline';
-import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryState } from 'nuqs';
 import { Fragment, useEffect, useMemo, useState } from "react";
 
 import DashboardContent from "@/components/dashboard/DashboardContent";
@@ -14,6 +14,7 @@ import Select from "@/components/ui/Select";
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { useDashboardSermons } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
+import { useSearchInputQuery } from '@/hooks/useSearchInputQuery';
 import { useSeries } from "@/hooks/useSeries";
 import { useAuth } from "@/providers/AuthProvider";
 import { listReadState } from '@/utils/listReadState';
@@ -57,21 +58,14 @@ export default function SermonsPage() {
 
   const { series: allSeries } = useSeries(user?.uid || null);
 
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const activeTab = (searchParams.get("tab") as "active" | "preached" | "all") || "active";
-
-  const handleTabChange = (tab: "active" | "preached" | "all") => {
-    // Basic validation to keep URL clean, though logic handles fallback
-    if (tab === "active") {
-      router.push("/sermons");
-    } else {
-      router.push(`/sermons?tab=${tab}`);
-    }
+  const [activeTab, setActiveTab] = useQueryState<'active' | 'preached' | 'all'>('tab', {
+    defaultValue: 'active',
+    parse: value => value === 'active' || value === 'preached' || value === 'all' ? value : null,
+  });
+  const handleTabChange = (tab: 'active' | 'preached' | 'all') => {
+    void setActiveTab(tab, { history: 'push' });
   };
-
-  // State — search in URL, preferences in localStorage
-  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "");
+  const { value: searchQuery, setValue: setSearchQuery, inputRef: searchInputRef } = useSearchInputQuery('q', { emptyWhenBlank: true });
 
   type SortOption = "newest" | "oldest" | "alphabetical" | "recentlyUpdated";
   type SeriesFilter = "all" | "inSeries" | "standalone";
@@ -106,20 +100,6 @@ export default function SermonsPage() {
   useEffect(() => { try { localStorage.setItem(LS_IN_THOUGHTS, String(searchInThoughts)); } catch { } }, [searchInThoughts]);
   useEffect(() => { try { localStorage.setItem(LS_IN_TAGS, String(searchInTags)); } catch { } }, [searchInTags]);
 
-  // Sync search query to URL (debounced, replace to not pollute history)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (searchQuery.trim()) {
-        params.set("q", searchQuery);
-      } else {
-        params.delete("q");
-      }
-      router.replace(`/sermons?${params.toString()}`, { scroll: false });
-    }, 300);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
   const hasFilterChanges =
     sortOption !== DEFAULT_SORT_OPTION ||
     seriesFilter !== "all" ||
@@ -288,6 +268,7 @@ export default function SermonsPage() {
                   <MagnifyingGlassIcon className="w-5 h-5" />
                 </button>
                 <input
+                  ref={searchInputRef}
                   id="dashboard-search-input"
                   type="search"
                   placeholder={searchSermonsLabel}

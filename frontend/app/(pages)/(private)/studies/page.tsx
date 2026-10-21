@@ -14,11 +14,12 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryState } from 'nuqs';
-import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState, useCallback } from 'react';
 
 import '@locales/i18n';
 
 import Select from '@/components/ui/Select';
+import { useSearchInputQuery } from '@/hooks/useSearchInputQuery';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
@@ -68,31 +69,10 @@ export default function StudiesPage() {
     return allTags.map((tag) => tag.name);
   }, [tagData.customTags, tagData.requiredTags]);
 
-  // Filters (URL state via nuqs)
-  // nuqs owns the URL param (persistence across navigation), but the input's
-  // displayed value + filtering read from a LOCAL mirror. Reason: nuqs's
-  // optimistic→URL reconciliation makes searchQueryParam briefly bounce back to
-  // the old value on a real Escape/clear keypress (verified: value + list +
-  // highlights flash old→new→old). Local state clears synchronously in one
-  // render, so nothing rendered ever bounces. See applySearch below.
-  const [searchQueryParam, setSearchQueryParam] = useQueryState('search', { defaultValue: '', throttleMs: 0 });
+  // Query persistence and instant clear/input behavior are shared with the sermon list.
+  const { value: search, setValue: applySearch, inputRef: searchInputRef } = useSearchInputQuery('search');
   const [tagFilter, setTagFilter] = useQueryState('tag', { defaultValue: '' });
   const [bookFilter, setBookFilter] = useQueryState('book', { defaultValue: '' });
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [search, setSearch] = useState(searchQueryParam);
-  // Single writer: local mirror (instant, drives UI) + URL param (persistence).
-  const applySearch = useCallback((value: string) => {
-    setSearch(value);
-    void setSearchQueryParam(value);
-  }, [setSearchQueryParam]);
-  // Adopt URL→local only on external changes (back-nav restore) while the user
-  // is NOT typing — this ignores nuqs's transient bounce during a focused clear.
-  useEffect(() => {
-    if (searchQueryParam !== search && document.activeElement !== searchInputRef.current) {
-      setSearch(searchQueryParam);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQueryParam]);
 
   // Type tabs
   type NoteTabType = 'all' | 'notes' | 'questions';
