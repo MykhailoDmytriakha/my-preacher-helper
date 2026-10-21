@@ -1,7 +1,7 @@
 import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { readPlanText, renderPlanWithFallback } from '@/utils/planText';
 
-import type { Group, Sermon, StudyNote } from '@/models/models';
+import type { Group, Sermon, ServiceOrder, StudyNote } from '@/models/models';
 
 /*
  * THE LANGUAGE A DOCUMENT IS WRITTEN IN, read off all of its words (`textLanguage`): a reference typed
@@ -34,4 +34,10 @@ export const groupLanguage = (group: Pick<Group, 'title' | 'description' | 'temp
       ...(group.templates ?? []).flatMap((block) => [block.title, block.content, ...(block.questions ?? [])]),
       ...(group.flow ?? []).flatMap((item) => [item.instanceTitle ?? '', item.instanceNotes ?? '']),
     ].join('\n'))
+    : null;
+
+/** A service order's words: its title, summary and every step's title and body. */
+export const serviceOrderLanguage = (order: Pick<ServiceOrder, 'title' | 'summary' | 'steps'> | null | undefined): AppLocale | null =>
+  order
+    ? textLanguage([order.title, order.summary ?? '', ...order.steps.map((step) => `${step.title}\n${step.body ?? ''}`)].join('\n'))
     : null;

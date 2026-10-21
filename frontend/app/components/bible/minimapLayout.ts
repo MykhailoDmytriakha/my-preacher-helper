@@ -177,3 +177,35 @@ export function minimapOffset(layoutHeight: number, boxHeight: number, frame: { 
   // A frame taller than the box cannot stay whole: its top stays in sight, where reading starts.
   return Math.min(Math.round(overflow * progress), Math.max(0, frame.top));
 }
+
+/**
+ * The map's own margin inside its width: the strokes and labels start this far from the left edge and the
+ * marks end this far from the right one, so the reading frame, which spans the whole width, has the same air
+ * on both sides (the owner, 2026-10-21: the marks crossed the frame's edge, and the map sat closer to one side).
+ */
+export const MINIMAP_INSET = 4;
+
+/**
+ * A MARK OF THE PERSON'S MATERIAL on the map (`useBookUsage`, the owner's choice 2026-10-21 on the canvas: «на
+ * правом краю», a little longer than tall): at the height of the verse its passage starts at, or of the
+ * chapter's label for what names the whole chapter, in one column at the map's right end, inside the reading
+ * frame when it is there. Several kinds at one place stand side by side, the first of them outermost.
+ */
+export type MinimapMark<Kind extends string = string> = { chapter: number; verse: number | null; kinds: readonly Kind[] };
+export type MinimapMarkRect<Kind extends string = string> = { x: number; y: number; width: number; height: number; kind: Kind };
+
+export const MINIMAP_MARK = { width: 8, height: 5, gap: 2 } as const;
+
+/** Where each mark's pills stand on the map, in the map's own coordinates; a place the map lacks has none. */
+export function minimapMarkRects<Kind extends string>(layout: MinimapLayout, marks: readonly MinimapMark<Kind>[], mapWidth: number): MinimapMarkRect<Kind>[] {
+  const { width, height, gap } = MINIMAP_MARK;
+  const right = mapWidth - MINIMAP_INSET;
+  return marks.flatMap((mark) => {
+    const label = mark.verse === null ? layout.labels.find((one) => one.chapter === mark.chapter) : undefined;
+    // A verse's first line, or the middle of the chapter's label.
+    const centre = mark.verse === null ? (label ? label.y + 5 : undefined) : layout.verseTop[mark.chapter - 1]?.[mark.verse - 1];
+    if (centre === undefined) return [];
+    const middle = mark.verse === null ? centre : centre + 1;
+    return mark.kinds.map((kind, index) => ({ x: right - width - index * (width + gap), y: middle - height / 2, width, height, kind }));
+  });
+}

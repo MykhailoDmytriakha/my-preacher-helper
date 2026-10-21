@@ -21,6 +21,7 @@ import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { textLanguage } from '@/utils/appLocale';
 import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
 import { newClientId } from '@/utils/clientId';
+import { serviceOrderLanguage } from '@/utils/documentLanguage';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
@@ -162,7 +163,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   }, [acceptedOrder, cachedOrder]);
   const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
   // The language the order is written in, for a step's reference Russian and Ukrainian write alike ("1Цар").
-  const orderWrittenIn = order ? textLanguage([order.title, order.summary ?? '', ...order.steps.map((step) => `${step.title}\n${step.body ?? ''}`)].join('\n')) : null;
+  const orderWrittenIn = serviceOrderLanguage(order);
   const confirmContent = (patch: Partial<ServiceOrder>) => {
     setAcceptedOrder(current => current ? { ...current, ...patch } : current);
   };

@@ -480,7 +480,21 @@
         "short": "KJV"
       }
     },
-    "writtenIn": "Numbered by: {{translation}}"
+    "writtenIn": "Numbered by: {{translation}}",
+    "mine": {
+      "kinds": {
+        "sermon": "Sermon",
+        "note": "Note",
+        "group": "Group",
+        "order": "Service"
+      },
+      "badgeLabel": "{{kind}}, {{place}}: {{titles}}",
+      "badgeLabelMany": "{{count}} items. {{kind}}, {{place}}: {{titles}}",
+      "moreLabel": "{{count}} more — open the list",
+      "title": "Yours on {{place}}",
+      "wholeChapter": "The whole of {{chapter}}",
+      "empty": "Nothing of yours here yet."
+    }
   },
   "navigation": {
     "appName": "My Preacher Helper",
@@ -1198,7 +1212,13 @@
         "recent": "Don’t repeat recent places",
         "recentHint": "If the same chapter is already among the trail’s last {{count}} places, going there does not add it again: the trail highlights that place and keeps the new verse in it. If the chapter appears earlier on the trail, going there adds it to the end again."
       },
-      "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own."
+      "device": "These settings and the trail of places are kept on this device. Another phone or computer has its own.",
+      "mine": {
+        "title": "Your material on the text",
+        "intro": "Your notes, sermons, groups and services show in the Bible where their references point: a badge at the end of a verse; a badge by a chapter’s heading for what is about the whole chapter; coloured dots by chapter numbers on the minimap. Tap a badge to open the list and go to any of them.",
+        "show": "Badges of your material beside verses",
+        "showHint": "Turn it off and there are no badges or dots — only the text."
+      }
     },
     "showVersion": {
       "title": "Show app version",

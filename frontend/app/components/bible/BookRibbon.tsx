@@ -6,8 +6,11 @@ import { Fragment, memo } from 'react';
 import { Chip } from '@/components/ui/Chip';
 import { parseVerse, type BookText, type VerseSegment } from '@/utils/bibleText';
 
+import { MineBadge as MineBadgeButton, MineMoreBadge } from './MineBadge';
+
 import type { ChapterBoxes } from './useChapterWindow';
 import type { CrossReferenceCount } from '@/utils/crossReferences';
+import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
 
 /*
  * A BOOK OF THE BIBLE AS ONE RIBBON — chapters one after another, each verse a row with its number —
@@ -69,6 +72,49 @@ export type RibbonSigns = {
   onOpen: (chapter: number, verse: number) => void;
 };
 
+/**
+ * The person's own material on the text (`useBookUsage`, the owner's board 2026-10-21): after a verse a
+ * badge for each kind and stretch starting there — the icon and colour of its section and the place it
+ * holds, "3:16–18" — and after a chapter's heading one for what names the whole chapter, "3:1–36". Pressed, a badge
+ * opens the list of what is there. A badge is outside the verse's words, like the links' chip.
+ */
+export type MineBadge = { kind: ScriptureUsageKind; label: string; count: number; ariaLabel: string };
+export type RibbonMine = {
+  /** The badges of the stretches starting at each verse ("chapter:verse"). */
+  at: ReadonlyMap<string, readonly MineBadge[]>;
+  /** The badges of what names a whole chapter. */
+  chapters: ReadonlyMap<number, readonly MineBadge[]>;
+  /** A verse's list, or a whole chapter's (`verse` null). */
+  onOpen: (chapter: number, verse: number | null) => void;
+  /** What the badge standing for the rest says to a screen reader; on screen it is "+2". */
+  moreLabel: (count: number) => string;
+};
+
+/** Badges after one verse before the rest fold into "+N": a long row would push the text away. */
+export const MINE_BADGES_SHOWN = 3;
+
+function MineBadges({ badges, mine, chapter, verse, testId }: { badges: readonly MineBadge[]; mine: RibbonMine; chapter: number; verse: number | null; testId: string }) {
+  const open = () => mine.onOpen(chapter, verse);
+  const shown = badges.length > MINE_BADGES_SHOWN ? badges.slice(0, MINE_BADGES_SHOWN - 1) : badges;
+  const rest = badges.length - shown.length;
+  return (
+    <>
+      {shown.map((badge) => (
+        <Fragment key={`${badge.kind}:${badge.label}`}>
+          {' '}
+          <MineBadgeButton kind={badge.kind} label={badge.label} count={badge.count} ariaLabel={badge.ariaLabel} onClick={open} testId={`${testId}-${badge.kind}`} />
+        </Fragment>
+      ))}
+      {rest > 0 ? (
+        <>
+          {' '}
+          <MineMoreBadge count={rest} ariaLabel={mine.moreLabel(rest)} onClick={open} testId={`${testId}-more`} />
+        </>
+      ) : null}
+    </>
+  );
+}
+
 const VERSE_NUMBER_CLASSES = 'w-7 shrink-0 select-none pt-[0.35rem] text-right text-xs font-semibold tabular-nums text-gray-400 dark:text-gray-500';
 
 /** Where a verse or a chapter jumped to stands: the reading top, where "the verse I am at" is measured from. */
@@ -98,8 +144,8 @@ export function CrossRefsChip({ count, label, onOpen, testId }: { count: number;
   );
 }
 
-function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = false, lit }: {
-  chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns;
+function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, mine, detached = false, lit }: {
+  chapter: number; verse: number; raw: string; lang: string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine;
   /** A row of a chapter shown apart from the reader's book (`ChapterVerses`): not `data-verse`, so it is never taken for the place read or a verse to mark. */
   detached?: boolean;
   /** Lit from the start; rows of the ribbon are lit by the screen setting `data-arrival` itself. */
@@ -109,6 +155,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = fals
   const sign = signs?.at.get(`${chapter}:${verse}`);
   const count = crossRefs?.counts.get(`${chapter}:${verse}`);
   const shown = count ? (crossRefs?.mode === 'all' ? count.total : count.main) : 0;
+  const badges = mine?.at.get(`${chapter}:${verse}`);
   return (
     // A verse jumped to stands where "the verse I am at" is measured from: the same `--reading-top`.
     <div
@@ -161,6 +208,7 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = fals
             />
           </>
         ) : null}
+        {mine && badges ? <MineBadges badges={badges} mine={mine} chapter={chapter} verse={verse} testId={`mine-${chapter}:${verse}`} /> : null}
       </p>
     </div>
   );
@@ -172,8 +220,8 @@ function VerseRow({ chapter, verse, raw, lang, crossRefs, signs, detached = fals
  * drawn; every other one is a box of its height with its heading (`data-box`), so the scroll still spans
  * the whole book and a fast scroll shows the chapters it passes.
  */
-export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, boxes }: {
-  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; boxes?: ChapterBoxes | null;
+export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, crossRefs, signs, mine, boxes }: {
+  text: BookText; lang: string; chapterWord: (chapter: number) => string; crossRefs?: RibbonCrossRefs; signs?: RibbonSigns; mine?: RibbonMine; boxes?: ChapterBoxes | null;
 }) {
   return (
     <>
@@ -193,10 +241,15 @@ export const BookRibbon = memo(function BookRibbon({ text, lang, chapterWord, cr
           >
             <div className="flex items-center gap-3 pb-2 pl-10">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400">{chapterWord(chapter)}</h2>
+              {mine && mine.chapters.get(chapter) ? (
+                <span className="-ml-2 inline-flex items-center">
+                  <MineBadges badges={mine.chapters.get(chapter)!} mine={mine} chapter={chapter} verse={null} testId={`mine-chapter-${chapter}`} />
+                </span>
+              ) : null}
               <span className="h-px flex-1 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
             </div>
             {box ? null : verses.map((raw, verseIndex) => (
-              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} />
+              <VerseRow key={verseIndex} chapter={chapter} verse={verseIndex + 1} raw={raw} lang={lang} crossRefs={crossRefs} signs={signs} mine={mine} />
             ))}
           </section>
         );

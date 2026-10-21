@@ -4,7 +4,9 @@ import {
   buildMinimapLayout,
   firstVisibleLine,
   fitPressedFrame,
+  MINIMAP_INSET,
   frameOnMap,
+  minimapMarkRects,
   minimapOffset,
   settleOffset,
   verseAtY,
@@ -181,5 +183,26 @@ describe('fitPressedFrame', () => {
     expect(fitPressedFrame({ top: 1000, height: 100 }, 500, 600)).toBeNull();
     expect(fitPressedFrame({ top: 1000, height: 100 }, 450, 600)).toBe(500);
     expect(fitPressedFrame({ top: 1000, height: 700 }, 900, 600)).toBe(1000);
+  });
+});
+
+describe('minimapMarkRects — the person\'s marks on the map\'s right edge', () => {
+  const layout = buildMinimapLayout([['a', 'b', 'c'], ['d', 'e']], geometry);
+
+  it('stands at the height of the verse a passage starts at, a little longer than tall, as far from the right end as the text is from the left', () => {
+    const [rect] = minimapMarkRects(layout, [{ chapter: 1, verse: 2, kinds: ['note'] }], 132);
+    expect(rect).toEqual({ x: 120, y: layout.verseTop[0][1] + 1 - 2.5, width: 8, height: 5, kind: 'note' });
+    expect(rect.width).toBeGreaterThan(rect.height);
+    expect(132 - (rect.x + rect.width)).toBe(MINIMAP_INSET);
+  });
+
+  it('puts what names a whole chapter by its label, and several kinds side by side, the first outermost', () => {
+    const rects = minimapMarkRects(layout, [{ chapter: 2, verse: null, kinds: ['sermon', 'note'] }], 132);
+    expect(rects.map(({ x, kind }) => [x, kind])).toEqual([[120, 'sermon'], [110, 'note']]);
+    expect(rects[0].y).toBe(layout.labels[1].y + 5 - 2.5);
+  });
+
+  it('leaves out a place the map does not have', () => {
+    expect(minimapMarkRects(layout, [{ chapter: 7, verse: 1, kinds: ['note'] }, { chapter: 1, verse: 40, kinds: ['note'] }], 132)).toEqual([]);
   });
 });

@@ -11,7 +11,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
 import { wayBackKind } from '@/utils/bibleLink';
 import { BIBLES, type BibleId } from '@/utils/bibles';
-import { bookSlug, fetchBookText, type BookText } from '@/utils/bibleText';
+import { bookSlug, fetchBookText, verseWords, type BookText } from '@/utils/bibleText';
 import { placeIn, placesIn } from '@/utils/versification';
 
 import { BibleMinimap, visibleVerseRange } from './BibleMinimap';
@@ -23,11 +23,13 @@ import { CrossReferenceSheet } from './CrossReferenceSheet';
 import { currentEntryId, placeInBook, readEntryArrival, readEntryPlace, saveEntryArrival, saveEntryPlace, saveLastPlace, type LastPlace } from './lastPlace';
 import { MarkedElsewhereSheet } from './marks/MarkedElsewhereSheet';
 import { useReaderMarks } from './marks/useReaderMarks';
+import { MineSheet } from './MineSheet';
 import { buildMinimapLayout } from './minimapLayout';
 import { useReaderTrail } from './PlaceTrail';
 import { arriveOnTrail, readOnTrail, stepOnTrail } from './placeTrailStore';
 import { readingSurface } from './readingSurface';
 import { useBookCrossRefs } from './useBookCrossRefs';
+import { useBookUsage } from './useBookUsage';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 
 import type { AppLocale } from '@/utils/appLocale';
@@ -308,6 +310,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   // Cross references: the chips with the verses and the window of one verse's links.
   const crossRefs = useBookCrossRefs(bookId, bible, text, 'reader');
   const closeCrossRefs = crossRefs.close;
+  // The person's own material on the verses it names: badges with the text, dots on the minimap, a list.
+  const mine = useBookUsage(bookId, bible, locale, Boolean(text));
   const layout = useMemo(() => (text ? buildMinimapLayout(text.chapters) : null), [text]);
 
   // A BIG BOOK IS DRAWN AROUND THE PLACE READ (`useChapterWindow`): the chapters near it are in the
@@ -339,7 +343,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   const doubtHeights = chapterWindow.doubt;
   useEffect(() => {
     doubtHeights();
-  }, [crossRefs.ribbon, doubtHeights, marks.signs]);
+  }, [crossRefs.ribbon, doubtHeights, marks.signs, mine.ribbon]);
 
   // ROOM UNDER THE BOOK: the text scrolls on until the last verse stands at the reading top, and no
   // further — so a verse near the end (Rom 16:21) comes to the top like any other (the owner, 2026-10-15).
@@ -702,6 +706,10 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
   }, [onChangeBible]);
 
   const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
+  // A row of the person's list leaves the Bible for that note or sermon: the window closes first, so the
+  // place read is written down from the page, not from a page pinned under a window (iOS).
+  const goToScreen = useCallback((href: string) => router.push(href), [router]);
+  const openMineEntry = useFollowAfterClose(Boolean(mine.openAt), mine.close, goToScreen);
 
   // THE WAY BACK goes left along the trail of places, one link at a time (the owner, 2026-10-20: a swap
   // between the last two places never reached the third). The light steps onto that link first, so its
@@ -781,7 +789,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               data-pen-surface={marks.penSurface}
               className={`isolate min-w-0 rounded-2xl border border-gray-200 bg-white px-3 py-5 sm:px-6 dark:border-gray-700 dark:bg-gray-900 ${marks.textClass}`}
             >
-              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} boxes={chapterWindow.boxes} />
+              <BookRibbon text={text} lang={BIBLES[bible].language} chapterWord={chapterWord} crossRefs={crossRefs.ribbon} signs={marks.signs} mine={mine.ribbon} boxes={chapterWindow.boxes} />
               <BookEnd bookId={bookId} bible={bible} locale={locale} wide={wide} onOpen={(chosen) => openPlace(chosen, { chapter: 1, verse: 1 })} />
             </article>
           ) : null}
@@ -798,6 +806,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
               surface={surface}
               readingInset={readingInset}
               drawn={drawnSpan}
+              marks={mine.mapMarks}
               onJump={jumpTo}
             />
           </aside>
@@ -831,6 +840,16 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         verseText={crossRefs.verseText}
         onClose={crossRefs.close}
         onOpenReference={openReference}
+      />
+      <MineSheet
+        at={mine.openAt}
+        bookId={bookId}
+        locale={locale}
+        chapterWord={chapterWord}
+        verseText={mine.openAt?.verse && text ? verseWords(text.chapters[mine.openAt.chapter - 1]?.[mine.openAt.verse - 1] ?? '') : undefined}
+        listed={mine.listed}
+        onClose={mine.close}
+        onOpenEntry={openMineEntry}
       />
       <MarkedElsewhereSheet
         at={marks.elsewhere.at}
