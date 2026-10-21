@@ -39,6 +39,7 @@ let routeId = 'sermon-123';
 const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: routeId }),
+  usePathname: () => `/sermons/${routeId}`,
   useSearchParams: () => mockUseSearchParams(),
   useRouter: () => ({
     push: jest.fn(),

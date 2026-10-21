@@ -14,7 +14,7 @@ import type { LeadingReference } from '@/utils/bibleLink';
 interface EditableVerseProps {
   initialVerse: string;
   onSave: (newVerse: string) => Promise<void>;
-  /** The reference the verse opens with (`leadingReference`): shown as a link into the Bible. */
+  /** The reference the verse opens with (`leadingReference`): a link that opens the way the page opens references (`ScriptureOpening`). */
   openingReference?: LeadingReference | null;
   onOpenReference?: (href: string) => void;
   disabled?: boolean;

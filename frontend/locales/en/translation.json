@@ -460,7 +460,9 @@
       "backToChapter": "Back to chapter {{number}}",
       "backToPsalm": "Back to Psalm {{number}}",
       "views": "Bible window sections",
-      "text": "Text"
+      "text": "Text",
+      "openInBible": "Open in the Bible",
+      "toBible": "Bible"
     },
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",
@@ -516,17 +518,21 @@
     "translations": {
       "rst": {
         "name": "Синодальный перевод",
-        "language": "Русский"
+        "language": "Русский",
+        "short": "Synodal"
       },
       "ubio": {
         "name": "Переклад Огієнка",
-        "language": "Українська"
+        "language": "Українська",
+        "short": "Ohienko"
       },
       "kjv": {
         "name": "King James Version",
-        "language": "English"
+        "language": "English",
+        "short": "KJV"
       }
-    }
+    },
+    "writtenIn": "Numbered by: {{translation}}"
   },
   "navigation": {
     "appName": "My Preacher Helper",

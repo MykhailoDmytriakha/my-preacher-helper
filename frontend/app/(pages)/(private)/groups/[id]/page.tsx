@@ -31,7 +31,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
@@ -47,12 +47,12 @@ import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useGroupPageEditor } from '@/hooks/useGroupPageEditor';
-import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { groupLanguage } from '@/utils/documentLanguage';
 import {
   createFlowItem,
   createTemplate,
@@ -78,14 +78,13 @@ export default function GroupDetailPage() {
 }
 function EngineGroupPage({ groupId }: { groupId: string }) {
   const editor = useGroupPageEditor(groupId);
-  // A reference in a block's text opens the Bible there, and "← Group" brings the person back.
-  const { openReference } = useOpenInBible(undefined, `/groups/${groupId}`);
+  // A reference in a block's text opens over the page; the Bible is one press away from the window.
   return (
-    <ScriptureLinks onOpen={openReference}>
+    <ScriptureLinksInWindow writtenIn={groupLanguage(editor.group)}>
       {editor.readOnly && editor.group
         ? <GroupReadOnlyContent group={editor.group} />
         : <GroupDetailView editor={editor} />}
-    </ScriptureLinks>
+    </ScriptureLinksInWindow>
   );
 }
 function GroupDetailView({ editor }: { editor: GroupPageEditor }) {

@@ -12,7 +12,7 @@ import type { ScriptureRefShape } from '@/utils/scriptureReference';
  * LEAVING A PAGE FOR THE BIBLE — the one way: the passage opens there, and its way back is this very
  * page, its query too ("?source=note" is what keeps a plan's note editor open). A page that edits
  * text passes `beforeSwitch`: what is being edited is saved first, and a save that refuses or fails
- * keeps the person where they are — the editor says why.
+ * keeps the person where they are — the editor says why. Both ways answer whether the page was left.
  */
 export function useOpenInBible(beforeSwitch?: () => Promise<boolean>, fallbackPath = '') {
   const router = useRouter();
@@ -22,20 +22,23 @@ export function useOpenInBible(beforeSwitch?: () => Promise<boolean>, fallbackPa
   const here = `${pathname ?? fallbackPath}${query ? `?${query}` : ''}`;
 
   const openHref = useCallback(
-    (href: string) => {
+    (href: string): Promise<boolean> => {
       if (!beforeSwitch) {
         router.push(href);
-        return;
+        return Promise.resolve(true);
       }
-      void beforeSwitch().then((saved) => { if (saved) router.push(href); }, () => undefined);
+      return beforeSwitch().then((saved) => {
+        if (saved) router.push(href);
+        return saved;
+      }, () => false);
     },
     [beforeSwitch, router]
   );
 
   const openReference = useCallback(
-    (reference: ScriptureRefShape) => {
+    (reference: ScriptureRefShape): Promise<boolean> => {
       const href = bibleHref(reference, { locale, from: here });
-      if (href) openHref(href);
+      return href ? openHref(href) : Promise.resolve(false);
     },
     [here, locale, openHref]
   );

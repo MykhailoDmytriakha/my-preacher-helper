@@ -1,11 +1,12 @@
+import { textLanguage, type AppLocale } from '@/utils/appLocale';
 import { referencesInText } from '@/utils/bibleLink';
+import { groupLanguage, sermonLanguage, studyNoteLanguage } from '@/utils/documentLanguage';
 import { documentScreenHref } from '@/utils/documentScreenHref';
 import { markdownPreviewText } from '@/utils/markdownUtils';
 import { readPlanText, renderPlanWithFallback } from '@/utils/planText';
 import { sameScriptureReference, scriptureReferencesOverlap, withNoteReferenceBibles, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 
 import type { Group, Sermon, StudyNote } from '@/models/models';
-import type { AppLocale } from '@/utils/appLocale';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
 
 export type ScriptureUsageKind = 'note' | 'sermon' | 'group';
@@ -42,8 +43,9 @@ function excerpt(text: string, at = 0): string {
   return `${start ? '…' : ''}${markdownPreviewText(text.slice(start, end))}${end < text.length ? '…' : ''}`;
 }
 
-function inText(text: string, locale: AppLocale): Candidate[] {
-  return referencesInText(text, locale).map(found => ({ reference: found.reference, text, at: found.start, inText: true, raw: found.raw }));
+/** The references a text names, each in the Bible it was written in — the text's language, then its document's (`written`). */
+function inText(text: string, locale: AppLocale, written: AppLocale | null): Candidate[] {
+  return referencesInText(text, locale, written).map(found => ({ reference: found.reference, text, at: found.start, inText: true, raw: found.raw }));
 }
 
 /**
@@ -71,7 +73,7 @@ export function findScriptureUsage(target: ScriptureRefShape, sources: UsageSour
   notes.forEach(stored => {
     if (stored.id === currentNoteId) return;
     const note = withNoteReferenceBibles(stored, locale);
-    const mentions = inText(note.content ?? '', locale);
+    const mentions = inText(note.content ?? '', locale, studyNoteLanguage(note));
     add('note', note.id, note.title ?? '', 'studyNotes', note.updatedAt, [
       ...(note.scriptureRefs ?? []).map(reference => {
         const typed = mentionIn(mentions);
@@ -82,18 +84,25 @@ export function findScriptureUsage(target: ScriptureRefShape, sources: UsageSour
   });
   sermons.forEach(sermon => {
     const plan = renderPlanWithFallback(sermon, readPlanText(sermon));
+    const written = sermonLanguage(sermon);
     add('sermon', sermon.id, sermon.title, 'sermons', sermon.updatedAt, [
-      ...inText(sermon.verse ?? '', locale).map(candidate => ({ ...candidate, inText: false })),
-      ...inText(Object.values(plan).join('\n\n'), locale),
-      ...(sermon.thoughts ?? []).flatMap(thought => inText(thought.text, locale)),
-      ...(sermon.scratch ?? []).flatMap(scratch => inText(scratch.text, locale)),
+      ...inText(sermon.verse ?? '', locale, written).map(candidate => ({ ...candidate, inText: false })),
+      ...inText(Object.values(plan).join('\n\n'), locale, written),
+      ...(sermon.thoughts ?? []).flatMap(thought => inText(thought.text, locale, written)),
+      ...(sermon.scratch ?? []).flatMap(scratch => inText(scratch.text, locale, written)),
     ]);
   });
   groups.forEach(group => {
-    add('group', group.id, group.title, 'groups', group.updatedAt, (group.templates ?? []).flatMap(block => [
-      ...(block.scriptureRefs ?? []).flatMap(raw => inText(raw, locale).map(candidate => ({ ...candidate, text: `${block.title}\n${block.content}`, at: 0, inText: false, raw: undefined }))),
-      ...inText(`${block.title}\n${block.content}`, locale),
-    ]));
+    const groupWritten = groupLanguage(group);
+    add('group', group.id, group.title, 'groups', group.updatedAt, (group.templates ?? []).flatMap(block => {
+      // A block's kept passages and its text: the group's words say the language, else the block's.
+      const text = `${block.title}\n${block.content}`;
+      const written = groupWritten ?? textLanguage(text);
+      return [
+        ...(block.scriptureRefs ?? []).flatMap(raw => inText(raw, locale, written).map(candidate => ({ ...candidate, text, at: 0, inText: false, raw: undefined }))),
+        ...inText(text, locale, written),
+      ];
+    }));
   });
   return results
     .sort((a, b) => MATCH_ORDER[a.usage.match] - MATCH_ORDER[b.usage.match] || b.updatedAt.localeCompare(a.updatedAt))

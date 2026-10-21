@@ -5,20 +5,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { ScriptureLinks, WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
-import { VerseSheet, type SheetReference } from "@/components/bible/VerseSheet";
+import { WithoutScriptureLinks } from "@/components/bible/ScriptureLinks";
+import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOpenInBible } from "@/hooks/useOpenInBible";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { debugLog } from "@/utils/debugMode";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
@@ -294,15 +294,9 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
 
-  // A reference in the plan, or its verse, opens the Bible — unless a point is open for editing: its
-  // words are not saved anywhere yet, so the passage opens over the plan instead and nothing is lost.
-  const [verseOver, setVerseOver] = useState<SheetReference | null>(null);
-  const { openReference } = useOpenInBible(undefined, `/sermons/${sermonId}/plan`);
+  // A reference in the plan, or its verse, opens over the plan. The window offers the Bible page only
+  // while no point is open for editing: its words are not saved anywhere yet, and leaving would lose them.
   const editingPoint = Object.values(editModePoints).some(Boolean);
-  const openPlanReference = useCallback(
-    (reference: SheetReference) => (editingPoint ? setVerseOver(reference) : openReference(reference)),
-    [editingPoint, openReference]
-  );
 
   const [modalSermonPointId, setModalSermonPointId] = useState<string | null>(null);
 
@@ -1072,7 +1066,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
   }
 
   return (
-    <ScriptureLinks onOpen={openPlanReference}>
+    <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} toBible={!editingPoint}>
     <div className="space-y-6 p-4">
       {/* THE HEADER GOES FIRST, NOTICES UNDER IT.
           Banners come and go — a stale copy appears, a draft is recovered, a point has no
@@ -1091,7 +1085,6 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         getExportContent={getExportContent}
         getPdfContent={getPdfContent}
         readOnly={readOnly}
-        onOpenReference={openPlanReference}
       />
 
       {orphanArea}
@@ -1202,7 +1195,6 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
         readOnly={readOnly}
       />
     </div>
-    <VerseSheet reference={verseOver} onClose={() => setVerseOver(null)} />
-    </ScriptureLinks>
+    </ScriptureLinksInWindow>
   );
 }

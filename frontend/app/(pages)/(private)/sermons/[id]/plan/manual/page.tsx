@@ -4,12 +4,14 @@ import { FileText, Pencil, Save } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useMemo, useRef, useState } from "react";
 
+import { ScriptureLinksInWindow } from "@/components/bible/VerseWindow";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useRouteId } from "@/hooks/useRouteId";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { legacySectionText, liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { RichMarkdownEditor } from "@components/ui/RichMarkdownEditor";
 import { useTranslation } from "@locales/useTranslation";
@@ -476,19 +478,22 @@ function ManualConspectusContent({ source, readOnly: copyReadOnly = false }: { s
       {/* The shared header — see `PlanPageHeader`. The link to the assembled plan that used
           to sit up here is gone: the mode switch inside the header leads to the same screen,
           and two doors to one place is what made the row ahead of it uneven. */}
-      <PlanPageHeader
-        sermon={sermon}
-        sermonId={sermonId}
-        mode={noteMode ? "note" : "manual"}
-        combinedPlan={combinedPlan}
-        t={t}
-        onLeave={guardUnsavedNavigation}
-        beforeSwitch={conspectus.saveModified}
-        onRequestPlanOverlay={openOverlay}
-        onRequestPreachingMode={openPreaching}
-        onStartPreachingMode={openPreaching}
-        readOnly={readOnly}
-      />
+      {/* The sermon's verse opens over the page; the window's way to the Bible saves the cells first. */}
+      <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)} beforeSwitch={conspectus.saveModified}>
+        <PlanPageHeader
+          sermon={sermon}
+          sermonId={sermonId}
+          mode={noteMode ? "note" : "manual"}
+          combinedPlan={combinedPlan}
+          t={t}
+          onLeave={guardUnsavedNavigation}
+          beforeSwitch={conspectus.saveModified}
+          onRequestPlanOverlay={openOverlay}
+          onRequestPreachingMode={openPreaching}
+          onStartPreachingMode={openPreaching}
+          readOnly={readOnly}
+        />
+      </ScriptureLinksInWindow>
 
       {/* Not on a copy for reading — see the paired screen: the draft waits in storage. */}
       {draft.recovered && !readOnly && (

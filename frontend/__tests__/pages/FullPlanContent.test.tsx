@@ -166,3 +166,16 @@ describe("FullPlanContent", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+// Preaching reads the plan's references in the sermon's language when the plan's own words do not say it
+// (Codex, 2026-10-21): a Ukrainian sermon's "1Цар 3:5" is 1 Kings, marked for an English reader.
+describe("FullPlanContent — the sermon's language", () => {
+  it("reads the verse in the sermon's language when the plan's words do not say it", () => {
+    const plan = { introduction: "1Цар 3:5", main: "", conclusion: "" };
+    const { unmount } = render(<FullPlanContent sermonTitle="Соломон" sermonVerse="1Цар 3:5" combinedPlan={plan} t={t} noContentText="—" sermonWrittenIn="uk" />);
+    expect(screen.getAllByText('bible.translations.ubio.short').length).toBeGreaterThan(0);
+    unmount();
+    render(<FullPlanContent sermonTitle="Соломон" sermonVerse="1Цар 3:5" combinedPlan={plan} t={t} noContentText="—" />);
+    expect(screen.queryByText('bible.translations.ubio.short')).not.toBeInTheDocument();
+  });
+});

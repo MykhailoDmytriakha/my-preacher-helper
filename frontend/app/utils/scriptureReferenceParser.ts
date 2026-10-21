@@ -254,9 +254,24 @@ const exactBookOf = (input: string, locale?: AppLocale): string | null => {
  * "Is" are words, not Amos and Isaiah. The reference field keeps that guess (`parseReferenceText`).
  */
 export function exactBook(name: string, locale?: AppLocale): string | null {
-  const words = name.replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
+  const words = nameWords(name);
   return words ? exactBookOf(words, locale) : null;
 }
+
+/** A book's name as its words, the way names are kept: dashes and dots are spaces ("Песнь-Песней", "Рим."). */
+const nameWords = (name: string): string => name.replace(/[–—−‒‑﹘﹣]/g, '-').replace(/[:,.;]/g, ' ').split(/[\s-]+/).filter(Boolean).join(' ');
+
+/**
+ * The languages whose own names and abbreviations write a book so: "Ps" English alone, "Иоил" Russian,
+ * "Йоїл" Ukrainian, "Пс" and "1Цар" both Russian and Ukrainian. A name only an alias knows gives none.
+ */
+export function bookNameLanguages(name: string): AppLocale[] {
+  const words = nameWords(name);
+  return words ? WRITING_LANGUAGES.filter((locale) => getBookByWrittenName(words, locale) !== undefined) : [];
+}
+
+/** Cyrillic first: a name Russian and Ukrainian share, read with nothing else to go by, is read as Russian. */
+const WRITING_LANGUAGES: readonly AppLocale[] = ['ru', 'uk', 'en'];
 
 const resolveBook = (input: string, locale?: AppLocale): BookMatch | null => {
   const exact = exactBookOf(input, locale);

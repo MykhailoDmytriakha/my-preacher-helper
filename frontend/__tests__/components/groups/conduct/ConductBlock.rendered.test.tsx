@@ -72,3 +72,33 @@ it('makes every reference in the block\'s Markdown a link in place that opens ov
   fireEvent.click(romans);
   expect(screen.getByRole('dialog', { name: 'Рим 13' })).toBeInTheDocument();
 });
+
+// A block whose own words do not say the language takes the group's (Codex, 2026-10-21): a Ukrainian group's
+// "1Цар 3:5" is 1 Kings, and an English reader sees which Bible it is in.
+it('reads a kept reference in the group\'s language when the block\'s words do not say it, and marks it', () => {
+  const kept = { ...template, title: 'Соломон', content: 'Сон', scriptureRefs: ['1Цар 3:5'] };
+  const props = {
+    flowItem, index: 0, total: 1, isPaused: false, onPause: jest.fn(), onResume: jest.fn(), globalTimeLeft: null, globalIsOvertime: false,
+    initialElapsed: 0, onTimeRecorded: jest.fn(), onPrev: jest.fn(), onNext: jest.fn(), onPeek: jest.fn(), onCompleteAll: jest.fn(),
+  };
+  const { unmount } = render(<ConductBlock {...props} template={kept} groupWrittenIn="uk" />);
+  expect(screen.getByText('bible.translations.ubio.short')).toBeInTheDocument();
+  unmount();
+  render(<ConductBlock {...props} template={kept} />);
+  expect(screen.queryByText('bible.translations.ubio.short')).not.toBeInTheDocument();
+});
+
+// Codex's review, 2026-10-21: a book kept whole ("Руфь") was a dead chip; it opens at the book's start over the meeting.
+it('opens a book kept whole over the meeting, and leaves a place its Bible lacks a label', () => {
+  const kept = { ...template, scriptureRefs: ['Руфь', 'Рим 25'] };
+  render(
+    <ConductBlock
+      flowItem={flowItem} template={kept} index={0} total={1} isPaused={false} onPause={jest.fn()} onResume={jest.fn()}
+      globalTimeLeft={null} globalIsOvertime={false} initialElapsed={0} onTimeRecorded={jest.fn()} onPrev={jest.fn()}
+      onNext={jest.fn()} onPeek={jest.fn()} onCompleteAll={jest.fn()}
+    />
+  );
+  expect(screen.queryByRole('button', { name: 'Рим 25' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Руфь' }));
+  expect(screen.getByRole('dialog', { name: 'Руфь' })).toBeInTheDocument();
+});

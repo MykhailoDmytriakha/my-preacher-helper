@@ -57,15 +57,32 @@ export function requestLanguage(request: { headers?: Pick<Headers, 'get'> }): Ap
 }
 
 /**
- * The language a piece of text is written in, read off its letters: ї, і, є, ґ belong to
- * Ukrainian alone, any other Cyrillic reads as Russian, everything else as English. For text
- * that reaches a reader without the interface around it — a link's preview card, a reference
- * pulled out of dictated prose — this is the only language signal there is.
+ * The language a piece of text is written in, when its letters say it: Latin against Cyrillic, and
+ * within Cyrillic the letters Ukrainian alone has (і, ї, є, ґ) against those Russian alone has
+ * (ы, э, ъ, ё). The larger share wins, so a typo or a quoted word does not turn a text (the owner,
+ * 2026-10-20: "how do you know it is not a typo?"). Null where they do not say — Cyrillic with none
+ * of those letters, or no letters at all.
+ */
+export function textLanguage(text: string): AppLocale | null {
+  // Only the words: an address, a link's target or code is not the language of the text around it.
+  const words = text.replace(/\]\([^)]*\)/g, ']').replace(/`[^`]*`/g, ' ').replace(/(?:https?:\/\/|www\.)\S+/giu, ' ');
+  const count = (letters: RegExp) => words.match(letters)?.length ?? 0;
+  const cyrillic = count(/\p{Script=Cyrillic}/gu);
+  if (count(/\p{Script=Latin}/gu) > cyrillic) return 'en';
+  if (!cyrillic) return null;
+  const ukrainian = count(/[іїєґ]/giu);
+  const russian = count(/[ыэъё]/giu);
+  return ukrainian === russian ? null : ukrainian > russian ? 'uk' : 'ru';
+}
+
+/**
+ * The language of a text for whoever must name one: `textLanguage`, and where the letters do not
+ * say, Russian for Cyrillic and English for the rest. For text that reaches a reader without the
+ * interface around it — a link's preview card, a reference pulled out of dictated prose — this is
+ * the only language signal there is.
  */
 export function detectTextLocale(text: string): AppLocale {
-  if (/[іїєґ]/iu.test(text)) return 'uk';
-  if (/[а-яё]/iu.test(text)) return 'ru';
-  return 'en';
+  return textLanguage(text) ?? (/\p{Script=Cyrillic}/u.test(text) ? 'ru' : 'en');
 }
 
 const DATE_LOCALES: Record<AppLocale, Locale> = { en: enUS, ru, uk };

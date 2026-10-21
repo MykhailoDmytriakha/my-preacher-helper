@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useAppLocale } from '@/hooks/useAppLocale';
+import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useScriptureUsage } from '@/hooks/useScriptureUsage';
 import { cssHighlightRegistry } from '@/utils/cssHighlights';
 import { formatScriptureReference, type ScriptureRefShape } from '@/utils/scriptureReference';
@@ -62,6 +63,8 @@ export function ScripturePreviewSheet({ reference, currentNoteId, onClose }: {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const usage = useScriptureUsage(reference, currentNoteId, locale);
+  // A note being read leaves for the Bible freely: nothing on it is unsaved.
+  const { openReference } = useOpenInBible();
   const [selected, setSelected] = useState<ScriptureUsage | null>(null);
   const [noteBody, setNoteBody] = useState<HTMLDivElement | null>(null);
   useMentionInView(noteBody, selected?.mention);
@@ -72,6 +75,7 @@ export function ScripturePreviewSheet({ reference, currentNoteId, onClose }: {
   return <VerseSheet
     reference={sheetReference}
     onClose={onClose}
+    openInBible={openReference}
     // The count shows once the search has finished, also from an incomplete list: the panel says it may be incomplete.
     related={{ label: t('bible.preview.myNotes'), count: usage.loading ? undefined : usage.results.length, render: returnToText => <>
       <div className="flex flex-wrap items-baseline justify-between gap-2">

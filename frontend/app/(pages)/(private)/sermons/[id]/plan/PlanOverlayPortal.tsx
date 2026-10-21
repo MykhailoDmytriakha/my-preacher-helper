@@ -3,6 +3,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 
 import { Sermon } from "@/models/models";
+import { sermonLanguage } from "@/utils/documentLanguage";
 
 import FullPlanContent from "./FullPlanContent";
 import PlanCopyButton from "./PlanCopyButton";
@@ -76,6 +77,7 @@ export default function PlanOverlayPortal({
           </div>
           <div ref={planOverlayContentRef} className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
             <FullPlanContent
+              sermonWrittenIn={sermonLanguage(sermon)}
               sermonTitle={sermon.title}
               sermonVerse={sermon.verse}
               combinedPlan={combinedPlan}

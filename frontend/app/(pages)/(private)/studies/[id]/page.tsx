@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
@@ -37,14 +38,16 @@ import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
+import { textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
+import { referenceFromTyped } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { formatDateForLocale } from '@/utils/dateFormatter';
+import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { findSectionById } from '@/utils/markdownSections';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
-import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
-import { parseReferenceText } from '@/utils/scriptureReferenceParser';
+import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { isRecordingOnlyNoteDraft } from '@/utils/studyNoteAudioRecovery';
 import { noteRecordingMetadata } from '@/utils/studyNoteRecordings';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
@@ -67,6 +70,7 @@ import { useNoteAutoSave } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
+import type { SheetReference } from '@/components/bible/VerseSheet';
 import type { AppLocale } from '@/utils/appLocale';
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
@@ -663,6 +667,13 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [previewReference, setPreviewReference] = useState<ScriptureReference | null>(null);
+    // A reference in the note's text opens the window its chips open: the passage, and the notes on it.
+    const openTextReference = useCallback((reference: SheetReference) => setPreviewReference({
+        ...reference,
+        id: `text:${reference.bible}:${reference.book}:${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}:${reference.endChapter ?? ''}`,
+    }), []);
+    // The note's own words decide a reference Russian and Ukrainian write alike; read only while it is shown as text.
+    const readingLanguage = useMemo(() => (isEditing ? null : studyNoteLanguage({ title, content })), [isEditing, title, content]);
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
@@ -1071,10 +1082,11 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim(), { locale: bibleLocale });
+                                            // Typed in the Bible its book's name is written in — the note's words decide one Russian
+                                            // and Ukrainian write alike ("1Цар") — and kept so.
+                                            const parsed = referenceFromTyped(quickRefInput.trim(), { locale: bibleLocale, written: textLanguage(`${title}\n${content}`) });
                                             if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
-                                            // Typed as the person's Bible numbers it, and kept so.
-                                            setScriptureRefs(prev => [...prev, { ...parsed, bible: referenceBibleFor(bibleLocale), id: makeId() }]);
+                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
                                             setQuickRefInput('');
                                         }
                                     }}
@@ -1352,13 +1364,15 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
                         </div>
                     ) : (
                         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
-                            <FoldableMarkdown
-                                content={content}
-                                searchQuery={searchQuery}
-                                control={outlineControl}
-                                showToggleAll={isWideViewport && panelCollapsed}
-                                scrollMarginTop={scrollLayout.sectionMargin}
-                            />
+                            <ScriptureLinks onOpen={openTextReference} writtenIn={readingLanguage}>
+                                <FoldableMarkdown
+                                    content={content}
+                                    searchQuery={searchQuery}
+                                    control={outlineControl}
+                                    showToggleAll={isWideViewport && panelCollapsed}
+                                    scrollMarginTop={scrollLayout.sectionMargin}
+                                />
+                            </ScriptureLinks>
                         </div>
                     )}
 

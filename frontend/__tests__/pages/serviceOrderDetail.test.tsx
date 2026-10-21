@@ -43,6 +43,7 @@ jest.mock('@/hooks/useServiceOrders', () => ({
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'order-1' }),
   useRouter: () => ({ push: mockPush }),
+  usePathname: () => '/care/orders/order-1',
   useSearchParams: () => ({ get: () => null }),
 }));
 

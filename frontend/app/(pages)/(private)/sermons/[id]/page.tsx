@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { EnginePreachDateList } from '@/components/calendar/EnginePreachDateList';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
@@ -44,6 +45,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -688,6 +690,8 @@ function SermonPageContent({ id }: { id: string }) {
   const hasInconsistentThoughts = sermonHasInconsistentThoughts(sermon);
 
   return (
+    // A reference in a thought, or the sermon's verse, opens over the page; the Bible is one press away from the window.
+    <ScriptureLinksInWindow writtenIn={sermonLanguage(sermon)}>
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
@@ -811,5 +815,6 @@ function SermonPageContent({ id }: { id: string }) {
         />
       )}
     </div>
+    </ScriptureLinksInWindow>
   );
 }

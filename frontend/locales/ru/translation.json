@@ -468,7 +468,9 @@
       "backToChapter": "К главе {{number}}",
       "backToPsalm": "К псалму {{number}}",
       "views": "Разделы окна Библии",
-      "text": "Текст"
+      "text": "Текст",
+      "openInBible": "Открыть в Библии",
+      "toBible": "В Библию"
     },
     "navigate": "Книга и глава: {{place}}",
     "chooseTranslation": "Выбор перевода",
@@ -526,17 +528,21 @@
     "translations": {
       "rst": {
         "name": "Синодальный перевод",
-        "language": "Русский"
+        "language": "Русский",
+        "short": "Синод."
       },
       "ubio": {
         "name": "Переклад Огієнка",
-        "language": "Українська"
+        "language": "Українська",
+        "short": "Огиенко"
       },
       "kjv": {
         "name": "King James Version",
-        "language": "English"
+        "language": "English",
+        "short": "KJV"
       }
-    }
+    },
+    "writtenIn": "Место указано по: {{translation}}"
   },
   "navigation": {
     "appName": "Помощник проповедника",

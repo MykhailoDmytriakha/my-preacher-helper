@@ -26,9 +26,10 @@ describe('the reading preview over a study note', () => {
     expect(screen.getByText('After')).toBeInTheDocument();
     expect(screen.getByText('Chosen verse').closest('[data-verse]')).toHaveAttribute('data-arrival', 'on');
     const reader = screen.getByRole('tabpanel');
-    const close = within(screen.getByRole('dialog')).getByRole('button', { name: 'bible.sheet.close' });
-    close.focus();
-    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    // Shift+Tab from the window's first control wraps to the reader: the way to the Bible, then Close, lead it.
+    const first = within(screen.getByRole('dialog')).getByRole('button', { name: 'bible.sheet.openInBible' });
+    first.focus();
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
     expect(reader).toHaveFocus();
     reader.scrollTop = 230;
     fireEvent.click(screen.getByRole('tab', { name: /bible.preview.myNotes/ }));

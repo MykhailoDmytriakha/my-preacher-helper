@@ -308,13 +308,19 @@ describe('the plan header is the same in every mode', () => {
     ).toHaveTextContent('Jabez, a study');
   });
 
-  /** The verse's opening reference leads into the Bible, and the reader offers the way back to this plan. */
-  it('opens the Bible at the passage the verse names, with the way back to the plan, on every route', async () => {
+  /**
+   * The verse's opening reference opens over the plan (the owner, 2026-10-21); the window leads into the
+   * Bible, and the reader offers the way back to this plan.
+   */
+  it('opens the passage the verse names over the plan, and from it the Bible with the way back to the plan, on every route', async () => {
     // The hand-written editor saves its cells before any door out, so the move may come a moment later.
     const openVerse = async () => {
       mockPush.mockClear();
       const link = within(screen.getByTestId('plan-header-verse')).getByRole('button', { name: '1 Chronicles 4:9-10' });
       act(() => { link.click(); });
+      const dialog = await screen.findByRole('dialog', { name: '1 Chronicles 4:9-10' });
+      expect(mockPush).not.toHaveBeenCalled();
+      act(() => { within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }).click(); });
       await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
       return Object.fromEntries(new URL(mockPush.mock.calls[0][0], 'https://app.test').searchParams);
     };
