@@ -27,7 +27,8 @@ export function useScriptureUsage(reference: ScriptureRefShape, currentNoteId: s
   return {
     results,
     loading: isAuthLoading || collections.some(collection => collection.loading),
-    complete: online && collections.every(collection => collection.state?.complete && collection.state.freshness === 'server' && !collection.error),
+    // A complete saved list stays complete during rechecks; freshness describes the latest answer.
+    complete: online && collections.every(collection => collection.state?.complete && !collection.error),
     error: collections.some(collection => Boolean(collection.error)),
     retry: () => Promise.allSettled(collections.map(collection => collection.refresh())),
   };

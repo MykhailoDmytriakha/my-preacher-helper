@@ -21,6 +21,12 @@ Pass both note and link read states into share-link views. Keep known link copy/
 
 Verify true-empty successful reads, retained local rows with a real refusal, cold failure and successful recovery. A fresh cached legacy query is still successful until it actually refetches: `useServerFirstQuery` becomes stale after30seconds and does not refetch merely because time passed while mounted. Require the actual refused request before claiming that a link-read failure was tested. Run these checks on the emulator described in `.howto/run-a-demo-on-the-emulator.md`.
 
+## Keep a complete saved list quiet during normal checking
+
+Collection `complete` records that its saved cursor has a full list; `freshness` and `checking` separately describe the latest server answer. In `hooks/useScriptureUsage.ts`, keep a complete saved list complete through an ordinary recheck while online and error-free. Keep matches during a real read failure or offline, with the existing partial/error messages and retry. A genuinely partial list remains partial. Reuse these engine facts; do not add a second remembered-completeness flag or alter the engine's freshness.
+
+This is presentation of the saved snapshot, not proof that an absent document is absent at the current server head. The engine still refreshes when a newer head arrives. Keep strict server confirmation for write/absence decisions in `recordPresence`, service-order seeding and `serverAnswered`. Regression: `__tests__/hooks/useScriptureUsage.test.tsx`; live check: Studies → note → text reference → My notes, reopening actual saved engine databases with a real local response held before delivery. Reconnection health HEAD succeeds with204; do not require200.
+
 ## Reproduce silent storage on localhost
 
 Open any page with the engine on, make the tab report visible (the automation tab is hidden), then hold a write transaction on the engine's records store with an endless chain of reads — every engine call on that store queues behind it and after `STORAGE_SILENCE_MS` (3 s) the database is declared silent:
