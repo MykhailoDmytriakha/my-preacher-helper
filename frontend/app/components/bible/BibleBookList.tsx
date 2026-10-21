@@ -10,6 +10,8 @@ import { placeIn } from '@/utils/versification';
 
 import { TranslationPicker } from './BiblePicker';
 import { booksOf } from './bookOrder';
+import { PlaceTrailOnList } from './PlaceTrail';
+import { usePlaceTrail } from './placeTrailStore';
 
 import type { LastPlace } from './lastPlace';
 import type { BibleId } from '@/utils/bibles';
@@ -32,6 +34,7 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
     ? (lastPlace.bible === bible ? lastPlace : placeIn(bible, lastPlace.bible, { book: lastBookId, chapter: lastPlace.chapter, verse: lastPlace.verse }))
     : null;
   const wide = useMediaQuery('(min-width: 768px)', false);
+  const trail = usePlaceTrail();
 
   const testaments = booksOf(bible).map((testament) => ({
     ...testament,
@@ -40,12 +43,18 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      {/* The translation at the right edge, where the reader's line has it. */}
+      <div className="flex items-center gap-3">
         <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-white">{t('bible.title')}</h1>
-        <TranslationPicker bible={bible} wide={wide} onPick={onChangeBible} />
+        <span className="ml-auto flex min-w-0">
+          <TranslationPicker bible={bible} wide={wide} onPick={onChangeBible} />
+        </span>
       </div>
 
-      {lastPlace && continueAt ? (
+      {/* Where the person has been, the place they stopped lit; "Continue" only for a device with no trail yet. */}
+      {trail.links.length > 0 ? (
+        <PlaceTrailOnList trail={trail} bible={bible} locale={locale} onOpen={(book, place) => onOpen(bookSlug(book), place)} />
+      ) : lastPlace && continueAt ? (
         <div>
           <button
             type="button"
