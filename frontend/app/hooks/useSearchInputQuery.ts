@@ -8,7 +8,8 @@ type SearchInputOptions = { emptyWhenBlank?: boolean };
 /**
  * Instant authored input with the existing shallow URL writer. Keep the local mirror used
  * by Studies: optimistic URL reconciliation must not flash an older value during clear/Escape.
- * External URL changes are adopted while the person is not editing this input. The query
+ * External URL changes are adopted while the person is not editing this input. Explicit Back
+ * and Forward restore their query even while focused. The query
  * library retains history, batching, browser rate limits and navigation queue resets.
  */
 export function useSearchInputQuery(key: string, { emptyWhenBlank = false }: SearchInputOptions = {}) {
@@ -20,6 +21,14 @@ export function useSearchInputQuery(key: string, { emptyWhenBlank = false }: Sea
     setValue(next);
     void setQuery(emptyWhenBlank && !next.trim() ? null : next);
   }, [emptyWhenBlank, setQuery]);
+
+  useEffect(() => {
+    // History is an explicit user choice, unlike a late optimistic query acknowledgement.
+    // Read its string value without writing it back: Nuqs owns queue resets and history.
+    const restoreHistoryQuery = () => setValue(new URLSearchParams(window.location.search).get(key) ?? '');
+    window.addEventListener('popstate', restoreHistoryQuery);
+    return () => window.removeEventListener('popstate', restoreHistoryQuery);
+  }, [key]);
 
   useEffect(() => {
     if (query !== value && document.activeElement !== inputRef.current) setValue(query);
