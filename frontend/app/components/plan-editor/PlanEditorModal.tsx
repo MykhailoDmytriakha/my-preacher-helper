@@ -7,7 +7,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 
-import { OutlineAutosave } from '@/components/plan-editor/outlineAutosave';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import { useOutlineConflict } from '@/components/plan-editor/useOutlineConflict';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
@@ -16,6 +15,7 @@ import { usePanelPosition } from '@/hooks/usePanelPosition';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { OutlineCapture } from '@/utils/outlineCapture';
 import { chooseOutlineLocalChanges, OutlineChoiceReviewRequiredError } from '@/utils/outlineChoice';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
@@ -140,7 +140,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const [savingTemplate, setSavingTemplate] = useState(false);
   const savingTemplateRef = useRef(false);
 
-  const saveQueue = useMemo(() => new OutlineAutosave(writer, sermon.id), [writer, sermon.id]);
+  const saveQueue = useMemo(() => new OutlineCapture(writer, sermon.id), [writer, sermon.id]);
   const sessionRef = useRef(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const templatesPanelRef = useRef<HTMLDivElement>(null);
@@ -202,7 +202,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     if (saved?.resolution==='local') persistRef.current?.(recovered,{force:true});
     return () => {
       sessionRef.current += 1;
-      // Hand ordinary pending input to the engine before leaving. Selected input also
+      // Every accepted input has already reached the engine. Selected input also
       // keeps its durable backup until an exact current capture retires it.
       void saveQueue.flush();
     };
@@ -248,14 +248,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         begin: () => {
           const waiting = getConflict();
           return {
-            stored: (stored, continuation) => {
+            stored: stored => {
               if (sessionRef.current !== sessionAtRequest) return;
               baseOutlineRef.current = stored;
-              if (continuation) {
-                outlineRef.current = continuation;
-                setOutline(continuation);
-                editConflict(continuation);
-              } else if (generationRef.current === generationAtRequest) {
+              if (generationRef.current === generationAtRequest) {
                 // This exact selected value is now kept by the engine on this device.
                 retireConflict(waiting);
                 outlineRef.current = stored;

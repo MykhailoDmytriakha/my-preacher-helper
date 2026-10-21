@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react';
 
 import type { SermonOutline, Thought, ThoughtsBySection } from '@/models/models';
+import type { OutlineInputSequence } from '@/utils/outlineCapture';
 import type { StructureSectionId } from '@/utils/structureTags';
 
 /**
@@ -25,7 +26,7 @@ export interface StructureWriter {
   /** `section`: the column it was added in, where it is placed whatever its tags. */
   createManualThought(sermonId: string, thought: Thought, section?: StructureSectionId): Promise<Thought>;
   updateSermonOutline(sermonId: string, outline: SermonOutline, baseOutline?: SermonOutline | null,
-    onCollision?: 'refuse' | 'preferMine'): Promise<SermonOutline | null>;
+    onCollision?: 'refuse' | 'preferMine', inputSequence?: OutlineInputSequence): Promise<SermonOutline | null>;
 }
 
 const noWriter = (): Promise<never> => Promise.reject(new Error('No structure writer: render inside the engine StructureWriterContext.Provider'));

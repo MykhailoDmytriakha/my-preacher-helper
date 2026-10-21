@@ -201,10 +201,12 @@ describe('the plan editor saves with what it opened with', () => {
     resolveFirst?.(captured);
     await flushSaveDebounce();
 
-    // The board still holds what the person typed LAST, not the stale answer.
+    // Both inputs are already submitted. This response-only mock cannot model
+    // canonical merging; the real-writer integration in PlanEditorModal.engine
+    // verifies the unseen phone point before storage and after latest completion.
     expect(mockSave).toHaveBeenCalledTimes(2);
-    expect(screen.getByTestId('board-text')).toHaveTextContent('edit 2|Added on phone');
-    expect(mockSave.mock.calls[1][2]).toEqual(captured);
+    expect(screen.getByTestId('board-text')).toHaveTextContent(/^edit 2$/);
+    expect(mockSave.mock.calls[1][2]).toEqual(outline);
   });
 
   it('stops autosaving until the person decides', async () => {

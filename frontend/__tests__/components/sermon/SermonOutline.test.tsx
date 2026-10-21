@@ -70,7 +70,7 @@ describe('SermonOutline Component', () => {
     updateThought: jest.fn(),
     deleteThought: jest.fn(),
     createManualThought: jest.fn(),
-    updateSermonOutline: (...args) => mockUpdateSermonOutline(...args),
+    updateSermonOutline: (id, outline, base, collision) => mockUpdateSermonOutline(id, outline, base, collision),
   };
   // As a wrapper option, so that rerender() keeps the provider too.
   const wrapper = ({ children }: { children: React.ReactNode }) => (

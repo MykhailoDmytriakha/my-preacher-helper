@@ -2,7 +2,7 @@ import { DragDropContext, Draggable, DraggableProvided, DraggableStateSnapshot, 
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { SubPointList } from '@/components/column/SubPointList';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
@@ -10,6 +10,7 @@ import { useConfirm } from '@/hooks/useConfirm';
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { newClientId } from '@/utils/clientId';
+import { OutlineCapture } from '@/utils/outlineCapture';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
@@ -77,9 +78,9 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   const dragWords = usePangeaAnnouncements(sectionListName);
   const { confirm, confirmDialog } = useConfirm();
   const writer = useStructureWriter();
+  const outlineCapture = useMemo(() => new OutlineCapture(writer, sermon.id, 'preferMine'), [writer, sermon.id]);
 
   // --- All useState hooks at the top ---
-  const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<FailureWords | null>(null);
   const [sectionPoints, setSectionPoints] = useState(() => mapOutline(sermon.outline));
   const [expandedSections, setExpandedSections] = useState(() => expandedOutline(sermon.outline));
@@ -103,7 +104,6 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
    * the server with itself and agree every time.
    */
   const baseOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   /**
    * Counts edits and newly opened draft fields, including nested subpoint inputs.
    * A response from before that draft must not replace its list or merge baseline.
@@ -194,89 +194,38 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     directlySaveOutlineChanges(updatedSectionPoints);
   };
 
-  // Direct save function that takes the updated points to save
-  const directlySaveOutlineChanges = (
-    pointsToSave: Record<SectionType, SermonPoint[]>,
-    /** A re-attempt of the SAME save, not a new edit — see `saveGenerationRef`. */
-    isRetry = false
-  ) => {
+  // Local ownership begins with the accepted edit; the engine schedules delivery.
+  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
     if (isReadOnly) return;
-    if (!isRetry) saveGenerationRef.current += 1;
-    // Clear any existing timeout to debounce saves
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-
-    // Ensure we have the latest state by delaying the save
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (!sermon || !sermon.id) {
-        console.error('Cannot save outline: sermon or sermon.id is undefined');
-        return;
-      }
-
-      if (saving) {
-        // Retry after the current save is done
-        saveTimeoutRef.current = setTimeout(() => directlySaveOutlineChanges(pointsToSave, true), 500);
-        return;
-      }
-
-      setSaving(true);
-      setError(null);
-      const generationAtRequest = saveGenerationRef.current;
-
-      try {
-        // Convert our component state structure to the API expected format
-        const outlineToSave: SermonOutline = {
-          introduction: pointsToSave.introduction,
-          main: pointsToSave.mainPart, // Map mainPart to main for API
-          conclusion: pointsToSave.conclusion,
-        };
-
-        // `preferMine` — this view cannot hold a refused plan; see the writer.
-        // The engine writer returns once the change is kept on this device; delivery, offline
-        // queueing and conflicts belong to the engine.
-        const saved = await writer.updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
-
-        /**
-         * THE BASE AND WHAT IS ON SCREEN MOVE TOGETHER — OR NOT AT ALL.
-         *
-         * The committed plan can hold MORE than we sent: a point added on another
-         * device that the merge kept. Adopting it into the base while the screen keeps
-         * its own list puts the two out of step, and the next save reads that gap as
-         * "deleted here" (`utils/mergeOutline.ts`) — so the other device's point is
-         * removed for good, one edit after it silently vanished from view.
-         *
-         * Nothing is adopted once the person has edited since: applying an older
-         * answer would wipe what they are typing, and taking only the base would
-         * delete the unseen point on the next save. Keeping the older base lets the
-         * merge re-add it. (Same reasoning as `PlanEditorModal`.)
-         */
+    saveGenerationRef.current += 1;
+    const generationAtRequest = saveGenerationRef.current;
+    const outlineToSave: SermonOutline = {
+      introduction: pointsToSave.introduction,
+      main: pointsToSave.mainPart,
+      conclusion: pointsToSave.conclusion,
+    };
+    setError(null);
+    outlineCapture.schedule({ outline: outlineToSave, base: baseOutlineRef.current, begin: () => ({
+      stored: saved => {
         if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
-        // Section by section, so a writer that answers with a partial object cannot
-        // blank the board.
         const committed: SermonOutline = {
-          introduction: saved?.introduction ?? outlineToSave.introduction,
-          main: saved?.main ?? outlineToSave.main,
-          conclusion: saved?.conclusion ?? outlineToSave.conclusion,
+          introduction: saved.introduction ?? outlineToSave.introduction,
+          main: saved.main ?? outlineToSave.main,
+          conclusion: saved.conclusion ?? outlineToSave.conclusion,
         };
         baseOutlineRef.current = committed;
-        setSectionPoints({
-          introduction: committed.introduction,
-          mainPart: committed.main,
-          conclusion: committed.conclusion,
-        });
+        settledGenerationRef.current = generationAtRequest;
+        setSectionPoints({ introduction: committed.introduction, mainPart: committed.main, conclusion: committed.conclusion });
         onOutlineUpdate?.(committed);
-      } catch (err) {
-        console.error("Error saving sermon outline:", err);
+      },
+      failed: err => {
+        if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
+        settledGenerationRef.current = generationAtRequest;
+        console.error('Error saving sermon outline:', err);
         setError({ key: writeFailureTranslationKey(err, 'errors.saveOutlineError') });
-      } finally {
-        setSaving(false);
-        if (generationAtRequest === saveGenerationRef.current) settledGenerationRef.current = generationAtRequest;
-      }
-    }, 100); // Shorter timeout since we're using direct data
+      },
+    }) });
   };
-
 
 
   const toggleSection = (section: SectionType) => {

@@ -58,7 +58,7 @@ const mockStructureWriter: StructureWriter = {
   updateThought: jest.fn(),
   deleteThought: jest.fn(),
   createManualThought: jest.fn(),
-  updateSermonOutline: (...args) => mockUpdateSermonOutline(...args),
+  updateSermonOutline: (id, outline, base, collision) => mockUpdateSermonOutline(id, outline, base, collision),
 };
 
 const render = (ui: React.ReactElement) =>

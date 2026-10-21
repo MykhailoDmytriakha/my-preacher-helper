@@ -88,6 +88,23 @@ describe('the sermon page outline on an engine document', () => {
     } as unknown as Sermon;
   });
 
+  it('hands a confirmed inline edit to the engine before leaving can cancel its timer', () => {
+    jest.useFakeTimers();
+    try {
+      const view = renderPanel(documentCopy);
+      fireEvent.click(within(introSection()).getByLabelText('common.edit'));
+      const input = screen.getByDisplayValue('First impression');
+      fireEvent.change(input, { target: { value: 'Last accepted words' } });
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+      const ownedBeforeDeparture = documentCopy.outline!.introduction[0].text;
+      view.unmount();
+      expect(ownedBeforeDeparture).toBe('Last accepted words');
+    } finally {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+
   it('adds a point through the engine writer', async () => {
     renderPanel(documentCopy);
     const addButton = within(introSection()).getByLabelText('structure.addPointButton');

@@ -69,6 +69,66 @@ describe('the structure editor on an engine document', () => {
   });
   afterEach(() => { jest.useRealTimers(); });
 
+  it('hands accepted board input to the engine before any departure can retire the screen', () => {
+    documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    const view = openEditor(documentCopy);
+    fireEvent.click(screen.getByText('edit-a-point'));
+    // Observe ownership before unmount cleanup or a timer can rescue the input.
+    const ownedBeforeDeparture = documentCopy.outline!.main[0].text;
+    view.unmount();
+    expect(ownedBeforeDeparture).toBe('edit 1');
+  });
+
+  it('hands the latest board continuation over while an earlier local persistence is still pending', async () => {
+    documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    let release!: () => void;
+    fakeDocument.update.mockImplementationOnce(async apply => {
+      documentCopy = apply(documentCopy as unknown as DocumentData) as unknown as Sermon;
+      await new Promise<void>(resolve => { release = resolve; });
+    });
+    const view = openEditor(documentCopy);
+    try {
+      fireEvent.click(screen.getByText('edit-a-point'));
+      await flushSaveDebounce();
+      fireEvent.click(screen.getByText('edit-a-point'));
+      const ownedBeforeDeparture = documentCopy.outline!.main[0].text;
+      view.unmount();
+      expect(ownedBeforeDeparture).toBe('edit 2');
+    } finally {
+      await act(async () => { release?.(); await Promise.resolve(); });
+    }
+  });
+
+  it('preserves an unseen phone point with the latest input while both local captures wait', async () => {
+    const opened = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
+    documentCopy = sermonWith({ introduction: [], main: [
+      { id: 'p1', text: 'Grace' }, { id: 'phone-point', text: 'Added on phone' },
+    ], conclusion: [] });
+    const ordinaryUpdate = fakeDocument.update.getMockImplementation()!;
+    const releases: Array<() => void> = [];
+    fakeDocument.update.mockImplementation(async apply => {
+      documentCopy = apply(documentCopy as unknown as DocumentData) as unknown as Sermon;
+      await new Promise<void>(resolve => { releases.push(resolve); });
+    });
+    const view = openEditor(opened);
+    try {
+      fireEvent.click(screen.getByText('edit-a-point'));
+      fireEvent.click(screen.getByText('edit-a-point'));
+      expect(releases).toHaveLength(2);
+      expect(documentCopy.outline!.main.map(point => point.text)).toEqual(['edit 2', 'Added on phone']);
+      await act(async () => { releases[0](); await Promise.resolve(); });
+      // An older receipt cannot replace the latest input while its own capture is pending.
+      expect(screen.getByTestId('board-text')).toHaveTextContent(/^edit 2$/);
+      expect(documentCopy.outline!.main.map(point => point.text)).toEqual(['edit 2', 'Added on phone']);
+      await act(async () => { releases[1](); await Promise.resolve(); });
+      expect(screen.getByTestId('board-text')).toHaveTextContent('edit 2|Added on phone');
+    } finally {
+      await act(async () => { releases.forEach(resolve => resolve()); await Promise.resolve(); });
+      fakeDocument.update.mockImplementation(ordinaryUpdate);
+      view.unmount();
+    }
+  });
+
   it('writes an edit into the document through the engine writer', async () => {
     documentCopy = sermonWith({ introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] });
     openEditor(documentCopy);

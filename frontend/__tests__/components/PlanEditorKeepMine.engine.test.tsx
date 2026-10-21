@@ -226,8 +226,9 @@ describe('keep mine after a question about one point', () => {
     mockNextEdit=rewrite('p1','Later local words');
     fireEvent.click(screen.getByText('edit'));
     await act(async () => {await jest.advanceTimersByTimeAsync(120);});
-    // A newer edit waits for this device's earlier capture, rather than conflicting with it.
-    expect(releases).toHaveLength(1);
+    // Newer accepted words already belong to the same engine draft before either disk write ends.
+    expect(releases).toHaveLength(2);
+    expect(server.main[0].text).toBe('Later local words');
     const key=Object.keys(localStorage).find(key => key.includes('outlineConflict'))!;
     await act(async () => {releases[0]();await Promise.resolve();});
     expect(releases).toHaveLength(2);
