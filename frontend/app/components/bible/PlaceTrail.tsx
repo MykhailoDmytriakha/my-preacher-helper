@@ -18,7 +18,8 @@ import type { BibleId } from '@/utils/bibles';
  * the way back that shows and hides it and counts its links, and the links in a row that scrolls
  * sideways, the place being read lit. Every link looks the same — which ones are recent is the rule's
  * business, not the person's (the owner, 2026-10-20). On a wide screen the row stands under the book's
- * line; on a phone above the bar with the way back, under the thumb.
+ * line; on a phone above the bar with the way back, under the thumb; on the list of books in place of
+ * "Continue", the lit link being where the person stopped (the owner, 2026-10-20).
  */
 
 /** A link's place in the Bible being read: a place kept in another Bible is found in this one. */
@@ -72,8 +73,18 @@ export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: 
   );
 }
 
-export function PlaceTrailStrip({ trail, bible, locale, floating, onGo }: {
-  trail: Trail; bible: BibleId; locale: AppLocale; floating: boolean; onGo: (link: TrailPlace) => void;
+/** Where the row stands: under the reader's line, floating over a phone's bar, or on the list of books. */
+type StripLook = 'line' | 'floating' | 'page';
+
+const STRIP_CLASSES: Record<StripLook, string> = {
+  line: 'relative z-20 mb-3 shrink-0 overflow-x-auto overscroll-contain border-y border-gray-200 bg-gray-50 px-1 py-1.5 dark:border-gray-700 dark:bg-gray-950',
+  floating: 'pointer-events-auto fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-20 z-30 overflow-x-auto overscroll-contain rounded-full border border-gray-200 bg-white/95 px-2 py-1.5 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/95 dark:shadow-black/40',
+  // A link cut by the row's edge fades out instead of standing there as a broken pill.
+  page: 'relative min-w-0 overflow-x-auto overscroll-contain px-4 py-1.5 [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%_-_1rem),transparent)]',
+};
+
+export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
+  trail: Trail; bible: BibleId; locale: AppLocale; look: StripLook; onGo: (link: TrailPlace) => void;
 }) {
   const { t } = useTranslation();
   const rowRef = useRef<HTMLElement | null>(null);
@@ -89,9 +100,7 @@ export function PlaceTrailStrip({ trail, bible, locale, floating, onGo }: {
     <nav
       ref={rowRef}
       aria-label={t('bible.trail.title')}
-      className={floating
-        ? 'pointer-events-auto fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-20 z-30 overflow-x-auto overscroll-contain rounded-full border border-gray-200 bg-white/95 px-2 py-1.5 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/95 dark:shadow-black/40'
-        : 'relative z-20 mb-3 shrink-0 overflow-x-auto overscroll-contain border-y border-gray-200 bg-gray-50 px-1 py-1.5 dark:border-gray-700 dark:bg-gray-950'}
+      className={STRIP_CLASSES[look]}
     >
       <ol className="flex w-max items-center gap-1.5">
         {trail.links.map((link, index) => {
@@ -112,6 +121,27 @@ export function PlaceTrailStrip({ trail, bible, locale, floating, onGo }: {
         })}
       </ol>
     </nav>
+  );
+}
+
+/**
+ * The trail on the list of books, in place of "Continue": the trail's sign, then its row, the lit link
+ * where the person stopped. A link opens the reader at its place (`onOpen`), and the reader's arrival
+ * lights it or adds it, as a tap on the row in the reader does. An empty trail shows nothing.
+ */
+export function PlaceTrailOnList({ trail, bible, locale, onOpen }: {
+  trail: Trail; bible: BibleId; locale: AppLocale; onOpen: (book: string, place: { chapter: number; verse: number }) => void;
+}) {
+  const go = useCallback((link: TrailPlace) => {
+    const place = trailPlaceIn(bible, link);
+    if (place) onOpen(link.book, place);
+  }, [bible, onOpen]);
+  if (trail.links.length === 0) return null;
+  return (
+    <div className="flex w-fit max-w-full items-center rounded-2xl border border-gray-200 bg-white pl-3 dark:border-gray-700 dark:bg-gray-900">
+      <span aria-hidden="true" className="shrink-0 text-indigo-700 dark:text-indigo-300">{ROUTE_ICON}</span>
+      <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look="page" onGo={go} />
+    </div>
   );
 }
 
@@ -175,7 +205,7 @@ export function useReaderTrail({ bible, locale, wide, here, openPlace }: {
     : link && place ? { kind: 'link', index: before, book: link.book, place, label: linkLabel(link, bible, locale) } : null;
   if (trail.links.length < 2) return { inLine: null, underLine: null, inBar: null, overBar: null, back };
   const button = <PlaceTrailButton count={trail.links.length} shown={prefs.shown} floating={!wide} onToggle={toggle} />;
-  const row = prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} floating={!wide} onGo={go} /> : null;
+  const row = prefs.shown ? <PlaceTrailStrip trail={trail} bible={bible} locale={locale} look={wide ? 'line' : 'floating'} onGo={go} /> : null;
   return wide
     ? { inLine: button, underLine: row, inBar: null, overBar: null, back }
     : { inLine: null, underLine: null, inBar: button, overBar: row, back };
