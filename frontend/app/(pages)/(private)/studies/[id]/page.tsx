@@ -1305,7 +1305,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     // ─── RENDER ─────────────────────────────────────────────────────────────
 
     if (isNew && notesLoading) {
-        return <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6">
+        return <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" data-page-loading={unsavedRecovery ? undefined : ''}>
             <button type="button" onClick={handleBack} className="font-semibold text-emerald-700 dark:text-emerald-300">{t('common.back')}</button>
             <div role="status" className="flex items-center gap-2">
                 <ArrowPathIcon className="h-5 w-5 animate-spin text-emerald-600" aria-hidden />
@@ -1316,13 +1316,13 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     }
     if (unavailable) {
         const kept = unsavedRecovery ?? (isInitialized ? draftPayload : null);
-        return <RecordUnavailable presence={presence} checking={notesLoading} onBack={handleBack} onRetry={refetch}>
+        return <RecordUnavailable presence={presence} checking={notesLoading} pageLoading={notesLoading && !kept} onBack={handleBack} onRetry={refetch}>
             {kept && <RetainedNoteDraft draft={kept} />}
         </RecordUnavailable>;
     }
 
     return (
-        <div data-note-workspace className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
+        <div data-note-workspace data-page-loading={!isInitialized && !unsavedRecovery ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
             {renderHeader()}
 

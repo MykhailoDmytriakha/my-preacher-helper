@@ -290,7 +290,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   if (!user?.uid) return null;
 
   if (!group) {
-    return <RecordUnavailable presence={editor.presence} checking={loading}
+    return <RecordUnavailable presence={editor.presence} checking={loading} pageLoading={loading && !editor.retainedGroup}
       onBack={() => router.push('/groups')} onRetry={editor.refresh}>
       {feedback}
       {editor.retainedGroup && <GroupReadOnlyContent group={editor.retainedGroup} allowConduct={false} />}
@@ -303,7 +303,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   }
 
   if (loading) {
-    return <div className="space-y-4">
+    return <div className="space-y-4" data-page-loading="">
       <button type="button" onClick={() => router.push('/groups')}>{t('common.back')}</button>
       {feedback}
       {[1, 2, 3].map(index => <div key={index} className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />)}

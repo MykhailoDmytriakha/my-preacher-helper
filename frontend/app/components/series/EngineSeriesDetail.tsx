@@ -75,7 +75,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       onRecover={metadataRecovery.recover} onRetry={metadata.retry} />
     <RetainedSeriesMetadata value={metadata.data} />
   </>;
-  if (!document.data) return <RecordUnavailable presence={document.presence} checking={document.loading}
+  if (!document.data) return <RecordUnavailable presence={document.presence} checking={document.loading} pageLoading={document.loading && !retainedMetadata}
     onBack={() => router.push('/series')} onRetry={document.retry}>{sync}{retainedMetadata}</RecordUnavailable>;
   const base = hydrateSeries({ ...document.data, id: seriesId } as unknown as Series);
   const projected = collection.series.find(series => series.id === seriesId);

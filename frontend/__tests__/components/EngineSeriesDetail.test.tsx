@@ -247,3 +247,13 @@ it('knows a series with no group members has zero meetings without reading group
   expect(screen.queryByText('dataSync.backgroundFailure')).not.toBeInTheDocument();
   view.unmount();
 });
+
+// BUG-20261020-offline-sermon-scroll-landing also affects first series reads.
+it('declares the unresolved series page and releases it when its document arrives', async () => {
+  const { view } = setup();
+  expect(screen.getByText('recordAvailability.checking')).toBeVisible();
+  expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
+  await screen.findByRole('heading', { name: 'b', level: 1 });
+  expect(view.container.querySelector('[data-page-loading]')).toBeNull();
+  view.unmount();
+});

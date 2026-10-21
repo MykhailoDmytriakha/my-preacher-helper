@@ -3,7 +3,7 @@
 // Mirrors the in-page loading skeleton in groups/[id]/page.tsx.
 export default function Loading() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-page-loading="">
       {[1, 2, 3].map((index) => (
         <div
           key={index}

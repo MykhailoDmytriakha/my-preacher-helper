@@ -212,6 +212,7 @@ describe('PrayerDetailPage', () => {
     const { container } = render(<PrayerDetailPage />);
 
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(3);
+    expect(container.querySelector('[data-page-loading]')).not.toBeNull();
   });
 
   it('renders the shared not-found state only for a confirmed missing prayer', () => {

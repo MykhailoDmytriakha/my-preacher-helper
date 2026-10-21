@@ -57,6 +57,14 @@ html {
   scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
+/* A full-page placeholder is not a lasting reading position. During a cached
+   navigation the short fallback can clamp the old offset into view; anchoring
+   must not restore it when the document replaces that fallback. The existing
+   router still owns navigation and Back, and ordinary reading keeps anchoring. */
+html:has([data-page-loading]) {
+  overflow-anchor: none;
+}
+
 * {
   scrollbar-width: thin;
 }

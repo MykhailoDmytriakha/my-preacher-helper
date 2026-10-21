@@ -1,6 +1,6 @@
 export function SeriesDetailSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-page-loading="">
       <div className="animate-pulse rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900/70">
         <div className="h-4 w-24 rounded bg-gray-200 dark:bg-gray-700" />
         <div className="mt-3 h-8 w-36 rounded bg-gray-200 dark:bg-gray-700" />

@@ -195,9 +195,11 @@ describe('StudyNoteEditorPage Pagination', () => {
         const view = render(<StudyNoteEditorPage />);
         expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+        expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
         (useStudyNotes as jest.Mock).mockReturnValue({ ...collection, uid: 'user-1', loading: false });
         view.rerender(<StudyNoteEditorPage />);
         expect(await screen.findByTestId('rich-markdown-editor')).toBeVisible();
+        expect(view.container.querySelector('[data-page-loading]')).toBeNull();
     });
 
     it('names a server-confirmed missing note and offers a route back', async () => {
@@ -221,6 +223,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         const view = render(<StudyNoteEditorPage />);
         try {
             expect(await screen.findByText('kept-missing-tag')).toBeVisible();
+            expect(view.container.querySelector('[data-page-loading]')).toBeNull();
             expect(screen.getByText(/3:16/)).toBeVisible();
             if (!metadataOnly) {
                 expect(screen.getByText('Kept missing title')).toBeVisible();

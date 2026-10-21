@@ -54,3 +54,12 @@ use the same useRouteId owner as other detail pages. A route entry alone does no
 access/data exist only in live API memory (admin); preserve its access boundary and track that domain
 separately. Verify index/legacy redirects and cached lazy chunks with real worker restarts, beyond
 mounted route probes.
+
+
+## Open a cached document at its beginning
+
+A new card can inherit the old list offset when a short full-page fallback clamps the viewport before cached content expands. First trace native anchoring separately from explicit scroll calls and history restoration. The router remains the navigation owner; do not add a reset timer or `scrollTo` to each screen.
+
+The existing full-page fallback declares `data-page-loading`. One rule in `app/globals.css`, `html:has([data-page-loading]) { overflow-anchor: none; }`, suspends native document anchoring only while that state exists. Use the actual loading root: sermon/series skeletons and group/prayer/study route/page fallbacks. `RecordUnavailable` requires both `checking` and explicit `pageLoading`; a caller with retained series/group content does not opt in. A study workspace declares only its empty pre-initialization state, never a visible recovered draft. Inline spinners, card activity and ordinary reading must not declare full-page loading. The marker leaves with the waiting state, restoring normal anchoring.
+
+Verify geometry in a real browser after warming the actual list and document, waiting for an actual controlling service worker, then disabling the network and opening from a meaningfully scrolled list. Repeat the opening. `serviceWorker.ready` alone may precede controller assignment; wait for `navigator.serviceWorker.controller` separately. Measure the first body paragraph when a sticky title can hide the failure. JSDOM only verifies the state declaration/release; it does not implement native anchoring. Record source/build pins, visible body/title geometry, `auto → none → auto`, unchanged retained-content controls and cleanup. Back/Forward offsets are a separate navigation contract; an ordinary-card fix does not prove history restoration.

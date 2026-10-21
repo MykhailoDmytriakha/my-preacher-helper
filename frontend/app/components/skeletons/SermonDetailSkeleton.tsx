@@ -1,7 +1,7 @@
 
 export const SermonDetailSkeleton = () => {
     return (
-        <div data-testid="sermon-detail-skeleton" className="animate-pulse space-y-6">
+        <div data-page-loading="" data-testid="sermon-detail-skeleton" className="animate-pulse space-y-6">
             {/* Header Skeleton */}
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
                 <div className="space-y-3 w-full sm:w-2/3">

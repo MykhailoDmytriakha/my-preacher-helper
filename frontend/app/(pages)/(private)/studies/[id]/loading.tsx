@@ -3,7 +3,7 @@
 // Mirrors the in-page loading spinner in studies/[id]/page.tsx.
 export default function Loading() {
   return (
-    <div className="flex items-center justify-center p-12">
+    <div className="flex items-center justify-center p-12" data-page-loading="">
       <svg
         className="h-6 w-6 animate-spin text-emerald-600"
         xmlns="http://www.w3.org/2000/svg"
