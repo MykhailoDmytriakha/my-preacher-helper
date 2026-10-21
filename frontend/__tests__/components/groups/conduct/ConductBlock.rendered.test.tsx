@@ -87,3 +87,18 @@ it('reads a kept reference in the group\'s language when the block\'s words do n
   render(<ConductBlock {...props} template={kept} />);
   expect(screen.queryByText('bible.translations.ubio.short')).not.toBeInTheDocument();
 });
+
+// Codex's review, 2026-10-21: a book kept whole ("Руфь") was a dead chip; it opens at the book's start over the meeting.
+it('opens a book kept whole over the meeting, and leaves a place its Bible lacks a label', () => {
+  const kept = { ...template, scriptureRefs: ['Руфь', 'Рим 25'] };
+  render(
+    <ConductBlock
+      flowItem={flowItem} template={kept} index={0} total={1} isPaused={false} onPause={jest.fn()} onResume={jest.fn()}
+      globalTimeLeft={null} globalIsOvertime={false} initialElapsed={0} onTimeRecorded={jest.fn()} onPrev={jest.fn()}
+      onNext={jest.fn()} onPeek={jest.fn()} onCompleteAll={jest.fn()}
+    />
+  );
+  expect(screen.queryByRole('button', { name: 'Рим 25' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Руфь' }));
+  expect(screen.getByRole('dialog', { name: 'Руфь' })).toBeInTheDocument();
+});

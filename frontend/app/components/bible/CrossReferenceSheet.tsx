@@ -34,8 +34,8 @@ type CrossReferenceSheetProps = {
   /** The verse's own text, shown under the title. */
   verseText?: string;
   onClose: () => void;
-  /** "Open": the reader goes to the passage. */
-  onOpenReference: (reference: CrossReference, from: CrossReferencePlace) => void;
+  /** "Open": the reader goes to the passage. None where the screen under it may not be left — a link is then read in place. */
+  onOpenReference?: (reference: CrossReference, from: CrossReferencePlace) => void;
   /** The window's layer: over the reader, or over the passage window, which stands at z-[250]. */
   layerClassName?: string;
   /** The layer of one link's window, opened over this one: a step above `layerClassName`. */
@@ -113,7 +113,7 @@ function litBox(pane: HTMLElement): PassageBox | null {
  */
 function ReferenceInContext({ reference, label, text, bible, locale, titleId, onClose, onOpen }: {
   reference: CrossReference; label: string; text: BookText | undefined; bible: BibleId; locale: AppLocale; titleId: string;
-  onClose: () => void; onOpen: () => void;
+  onClose: () => void; onOpen?: () => void;
 }) {
   const { t } = useTranslation();
   const verses = text?.chapters[reference.chapter - 1];
@@ -233,13 +233,15 @@ function ReferenceInContext({ reference, label, text, bible, locale, titleId, on
           </button>
         ) : null}
       </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="mt-3 min-h-12 w-full shrink-0 rounded-xl bg-indigo-600 px-4 text-base font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-      >
-        {t('bible.crossRefs.open', { place: label })}
-      </button>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-3 min-h-12 w-full shrink-0 rounded-xl bg-indigo-600 px-4 text-base font-semibold text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+        >
+          {t('bible.crossRefs.open', { place: label })}
+        </button>
+      ) : null}
     </>
   );
 }
@@ -457,7 +459,7 @@ export function CrossReferenceSheet({ at, bookId, bible, locale, set, verseText,
             locale={locale}
             titleId={linkTitleId}
             onClose={() => setPicked(null)}
-            onOpen={() => onOpenReference(picked, at)}
+            onOpen={onOpenReference ? () => onOpenReference(picked, at) : undefined}
           />
         </ReaderSheet>
       ) : null}

@@ -37,7 +37,8 @@ function blockReferences(kept: string[], locale: AppLocale, written: AppLocale |
   };
   kept.forEach((raw) => {
     const reference = referenceFromTyped(raw, { locale, written });
-    add(raw, reference && namesAPlace(reference) ? reference : null);
+    // A whole book ("Руфь") opens at its start; a place its Bible lacks ("Рим 25") stays a label.
+    add(raw, reference && (!reference.chapter || namesAPlace(reference)) ? reference : null);
   });
   return found;
 }

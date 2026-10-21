@@ -15,12 +15,14 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
 import { bibleHref } from '@/utils/bibleLink';
 import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
+import { referenceBibleFor, withStoredBible } from '@/utils/scriptureReferenceNumbering';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
@@ -157,9 +159,16 @@ export default function StudyNoteCard({
     [bibleLocale]
   );
 
-  // A reference chip opens the Bible at its verse; the card's own click opens or folds the card.
-  const openInBible = (event: React.SyntheticEvent, ref: ScriptureRefShape) => {
+  // A reference chip opens its verse the way the list opens every reference — over the page — else
+  // the Bible at it; the card's own click opens or folds the card.
+  const links = useScriptureLinks();
+  const openReference = (event: React.SyntheticEvent, ref: ScriptureRefShape) => {
     event.stopPropagation();
+    if (links) {
+      const stored = withStoredBible(ref, bibleLocale);
+      links.onOpen({ ...stored, bible: stored.bible ?? referenceBibleFor(bibleLocale) });
+      return;
+    }
     const href = bibleHref(ref, { locale: bibleLocale, from: `${window.location.pathname}${window.location.search}` });
     if (href) router.push(href);
   };
@@ -375,7 +384,7 @@ export default function StudyNoteCard({
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {matchingRefs.map((ref) => (
-                                  <Chip key={ref.id} tone="emerald" size="sm" icon={<BookmarkIcon className="h-3 w-3" />} ariaLabel={formatRef(ref)} onClick={(event) => openInBible(event, ref)}>
+                                  <Chip key={ref.id} tone="emerald" size="sm" icon={<BookmarkIcon className="h-3 w-3" />} ariaLabel={formatRef(ref)} onClick={(event) => openReference(event, ref)}>
                                     <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
                                   </Chip>
                                 ))}
@@ -509,7 +518,7 @@ export default function StudyNoteCard({
                     key={ref.id}
                     tone="emerald"
                     ariaLabel={formatRef(ref)}
-                    onClick={(event) => openInBible(event, ref)}
+                    onClick={(event) => openReference(event, ref)}
                   >
                     {searchQuery ? (
                       <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />

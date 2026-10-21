@@ -199,11 +199,7 @@ export default function FullPlanContent({
       {sermonVerse && (
         <div className={`mb-8 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-md border-l-4 ${introductionToneClasses.border}`}>
           <p className="text-gray-700 dark:text-gray-300 italic text-lg whitespace-pre-line">
-            <ScriptureOpening
-              text={sermonVerse}
-              reference={opening}
-              onOpen={(_href, lead) => setVerse({ ...lead.reference, label: sermonVerse.slice(0, lead.end) })}
-            />
+            <ScriptureOpening text={sermonVerse} reference={opening} />
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}

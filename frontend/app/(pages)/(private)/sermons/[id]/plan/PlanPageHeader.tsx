@@ -17,7 +17,6 @@ import { hasPlan } from "@/utils/sermonPlanAccess";
 import { PlanModeSwitch } from "./PlanModeSwitch";
 
 import type { CombinedPlan } from "./types";
-import type { SheetReference } from "@/components/bible/VerseSheet";
 import type { Sermon } from "@/models/models";
 
 /**
@@ -84,8 +83,6 @@ export interface PlanPageHeaderProps {
   onLeave?: React.MouseEventHandler<HTMLAnchorElement>;
   onSwitched?: (mode: PlanEditorMode) => void;
   beforeSwitch?: () => Promise<boolean>;
-  /** How the sermon's verse opens when the page decides it — over the plan while a point is being edited. */
-  onOpenReference?: (reference: SheetReference) => void;
   onRequestPlanOverlay: () => void;
   onRequestPreachingMode: () => void;
   onStartPreachingMode: () => void;
@@ -109,7 +106,6 @@ export default function PlanPageHeader({
   onLeave,
   onSwitched,
   beforeSwitch,
-  onOpenReference,
   onRequestPlanOverlay,
   onRequestPreachingMode,
   onStartPreachingMode,
@@ -177,12 +173,12 @@ export default function PlanPageHeader({
             data-testid="plan-header-verse"
             className="border-l-4 border-blue-500 pl-4 dark:border-blue-400"
           >
-            {/* The passage the verse opens with leads into the Bible, and "← Plan" brings the person back. */}
+            {/* The passage the verse opens with opens the way the page opens references (over it); with none around, the Bible, "← Plan" back. */}
             <p className="whitespace-pre-line text-lg italic text-gray-700 dark:text-gray-300">
               <ScriptureOpening
                 text={sermon.verse}
                 reference={leadingReference(sermon.verse, { locale, from: here, written: sermonLanguage(sermon) })}
-                onOpen={(href, opening) => (onOpenReference ? onOpenReference({ ...opening.reference, label: (sermon.verse ?? "").slice(0, opening.end) }) : openInBible(href))}
+                onOpen={(href) => openInBible(href)}
               />
             </p>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{t("common.scripture")}</p>

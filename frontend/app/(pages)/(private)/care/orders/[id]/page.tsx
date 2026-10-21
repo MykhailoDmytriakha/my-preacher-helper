@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { WrittenInMark } from '@/components/bible/ScriptureLinks';
+import { useVerseWindow } from '@/components/bible/VerseWindow';
 import { Chip } from '@/components/ui/Chip';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -18,7 +19,7 @@ import {
 } from '@/services/conflictSafeUpdate.client';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { textLanguage } from '@/utils/appLocale';
-import { bibleHrefForText, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
+import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
 import { newClientId } from '@/utils/clientId';
 import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
@@ -148,6 +149,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const { t } = useTranslation();
   const { locale } = useAppLocale();
   const { confirm, confirmDialog } = useConfirm();
+  // A step's passage opens over the order; the Bible is one press away from the window.
+  const verseWindow = useVerseWindow();
 
   const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, renameOrder, deleteOrder } =
     useServiceOrders();
@@ -1110,15 +1113,15 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                     {(step.scriptureRefs ?? []).length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {(step.scriptureRefs ?? []).map((ref) => {
-                          // A reference the app can read opens the Bible at it; any other stays a label. Its Bible is the
+                          // A reference the app can read — a whole book, or a chapter and verse it has — opens over the order;
+                          // any other ("Рим 25") stays a label. Its Bible is the
                           // one its words were written in: the order's, else the step's (`referenceFromTyped`).
                           const written = orderWrittenIn ?? textLanguage(`${step.title}\n${step.body ?? ''}`);
-                          const href = bibleHrefForText(ref, { locale, from: `/care/orders/${orderId}`, written });
                           const reference = referenceFromTyped(ref, { locale, written });
                           const writtenIn = reference ? writtenInFor(ref, reference, locale) : undefined;
                           return (
                             <span key={ref} className="inline-flex items-center">
-                              <Chip tone="emerald" size="xs" weight="bold" onClick={href ? () => router.push(href) : undefined}>
+                              <Chip tone="emerald" size="xs" weight="bold" onClick={reference && (!reference.chapter || namesAPlace(reference)) ? () => verseWindow.open({ ...reference, label: ref }) : undefined}>
                                 {ref}
                               </Chip>
                               {writtenIn ? <WrittenInMark bible={writtenIn} /> : null}
@@ -1162,6 +1165,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         </div>
       )}
       {confirmDialog}
+      {verseWindow.sheet}
     </div>
   );
 }

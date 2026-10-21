@@ -14,9 +14,10 @@ import type { Element, ElementContent, Root, RootContent, Text } from 'hast';
 /**
  * A REFERENCE IN TEXT IS A LINK — "Прочитайте Рим 12:1–2", "Быт. 6:13", "1 Фес. 1:9-10" in a block's
  * text, a plan, a question — drawn as the sermon's verse is drawn, and pressed where it stands. A
- * screen says only what a press does: open the text over it (a meeting, a sermon being preached) or
- * go to the Bible (a page being prepared). Text with no `ScriptureLinks` around it stays as it was,
- * so a note, a shared page or a PDF is untouched.
+ * screen says only what a press does; every screen opens the text over it — a meeting, a sermon being
+ * preached with their own window, a page being prepared through `ScriptureLinksInWindow` (`VerseWindow.tsx`),
+ * whose window offers the Bible page. Text with no `ScriptureLinks` around it stays as it was, so a
+ * note, a shared page or a PDF is untouched.
  */
 
 /** The one look of a reference to open: the sermon's verse, every reference in text. */

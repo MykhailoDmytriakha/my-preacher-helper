@@ -1,13 +1,12 @@
 'use client';
 
-import { ArrowDownIcon, ArrowUpIcon, XMarkIcon } from '@heroicons/react/20/solid';
+import { ArrowDownIcon, ArrowUpIcon, BookOpenIcon, XMarkIcon } from '@heroicons/react/20/solid';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useModalLayer } from '@/hooks/useModalLayer';
-import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { BIBLES, type BibleId } from '@/utils/bibles';
 import { fetchBookText, type BookText } from '@/utils/bibleText';
@@ -22,6 +21,8 @@ import { readTranslation } from './translation';
 import { useBookCrossRefs } from './useBookCrossRefs';
 import { chapterAtLine, useChapterWindow } from './useChapterWindow';
 import { passageAway, passageKeys, restingScrollTop, type PassageBox, type SheetReference } from './verseSheetGeometry';
+
+import type { CrossReference } from '@/utils/crossReferences';
 
 export type { SheetReference } from './verseSheetGeometry';
 
@@ -42,6 +43,14 @@ type VerseSheetProps = {
    * `count`, once known, sits on the tab as a badge, so the reader sees there is something without opening it.
    */
   related?: { label: string; count?: number; render: (returnToText: () => void) => ReactNode };
+  /**
+   * THE WINDOW'S ONE WAY OUT — the Bible page at a passage, its way back the screen under the window,
+   * through the screen's own rule (saving first, or not at all while unsaved words would be lost): the
+   * passage itself ("Open in the Bible") and a cross-reference read in it ("Open"). None — over a
+   * meeting, a sermon being preached, a plan point being edited — and the window never leaves: a
+   * cross-reference is read in place.
+   */
+  openInBible?: (reference: SheetReference) => void;
 };
 
 /**
@@ -52,18 +61,42 @@ type VerseSheetProps = {
  * to close; the Bible read, its text (kept on the device) and the numbering (`utils/versification`)
  * are this module's — the same ones the Bible page reads with.
  */
-export function VerseSheet({ reference, onClose, keepVisible, related }: VerseSheetProps) {
+export function VerseSheet({ reference, onClose, keepVisible, related, openInBible }: VerseSheetProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!reference || !mounted) return null;
   const key = `${reference.bible}|${reference.book}|${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}`;
   // Over everything the page draws, a meeting's own full-screen layer included.
-  return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} related={related} />, document.body);
+  return createPortal(<Sheet key={key} reference={reference} onClose={onClose} keepVisible={keepVisible} related={related} openInBible={openInBible} />, document.body);
 }
 
 type LoadState = { status: 'loading' } | { status: 'ready'; text: BookText } | { status: 'error' };
 
-function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetReference; onClose: () => void; keepVisible: VerseSheetProps['keepVisible']; related: VerseSheetProps['related'] }) {
+/** "Open" on a cross-reference read in the window: the screen's way out, at that passage in the Bible read; none without one. */
+const crossReferenceExit = (openInBible: VerseSheetProps['openInBible'], bible: BibleId) =>
+  openInBible
+    ? (target: CrossReference) => openInBible({ bible, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse })
+    : undefined;
+
+/** The passage on the Bible page, where the screen gives a way out; on a phone the short word leaves the reference its room. */
+function OpenInBibleButton({ reference, openInBible }: { reference: SheetReference; openInBible: VerseSheetProps['openInBible'] }) {
+  const { t } = useTranslation();
+  if (!openInBible) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => openInBible(reference)}
+      aria-label={t('bible.sheet.openInBible')}
+      className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-100 dark:border-indigo-500/40 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+    >
+      <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
+      <span className="sm:hidden">{t('bible.sheet.toBible')}</span>
+      <span className="hidden sm:inline">{t('bible.sheet.openInBible')}</span>
+    </button>
+  );
+}
+
+function Sheet({ reference, onClose, keepVisible, related, openInBible }: { reference: SheetReference; onClose: () => void; keepVisible: VerseSheetProps['keepVisible']; related: VerseSheetProps['related']; openInBible: VerseSheetProps['openInBible'] }) {
   const { t, i18n } = useTranslation();
   const locale = resolveAppLocale(i18n?.language);
   // The Bible this device reads, as on the Bible page.
@@ -93,13 +126,14 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
   // A window like every other: the page under it holds still, Escape closes the topmost window only.
   const layer = useModalLayer({ onClose });
   useFocusTrap(dialogRef);
-  // Cross references here only when the person asked for them in passage windows too; "Open" goes to
-  // the Bible page, whose way back is the screen this window lies over.
+  // Cross references here only when the person asked for them in passage windows too; "Open" leaves
+  // by the screen's own way out (`openInBible`), and without one a link is read in place.
   const crossRefs = useBookCrossRefs(reference.book, reading, state.status === 'ready' ? state.text : null, 'window');
-  const { openReference: openInBible } = useOpenInBible();
   const restedAtRef = useRef<number | null>(null);
 
   const keys = useMemo(() => passageKeys(reference, reading), [reference, reading]);
+  // A book named whole ("Руфь" on a note's chip) opens at its start, with nothing lit and nothing to come back to.
+  const wholeBook = !reference.chapter;
   const wholeChapter = !reference.fromVerse;
   const label = reference.label ?? formatScriptureReference(reference, { locale, style: 'short' });
   const firstKey = keys[0];
@@ -243,7 +277,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
   const noteAway = () => {
     const pane = paneRef.current;
     const box = passageBox();
-    if (!pane) return;
+    if (!pane || wholeBook) return;
     // The passage's chapter not drawn (scrolled far from it): it is above or below by its number.
     if (!box) {
       const at = articleRef.current ? chapterAtLine(articleRef.current, readingLine()) : null;
@@ -268,7 +302,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
     noteAway();
   };
 
-  const notFound = state.status === 'ready' && !firstKey;
+  const notFound = state.status === 'ready' && !firstKey && !wholeBook;
 
   return (
     // Above a meeting or the preaching view (z-[200]), under a question asked over it (z-[300]).
@@ -287,6 +321,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
             <h2 className="truncate text-lg font-bold text-gray-900 dark:text-gray-50">{label}</h2>
             <p className="truncate text-xs text-gray-500 dark:text-gray-400">{t(`bible.translations.${reading}.name`)}</p>
           </div>
+          <OpenInBibleButton reference={reference} openInBible={openInBible} />
           <button
             ref={closeRef}
             type="button"
@@ -337,7 +372,7 @@ function Sheet({ reference, onClose, keepVisible, related }: { reference: SheetR
                 set={crossRefs.set}
                 verseText={crossRefs.verseText}
                 onClose={crossRefs.close}
-                onOpenReference={(target) => openInBible({ bible: reading, book: target.book, chapter: target.chapter, fromVerse: target.fromVerse, toVerse: target.toVerse })}
+                onOpenReference={crossReferenceExit(openInBible, reading)}
                 layerClassName="z-[260]"
                 linkLayerClassName="z-[270]"
               />

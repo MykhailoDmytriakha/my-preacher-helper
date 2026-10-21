@@ -4,7 +4,7 @@ jest.unmock('remark-gfm');
 jest.unmock('rehype-raw');
 jest.unmock('rehype-sanitize');
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -34,8 +34,19 @@ jest.mock('nuqs', () => {
 });
 
 jest.mock('@/hooks/useStudyNotes', () => ({ useStudyNotes: jest.fn() }));
+// The verse window's text is not what these tests read: it stays loading.
+jest.mock('@/utils/bibleText', () => ({ ...jest.requireActual('@/utils/bibleText'), fetchBookText: jest.fn(() => new Promise(() => undefined)) }));
 jest.mock('@/hooks/useStudyNoteShareLinks', () => ({ useStudyNoteShareLinks: jest.fn() }));
 jest.mock('@/hooks/useTags', () => ({ useTags: jest.fn() }));
+
+/** A reference pressed on the list opens over it (the owner, 2026-10-21); the Bible page is the window's own button. */
+async function openInBible(name: string) {
+  fireEvent.click(screen.getByRole('button', { name }));
+  const dialog = await screen.findByRole('dialog', { name });
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'bible.sheet.openInBible' }));
+  return new URL(mockRouter.push.mock.calls[0]?.[0] as string, 'https://app.test').searchParams;
+}
 
 const note = (content: string, title = 'Пастырь'): StudyNote => ({
   id: 'note-1', userId: 'mock-user', title, content, scriptureRefs: [], tags: [],
@@ -43,8 +54,9 @@ const note = (content: string, title = 'Пастырь'): StudyNote => ({
 });
 
 /*
- * A reference in a note's text is a link on the list of notes, and it opens the Bible where the note
- * meant, with the way back to the notes (the owner, 2026-10-20, case 2026-10-12-block-diagram, 2.2.2).
+ * A reference in a note's text is a link on the list of notes; it opens over the list, and its window
+ * leads to the Bible where the note meant, with the way back to the notes (the owner, 2026-10-20 and
+ * 2026-10-21, case 2026-10-12-block-diagram, 2.2.2).
  */
 describe('StudiesPage — references in notes', () => {
   beforeEach(() => {
@@ -62,11 +74,9 @@ describe('StudiesPage — references in notes', () => {
     });
   });
 
-  it('draws a reference in a note as a link that opens the Synodal psalm the note meant, and comes back to the notes', () => {
+  it('draws a reference in a note as a link that opens the Synodal psalm the note meant, and comes back to the notes', async () => {
     render(<StudiesPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Пс 22:1' }));
-    const href = mockRouter.push.mock.calls[0]?.[0] as string;
-    const query = new URL(href, 'https://app.test').searchParams;
+    const query = await openInBible('Пс 22:1');
     expect(query.get('book')).toBe('psalms');
     expect(query.get('at')).toBe('22:1');
     expect(query.get('tr')).toBe('rst');
@@ -75,7 +85,7 @@ describe('StudiesPage — references in notes', () => {
 });
 
 describe('StudiesPage — a note\'s title says its language', () => {
-  it('opens "1Цар 3:5" of a note titled in Ukrainian as 1 Kings in Ohienko', () => {
+  it('opens "1Цар 3:5" of a note titled in Ukrainian as 1 Kings in Ohienko', async () => {
     (useStudyNotes as jest.Mock).mockReturnValue({
       uid: 'mock-user', notes: [note('1Цар 3:5', 'Мій Господь')], loading: false, error: null,
       refetch: jest.fn(), createNote: jest.fn(), updating: false, updateNote: jest.fn(), deleteNote: jest.fn(),
@@ -89,8 +99,7 @@ describe('StudiesPage — a note\'s title says its language', () => {
     });
     mockRouter.push.mockClear();
     render(<StudiesPage />);
-    fireEvent.click(screen.getByRole('button', { name: '1Цар 3:5' }));
-    const query = new URL(mockRouter.push.mock.calls[0]?.[0] as string, 'https://app.test').searchParams;
+    const query = await openInBible('1Цар 3:5');
     expect(query.get('book')).toBe('1-kings');
     expect(query.get('tr')).toBe('ubio');
   });

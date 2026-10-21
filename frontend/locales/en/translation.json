@@ -410,7 +410,9 @@
       "backToChapter": "Back to chapter {{number}}",
       "backToPsalm": "Back to Psalm {{number}}",
       "views": "Bible window sections",
-      "text": "Text"
+      "text": "Text",
+      "openInBible": "Open in the Bible",
+      "toBible": "Bible"
     },
     "navigate": "Book and chapter: {{place}}",
     "chooseTranslation": "Choose a translation",

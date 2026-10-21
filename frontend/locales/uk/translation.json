@@ -418,7 +418,9 @@
       "backToChapter": "До розділу {{number}}",
       "backToPsalm": "До псалма {{number}}",
       "views": "Розділи вікна Біблії",
-      "text": "Текст"
+      "text": "Текст",
+      "openInBible": "Відкрити в Біблії",
+      "toBible": "До Біблії"
     },
     "navigate": "Книга і розділ: {{place}}",
     "chooseTranslation": "Вибір перекладу",

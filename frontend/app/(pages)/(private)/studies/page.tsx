@@ -18,9 +18,9 @@ import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } f
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
-import { ScriptureLinks, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
+import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import Select from '@/components/ui/Select';
-import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
@@ -39,9 +39,6 @@ import type { AppLocale } from '@/utils/appLocale';
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  // A reference in a note opens the Bible there, and "← Notes" brings the person back; each note's own
-  // words say the Bible its references were written in.
-  const { openReference } = useOpenInBible(undefined, '/studies');
   const {
     uid,
     notes,
@@ -288,7 +285,8 @@ export default function StudiesPage() {
   const hasActiveFilters = search || tagFilter || bookFilter;
 
   return (
-    <ScriptureLinks onOpen={openReference}>
+    // A reference in a note opens over the list; each note's own words say the Bible its references were written in.
+    <ScriptureLinksInWindow>
     <section className="space-y-4 md:space-y-6">
       {/* Header */}
       <header className="space-y-4">
@@ -548,6 +546,6 @@ export default function StudiesPage() {
         onDelete={deleteShareLink}
       />
     </section>
-    </ScriptureLinks>
+    </ScriptureLinksInWindow>
   );
 }
