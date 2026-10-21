@@ -22,3 +22,37 @@ describe('refusalWords for a server that did not answer', () => {
     expect(sayFailure(refusalWords(error, 'dataSync.actionFailed'), t)).toBe('Read the current document first');
   });
 });
+
+// BUG-20261020-storage-error-said-raw: native exceptions are developer details, not instructions.
+describe('technical exceptions from refused actions', () => {
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  it.each([
+    new DOMException("Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.", 'InvalidStateError'),
+    new DOMException('Storage quota exceeded', 'QuotaExceededError'),
+    new TypeError('Failed to fetch'),
+    new SyntaxError('Unexpected token in stored data'),
+  ])('uses the caller wording for $name in every interface language', error => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const words = refusalWords(error, 'dataSync.actionFailed');
+    expect(words).toEqual({ key: 'dataSync.actionFailed' });
+    for (const locale of [en, ru, uk]) {
+      const translate = (key: string) => key.split('.').reduce<unknown>((value, part) => (value as Record<string, unknown> | undefined)?.[part], locale) as string ?? key;
+      expect(sayFailure(words, translate)).toBe(locale.dataSync.actionFailed);
+    }
+  });
+
+  it('logs the original native exception once without keeping its sentence as UI words', () => {
+    const logged = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const error = new DOMException('Native storage details', 'InvalidStateError');
+    refusalWords(error, 'dataSync.actionFailed');
+    refusalWords(error, 'dataSync.actionFailed');
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledWith(error);
+  });
+
+  it('keeps an explicit domain refusal even when its underlying class is native', () => {
+    const refusal = Object.assign(new TypeError('Read the current document first'), { code: 'failed-precondition' });
+    expect(sayFailure(refusalWords(refusal, 'dataSync.actionFailed'), t)).toBe(refusal.message);
+  });
+});

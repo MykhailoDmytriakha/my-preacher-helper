@@ -1,3 +1,5 @@
+import { failureCode } from '@/utils/failureCode';
+
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
 import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
@@ -509,8 +511,7 @@ export class EditorController {
       try { await action(); } catch (error) {
         this.durable = false;
         this.error = error instanceof Error ? error.message : 'Data engine storage failed';
-        const code = (error as { code?: unknown } | null)?.code;
-        this.errorCode = typeof code === 'string' ? code : null;
+        this.errorCode = failureCode(error);
         this.emit();
         throw error;
       }

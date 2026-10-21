@@ -1,3 +1,4 @@
+import { refusalWords } from '@/utils/actionFailureMessage';
 import { AddressedFailures, eachFailure } from '../failures';
 
 /** BUG-20261003-background-failure-without-address */
@@ -25,4 +26,14 @@ describe('failures gathered from many operations', () => {
     expect(eachFailure(error, { collection: 'sermons' })).toEqual([{ error, about: { collection: 'sermons' } }]);
     expect(eachFailure(error)).toEqual([{ error }]);
   });
+});
+
+
+it('keeps the technical category when several operations gather a native storage failure', () => {
+  const original = new DOMException('The database connection is closing.', 'InvalidStateError');
+  const gathered = new AddressedFailures([{ error: original, about: { collection: 'groups', id: 'group' } }]);
+  expect(gathered.message).toBe(original.message);
+  expect(gathered.code).toBe('technical-failure');
+  expect(gathered.failures[0].error).toBe(original);
+  expect(refusalWords(gathered, 'dataSync.actionFailed')).toEqual({ key: 'dataSync.actionFailed' });
 });

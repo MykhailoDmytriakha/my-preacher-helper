@@ -1,3 +1,5 @@
+import { failureCode } from '@/utils/failureCode';
+
 import type { FailureAddress } from './types';
 
 export interface AddressedFailure {
@@ -28,8 +30,8 @@ export class AddressedFailures extends Error {
     super(first instanceof Error ? first.message : 'Background work failed', { cause: first });
     this.name = 'AddressedFailures';
     this.failures = failures;
-    const code = (first as { code?: unknown } | undefined)?.code;
-    if (typeof code === 'string') this.code = code;
+    const code = failureCode(first);
+    if (code !== null) this.code = code;
   }
 }
 

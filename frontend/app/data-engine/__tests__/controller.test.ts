@@ -1,3 +1,4 @@
+import { refusalWords } from '@/utils/actionFailureMessage';
 import { EditorController, type CheckpointStore, type EditorRecord } from '../controller';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
@@ -375,6 +376,32 @@ describe('a reviewed legacy recovery choice', () => {
       expect(editor.getState().checkpoint.draft?.content).toBe(change === 'newer typing' ? 'later words' : 'shown');
       expect(s.entries.get('op-1')?.state).toBe('conflict');
     }
+    editor.dispose();
+  });
+});
+
+
+describe('technical failures kept in editor state', () => {
+  it('retains the unsaved text and the technical category without promoting native words to an instruction', async () => {
+    const s = setup(); const editor = await EditorController.open(s.options);
+    const failure = new DOMException('The database connection is closing.', 'InvalidStateError');
+    jest.mocked(s.store.put).mockRejectedValueOnce(failure);
+    await expect(editor.edit({ ...initial().value, content: 'retained words' })).rejects.toBe(failure);
+    const state = editor.getState();
+    expect(state).toMatchObject({ durable: false, error: failure.message, errorCode: 'technical-failure', checkpoint: { draft: { content: 'retained words' } } });
+    const reconstructed = Object.assign(new Error(state.error!), { code: state.errorCode });
+    expect(refusalWords(reconstructed, 'dataSync.documentFailed')).toEqual({ key: 'dataSync.documentFailed' });
+    editor.dispose();
+  });
+
+  it('preserves an explicit actionable code and its ordinary editor state', async () => {
+    const s = setup(); const editor = await EditorController.open(s.options);
+    const failure = Object.assign(new Error('Read the current record first'), { code: 'fresh-read-required' });
+    jest.mocked(s.store.put).mockRejectedValueOnce(failure);
+    await expect(editor.edit({ ...initial().value, content: 'retained words' })).rejects.toBe(failure);
+    const state = editor.getState();
+    expect(state.errorCode).toBe('fresh-read-required');
+    expect(refusalWords(Object.assign(new Error(state.error!), { code: state.errorCode }), 'dataSync.documentFailed')).toEqual({ key: 'dataSync.failure.freshReadRequired' });
     editor.dispose();
   });
 });

@@ -1,4 +1,5 @@
 import { ranOutOfTime } from '@/utils/aiTimeFailure';
+import { failureCode, isTechnicalFailure, TECHNICAL_FAILURE } from '@/utils/failureCode';
 
 /**
  * WHAT A FAILURE SAYS ON SCREEN (.howto/show-an-error-once.md,
@@ -90,7 +91,7 @@ const sayOf = (error: unknown): FailureWords | null => {
 const SERVER_DID_NOT_ANSWER = new Set(['unavailable', 'deadline-exceeded']);
 
 export function failureWords(error: unknown, fallbackKey: string): FailureWords {
-  const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
+  const code = error instanceof Error ? failureCode(error) ?? '' : '';
   const said = SAID.has(code) ? sayOf(error) : null;
   if (said) return said;
   if (error instanceof Error && SAID.has(code) && error.message) return { said: error.message };
@@ -104,8 +105,13 @@ export function failureWords(error: unknown, fallbackKey: string): FailureWords 
 
 /** For a refused action: an unknown refusal keeps the engine's own sentence, which may be an instruction. */
 export function refusalWords(error: unknown, fallbackKey: string): FailureWords {
-  const code = error instanceof Error ? String((error as { code?: unknown }).code ?? '') : '';
+  const code = error instanceof Error ? failureCode(error) ?? '' : '';
   if (SERVER_DID_NOT_ANSWER.has(code) && !ranOutOfTime(error)) return { key: 'dataSync.failure.serverUnavailable' };
+  if (code === TECHNICAL_FAILURE) {
+    // A reconstructed editor state keeps the category; the original catch logs native details.
+    if (isTechnicalFailure(error)) logFailureOnce(error);
+    return { key: fallbackKey };
+  }
   if (error instanceof Error && error.message && !SAID.has(code) && !KNOWN.has(code) && !ranOutOfTime(error)) return { said: error.message };
   return failureWords(error, fallbackKey);
 }
