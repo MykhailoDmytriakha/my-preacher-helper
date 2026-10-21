@@ -52,6 +52,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { stickyTopBelowNav, useStickyOffsets, useWindowFittedPanel } from '@/hooks/useStickyOffsets';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { groupLanguage } from '@/utils/documentLanguage';
 import {
   createFlowItem,
   createTemplate,
@@ -79,7 +80,7 @@ function EngineGroupPage({ groupId }: { groupId: string }) {
   // A reference in a block's text opens the Bible there, and "← Group" brings the person back.
   const { openReference } = useOpenInBible(undefined, `/groups/${groupId}`);
   return (
-    <ScriptureLinks onOpen={openReference}>
+    <ScriptureLinks onOpen={openReference} writtenIn={groupLanguage(editor.group)}>
       {editor.readOnly && editor.group
         ? <GroupReadOnlyContent group={editor.group} />
         : <GroupDetailView editor={editor} />}

@@ -1,6 +1,6 @@
 'use client';
 
-import { SCRIPTURE_LINK_CLASSES } from '@/components/bible/ScriptureLinks';
+import { SCRIPTURE_LINK_CLASSES, SCRIPTURE_LINK_MARK, WrittenInMark } from '@/components/bible/ScriptureLinks';
 
 import type { LeadingReference } from '@/utils/bibleLink';
 
@@ -26,9 +26,11 @@ export default function ScriptureOpening({ text, reference = null, onOpen }: Scr
         type="button"
         onClick={() => onOpen(reference.href, reference)}
         className={SCRIPTURE_LINK_CLASSES}
+        {...{ [SCRIPTURE_LINK_MARK]: '' }}
       >
         {text.slice(0, reference.end)}
       </button>
+      {reference.writtenIn ? <WrittenInMark bible={reference.writtenIn} /> : null}
       {text.slice(reference.end)}
     </>
   );

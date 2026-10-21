@@ -5,34 +5,38 @@ import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { ScriptureLinks, ScriptureText } from '@/components/bible/ScriptureLinks';
+import { ScriptureLinks, ScriptureText, WrittenInMark } from '@/components/bible/ScriptureLinks';
 import { VerseSheet, type SheetReference } from '@/components/bible/VerseSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import { formatTime, useConductTimer } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
-import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
-import { namesAPlace, referenceFromText } from '@/utils/bibleLink';
-import { referenceBibleFor, sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
+import { resolveAppLocale, textLanguage, type AppLocale } from '@/utils/appLocale';
+import { namesAPlace, referenceFromTyped, writtenInFor } from '@/utils/bibleLink';
+import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
 
-type BlockReference = { key: string; label: string; reference: SheetReference | null };
+import type { BibleId } from '@/utils/bibles';
+
+type BlockReference = { key: string; label: string; reference: SheetReference | null; writtenIn?: BibleId };
 
 /**
- * The passages kept with a block, each place once, typed in the Bible of the interface's language.
- * A kept reference that names no place to open ("see the handout", "Рим 25") stays a label. The
- * references a leader writes into the text are links where they stand (`ScriptureLinks`).
+ * The passages kept with a block, each place once, each read in the Bible it was written in — the
+ * block's own words decide a book Russian and Ukrainian write alike (`referenceFromTyped`). A kept
+ * reference that names no place to open ("see the handout", "Рим 25") stays a label. The references
+ * a leader writes into the text are links where they stand (`ScriptureLinks`).
  */
-function blockReferences(kept: string[], locale: AppLocale): BlockReference[] {
+function blockReferences(kept: string[], locale: AppLocale, written: AppLocale | null): BlockReference[] {
   const found: BlockReference[] = [];
-  const add = (label: string, reference: SheetReference | null) => {
+  const add = (label: string, reference: (SheetReference & { bible: BibleId }) | null) => {
     const same = reference
       ? found.some((each) => each.reference && sameScriptureReference(each.reference, reference))
       : found.some((each) => !each.reference && each.label === label);
-    if (!same) found.push({ key: `${found.length}|${label}`, label, reference: reference ? { ...reference, label } : null });
+    const writtenIn = reference ? writtenInFor(label, reference, locale) : undefined;
+    if (!same) found.push({ key: `${found.length}|${label}`, label, reference: reference ? { ...reference, label } : null, ...(writtenIn ? { writtenIn } : {}) });
   };
   kept.forEach((raw) => {
-    const reference = referenceFromText(raw, referenceBibleFor(locale));
+    const reference = referenceFromTyped(raw, { locale, written });
     add(raw, reference && namesAPlace(reference) ? reference : null);
   });
   return found;
@@ -58,6 +62,8 @@ interface ConductBlockProps {
   onPeek: () => void;
   // "Overview →" on last block: this block is done, all blocks completed
   onCompleteAll: () => void;
+  /** The group's language (`groupLanguage`): its words decide a book Russian and Ukrainian write alike. */
+  groupWrittenIn?: AppLocale | null;
 }
 
 export default function ConductBlock({
@@ -76,6 +82,7 @@ export default function ConductBlock({
   onNext,
   onPeek,
   onCompleteAll,
+  groupWrittenIn = null,
 }: ConductBlockProps) {
   const { t, i18n } = useTranslation();
   const [notesOpen, setNotesOpen] = useState(false);
@@ -87,9 +94,14 @@ export default function ConductBlock({
   const keepVisible = useMemo(() => ({ top: headerRef, bottom: timerRef }), []);
   const locale = resolveAppLocale(i18n?.language);
   const title = flowItem.instanceTitle || template.title;
+  // The group's words say the language its references were written in, else the block's — for the links and the passages kept.
+  const written = useMemo(
+    () => groupWrittenIn ?? textLanguage([template.title, template.content, ...(template.questions ?? [])].join('\n')),
+    [template.title, template.content, template.questions, groupWrittenIn]
+  );
   const references = useMemo(
-    () => blockReferences(template.scriptureRefs ?? [], locale),
-    [template.scriptureRefs, locale]
+    () => blockReferences(template.scriptureRefs ?? [], locale, written),
+    [template.scriptureRefs, locale, written]
   );
 
   const hasDuration = !!(flowItem.durationMin && flowItem.durationMin > 0);
@@ -125,7 +137,7 @@ export default function ConductBlock({
 
   // A reference anywhere in the block — its text, a question, a note — opens over the meeting.
   return (
-    <ScriptureLinks onOpen={setVerse}>
+    <ScriptureLinks onOpen={setVerse} writtenIn={written}>
     <div className="flex h-full flex-col">
       {/* Header */}
       <div ref={headerRef} className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -182,18 +194,20 @@ export default function ConductBlock({
 
           {references.length > 0 && (
             <div className="mt-[1em] flex flex-wrap gap-2">
-              {references.map(({ key, label, reference }) => (
+              {references.map(({ key, label, reference, writtenIn }) => (
                 // `anywhere`, not `break-words`: inside the chip's flex label only it lets a long reference wrap.
                 // A reference the app reads opens its text over the meeting; one it does not stays a label.
-                <Chip
-                  key={key}
-                  tone="blue"
-                  size="lg"
-                  className="max-w-full [overflow-wrap:anywhere]"
-                  onClick={reference ? () => setVerse(reference) : undefined}
-                >
-                  {label}
-                </Chip>
+                <span key={key} className="inline-flex max-w-full items-center">
+                  <Chip
+                    tone="blue"
+                    size="lg"
+                    className="max-w-full [overflow-wrap:anywhere]"
+                    onClick={reference ? () => setVerse(reference) : undefined}
+                  >
+                    {label}
+                  </Chip>
+                  {writtenIn ? <WrittenInMark bible={writtenIn} /> : null}
+                </span>
               ))}
             </div>
           )}

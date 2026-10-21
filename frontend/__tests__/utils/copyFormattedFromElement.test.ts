@@ -80,3 +80,22 @@ it('copies reference links as their words and leaves the page as it was', async 
     Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: undefined });
   }
 });
+
+it('copies a reference as its words, without the Bible mark beside it', async () => {
+  const write = jest.fn().mockResolvedValue(undefined);
+  const item = jest.fn();
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write } });
+  Object.defineProperty(window, 'ClipboardItem', { configurable: true, value: item });
+  const source = document.createElement('div');
+  source.innerHTML = '<p><button data-scripture-link="">Пс 22:1</button><span data-scripture-bible=""><span>Synodal</span></span>.</p>';
+  try {
+    await expect(copyFormattedFromElement(source)).resolves.toBe(true);
+    const html = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(item.mock.calls[0][0]['text/html'] as Blob);
+    });
+    expect(html).toBe('<p>Пс 22:1.</p>');
+    expect(source.querySelector('[data-scripture-bible]')).toHaveTextContent('Synodal');
+  } finally { Reflect.deleteProperty(window, 'ClipboardItem'); }
+});

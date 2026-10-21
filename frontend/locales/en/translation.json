@@ -464,17 +464,21 @@
     "translations": {
       "rst": {
         "name": "Синодальный перевод",
-        "language": "Русский"
+        "language": "Русский",
+        "short": "Synodal"
       },
       "ubio": {
         "name": "Переклад Огієнка",
-        "language": "Українська"
+        "language": "Українська",
+        "short": "Ohienko"
       },
       "kjv": {
         "name": "King James Version",
-        "language": "English"
+        "language": "English",
+        "short": "KJV"
       }
-    }
+    },
+    "writtenIn": "Numbered by: {{translation}}"
   },
   "navigation": {
     "appName": "My Preacher Helper",

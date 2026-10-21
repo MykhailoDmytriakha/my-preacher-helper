@@ -9,6 +9,7 @@ import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import SourceNoteChips from "@/components/sermon/SourceNoteChips";
 import { useOpenInBible } from "@/hooks/useOpenInBible";
 import { leadingReference } from "@/utils/bibleLink";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { hasPlan } from "@/utils/sermonPlanAccess";
@@ -180,7 +181,7 @@ export default function PlanPageHeader({
             <p className="whitespace-pre-line text-lg italic text-gray-700 dark:text-gray-300">
               <ScriptureOpening
                 text={sermon.verse}
-                reference={leadingReference(sermon.verse, { locale, from: here })}
+                reference={leadingReference(sermon.verse, { locale, from: here, written: sermonLanguage(sermon) })}
                 onOpen={(href, opening) => (onOpenReference ? onOpenReference({ ...opening.reference, label: (sermon.verse ?? "").slice(0, opening.end) }) : openInBible(href))}
               />
             </p>

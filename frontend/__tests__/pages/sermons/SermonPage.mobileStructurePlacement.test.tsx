@@ -10,6 +10,7 @@ const isBefore = (a: Element, b: Element) => {
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'sermon-xyz' }),
+  usePathname: () => '/sermons/sermon-xyz',
   useSearchParams: () => ({ get: () => null }),
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
 }));

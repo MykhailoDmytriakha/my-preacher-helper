@@ -110,3 +110,13 @@ describe('explicit Scripture uses across personal materials', () => {
     expect(scriptureReferencesOverlap(mapped, { bible: 'rst', book: 'Romans', chapter: 15 })).toBe(false);
   });
 });
+
+// A note's title says its language for a reference its body alone does not (Codex, 2026-10-21).
+describe('a typed reference among personal materials', () => {
+  it('reads "1Цар 3:5" of a note titled in Ukrainian as 1 Kings, not 1 Samuel', () => {
+    const ukrainian: StudyNote = { ...note('ukrainian', [], '1Цар 3:5'), title: 'Мій Господь' };
+    const find = (book: string) => findScriptureUsage({ bible: 'kjv', book, chapter: 3, fromVerse: 5 }, { notes: [ukrainian], sermons: [], groups: [], currentNoteId: 'current', locale: 'ru' });
+    expect(find('1 Kings').map(item => item.id)).toEqual(['ukrainian']);
+    expect(find('1 Samuel')).toEqual([]);
+  });
+});

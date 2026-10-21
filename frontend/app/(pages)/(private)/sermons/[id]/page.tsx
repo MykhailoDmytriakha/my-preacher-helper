@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import "@locales/i18n";
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
@@ -35,6 +36,7 @@ import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { DataDocumentProvider } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import { sermonIsMissing } from "@/hooks/useSermonRead";
@@ -44,6 +46,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { logFailureOnce, type FailureWords } from '@/utils/actionFailureMessage';
 import { ranOutOfTime } from "@/utils/aiTimeFailure";
 import { newClientId } from "@/utils/clientId";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -212,6 +215,8 @@ function SermonPageContent({ id }: { id: string }) {
   const loading = core.loading;
   const awaitingFirstAnswer = core.loading;
   const { user } = useAuth();
+  // A reference in a thought opens the Bible there, and "← Sermon" brings the person back.
+  const { openReference } = useOpenInBible(undefined, `/sermons/${id}`);
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
   /**
@@ -725,6 +730,7 @@ function SermonPageContent({ id }: { id: string }) {
   const hasInconsistentThoughts = sermonHasInconsistentThoughts(sermon);
 
   return (
+    <ScriptureLinks onOpen={openReference} writtenIn={sermonLanguage(sermon)}>
     <div className="space-y-4 sm:space-y-6 pb-4 sm:pb-8">
       {/* No top padding: the page frame under the breadcrumbs already gives it. */}
       <SermonHeader sermon={sermon} series={series} editor={{
@@ -842,5 +848,6 @@ function SermonPageContent({ id }: { id: string }) {
         />
       )}
     </div>
+    </ScriptureLinks>
   );
 }

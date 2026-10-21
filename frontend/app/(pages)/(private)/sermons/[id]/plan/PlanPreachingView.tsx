@@ -4,6 +4,7 @@ import FloatingTextScaleControls from "@/components/FloatingTextScaleControls";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import PreachingTimer from "@/components/PreachingTimer";
 import { Sermon } from "@/models/models";
+import { sermonLanguage } from "@/utils/documentLanguage";
 
 import FullPlanContent from "./FullPlanContent";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
@@ -63,6 +64,7 @@ export default function PlanPreachingView({
                 <Breadcrumbs forceShow={true} />
               </div>
               <FullPlanContent
+              sermonWrittenIn={sermonLanguage(sermon)}
                 sermonTitle={sermon.title}
                 sermonVerse={sermon.verse}
                 combinedPlan={combinedPlan}

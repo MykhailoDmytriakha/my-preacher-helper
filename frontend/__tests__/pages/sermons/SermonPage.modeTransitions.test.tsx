@@ -75,6 +75,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', 
 }));
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'abc' }),
+  usePathname: () => '/sermons/abc',
   useRouter: () => routerMock,
   useSearchParams: () => searchParamsMock,
 }));

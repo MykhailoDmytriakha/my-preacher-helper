@@ -18,7 +18,9 @@ import { useDeferredValue, useEffect, useMemo, useState, useCallback, useRef } f
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import { ScriptureLinks, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import Select from '@/components/ui/Select';
+import { useOpenInBible } from '@/hooks/useOpenInBible';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
@@ -26,6 +28,7 @@ import { StudyNote } from '@/models/models';
 import { resolveAppLocale } from '@/utils/appLocale';
 import { getBooksForDropdown } from '@/utils/bibleBooks';
 import { isKnownOffline } from '@/utils/connectivity';
+import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { scriptureReferenceSearchText, studyNoteSearchText } from '@/utils/scriptureReference';
 
 import ShareNoteModal from './components/ShareNoteModal';
@@ -36,6 +39,9 @@ import type { AppLocale } from '@/utils/appLocale';
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  // A reference in a note opens the Bible there, and "← Notes" brings the person back; each note's own
+  // words say the Bible its references were written in.
+  const { openReference } = useOpenInBible(undefined, '/studies');
   const {
     uid,
     notes,
@@ -256,8 +262,9 @@ export default function StudiesPage() {
   const noteCards = useMemo(
     () =>
       visibleNotes.map((note) => (
+        // A note's title says its language too, for a reference its body alone does not.
+        <ScriptureWrittenIn key={note.id} language={studyNoteLanguage(note)}>
         <StudyNoteCard
-          key={note.id}
           note={note}
           bibleLocale={bibleLocale}
           isExpanded={expandedNoteIds.has(note.id)}
@@ -267,6 +274,7 @@ export default function StudiesPage() {
           onShare={handleShareNote}
           hasShareLink={shareLinksByNoteId.has(note.id)}
         />
+        </ScriptureWrittenIn>
       )),
     [visibleNotes, bibleLocale, expandedNoteIds, handleToggleNoteExpanded, router, searchQuery, handleShareNote, shareLinksByNoteId]
   );
@@ -280,6 +288,7 @@ export default function StudiesPage() {
   const hasActiveFilters = search || tagFilter || bookFilter;
 
   return (
+    <ScriptureLinks onOpen={openReference}>
     <section className="space-y-4 md:space-y-6">
       {/* Header */}
       <header className="space-y-4">
@@ -539,5 +548,6 @@ export default function StudiesPage() {
         onDelete={deleteShareLink}
       />
     </section>
+    </ScriptureLinks>
   );
 }

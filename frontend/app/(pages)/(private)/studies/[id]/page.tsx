@@ -38,14 +38,15 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
+import { referenceFromTyped } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { studyNoteSearchText } from '@/utils/scriptureReference';
-import { referenceBibleFor, sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
-import { parseReferenceText } from '@/utils/scriptureReferenceParser';
+import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { transcribeAudioWithRetry, transcriptionFailureWords } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
@@ -1092,10 +1093,11 @@ export default function StudyNoteEditorPage() {
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim(), { locale: bibleLocale });
+                                            // Typed in the Bible its book's name is written in — the note's words decide one Russian
+                                            // and Ukrainian write alike ("1Цар") — and kept so.
+                                            const parsed = referenceFromTyped(quickRefInput.trim(), { locale: bibleLocale, written: textLanguage(`${title}\n${content}`) });
                                             if (!parsed) { setQuickRefError({ key: 'studiesWorkspace.quickRefError' }); return; }
-                                            // Typed as the person's Bible numbers it, and kept so.
-                                            setScriptureRefs(prev => [...prev, { ...parsed, bible: referenceBibleFor(bibleLocale), id: makeId() }]);
+                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
                                             setQuickRefInput('');
                                         }
                                     }}

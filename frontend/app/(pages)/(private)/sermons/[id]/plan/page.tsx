@@ -20,6 +20,7 @@ import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { TimerPhase } from "@/types/TimerState";
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { debugLog } from "@/utils/debugMode";
+import { sermonLanguage } from "@/utils/documentLanguage";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
@@ -1071,7 +1072,7 @@ function PlanPageContent({ source, readOnly = false }: { source: SermonSource; r
   }
 
   return (
-    <ScriptureLinks onOpen={openPlanReference}>
+    <ScriptureLinks onOpen={openPlanReference} writtenIn={sermonLanguage(sermon)}>
     <div className="space-y-6 p-4">
       {/* THE HEADER GOES FIRST, NOTICES UNDER IT.
           Banners come and go — a stale copy appears, a draft is recovered, a point has no

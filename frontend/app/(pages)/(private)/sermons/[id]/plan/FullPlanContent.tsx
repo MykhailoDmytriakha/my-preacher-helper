@@ -6,6 +6,7 @@ import ScriptureOpening from "@/components/common/ScriptureOpening";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { useAppLocale } from "@/hooks/useAppLocale";
 import { TimerPhase } from "@/types/TimerState";
+import { textLanguage, type AppLocale } from "@/utils/appLocale";
 import { leadingReference } from "@/utils/bibleLink";
 
 import {
@@ -43,6 +44,8 @@ export interface FullPlanContentProps {
   noContentText: string;
   /** What stays in sight above the verse window while it is open: the preaching timer bar. */
   keepVisibleTop?: RefObject<HTMLElement | null>;
+  /** The sermon's language (`sermonLanguage`): its words decide a book Russian and Ukrainian write alike. */
+  sermonWrittenIn?: AppLocale | null;
 }
 
 export default function FullPlanContent({
@@ -54,11 +57,14 @@ export default function FullPlanContent({
   isPreachingMode,
   noContentText,
   keepVisibleTop,
+  sermonWrittenIn = null,
 }: FullPlanContentProps) {
   // The sermon's verse opens over the plan: preaching, its timer and the place in the plan stay as they are.
   const { locale } = useAppLocale();
   const [verse, setVerse] = useState<SheetReference | null>(null);
-  const opening = sermonVerse ? leadingReference(sermonVerse, { locale }) : null;
+  // The sermon's language, else the plan's own, for a reference Russian and Ukrainian write alike ("1Цар").
+  const written = sermonWrittenIn ?? textLanguage([sermonTitle ?? "", sermonVerse ?? "", combinedPlan.introduction, combinedPlan.main, combinedPlan.conclusion].join("\n"));
+  const opening = sermonVerse ? leadingReference(sermonVerse, { locale, written }) : null;
   const checkPhaseCompleted = useCallback((phase: TimerPhase, currentPhase: TimerPhase): boolean => {
     const phaseOrder: TimerPhase[] = ["introduction", "main", "conclusion", "finished"];
     const phaseIndex = phaseOrder.indexOf(phase);
@@ -182,7 +188,7 @@ export default function FullPlanContent({
 
   // Every reference in the plan opens over it, as the sermon's verse does: "Быт. 6:13" mid-sentence too.
   return (
-    <ScriptureLinks onOpen={setVerse}>
+    <ScriptureLinks onOpen={setVerse} writtenIn={written}>
       {sermonTitle && isPreachingMode && (
         <div className="mb-4">
           <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">

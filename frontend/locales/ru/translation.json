@@ -474,17 +474,21 @@
     "translations": {
       "rst": {
         "name": "Синодальный перевод",
-        "language": "Русский"
+        "language": "Русский",
+        "short": "Синод."
       },
       "ubio": {
         "name": "Переклад Огієнка",
-        "language": "Українська"
+        "language": "Українська",
+        "short": "Огиенко"
       },
       "kjv": {
         "name": "King James Version",
-        "language": "English"
+        "language": "English",
+        "short": "KJV"
       }
-    }
+    },
+    "writtenIn": "Место указано по: {{translation}}"
   },
   "navigation": {
     "appName": "Помощник проповедника",

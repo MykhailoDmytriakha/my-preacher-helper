@@ -1,13 +1,28 @@
-import { SCRIPTURE_LINK_MARK } from '@/components/bible/ScriptureLinks';
+import { SCRIPTURE_BIBLE_MARK, SCRIPTURE_LINK_MARK } from '@/components/bible/ScriptureLinks';
 import { copyTextWithSelection } from '@/utils/clipboard';
 import { debugLog } from "@/utils/debugMode";
 
-/** The plan's markup with its reference links back as their words: a document gets text, not buttons. */
+/**
+ * The plan's markup with its reference links back as their words and without the Bible marks beside
+ * them: a document gets the text as written, not buttons and badges.
+ */
 function withReferencesAsWords(element: HTMLElement): string {
-  if (!element.querySelector(`[${SCRIPTURE_LINK_MARK}]`)) return element.innerHTML ?? '';
+  if (!element.querySelector(`[${SCRIPTURE_LINK_MARK}], [${SCRIPTURE_BIBLE_MARK}]`)) return element.innerHTML ?? '';
   const copy = element.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll(`[${SCRIPTURE_BIBLE_MARK}]`).forEach((mark) => mark.remove());
   copy.querySelectorAll(`[${SCRIPTURE_LINK_MARK}]`).forEach((link) => link.replaceWith(document.createTextNode(link.textContent ?? '')));
   return copy.innerHTML;
+}
+
+/** The plan's words as shown, the Bible marks hidden while they are read: the plain copy has none of them. */
+function shownTextWithoutMarks(element: HTMLElement): string {
+  const marks = Array.from(element.querySelectorAll<HTMLElement>(`[${SCRIPTURE_BIBLE_MARK}]`));
+  marks.forEach((mark) => { mark.style.display = 'none'; });
+  try {
+    return element.innerText ?? '';
+  } finally {
+    marks.forEach((mark) => { mark.style.display = ''; });
+  }
 }
 
 /**
@@ -25,7 +40,7 @@ export async function copyFormattedFromElement(element: HTMLDivElement | null): 
     return false;
   }
 
-  const plainText = element.innerText ?? '';
+  const plainText = shownTextWithoutMarks(element);
   const htmlContent = withReferencesAsWords(element);
 
   const advancedClipboardAvailable =

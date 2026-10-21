@@ -2,6 +2,7 @@ import { Minimize2, X } from "lucide-react";
 import React from "react";
 
 import { Sermon } from "@/models/models";
+import { sermonLanguage } from "@/utils/documentLanguage";
 
 import FullPlanContent from "./FullPlanContent";
 import PlanCopyButton from "./PlanCopyButton";
@@ -66,6 +67,7 @@ export default function PlanImmersiveView({
         <main className="flex-1 overflow-y-auto">
           <div ref={immersiveContentRef} className="max-w-5xl mx-auto px-6 py-8">
             <FullPlanContent
+              sermonWrittenIn={sermonLanguage(sermon)}
               sermonTitle={sermon.title}
               sermonVerse={sermon.verse}
               combinedPlan={combinedPlan}

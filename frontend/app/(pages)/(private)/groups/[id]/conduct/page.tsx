@@ -13,6 +13,7 @@ import { useConductTimer } from '@/hooks/useConductTimer';
 import { useGroupConductForm } from '@/hooks/useGroupConductForm';
 import { useGroupDataDocument } from '@/hooks/useGroupDataDocument';
 import { GroupFlowItem } from '@/models/models';
+import { groupLanguage } from '@/utils/documentLanguage';
 import { normalizeFlow } from '@/utils/groupFlow';
 
 import type { Group, GroupBlockTemplate } from '@/models/models';
@@ -214,6 +215,7 @@ function ConductView({ groupId, group, loading, saveFlow, updateDuration, setupD
           onNext={handleNext}
           onPeek={handlePeek}
           onCompleteAll={handleCompleteAll}
+          groupWrittenIn={groupLanguage(group)}
         />
       )}
 

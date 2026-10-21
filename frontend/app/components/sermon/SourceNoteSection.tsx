@@ -5,9 +5,11 @@ import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import FoldableMarkdown from '@/components/ui/FoldableMarkdown';
 import { findSectionByHeading, jumpToSection, useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
+import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
 import { countWords } from '@/utils/noteCutCorridor';
 
@@ -293,6 +295,8 @@ const NoteCard: React.FC<{
               for one document. */}
           <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
             {looseAtoms.length > 0 && <AtomStack atoms={looseAtoms} testId="loose-atoms" className="mb-4" />}
+            {/* The note is a document of its own: its words, not the sermon's, say its references' Bible. */}
+            <ScriptureWrittenIn language={studyNoteLanguage(note)}>
             <FoldableMarkdown
               content={content}
               control={control}
@@ -301,6 +305,7 @@ const NoteCard: React.FC<{
               sectionBadge={sectionBadge}
               sectionExtra={sectionExtra}
             />
+            </ScriptureWrittenIn>
           </div>
           <p className="border-t border-gray-200 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
             {t('sermon.sourceNoteSection.readOnly')}

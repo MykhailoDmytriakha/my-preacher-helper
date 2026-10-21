@@ -7,6 +7,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
 import { MarkdownScriptureLink, rehypeScriptureLinks, SCRIPTURE_LINK_TAG, ScriptureText, useScriptureLinks } from '@/components/bible/ScriptureLinks';
+import { textLanguage } from '@/utils/appLocale';
 import { codeFenceFor } from '@/utils/markdownFence';
 import HighlightedText from '@components/HighlightedText';
 
@@ -49,9 +50,11 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
     // References become links where the screen gives them somewhere to open; elsewhere the text is as written.
     const scriptureLinks = useScriptureLinks();
     const linkLocale = scriptureLinks?.locale;
+    // The language its references were written in: the document's, else this text's.
+    const written = useMemo(() => (scriptureLinks ? scriptureLinks.written ?? textLanguage(content) : null), [content, scriptureLinks]);
     const rehypePlugins = useMemo(
-        () => [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], ...(linkLocale ? [[rehypeScriptureLinks, linkLocale]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
-        [linkLocale]
+        () => [rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], ...(linkLocale ? [[rehypeScriptureLinks, linkLocale, written]] : [])] as NonNullable<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>,
+        [linkLocale, written]
     );
 
     const renderHighlighted = useCallback(
