@@ -2,6 +2,7 @@
 
 import { List, MessageSquareText, Calendar, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
@@ -208,6 +209,7 @@ function SermonCardBadges({
   preachedDatesCount,
   t,
 }: SermonCardBadgesProps) {
+  const router = useRouter();
   return (
     <div className="flex flex-wrap items-center gap-2 mt-auto text-xs">
       {/* Series Badge */}
@@ -222,7 +224,9 @@ function SermonCardBadges({
           } : {}}
           onClick={(e) => {
             e.stopPropagation();
-            window.location.href = `/series/${sermonSeries.id}`;
+            // Inside the app, never a full page load: a reload freezes this page for Back and the series
+            // waits for the device storage it holds (BUG-20261020-released-page-back-says-local-failure).
+            router.push(`/series/${sermonSeries.id}`);
           }}
           title={sermonSeries.title}
         >

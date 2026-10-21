@@ -101,6 +101,24 @@ describe('CollectionReader durable read lifecycle', () => {
     expect(s.transport.list).toHaveBeenCalledTimes(2); s.reader.dispose();
   });
 
+  it('writes nothing to the device while an up-to-date list is only looked at', async () => {
+    // BUG-20261020-released-page-back-says-local-failure: each write is a transaction Safari can freeze
+    // mid-flight when the page is left; a list the person only looks at leaves nothing in flight.
+    const s = setup(); s.seed(row('a'), true);
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    const cursorWrites = jest.mocked(s.cursors.put).mock.calls.length;
+    expect(s.snapshots.put).not.toHaveBeenCalled();
+    await s.reader.refresh(collection); await settle();
+    expect(s.snapshots.put).not.toHaveBeenCalled();
+    expect(s.cursors.put).toHaveBeenCalledTimes(cursorWrites);
+    // A real change is still stored: the copy and how far the device knows.
+    s.change(row('a', 2, 'new')); await s.reader.refresh(collection); await settle();
+    expect(s.cache.get(key('owner', row('a').resource))?.value?.content).toBe('new');
+    expect(s.snapshots.put).toHaveBeenCalledTimes(1);
+    expect(s.cursors.put).toHaveBeenCalledTimes(cursorWrites + 1);
+    stop(); s.reader.dispose();
+  });
+
   it('backs off a failed closed-collection feed and resumes without another head event', async () => {
     const s = setup(); s.seed(row('a'));
     const stop = s.reader.watch(collection, jest.fn()); await settle();
@@ -359,7 +377,8 @@ describe('CollectionReader durable read lifecycle', () => {
     const state = await s.reader.refresh(collection);
     expect(state).toMatchObject({ complete: true, version: 3, freshness: 'server' });
     expect(s.transport.changes).toHaveBeenLastCalledWith('owner', collection, 3, { limit: 100 });
-    expect(s.cursorRecords.get(cursorKey('owner'))?.revision).toBe(9); s.reader.dispose();
+    // The other tab already stored version 3; nothing new to remember writes nothing.
+    expect(s.cursorRecords.get(cursorKey('owner'))?.revision).toBe(8); s.reader.dispose();
   });
 
   it('bounds repeated CAS conflicts and leaves the cache visibly incomplete', async () => {

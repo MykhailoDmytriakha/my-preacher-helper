@@ -1,6 +1,7 @@
-import { createStore, del, entries, get, set } from 'idb-keyval';
+import { del, entries, get, set } from 'idb-keyval';
 
 import { newClientId } from '@/utils/clientId';
+import { reconnectingStore } from '@/utils/deviceStorage';
 
 /**
  * Durable client-side store for UNFINISHED audio recordings. When a transcription
@@ -25,12 +26,12 @@ export interface RecordingDraft {
 
 const DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Lazily create the store so importing this module is SSR-safe (createStore
-// touches indexedDB). Returns null when IndexedDB is unavailable.
-let store: ReturnType<typeof createStore> | null = null;
+// Lazily create the store so importing this module is SSR-safe (opening touches indexedDB).
+// Returns null when IndexedDB is unavailable. A connection the browser closed is opened again.
+let store: ReturnType<typeof reconnectingStore> | null = null;
 const getStore = () => {
   if (typeof indexedDB === 'undefined') return null;
-  if (!store) store = createStore('recording-drafts', 'recording-drafts');
+  if (!store) store = reconnectingStore('recording-drafts', 'recording-drafts');
   return store;
 };
 

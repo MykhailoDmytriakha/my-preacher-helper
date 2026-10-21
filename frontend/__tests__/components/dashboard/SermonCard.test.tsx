@@ -265,6 +265,20 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Test Series')).toBeInTheDocument();
   });
 
+  it('opens the series inside the app, without reloading the page', () => {
+    // A full reload freezes the page Safari keeps for Back and makes the series wait for the device
+    // storage it holds (BUG-20261020-released-page-back-says-local-failure).
+    const series: Series[] = [{
+      id: 'test-series-id', title: 'Test Series', color: '#FF0000', userId: 'test-user-id', theme: 'Test Theme',
+      bookOrTopic: 'Romans', sermonIds: ['test-sermon-id'], status: 'active', createdAt: '2024-01-01', updatedAt: '2024-01-02',
+    }];
+    const before = window.location.href;
+    render(<SermonCard sermon={{ ...baseSermon, seriesId: 'test-series-id' }} series={series} />);
+    fireEvent.click(screen.getByText('Test Series'));
+    expect(mockPush).toHaveBeenCalledWith('/series/test-series-id');
+    expect(window.location.href).toBe(before);
+  });
+
   it('offers the series actions in the card menu, not only on the sermon page', () => {
     // The card already derives its badge from this list; the menu was the one place the
     // list did not reach, so filing a list of sermons meant opening each one in turn.

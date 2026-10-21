@@ -44,7 +44,6 @@ describe('ViewPlanMenu', () => {
 
       return (
         <ViewPlanMenu
-          sermonId="sermon-1"
           combinedPlan={{
             introduction: 'Intro **markdown**',
             main: 'Main content',
@@ -134,16 +133,4 @@ describe('ViewPlanMenu', () => {
     expect(onRequestPreachingMode).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to window navigation when no preaching callbacks are provided', () => {
-    const originalLocation = window.location;
-    delete (window as Partial<Window>).location;
-    (window as Window & { location: { href: string } }).location = { href: 'http://localhost/' } as any;
-
-    renderMenu({ onStartPreachingMode: undefined, onRequestPreachingMode: undefined });
-
-    fireEvent.click(screen.getByRole('button', { name: /preach/i }));
-
-    expect(window.location.href).toBe('/sermons/sermon-1/plan?planView=preaching');
-    window.location = originalLocation;
-  });
 });

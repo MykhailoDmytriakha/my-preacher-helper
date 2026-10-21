@@ -205,6 +205,37 @@ describe('device storage that stops answering', () => {
     expect(createStore).toHaveBeenCalledTimes(1);
     expect(createStore).toHaveBeenCalledWith('preacher-data-engine-state-v1', 'records');
   });
+
+  it('reopens a connection the browser closed, repeating a call that had not started', async () => {
+    // WebKit closes the connection of a page it keeps for Back when another page asks a version change;
+    // a call before the close event throws "The database connection is closing" and starts nothing
+    // (BUG-20261020-released-page-back-says-local-failure; tools/webkit-lab r.html + s.html).
+    const closing = Object.assign(new Error('The database connection is closing.'), { name: 'InvalidStateError' });
+    const dead = jest.fn(async () => { throw closing; });
+    const fresh = jest.fn(async (_mode: IDBTransactionMode, callback: (store: IDBObjectStore) => unknown) => callback({} as IDBObjectStore));
+    jest.mocked(createStore).mockReturnValueOnce(dead as never).mockReturnValueOnce(fresh as never);
+    const store = watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state');
+    const callback = jest.fn(() => 'written');
+
+    await expect(store('readwrite', callback)).resolves.toBe('written');
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(createStore).toHaveBeenCalledTimes(2);
+    // The fresh connection stays: the next call opens nothing new.
+    await store('readonly', () => 'read');
+    expect(createStore).toHaveBeenCalledTimes(2);
+  });
+
+  it('never repeats a call whose transaction had started', async () => {
+    const closing = Object.assign(new Error('Connection on cached page closed'), { name: 'InvalidStateError' });
+    const started = jest.fn(async (_mode: IDBTransactionMode, callback: (store: IDBObjectStore) => unknown) => { callback({} as IDBObjectStore); throw closing; });
+    jest.mocked(createStore).mockReturnValueOnce(started as never);
+    const store = watchedStore('preacher-data-engine-state-v1', 'records', 'engine-state');
+    const callback = jest.fn();
+
+    await expect(store('readwrite', callback)).rejects.toBe(closing);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(createStore).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('every database the app waits on is watched', () => {

@@ -2,6 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import GroupCard from '@/components/groups/GroupCard';
 
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }));
+
 jest.mock('next/link', () => {
   return function MockLink({ href, children, className }: any) {
     return (
@@ -140,11 +143,10 @@ describe('GroupCard', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it('renders series badge and handles series click', () => {
-    const originalLocation = window.location;
-    // @ts-ignore
-    delete window.location;
-    window.location = { href: '' } as unknown as Location;
+  it('renders series badge and opens the series inside the app, without reloading the page', () => {
+    // A full reload freezes the page Safari keeps for Back and makes the series wait for the device
+    // storage it holds (BUG-20261020-released-page-back-says-local-failure).
+    const before = window.location.href;
 
     const group = {
       id: 'g1',
@@ -175,8 +177,7 @@ describe('GroupCard', () => {
     expect(badge).toBeInTheDocument();
 
     fireEvent.click(badge);
-    expect(window.location.href).toBe('/series/s1');
-
-    window.location = originalLocation as unknown as Location;
+    expect(mockPush).toHaveBeenCalledWith('/series/s1');
+    expect(window.location.href).toBe(before);
   });
 });

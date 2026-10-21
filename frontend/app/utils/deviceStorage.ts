@@ -148,16 +148,20 @@ export function trackStorage<T>(database: string, operation: Promise<T>): Promis
  * read-then-write does — keeps that transaction, and other pages' transactions on the store wait
  * until Safari evicts the frozen page: 60 s on the Mac, minutes on iPadOS, 45 minutes on the owner's
  * iPad. Safari freezes such pages whatever the page says (`no-store`, `unload`, Web Locks all
- * ignored). What it honours is a version change: a frozen page cannot answer one, so Safari evicts
- * it at once — even while the change itself stays blocked — and its transaction goes with it.
+ * ignored). What it honours is a version change: a frozen page cannot answer one, so WebKit closes
+ * that page's connection at once — even while the change itself stays blocked — and aborts its
+ * transaction (`IDBConnectionProxy::fireVersionChangeEvent`, cached-page branch). It does NOT evict
+ * the page: going Back restores it intact with a closed connection and a failed transaction
+ * (measured 2026-10-20, `tools/webkit-lab` r.html + s.html). `reconnectingStore` below opens the
+ * connection again for calls that had not started; the aborted transaction wrote nothing.
  *
  * So when an engine database has stayed silent RELEASE_AFTER_MS past being declared silent, a
  * throwaway worker asks for its next version and is terminated a moment later. The request never
  * completes: it stays blocked behind this page's own connections, an upgrade that starts anyway is
  * aborted, and terminating the worker drops it, so the version never moves and nothing is left
- * queued (both measured). Nothing of this page is closed, aborted or replayed; only the frozen page
- * is evicted, by Safari, as it would have been when it expired. The wait first leaves the person a
- * moment to go back to that page, which then restores intact; after it, that page reloads instead.
+ * queued (both measured). Nothing of this page is closed, aborted or replayed. The release is rare
+ * by construction: a page only reading writes nothing (EditorController.persist), so the only page
+ * that can be frozen mid-write is one the person was changing when it was left by a full load.
  *
  * WebKit only. Chrome evicts a frozen page that blocks a transaction by itself (measured: no silence
  * at all), and there a terminated worker's blocked request stays queued and stalls every later open
@@ -252,8 +256,8 @@ function askForRelease(label: string, name: string): void {
     announceRelease({ source: label, result: 'failed' });
     return;
   }
-  // Safari evicts the frozen page while delivering the version change, before it answers "blocked":
-  // the first answer is the moment to end the request, so it cannot outlive this page's attention.
+  // WebKit closes the frozen page's connection while delivering the version change, before it answers
+  // "blocked": the first answer is the moment to end the request, so it cannot outlive this page's attention.
   worker.onmessage = event => {
     const result = event.data;
     if (result === 'blocked' || result === 'unblocked' || result === 'failed') announceRelease({ source: label, result });
@@ -265,11 +269,37 @@ function askForRelease(label: string, name: string): void {
   setTimeout(end, RELEASE_WORKER_LIFETIME_MS);
 }
 
-/** The same store `idb-keyval` would create, with every call watched under `label`. */
+/**
+ * A CONNECTION THE BROWSER CLOSED IS OPENED AGAIN.
+ *
+ * WebKit closes the connection of a page it keeps for Back when another page asks a version change
+ * (the release above), and keeps the page: it comes back intact with a closing connection. Until that
+ * connection's `close` event reaches `idb-keyval`, every call throws InvalidStateError "The database
+ * connection is closing" (measured: Safari 26.5, `tools/webkit-lab` r.html + s.html, 7–18 ms after
+ * `pageshow`; BUG-20261020-released-page-back-says-local-failure). Such a call failed before its
+ * callback ran — nothing started — so it is repeated once on a fresh connection. A call whose callback
+ * ran is never repeated: its transaction may have done work.
+ */
+export function reconnectingStore(databaseName: string, storeName: string): UseStore {
+  let store: UseStore | undefined;
+  return async (mode, callback) => {
+    const used = (store ??= createStore(databaseName, storeName));
+    let started = false;
+    try {
+      return await used(mode, objectStore => { started = true; return callback(objectStore); });
+    } catch (error) {
+      if (started || (error as { name?: unknown } | null)?.name !== 'InvalidStateError') throw error;
+      if (store === used) store = createStore(databaseName, storeName);
+      return store(mode, callback);
+    }
+  };
+}
+
+/** The same store `idb-keyval` would create, reopened when the browser closes it, with every call watched under `label`. */
 export function watchedStore(databaseName: string, storeName: string, label: string): UseStore {
   if ((ENGINE_STORAGE as readonly string[]).includes(label)) engineDatabases.set(label, databaseName);
-  let store: UseStore | undefined;
-  return (mode, callback) => trackStorage(label, (store ??= createStore(databaseName, storeName))(mode, callback));
+  const store = reconnectingStore(databaseName, storeName);
+  return (mode, callback) => trackStorage(label, store(mode, callback));
 }
 
 export function getDeviceStorageHealth(): DeviceStorageHealth {

@@ -12,7 +12,6 @@ import { getPlanMarkdownStyles } from './markdownStyles';
 
 
 interface ViewPlanMenuProps {
-  sermonId: string;
   combinedPlan: {
     introduction: string;
     main: string;
@@ -48,7 +47,6 @@ const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
 };
 
 const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
-  sermonId,
   combinedPlan,
   sectionMenuRef,
   showSectionMenu,
@@ -197,8 +195,6 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
             onStartPreachingMode();
           } else if (onRequestPreachingMode) {
             onRequestPreachingMode();
-          } else {
-            window.location.href = `/sermons/${sermonId}/plan?planView=preaching`;
           }
         }}
         className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"

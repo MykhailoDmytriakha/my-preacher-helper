@@ -24,7 +24,7 @@ import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
 import { getSeriesForRef } from '@utils/seriesMembership';
-import { getSermonPlanData } from '@utils/sermonPlanAccess';
+import { getSermonPlanData, preachingRoute } from '@utils/sermonPlanAccess';
 
 import type { ManualTextBinding } from '@/components/common/manualTextBinding';
 import type { SyncStatus } from '@/data-engine/status';
@@ -69,7 +69,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], editor
   const enableAudio = settings?.enableAudioGeneration || false;
 
   const handleStartPreaching = () => {
-    window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
+    router.push(preachingRoute(sermon.id));
   };
 
   // Removed legacy mode switch (framework/content)

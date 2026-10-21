@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -13,8 +13,9 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-// Mock the sermonPlanAccess utilities
+// Mock the sermonPlanAccess decisions; the routes it builds stay real.
 jest.mock('@/utils/sermonPlanAccess', () => ({
+  ...jest.requireActual('@/utils/sermonPlanAccess'),
   getSermonAccessType: jest.fn(),
   getSermonPlanAccessRoute: jest.fn(),
   isSermonReadyForPreaching: jest.fn(),
@@ -259,6 +260,20 @@ describe('QuickPlanAccessButton Component', () => {
     expect(buttons[0]).toHaveTextContent('To plan');
     expect(buttons[1]).toHaveTextContent('plan.preachButton');
     expect(buttons[1]).toHaveClass('bg-green-600');
+  });
+
+  it('opens the preaching plan inside the app, without reloading the page', () => {
+    // A full reload freezes the page Safari keeps for Back, and its unfinished write holds the device
+    // storage the plan reads (BUG-20261020-released-page-back-says-local-failure).
+    mockGetSermonAccessType.mockReturnValue('plan');
+    mockGetSermonPlanAccessRoute.mockReturnValue('/sermons/sermon-1/plan');
+    mockIsSermonReadyForPreaching.mockReturnValue(true);
+    const sermon = { id: 'sermon-1', title: 'Test Sermon', verse: 'John 3:16', date: '2023-01-01', thoughts: [], userId: 'user-1' } as unknown as Sermon;
+    const before = window.location.href;
+    render(<QuickPlanAccessButton sermon={sermon} t={mockT as any} />);
+    fireEvent.click(screen.getAllByRole('button')[1]);
+    expect(mockPush).toHaveBeenCalledWith('/sermons/sermon-1/plan?planView=preaching');
+    expect(window.location.href).toBe(before);
   });
 
   it('does not render preach button when plan is not ready for preaching', () => {

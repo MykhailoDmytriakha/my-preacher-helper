@@ -4,6 +4,7 @@ import { AddressedFailures } from '../failures';
 import { ResourceObserver, type SnapshotEvent } from '../observer';
 import { applyCommand } from '../protocol';
 import { DataEngineRuntime } from '../runtime';
+import { DataSession } from '../session';
 import { redeliveryDelay } from '../unanswered';
 
 import type { ManualScopeStore, ManualStorageRecord } from '../manualScopes.client';
@@ -693,9 +694,9 @@ describe('DataEngine composition', () => {
   it('keeps a restored legacy checkpoint that is newer than the separate snapshot cache', async () => {
     const s = setup({ online: false });
     const latest = { ...initial(), metadata: null, value: { ...initial().value, content: 'latest', rev: { note: 2 } } };
-    s.cache.set(keyOf('owner', resource), latest);
-    const first = await s.engine.openEditor(resource, 'tab'); first.dispose();
-    await drainMicrotasks();
+    // An earlier version kept a checkpoint even for a document only read; it may be newer than the cache.
+    const legacy: EditorRecord = { owner: 'owner', editorId: 'tab', checkpoint: new DataSession(latest).checkpoint(), prepared: null, unfinalized: [], completedCommits: [] };
+    s.records.set(JSON.stringify(['owner', 'tab']), legacy);
     s.cache.set(keyOf('owner', resource), { ...latest, value: { ...latest.value, content: 'stale', rev: { note: 1 } } });
     const restored = await s.engine.openEditor(resource, 'tab');
     expect(restored.getState().checkpoint.confirmed).toEqual(latest);
@@ -828,9 +829,23 @@ describe('DataEngine composition', () => {
     s.engine.dispose();
   });
 
+  it('writes no checkpoint while a document is only opened and read', async () => {
+    // BUG-20261020-released-page-back-says-local-failure: each write is a transaction Safari can freeze
+    // mid-flight when the page is left; reading must leave nothing in flight.
+    const s = setup(); const editor = await s.engine.openEditor(resource, 'reader');
+    await drainMicrotasks();
+    s.next(initial(2, 'remote')); await drainMicrotasks();
+    expect(editor.getState().checkpoint.draft?.content).toBe('remote');
+    expect(s.checkpoints.put).not.toHaveBeenCalled();
+    s.engine.dispose();
+  });
+
   it('still reports an actual observation persistence failure after editor closure', async () => {
     const s = setup(); const editor = await s.engine.openEditor(resource, 'old');
-    await drainMicrotasks(); s.onError.mockClear();
+    await drainMicrotasks();
+    // Only a document with something to keep writes on observation.
+    await editor.edit({ ...editor.getState().checkpoint.draft, content: 'mine' }); await drainMicrotasks();
+    s.onError.mockClear();
     const disk = deferred<void>();
     jest.mocked(s.checkpoints.put).mockReturnValueOnce(disk.promise);
     s.next(initial(2, 'remote')); await drainMicrotasks();

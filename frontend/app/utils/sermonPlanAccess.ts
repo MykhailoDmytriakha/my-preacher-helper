@@ -111,6 +111,16 @@ export function planEditorRoute(sermonId: string, sermon: Sermon | null | undefi
 }
 
 /**
+ * Where "Preach" goes: the plan in its preaching view. Callers open it inside the app (`router.push`),
+ * never by a full page load: a reload freezes the page left behind for Back, an unfinished write of it
+ * holds the device storage the plan reads, and the plan waits seconds for what is already on the device
+ * (BUG-20261020-released-page-back-says-local-failure).
+ */
+export function preachingRoute(sermonId: string): string {
+  return `/sermons/${sermonId}/plan?planView=preaching`;
+}
+
+/**
  * Extracts PlanData from a sermon for export purposes.
  * Returns undefined if no plan or draft is found or if it's empty.
  */

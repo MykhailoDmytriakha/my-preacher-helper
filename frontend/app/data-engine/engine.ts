@@ -10,7 +10,7 @@ import { describeMembershipDelivery, type MembershipDelivery } from './membershi
 import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
-import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
+import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { submittedWorkCheckpoint } from './submittedWork';
 import { redeliveryDelay } from './unanswered';
 
@@ -1170,7 +1170,7 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       if (current && !sameResource(current.resource, frozen.resource)) throw new Error(CACHED_IDENTITY_MISMATCH);
       if (!canReplaceSnapshot(current, frozen)) return current!;
-      if (!equalValues(current, frozen)) await this.options.snapshots.put(owner, frozen);
+      if (storesNewCopy(current, frozen)) await this.options.snapshots.put(owner, frozen);
       this.assertCurrent(owner, generation);
       return frozen;
     });

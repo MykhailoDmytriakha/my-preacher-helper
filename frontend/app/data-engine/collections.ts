@@ -1,6 +1,6 @@
 import { collectionHeadRef, feedVersion } from './feed';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
-import { canReplaceSnapshot } from './snapshotFreshness';
+import { storesNewCopy } from './snapshotFreshness';
 
 import type { CollectionDocumentView } from './collectionView';
 import type { SnapshotStore } from './engine';
@@ -476,7 +476,7 @@ export class CollectionReader {
       this.assertCurrent(entry, generation, true);
       const current = await this.options.snapshots.read(entry.owner, snapshot.resource);
       this.assertCurrent(entry, generation, true);
-      if (canReplaceSnapshot(current, snapshot)) await this.options.snapshots.put(entry.owner, copy(snapshot));
+      if (storesNewCopy(current, snapshot)) await this.options.snapshots.put(entry.owner, copy(snapshot));
       this.assertCurrent(entry, generation, true);
     }
   }
@@ -498,6 +498,12 @@ export class CollectionReader {
   private async commitCursor(entry: CollectionEntry, generation: number, next: Pick<CollectionCursor, 'version' | 'initialized' | 'listedWhileClosed'>): Promise<void> {
     this.assertCurrent(entry, generation, true);
     const listed = next.listedWhileClosed ?? entry.cursor?.listedWhileClosed === true;
+    // Nothing new to remember writes nothing: the device already knows this far (owner, 2026-10-20).
+    const known = entry.cursor;
+    if (known && known.version === next.version && known.initialized === next.initialized && (known.listedWhileClosed === true) === listed) {
+      entry.state = { ...entry.state, complete: known.initialized, version: known.version };
+      return;
+    }
     const committed = await this.options.cursors.put(entry.owner, entry.collection, entry.cursor,
       { version: next.version, initialized: next.initialized, ...(listed ? { listedWhileClosed: true } : {}) });
     this.assertCurrent(entry, generation, true);

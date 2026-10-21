@@ -163,6 +163,37 @@ describe('EditorController durable lifecycle', () => {
     expect([...s.records.values()][0].checkpoint.draft?.content).toBe('newer');
   });
 
+  it('writes nothing to the device while a document is only read', async () => {
+    // Opening a sermon and receiving its copies keeps nothing the person did. A write here is a
+    // transaction Safari can freeze mid-flight when the page is left, holding the store for every
+    // other page (BUG-20261020-released-page-back-says-local-failure).
+    const s = setup(); const editor = await EditorController.open(s.options);
+    await editor.observe(initial(), 'cache');
+    await editor.observe({ ...initial(), value: { ...initial().value, content: 'from another device' }, metadata: { ...initial().metadata!, revision: 2 } }, 'server');
+    await editor.settled();
+    expect(editor.getState().checkpoint.draft?.content).toBe('from another device');
+    expect(editor.getState()).toMatchObject({ durable: true, error: null });
+    expect(s.store.put).not.toHaveBeenCalled();
+  });
+
+  it('keeps typing on the device, clears it once saved, and then reads silently again', async () => {
+    const s = setup(); const editor = await EditorController.open(s.options);
+    await editor.edit({ ...initial().value, content: 'mine' });
+    expect([...s.records.values()][0]?.checkpoint.draft?.content).toBe('mine');
+    await editor.save(); await s.runtime.drain(); await editor.settled();
+    expect([...s.records.values()][0]).toMatchObject({ checkpoint: { dirty: false, pending: {} }, unfinalized: [] });
+    const writes = jest.mocked(s.store.put).mock.calls.length;
+    await editor.observe(s.server(), 'server'); await editor.settled();
+    expect(s.store.put).toHaveBeenCalledTimes(writes);
+    // A checkpoint an earlier page left on the device is cleared by the first write with nothing left to keep.
+    editor.dispose();
+    const left: EditorRecord = { ...clone([...s.records.values()][0]), unfinalized: ['finished-elsewhere'] };
+    s.records.set(JSON.stringify(['owner', 'tab-editor']), left);
+    jest.spyOn(s.runtime, 'finalize').mockResolvedValue(undefined);
+    await EditorController.open(s.options);
+    expect([...s.records.values()][0].unfinalized).toEqual([]);
+  });
+
   it('stops finalizing checkpoint receipts as soon as the account changes', async () => {
     const s = setup(); const editor = await EditorController.open(s.options);
     await editor.edit({ ...initial().value, content: 'mine' }); editor.dispose();

@@ -3,7 +3,7 @@ import { ScrollText } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 import { Sermon } from '@/models/models';
-import { getSermonPlanAccessRoute, getSermonAccessType, isSermonReadyForPreaching } from '@/utils/sermonPlanAccess';
+import { getSermonPlanAccessRoute, getSermonAccessType, isSermonReadyForPreaching, preachingRoute } from '@/utils/sermonPlanAccess';
 
 import type { MouseEvent } from 'react';
 
@@ -38,7 +38,7 @@ export function QuickPlanAccessButton({ sermon, t, isPreached = false }: QuickPl
   const handlePreachClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
+    router.push(preachingRoute(sermon.id));
   };
 
   return (
