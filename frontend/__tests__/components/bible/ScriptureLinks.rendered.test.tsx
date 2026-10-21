@@ -39,6 +39,12 @@ describe('ScriptureLinks — a reference in text is a link where a screen opens 
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ book: 'Romans', chapter: 12, fromVerse: 1, toVerse: 2 }));
   });
 
+  // Codex's review, 2026-10-21: a note opened from the search "24:26" lost the light on its match once the match became a link.
+  it('keeps a search match lit inside a reference link', () => {
+    render(<ScriptureLinks onOpen={jest.fn()}><MarkdownDisplay content="Призыв: не выходите (Мф 24:26)." searchQuery="24:26" /></ScriptureLinks>);
+    expect(screen.getByRole('button', { name: 'Мф 24:26' }).querySelector('mark')).toHaveTextContent('24:26');
+  });
+
   it('links a reference inside a quote callout', () => {
     render(<ScriptureLinks onOpen={jest.fn()}><MarkdownDisplay content={'[Quote: Прочитайте Рим 12:1–2]'} /></ScriptureLinks>);
     expect(screen.getByRole('button', { name: 'Рим 12:1–2' })).toBeInTheDocument();

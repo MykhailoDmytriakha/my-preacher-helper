@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import { ScriptureLinks } from '@/components/bible/ScriptureLinks';
 import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
@@ -42,6 +43,7 @@ import { textLanguage } from '@/utils/appLocale';
 import { interfaceLanguageHeaders } from '@/utils/authenticatedRequest';
 import { referenceFromTyped } from '@/utils/bibleLink';
 import { serializeContent } from '@/utils/contentFingerprint';
+import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -66,6 +68,7 @@ import { useNoteAutoSave } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 import { useNoteScrollPosition } from './useNoteScrollPosition';
 
+import type { SheetReference } from '@/components/bible/VerseSheet';
 import type { AppLocale } from '@/utils/appLocale';
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
@@ -733,6 +736,13 @@ export default function StudyNoteEditorPage() {
     const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
     const [showRefPicker, setShowRefPicker] = useState(false);
     const [previewReference, setPreviewReference] = useState<ScriptureReference | null>(null);
+    // A reference in the note's text opens the window its chips open: the passage, and the notes on it.
+    const openTextReference = useCallback((reference: SheetReference) => setPreviewReference({
+        ...reference,
+        id: `text:${reference.bible}:${reference.book}:${reference.chapter ?? ''}:${reference.fromVerse ?? ''}-${reference.toChapter ?? ''}:${reference.toVerse ?? ''}`,
+    }), []);
+    // The note's own words decide a reference Russian and Ukrainian write alike; read only while it is shown as text.
+    const readingLanguage = useMemo(() => (isEditing ? null : studyNoteLanguage({ title, content })), [isEditing, title, content]);
 
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
@@ -1365,13 +1375,15 @@ export default function StudyNoteEditorPage() {
                         </div>
                     ) : (
                         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
-                            <FoldableMarkdown
-                                content={content}
-                                searchQuery={searchQuery}
-                                control={outlineControl}
-                                showToggleAll={isWideViewport && panelCollapsed}
-                                scrollMarginTop={scrollLayout.sectionMargin}
-                            />
+                            <ScriptureLinks onOpen={openTextReference} writtenIn={readingLanguage}>
+                                <FoldableMarkdown
+                                    content={content}
+                                    searchQuery={searchQuery}
+                                    control={outlineControl}
+                                    showToggleAll={isWideViewport && panelCollapsed}
+                                    scrollMarginTop={scrollLayout.sectionMargin}
+                                />
+                            </ScriptureLinks>
                         </div>
                     )}
 

@@ -74,7 +74,10 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                 // Order matters: raw must run before sanitize.
                 rehypePlugins={rehypePlugins}
                 components={{
-                    [SCRIPTURE_LINK_TAG]: MarkdownScriptureLink,
+                    // A reference stays lit by the search too: opened from "24:26", the match is the link itself.
+                    [SCRIPTURE_LINK_TAG]: ({ children, ...props }: React.ComponentProps<typeof MarkdownScriptureLink>) => (
+                        <MarkdownScriptureLink {...props}>{React.Children.map(children, renderHighlighted)}</MarkdownScriptureLink>
+                    ),
                     // Override link behavior to open in new tab
                     a: ({ ...props }) => (
                         <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
