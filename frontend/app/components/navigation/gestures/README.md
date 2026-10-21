@@ -1,27 +1,25 @@
 # Page gestures
 
-summary: Familiar document reload and back navigation across the full iPad PWA page.
+summary: Familiar back navigation by a swipe across the full iPad PWA page; there is no pull to reload.
 
-`PageGestures` is mounted once in the private layout. Both gestures are enabled
+`PageGestures` is mounted once in the private layout. The swipe back is enabled
 only on iPad in installed standalone PWA mode through `isIPadStandalonePwa`.
 Regular browser tabs, iPhone, Android and desktop apps install no gesture listeners.
 
 The page itself moves, as in Safari. `PageGestures` renders the private layout's
-root element and shifts it with `position: relative; left/top` — never a transform,
+root element and shifts it with `position: relative; left` — never a transform,
 which would make every fixed bar travel with it (WebKit lab `tools/webkit-lab/h.html`).
 While the page is shifted, its parent clips horizontal overflow; never otherwise.
 Fixed page chrome (the preaching header, text-size button, progress sidebar, meeting
 screens) carries `page-gesture-follow` and reads the same offset from
-`--page-gesture-x/y` — only while a gesture moves the page (`globals.css`).
+`--page-gesture-x` — only while a gesture moves the page (`globals.css`).
 
-- At the document top, pull down anywhere across its width: left, middle or right.
-  The page follows the finger with resistance, a spinner appears in the opened gap,
-  it arms at 72 pixels and triggers on release. Pulling back below the threshold cancels.
-- Release invokes `reloadPage`, the SAME document reload as `AppUpdateButton`, and the
-  page waits lowered under the spinner. No data-reader promises delay it. If the reload
-  has not departed after five seconds, a visible notice says so and permits a new attempt.
+- There is no pull to reload. It was removed on 2026-10-20 at the owner's word: it got
+  in the way more than it helped. A pull at the top is left to the browser, which in an
+  installed app does not reload; the reload is the header's button (`AppUpdateButton`,
+  `docs/pwa.md`).
 - The left 28 pixels belong to Safari: an installed app keeps the system swipe back,
-  which slides the real previous page in. No gesture of ours starts there, not even a pull.
+  which slides the real previous page in. No gesture of ours starts there.
 - From anywhere else, even after scrolling, a right swipe moves the page one to one with
   the finger over a grey underlay, with an edge shadow. Release past 90 pixels, or a quick
   flick, slides the page out (200 ms) and then goes back; a flick back to the left cancels
@@ -39,17 +37,16 @@ screens) carries `page-gesture-follow` and reads the same offset from
 - Buttons, links and SVG icons are valid starting points. Ordinary taps still
   activate them; a recognized swipe suppresses its trailing compatibility click.
 - Text editing, dialogs, selected text, sliders, drag handles, zoom and nested
-  scrollers keep their own gestures. A page scroll cannot turn into pull-to-reload
-  halfway up: the gesture must START at the document top.
+  scrollers keep their own gestures. A pane that scrolls only up and down owns that
+  axis alone: a swipe across it still goes back.
 - Page departure, return from the back-forward cache and route changes show the page at rest.
 - Motion respects reduced-motion preferences (`motion-safe:` transitions only). Words are
   announced to screen readers; on screen there is only motion, like Safari.
 
-The bounded, content-free diagnostics record recognized gestures, exclusions,
-cancellations and reload requests. Reports include touch capability and viewport
-scale. No document text, identifiers or touch coordinates are recorded.
+The bounded, content-free diagnostics record recognized gestures, exclusions and
+cancellations. Reports include touch capability and viewport scale. No document text,
+identifiers or touch coordinates are recorded.
 
-Verification covers full-width pulls, control taps versus swipes, back navigation
-from the center and after scrolling, reload delegation, cancellation and device
-exclusions. Browser checks must prove a new document boot, not merely a successful
-API read. Physical iPad PWA behavior remains a separate device acceptance check.
+Verification covers control taps versus swipes, back navigation from the center and
+after scrolling, cancellation, a pull at the top that must stay the browser's, and
+device exclusions. Physical iPad PWA behavior remains a separate device acceptance check.

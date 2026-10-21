@@ -7,9 +7,8 @@ import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { isPageZoomed } from '@/utils/pageZoom';
 import { isIPadStandalonePwa } from '@/utils/pwaEnv';
 
-import { NESTED_UP_AND_DOWN, gestureBlockReason, pageAtTop } from './touchTargets';
+import { NESTED_UP_AND_DOWN, gestureBlockReason } from './touchTargets';
 
-export const PULL_THRESHOLD = 72;
 export const BACK_THRESHOLD = 90;
 /** How long the page takes to slide away before the previous one is shown. */
 export const LEAVE_MS = 200;
@@ -29,12 +28,10 @@ const SPEED_WINDOW_MS = 50;
 const LEAVE_GIVE_UP_MS = 1500;
 /**
  * The left edge belongs to Safari: an installed app keeps the system's swipe back there, which
- * slides the real previous page in. No gesture of ours starts in it, not even a pull.
+ * slides the real previous page in. No gesture of ours starts in it.
  */
 const EDGE_WIDTH = 28;
 const SLOP = 8;
-const MAX_PULL = 140;
-const RELOAD_START_TIMEOUT_MS = 5000;
 const CLICKABLE = 'a, button, label, [role="button"]';
 
 type Sample = { x: number; at: number };
@@ -43,9 +40,7 @@ type Gesture = {
   x: number;
   y: number;
   target: Element;
-  top: boolean;
-  canGoBack: boolean;
-  direction: 'pending' | 'refresh' | 'back';
+  direction: 'pending' | 'back';
   distance: number;
   /** Where a page caught while gliding home already stood, so it continues from there. */
   baseline: number;
@@ -53,17 +48,16 @@ type Gesture = {
   samples: Sample[];
 };
 /**
- * What the page surface shows. `pull` and `back` follow the finger; `leaving` slides the page away
- * before going back; `settling` glides an abandoned swipe home before the surface lets go.
+ * What the page surface shows. `back` follows the finger; `leaving` slides the page away before
+ * going back; `settling` glides an abandoned swipe home before the surface lets go.
  */
 export type GestureView = {
-  kind: 'idle' | 'pull' | 'back' | 'leaving' | 'settling' | 'refreshing' | 'error';
+  kind: 'idle' | 'back' | 'leaving' | 'settling';
   distance: number;
 };
-export type PageOffset = { x: number; y: number };
+export type PageOffset = { x: number };
 const IDLE: GestureView = { kind: 'idle', distance: 0 };
 const SETTLING: GestureView = { kind: 'settling', distance: 0 };
-const REFRESHING: GestureView = { kind: 'refreshing', distance: PULL_THRESHOLD };
 
 /**
  * Speed at release, the lift point last in `samples`. `recent` runs from the newest report at least a
@@ -90,30 +84,30 @@ function prefersCalm(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
 }
 
-/** How far the page stands from home for this finger: one to one sideways, with resistance downwards. */
-function travel(gesture: Gesture, clientX: number, clientY: number): number {
-  return gesture.direction === 'refresh'
-    ? Math.min(MAX_PULL, Math.max(0, gesture.baseline + (clientY - gesture.y) * 0.5))
-    : Math.max(0, gesture.baseline + clientX - gesture.x);
+/** How far the page stands from home for this finger: one to one sideways. */
+function travel(gesture: Gesture, clientX: number): number {
+  return Math.max(0, gesture.baseline + clientX - gesture.x);
 }
 
-export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffset }: {
+/**
+ * A swipe right goes back. There is no pull to reload: the owner removed it on 2026-10-20 — it got in
+ * the way more than it helped. A reload is the header's update button (`AppUpdateButton`).
+ */
+export function usePageGestures({ routeKey, enabled, onBack, readOffset }: {
   routeKey: string;
   enabled: boolean;
-  onRefresh: () => void;
   onBack: () => void;
   /** Where the page is drawn right now, mid-animation included. */
   readOffset?: () => PageOffset;
 }) {
   const [view, setView] = useState<GestureView>(IDLE);
-  const actions = useRef({ onRefresh, onBack, readOffset });
-  actions.current = { onRefresh, onBack, readOffset };
+  const actions = useRef({ onBack, readOffset });
+  actions.current = { onBack, readOffset };
 
   useEffect(() => {
     setView(IDLE);
     if (!enabled || !isIPadStandalonePwa()) return;
     recordDiagnostic('gesture', { source: 'setup', result: 'enabled', route: routeKey });
-    let reloading = false;
     let gesture: Gesture | null = null;
     let shown: GestureView['kind'] = 'idle';
     let departedFrom: string | null = null;
@@ -121,18 +115,15 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
     // Instead a back that went nowhere marks this page at its history length, and the next swipe here is
     // not offered until history moves or grows.
     let deadEnd: number | null = null;
-    let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
-    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
     let clickTimer: ReturnType<typeof setTimeout> | undefined;
     let motionTimer: ReturnType<typeof setTimeout> | undefined;
     let clickTarget: Element | null = null;
     const address = () => `${window.location.pathname}${window.location.search}`;
     const show = (next: GestureView) => { shown = next.kind; setView(next); };
-    /** The page glides home from wherever the finger left it; a pending reload keeps its place. */
+    /** The page glides home from wherever the finger left it. */
     const settle = () => {
       clearTimeout(motionTimer);
       departedFrom = null;
-      if (reloading) { show(REFRESHING); return; }
       if (prefersCalm()) { show(IDLE); return; }
       show(SETTLING);
       motionTimer = setTimeout(() => show(IDLE), SETTLE_MS);
@@ -166,27 +157,22 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       cancel();
       clickTarget = null;
       clearTimeout(clickTimer);
-      if (shown === 'error') { clearTimeout(feedbackTimer); show(IDLE); }
       if (event.defaultPrevented || event.touches.length !== 1) return;
       const touch = event.touches[0];
       if (touch.clientX <= EDGE_WIDTH) return;
       // An Apple Pencil on a text it writes on (the Bible's marks, `data-pen-surface`) draws, never goes back.
       const stylus = (touch as Touch & { touchType?: string }).touchType === 'stylus';
       if (stylus && event.target instanceof Element && event.target.closest('[data-pen-surface]')) return;
-      const canGoBack = window.history.length > 1 && deadEnd !== window.history.length;
-      const top = pageAtTop() && !reloading;
-      if (!top && !canGoBack) return;
+      if (window.history.length <= 1 || deadEnd === window.history.length) return;
       const blocked = gestureBlockReason(event.target)
         ?? (isPageZoomed() ? 'zoomed' : null);
-      // In a pane that scrolls only up and down, a swipe across is still the way back; the pull is the pane's.
-      const backOnly = blocked === NESTED_UP_AND_DOWN && canGoBack;
-      if (blocked && !backOnly) {
-        recordDiagnostic('gesture', { source: 'start', result: 'blocked', code: blocked === NESTED_UP_AND_DOWN ? 'nested-gesture' : blocked });
+      // A pane that scrolls only up and down owns that axis alone: a swipe across it is still the way back.
+      if (blocked && blocked !== NESTED_UP_AND_DOWN) {
+        recordDiagnostic('gesture', { source: 'start', result: 'blocked', code: blocked });
         return;
       }
-      const target = event.target as Element;
       gesture = {
-        identifier: touch.identifier, x: touch.clientX, y: touch.clientY, target, top: top && !backOnly, canGoBack,
+        identifier: touch.identifier, x: touch.clientX, y: touch.clientY, target: event.target as Element,
         direction: 'pending', distance: 0, baseline: 0, samples: [{ x: touch.clientX, at: Date.now() }],
       };
     };
@@ -197,22 +183,17 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       if (!touch || !event.cancelable) { cancel('browser-owned'); return; }
       const dx = touch.clientX - gesture.x, dy = touch.clientY - gesture.y;
       if (gesture.direction === 'pending') {
-        // Claim the intended axis before the browser turns it into scrolling.
-        if (!gesture.target.closest(CLICKABLE) && ((gesture.top && dy > 0 && dy > Math.abs(dx))
-          || (gesture.canGoBack && dx > 0 && dx > Math.abs(dy)))) event.preventDefault();
+        // Claim the sideways axis before the browser turns it into scrolling.
+        if (!gesture.target.closest(CLICKABLE) && dx > 0 && dx > Math.abs(dy)) event.preventDefault();
         if (Math.max(Math.abs(dx), Math.abs(dy)) < SLOP) return;
-        if (gesture.canGoBack && dx > Math.abs(dy) * 1.5) gesture.direction = 'back';
-        else if (gesture.top && pageAtTop() && dy > Math.abs(dx) * 1.5) gesture.direction = 'refresh';
+        if (dx > Math.abs(dy) * 1.5) gesture.direction = 'back';
         else { cancel('direction'); return; }
         const offset = shown === 'settling' ? actions.current.readOffset?.() : undefined;
         if (offset) {
-          // A page still gliding home on the other axis is left to finish; only its own axis can be caught.
-          if ((gesture.direction === 'refresh' ? offset.x : offset.y) > 1) { gesture = null; return; }
           // The finger caught it: the page continues from where it is drawn now.
           clearTimeout(motionTimer);
-          gesture.baseline = (gesture.direction === 'refresh' ? offset.y : offset.x) - travel(gesture, touch.clientX, touch.clientY);
+          gesture.baseline = offset.x - travel(gesture, touch.clientX);
         }
-        clearTimeout(feedbackTimer); // a failure notice from before this touch must not end the drag
         clickTarget = gesture.target.closest(CLICKABLE);
         recordDiagnostic('gesture', { source: gesture.direction, result: 'tracking' });
       }
@@ -222,8 +203,8 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       const recent = gesture.samples.filter(sample => now - sample.at <= SPEED_WINDOW_MS);
       const before = gesture.samples.filter(sample => now - sample.at > SPEED_WINDOW_MS).pop();
       gesture.samples = [...(before ? [before] : []), ...recent, { x: touch.clientX, at: now }];
-      gesture.distance = travel(gesture, touch.clientX, touch.clientY);
-      show({ kind: gesture.direction === 'refresh' ? 'pull' : 'back', distance: gesture.distance });
+      gesture.distance = travel(gesture, touch.clientX);
+      show({ kind: 'back', distance: gesture.distance });
     };
     const finish = (event: TouchEvent) => {
       clickTimer = setTimeout(() => { clickTarget = null; }, 700);
@@ -235,31 +216,11 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
       if (completed.direction === 'pending') return;
       // The lift point is the last word on where the finger went.
       completed.samples.push({ x: released.clientX, at: Date.now() });
-      completed.distance = travel(completed, released.clientX, released.clientY);
-      if (completed.direction === 'back') {
-        const speed = releaseSpeeds(completed.samples);
-        const reversing = speed.recent <= -FLICK_SPEED || speed.last <= -FLICK_SPEED;
-        const flicked = speed.recent >= FLICK_SPEED && completed.distance >= FLICK_MIN;
-        if (!reversing && (flicked || completed.distance >= BACK_THRESHOLD)) leave(); else settle();
-        return;
-      }
-      if (completed.distance < PULL_THRESHOLD || reloading) { settle(); return; }
-      reloading = true;
-      show(REFRESHING);
-      const failed = (code: string) => {
-        clearTimeout(reloadTimer);
-        reloading = false;
-        recordDiagnostic('gesture', { source: 'reload', result: 'failed', code });
-        // A back under way keeps the screen. So does a finger moving the page: whichever way it lets go
-        // ends in settle, a new reload or leave, now that nothing is reloading. A resting touch moved nothing.
-        if (shown === 'leaving' || (gesture && gesture.direction !== 'pending')) return;
-        show({ kind: 'error', distance: 0 });
-        feedbackTimer = setTimeout(() => show(IDLE), 4000);
-      };
-      // The document reload starts now, exactly like the header button. Do not await data readers.
-      recordDiagnostic('gesture', { source: 'reload', result: 'requested' });
-      reloadTimer = setTimeout(() => failed('navigation-not-started'), RELOAD_START_TIMEOUT_MS);
-      try { actions.current.onRefresh(); } catch { failed('reload-rejected'); }
+      completed.distance = travel(completed, released.clientX);
+      const speed = releaseSpeeds(completed.samples);
+      const reversing = speed.recent <= -FLICK_SPEED || speed.last <= -FLICK_SPEED;
+      const flicked = speed.recent >= FLICK_SPEED && completed.distance >= FLICK_MIN;
+      if (!reversing && (flicked || completed.distance >= BACK_THRESHOLD)) leave(); else settle();
     };
     const click = (event: MouseEvent) => {
       if (event.detail === 0) return;
@@ -281,11 +242,10 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
     };
     // Leaving the document or returning from the back-forward cache shows the page at rest.
     const pageChanged = () => {
-      reloading = false;
       gesture = null;
       departedFrom = null;
       deadEnd = null;
-      clearTimeout(reloadTimer); clearTimeout(feedbackTimer); clearTimeout(motionTimer);
+      clearTimeout(motionTimer);
       show(IDLE);
     };
     document.addEventListener('touchstart', start, { passive: false });
@@ -297,7 +257,7 @@ export function usePageGestures({ routeKey, enabled, onRefresh, onBack, readOffs
     window.addEventListener('pagehide', pageChanged);
     window.addEventListener('pageshow', pageChanged);
     return () => {
-      clearTimeout(feedbackTimer); clearTimeout(reloadTimer); clearTimeout(clickTimer); clearTimeout(motionTimer);
+      clearTimeout(clickTimer); clearTimeout(motionTimer);
       document.removeEventListener('touchstart', start);
       document.removeEventListener('touchmove', move);
       document.removeEventListener('touchend', finish);

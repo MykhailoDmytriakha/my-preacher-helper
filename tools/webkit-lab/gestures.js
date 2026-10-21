@@ -65,7 +65,7 @@ const OUT = __dirname;
   await page.waitForTimeout(1500);
   console.log('after-back', page.url(), JSON.stringify(await probe()));
 
-  // Pull down at the top.
+  // Pull down at the top: since 2026-10-20 there is no pull to reload, so the surface must stay at rest.
   await page.evaluate(() => scrollTo(0, 0));
   await touch('touchstart', 600, 150); await page.waitForTimeout(100);
   for (const y of [160, 200, 260, 320]) { await touch('touchmove', 600, y); await page.waitForTimeout(40); }

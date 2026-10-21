@@ -1,9 +1,5 @@
 {
   "gestures": {
-    "pullRefresh": "Pull to refresh",
-    "releaseRefresh": "Release to refresh",
-    "refreshing": "Refreshing…",
-    "failed": "Could not reload the page. Pull to try again.",
     "back": "Back",
     "releaseBack": "Release to go back"
   },
