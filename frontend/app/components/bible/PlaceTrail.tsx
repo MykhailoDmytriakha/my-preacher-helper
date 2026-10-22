@@ -128,6 +128,7 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
   const hidden = useHiddenEnds(rowRef);
   // The place being read stands in the middle of the row whenever it changes — a new link at the end, or
   // the light moved back to an earlier one.
+  // The scrolling row is also the offset parent: a link's coordinates exclude the frame's inset.
   useLayoutEffect(() => {
     const row = rowRef.current;
     const current = row?.querySelector<HTMLElement>('[aria-current="location"]');
@@ -136,7 +137,7 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
   }, [trail]);
   return (
     <nav aria-label={t('bible.trail.title')} className={STRIP_FRAMES[look]}>
-      <div ref={rowRef} className={`overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
+      <div ref={rowRef} className={`relative overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
         <ol className="flex w-max items-center gap-1.5">
           {trail.links.map((link, index) => {
             const here = index === trail.at;
