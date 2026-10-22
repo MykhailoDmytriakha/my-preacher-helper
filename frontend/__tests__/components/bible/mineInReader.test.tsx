@@ -64,6 +64,9 @@ beforeEach(() => {
   window.scrollTo = jest.fn() as unknown as typeof window.scrollTo;
 });
 
+// The list's window is named by its place alone, "Руфь 1:16" (the owner, 2026-10-21: no «Моё к»).
+const MINE_WINDOW = /^\S+ \d+(:\d+)?$/;
+
 const renderRuth = () => render(<BibleBookReader bible="rst" initialBible="rst" onChangeBible={jest.fn()} bookId="Ruth" initialPlace={{ chapter: 1, verse: 1 }} onOpenBook={jest.fn()} />);
 
 describe('the person\'s own material on the Bible text', () => {
@@ -95,13 +98,13 @@ describe('the person\'s own material on the Bible text', () => {
     mockRows = { sermons: [sermon('whither', 'Руфь 1:16-17', 'Куда ты пойдёшь')], studyNotes: [note('book-plan', '', 'План', [{ bible: 'rst', book: 'Ruth', chapter: 1 }])] };
     renderRuth();
     await userEvent.click(await screen.findByTestId('mine-1:16-sermon'));
-    const dialog = screen.getByRole('dialog', { name: 'bible.mine.title' });
+    const dialog = screen.getByRole('dialog', { name: MINE_WINDOW });
     expect(within(dialog).getByTestId('mine-entry-sermon-whither')).toHaveTextContent('Куда ты пойдёшь');
     // What names the whole chapter shows under the verse's own.
     expect(within(dialog).getByText('bible.mine.wholeChapter')).toBeInTheDocument();
     expect(within(dialog).getByTestId('mine-entry-note-book-plan')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByTestId('mine-entry-sermon-whither'));
-    expect(screen.queryByRole('dialog', { name: 'bible.mine.title' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: MINE_WINDOW })).not.toBeInTheDocument();
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/whither'));
   });
 
@@ -109,7 +112,7 @@ describe('the person\'s own material on the Bible text', () => {
     mockRows = { studyNotes: [note('field', '', 'В поле Вооза', [{ bible: 'rst', book: 'Ruth', chapter: 2 }])] };
     renderRuth();
     await userEvent.click(await screen.findByTestId('mine-chapter-2-note'));
-    const dialog = screen.getByRole('dialog', { name: 'bible.mine.title' });
+    const dialog = screen.getByRole('dialog', { name: MINE_WINDOW });
     expect(within(dialog).getByTestId('mine-entry-note-field')).toHaveTextContent('В поле Вооза');
   });
 
@@ -123,7 +126,7 @@ describe('the person\'s own material on the Bible text', () => {
     expect(screen.queryByTestId('mine-1:16-group')).not.toBeInTheDocument();
     expect(screen.getByTestId('mine-1:16-more')).toHaveTextContent('+2');
     await userEvent.click(screen.getByTestId('mine-1:16-more'));
-    expect(within(screen.getByRole('dialog', { name: 'bible.mine.title' })).getAllByRole('listitem')).toHaveLength(4);
+    expect(within(screen.getByRole('dialog', { name: MINE_WINDOW })).getAllByRole('listitem')).toHaveLength(4);
   });
 
   it('shows only the person\'s own documents, and not one they are deleting', async () => {
@@ -151,19 +154,19 @@ describe('the person\'s own material on the Bible text', () => {
     expect(chapterBadge).toHaveTextContent('2:1–23');
     expect(screen.queryByTestId('mine-chapter-2-note-count')).not.toBeInTheDocument();
     await userEvent.click(chapterBadge);
-    expect(within(screen.getByRole('dialog', { name: 'bible.mine.title' })).getAllByTestId('mine-entry-note-ranges')).toHaveLength(1);
+    expect(within(screen.getByRole('dialog', { name: MINE_WINDOW })).getAllByTestId('mine-entry-note-ranges')).toHaveLength(1);
   });
 
   it('closes the list when the setting goes off, and does not bring it back when it comes on again', async () => {
     mockRows = { sermons: [sermon('whither', 'Руфь 1:16-17')] };
     renderRuth();
     await userEvent.click(await screen.findByTestId('mine-1:16-sermon'));
-    expect(screen.getByRole('dialog', { name: 'bible.mine.title' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: MINE_WINDOW })).toBeInTheDocument();
     act(() => saveMinePrefs({ show: false }));
-    expect(screen.queryByRole('dialog', { name: 'bible.mine.title' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: MINE_WINDOW })).not.toBeInTheDocument();
     act(() => saveMinePrefs({ show: true }));
     expect(await screen.findByTestId('mine-1:16-sermon')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: 'bible.mine.title' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: MINE_WINDOW })).not.toBeInTheDocument();
   });
 
   it('gives the minimap a mark for each place — a passage\'s first verse, a whole chapter — its kinds in the order of the badges', async () => {

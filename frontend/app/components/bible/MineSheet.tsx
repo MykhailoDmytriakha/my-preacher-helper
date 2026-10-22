@@ -63,13 +63,13 @@ export function MineSheet({ at, bookId, locale, chapterWord, verseText, listed, 
   const titleId = useId();
   if (!at || !listed) return null;
   const abbrev = getLocalizedAbbrev(bookId, locale);
-  // "Моё к Евр 4": the book's full name may begin with a word of its own ("К Евреям").
+  // The window is named by its place alone, as its rows say it: "Втор 6:21", "Евр 4" (the owner, 2026-10-21).
   const place = at.verse === null ? `${abbrev} ${at.chapter}` : `${abbrev} ${at.chapter}:${at.verse}`;
   const { onVerse, wholeChapter } = listed;
   return (
     <ReaderSheet titleId={titleId} onClose={onClose}>
       <div className="flex items-center justify-between gap-2">
-        <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white">{t('bible.mine.title', { place })}</h3>
+        <h3 id={titleId} className="text-lg font-bold text-gray-900 dark:text-white">{place}</h3>
         <SheetCloseButton onClose={onClose} />
       </div>
       {verseText && at.verse !== null ? <p className="mb-2 font-serif text-[15px] leading-snug text-gray-600 dark:text-gray-400">{verseText}</p> : null}
