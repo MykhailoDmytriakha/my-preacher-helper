@@ -491,7 +491,6 @@
       "badgeLabel": "{{kind}}, {{place}}: {{titles}}",
       "badgeLabelMany": "{{count}} items. {{kind}}, {{place}}: {{titles}}",
       "moreLabel": "{{count}} more — open the list",
-      "title": "Yours on {{place}}",
       "wholeChapter": "The whole of {{chapter}}",
       "empty": "Nothing of yours here yet."
     }

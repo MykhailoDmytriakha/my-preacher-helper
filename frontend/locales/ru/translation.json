@@ -501,7 +501,6 @@
       "badgeLabel": "{{kind}}, {{place}}: {{titles}}",
       "badgeLabelMany": "Записей: {{count}}. {{kind}}, {{place}}: {{titles}}",
       "moreLabel": "Ещё {{count}} — открыть список",
-      "title": "Моё к {{place}}",
       "wholeChapter": "Целиком: {{chapter}}",
       "empty": "Здесь пока ничего вашего нет."
     }
