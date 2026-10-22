@@ -3,6 +3,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import RouteLoading from '../loading';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
@@ -233,6 +234,19 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.applySelected'));
         expect(screen.getByText('surviving-tag')).toBeInTheDocument();
         expect(screen.getByDisplayValue('Current Note')).toBeInTheDocument();
+    });
+
+    // BUG-20261021-note-opens-with-spinner: a spinning green arrow read as "refreshing" while a note opened.
+    it('shows the note\'s silhouette, not a spinner, while the notes come and while the route loads', () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        const { container, unmount } = render(<StudyNoteEditorPage />);
+        expect(screen.getByTestId('note-detail-skeleton')).toHaveAttribute('aria-busy', 'true');
+        expect(container.querySelector('.animate-spin')).toBeNull();
+        unmount();
+
+        const route = render(<RouteLoading />);
+        expect(screen.getByTestId('note-detail-skeleton')).toBeInTheDocument();
+        expect(route.container.querySelector('.animate-spin')).toBeNull();
     });
 
     it('renders correctly and identifies prev/next notes based on search params', () => {

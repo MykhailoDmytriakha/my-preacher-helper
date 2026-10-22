@@ -12,6 +12,7 @@ import { ScripturePreviewSheet } from '@/components/bible/ScripturePreviewSheet'
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
@@ -1324,13 +1325,7 @@ export default function StudyNoteEditorPage() {
 
     // ─── RENDER ─────────────────────────────────────────────────────────────
 
-    if (notesLoading || (!isInitialized && !isNew)) {
-        return (
-            <div className="flex items-center justify-center p-12">
-                <ArrowPathIcon className="h-6 w-6 animate-spin text-emerald-600" />
-            </div>
-        );
-    }
+    if (notesLoading || (!isInitialized && !isNew)) return <NoteDetailSkeleton />;
 
     return (
         <div data-note-workspace className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
