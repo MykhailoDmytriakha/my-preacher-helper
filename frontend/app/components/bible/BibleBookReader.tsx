@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useTranslation } from 'react-i18next';
 
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
+import { LeavingBar } from '@/components/ui/LeavingBar';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { STICKY_PANEL_GAP_PX, useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { resolveAppLocale } from '@/utils/appLocale';
@@ -195,6 +196,9 @@ function useFollowAfterClose<Args extends unknown[]>(open: boolean, close: () =>
     close();
   }, [close]);
 }
+
+/** How long the line saying "going to another screen" waits for that screen before it gives up. */
+const LEAVING_GIVES_UP_MS = 10_000;
 
 /** The verses of a passage (`"chapter:verse"`), for the light of an arrival. */
 function passageKeys(chapter: number, fromVerse: number, toVerse: number): string[] {
@@ -707,8 +711,19 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
 
   const openInBible = useFollowAfterClose(Boolean(marks.elsewhere.at), marks.elsewhere.close, changeBible);
   // A row of the person's list leaves the Bible for that note or sermon: the window closes first, so the
-  // place read is written down from the page, not from a page pinned under a window (iOS).
-  const goToScreen = useCallback((href: string) => router.push(href), [router]);
+  // place read is written down from the page, not from a page pinned under a window (iOS). The line along
+  // the top says at once that the app is going there; the next screen takes it away, and if the app has not
+  // left within ten seconds (the way was cancelled) it goes by itself.
+  const [leaving, setLeaving] = useState(false);
+  const goToScreen = useCallback((href: string) => {
+    setLeaving(true);
+    router.push(href);
+  }, [router]);
+  useEffect(() => {
+    if (!leaving) return undefined;
+    const timer = window.setTimeout(() => setLeaving(false), LEAVING_GIVES_UP_MS);
+    return () => window.clearTimeout(timer);
+  }, [leaving]);
   const openMineEntry = useFollowAfterClose(Boolean(mine.openAt), mine.close, goToScreen);
 
   // THE WAY BACK goes left along the trail of places, one link at a time (the owner, 2026-10-20: a swap
@@ -841,6 +856,7 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
         onClose={crossRefs.close}
         onOpenReference={openReference}
       />
+      {leaving ? <LeavingBar /> : null}
       <MineSheet
         at={mine.openAt}
         bookId={bookId}

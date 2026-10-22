@@ -103,9 +103,14 @@ describe('the person\'s own material on the Bible text', () => {
     // What names the whole chapter shows under the verse's own.
     expect(within(dialog).getByText('bible.mine.wholeChapter')).toBeInTheDocument();
     expect(within(dialog).getByTestId('mine-entry-note-book-plan')).toBeInTheDocument();
+    // Several rows: the one under the pointer or the finger is lit (the owner, 2026-10-21).
+    expect(within(dialog).getByTestId('mine-entry-sermon-whither')).toHaveClass('hover:bg-gray-50', 'active:bg-gray-100');
+    expect(screen.queryByTestId('leaving-bar')).not.toBeInTheDocument();
     await userEvent.click(within(dialog).getByTestId('mine-entry-sermon-whither'));
     expect(screen.queryByRole('dialog', { name: MINE_WINDOW })).not.toBeInTheDocument();
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/whither'));
+    // Something happens at once, before the next screen has come: the line along the top.
+    expect(screen.getByTestId('leaving-bar')).toBeInTheDocument();
   });
 
   it('opens a chapter\'s list from the badge by its heading', async () => {
