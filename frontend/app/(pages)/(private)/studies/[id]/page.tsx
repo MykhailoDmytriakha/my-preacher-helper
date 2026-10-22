@@ -1328,7 +1328,7 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
     }
 
     return (
-        <div data-note-workspace data-page-loading={!isInitialized && !unsavedRecovery ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
+        <div data-note-workspace data-page-loading={!isInitialized && !unsavedRecovery ? '' : undefined} className="bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
             {renderHeader()}
 

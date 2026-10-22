@@ -58,6 +58,8 @@ mounted route probes.
 
 ## Open a cached document at its beginning
 
+The private shell already owns viewport height. A nested note or its loading silhouette must use natural document height on narrow screens: another `min-h-screen` can leave the root at viewport top after shrink, making the router preserve a clamped offset under a sticky header. Wide note panes keep their existing bounded height in the workspace CSS. Verify the first paragraph, not just whether the root is on screen.
+
 A new card can inherit the old list offset when a short full-page fallback clamps the viewport before cached content expands. First trace native anchoring separately from explicit scroll calls and history restoration. The router remains the navigation owner; do not add a reset timer or `scrollTo` to each screen.
 
 The existing full-page fallback declares `data-page-loading`. One rule in `app/globals.css`, `html:has([data-page-loading]) { overflow-anchor: none; }`, suspends native document anchoring only while that state exists. Use the actual loading root: sermon/series skeletons and group/prayer/study route/page fallbacks. `RecordUnavailable` requires both `checking` and explicit `pageLoading`; a caller with retained series/group content does not opt in. A study workspace declares only its empty pre-initialization state, never a visible recovered draft. Inline spinners, card activity and ordinary reading must not declare full-page loading. The marker leaves with the waiting state, restoring normal anchoring.

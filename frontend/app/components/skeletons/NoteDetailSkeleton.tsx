@@ -22,7 +22,7 @@ function TextLines({ widths }: { widths: string[] }) {
  */
 export function NoteDetailSkeleton({ backControl }: { backControl?: ReactNode }) {
   return (
-    <div data-note-workspace data-page-loading="" data-testid="note-detail-skeleton" aria-busy="true" className="-m-4 flex min-h-screen flex-col bg-white dark:bg-gray-900 md:-m-6 lg:-m-8">
+    <div data-note-workspace data-page-loading="" data-testid="note-detail-skeleton" aria-busy="true" className="-m-4 flex flex-col bg-white dark:bg-gray-900 md:-m-6 lg:-m-8">
       <div className="animate-pulse border-b border-gray-200 px-3 py-1.5 dark:border-gray-800 sm:px-6 sm:py-3">
         <div className="flex h-11 items-center justify-between gap-4 sm:h-9">
           <div className="flex items-center gap-3">

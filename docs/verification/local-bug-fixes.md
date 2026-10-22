@@ -3310,3 +3310,29 @@ All4browser/Auth contexts close. Both owned emulator stores export and all3owned
 After a separately authorized deploy, confirm its revision. In Bible, open the material badge on one authorized test verse and one whole chapter at wide/narrow sizes: expect exactly the localized place in the heading, correct list scope, and working note navigation/Back. After an established warm visit, the offline list must keep its title and saved rows. Keep the separate short-note arrival issue visible; do not claim it passed. Close the test browser promptly; do not use private owner material.
 
 Ignored exact evidence and verification: `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/main-followup-167-*`. No push, deployment or merge into main occurs in this unit.
+
+## BUG-20261021-short-note-arrival-under-header (Unit168)
+
+Stage: locally verified; production and physical-device acceptance pending. Local fix85 after its separate commit and fresh acceptance. The private shell already owns viewport height. Removing the duplicate `min-h-screen` from NotePage and NoteDetailSkeleton lets normal router landing work on narrow screens; wide panes retain their existing bounded-height CSS. Loading markers, recovery guards and scroll/history owners are preserved. No timer, padding workaround or second scroll controller was added.
+
+Two unchanged Chrome390 baseline runs on HEAD882619d6/build0Mc4knOGXutGl7Sj5-vai reproduce8clipped settled arrivals out of10. Online gaps were-41px, warm-offline gaps-89px; both direct-address controls were readable. Native document shrink left the nested full-height root at viewport top, so installed Next15.5.12 did not reset the clamped offset. A separate CSS-only diagnostic removed the symptom in5/5cases; it was a probe, not the fix. Wide baseline5/5 was already readable. All3304source/compiled/worker pins are frozen with provenance.
+
+The actual candidate build `rJMLtfMJGUbDSTvnFqXJ_` passes the original unmodified390callback, the unchanged wide callback and an820width control:15/15arrivals readable, with no note commands, page errors or forbidden requests. The first paragraph is32px below the header at390. JSDOM cannot compute native scroll clamp or sticky occlusion: browser geometry is the RED-to-GREEN regression. Existing note/loading/private-shell tests pass88checks; full types/unused/lint exit0. Official build passes956suites/10505tests, with3suites/17tests skipped, then production compilation. The worker teardown warning also exists in the preceding167build; it is not counted as a new height regression. Candidate2392source/910compiled/2worker pins remain unchanged.
+
+Two final Chrome390/1280neighbor runs pass19checks each: long-note first/end reading, online/offline Bible-entry and visible-verse Back, usable empty editor, actual manual typing and delivery, exact early-draft recovery, native IndexedDB request capture before the second offline reload, reconnection delivery, unrelated fields and unchanged original/long-note snapshots. Early reload precedes the1500msautosave pause: a safe draft can require explicit recovery. Actual capture is observed separately, not inferred from a sleep. Both actual interfaces were RU despite the requested initial EN hint.
+
+Three failed neighbor probes remain visible: v1 searched an English Edit label in the actual Russian interface; v2 expected automatic projection before the autosave pause; v3 reached an intermittent chunk63error after reconnection. The last is a separate observation retained as `BUG-20261021-note-chunk-after-offline`, not declared fixed or assigned to this layout cause. The following narrow and wide runs passed without application changes. The chunk cause and recovery in that original failed tab remain unproven.
+
+Root inspected23original final frames across390/820/1280. All8candidate browser/Auth contexts close, including the3failed probes; both local stores export,3PID-verified owned services stop and8ports are free. One199408KiB server RSS sample is not a leak test. QA uses only Auth9199/Firestore8189/Next3047, empty API base, reserved synthetic documents and production transport denial.
+
+| Boundary | Result | Evidence |
+|---|---|---|
+| Note page and loading silhouette | Reuse shell height | Two source deletions; original native regression becomes green |
+| Wide panes and shared scroll/history | Preserved within exercised paths | Wide/tablet geometry and four Bible Back controls |
+| Retained typing and offline capture | Preserved | Real typing, exact backup recovery, native request row and canonical readback |
+| Server data | Unchanged for read-only probes | Whole original/long-note equality; edited synthetic note retains unrelated fields |
+| Other full-screen layouts | Separate ownership | No source change; their arrival geometry is not claimed tested here |
+
+After a separately authorized deploy, confirm the revision. In one authorized test account, open Bible → a test passage's saved-material badge → a short test note at narrow and wide sizes: the complete first paragraph must begin below the sticky header. Repeat, return Back to the same passage, warm the route/worker and repeat offline. Verify a long test note can be read to its end and a deliberate test edit survives reload; distinguish pre-capture recovery from accepted pending delivery. Close the browser promptly. Do not use owner-authored content, open many profiles or treat this as acceptance of the separate chunk failure.
+
+Exact ignored evidence: `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/note-arrival-168-*`; rerun `python3 artifacts/note-arrival-168-verify-v1.py` from that case. This registry and ID-bearing commit retain the clone-safe trace. Tracker after local closure:39bug records,23open/15recheck/1owner-deferred, plus2non-code tasks. No push, deploy or merge into main occurs.
