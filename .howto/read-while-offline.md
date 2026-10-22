@@ -63,3 +63,49 @@ A new card can inherit the old list offset when a short full-page fallback clamp
 The existing full-page fallback declares `data-page-loading`. One rule in `app/globals.css`, `html:has([data-page-loading]) { overflow-anchor: none; }`, suspends native document anchoring only while that state exists. Use the actual loading root: sermon/series skeletons and group/prayer/study route/page fallbacks. `RecordUnavailable` requires both `checking` and explicit `pageLoading`; a caller with retained series/group content does not opt in. A study workspace declares only its empty pre-initialization state, never a visible recovered draft. Inline spinners, card activity and ordinary reading must not declare full-page loading. The marker leaves with the waiting state, restoring normal anchoring.
 
 Verify geometry in a real browser after warming the actual list and document, waiting for an actual controlling service worker, then disabling the network and opening from a meaningfully scrolled list. Repeat the opening. `serviceWorker.ready` alone may precede controller assignment; wait for `navigator.serviceWorker.controller` separately. Measure the first body paragraph when a sticky title can hide the failure. JSDOM only verifies the state declaration/release; it does not implement native anchoring. Record source/build pins, visible body/title geometry, `auto → none → auto`, unchanged retained-content controls and cleanup. Back/Forward offsets are a separate navigation contract; an ordinary-card fix does not prove history restoration.
+
+
+## Return to the reading place in history
+
+`utils/windowHistoryPosition.client.ts` is the one window-position owner, mounted by the root
+`WindowHistoryPosition` client effect. It reuses `utils/historyEntry.ts` and the existing
+`bibleEntry` key. Each pushed visit gets its own identity, even at the same address; a supplied
+fresh Bible identity and all router fields survive. A replace keeps the current identity. Read
+`PopStateEvent.state` in capture phase before the router replaces state. Native fragment entries
+without app state remain native: do not mint an identity for them while traversing.
+
+Keep at most 100 visit positions in sessionStorage, with an in-document fallback when storage
+refuses the convenience. Save the outgoing visit before push/pagehide. A restored visit must
+match its saved address. Wait while `data-page-loading` exists or the requested coordinates do
+not fit; after four stable layout frames restore, then settle again because the restored scroll
+can collapse a header. Wheel, touch, pointer, key input and a new navigation retire pending
+restoration. Do not compare the new page's total height with its previous height: shortened
+words or a different layout can still fit the remembered position. Do not create filler height.
+Clamp negative rubber-band readings, check both axes without a frame spin when a coordinate is
+unreachable, and allow navigation without optional Navigation Timing measurements. A shorter
+final document whose saved coordinate is no longer reachable keeps native scrolling available
+until newer input/navigation; the module does not promise a semantic anchor for changed words.
+
+The Bible route keeps its own verse/arrival owner (`lastPlace`/`BibleBookReader`); note panes
+keep `useNoteScrollPosition`. This is a bounded history return, not continuous page anchoring.
+Keep native `history.scrollRestoration` unchanged, and never add reset timers or writers to
+individual screens. Cleanup disconnects observers/listeners and pending frames. If a later
+router wrapper retained the old history methods, the disposed wrapper delegates unchanged.
+
+The real regression needs a warmed actual app, service worker and local emulators: scroll a
+list, open a document, read farther down, Back, Forward, then make a new ordinary opening.
+Measure the same entry and search, and inspect the actual paragraph/textarea as well as scrollY.
+Repeat online/offline at phone/tablet widths. Cover series, groups, prayers, service orders,
+councils and study notes; keep Bible material-to-document-and-Back controls. For a delayed
+geometry probe, declare its CSS hold and release explicitly; after newer wheel input the late
+restore must not pull the person back. Check a shorter page that still fits the old offset and
+native fragment Back/Forward with null state. Synthetic geometry controls are separate from
+ordinary UI acceptance. Four stable frames cannot prove the absence of every future unmarked
+async layout; retain the exact exercised evidence and physical-device boundaries.
+
+JSDOM checks the controller, not native layout/history restoration. Preserve actual browser RED
+before source edits and mutation-check new deterministic tests. Rebuild after root integration,
+pin tracked and new source files plus compiled/worker bytes, use the same browser callback after
+the fix, and retain failed attempts. Stop/export only PID-verified owned services after every
+browser context closes. Local evidence and future production steps live in
+`docs/verification/local-bug-fixes.md` under `BUG-20261021-offline-history-scroll-position`.

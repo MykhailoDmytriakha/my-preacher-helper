@@ -8,6 +8,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { ServerUnavailableNoticeProvider } from "./providers/ServerUnavailableNoticeProvider";
 import { SkipLink } from "./components/navigation/SkipLink";
 import { ThemeWatcher } from "./components/ThemeWatcher";
+import { WindowHistoryPosition } from "./components/navigation/WindowHistoryPosition";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
 import { ConnectionProvider } from "./providers/ConnectionProvider";
@@ -62,6 +63,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <SkipLink />
         <ThemeWatcher />
+        <WindowHistoryPosition />
         <TextScaleProvider>
           <AuthProvider>
             <ApplicationDiagnosticsRecorder />
