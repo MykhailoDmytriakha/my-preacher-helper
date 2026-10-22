@@ -3235,3 +3235,35 @@ The installed browser uses only local Auth9199, Firestore8189 and localhost3047 
 The shared class remains explicit: the structure writer's5 operations and plan writer's4 operations have the modeled mutable-opening risk; the public facade itself fences old updates; TemplateOutlineEditor fences its captured recoveryIdentity; the server receives the already selected resource and cannot infer the abandoned A intent from equal owner IDs. Before a source fix, reproduce a supported same-instance resource/opening replacement. Choosing another saved draft, offline-shell transitions and the physical iPad are still untested. Do not close this record because another delayed-input bug was fixed, or because ordinary dynamic-segment navigation remounts successfully.
 
 Evidence: ignored `outline-target-164-hook-red-v3.json`, exact `outline-target-164-hook-reproducer-v3.test.tsx`, `outline-target-164-native-before-v1.json` and `-v2.json`, original screenshots, build/environment pins and owned teardown. Future production verification, only after separate authorization, must use one prepared account context, distinguish writer lifetime from ordinary route success, compare both resources without overwriting the owner's words, and close the QA browser. This QA unit does not authorize a push, deployment or production data test.
+
+
+## BUG-20261020-retry-hides-failed-save
+
+Stage: locally verified; production verification pending. Accepted local fix84 once its separate commit and fresh acceptance complete.
+
+Before this repair, pressing Retry after a failed local Save capture only persisted the draft. The failure disappeared although no command existed. `CaptureContinuations` now remembers each explicit invocation inside the existing document/manual owner queues until the canonical CommitQueue takes ownership. Retry retains its exact captured value and action order; later unsent typing remains a separate durable draft. Canonical identity, delivery, ACKs and ordinary typing-only persistence retain their existing owners. Explicit cancellation retires only attempts present at that choice.
+
+The original adapter regression failed3behavioral cases (document Save, document commit and manual Save), with1typing-only control passing and0suite runtime errors. On unchanged source3facece0/buildYWR1kI9zemgYO5HAwnTNW, actual Chrome1280/390 aborted a scoped native IndexedDB request transaction: Retry hid trouble with0commands and an unchanged whole server snapshot; a second explicit Save delivered once. The candidate passes the same regression. Focused3suites/31tests cover repeated capture failure, identical overlapping Saves, later explicit Save order, later unsent words, cancellation, owner change, post-capture projection failure and submitted-draft restart behavior. An intermediate candidate failed the existing ordinary-draft-after-failure test; failed attempts now remain retryable without blocking later draft persistence. Failed QA setup/control attempts are retained separately and are not product RED proof.
+
+All85engine suites pass1230tests before the final2additional controls. The final official `npm run build` passes956suites/10502tests, with3suites/17tests skipped, and production build succeeds. Full types, unused checks and lint pass; lint retains32existing warnings. BuildCBQIr_l3sbcqE7OrRw7pQ pins2391frontend sources,910compiled files and2worker files. No source changed during the build.
+
+Actual after-fix Chrome runs use Auth9199/Firestore8189/Next3047 and synthetic reserved sermons only; runtime API base is explicitly empty and production network access is denied. At1280, the same abort followed by actual Retry delivers exactly1acknowledged command and survives reload. At390, words typed after the failed Save are observed in native IndexedDB while failure remains visible; Retry delivers the earlier title once while retaining those later words. A separate explicit Save delivers the later title; reload keeps it without duplicate commands. Both runs have0page errors and0forbidden requests, and close their browser/Auth contexts. Root viewed7original viewport/dialog frames. Owned stores are exported, owned services stop, and8QAports become free. One end-of-run219536KiB RSS sample is not a memory-leak test.
+
+Fresh source review uses a clean lower-model agent of the same provider; it confirms no concrete defect and is not a different-engine review. A failed pre-request continuation is memory belonging to its open editor; after disposal/restart the durable stage has its separate explicit recovery flow. This repair does not promise that a rejected Save command survives a hard restart or that unavailable storage can preserve new work. No physical-device, production or cold-offline browser acceptance is claimed.
+
+### Mechanism coverage
+
+| Place | Result | Reason |
+|---|---|---|
+| EditorController Save/commit/receipt and public Retry | Fixed | Retain captured invocation; retry before checkpoint repair; preserve existing canonical request identity. |
+| ManualScope Save and form Retry | Fixed | Same helper inside the existing scope queue; staged later words stay separate. |
+| Document/manual sync status and sermon metadata consumer | Fixed through common state | Failed capture stays visible despite subsequent successful draft persistence; actual consumer tested. |
+| Typing-only persistence and later unsent drafts | Preserved | Retry creates no unsolicited Save; existing restart regression and native later-stage observation pass. |
+| Already durable request, delivery and server processor | Existing owners preserved | Post-capture projection failure keeps one request ID/send; original defect occurred before a server command existed. |
+| Cancellation and owner lifetime | Preserved | Scope cancellation, explicit version choice and owner change controls; continuation boundaries preserve newer attempts. |
+
+### Production acceptance after authorized merge
+
+Confirm the deployed revision contains this commit. Use one authorized test sermon and one browser context. In Sermons → test sermon → menu → Edit, change the title, induce one transaction abort scoped only to that synthetic resource, then press Retry: the original title change must reach the server once. Repeat with later staged title words: Retry sends the original portion; later words require their own Save. Reload, verify the final title and no duplicate delivery, restore the temporary probe and close the context. Do not use owner-authored sermons or leave polling tabs open. Production execution remains a separate authorized step.
+
+Ignored local evidence and rerunnable verification are under `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/save-retry-165-*`; the source tests, this registry and the ID-bearing commit retain the clone-safe trace. Local tracker count after this closure:38bug records (23open,14recheck,1owner-deferred), including the historical unnumbered Cross-account record;2non-code tasks remain.

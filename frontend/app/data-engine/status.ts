@@ -54,7 +54,7 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
     return { ...parent, canSave: false, canRemove: false, canAcceptRemote: false };
   }
   // A pristine reopened form must not hide delivery or terminal recovery behind its pinned copy.
-  if (!form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
+  if (!form.captureFailed && !form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
     return { ...parent, canSave: false, canRemove: false };
   }
   const observed = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
@@ -66,8 +66,9 @@ export function describeManualSync(form: ReturnType<ManualScope['getState']> | n
   let phase: SyncPhase = form.dirty ? 'draft' : 'saved';
   if (changed) phase = deleted ? 'deleted' : 'remoteChanged';
   if (!form.durable) phase = error ? 'localFailure' : 'savingLocally';
+  if (form.captureFailed) phase = 'localFailure';
   return { ...parent, phase, hasForeignChange: changed,
-    canSave: form.dirty && form.durable && !deleted, canRemove: false,
+    canSave: form.dirty && form.durable && !deleted && !form.captureFailed, canRemove: false,
     canAcceptRemote: false, canKeepLocal: false };
 }
 
@@ -116,5 +117,6 @@ function deliveryPhase(state: EditorState, delivery: readonly JournalEntry[], fo
   if (state.result?.kind === 'refused') phase = 'refused';
   if (checkpoint.confirmed.metadata?.deleted && !checkpoint.dirty && !pendingCount) phase = 'deleted';
   if (!state.durable) phase = state.error ? 'localFailure' : 'savingLocally';
+  if (state.captureFailed) phase = 'localFailure';
   return phase;
 }

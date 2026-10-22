@@ -1,6 +1,7 @@
 import { failureCode } from '@/utils/failureCode';
 
 import { firstBookMarksIntent, isFirstBookMarksDraft } from './bibleMarksCreation';
+import { CaptureContinuations } from './captureContinuations';
 import { assertCommitCapture } from './commits';
 import { isDirectLegacyDocumentIntent, type DocumentAnswer } from './documentDelivery';
 import { requiredDomainTargets } from './domainPolicy';
@@ -75,6 +76,8 @@ export interface EditorState {
   result: CommandResult | null;
   /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
   preparing?: boolean;
+  /** An explicit Save has not transferred its captured intent to a durable request. */
+  captureFailed?: boolean;
   actionResolutionRequired?: boolean;
   /** Derived by the engine from every held request and its cancellation scope. */
   savedIntentReplaceable?: boolean;
@@ -104,7 +107,7 @@ export class EditorController {
   private result: CommandResult | null = null;
   private preparations = 0;
   /** Submitted generations must reach the request store before a future RAM draft reaches a checkpoint. */
-  private pendingCaptures = new Set<SessionCheckpoint>();
+  private pendingCaptures = new CaptureContinuations();
   private disposed = false;
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
@@ -165,7 +168,7 @@ export class EditorController {
   getState(): EditorState {
     this.assertCurrent();
     const checkpoint = this.session.checkpoint();
-    return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0,
+    return { checkpoint, durable: this.durable, error: this.error, errorCode: this.errorCode, result: this.result, preparing: this.preparations > 0, captureFailed: this.pendingCaptures.failed,
       preparedOperationId: this.prepared?.operationId,
       actionResolutionRequired: this.atomicPending.size > 0,
       manualWork: Object.keys(checkpoint.pending).some(id => this.manualRequests.has(id)) };
@@ -190,9 +193,7 @@ export class EditorController {
     const captured = capturedIntent ?? this.session.checkpoint();
     this.assertManualResolution(selection, captured);
     this.preparations += 1;
-    if (this.options.commits) this.pendingCaptures.add(captured);
-    this.emit();
-    return this.enqueue(async () => {
+    const capture = async (captureComplete: () => void) => {
       if (this.options.commits) {
         // Earlier saves may have registered after this intent was captured.
         // An adopted manual save can share this generation; it is still our predecessor.
@@ -211,7 +212,7 @@ export class EditorController {
         const options = { ...captureSaveOptions(predecessorIds, captureScope), checkpoint: projectCheckpoint };
         const capture = onCaptured ? await this.options.commits.saveWithReceipt(this.options.editorId, captured, options) : null;
         const request = capture ? capture.request : await this.options.commits.save(this.options.editorId, captured, options);
-        this.pendingCaptures.delete(captured);
+        captureComplete();
         if (capture) onCaptured!(capture.receipt);
         if (request) await this.applyCommit(request);
         else await this.persist();
@@ -230,7 +231,10 @@ export class EditorController {
       if (!this.prepared) return;
       await this.persist();
       await this.options.runtime.submit(this.prepared);
-    }).finally(() => { this.pendingCaptures.delete(captured); this.preparations -= 1; this.emit(); });
+    };
+    const attempt = this.options.commits ? this.pendingCaptures.register(capture) : () => capture(() => undefined);
+    this.emit();
+    return this.enqueue(attempt).finally(() => { this.preparations -= 1; this.emit(); });
   }
 
   /** A durable form request joins this editor without absorbing unrelated staged fields. */
@@ -251,11 +255,12 @@ export class EditorController {
 
   /** Retry the latest local checkpoint without inventing an edit or replacing prepared identities. */
   needsPersistenceRetry(): boolean {
-    return !this.durable || this.prepared !== null || this.unfinalized.length > 0;
+    return this.pendingCaptures.pending || !this.durable || this.prepared !== null || this.unfinalized.length > 0;
   }
 
   retryPersistence(): Promise<void> {
     return this.enqueue(async () => {
+      await this.pendingCaptures.retry();
       await this.persist();
       if (this.prepared) await this.options.runtime.submit(this.prepared);
       await this.finishAcknowledgements();
@@ -284,6 +289,7 @@ export class EditorController {
 
   /** Explicitly replace a terminal conflict only; unknown remote outcomes cannot be discarded. */
   acceptRemote(selection?: readonly ManualPath[], expected?: EditorRecord): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
     // The draft as the person chose; typing that lands before this queued choice runs is kept.
     const atChoice = this.session.checkpoint().draft;
     return this.enqueue(async () => {
@@ -301,6 +307,7 @@ export class EditorController {
         this.prepared = null;
       }
       this.assertManualResolution(selection);
+      this.pendingCaptures.retire(captures);
       this.session.acceptRemote();
       if (refusedWork) this.session.dropRefused(atChoice);
       this.result = null;
@@ -311,6 +318,7 @@ export class EditorController {
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
   keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }, expected?: EditorRecord): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
     const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueue(async () => {
       this.assertRecoveryChoice(expected);
@@ -351,6 +359,7 @@ export class EditorController {
       }
       this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
+      this.pendingCaptures.retire(captures);
       this.session.keepLocal();
       if (correction) {
         // The explicit choice includes staged corrections, while untouched remote siblings survive.
@@ -379,6 +388,7 @@ export class EditorController {
   }
 
   dispose(): void {
+    this.pendingCaptures.retire();
     this.disposed = true;
     this.unsubscribe();
     this.stopCommits();
@@ -417,7 +427,7 @@ export class EditorController {
   }
 
   private async persist(): Promise<void> {
-    if (this.pendingCaptures.size) return;
+    if (this.pendingCaptures.capturing) return;
     const record = this.record();
     const keeps = isRecoverableCheckpoint(record);
     // Reading a document writes nothing to the device: with nothing to keep, nothing held and no

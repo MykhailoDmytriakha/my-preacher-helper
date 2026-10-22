@@ -1,3 +1,4 @@
+import { CaptureContinuations } from './captureContinuations';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
@@ -69,6 +70,7 @@ export class ManualScope {
   private tail: { generation: number; stage: FieldValue[] } | null = null;
   private saves = new Map<number, Promise<{ delivery: 'queued'; requestId: string } | null>>();
   private proposalVersion = 0;
+  private captures = new CaptureContinuations();
 
   private constructor(private readonly options: ScopeOptions, record: ManualScopeRecord) { this.record = copy(record); }
 
@@ -116,7 +118,7 @@ export class ManualScope {
   getState() {
     this.assertCurrent();
     const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
-    return { record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    return { ...(this.captures.failed ? { captureFailed: true } : {}), record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData): Promise<void> {
@@ -156,8 +158,9 @@ export class ManualScope {
     if (running) return running;
     if (equalValues(captured.stage, this.tail?.stage ?? captured.savedSelection)) return this.settled().then(() => null);
     this.tail = { generation: captured.generation, stage: copy(captured.stage) };
-    const saving = this.enqueue(async () => {
+    const saving = this.enqueue(this.captures.register(async captureComplete => {
       if (this.record.savedGeneration === captured.generation && this.record.predecessor) {
+        captureComplete();
         await this.write();
         return { delivery: 'queued' as const, requestId: this.record.predecessor.id };
       }
@@ -174,10 +177,11 @@ export class ManualScope {
       this.record.predecessor = copy(request);
       this.record.savedSelection = copy(captured.stage);
       this.record.savedGeneration = captured.generation;
+      captureComplete();
       // Later typing remains a separate stage, while future Saves depend on this request.
       await this.write();
       return { delivery: 'queued' as const, requestId: request.id };
-    });
+    }));
     this.saves.set(captured.generation, saving);
     void saving.catch(() => {
       this.saves.delete(captured.generation);
@@ -198,10 +202,12 @@ export class ManualScope {
   /** Cancel only this stage. A previously durable Save survives cancellation. */
   cancel(): Promise<void> {
     this.assertCurrent();
+    const captures = this.captures.boundary();
     this.record.generation += 1;
     this.record.active = false;
     this.durable = false;
     return this.enqueue(async () => {
+      this.captures.retire(captures);
       this.record.stage = copy(this.record.savedSelection);
       await this.write();
     });
@@ -221,8 +227,11 @@ export class ManualScope {
   /** Reopening a pending lineage resumes its planned value, never a fabricated confirmed one. */
   reopen(): Promise<void> { this.assertCurrent(); this.record.active = true; return this.persist(); }
   settled(): Promise<void> { return this.queue.then(() => { this.assertCurrent(); }); }
-  retryPersistence(): Promise<void> { this.assertCurrent(); return this.persist(); }
-  dispose(): void { this.closed = true; }
+  retryPersistence(): Promise<void> {
+    this.assertCurrent();
+    return this.enqueue(async () => { await this.captures.retry(); await this.write(); });
+  }
+  dispose(): void { this.captures.retire(); this.closed = true; }
 
   private value(): DocumentData { return project(this.record.predecessor?.value ?? this.record.baseline.value!, this.record.selection, this.record.stage); }
   private persist(): Promise<void> { this.durable = false; return this.enqueue(() => this.write()); }
