@@ -3267,3 +3267,29 @@ Fresh source review uses a clean lower-model agent of the same provider; it conf
 Confirm the deployed revision contains this commit. Use one authorized test sermon and one browser context. In Sermons → test sermon → menu → Edit, change the title, induce one transaction abort scoped only to that synthetic resource, then press Retry: the original title change must reach the server once. Repeat with later staged title words: Retry sends the original portion; later words require their own Save. Reload, verify the final title and no duplicate delivery, restore the temporary probe and close the context. Do not use owner-authored sermons or leave polling tabs open. Production execution remains a separate authorized step.
 
 Ignored local evidence and rerunnable verification are under `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/save-retry-165-*`; the source tests, this registry and the ID-bearing commit retain the clone-safe trace. Local tracker count after this closure:38bug records (23open,14recheck,1owner-deferred), including the historical unnumbered Cross-account record;2non-code tasks remain.
+
+
+## Note-opening main intake (Unit166)
+
+Stage: locally verified; production verification pending. This reconciles committed main `78a51222` into local accepted base `cb3cdc4d`; accepted local fix count stays84. Two subsequent main commits are deliberately outside this pinned intake and will be considered at the next clean boundary. Dirty primary-checkout files are excluded.
+
+Main contributes `NoteDetailSkeleton` and the note-opening recipe. The local page retains its initialized-content, unsent recovery, absence/deletion and navigation boundaries. Both route and page use the same markup-only skeleton; its root owns `data-page-loading`. The optional back control preserves the new-note escape. Readable or retained words never become a whole-page loading placeholder. The already locally closed tracker block stays closed: incoming only changed its obsolete source anchor.
+
+The compilable overlap baseline fails2behavioral checks with100passing and0runtime failures. The combined3suites pass104tests. Static type/unused/lint gates exit0. The official956-suite/10505-test run and production build pass (3suites/17tests skipped); build `vzmTEjFvQfmKnxXHNo0AN` pins2392source files,910compiled files and2workers. Fresh source review reports no confirmed findings; it is same-provider clean-context review, not a different-engine guarantee.
+
+Actual Chrome1280/390 runs use only Auth9199/Firestore8189/Next3047, empty API base, synthetic reserved documents and production transport denial. Each passes9checks: hold a genuine local collection answer, show the shared silhouette, release and read the saved words, reload, establish actual worker/offline-shell readiness, reload without network, show explicit absence, retain a seeded local draft, return Back, and confirm unchanged whole canonical data with zero note commands. Root viewed14original frames. These are viewport checks, not physical-device or owner acceptance; the recovery envelope is an explicit native-localStorage fixture, not actual typing or storage-failure proof.
+
+Three earlier failed probes remain visible. The first disconnected before the worker finished installing; the second's async polling predicate did not establish readiness; the third completed offline reading but addressed a different missing-note identity than its recovery fixture. The final harness waits a synchronous controller predicate, records actual activation/cache state and uses one fresh identity consistently. These setup failures are not product RED evidence. All5browser contexts/Auth instances close; owned emulator data exports and3services stop; all8QAports are free. One49936KiB server RSS sample is not a leak test.
+
+| Boundary | Outcome | Evidence |
+|---|---|---|
+| Shared empty note wait | Combined | Actual held local200answer and both viewed silhouettes |
+| Already initialized/unsent words | Preserved | Targeted regression and native saved/recovery states |
+| Known absence/deletion | Preserved | Targeted absence guard and native explicit missing panel |
+| New-note Back/history marker | Preserved | Targeted3-suite104test result |
+| Warm offline reload and Back | Preserved | Both real worker-controlled Chrome viewport runs |
+| Canonical note and tracker closure | Unchanged | Whole snapshot equality/0note commands and byte-identical BUGS |
+
+After a separately authorized deploy, confirm its revision, then open an authorized test note from Studies at wide and narrow sizes. During a real delayed read, expect the note silhouette; after arrival and warm offline reload expect readable saved words. A known absent reserved address must show absence, and a retained local copy must remain readable. Close the test browser promptly. Do not use private owner content or unbounded production checks.
+
+Ignored evidence and exact verification live under `.cases/2026-10-15-lokalnoe-ispravlenie-vseh-bagov/artifacts/main-intake-166-*`. The tracker remains38bug records:23open,14recheck,1owner-deferred, plus2non-code tasks. No push, deployment or merge into main occurs in this unit.

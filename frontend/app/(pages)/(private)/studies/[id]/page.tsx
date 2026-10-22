@@ -12,6 +12,7 @@ import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { NoteDetailSkeleton } from '@/components/skeletons/NoteDetailSkeleton';
 import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
@@ -1304,7 +1305,12 @@ function NoteEditor({ openingDraftId }: { openingDraftId: string }) {
 
     // ─── RENDER ─────────────────────────────────────────────────────────────
 
+    if (!isNew && !isInitialized && !unsavedRecovery && presence?.kind !== 'absent' && presence?.kind !== 'deleting'
+        && (notesLoading || existingNote)) return <NoteDetailSkeleton />;
     if (isNew && notesLoading) {
+        if (!unsavedRecovery) return <NoteDetailSkeleton backControl={
+            <button type="button" onClick={handleBack} className="font-semibold text-emerald-700 dark:text-emerald-300">{t('common.back')}</button>
+        } />;
         return <div className="mx-auto max-w-3xl space-y-5 p-4 sm:p-6" data-page-loading={unsavedRecovery ? undefined : ''}>
             <button type="button" onClick={handleBack} className="font-semibold text-emerald-700 dark:text-emerald-300">{t('common.back')}</button>
             <div role="status" className="flex items-center gap-2">

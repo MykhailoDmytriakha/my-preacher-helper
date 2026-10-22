@@ -3,6 +3,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import RouteLoading from '../loading';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
@@ -195,11 +196,33 @@ describe('StudyNoteEditorPage Pagination', () => {
         const view = render(<StudyNoteEditorPage />);
         expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'common.back' })).toBeEnabled();
+        expect(screen.getByTestId('note-detail-skeleton')).toBeInTheDocument();
+        expect(view.container.querySelector('.animate-spin')).toBeNull();
         expect(view.container.querySelector('[data-page-loading]')).not.toBeNull();
         (useStudyNotes as jest.Mock).mockReturnValue({ ...collection, uid: 'user-1', loading: false });
         view.rerender(<StudyNoteEditorPage />);
         expect(await screen.findByTestId('rich-markdown-editor')).toBeVisible();
         expect(view.container.querySelector('[data-page-loading]')).toBeNull();
+    });
+
+    it('keeps an already opened note readable while the collection checks again', () => {
+        const view = render(<StudyNoteEditorPage />);
+        expect(screen.getByText('Current Note')).toBeVisible();
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes,
+            noteDelivery: acceptedNoteDelivery(), loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        view.rerender(<StudyNoteEditorPage />);
+        expect(screen.getByText('Current Note')).toBeVisible();
+        expect(screen.queryByTestId('note-detail-skeleton')).not.toBeInTheDocument();
+        expect(view.container.querySelector('[data-page-loading]')).toBeNull();
+    });
+
+    it('keeps confirmed absence visible even during another collection check', () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true,
+            notePresence: () => ({ kind: 'absent', source: 'server', snapshot: { resource: { collection: 'studyNotes', id: 'note-1' }, value: null, metadata: null } }),
+            refetch: jest.fn(), createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        render(<StudyNoteEditorPage />);
+        expect(screen.getByText('recordAvailability.notFound')).toBeVisible();
+        expect(screen.queryByTestId('note-detail-skeleton')).not.toBeInTheDocument();
     });
 
     it('names a server-confirmed missing note and offers a route back', async () => {
@@ -549,6 +572,21 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.applySelected'));
         expect(screen.getByText('surviving-tag')).toBeInTheDocument();
         expect(screen.getByDisplayValue('Current Note')).toBeInTheDocument();
+    });
+
+    // BUG-20261021-note-opens-with-spinner: a spinning green arrow read as "refreshing" while a note opened.
+    it('shows the note\'s silhouette, not a spinner, while the notes come and while the route loads', () => {
+        (useParams as jest.Mock).mockReturnValue({ id: 'silhouette-loading-note' });
+        window.history.replaceState(null, '', '/studies/silhouette-loading-note');
+        (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: [], loading: true, createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn() });
+        const { container, unmount } = render(<StudyNoteEditorPage />);
+        expect(screen.getByTestId('note-detail-skeleton')).toHaveAttribute('aria-busy', 'true');
+        expect(container.querySelector('.animate-spin')).toBeNull();
+        unmount();
+
+        const route = render(<RouteLoading />);
+        expect(screen.getByTestId('note-detail-skeleton')).toBeInTheDocument();
+        expect(route.container.querySelector('.animate-spin')).toBeNull();
     });
 
     it('renders correctly and identifies prev/next notes based on search params', () => {
