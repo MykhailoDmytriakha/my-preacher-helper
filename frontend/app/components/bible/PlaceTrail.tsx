@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { getLocalizedAbbrev } from '@/utils/bibleBooks';
@@ -76,18 +76,56 @@ export function PlaceTrailButton({ count, shown, floating, onToggle }: { count: 
 /** Where the row stands: under the reader's line, floating over a phone's bar, or on the list of books. */
 type StripLook = 'line' | 'floating' | 'page';
 
-const STRIP_CLASSES: Record<StripLook, string> = {
-  line: 'relative z-20 mb-3 shrink-0 overflow-x-auto overscroll-contain border-y border-gray-200 bg-gray-50 px-1 py-1.5 dark:border-gray-700 dark:bg-gray-950',
-  floating: 'pointer-events-auto fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-20 z-30 overflow-x-auto overscroll-contain rounded-full border border-gray-200 bg-white/95 px-2 py-1.5 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/95 dark:shadow-black/40',
-  // A link cut by the row's edge fades out instead of standing there as a broken pill.
-  page: 'relative min-w-0 overflow-x-auto overscroll-contain px-4 py-1.5 [mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%_-_1rem),transparent)]',
+/** The row's frame. A capsule's links stand 7 px in on every side, so their rounding (18 px) runs alongside
+ *  the capsule's (25 px) — on a wide reader a capsule like the phone's, not a band cut square at the
+ *  column's edges (the owner, 2026-10-21). */
+const STRIP_FRAMES: Record<StripLook, string> = {
+  line: 'relative z-20 mb-3 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-50 p-1.5 dark:border-gray-700 dark:bg-gray-950',
+  floating: 'pointer-events-auto fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-4 right-20 z-30 overflow-hidden rounded-full border border-gray-200 bg-white/95 px-2 py-1.5 shadow-lg shadow-gray-900/15 backdrop-blur-md dark:border-gray-700 dark:bg-gray-900/95 dark:shadow-black/40',
+  page: 'relative min-w-0 py-1.5',
 };
+
+/**
+ * A link cut by the row's edge fades out instead of standing there as a broken pill (a capsule's rounding
+ * cut one to a sliver). Only an end that hides links fades: at rest the row's first and last links stand
+ * whole. The row scrolls inside the frame, so the frame's own border never fades.
+ */
+const FADED_ENDS = {
+  none: '',
+  start: '[mask-image:linear-gradient(to_right,transparent,#000_1.5rem)]',
+  end: '[mask-image:linear-gradient(to_left,transparent,#000_1.5rem)]',
+  both: '[mask-image:linear-gradient(to_right,transparent,#000_1.5rem,#000_calc(100%_-_1.5rem),transparent)]',
+} as const;
+
+function useHiddenEnds(rowRef: RefObject<HTMLElement | null>): keyof typeof FADED_ENDS {
+  const [ends, setEnds] = useState<keyof typeof FADED_ENDS>('none');
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return undefined;
+    const measure = () => {
+      const start = row.scrollLeft > 1;
+      const end = row.scrollLeft + row.clientWidth < row.scrollWidth - 1;
+      setEnds(start && end ? 'both' : start ? 'start' : end ? 'end' : 'none');
+    };
+    measure();
+    row.addEventListener('scroll', measure, { passive: true });
+    const sizes = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    sizes?.observe(row);
+    if (row.firstElementChild) sizes?.observe(row.firstElementChild);
+    return () => {
+      row.removeEventListener('scroll', measure);
+      sizes?.disconnect();
+    };
+  }, [rowRef]);
+  return ends;
+}
 
 export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
   trail: Trail; bible: BibleId; locale: AppLocale; look: StripLook; onGo: (link: TrailPlace) => void;
 }) {
   const { t } = useTranslation();
-  const rowRef = useRef<HTMLElement | null>(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const hidden = useHiddenEnds(rowRef);
   // The place being read stands in the middle of the row whenever it changes — a new link at the end, or
   // the light moved back to an earlier one.
   useLayoutEffect(() => {
@@ -97,29 +135,27 @@ export function PlaceTrailStrip({ trail, bible, locale, look, onGo }: {
     row.scrollLeft = Math.max(0, current.offsetLeft - (row.clientWidth - current.offsetWidth) / 2);
   }, [trail]);
   return (
-    <nav
-      ref={rowRef}
-      aria-label={t('bible.trail.title')}
-      className={STRIP_CLASSES[look]}
-    >
-      <ol className="flex w-max items-center gap-1.5">
-        {trail.links.map((link, index) => {
-          const here = index === trail.at;
-          return (
-            <li key={`${index}:${link.book}:${link.chapter}`} className="flex items-center gap-1.5">
-              {index > 0 ? <span aria-hidden="true" className="text-gray-400 dark:text-gray-500">›</span> : null}
-              <button
-                type="button"
-                onClick={() => onGo(link)}
-                aria-current={here ? 'location' : undefined}
-                className={linkClasses(here)}
-              >
-                {linkLabel(link, bible, locale)}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+    <nav aria-label={t('bible.trail.title')} className={STRIP_FRAMES[look]}>
+      <div ref={rowRef} className={`overflow-x-auto overscroll-contain ${look === 'page' ? 'px-4' : ''} ${FADED_ENDS[hidden]}`}>
+        <ol className="flex w-max items-center gap-1.5">
+          {trail.links.map((link, index) => {
+            const here = index === trail.at;
+            return (
+              <li key={`${index}:${link.book}:${link.chapter}`} className="flex items-center gap-1.5">
+                {index > 0 ? <span aria-hidden="true" className="text-gray-400 dark:text-gray-500">›</span> : null}
+                <button
+                  type="button"
+                  onClick={() => onGo(link)}
+                  aria-current={here ? 'location' : undefined}
+                  className={linkClasses(here)}
+                >
+                  {linkLabel(link, bible, locale)}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
     </nav>
   );
 }

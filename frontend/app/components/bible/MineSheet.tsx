@@ -37,7 +37,9 @@ function EntryRow({ entry, abbrev, onOpen }: { entry: BookUsageEntry; abbrev: st
         type="button"
         onClick={() => onOpen(entry.href)}
         data-testid={`mine-entry-${entry.kind}-${entry.id}`}
-        className="flex w-full items-start gap-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+        // Lit under the pointer and the finger, as the rows of the verse's window are (ScripturePreviewSheet):
+        // with several rows it shows which one a tap opens (the owner, 2026-10-21).
+        className="-mx-2 flex w-[calc(100%+1rem)] items-start gap-3 rounded-xl px-2 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 active:bg-gray-100 dark:hover:bg-gray-800 dark:active:bg-gray-700"
       >
         {/* The badge's own circle: the list speaks the same colours and icons as the text. */}
         <span className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${badge.circle}`}>
