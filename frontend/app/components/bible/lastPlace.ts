@@ -1,4 +1,5 @@
 import { isBibleId, type BibleId } from '@/utils/bibles';
+import { currentHistoryEntryId, HISTORY_ENTRY_KEY, newHistoryEntryId } from '@/utils/historyEntry';
 
 /**
  * Where the person stopped reading, on this device only: a convenience for "Continue", not a
@@ -76,16 +77,13 @@ export function placeInBook(chapters: string[][], place: Place | null): Place | 
  * lives in sessionStorage (this tab only). Next's own fields in `history.state` are kept: Next
  * copies them into the state it is given (pushState/replaceState integration).
  */
-const ENTRY_KEY = 'bibleEntry';
 const ENTRY_PREFIX = 'bible:entry:';
 /** The place in another book this entry was opened from: the reader's way back ("← Rom 5"). */
 const FROM_KEY = 'bibleFrom';
 
-const newEntryId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-
 /** The state for a new entry that opens a book; `from` when it was opened from another book. */
 export const newEntryState = (from?: LastPlace | null): Record<string, unknown> => ({
-  [ENTRY_KEY]: newEntryId(),
+  [HISTORY_ENTRY_KEY]: newHistoryEntryId(),
   ...(from ? { [FROM_KEY]: from } : {}),
 });
 
@@ -96,12 +94,7 @@ export function readEntryFrom(): LastPlace | null {
 
 /** The id of the current entry, giving it one when it has none (a deep link, a reload). Call after mount. */
 export function currentEntryId(): string {
-  const state = (window.history.state ?? {}) as Record<string, unknown>;
-  const existing = state[ENTRY_KEY];
-  if (typeof existing === 'string') return existing;
-  const id = newEntryId();
-  window.history.replaceState({ ...state, [ENTRY_KEY]: id }, '');
-  return id;
+  return currentHistoryEntryId();
 }
 
 /**
