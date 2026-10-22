@@ -101,6 +101,16 @@ function expectNoPageLevelShell(container: HTMLElement) {
 }
 
 describe('Private pages adhere to single-shell policy', () => {
+  // jsdom has no matchMedia, and the plan page asks it from a timer 150 ms after mounting
+  // (usePairedPlanCardHeights). A slow machine settles the engine later than that, and the timer's
+  // TypeError failed the Vercel build of a8253fa2 (2026-10-21).
+  beforeEach(() => {
+    window.matchMedia = jest.fn((query: string) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener: jest.fn(), removeEventListener: jest.fn(), addListener: jest.fn(), removeListener: jest.fn(), dispatchEvent: jest.fn(),
+    })) as unknown as typeof window.matchMedia;
+  });
+
   const cases: Array<[string, React.ComponentType<any>]> = [
     ['sermons', SermonsPage],
     ['sermons/[id]', SermonDetailPage],

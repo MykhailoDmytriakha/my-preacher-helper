@@ -9,6 +9,7 @@ Tests run in jsdom 20 (`jest-environment-jsdom` 29) plus the few globals `fronte
 - Added by the setup: `fetch` (jest-fetch-mock), `Request` / `Response` / `Headers` / `Blob` / `File` / `FormData` (undici), `setImmediate`, and a `ResizeObserver` whose methods do nothing.
 - Missing in jsdom: `window.matchMedia`, `navigator.clipboard`, `navigator.mediaDevices`, `MediaRecorder`, `AudioContext`, `URL.createObjectURL`, `crypto.randomUUID` (only `getRandomValues` exists), `IntersectionObserver`, `structuredClone`, `scrollIntoView`, `window.isSecureContext`, `document.execCommand`, `indexedDB`, and `TextEncoder` / `ReadableStream` (see `.howto/test-streaming-code.md`).
 - `Date.now` is frozen at 2023-01-01 by the setup.
+- A missing API called from a **timer** flakes instead of failing: green while the test ends before the timer, red on a slower machine where it outlives it. `sermons/[id]/plan` asks `matchMedia` 150 ms after mounting (`usePairedPlanCardHeights.ts`); `privateLayout.policy.test.tsx` awaited the engine longer than that on Vercel and failed the build of `a8253fa2` (2026-10-21). Reproduce by awaiting a little longer than the timer inside the test's `act`, then stub the API for the whole file.
 
 ## How
 
