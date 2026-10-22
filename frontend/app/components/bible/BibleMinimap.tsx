@@ -7,14 +7,19 @@ import {
   firstVisibleLine,
   fitPressedFrame,
   frameOnMap,
+  MINIMAP_INSET,
+  minimapMarkRects,
   minimapOffset,
   settleOffset,
   verseAtY,
   type MinimapFrame,
   type MinimapLayout,
+  type MinimapMark,
 } from './minimapLayout';
+import { USAGE_KIND_LOOK } from './usageKinds';
 
 import type { ReadingSurface } from './readingSurface';
+import type { ScriptureUsageKind } from '@/utils/scriptureUsage';
 
 type VersePlace = { chapter: number; verse: number };
 
@@ -35,6 +40,8 @@ type BibleMinimapProps = {
   readingInset: number;
   /** The chapters drawn of a big book (`useChapterWindow`): its rows change as the place moves. */
   drawn?: unknown;
+  /** The person's material: a mark of each kind's colour on the map's right edge, at its verse (`useBookUsage`). */
+  marks?: readonly MinimapMark<ScriptureUsageKind>[];
 };
 
 /** The verse rows in the text: a big book draws some chapters only, and they change as the place moves. */
@@ -100,6 +107,7 @@ function paintMap(
   offset: number,
   boxHeight: number,
   frame: MinimapFrame | null,
+  marks?: readonly MinimapMark<ScriptureUsageKind>[],
 ) {
   const dark = isDark();
   context.fillStyle = dark ? '#475569' : '#cbd5e1';
@@ -108,7 +116,7 @@ function paintMap(
     const line = layout.lines[index];
     const y = line.y - offset;
     if (y > boxHeight) break;
-    context.fillRect(0, y, line.width, 2);
+    context.fillRect(MINIMAP_INSET, y, line.width, 2);
   }
   context.fillStyle = dark ? '#cbd5e1' : '#4b5563';
   context.font = '700 9px system-ui, -apple-system, sans-serif';
@@ -116,15 +124,35 @@ function paintMap(
   for (const label of layout.labels) {
     const y = label.y - offset;
     if (y < -12 || y > boxHeight) continue;
-    context.fillText(chapterLabel(label.chapter), 0, y);
+    context.fillText(chapterLabel(label.chapter), MINIMAP_INSET, y);
   }
-  if (!frame) return;
-  const top = frame.top - offset;
-  context.fillStyle = dark ? 'rgba(129, 140, 248, 0.18)' : 'rgba(99, 102, 241, 0.12)';
-  context.strokeStyle = dark ? '#818cf8' : '#a5b4fc';
-  context.lineWidth = 1;
-  context.fillRect(0, top, MAP_WIDTH - 12, frame.height);
-  context.strokeRect(0.5, top + 0.5, MAP_WIDTH - 13, frame.height - 1);
+  if (frame) {
+    const top = frame.top - offset;
+    context.fillStyle = dark ? 'rgba(129, 140, 248, 0.18)' : 'rgba(99, 102, 241, 0.12)';
+    context.strokeStyle = dark ? '#818cf8' : '#a5b4fc';
+    context.lineWidth = 1;
+    // The whole width: the person's marks at the right end stand inside it, and its edges keep the box's
+    // padding on both sides. It left 12 px free once, for a scrollbar the map no longer shows.
+    context.fillRect(0, top, MAP_WIDTH, frame.height);
+    context.strokeRect(0.5, top + 0.5, MAP_WIDTH - 1, frame.height - 1);
+  }
+  if (marks?.length) paintMarks(context, layout, marks, offset, boxHeight, dark);
+}
+
+/** The person's marks over everything. */
+function paintMarks(context: CanvasRenderingContext2D, layout: MinimapLayout, marks: readonly MinimapMark<ScriptureUsageKind>[], offset: number, boxHeight: number, dark: boolean) {
+  const pill = (x: number, y: number, width: number, height: number) => {
+    context.beginPath();
+    if (typeof context.roundRect === 'function') context.roundRect(x, y, width, height, height / 2);
+    else context.rect(x, y, width, height);
+    context.fill();
+  };
+  for (const rect of minimapMarkRects(layout, marks, MAP_WIDTH)) {
+    const y = rect.y - offset;
+    if (y + rect.height < 0 || y > boxHeight) continue;
+    context.fillStyle = dark ? USAGE_KIND_LOOK[rect.kind].dot.dark : USAGE_KIND_LOOK[rect.kind].dot.light;
+    pill(rect.x, y, rect.width, rect.height);
+  }
 }
 
 /** The edge a frame has gone past in a map scrolled to `offset`, or null while some of it shows. */
@@ -146,7 +174,7 @@ function edgePassed(frame: MinimapFrame, offset: number, boxHeight: number): Edg
  * the map follows it; one leafed away comes back as soon as the text moves, and a frame gone past the
  * edge leaves a mark at that edge that brings the map back.
  */
-function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset, drawn }: BibleMinimapProps) {
+function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingLabel, title, onJump, surface, readingInset, drawn, marks }: BibleMinimapProps) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rowsRef = useRef<HTMLElement[]>([]);
@@ -250,7 +278,7 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
 
     const offset = map.scrollTop;
     const now = reading();
-    paintMap(context, layout, chapterLabel, offset, boxHeight, now ? now.frame : null);
+    paintMap(context, layout, chapterLabel, offset, boxHeight, now ? now.frame : null, marks);
 
     // The frame gone past an edge of a map leafed away: a mark at that edge brings the map back.
     const direction = freeRef.current && glideRef.current === null && now ? edgePassed(now.frame, offset, boxHeight) : null;
@@ -327,6 +355,11 @@ function BibleMinimapStrip({ layout, textRef, chapterLabel, placeLabel, readingL
   useLayoutEffect(() => {
     handlersRef.current = { draw, onPageScroll, measure, follow };
   });
+
+  // The person's material changed (a note written on another device, the setting switched): paint the marks anew.
+  useEffect(() => {
+    handlersRef.current?.draw();
+  }, [marks]);
 
   // A new book, surface or reading top: its rows, a map that follows the text, the box measured again.
   useEffect(() => {
