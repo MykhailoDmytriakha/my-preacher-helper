@@ -118,8 +118,8 @@ function BookEnd({ bookId, bible, locale, wide, onOpen }: { bookId: string; bibl
 }
 
 /** The place as a reference names it, "16:21", on the chapter button; a book of one chapter has no button to open. */
-function ChapterControl({ bookId, bible, locale, current, verse, text, wide, onPick }: {
-  bookId: string; bible: BibleId; locale: AppLocale; current: number; verse: number; text: BookText; wide: boolean; onPick: (chapter: number) => void;
+function ChapterControl({ bookId, bible, locale, current, verse, text, wide, onOpen }: {
+  bookId: string; bible: BibleId; locale: AppLocale; current: number; verse: number; text: BookText; wide: boolean; onOpen: (place: Place & { toVerse?: number }) => void;
 }) {
   const { t } = useTranslation();
   if (text.chapters.length === 1) {
@@ -129,7 +129,7 @@ function ChapterControl({ bookId, bible, locale, current, verse, text, wide, onP
       </span>
     );
   }
-  return <ChapterPicker bookId={bookId} bible={bible} bookName={getLocalizedBookName(bookId, locale)} current={current} verse={verse} text={text} wide={wide} onPick={onPick} />;
+  return <ChapterPicker bookId={bookId} bible={bible} current={current} verse={verse} text={text} locale={locale} wide={wide} onOpen={onOpen} />;
 }
 
 /** While the text is on its way, and when it could not be opened. */
@@ -678,10 +678,6 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
     const here = placeRef.current ?? { chapter: currentChapter, verse: 1 };
     onOpenBook(bookSlug(chosenBook), place, { slug: bookSlug(bookId), chapter: here.chapter, verse: here.verse, bible });
   }, [arrive, bible, bookId, currentChapter, jumpTo, lightArrival, onOpenBook]);
-  const pickChapter = useCallback((chapter: number) => {
-    arrive({ chapter, verse: 1 });
-    jumpTo({ chapter, verse: 1 });
-  }, [arrive, jumpTo]);
 
   const trail = useReaderTrail({ bible, locale, wide, here: { book: bookId, chapter: currentChapter, verse: currentVerse, bible }, openPlace });
 
@@ -777,8 +773,8 @@ export function BibleBookReader({ bookId, bible, initialPlace, initialBible, pas
       >
         {wide && wayBackLabel ? <WayBack label={wayBackLabel} floating={false} onClick={goBack} /> : null}
         {trail.inLine}
-        <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} text={text} locale={locale} wide={wide} onOpen={openPlace} />
-        {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onPick={pickChapter} /> : null}
+        <BookPicker bookId={bookId} bible={bible} currentChapter={currentChapter} currentVerse={currentVerse} text={text} locale={locale} wide={wide} onOpen={openPlace} />
+        {text ? <ChapterControl bookId={bookId} bible={bible} locale={locale} current={currentChapter} verse={currentVerse} text={text} wide={wide} onOpen={(place) => openPlace(bookId, place)} /> : null}
         <SearchPicker bookId={bookId} bible={bible} locale={locale} wide={wide} look="line" onOpen={openPlace} />
         {marks.tools}
         <span className={`flex min-w-0 ${marks.translationClass}`}>

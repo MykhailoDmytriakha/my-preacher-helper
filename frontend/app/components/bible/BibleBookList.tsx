@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next';
 
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { resolveAppLocale } from '@/utils/appLocale';
-import { getLocalizedAbbrev, getLocalizedBookName } from '@/utils/bibleBooks';
+import { getLocalizedAbbrev } from '@/utils/bibleBooks';
 import { bookIdFromSlug, bookSlug } from '@/utils/bibleText';
 import { placeIn } from '@/utils/versification';
 
-import { TranslationPicker } from './BiblePicker';
+import { BookOnList, TranslationPicker } from './BiblePicker';
 import { booksOf } from './bookOrder';
 import { PlaceTrailOnList } from './PlaceTrail';
 import { usePlaceTrail } from './placeTrailStore';
@@ -95,13 +95,15 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
                     <ul className="flex flex-wrap gap-1.5">
                       {group.ids.map((bookId) => (
                         <li key={bookId}>
-                          <button
-                            type="button"
-                            onClick={() => onOpen(bookSlug(bookId))}
-                            className="inline-flex min-h-10 items-center rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
-                          >
-                            {getLocalizedBookName(bookId, locale)}
-                          </button>
+                          {/* A press: its chapters, then a chapter's verses; a hold: the book at its start — as in the reader. */}
+                          <BookOnList
+                            bookId={bookId}
+                            bible={bible}
+                            locale={locale}
+                            wide={wide}
+                            here={bookId === lastBookId && continueAt ? { chapter: continueAt.chapter, verse: continueAt.verse } : undefined}
+                            onOpen={(book, place) => onOpen(bookSlug(book), place)}
+                          />
                         </li>
                       ))}
                     </ul>
@@ -110,6 +112,7 @@ export function BibleBookList({ bible, lastPlace, onOpen, onChangeBible }: Bible
               </section>
             ))}
           </div>
+          <p className="-mt-3 text-[13px] leading-5 text-gray-500 dark:text-gray-400">{t('bible.holdBookHint')}</p>
         </div>
       </BibleSearch>
     </div>

@@ -46,7 +46,8 @@ export function SearchHelp({ bible, columns, touch, onTry }: { bible: BibleId; c
         { example: example('epistles'), describe: 'epistles' },
       ],
     },
-    { title: t('bible.search.sections.open'), rows: [{ example: example('verse'), describe: 'verse' }, { example: example('wholeChapter'), describe: 'wholeChapter' }] },
+    // Without typing: the reader's windows go book → chapter → verse a press a step, and a hold opens at once.
+    { title: t('bible.search.sections.open'), rows: [{ example: example('verse'), describe: 'verse' }, { example: example('wholeChapter'), describe: 'wholeChapter' }], note: t('bible.search.byFingerNote') },
     { title: t('bible.search.sections.words'), rows: [{ example: example('allWords'), describe: 'allWords' }], note: t('bible.search.formsNote', { forms: example('forms') }) },
     {
       title: t('bible.search.sections.exact'),

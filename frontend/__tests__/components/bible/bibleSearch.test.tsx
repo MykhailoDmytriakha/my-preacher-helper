@@ -122,6 +122,8 @@ describe('the one line', () => {
     const { line } = renderLine();
     await userEvent.click(screen.getByRole('button', { name: 'bible.search.help' }));
     expect(screen.getByText('bible.search.sections.where')).toBeInTheDocument();
+    // The way without typing is told where opening a verse is: a press a step, a hold at once.
+    expect(screen.getByText('bible.search.byFingerNote')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'bible.search.examples.rst.book' }));
     expect(line).toHaveValue('bible.search.examples.rst.book');
     expect(screen.queryByText('bible.search.sections.where')).not.toBeInTheDocument();

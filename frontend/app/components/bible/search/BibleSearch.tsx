@@ -285,9 +285,12 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
   };
 
   // Escape anywhere in the line, its panels or its results — a result button too: a panel goes first,
-  // then the words; only an empty line lets the window around it close.
+  // then the words; only an empty line lets the window around it close. Not a key from a window opened
+  // over the page from inside the line's part of it (a book of the list below): portalled, its keys still
+  // bubble here through React, and this took Escape from that window (Codex review, 2026-10-23).
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const onEscape = (event: React.KeyboardEvent) => {
-    if (event.key !== 'Escape') return;
+    if (event.key !== 'Escape' || !rootRef.current?.contains(event.target as Node)) return;
     // The reader's search window opens on its kept searches: with the line empty they are the window itself,
     // and one Escape closes it.
     const opening = openWithRecent && !line.trim();
@@ -342,7 +345,7 @@ export function BibleSearch({ bible, locale, wide, surface, hereBook = null, aut
     : 'mt-2';
 
   return (
-    <div className="flex min-w-0 flex-col" onKeyDown={onEscape}>
+    <div ref={rootRef} className="flex min-w-0 flex-col" onKeyDown={onEscape}>
       <div className={surface === 'window' ? 'sticky top-0 z-10 -mx-1 bg-white px-1 pb-1 dark:bg-gray-900' : 'w-full'}>
         <div
           className={`flex items-center gap-2 rounded-xl border bg-white pl-3.5 transition dark:bg-gray-950 ${wide ? 'h-[52px] pr-2' : 'h-12 pr-1'} ${focused
